@@ -1,0 +1,24 @@
+{
+  "name": "vibe-design-plugins",
+  "version": "1.0.0",
+  "description": "Cross-provider design skills and commands for LLM-powered development tools",
+  "type": "module",
+  "scripts": {
+    "build": "bun run scripts/build.js",
+    "clean": "rm -rf dist",
+    "rebuild": "bun run clean && bun run build",
+    "test": "bun test"
+  },
+  "keywords": [
+    "cursor",
+    "claude",
+    "gemini",
+    "codex",
+    "design",
+    "frontend",
+    "ux"
+  ],
+  "author": "Paul Bakaus",
+  "license": "SEE LICENSE FILE"
+}
+
