@@ -1,0 +1,119 @@
+/* Hero Section */
+
+.hero {
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: var(--s-2xl) var(--s-lg);
+  overflow: hidden;
+}
+
+.hero-grid {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-2xl);
+  align-items: center;
+  width: 100%;
+  position: relative;
+}
+
+.hero-content {
+  animation: slideInLeft var(--duration-slower) var(--ease-out) 0.1s both;
+}
+
+/* Title Styling */
+.title {
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-weight: 300;
+  line-height: 0.9;
+  margin-bottom: var(--s-lg);
+  display: flex;
+  flex-direction: column;
+  gap: -0.1em;
+}
+
+.title-main {
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.title-sub {
+  font-weight: 300;
+  font-style: italic;
+  color: var(--c-accent);
+  letter-spacing: -0.02em;
+}
+
+/* Tagline & Providers */
+.tagline {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  line-height: 1.4;
+  color: var(--c-charcoal);
+  margin-bottom: var(--s-md);
+  max-width: 32ch;
+}
+
+.providers {
+  font-size: 0.875rem;
+  color: var(--c-ash);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+/* Decorative Elements */
+.hero-decoration {
+  width: 240px;
+  height: 240px;
+  position: relative;
+  animation: slideInRight var(--duration-slower) var(--ease-out) 0.3s both;
+}
+
+.deco-line {
+  position: absolute;
+  width: 160px;
+  height: 2px;
+  background: var(--c-accent);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-25deg);
+  animation: expandLine 1s var(--ease-out) 0.6s both;
+}
+
+.deco-circle {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border: 2px solid var(--c-accent);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: drawCircle 1s var(--ease-out) 0.8s both;
+  opacity: 0.3;
+}
+
+/* Hero Responsive */
+@media (max-width: 768px) {
+  .hero {
+    min-height: 70vh;
+    padding: var(--s-xl) var(--s-md);
+  }
+  
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: var(--s-xl);
+  }
+  
+  .hero-decoration {
+    display: none;
+  }
+  
+  .title {
+    font-size: clamp(2.5rem, 12vw, 4rem);
+  }
+}
+

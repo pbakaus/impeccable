@@ -1,0 +1,51 @@
+/* Layout Components */
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--s-lg);
+}
+
+/* Section Styling */
+section {
+  border-top: 1px solid var(--c-mist);
+}
+
+.section-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  margin-bottom: 0;
+  padding-bottom: var(--s-sm);
+  position: relative;
+  display: block;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -0.25em;
+    left: 0;
+    width: 80px;
+    height: 2px;
+    background: var(--c-accent);
+  }
+  
+  @media (max-width: 968px) {
+    margin-bottom: var(--s-lg);
+  }
+}
+
+/* Grid Utilities */
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--s-md);
+}
+
+/* Loading State */
+.loading {
+  padding: var(--s-xl);
+  text-align: center;
+  color: var(--c-ash);
+  font-style: italic;
+}
+

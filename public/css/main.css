@@ -1,0 +1,25 @@
+/* 
+ * impeccable.style — Modular CSS Architecture
+ * 
+ * Uses Bun's CSS bundler for:
+ * - CSS nesting (no preprocessor needed)
+ * - OKLCH colors with automatic fallbacks
+ * - Automatic bundling via @import
+ * 
+ * Structure:
+ * - tokens.css: Design system (colors, spacing, typography)
+ * - reset.css: Modern baseline
+ * - animations.css: Keyframes & utilities
+ * - layout.css: Grid & section primitives
+ * - hero/intro/buttons/cards/footer.css: Component styles
+ */
+
+@import "./tokens.css";
+@import "./reset.css";
+@import "./animations.css";
+@import "./layout.css";
+@import "./hero.css";
+@import "./intro.css";
+@import "./buttons.css";
+@import "./cards.css";
+@import "./footer.css";

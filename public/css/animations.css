@@ -1,0 +1,81 @@
+/* Animations & Keyframes */
+
+/* Background Atmosphere */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 30%, var(--c-accent-dim) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, var(--c-accent-dim) 0%, transparent 50%);
+  opacity: 0;
+  z-index: -1;
+  animation: fadeInBg var(--duration-slowest) var(--ease-out) 0.3s forwards;
+  pointer-events: none;
+}
+
+/* Keyframe Definitions */
+@keyframes fadeInBg {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes expandLine {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes drawCircle {
+  from {
+    opacity: 0;
+    scale: 0;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Animation Utilities */
+[data-animate] {
+  opacity: 0;
+  transform: translateY(20px);
+  
+  &.animated {
+    animation: fadeInUp var(--duration-slow) var(--ease-out) both;
+  }
+}
+

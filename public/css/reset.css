@@ -1,0 +1,71 @@
+/* Modern CSS Reset */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--c-ink);
+  background: var(--c-paper);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Typography Defaults */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+p {
+  max-width: 65ch;
+}
+
+a {
+  color: var(--c-accent);
+  text-decoration: none;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  
+  &:hover {
+    opacity: 0.7;
+  }
+}
+
+/* Better image defaults */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Remove default button styles */
+button {
+  font: inherit;
+  cursor: pointer;
+}
+

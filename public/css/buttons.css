@@ -1,0 +1,69 @@
+/* Button Components */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.875rem 2rem;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--ease-out);
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+/* Primary Button */
+.btn-primary {
+  background: var(--c-accent);
+  color: var(--c-paper);
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--c-ink);
+    transform: translateY(100%);
+    transition: transform var(--duration-base) var(--ease-out);
+    z-index: -1;
+  }
+  
+  &:hover::before {
+    transform: translateY(0);
+  }
+}
+
+/* Secondary Button */
+.btn-secondary {
+  background: transparent;
+  color: var(--c-ink);
+  border: 1px solid var(--c-ink);
+  
+  &:hover {
+    background: var(--c-ink);
+    color: var(--c-paper);
+  }
+}
+
+/* Small Button Variant */
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--c-mist);
+  background: transparent;
+  color: var(--c-ink);
+  
+  &:hover {
+    border-color: var(--c-accent);
+    color: var(--c-accent);
+  }
+}
+

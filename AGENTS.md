@@ -45,10 +45,20 @@ vibe-design-plugins/
 │       ├── prompts/*.md
 │       ├── AGENTS.md
 │       └── AGENTS.*.md
+├── public/                      # Website for impeccable.style
+│   ├── index.html               # Main page
+│   ├── css/                     # Modular CSS (9 files)
+│   │   ├── main.css             # Entry point with imports
+│   │   ├── tokens.css           # Design system
+│   │   └── ...                  # Component styles
+│   └── app.js                   # Vanilla JS
+├── server/                      # Bun server
+│   └── index.js                 # Serves website + API routes
 ├── scripts/                     # Build system (Bun)
 │   ├── build.js                 # Main orchestrator
 │   ├── lib/
 │   │   ├── utils.js             # Shared utilities
+│   │   ├── zip.js               # ZIP generation
 │   │   └── transformers/        # Provider-specific transformers
 │   │       ├── cursor.js
 │   │       ├── claude-code.js
@@ -58,6 +68,29 @@ vibe-design-plugins/
 ├── DEVELOP.md                   # Contributor documentation
 └── package.json                 # Bun scripts
 ```
+
+## Website (impeccable.style)
+
+**Tech Stack:**
+- Vanilla JavaScript (no frameworks)
+- Modern CSS with Bun's bundler (nesting, OKLCH colors, @import)
+- Bun server with HTML imports as routes
+- Deployed on Vercel with Bun runtime
+
+**Design:**
+- Editorial precision aesthetic
+- Cormorant Garamond (display) + Instrument Sans (body)
+- OKLCH color space for vibrant, perceptually uniform colors
+- Editorial sidebar layout (title left, content right)
+- Modular CSS architecture (9 files)
+
+**Routes:**
+- `/` - Homepage
+- `/api/skills` - JSON list
+- `/api/commands` - JSON list
+- `/api/download/skill/:provider/:id` - Individual file
+- `/api/download/command/:provider/:id` - Individual file
+- `/api/download/bundle/:provider` - ZIP bundle
 
 ## Source File Format
 
@@ -152,6 +185,12 @@ End users can copy files directly without needing build tools.
 - Gemini: Uses native `@file.md` import feature
 - Codex: Uses routing pattern with AGENTS.md guide
 
+### Why vanilla JS for website?
+- No build complexity
+- Bun handles everything natively
+- Modern features (ES6+, CSS nesting, OKLCH colors)
+- Fast, lean, maintainable
+
 ## Adding New Content
 
 1. **Create source file** in `source/commands/` or `source/skills/`
@@ -160,14 +199,6 @@ End users can copy files directly without needing build tools.
 4. **Build**: `bun run build`
 5. **Test** with your provider
 6. **Commit** both source and dist files
-
-## Current Content
-
-### Commands
-- **normalize**: Normalize design to match design system
-
-### Skills
-- **frontend-design**: Create distinctive, production-grade frontend interfaces
 
 ## Important Notes
 
@@ -178,9 +209,9 @@ End users can copy files directly without needing build tools.
 
 ## Documentation
 
-- **README.md**: End user guide (installation, usage)
+- **README.md**: End user guide (installation, usage, quick dev setup)
 - **DEVELOP.md**: Contributor guide (architecture, build system, adding content)
-- **This file**: Context for AI assistants and new developers
+- **This file (AGENTS.md)**: Context for AI assistants and new developers
 
 ## Provider Documentation Links
 

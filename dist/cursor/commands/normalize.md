@@ -1,6 +1,4 @@
-This command ensures features match your design system's standards and feel cohesive with the rest of your application. Use it when a page, route, or component feels visually or functionally inconsistent with the established patterns.
-
-The user provides a feature to normalize (explicitly or via context). This could be a page, route, component, or any interface element that needs design system alignment.
+Analyze and redesign the feature to perfectly match our design system standards, aesthetics, and established patterns.
 
 ## Plan
 

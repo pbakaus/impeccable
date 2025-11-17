@@ -19,6 +19,7 @@ import {
   transformGemini,
   transformCodex
 } from './lib/transformers/index.js';
+import { createAllZips } from './lib/zip.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +29,7 @@ const DIST_DIR = path.join(ROOT_DIR, 'dist');
 /**
  * Main build process
  */
-function build() {
+async function build() {
   console.log('🔨 Building cross-provider design plugins...\n');
   
   // Read source files
@@ -40,6 +41,9 @@ function build() {
   transformClaudeCode(commands, skills, DIST_DIR);
   transformGemini(commands, skills, DIST_DIR);
   transformCodex(commands, skills, DIST_DIR);
+  
+  // Create ZIP bundles
+  await createAllZips(DIST_DIR);
   
   console.log('\n✨ Build complete!');
 }

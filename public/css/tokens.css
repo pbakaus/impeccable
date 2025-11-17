@@ -1,0 +1,59 @@
+/* Design Tokens — Single Source of Truth */
+
+:root {
+  /* Typography Scale */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'Instrument Sans', system-ui, sans-serif;
+  
+  /* Base Colors — Refined Monochrome + Electric Accent */
+  --c-ink: oklch(10% 0 0);
+  --c-paper: oklch(98% 0 0);
+  --c-charcoal: oklch(25% 0 0);
+  --c-ash: oklch(55% 0 0);
+  --c-mist: oklch(92% 0 0);
+  
+  /* Accent — Vibrant Electric Pink using OKLCH for perceptual uniformity */
+  --c-accent: oklch(60% 0.25 350);
+  --c-accent-hover: oklch(from var(--c-accent) calc(l - 8%) c h);
+  --c-accent-dim: color-mix(in oklch, var(--c-accent), transparent 85%);
+  
+  /* Spacing Scale — 8px base unit */
+  --s-unit: 8px;
+  --s-xs: calc(var(--s-unit) * 1);   /* 8px */
+  --s-sm: calc(var(--s-unit) * 2);   /* 16px */
+  --s-md: calc(var(--s-unit) * 3);   /* 24px */
+  --s-lg: calc(var(--s-unit) * 6);   /* 48px */
+  --s-xl: calc(var(--s-unit) * 10);  /* 80px */
+  --s-2xl: calc(var(--s-unit) * 16); /* 128px */
+  
+  /* Layout Constraints */
+  --max-width: 1280px;
+  --content-width: 840px;
+  
+  /* Animation Curves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 0.2s;
+  --duration-base: 0.3s;
+  --duration-slow: 0.6s;
+  --duration-slower: 0.8s;
+  --duration-slowest: 1.2s;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px color-mix(in oklch, var(--c-ink), transparent 90%);
+  --shadow-md: 0 4px 8px color-mix(in oklch, var(--c-ink), transparent 85%);
+}
+
+/* Dark Mode — Automatic via prefers-color-scheme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-ink: oklch(98% 0 0);
+    --c-paper: oklch(10% 0 0);
+    --c-charcoal: oklch(92% 0 0);
+    --c-ash: oklch(65% 0 0);
+    --c-mist: oklch(20% 0 0);
+    --c-accent: oklch(68% 0.23 350);
+    --c-accent-hover: oklch(from var(--c-accent) calc(l + 8%) c h);
+  }
+}
+

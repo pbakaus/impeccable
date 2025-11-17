@@ -1,16 +1,20 @@
-# Node.js
+# Dependencies
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Editor directories
-.vscode/
-.idea/
+# Generated files
+dist/*.zip
+
+# Build artifacts
+*.log
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Keep dist/ - it's committed for distribution!
-# dist/
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
