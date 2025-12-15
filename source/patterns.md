@@ -68,7 +68,7 @@ antipatterns:
     items:
       - Don't animate without purpose
       - Don't use durations over 500ms for UI feedback
-      - Don't animate layout properties (use transform)
+      - Don't animate layout properties (width, height, padding, margin) - they trigger reflows and can cause text wrapping mid-animation; use transform instead
       - Don't ignore prefers-reduced-motion
       - Don't use animation to hide slow loading
   - name: Interaction
