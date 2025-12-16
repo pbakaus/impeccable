@@ -35,44 +35,6 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
-
-
-## Design Patterns Reference
-
-This reference defines what TO do and what NOT to do when creating frontend interfaces. These patterns fight against model bias—the tendency of LLMs to converge on the same predictable choices.
-
-### What TO Do (Patterns)
-
-Focus on intentional, distinctive design choices:
-
-**Typography**: Use a modular type scale with a distinctive display font paired with a refined body font. Establish clear hierarchy through weight, size, and spacing—not size alone.
-
-**Color**: Build palettes from a dominant color with sharp accents. Use off-whites and near-blacks for sophistication. Always meet WCAG AA contrast requirements.
-
-**Space**: Use a spacing scale (4, 8, 12, 16, 24, 32, 48, 64, 96). Create visual rhythm through varied spacing. Let content breathe. Break the grid intentionally.
-
-**Motion**: Animate with purpose—guide attention and confirm actions. Use 150-300ms for micro-interactions. Prefer transform and opacity with smooth ease-out curves (quart, quint, expo). Stagger reveals for orchestrated page loads.
-
-**Interaction**: Design clear focus indicators. Make touch targets 44×44px minimum. Provide immediate feedback. Write specific, helpful error messages.
-
-**Responsive**: Design mobile-first. Use fluid typography with clamp(). Ensure all functionality works across devices.
-
-### What NOT to Do (Anti-Patterns)
-
-These patterns create generic "AI slop" aesthetics:
-
-**Generic Visuals**: Defaulting to Inter/Roboto/Arial, purple-to-blue gradients on white, pure grays without color tint, wrapping everything in rounded cards, decorative shadows without purpose.
-
-**Structural Issues**: Arbitrary spacing without a scale, hierarchy through size alone, equal spacing everywhere, cards nested inside cards, redundant copy (headers restating intros, repeated explanations).
-
-**Motion Mistakes**: Bounce and elastic easing (dated and tacky), animating layout properties, durations over 500ms for feedback, animation without purpose.
-
-**Interaction Failures**: Removing focus outlines without alternatives, placeholder text as labels, touch targets under 44×44px, generic "Something went wrong" errors, gray text on colored backgrounds.
-
-**Accessibility Violations**: Color-only meaning, ignoring prefers-reduced-motion, failing WCAG contrast, creating keyboard traps.
-
-These anti-patterns are baked into training data from countless generic templates. Without explicit guidance, AI reproduces them. This skill ensures your AI knows both what to do AND what to avoid.
-
 ---
 
 ## Domain Reference Files

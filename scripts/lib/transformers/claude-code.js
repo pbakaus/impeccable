@@ -2,6 +2,50 @@ import path from 'path';
 import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter } from '../utils.js';
 
 /**
+ * Generate markdown from structured patterns/antipatterns data
+ */
+function generatePatternsMarkdown(patterns) {
+  if (!patterns || (!patterns.patterns?.length && !patterns.antipatterns?.length)) {
+    return '';
+  }
+
+  let md = `## Design Patterns Reference
+
+This reference defines what TO do and what NOT to do when creating frontend interfaces. These patterns fight against model bias—the tendency of LLMs to converge on the same predictable choices.
+
+### What TO Do (Patterns)
+
+Focus on intentional, distinctive design choices:
+`;
+
+  for (const category of patterns.patterns || []) {
+    md += `\n**${category.name}**:\n`;
+    for (const item of category.items || []) {
+      md += `- ${item}\n`;
+    }
+  }
+
+  md += `
+### What NOT to Do (Anti-Patterns)
+
+These patterns create generic "AI slop" aesthetics:
+`;
+
+  for (const category of patterns.antipatterns || []) {
+    md += `\n**${category.name}**:\n`;
+    for (const item of category.items || []) {
+      md += `- ${item}\n`;
+    }
+  }
+
+  md += `
+These anti-patterns are baked into training data from countless generic templates. Without explicit guidance, AI reproduces them. This skill ensures your AI knows both what to do AND what to avoid.
+`;
+
+  return md;
+}
+
+/**
  * Claude Code Transformer (Full Featured)
  *
  * Keeps full YAML frontmatter with args support.
@@ -43,13 +87,16 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
 
     let body = skill.body;
 
-    // Merge patterns body into frontend-design skill (before Domain Reference Files section)
-    if (skill.name === 'frontend-design' && patterns && patterns.body) {
-      const insertPoint = body.indexOf('---\n\n## Domain Reference Files');
-      if (insertPoint > -1) {
-        body = body.slice(0, insertPoint) + '\n\n' + patterns.body + '\n\n' + body.slice(insertPoint);
-      } else {
-        body += '\n\n' + patterns.body;
+    // Generate and merge patterns into frontend-design skill (before Domain Reference Files section)
+    if (skill.name === 'frontend-design' && patterns) {
+      const patternsMarkdown = generatePatternsMarkdown(patterns);
+      if (patternsMarkdown) {
+        const insertPoint = body.indexOf('---\n\n## Domain Reference Files');
+        if (insertPoint > -1) {
+          body = body.slice(0, insertPoint) + '\n\n' + patternsMarkdown + '\n\n' + body.slice(insertPoint);
+        } else {
+          body += '\n\n' + patternsMarkdown;
+        }
       }
     }
 
