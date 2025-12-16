@@ -647,7 +647,11 @@ code {
 
 .solution-content {
   display: grid;
-  gap: var(--spacing-xl);
+  gap: var(--spacing-lg);
+}
+
+.solution-content .section-lead {
+  margin-bottom: 0;
 }
 
 /* Two-pillar visual layout */
@@ -663,6 +667,17 @@ code {
     grid-template-columns: 1fr;
     gap: var(--spacing-md);
   }
+}
+
+/* Interactive Framework Viz - Periodic Table */
+.solution-visual-interactive {
+  width: 100%;
+  min-height: 380px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
 }
 
 .solution-pillar {

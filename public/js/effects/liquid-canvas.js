@@ -154,3 +154,5 @@ export function initHeroEffect() {
 
 	observer.observe(canvas);
 }
+
+

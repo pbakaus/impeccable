@@ -47,3 +47,56 @@ export function initScrollIndicator() {
 	window.addEventListener("scroll", update, { passive: true });
 	update();
 }
+
+export function initHashTracking() {
+	const sections = document.querySelectorAll('section[id]');
+	if (!sections.length) return;
+
+	let currentHash = window.location.hash.slice(1) || '';
+	let ticking = false;
+
+	function updateHash() {
+		const scrollY = window.scrollY;
+		const viewportHeight = window.innerHeight;
+		const triggerPoint = scrollY + viewportHeight * 0.3;
+
+		let activeSection = '';
+
+		sections.forEach(section => {
+			const rect = section.getBoundingClientRect();
+			const sectionTop = scrollY + rect.top;
+			const sectionBottom = sectionTop + rect.height;
+
+			if (triggerPoint >= sectionTop && triggerPoint < sectionBottom) {
+				activeSection = section.id;
+			}
+		});
+
+		if (activeSection && activeSection !== currentHash) {
+			currentHash = activeSection;
+			history.replaceState(null, '', `#${activeSection}`);
+		}
+
+		ticking = false;
+	}
+
+	window.addEventListener('scroll', () => {
+		if (!ticking) {
+			requestAnimationFrame(updateHash);
+			ticking = true;
+		}
+	}, { passive: true });
+
+	// Handle initial hash on page load
+	if (window.location.hash) {
+		const target = document.querySelector(window.location.hash);
+		if (target) {
+			setTimeout(() => {
+				target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			}, 100);
+		}
+	}
+
+	// Initial check
+	updateHash();
+}

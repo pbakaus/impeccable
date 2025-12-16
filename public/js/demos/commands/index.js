@@ -37,3 +37,5 @@ export const commandDemos = {
 export function getCommandDemo(commandId) {
 	return commandDemos[commandId] || null;
 }
+
+

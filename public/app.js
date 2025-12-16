@@ -3,9 +3,10 @@ import {
 	renderTerminalLayout,
 } from "./js/components/glass-terminal.js";
 import { initLensEffect } from "./js/components/lens.js";
+import { initFrameworkViz } from "./js/components/framework-viz.js";
 import { initHeroEffect } from "./js/effects/liquid-canvas.js";
 import { initScrollReveal } from "./js/utils/reveal.js";
-import { initScrollIndicator, initSmoothScroll } from "./js/utils/scroll.js";
+import { initScrollIndicator, initSmoothScroll, initHashTracking } from "./js/utils/scroll.js";
 
 // ============================================
 // STATE
@@ -118,10 +119,12 @@ document.addEventListener("click", (e) => {
 function init() {
 	initSmoothScroll();
 	initScrollIndicator();
+	initHashTracking();
 	initHeroEffect();
 	initLensEffect();
 	initScrollReveal();
 	initGlassTerminal();
+	initFrameworkViz();
 	loadContent();
 
 	document.body.classList.add("loaded");

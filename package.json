@@ -28,6 +28,7 @@
   "dependencies": {
     "lenis": "^1.3.16",
     "motion": "^12.23.26",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "three": "^0.182.0"
   }
 }

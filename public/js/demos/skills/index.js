@@ -21,3 +21,5 @@ export const skillDemos = {
 export function getSkillDemo(skillId) {
 	return skillDemos[skillId] || null;
 }
+
+
