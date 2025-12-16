@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -6,14 +6,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, "..");
 
-export default async function handler(request) {
+export default function handler(request) {
   try {
     const sourceDir = join(PROJECT_ROOT, "source");
     const filePath = join(sourceDir, "patterns.md");
 
     console.log("Reading patterns from:", filePath);
 
-    const content = await readFile(filePath, "utf-8");
+    const content = readFileSync(filePath, "utf-8");
+    console.log("File read, length:", content.length);
     const frontmatterMatch = content.match(/^---\n([\s\S]+?)\n---/);
 
     if (!frontmatterMatch) {
