@@ -23,6 +23,7 @@
   "author": "Paul Bakaus",
   "license": "SEE LICENSE FILE",
   "devDependencies": {
+    "@tailwindcss/cli": "^4.1.18",
     "bun-plugin-tailwind": "^0.1.2"
   },
   "dependencies": {

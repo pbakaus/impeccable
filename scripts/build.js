@@ -2,12 +2,14 @@
 
 /**
  * Build System for Cross-Provider Design Skills & Commands
- * 
+ *
  * Transforms feature-rich source files into provider-specific formats:
  * - Cursor: Downgraded (no frontmatter/args)
  * - Claude Code: Full featured (frontmatter + body)
  * - Gemini: Full featured (TOML + modular skills)
  * - Codex: Full featured (custom prompts + modular skills)
+ *
+ * Also builds Tailwind CSS for production deployment.
  */
 
 import path from 'path';
@@ -21,6 +23,7 @@ import {
   transformCodex
 } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
+import { execSync } from 'child_process';
 
 /**
  * Copy directory recursively
@@ -45,10 +48,33 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
 /**
+ * Build Tailwind CSS for production
+ */
+function buildTailwindCSS() {
+  const inputFile = path.join(ROOT_DIR, 'public', 'css', 'main.css');
+  const outputFile = path.join(ROOT_DIR, 'public', 'css', 'styles.css');
+
+  console.log('🎨 Building Tailwind CSS...');
+  try {
+    execSync(`bunx @tailwindcss/cli -i "${inputFile}" -o "${outputFile}" --minify`, {
+      cwd: ROOT_DIR,
+      stdio: 'inherit'
+    });
+    console.log('✓ Tailwind CSS compiled to public/css/styles.css\n');
+  } catch (error) {
+    console.error('Failed to build Tailwind CSS:', error.message);
+    process.exit(1);
+  }
+}
+
+/**
  * Main build process
  */
 async function build() {
   console.log('🔨 Building cross-provider design plugins...\n');
+
+  // Build Tailwind CSS first
+  buildTailwindCSS();
 
   // Read source files
   const { commands, skills } = readSourceFiles(ROOT_DIR);
