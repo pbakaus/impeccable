@@ -1177,6 +1177,23 @@ code {
   color: var(--color-accent);
 }
 
+.footer-credit {
+  font-size: 0.875rem;
+  color: var(--color-ash);
+  margin-top: var(--spacing-md);
+  width: 100%;
+  text-align: center;
+}
+
+.footer-credit a {
+  color: var(--color-text);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.footer-credit a:hover {
+  color: var(--color-accent);
+}
+
 /* ============================================
    BUTTONS
    ============================================ */
