@@ -6,7 +6,7 @@ The vocabulary you didn't know you needed. 1 skill, 15 commands, and curated ant
 
 ## The Missing Upgrade
 
-This is the missing upgrade to Anthropic's `frontend-design` skill. Every LLM learned from the same generic templates. Without guidance, you get the same predictable mistakes: Inter font, purple gradients, cards nested in cards, gray text on colored backgrounds. Design Language fights that bias with an expanded skill, 15 steering commands, and curated anti-patterns.
+This is the missing upgrade to Anthropic's `frontend-design` skill. Every LLM learned from the same generic templates. Without guidance, you get the same predictable mistakes: Inter font, purple gradients, cards nested in cards, gray text on colored backgrounds. Impeccable fights that bias with an expanded skill, 15 steering commands, and curated anti-patterns.
 
 ## What's Included
 

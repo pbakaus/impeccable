@@ -175,7 +175,7 @@ git commit -m "Add [command/skill name]"
 
 ## Build System Details
 
-The build system (`scripts/build.js`) is a single 410-line Node.js script with:
+The build system (`scripts/build.js`) is a single ~170-line Node.js script with:
 - Custom YAML frontmatter parser (no dependencies)
 - Provider-specific transformation functions
 - Automatic directory management
@@ -234,7 +234,7 @@ impeccable/
 │   ├── gemini/
 │   └── codex/
 ├── scripts/
-│   └── build.js         # Build system (410 lines, zero deps)
+│   └── build.js         # Build system (~170 lines, zero deps)
 ├── package.json         # ESM project config
 ├── README.md            # User documentation
 ├── DEVELOP.md           # This file
