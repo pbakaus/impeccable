@@ -137,6 +137,10 @@ export class PeriodicTable {
 	}
 
 	showDefaultInfo() {
+		// Use "Tap" on touch devices, "Hover over" on desktop
+		const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+		const action = isTouchDevice ? 'Tap' : 'Hover over';
+
 		this.infoPanel.innerHTML = `
 			<div style="
 				font-family: var(--font-body);
@@ -144,7 +148,7 @@ export class PeriodicTable {
 				color: var(--color-ash);
 				font-style: italic;
 			">
-				Hover over a command to see details
+				${action} a command to see details
 			</div>
 		`;
 	}
@@ -342,7 +346,7 @@ export class PeriodicTable {
 			el.style.boxShadow = 'none';
 		};
 
-		// Mouse events
+		// Mouse events (desktop)
 		el.addEventListener('mouseenter', activate);
 		el.addEventListener('mouseleave', deactivate);
 
@@ -350,8 +354,15 @@ export class PeriodicTable {
 		el.addEventListener('focus', activate);
 		el.addEventListener('blur', deactivate);
 
+		// Touch events - activate on tap, stay active until another tap
+		el.addEventListener('touchstart', (e) => {
+			e.preventDefault(); // Prevent double-firing with click
+			activate();
+		}, { passive: false });
+
 		// Click/Enter to scroll to command
 		el.addEventListener('click', () => {
+			activate(); // Also activate on click for touch devices
 			const target = document.getElementById(`cmd-${cmd}`);
 			if (target) {
 				target.scrollIntoView({ behavior: 'smooth', block: 'center' });

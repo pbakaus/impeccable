@@ -630,6 +630,14 @@ code {
   z-index: 1;
 }
 
+.split-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .split-after {
   /* Angled clip-path matching divider's skewX(-10deg): top-right, bottom-left */
   clip-path: polygon(78% 0%, 100% 0%, 100% 100%, 62% 100%);
@@ -1203,6 +1211,131 @@ code {
 }
 
 /* ============================================
+   MOBILE COMMANDS LAYOUT
+   ============================================ */
+
+.mobile-commands-layout {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-commands-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .commands-container {
+    display: none;
+  }
+}
+
+.mobile-carousel-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: var(--spacing-xs) 0;
+}
+
+.mobile-carousel-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-carousel {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding-right: var(--spacing-md);
+}
+
+.mobile-cmd-pill {
+  flex-shrink: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-height: 44px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.mobile-cmd-pill:hover {
+  color: var(--color-charcoal);
+  border-color: var(--color-charcoal);
+}
+
+.mobile-cmd-pill.active {
+  color: var(--color-paper);
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+}
+
+.mobile-demo-area {
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  padding: var(--spacing-sm);
+}
+
+.mobile-demo-area .demo-split-comparison {
+  width: 100%;
+}
+
+.mobile-demo-area .split-container {
+  width: 100%;
+  max-width: 100%;
+  height: 320px;
+}
+
+.mobile-demo-area .demo-caption {
+  font-size: 0.75rem;
+  margin-top: var(--spacing-sm);
+}
+
+.mobile-info-area {
+  padding-top: var(--spacing-sm);
+}
+
+.mobile-cmd-info {
+  display: none;
+  padding: var(--spacing-sm) 0;
+}
+
+.mobile-cmd-info.active {
+  display: block;
+}
+
+.mobile-cmd-name {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.mobile-cmd-desc {
+  font-size: 0.875rem;
+  color: var(--color-charcoal);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.mobile-cmd-rel {
+  margin-top: var(--spacing-xs);
+  font-size: 0.75rem;
+  color: var(--color-ash);
+}
+
+.mobile-cmd-rel code {
+  font-family: var(--font-mono);
+  color: var(--color-ink);
+}
+
+/* ============================================
    DOWNLOADS SECTION
    ============================================ */
 
@@ -1684,20 +1817,18 @@ code {
   flex-wrap: wrap;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-lg);
-  border-bottom: 1px solid var(--color-mist);
-  padding-bottom: var(--spacing-sm);
 }
 
 .pattern-tab {
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
   font-family: var(--font-body);
   font-size: 0.875rem;
   color: var(--color-ash);
   padding: var(--spacing-xs) var(--spacing-sm);
   cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-out);
-  position: relative;
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
 .pattern-tab:hover {
@@ -1707,16 +1838,7 @@ code {
 .pattern-tab.active {
   color: var(--color-ink);
   font-weight: 500;
-}
-
-.pattern-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: calc(-1 * var(--spacing-sm) - 1px);
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 .pattern-tab:focus-visible {
@@ -1829,9 +1951,10 @@ code {
 }
 
 .btn-small {
-  padding: var(--spacing-xs) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
   font-size: 0.8rem;
   gap: var(--spacing-xs);
+  min-height: 44px; /* Touch target minimum */
 }
 
 .btn-small svg {
