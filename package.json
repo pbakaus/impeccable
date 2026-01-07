@@ -1,5 +1,5 @@
 {
-  "name": "vibe-design-plugins",
+  "name": "impeccable",
   "version": "1.0.0",
   "description": "Cross-provider design skills and commands for LLM-powered development tools",
   "type": "module",

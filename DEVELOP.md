@@ -1,6 +1,6 @@
 # Developer Guide
 
-Documentation for contributors to vibe-design-plugins.
+Documentation for contributors to Impeccable.
 
 ## Architecture
 
@@ -222,7 +222,7 @@ The build system (`scripts/build.js`) is a single 410-line Node.js script with:
 ## Repository Structure
 
 ```
-vibe-design-plugins/
+impeccable/
 ├── source/              # Edit these! Source of truth
 │   ├── commands/        # Command definitions
 │   │   └── normalize.md

@@ -109,8 +109,8 @@ cp -r dist/codex/.codex/* ~/.codex/
 ## Development
 
 ```bash
-git clone https://github.com/pbakaus/vibe-design-plugins.git
-cd vibe-design-plugins
+git clone https://github.com/pbakaus/impeccable.git
+cd impeccable
 bun run build
 bun run dev  # http://localhost:3000
 ```

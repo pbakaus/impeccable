@@ -1,4 +1,4 @@
-# Impeccable (vibe-design-plugins)
+# Impeccable
 
 The vocabulary you didn't know you needed. 1 skill, 15 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.
 
@@ -24,7 +24,7 @@ Cursor doesn't support frontmatter or arguments (lowest common denominator). Ins
 ## Repository Structure
 
 ```
-vibe-design-plugins/
+impeccable/
 ├── source/                      # EDIT THESE! Single source of truth
 │   ├── commands/                # Command definitions with frontmatter
 │   │   └── normalize.md
