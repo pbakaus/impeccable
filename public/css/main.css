@@ -1392,7 +1392,7 @@ code {
 }
 
 .download-card .btn {
-  margin-top: auto;
+  margin-top: var(--spacing-xs);
 }
 
 .download-card-details {
