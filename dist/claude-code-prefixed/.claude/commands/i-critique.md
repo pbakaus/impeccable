@@ -10,7 +10,7 @@ args:
 
 Conduct a holistic design critique, evaluating whether the interface actually works—not just technically, but as a designed experience. Think like a design director giving feedback.
 
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 ## Design Critique
 

@@ -7,7 +7,7 @@ args:
     required: false
 ---
 
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
 

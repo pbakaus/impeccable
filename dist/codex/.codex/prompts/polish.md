@@ -3,7 +3,7 @@ description: Final quality pass before shipping. Fixes alignment, spacing, consi
 argument-hint: [TARGET=<value>]
 ---
 
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 Perform a meticulous final pass to catch all the small details that separate good work from great work. The difference between shipped and polished.
 

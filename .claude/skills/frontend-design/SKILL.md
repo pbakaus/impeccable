@@ -8,7 +8,14 @@ This skill guides creation of distinctive, production-grade frontend interfaces 
 
 ## Design Thinking
 
-Great design requires understanding. First, scan available context—README, existing components, brand guidelines, design tokens—to infer purpose, audience, and constraints. If critical context is missing, STOP and call the AskUserQuestionTool to clarify. Don't guess on fundamentals.
+Great design requires understanding. First, scan available context—README, existing components, brand guidelines, design tokens—to infer purpose, audience, and constraints.
+
+**BEFORE writing any code**, you MUST know:
+- Who is the target audience?
+- What is the brand personality or tone?
+- Are there existing design tokens, colors, or fonts to use?
+
+If ANY of these are unclear from the codebase, STOP and call the AskUserQuestionTool to clarify. Don't guess on fundamentals—wrong assumptions lead to generic output.
 
 Then commit to a BOLD aesthetic direction:
 - **Purpose**: What problem does this interface solve? Who uses it?

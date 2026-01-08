@@ -3,7 +3,7 @@ description: Add strategic color to features that are too monochromatic or lack 
 argument-hint: [TARGET=<value>]
 ---
 
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 Strategically introduce color to designs that are too monochromatic, gray, or lacking in visual warmth and personality.
 

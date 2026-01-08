@@ -3,7 +3,7 @@ description: Tone down overly bold or visually aggressive designs. Reduces inten
 argument-hint: [TARGET=<value>]
 ---
 
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 Reduce visual intensity in designs that are too bold, aggressive, or overstimulating, creating a more refined and approachable aesthetic without losing effectiveness.
 

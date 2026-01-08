@@ -1,4 +1,4 @@
-→ *Apply the frontend-design skill for design principles, if not already in context.*
+**First**: Use the frontend-design skill for design principles and anti-patterns.
 
 Strategically introduce color to designs that are too monochromatic, gray, or lacking in visual warmth and personality.
 
