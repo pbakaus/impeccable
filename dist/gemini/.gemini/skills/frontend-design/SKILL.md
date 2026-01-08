@@ -5,18 +5,30 @@ description: Create distinctive, production-grade frontend interfaces with high 
 
 This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
 
-## Design Thinking
+## MANDATORY: Context Gathering (Do This First)
 
-Great design requires understanding. First, scan available context—README, existing components, brand guidelines, design tokens—to infer purpose, audience, and constraints.
+Before ANY design work, complete these steps in order:
 
-**BEFORE writing any code**, you MUST know:
+### Step 1: Scan the codebase for context
+Search for and read: README, brand guidelines, design tokens, existing components, style files, color variables.
+
+### Step 2: Answer these questions (from codebase OR by asking user)
 - Who is the target audience?
 - What is the brand personality or tone?
 - Are there existing design tokens, colors, or fonts to use?
 
-If ANY of these are unclear from the codebase, ask the user directly to clarify what you cannot infer. Don't guess on fundamentals—wrong assumptions lead to generic output.
+### Step 3: If ANY question is unclear, STOP and ask
+If you cannot confidently answer ALL three questions from the codebase, ask the user directly to clarify what you cannot infer. Do NOT proceed to design work until all three are answered. Guessing leads to generic AI slop.
 
-Then commit to a BOLD aesthetic direction:
+---
+
+**Only after completing the above, proceed to design work below.**
+
+---
+
+## Design Direction
+
+Commit to a BOLD aesthetic direction:
 - **Purpose**: What problem does this interface solve? Who uses it?
 - **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
 - **Constraints**: Technical requirements (framework, performance, accessibility).
@@ -24,7 +36,7 @@ Then commit to a BOLD aesthetic direction:
 
 **CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work—the key is intentionality, not intensity.
 
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
+Then implement working code that is:
 - Production-grade and functional
 - Visually striking and memorable
 - Cohesive with a clear aesthetic point-of-view
