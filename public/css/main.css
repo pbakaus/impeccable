@@ -1353,6 +1353,8 @@ code {
 .download-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   padding: var(--spacing-lg);
   background: var(--color-cream);
   border: 1px solid var(--color-mist);
@@ -1366,53 +1368,31 @@ code {
 }
 
 .download-card-icon {
-  color: var(--color-accent);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
 }
 
 .download-card-icon img {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
-  border-radius: 6px;
-}
-
-.download-card-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
+  border-radius: 8px;
 }
 
 .download-card-title {
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 400;
-  margin: 0;
+  margin: 0 0 var(--spacing-sm) 0;
 }
 
-.download-card-badge {
-  display: inline-block;
-  align-self: flex-start;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  background: var(--color-accent-dim);
-  color: var(--color-accent);
-  border-radius: 4px;
-}
-
-.download-card-desc {
-  font-size: 0.9375rem;
-  line-height: 1.6;
+.download-card-note {
+  font-size: 0.75rem;
   color: var(--color-ash);
-  flex: 1;
+  margin-bottom: var(--spacing-xs);
 }
 
 .download-card .btn {
-  margin-top: var(--spacing-md);
+  margin-top: auto;
 }
 
 /* ============================================
