@@ -37,7 +37,7 @@ A comprehensive design skill with 7 domain-specific references ([view skill](sou
 |---------|--------------|
 | `/teach-impeccable` | One-time setup: gather design context, save to config |
 | `/audit` | Run technical quality checks (a11y, performance, responsive) |
-| `/review` | UX design review: hierarchy, clarity, emotional resonance |
+| `/critique` | UX design review: hierarchy, clarity, emotional resonance |
 | `/normalize` | Align with design system standards |
 | `/polish` | Final pass before shipping |
 | `/simplify` | Strip to essence |
@@ -91,9 +91,15 @@ cp -r dist/claude-code/.claude/* ~/.claude/
 
 **Gemini CLI:**
 ```bash
-cp dist/gemini/GEMINI*.md your-project/
-cp -r dist/gemini/.gemini/* ~/.gemini/
+cp -r dist/gemini/.gemini your-project/
 ```
+
+> **Note:** Gemini CLI skills require setup:
+> 1. Install preview version: `npm i -g @google/gemini-cli@preview`
+> 2. Run `/settings` and enable "Skills"
+> 3. Run `/skills list` to verify installation
+>
+> [Learn more about Gemini CLI skills](https://geminicli.com/docs/cli/skills/)
 
 **Codex CLI:**
 ```bash

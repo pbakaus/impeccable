@@ -1,12 +1,14 @@
 import path from 'path';
-import { cleanDir, ensureDir, writeFile, replacePlaceholders } from '../utils.js';
+import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, replacePlaceholders } from '../utils.js';
 
 /**
- * Gemini Transformer (Full Featured - TOML + Modular Skills)
+ * Gemini Transformer (Full Featured - TOML Commands + Agent Skills)
  *
- * Commands: Converts to TOML format with {{args}} placeholders
- * Skills: Creates modular files imported via @./GEMINI.{name}.md syntax
- * Reference files are inlined into the main skill file for Gemini
+ * Commands: Converts to TOML format with {{args}} placeholders in .gemini/commands/
+ * Skills: Uses Agent Skills standard with SKILL.md in .gemini/skills/{name}/
+ * Reference files are copied to skill subdirectories
+ *
+ * Note: Gemini CLI skills require gemini-cli@preview and enabling via /settings
  *
  * @param {Object} options - Optional settings
  * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
@@ -16,9 +18,11 @@ export function transformGemini(commands, skills, distDir, patterns = null, opti
   const { prefix = '', outputSuffix = '' } = options;
   const geminiDir = path.join(distDir, `gemini${outputSuffix}`);
   const commandsDir = path.join(geminiDir, '.gemini/commands');
+  const skillsDir = path.join(geminiDir, '.gemini/skills');
 
   cleanDir(geminiDir);
   ensureDir(commandsDir);
+  ensureDir(skillsDir);
 
   // Commands: Transform to TOML
   for (const command of commands) {
@@ -38,64 +42,36 @@ export function transformGemini(commands, skills, distDir, patterns = null, opti
     writeFile(outputPath, toml);
   }
 
-  // Skills: Create modular files (with references inlined)
+  // Skills: Use Agent Skills standard with SKILL.md in subdirectories
   let refCount = 0;
   for (const skill of skills) {
-    let content = skill.body;
+    const skillDir = path.join(skillsDir, skill.name);
 
-    // Merge patterns body into frontend-design skill (before Domain Reference Files section)
-    if (skill.name === 'frontend-design' && patterns && patterns.body) {
-      const insertPoint = content.indexOf('---\n\n## Domain Reference Files');
-      if (insertPoint > -1) {
-        content = content.slice(0, insertPoint) + '\n\n' + patterns.body + '\n\n' + content.slice(insertPoint);
-      } else {
-        content += '\n\n' + patterns.body;
+    const frontmatter = generateYamlFrontmatter({
+      name: skill.name,
+      description: skill.description,
+    });
+
+    const skillBody = replacePlaceholders(skill.body, 'gemini');
+    const content = `${frontmatter}\n\n${skillBody}`;
+    const outputPath = path.join(skillDir, 'SKILL.md');
+    writeFile(outputPath, content);
+
+    // Copy reference files if they exist
+    if (skill.references && skill.references.length > 0) {
+      const refDir = path.join(skillDir, 'reference');
+      ensureDir(refDir);
+      for (const ref of skill.references) {
+        const refOutputPath = path.join(refDir, `${ref.name}.md`);
+        const refContent = replacePlaceholders(ref.content, 'gemini');
+        writeFile(refOutputPath, refContent);
+        refCount++;
       }
     }
-
-    // Inline reference files if they exist
-    if (skill.references && skill.references.length > 0) {
-      const refSections = skill.references.map(ref => {
-        refCount++;
-        const refContent = replacePlaceholders(ref.content, 'gemini');
-        return `\n\n---\n\n## Reference: ${ref.name}\n\n${refContent}`;
-      });
-      content += refSections.join('');
-    }
-
-    // Replace all placeholders
-    content = replacePlaceholders(content, 'gemini');
-
-    const outputPath = path.join(geminiDir, `GEMINI.${skill.name}.md`);
-    writeFile(outputPath, content);
   }
 
-  // Create main GEMINI.md that imports skill files
-  const geminiMd = [
-    '# Gemini Context',
-    '',
-    'This repository contains specialized skills for different tasks. When you detect a user request in a particular domain, the corresponding skill file will be automatically loaded to provide detailed guidance.',
-    '',
-    '## Available Skills',
-    '',
-    'Each skill provides deep expertise in its domain. The skills below are automatically imported and will guide your responses:',
-    '',
-    ...skills.map(skill =>
-      `### ${skill.name}\n\n**When to use**: ${skill.description}\n\n@./GEMINI.${skill.name}.md\n`
-    ),
-    '',
-    '## How Skills Work',
-    '',
-    '1. Skills are automatically loaded via the import statements above',
-    '2. When a user request matches a skill domain, apply that skill\'s guidance',
-    '3. Multiple skills can be combined when the task requires expertise from different domains',
-    '4. Follow the detailed instructions provided in each imported skill file'
-  ].join('\n');
-
-  writeFile(path.join(geminiDir, 'GEMINI.md'), geminiMd);
-
-  const refInfo = refCount > 0 ? ` (${refCount} refs inlined)` : '';
+  const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
   const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
-  console.log(`✓ Gemini${prefixInfo}: ${commands.length} commands (TOML), ${skills.length} skills (modular)${refInfo}`);
+  console.log(`✓ Gemini${prefixInfo}: ${commands.length} commands (TOML), ${skills.length} skills${refInfo}`);
 }
 

@@ -378,13 +378,21 @@
             <img src="https://img.logo.dev/gemini.google.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Gemini logo" width="32" height="32" loading="lazy">
           </div>
           <h3 class="download-card-title">Gemini CLI</h3>
-          <span class="download-card-note">Skills bundled as context files</span>
           <button class="btn btn-primary" data-bundle="gemini" aria-label="Download Gemini CLI bundle">
             <span>Download</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
             </svg>
           </button>
+          <details class="download-card-details">
+            <summary>Skills require setup</summary>
+            <ol>
+              <li>Install preview: <code>npm i -g @google/gemini-cli@preview</code></li>
+              <li>Run <code>/settings</code> and enable "Skills"</li>
+              <li>Run <code>/skills list</code> to verify</li>
+            </ol>
+            <a href="https://geminicli.com/docs/cli/skills/" target="_blank" rel="noopener">Learn more</a>
+          </details>
         </article>
 
         <article class="download-card" data-reveal>

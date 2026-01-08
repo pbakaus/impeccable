@@ -1395,6 +1395,68 @@ code {
   margin-top: auto;
 }
 
+.download-card-details {
+  width: 100%;
+  margin-top: var(--spacing-sm);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.download-card-details summary {
+  cursor: pointer;
+  color: var(--color-ash);
+  font-size: 0.75rem;
+  padding: var(--spacing-xs) 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.download-card-details summary::before {
+  content: '▶';
+  font-size: 0.5rem;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.download-card-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.download-card-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.download-card-details ol {
+  margin: var(--spacing-sm) 0;
+  padding-left: var(--spacing-md);
+  color: var(--color-charcoal);
+  line-height: 1.6;
+}
+
+.download-card-details li {
+  margin-bottom: 4px;
+}
+
+.download-card-details code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  background: var(--color-mist);
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+.download-card-details a {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-size: 0.75rem;
+}
+
+.download-card-details a:hover {
+  text-decoration: underline;
+}
+
 /* ============================================
    OPEN SOURCE SECTION
    ============================================ */
