@@ -695,3 +695,119 @@
     width: 100%;
   }
 }
+
+/* ============================================
+   FAQ SECTION
+   ============================================ */
+
+.faq-section {
+  position: relative;
+  padding: var(--spacing-xl) 0;
+  border-top: 1px solid var(--color-mist);
+}
+
+.faq-list {
+  max-width: var(--width-content);
+  margin: var(--spacing-lg) auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.faq-item:first-child {
+  border-top: 1px solid var(--color-mist);
+}
+
+.faq-question {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  padding: var(--spacing-md) 0;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: color 0.2s ease;
+}
+
+.faq-question::-webkit-details-marker {
+  display: none;
+}
+
+.faq-question::after {
+  content: '+';
+  font-family: var(--font-body);
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--color-accent);
+  transition: transform 0.3s var(--ease-out);
+}
+
+.faq-item[open] .faq-question::after {
+  transform: rotate(45deg);
+}
+
+.faq-question:hover {
+  color: var(--color-accent);
+}
+
+.faq-answer {
+  padding: 0 0 var(--spacing-md);
+  color: var(--color-charcoal);
+  line-height: 1.7;
+  animation: faqFadeIn 0.3s var(--ease-out);
+}
+
+.faq-answer p {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.faq-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.faq-answer ul {
+  margin: var(--spacing-sm) 0;
+  padding-left: var(--spacing-md);
+}
+
+.faq-answer li {
+  margin-bottom: var(--spacing-xs);
+}
+
+.faq-answer code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-mist);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--color-ink);
+}
+
+.faq-answer a {
+  color: var(--color-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.faq-answer a:hover {
+  border-bottom-color: var(--color-accent);
+}
+
+@keyframes faqFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

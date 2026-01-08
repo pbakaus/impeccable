@@ -418,7 +418,59 @@
       </div>
     </section>
 
-    <!-- 7. OPEN SOURCE -->
+    <!-- 7. FAQ -->
+    <section class="faq-section" id="faq">
+      <div class="section-header" data-reveal>
+        <span class="section-number">07</span>
+        <h2 class="section-title">Frequently Asked Questions</h2>
+      </div>
+
+      <div class="faq-list" data-reveal>
+        <details class="faq-item">
+          <summary class="faq-question">Where do I put the downloaded files?</summary>
+          <div class="faq-answer">
+            <p>Extract the ZIP to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). The files should create a hidden folder like <code>.claude/</code>, <code>.cursor/</code>, <code>.gemini/</code>, or <code>.codex/</code>.</p>
+            <p>Alternatively, you can install <strong>globally</strong> to your home directory:</p>
+            <ul>
+              <li>Claude Code: <code>~/.claude/</code></li>
+              <li>Cursor: <code>~/.cursor/</code></li>
+              <li>Gemini CLI: <code>~/.gemini/</code></li>
+              <li>Codex CLI: <code>~/.codex/</code></li>
+            </ul>
+            <p>Project-level installation takes precedence and lets you version control your skills.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">Commands or skills aren't appearing. What do I do?</summary>
+          <div class="faq-answer">
+            <p><strong>For commands:</strong> Type <code>/</code> in your AI tool and look for commands like <code>/audit</code>, <code>/polish</code>, etc. If they don't appear, double-check the files are in the correct location.</p>
+            <p><strong>For skills:</strong> Skills are applied automatically when relevant. To verify, explicitly mention "use the frontend-design skill" in your prompt—this forces the AI to acknowledge and apply it.</p>
+            <p><strong>Tool-specific setup:</strong></p>
+            <ul>
+              <li><strong>Cursor:</strong> Requires Nightly channel + Agent Skills enabled in Settings → Rules</li>
+              <li><strong>Gemini CLI:</strong> Requires <code>@google/gemini-cli@preview</code> + Skills enabled via <code>/settings</code></li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary class="faq-question">I'm new to AI coding tools. Where do I start?</summary>
+          <div class="faq-answer">
+            <p>Skills and commands are intermediate features. If you're just getting started, learn the basics first:</p>
+            <ul>
+              <li><strong>Claude Code:</strong> <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" rel="noopener">Official Documentation</a></li>
+              <li><strong>Cursor:</strong> <a href="https://docs.cursor.com" target="_blank" rel="noopener">Cursor Docs</a></li>
+              <li><strong>Gemini CLI:</strong> <a href="https://geminicli.com/docs/" target="_blank" rel="noopener">Gemini CLI Docs</a></li>
+              <li><strong>Codex CLI:</strong> <a href="https://github.com/openai/codex" target="_blank" rel="noopener">Codex GitHub</a></li>
+            </ul>
+            <p>Once you're comfortable with basic prompting and code generation, come back and install Impeccable to level up your design output.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- 8. OPEN SOURCE -->
     <section class="opensource-section" id="opensource">
       <div class="opensource-content" data-reveal>
         <h2 class="opensource-title">Open Source</h2>
