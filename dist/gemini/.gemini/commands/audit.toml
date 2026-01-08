@@ -2,6 +2,8 @@ description = "Perform comprehensive audit of interface quality across accessibi
 prompt = """
 Run systematic quality checks and generate a comprehensive audit report with prioritized issues and actionable recommendations. Don't fix issues - document them for other commands to address.
 
+**First**: Use the frontend-design skill for design principles and anti-patterns.
+
 ## Diagnostic Scan
 
 Run comprehensive checks across multiple dimensions:
@@ -43,11 +45,26 @@ Run comprehensive checks across multiple dimensions:
    - **Placeholder as label**: Using placeholder text as the only field label
    - **Generic fonts**: Defaulting to Inter/Roboto/Arial without intentional choice
 
+6. **AI Slop Detection (CRITICAL)** - Does this look AI-generated? Check for:
+   - **AI color palette**: Cyan-on-dark, purple-to-blue gradients, neon accents on dark backgrounds
+   - **Gradient text**: Especially on metrics or headings—decorative rather than meaningful
+   - **Default dark mode with glowing accents**: "Cool" without requiring design decisions
+   - **Monospace typography**: Lazy shorthand for "technical/developer" vibes
+   - **Glassmorphism everywhere**: Blur effects, glass cards, glow borders used decoratively
+   - **Hero metric layout**: Big number, small label, supporting stats, gradient accent—it's a template
+   - **Sparklines as decoration**: Tiny charts that look sophisticated but convey nothing
+   - **Identical card grids**: Same-sized cards with icon + heading + text, repeated
+   - **Purple-to-blue gradients on white**: The #1 "AI marketing site" tell
+   - **Rounded rectangles with generic shadows**: Safe, forgettable, could be any AI output
+
 **CRITICAL**: This is an audit, not a fix. Document issues thoroughly with clear explanations of impact. Use other commands (normalize, optimize, harden, etc.) to fix issues after audit.
 
 ## Generate Comprehensive Report
 
 Create a detailed audit report with the following structure:
+
+### AI Slop Verdict
+**Start here.** Pass/fail: Does this look AI-generated? List specific tells if yes. Be brutally honest—this is the most important quality signal.
 
 ### Executive Summary
 - Total issues found (count by severity)
