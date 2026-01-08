@@ -7,9 +7,26 @@ args:
     required: false
 ---
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
-
 Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
+
+## MANDATORY PREPARATION
+
+### Context Gathering (Do This First)
+
+You cannot do a great job without having necessary context, such as target audience (critical), desired use-cases (critical), brand personality/tone (playful vs serious, energetic vs calm), and performance constraints.
+
+Attempt to gather these from the current thread or codebase.
+
+1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and {{ask_instruction}} whether you got it right.
+2. Otherwise, if you can't fully infer or your level of confidence is medium or lower, you MUST {{ask_instruction}} clarifying questions first to complete your context.
+
+Do NOT proceed until you have answers. Guessing leads to inappropriate or excessive animation.
+
+### Use frontend-design skill
+
+Use the frontend-design skill for design principles and anti-patterns. Do NOT proceed until it has executed and you know all DO's and DON'Ts.
+
+---
 
 ## Assess Animation Opportunities
 
@@ -27,6 +44,8 @@ Analyze where motion would improve the experience:
    - What's the performance budget? (Mobile-first? Complex page?)
    - Who's the audience? (Motion-sensitive users? Power users who want speed?)
    - What matters most? (One hero animation vs many micro-interactions?)
+
+If any of these are unclear from the codebase, {{ask_instruction}}
 
 **CRITICAL**: Respect `prefers-reduced-motion`. Always provide non-animated alternatives for users who need them.
 
@@ -52,7 +71,7 @@ Add motion systematically across these categories:
 - **Modal/drawer entry**: Smooth slide + fade, backdrop fade, focus management
 
 ### Micro-interactions
-- **Button feedback**: 
+- **Button feedback**:
   - Hover: Subtle scale (1.02-1.05), color shift, shadow increase
   - Click: Quick scale down then up (0.95 → 1), ripple effect
   - Loading: Spinner or pulse state
@@ -168,4 +187,3 @@ Test animations thoroughly:
 - **Adds value**: Makes interface clearer or more delightful
 
 Remember: Motion should enhance understanding and provide feedback, not just add decoration. Animate with purpose, respect performance constraints, and always consider accessibility. Great animation is invisible - it just makes everything feel right.
-

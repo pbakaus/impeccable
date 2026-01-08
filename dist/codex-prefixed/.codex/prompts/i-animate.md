@@ -3,9 +3,26 @@ description: Review a feature and enhance it with purposeful animations, micro-i
 argument-hint: [TARGET=<value>]
 ---
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
-
 Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
+
+## MANDATORY PREPARATION
+
+### Context Gathering (Do This First)
+
+You cannot do a great job without having necessary context, such as target audience (critical), desired use-cases (critical), brand personality/tone (playful vs serious, energetic vs calm), and performance constraints.
+
+Attempt to gather these from the current thread or codebase.
+
+1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and ask the user directly to clarify what you cannot infer. whether you got it right.
+2. Otherwise, if you can't fully infer or your level of confidence is medium or lower, you MUST ask the user directly to clarify what you cannot infer. clarifying questions first to complete your context.
+
+Do NOT proceed until you have answers. Guessing leads to inappropriate or excessive animation.
+
+### Use frontend-design skill
+
+Use the frontend-design skill for design principles and anti-patterns. Do NOT proceed until it has executed and you know all DO's and DON'Ts.
+
+---
 
 ## Assess Animation Opportunities
 
@@ -23,6 +40,8 @@ Analyze where motion would improve the experience:
    - What's the performance budget? (Mobile-first? Complex page?)
    - Who's the audience? (Motion-sensitive users? Power users who want speed?)
    - What matters most? (One hero animation vs many micro-interactions?)
+
+If any of these are unclear from the codebase, ask the user directly to clarify what you cannot infer.
 
 **CRITICAL**: Respect `prefers-reduced-motion`. Always provide non-animated alternatives for users who need them.
 
@@ -48,7 +67,7 @@ Add motion systematically across these categories:
 - **Modal/drawer entry**: Smooth slide + fade, backdrop fade, focus management
 
 ### Micro-interactions
-- **Button feedback**: 
+- **Button feedback**:
   - Hover: Subtle scale (1.02-1.05), color shift, shadow increase
   - Click: Quick scale down then up (0.95 → 1), ripple effect
   - Loading: Spinner or pulse state

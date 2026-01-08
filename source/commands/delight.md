@@ -7,9 +7,26 @@ args:
     required: false
 ---
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
-
 Identify opportunities to add moments of joy, personality, and unexpected polish that transform functional interfaces into delightful experiences.
+
+## MANDATORY PREPARATION
+
+### Context Gathering (Do This First)
+
+You cannot do a great job without having necessary context, such as target audience (critical), desired use-cases (critical), brand personality (playful vs professional vs quirky vs elegant), and what's appropriate for the domain.
+
+Attempt to gather these from the current thread or codebase.
+
+1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and {{ask_instruction}} whether you got it right.
+2. Otherwise, if you can't fully infer or your level of confidence is medium or lower, you MUST {{ask_instruction}} clarifying questions first to complete your context.
+
+Do NOT proceed until you have answers. Delight that's wrong for the context is worse than no delight at all.
+
+### Use frontend-design skill
+
+Use the frontend-design skill for design principles and anti-patterns. Do NOT proceed until it has executed and you know all DO's and DON'Ts.
+
+---
 
 ## Assess Delight Opportunities
 
@@ -35,6 +52,8 @@ Identify where delight would enhance (not distract from) the experience:
    - **Playful personality**: Whimsical illustrations and copy (consumer apps)
    - **Helpful surprises**: Anticipating needs before users ask (productivity tools)
    - **Sensory richness**: Satisfying sounds, smooth animations (creative tools)
+
+If any of these are unclear from the codebase, {{ask_instruction}}
 
 **CRITICAL**: Delight should enhance usability, never obscure it. If users notice the delight more than accomplishing their goal, you've gone too far.
 
@@ -113,29 +132,29 @@ Add personality and joy through these methods:
 
 **Playful error messages**:
 ```
-❌ "Error 404"
-✅ "This page is playing hide and seek. (And winning)"
+"Error 404"
+"This page is playing hide and seek. (And winning)"
 
-❌ "Connection failed"
-✅ "Looks like the internet took a coffee break. Want to retry?"
+"Connection failed"
+"Looks like the internet took a coffee break. Want to retry?"
 ```
 
 **Encouraging empty states**:
 ```
-❌ "No projects"
-✅ "Your canvas awaits. Create something amazing."
+"No projects"
+"Your canvas awaits. Create something amazing."
 
-❌ "No messages"
-✅ "Inbox zero! You're crushing it today."
+"No messages"
+"Inbox zero! You're crushing it today."
 ```
 
 **Playful labels & tooltips**:
 ```
-❌ "Delete"
-✅ "Send to void" (for playful brand)
+"Delete"
+"Send to void" (for playful brand)
 
-❌ "Help"
-✅ "Rescue me" (tooltip)
+"Help"
+"Rescue me" (tooltip)
 ```
 
 **IMPORTANT**: Match copy personality to brand. Banks shouldn't be wacky, but they can be warm.
@@ -179,7 +198,7 @@ Add personality and joy through these methods:
 - Streak counters with celebratory milestones
 - Progress bars that "celebrate" at 100%
 - Badge unlocks with animation
-- Playful stats ("You're on fire! 🔥 5 days in a row")
+- Playful stats ("You're on fire! 5 days in a row")
 
 **Form interactions**:
 - Input fields that animate on focus
@@ -196,7 +215,7 @@ Add personality and joy through these methods:
 - Typing sounds for chat/messaging
 - Ambient background audio (very subtle)
 
-**IMPORTANT**: 
+**IMPORTANT**:
 - Respect system sound settings
 - Provide mute option
 - Keep volumes quiet (subtle cues, not alarms)
@@ -295,4 +314,3 @@ Test that delight actually delights:
 - **Accessible**: Works with reduced motion, screen readers
 
 Remember: Delight is the difference between a tool and an experience. Add personality, surprise users positively, and create moments worth sharing. But always respect usability - delight should enhance, never obstruct.
-

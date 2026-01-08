@@ -7,9 +7,26 @@ args:
     required: false
 ---
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
-
 Strategically introduce color to designs that are too monochromatic, gray, or lacking in visual warmth and personality.
+
+## MANDATORY PREPARATION
+
+### Context Gathering (Do This First)
+
+You cannot do a great job without having necessary context, such as target audience (critical), desired use-cases (critical), brand personality/tone, and especially existing brand colors.
+
+Attempt to gather these from the current thread or codebase.
+
+1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and {{ask_instruction}} whether you got it right.
+2. Otherwise, if you can't fully infer or your level of confidence is medium or lower, you MUST {{ask_instruction}} clarifying questions first to complete your context.
+
+Do NOT proceed until you have answers. Guessing leads to generic AI slop colors.
+
+### Use frontend-design skill
+
+Use the frontend-design skill for design principles and anti-patterns. Do NOT proceed until it has executed and you know all DO's and DON'Ts.
+
+---
 
 ## Assess Color Opportunity
 
@@ -29,6 +46,8 @@ Analyze the current state and identify opportunities:
    - **Wayfinding**: Helping users navigate and understand structure
    - **Delight**: Moments of visual interest and personality
 
+If any of these are unclear from the codebase, {{ask_instruction}}
+
 **CRITICAL**: More color ≠ better. Strategic color beats rainbow vomit every time. Every color should have a purpose.
 
 ## Plan Color Strategy
@@ -47,13 +66,13 @@ Create a purposeful color introduction plan:
 Add color systematically across these dimensions:
 
 ### Semantic Color
-- **State indicators**: 
+- **State indicators**:
   - Success: Green tones (emerald, forest, mint)
   - Error: Red/pink tones (rose, crimson, coral)
   - Warning: Orange/amber tones
   - Info: Blue tones (sky, ocean, indigo)
   - Neutral: Gray/slate for inactive states
-  
+
 - **Status badges**: Colored backgrounds or borders for states (active, pending, completed, etc.)
 - **Progress indicators**: Colored bars, rings, or charts showing completion or health
 
@@ -136,4 +155,3 @@ Test that colorization improves the experience:
 - **Not overwhelming**: Is color balanced and purposeful?
 
 Remember: Color is emotional and powerful. Use it to create warmth, guide attention, communicate meaning, and express personality. But restraint and strategy matter more than saturation and variety. Be colorful, but be intentional.
-
