@@ -6,27 +6,6 @@ license: Apache 2.0. Based on Anthropic's frontend-design skill. See NOTICE.md f
 
 This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
 
-## MANDATORY: Context Gathering (Do This First)
-
-Before ANY design work, complete these steps in order:
-
-### Step 1: Scan the codebase for context
-Search for and read: README, brand guidelines, design tokens, existing components, style files, color variables.
-
-### Step 2: Answer these questions (from codebase OR by asking user)
-- Who is the target audience?
-- What is the brand personality or tone?
-- Are there existing design tokens, colors, or fonts to use?
-
-### Step 3: If ANY question is unclear, STOP and ask
-If you cannot confidently answer ALL three questions from the codebase, ask the user directly to clarify what you cannot infer. Do NOT proceed to design work until all three are answered. Guessing leads to generic AI slop.
-
----
-
-**Only after completing the above, proceed to design work below.**
-
----
-
 ## Design Direction
 
 Commit to a BOLD aesthetic direction:
