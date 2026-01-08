@@ -80,6 +80,12 @@ Visit [impeccable.style](https://impeccable.style), download the ZIP for your to
 cp -r dist/cursor/.cursor your-project/
 ```
 
+> **Note:** Cursor skills require setup:
+> 1. Switch to Nightly channel in Cursor Settings → Beta
+> 2. Enable Agent Skills in Cursor Settings → Rules
+>
+> [Learn more about Cursor skills](https://cursor.com/docs/context/skills)
+
 **Claude Code:**
 ```bash
 # Project-specific
