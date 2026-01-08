@@ -220,7 +220,10 @@ document.addEventListener("click", (e) => {
 	const bundleBtn = e.target.closest("[data-bundle]");
 	if (bundleBtn) {
 		const { bundle: provider } = bundleBtn.dataset;
-		window.location.href = `/api/download/bundle/${provider}`;
+		const prefixToggle = document.getElementById('prefix-toggle');
+		const usePrefixed = prefixToggle && prefixToggle.checked;
+		const bundleName = usePrefixed ? `${provider}-prefixed` : provider;
+		window.location.href = `/api/download/bundle/${bundleName}`;
 	}
 });
 

@@ -51,9 +51,14 @@ These anti-patterns are baked into training data from countless generic template
  * Keeps full YAML frontmatter with args support.
  * Skills stored in subdirectories with SKILL.md filename.
  * Supports reference files in skill subdirectories.
+ *
+ * @param {Object} options - Optional settings
+ * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformClaudeCode(commands, skills, distDir, patterns = null) {
-  const claudeDir = path.join(distDir, 'claude-code');
+export function transformClaudeCode(commands, skills, distDir, patterns = null, options = {}) {
+  const { prefix = '', outputSuffix = '' } = options;
+  const claudeDir = path.join(distDir, `claude-code${outputSuffix}`);
   const commandsDir = path.join(claudeDir, '.claude/commands');
   const skillsDir = path.join(claudeDir, '.claude/skills');
 
@@ -63,8 +68,9 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
 
   // Commands: Keep frontmatter + body
   for (const command of commands) {
+    const commandName = `${prefix}${command.name}`;
     const frontmatter = generateYamlFrontmatter({
-      name: command.name,
+      name: commandName,
       description: command.description,
       ...(command.context && { context: command.context }),
       ...(command.args.length > 0 && { args: command.args })
@@ -72,7 +78,7 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
 
     const commandBody = replacePlaceholders(command.body, 'claude-code');
     const content = `${frontmatter}\n\n${commandBody}`;
-    const outputPath = path.join(commandsDir, `${command.name}.md`);
+    const outputPath = path.join(commandsDir, `${commandName}.md`);
     writeFile(outputPath, content);
   }
 
@@ -113,6 +119,7 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
   }
 
   const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
-  console.log(`✓ Claude Code: ${commands.length} commands, ${skills.length} skills${refInfo}`);
+  const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
+  console.log(`✓ Claude Code${prefixInfo}: ${commands.length} commands, ${skills.length} skills${refInfo}`);
 }
 

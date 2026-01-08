@@ -53,9 +53,14 @@ These anti-patterns are baked into training data from countless generic template
  * Reference files are copied to skill subdirectories
  *
  * Note: Agent Skills in Cursor require nightly channel and are agent-decided rules.
+ *
+ * @param {Object} options - Optional settings
+ * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformCursor(commands, skills, distDir, patterns = null) {
-  const cursorDir = path.join(distDir, 'cursor');
+export function transformCursor(commands, skills, distDir, patterns = null, options = {}) {
+  const { prefix = '', outputSuffix = '' } = options;
+  const cursorDir = path.join(distDir, `cursor${outputSuffix}`);
   const commandsDir = path.join(cursorDir, '.cursor/commands');
   const skillsDir = path.join(cursorDir, '.cursor/skills');
 
@@ -65,8 +70,9 @@ export function transformCursor(commands, skills, distDir, patterns = null) {
 
   // Commands: Body only (Cursor doesn't support command frontmatter/args)
   for (const command of commands) {
+    const commandName = `${prefix}${command.name}`;
     const commandBody = replacePlaceholders(command.body, 'cursor');
-    const outputPath = path.join(commandsDir, `${command.name}.md`);
+    const outputPath = path.join(commandsDir, `${commandName}.md`);
     writeFile(outputPath, commandBody);
   }
 
@@ -100,5 +106,6 @@ export function transformCursor(commands, skills, distDir, patterns = null) {
   }
 
   const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
-  console.log(`✓ Cursor: ${commands.length} commands, ${skills.length} skills${refInfo}`);
+  const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
+  console.log(`✓ Cursor${prefixInfo}: ${commands.length} commands, ${skills.length} skills${refInfo}`);
 }

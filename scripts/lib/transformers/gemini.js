@@ -7,9 +7,14 @@ import { cleanDir, ensureDir, writeFile, replacePlaceholders } from '../utils.js
  * Commands: Converts to TOML format with {{args}} placeholders
  * Skills: Creates modular files imported via @./GEMINI.{name}.md syntax
  * Reference files are inlined into the main skill file for Gemini
+ *
+ * @param {Object} options - Optional settings
+ * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformGemini(commands, skills, distDir, patterns = null) {
-  const geminiDir = path.join(distDir, 'gemini');
+export function transformGemini(commands, skills, distDir, patterns = null, options = {}) {
+  const { prefix = '', outputSuffix = '' } = options;
+  const geminiDir = path.join(distDir, `gemini${outputSuffix}`);
   const commandsDir = path.join(geminiDir, '.gemini/commands');
 
   cleanDir(geminiDir);
@@ -17,6 +22,7 @@ export function transformGemini(commands, skills, distDir, patterns = null) {
 
   // Commands: Transform to TOML
   for (const command of commands) {
+    const commandName = `${prefix}${command.name}`;
     // First replace our placeholders, then replace remaining {{arg}} with {{args}}
     let prompt = replacePlaceholders(command.body, 'gemini');
     prompt = prompt.replace(/\{\{[^}]+\}\}/g, '{{args}}');
@@ -28,7 +34,7 @@ export function transformGemini(commands, skills, distDir, patterns = null) {
       `"""`
     ].join('\n');
 
-    const outputPath = path.join(commandsDir, `${command.name}.toml`);
+    const outputPath = path.join(commandsDir, `${commandName}.toml`);
     writeFile(outputPath, toml);
   }
 
@@ -89,6 +95,7 @@ export function transformGemini(commands, skills, distDir, patterns = null) {
   writeFile(path.join(geminiDir, 'GEMINI.md'), geminiMd);
 
   const refInfo = refCount > 0 ? ` (${refCount} refs inlined)` : '';
-  console.log(`✓ Gemini: ${commands.length} commands (TOML), ${skills.length} skills (modular)${refInfo}`);
+  const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
+  console.log(`✓ Gemini${prefixInfo}: ${commands.length} commands (TOML), ${skills.length} skills (modular)${refInfo}`);
 }
 

@@ -2135,3 +2135,81 @@ code {
 .platforms-section .section-subtitle {
   max-width: 60ch;
 }
+
+/* Download options / prefix toggle */
+.download-options {
+  margin-bottom: var(--spacing-lg);
+}
+
+.prefix-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.prefix-toggle:hover {
+  border-color: var(--color-ash);
+}
+
+.prefix-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.prefix-toggle-slider {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--color-mist);
+  border-radius: 24px;
+  transition: background var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.prefix-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--color-paper);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.prefix-toggle input:checked + .prefix-toggle-slider {
+  background: var(--color-accent);
+}
+
+.prefix-toggle input:checked + .prefix-toggle-slider::after {
+  transform: translateX(20px);
+}
+
+.prefix-toggle input:focus-visible + .prefix-toggle-slider {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.prefix-toggle-label {
+  font-size: 0.875rem;
+  color: var(--color-charcoal);
+}
+
+.prefix-toggle-label code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}

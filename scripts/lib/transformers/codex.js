@@ -51,9 +51,14 @@ These anti-patterns are baked into training data from countless generic template
  * Commands: Uses argument-hint format with $VARIABLE placeholders in .codex/prompts/
  * Skills: Uses Agent Skills standard with SKILL.md in .codex/skills/{name}/
  * Reference files are copied to skill subdirectories
+ *
+ * @param {Object} options - Optional settings
+ * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformCodex(commands, skills, distDir, patterns = null) {
-  const codexDir = path.join(distDir, 'codex');
+export function transformCodex(commands, skills, distDir, patterns = null, options = {}) {
+  const { prefix = '', outputSuffix = '' } = options;
+  const codexDir = path.join(distDir, `codex${outputSuffix}`);
   const promptsDir = path.join(codexDir, '.codex/prompts');
   const skillsDir = path.join(codexDir, '.codex/skills');
 
@@ -63,6 +68,7 @@ export function transformCodex(commands, skills, distDir, patterns = null) {
 
   // Commands: Transform to Codex prompt format
   for (const command of commands) {
+    const commandName = `${prefix}${command.name}`;
     const yamlLines = ['---'];
     yamlLines.push(`description: ${command.description}`);
 
@@ -84,7 +90,7 @@ export function transformCodex(commands, skills, distDir, patterns = null) {
     });
 
     const content = `${yamlLines.join('\n')}\n\n${body}`;
-    const outputPath = path.join(promptsDir, `${command.name}.md`);
+    const outputPath = path.join(promptsDir, `${commandName}.md`);
     writeFile(outputPath, content);
   }
 
@@ -118,5 +124,6 @@ export function transformCodex(commands, skills, distDir, patterns = null) {
   }
 
   const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
-  console.log(`✓ Codex: ${commands.length} prompts, ${skills.length} skills${refInfo}`);
+  const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
+  console.log(`✓ Codex${prefixInfo}: ${commands.length} prompts, ${skills.length} skills${refInfo}`);
 }

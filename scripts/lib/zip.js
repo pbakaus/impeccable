@@ -50,12 +50,20 @@ export async function createProviderZip(providerDir, distDir, providerName) {
  */
 export async function createAllZips(distDir) {
   console.log('\n📦 Creating ZIP bundles...');
-  
+
   const providers = ['cursor', 'claude-code', 'gemini', 'codex'];
-  
+
+  // Create unprefixed ZIPs
   for (const provider of providers) {
     const providerDir = path.join(distDir, provider);
     await createProviderZip(providerDir, distDir, provider);
+  }
+
+  // Create prefixed ZIPs
+  console.log('  --- prefixed variants ---');
+  for (const provider of providers) {
+    const providerDir = path.join(distDir, `${provider}-prefixed`);
+    await createProviderZip(providerDir, distDir, `${provider}-prefixed`);
   }
 }
 
