@@ -3,6 +3,8 @@ description: Amplify safe or boring designs to make them more visually interesti
 argument-hint: [TARGET=<value>]
 ---
 
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Increase visual impact and personality in designs that are too safe, generic, or visually underwhelming, creating more engaging and memorable experiences.
 
 ## Assess Current State

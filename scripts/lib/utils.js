@@ -122,6 +122,7 @@ export function readSourceFiles(rootDir) {
       name: frontmatter.name || name,
       description: frontmatter.description || '',
       args: frontmatter.args || [],
+      context: frontmatter.context || null,
       body,
       filePath
     };
@@ -223,84 +224,117 @@ export function writeFile(filePath, content) {
 }
 
 /**
- * Read and parse patterns.md
- * Returns { patterns: [...], antipatterns: [...], body: string }
+ * Extract patterns from frontend-design SKILL.md
+ * Parses **DO**: and **DON'T**: lines, grouped by section headings
+ * Returns { patterns: [...], antipatterns: [...] }
  */
 export function readPatterns(rootDir) {
-  const filePath = path.join(rootDir, 'source/patterns.md');
+  const skillPath = path.join(rootDir, 'source/skills/frontend-design/SKILL.md');
 
-  if (!fs.existsSync(filePath)) {
-    return { patterns: [], antipatterns: [], body: '' };
+  if (!fs.existsSync(skillPath)) {
+    return { patterns: [], antipatterns: [] };
   }
 
-  const content = fs.readFileSync(filePath, 'utf-8');
+  const content = fs.readFileSync(skillPath, 'utf-8');
+  const lines = content.split('\n');
 
-  // Split frontmatter and body
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
-
-  if (!match) {
-    return { patterns: [], antipatterns: [], body: content };
-  }
-
-  const [, frontmatterText, body] = match;
-
-  // Parse both patterns and antipatterns sections
-  const patterns = [];
-  const antipatterns = [];
-  const lines = frontmatterText.split('\n');
-  let currentSection = null; // 'patterns' or 'antipatterns'
-  let currentCategory = null;
-  let inItems = false;
+  const patternsMap = {};  // category -> items[]
+  const antipatternsMap = {};  // category -> items[]
+  let currentSection = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
 
-    const indent = line.length - line.trimStart().length;
-
-    // Top-level section declaration
-    if (indent === 0 && trimmed === 'patterns:') {
-      currentSection = 'patterns';
-      currentCategory = null;
-      inItems = false;
-      continue;
-    }
-    if (indent === 0 && trimmed === 'antipatterns:') {
-      currentSection = 'antipatterns';
-      currentCategory = null;
-      inItems = false;
-      continue;
-    }
-
-    // New category starts with "- name:"
-    if (trimmed.startsWith('- name:') && currentSection) {
-      currentCategory = {
-        name: trimmed.slice(7).trim(),
-        items: []
-      };
-      if (currentSection === 'patterns') {
-        patterns.push(currentCategory);
-      } else {
-        antipatterns.push(currentCategory);
+    // Track section headings (### Typography, ### Color & Theme, etc.)
+    if (trimmed.startsWith('### ')) {
+      currentSection = trimmed.slice(4).trim();
+      // Normalize "Color & Theme" to "Color & Contrast" for consistency
+      if (currentSection === 'Color & Theme') {
+        currentSection = 'Color & Contrast';
       }
-      inItems = false;
       continue;
     }
 
-    // Items array declaration
-    if (trimmed === 'items:' && currentCategory) {
-      inItems = true;
+    // Parse **DO**: lines
+    if (trimmed.startsWith('**DO**:') && currentSection) {
+      const item = trimmed.slice(7).trim();
+      if (!patternsMap[currentSection]) {
+        patternsMap[currentSection] = [];
+      }
+      patternsMap[currentSection].push(item);
       continue;
     }
 
-    // Item within items array (indented with "- ")
-    if (trimmed.startsWith('- ') && inItems && currentCategory && indent >= 6) {
-      currentCategory.items.push(trimmed.slice(2).trim());
+    // Parse **DON'T**: lines
+    if (trimmed.startsWith("**DON'T**:") && currentSection) {
+      const item = trimmed.slice(10).trim();
+      if (!antipatternsMap[currentSection]) {
+        antipatternsMap[currentSection] = [];
+      }
+      antipatternsMap[currentSection].push(item);
+      continue;
     }
   }
 
-  return { patterns, antipatterns, body: body.trim() };
+  // Convert maps to arrays in consistent order
+  const sectionOrder = ['Typography', 'Color & Contrast', 'Layout & Space', 'Motion', 'Interaction', 'Responsive', 'UX Writing', 'Visual Details'];
+
+  const patterns = [];
+  const antipatterns = [];
+
+  for (const section of sectionOrder) {
+    if (patternsMap[section] && patternsMap[section].length > 0) {
+      patterns.push({ name: section, items: patternsMap[section] });
+    }
+    if (antipatternsMap[section] && antipatternsMap[section].length > 0) {
+      antipatterns.push({ name: section, items: antipatternsMap[section] });
+    }
+  }
+
+  return { patterns, antipatterns };
+}
+
+/**
+ * Provider-specific placeholders
+ */
+export const PROVIDER_PLACEHOLDERS = {
+  'claude-code': {
+    model: 'Claude',
+    config_file: 'CLAUDE.md',
+    ask_instruction: 'use the AskUserQuestion tool to clarify what you cannot infer.'
+  },
+  'cursor': {
+    model: 'the model',
+    config_file: '.cursorrules',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.'
+  },
+  'gemini': {
+    model: 'Gemini',
+    config_file: 'GEMINI.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.'
+  },
+  'codex': {
+    model: 'GPT',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.'
+  }
+};
+
+/**
+ * Replace all {{placeholder}} tokens with provider-specific values
+ */
+export function replacePlaceholders(content, provider) {
+  const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS['cursor'];
+
+  return content
+    .replace(/\{\{model\}\}/g, placeholders.model)
+    .replace(/\{\{config_file\}\}/g, placeholders.config_file)
+    .replace(/\{\{ask_instruction\}\}/g, placeholders.ask_instruction);
+}
+
+// Legacy alias for backward compatibility
+export function replaceModelPlaceholder(content, provider) {
+  return replacePlaceholders(content, provider);
 }
 
 /**

@@ -1,3 +1,5 @@
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Identify opportunities to add moments of joy, personality, and unexpected polish that transform functional interfaces into delightful experiences.
 
 ## Assess Delight Opportunities

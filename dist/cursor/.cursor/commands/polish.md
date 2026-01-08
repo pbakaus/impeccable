@@ -1,3 +1,5 @@
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Perform a meticulous final pass to catch all the small details that separate good work from great work. The difference between shipped and polished.
 
 ## Pre-Polish Assessment

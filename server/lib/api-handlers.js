@@ -2,6 +2,7 @@ import { readdir, readFile } from "fs/promises";
 import { basename, join, dirname } from "path";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
+import { readPatterns } from "../../scripts/lib/utils.js";
 
 // Get project root directory (works in both Node.js and Bun, including Vercel)
 const __filename = fileURLToPath(import.meta.url);
@@ -130,77 +131,10 @@ export async function handleFileDownload(type, provider, id) {
 	}
 }
 
-// Read patterns from source/patterns.md
+// Extract patterns from SKILL.md using the shared utility
 export async function getPatterns() {
-	const sourceDir = join(PROJECT_ROOT, "source");
-	const filePath = join(sourceDir, "patterns.md");
-
 	try {
-		const content = await readFileContent(filePath);
-		const frontmatterMatch = content.match(/^---\n([\s\S]+?)\n---/);
-
-		if (!frontmatterMatch) {
-			return { patterns: [], antipatterns: [] };
-		}
-
-		const frontmatterText = frontmatterMatch[1];
-
-		// Parse patterns and antipatterns from frontmatter
-		const patterns = [];
-		const antipatterns = [];
-		const lines = frontmatterText.split('\n');
-		let currentSection = null;
-		let currentCategory = null;
-		let inItems = false;
-
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-
-			const indent = line.length - line.trimStart().length;
-
-			// Top-level section declaration
-			if (indent === 0 && trimmed === 'patterns:') {
-				currentSection = 'patterns';
-				currentCategory = null;
-				inItems = false;
-				continue;
-			}
-			if (indent === 0 && trimmed === 'antipatterns:') {
-				currentSection = 'antipatterns';
-				currentCategory = null;
-				inItems = false;
-				continue;
-			}
-
-			// New category starts with "- name:"
-			if (trimmed.startsWith('- name:') && currentSection) {
-				currentCategory = {
-					name: trimmed.slice(7).trim(),
-					items: []
-				};
-				if (currentSection === 'patterns') {
-					patterns.push(currentCategory);
-				} else {
-					antipatterns.push(currentCategory);
-				}
-				inItems = false;
-				continue;
-			}
-
-			// Items array declaration
-			if (trimmed === 'items:' && currentCategory) {
-				inItems = true;
-				continue;
-			}
-
-			// Item within items array (indented with "- ")
-			if (trimmed.startsWith('- ') && inItems && currentCategory && indent >= 6) {
-				currentCategory.items.push(trimmed.slice(2).trim());
-			}
-		}
-
-		return { patterns, antipatterns };
+		return readPatterns(PROJECT_ROOT);
 	} catch (error) {
 		console.error("Error reading patterns:", error);
 		return { patterns: [], antipatterns: [] };

@@ -4,6 +4,7 @@ import animate from "./animate.js";
 import bolder from "./bolder.js";
 import normalize from "./normalize.js";
 import audit from "./audit.js";
+import review from "./review.js";
 import polish from "./polish.js";
 import optimize from "./optimize.js";
 import harden from "./harden.js";
@@ -21,6 +22,7 @@ export const commandDemos = {
 	bolder,
 	animate,
 	audit,
+	review,
 	polish,
 	optimize,
 	harden,
@@ -37,5 +39,6 @@ export const commandDemos = {
 export function getCommandDemo(commandId) {
 	return commandDemos[commandId] || null;
 }
+
 
 

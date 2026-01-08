@@ -7,6 +7,8 @@ args:
     required: false
 ---
 
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Strategically introduce color to designs that are too monochromatic, gray, or lacking in visual warmth and personality.
 
 ## Assess Color Opportunity

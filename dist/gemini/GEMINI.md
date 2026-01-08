@@ -8,7 +8,7 @@ Each skill provides deep expertise in its domain. The skills below are automatic
 
 ### frontend-design
 
-**When to use**: Create distinctive, production-grade frontend interfaces with comprehensive expertise in typography, color systems, spatial design, responsive layouts, interaction patterns, motion, and UX writing. Use this skill when the user asks to build web components, pages, or applications. Generates creative, polished code that avoids generic AI aesthetics.
+**When to use**: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications. Generates creative, polished code that avoids generic AI aesthetics.
 
 @./GEMINI.frontend-design.md
 

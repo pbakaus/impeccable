@@ -25,7 +25,9 @@ const categoryLabels = {
 
 // Short symbols for each command (like element symbols)
 const commandSymbols = {
+	'teach-impeccable': 'Ti',
 	audit: 'Au',
+	review: 'Re',
 	normalize: 'No',
 	polish: 'Po',
 	optimize: 'Op',
@@ -44,21 +46,23 @@ const commandSymbols = {
 
 // Atomic numbers (just for visual interest)
 const commandNumbers = {
+	'teach-impeccable': 0,
 	audit: 1,
-	normalize: 2,
-	polish: 3,
-	optimize: 4,
-	harden: 5,
-	clarify: 6,
-	simplify: 7,
-	adapt: 8,
-	extract: 9,
-	animate: 10,
-	colorize: 11,
-	delight: 12,
-	bolder: 13,
-	quieter: 14,
-	onboard: 15
+	review: 2,
+	normalize: 3,
+	polish: 4,
+	optimize: 5,
+	harden: 6,
+	clarify: 7,
+	simplify: 8,
+	adapt: 9,
+	extract: 10,
+	animate: 11,
+	colorize: 12,
+	delight: 13,
+	bolder: 14,
+	quieter: 15,
+	onboard: 16
 };
 
 export class PeriodicTable {

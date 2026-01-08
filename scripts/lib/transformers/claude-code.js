@@ -1,5 +1,5 @@
 import path from 'path';
-import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter } from '../utils.js';
+import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, replacePlaceholders } from '../utils.js';
 
 /**
  * Generate markdown from structured patterns/antipatterns data
@@ -66,10 +66,12 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
     const frontmatter = generateYamlFrontmatter({
       name: command.name,
       description: command.description,
+      ...(command.context && { context: command.context }),
       ...(command.args.length > 0 && { args: command.args })
     });
 
-    const content = `${frontmatter}\n\n${command.body}`;
+    const commandBody = replacePlaceholders(command.body, 'claude-code');
+    const content = `${frontmatter}\n\n${commandBody}`;
     const outputPath = path.join(commandsDir, `${command.name}.md`);
     writeFile(outputPath, content);
   }
@@ -92,22 +94,8 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
 
     const frontmatter = generateYamlFrontmatter(frontmatterObj);
 
-    let body = skill.body;
-
-    // Generate and merge patterns into frontend-design skill (before Domain Reference Files section)
-    if (skill.name === 'frontend-design' && patterns) {
-      const patternsMarkdown = generatePatternsMarkdown(patterns);
-      if (patternsMarkdown) {
-        const insertPoint = body.indexOf('---\n\n## Domain Reference Files');
-        if (insertPoint > -1) {
-          body = body.slice(0, insertPoint) + '\n\n' + patternsMarkdown + '\n\n' + body.slice(insertPoint);
-        } else {
-          body += '\n\n' + patternsMarkdown;
-        }
-      }
-    }
-
-    const content = `${frontmatter}\n\n${body}`;
+    const skillBody = replacePlaceholders(skill.body, 'claude-code');
+    const content = `${frontmatter}\n\n${skillBody}`;
     const outputPath = path.join(skillDir, 'SKILL.md');
     writeFile(outputPath, content);
 
@@ -117,7 +105,8 @@ export function transformClaudeCode(commands, skills, distDir, patterns = null) 
       ensureDir(refDir);
       for (const ref of skill.references) {
         const refOutputPath = path.join(refDir, `${ref.name}.md`);
-        writeFile(refOutputPath, ref.content);
+        const refContent = replacePlaceholders(ref.content, 'claude-code');
+        writeFile(refOutputPath, refContent);
         refCount++;
       }
     }

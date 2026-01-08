@@ -1,5 +1,5 @@
 import path from 'path';
-import { cleanDir, ensureDir, writeFile } from '../utils.js';
+import { cleanDir, ensureDir, writeFile, replacePlaceholders } from '../utils.js';
 
 /**
  * Gemini Transformer (Full Featured - TOML + Modular Skills)
@@ -17,8 +17,9 @@ export function transformGemini(commands, skills, distDir, patterns = null) {
 
   // Commands: Transform to TOML
   for (const command of commands) {
-    // Replace named placeholders with {{args}}
-    let prompt = command.body.replace(/\{\{[^}]+\}\}/g, '{{args}}');
+    // First replace our placeholders, then replace remaining {{arg}} with {{args}}
+    let prompt = replacePlaceholders(command.body, 'gemini');
+    prompt = prompt.replace(/\{\{[^}]+\}\}/g, '{{args}}');
 
     const toml = [
       `description = "${command.description.replace(/"/g, '\\"')}"`,
@@ -50,10 +51,14 @@ export function transformGemini(commands, skills, distDir, patterns = null) {
     if (skill.references && skill.references.length > 0) {
       const refSections = skill.references.map(ref => {
         refCount++;
-        return `\n\n---\n\n## Reference: ${ref.name}\n\n${ref.content}`;
+        const refContent = replacePlaceholders(ref.content, 'gemini');
+        return `\n\n---\n\n## Reference: ${ref.name}\n\n${refContent}`;
       });
       content += refSections.join('');
     }
+
+    // Replace all placeholders
+    content = replacePlaceholders(content, 'gemini');
 
     const outputPath = path.join(geminiDir, `GEMINI.${skill.name}.md`);
     writeFile(outputPath, content);

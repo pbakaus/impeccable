@@ -1,5 +1,5 @@
 import path from 'path';
-import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter } from '../utils.js';
+import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, replacePlaceholders } from '../utils.js';
 
 /**
  * Generate markdown from structured patterns/antipatterns data
@@ -65,8 +65,9 @@ export function transformCursor(commands, skills, distDir, patterns = null) {
 
   // Commands: Body only (Cursor doesn't support command frontmatter/args)
   for (const command of commands) {
+    const commandBody = replacePlaceholders(command.body, 'cursor');
     const outputPath = path.join(commandsDir, `${command.name}.md`);
-    writeFile(outputPath, command.body);
+    writeFile(outputPath, commandBody);
   }
 
   // Skills: Agent Skills standard with SKILL.md in subdirectories
@@ -80,22 +81,8 @@ export function transformCursor(commands, skills, distDir, patterns = null) {
       ...(skill.license && { license: skill.license })
     });
 
-    let body = skill.body;
-
-    // Generate and merge patterns into frontend-design skill
-    if (skill.name === 'frontend-design' && patterns) {
-      const patternsMarkdown = generatePatternsMarkdown(patterns);
-      if (patternsMarkdown) {
-        const insertPoint = body.indexOf('---\n\n## Domain Reference Files');
-        if (insertPoint > -1) {
-          body = body.slice(0, insertPoint) + '\n\n' + patternsMarkdown + '\n\n' + body.slice(insertPoint);
-        } else {
-          body += '\n\n' + patternsMarkdown;
-        }
-      }
-    }
-
-    const content = `${frontmatter}\n\n${body}`;
+    const skillBody = replacePlaceholders(skill.body, 'cursor');
+    const content = `${frontmatter}\n\n${skillBody}`;
     const outputPath = path.join(skillDir, 'SKILL.md');
     writeFile(outputPath, content);
 
@@ -105,7 +92,8 @@ export function transformCursor(commands, skills, distDir, patterns = null) {
       ensureDir(refDir);
       for (const ref of skill.references) {
         const refOutputPath = path.join(refDir, `${ref.name}.md`);
-        writeFile(refOutputPath, ref.content);
+        const refContent = replacePlaceholders(ref.content, 'cursor');
+        writeFile(refOutputPath, refContent);
         refCount++;
       }
     }

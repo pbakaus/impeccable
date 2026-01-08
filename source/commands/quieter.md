@@ -7,6 +7,8 @@ args:
     required: false
 ---
 
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Reduce visual intensity in designs that are too bold, aggressive, or overstimulating, creating a more refined and approachable aesthetic without losing effectiveness.
 
 ## Assess Current State

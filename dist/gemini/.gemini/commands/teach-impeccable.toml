@@ -1,0 +1,74 @@
+description = "One-time setup that gathers comprehensive design context for your project and saves it to your AI config file. Run once to establish persistent design guidelines."
+prompt = """
+Gather comprehensive design context for this project through a structured conversation, then persist it for all future sessions.
+
+## Gather Design Context
+
+ask the user directly to clarify what you cannot infer. Explore these areas thoroughly:
+
+### 1. Project & Audience
+- What is this project? (app, marketing site, dashboard, etc.)
+- Who is the primary audience? (developers, consumers, enterprise, etc.)
+- What's their technical sophistication? Age range? Key demographics?
+- What problem does this solve for them?
+
+### 2. Brand & Identity
+- Does an existing brand guide or design system exist? Where?
+- What are the brand colors, if any?
+- What's the brand personality? (professional, playful, luxurious, approachable, etc.)
+- Any fonts already in use or required?
+- Logos or visual assets to incorporate?
+
+### 3. Aesthetic Direction
+- What's the desired tone? (minimal, bold, elegant, playful, technical, organic, etc.)
+- Any reference sites or apps they admire? What specifically about them?
+- What should this NOT look like? Any anti-references?
+- Light mode, dark mode, or both?
+
+### 4. Technical Constraints
+- Framework in use? (React, Vue, vanilla, etc.)
+- CSS approach? (Tailwind, CSS modules, styled-components, etc.)
+- Component library in use or to avoid?
+- Performance budget or requirements?
+- Browser/device support requirements?
+
+### 5. Accessibility Requirements
+- WCAG compliance level needed? (A, AA, AAA)
+- Known accessibility requirements?
+- Reduced motion considerations?
+
+### 6. Content & Scope
+- What types of content will be displayed?
+- Are there existing components to maintain consistency with?
+- What's the scope—full redesign or incremental improvements?
+
+## Write Design Context
+
+After gathering responses, create a `## Design Context` section with the collected information, formatted for clarity:
+
+```markdown
+## Design Context
+
+### Audience
+[Summarize target users, their needs, and context]
+
+### Brand
+[Colors, fonts, personality, existing assets]
+
+### Aesthetic Direction
+[Tone, references, anti-references, theme preference]
+
+### Technical Stack
+[Framework, CSS approach, constraints]
+
+### Accessibility
+[Requirements and considerations]
+
+### Design Principles
+[Key principles derived from the conversation]
+```
+
+Write this section to GEMINI.md in the project root. If the file exists, append or update the Design Context section. If it doesn't exist, create it with this section.
+
+Confirm completion and remind the user that this context will now inform all future design work with Impeccable.
+"""

@@ -1,5 +1,7 @@
 description = "Review a feature and enhance it with purposeful animations, micro-interactions, and motion effects that improve usability and delight."
 prompt = """
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
 
 ## Assess Animation Opportunities

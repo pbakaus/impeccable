@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 15 commands, and curated anti-patterns for impeccable frontend design.
+The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design.
 
 > **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
 
@@ -31,11 +31,13 @@ A comprehensive design skill with 7 domain-specific references:
 | responsive-design | Mobile-first, fluid design, container queries |
 | ux-writing | Button labels, error messages, empty states |
 
-### 15 Commands
+### 17 Commands
 
 | Command | What it does |
 |---------|--------------|
-| `/audit` | Run quality checks, get severity-rated issues |
+| `/teach-impeccable` | One-time setup: gather design context, save to config |
+| `/audit` | Run technical quality checks (a11y, performance, responsive) |
+| `/review` | UX design review: hierarchy, clarity, emotional resonance |
 | `/normalize` | Align with design system standards |
 | `/polish` | Final pass before shipping |
 | `/simplify` | Strip to essence |

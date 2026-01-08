@@ -1,5 +1,7 @@
 description = "Add moments of joy, personality, and unexpected touches that make interfaces memorable and enjoyable to use. Elevates functional to delightful."
 prompt = """
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Identify opportunities to add moments of joy, personality, and unexpected polish that transform functional interfaces into delightful experiences.
 
 ## Assess Delight Opportunities

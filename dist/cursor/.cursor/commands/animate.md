@@ -1,3 +1,5 @@
+→ *Apply the frontend-design skill for design principles, if not already in context.*
+
 Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
 
 ## Assess Animation Opportunities
