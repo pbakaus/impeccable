@@ -26,6 +26,8 @@ If any of these are unclear from the codebase, ask the user directly to clarify 
 
 **CRITICAL**: "Bolder" doesn't mean chaotic or garish. It means distinctive, memorable, and confident. Think intentional drama, not random chaos.
 
+**WARNING - AI SLOP TRAP**: When making things "bolder," AI defaults to the same tired tricks: cyan/purple gradients, glassmorphism, neon accents on dark backgrounds, gradient text on metrics. These are the OPPOSITE of bold—they're generic. Review ALL the DON'T guidelines in the frontend-design skill before proceeding. Bold means distinctive, not "more effects."
+
 ## Plan Amplification
 
 Create a strategy to increase impact while maintaining coherence:
@@ -45,7 +47,7 @@ Systematically increase impact across these dimensions:
 - **Replace generic fonts**: Swap system fonts for distinctive choices (see frontend-design skill for inspiration)
 - **Extreme scale**: Create dramatic size jumps (3x-5x differences, not 1.5x)
 - **Weight contrast**: Pair 900 weights with 200 weights, not 600 with 400
-- **Unexpected choices**: Variable fonts, display fonts for headlines, monospace as accent
+- **Unexpected choices**: Variable fonts, display fonts for headlines, condensed or extended widths
 
 ### Color Intensification
 - **Increase saturation**: Shift to more vibrant, energetic colors (but not neon)
@@ -63,11 +65,11 @@ Systematically increase impact across these dimensions:
 - **Overlap**: Layer elements intentionally for depth
 
 ### Visual Effects
-- **Dramatic shadows**: Large, soft shadows for elevation
-- **Background treatments**: Gradients, mesh patterns, noise textures, geometric patterns
-- **Blur effects**: Glassmorphism, backdrop blur, depth effects
-- **Borders & frames**: Thick borders, decorative frames, custom shapes
-- **Custom elements**: Illustrative elements, custom icons, decorative details
+- **Dramatic shadows**: Large, soft shadows for elevation (but not generic drop shadows on rounded rectangles)
+- **Background treatments**: Mesh patterns, noise textures, geometric patterns, intentional gradients (not purple-to-blue)
+- **Texture & depth**: Grain, halftone, duotone, layered elements—NOT glassmorphism (it's overused AI slop)
+- **Borders & frames**: Thick borders, decorative frames, custom shapes (not rounded rectangles with colored border on one side)
+- **Custom elements**: Illustrative elements, custom icons, decorative details that reinforce brand
 
 ### Motion & Animation
 - **Entrance choreography**: Staggered, dramatic page load animations with 50-100ms delays
@@ -93,11 +95,14 @@ Systematically increase impact across these dimensions:
 
 Ensure amplification maintains usability and coherence:
 
+- **NOT AI slop**: Does this look like every other AI-generated "bold" design? If yes, start over.
 - **Still functional**: Can users accomplish tasks without distraction?
 - **Coherent**: Does everything feel intentional and unified?
 - **Memorable**: Will users remember this experience?
 - **Performant**: Do all these effects run smoothly?
 - **Accessible**: Does it still meet accessibility standards?
+
+**The test**: If you showed this to someone and said "AI made this bolder," would they believe you immediately? If yes, you've failed. Bold means distinctive, not "more AI effects."
 
 Remember: Bold design is confident design. It takes risks, makes statements, and creates memorable experiences. But bold without strategy is just loud. Be intentional, be dramatic, be unforgettable.
 """
