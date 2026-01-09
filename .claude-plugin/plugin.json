@@ -1,5 +1,4 @@
 {
-  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "impeccable",
   "description": "Design vocabulary and skills for frontend development. Includes 17 commands (/polish, /simplify, /audit, /bolder, /quieter, etc.) and an enhanced frontend-design skill with curated anti-patterns.",
   "version": "1.0.0",
