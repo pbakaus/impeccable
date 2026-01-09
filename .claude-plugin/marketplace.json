@@ -1,7 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "impeccable",
-  "description": "Design fluency for AI coding tools. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design.",
+  "metadata": {
+    "description": "Design fluency for AI coding tools. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design."
+  },
   "owner": {
     "name": "Paul Bakaus",
     "email": "paul@paulbakaus.com"
@@ -15,7 +17,7 @@
         "name": "Paul Bakaus",
         "email": "paul@paulbakaus.com"
       },
-      "source": ".",
+      "source": "./",
       "category": "design",
       "homepage": "https://impeccable.style",
       "tags": ["design", "frontend", "ui", "ux", "skills", "commands"]
