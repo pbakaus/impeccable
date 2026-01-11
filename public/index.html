@@ -38,81 +38,54 @@
   <!-- Grain Overlay -->
   <div class="grain-overlay" aria-hidden="true"></div>
 
-  <!-- 1. HERO -->
-  <section id="hero">
-    <!-- Shader viewport with overlayed content -->
-    <div class="hero-shader" id="hero-shader">
-      <div class="hero-overlay-content">
-        <h1 class="hero-title-overlay">Impeccable</h1>
-        <p class="hero-tagline-overlay">Design fluency for Claude Code, Codex, and more.</p>
-        <a href="#downloads" class="hero-cta-overlay">Get Started</a>
-      </div>
-    </div>
+  <!-- Theme Toggle -->
+  <div class="theme-toggle" role="group" aria-label="Theme switcher">
+    <button class="theme-toggle-btn" data-theme="light" aria-label="Light theme" title="Light theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+    </button>
+    <button class="theme-toggle-btn" data-theme="system" aria-label="System theme" title="System theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4"/>
+      </svg>
+    </button>
+    <button class="theme-toggle-btn" data-theme="dark" aria-label="Dark theme" title="Dark theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+  </div>
 
-    <!-- Content below the shader -->
-    <div class="hero-container">
-      <div class="hero-content">
-        <h2 class="hero-section-title" data-reveal>What's Included</h2>
+  <!-- 1. HERO - Combined with Problem Section -->
+  <section id="hero" class="hero-combined">
+    <div class="hero-combined-container">
+      <!-- Left: Title & Info -->
+      <div class="hero-combined-left">
+        <h1 class="hero-title-combined">Impeccable</h1>
+        <p class="hero-tagline-combined">Design fluency for AI coding tools</p>
 
-        <!-- Visual Equation -->
-        <div class="hero-equation" data-reveal>
-          <div class="equation-block">
-            <span class="equation-label">Enhanced Skill</span>
-            <span class="equation-title">frontend-design</span>
-            <ul class="equation-list">
-              <li>Anthropic's original skill</li>
-              <li>+ curated anti-patterns</li>
-              <li>+ 7 deep reference guides</li>
-            </ul>
-          </div>
+        <p class="hero-problem-text">Every LLM learned from the same generic templates. Without explicit guidance, they converge on predictable defaults.</p>
 
-          <span class="equation-operator">+</span>
-
-          <div class="equation-block">
-            <span class="equation-label">Steering Commands</span>
-            <span class="equation-title">17 commands</span>
-            <ul class="equation-list">
-              <li>/polish, /audit, /simplify</li>
-              <li>/bolder, /quieter, /animate</li>
-              <li>and 11 more...</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Bottom: Logos -->
-        <div class="hero-footer" data-reveal>
-          <div class="hero-logos">
+        <div class="hero-cta-group">
+          <a href="#downloads" class="hero-cta-combined">Get Started</a>
+          <div class="hero-logos-inline">
             <span class="hero-logos-label">Works with</span>
             <div class="hero-logos-row">
-              <img src="https://img.logo.dev/cursor.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Cursor" width="30" height="30" loading="lazy">
-              <img src="https://img.logo.dev/claude.ai?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Claude Code" width="30" height="30" loading="lazy">
-              <img src="https://img.logo.dev/gemini.google.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Gemini CLI" width="24" height="24" loading="lazy">
-              <img src="https://img.logo.dev/openai.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Codex CLI" width="24" height="24" loading="lazy">
+              <img src="https://img.logo.dev/cursor.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Cursor" width="24" height="24" loading="lazy">
+              <img src="https://img.logo.dev/claude.ai?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Claude Code" width="24" height="24" loading="lazy">
+              <img src="https://img.logo.dev/gemini.google.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Gemini CLI" width="20" height="20" loading="lazy">
+              <img src="https://img.logo.dev/openai.com?token=pk_dtRHfeTyRzG5zZInUc65Xw&size=64&format=png" alt="Codex CLI" width="20" height="20" loading="lazy">
             </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="hero-scroll-indicator" aria-hidden="true">
-      <span>Scroll</span>
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M12 5v14M19 12l-7 7-7-7"/>
-      </svg>
-    </div>
-  </header>
 
-  <main class="site-content" id="main-content">
-    <!-- 2. THE PROBLEM - AI Design Bias -->
-    <section class="problem-section" id="problem">
-      <div class="section-header" data-reveal>
-        <span class="section-number">01</span>
-        <h2 class="section-title">AI Has Design Bias</h2>
-      </div>
-      <div class="problem-content">
-        <p class="section-lead" data-reveal>Every LLM learned from the same generic templates. Without explicit guidance, they converge on the same predictable defaults.</p>
-
-        <!-- Before/After Demo - The Hero -->
-        <div class="split-comparison" id="lens-comparison" data-reveal>
+      <!-- Right: Before/After Demo -->
+      <div class="hero-combined-right">
+        <div class="split-comparison" id="lens-comparison">
           <div class="split-container">
             <!-- Before: AI Slop -->
             <div class="split-before">
@@ -160,26 +133,16 @@
             </div>
           </div>
         </div>
-
-        <!-- Compact Bias Tags -->
-        <div class="bias-tags" data-reveal>
-          <span class="bias-tags-label">Common AI defaults:</span>
-          <div class="bias-tags-list">
-            <span class="bias-tag">Inter/Roboto fonts</span>
-            <span class="bias-tag">Purple gradients</span>
-            <span class="bias-tag">Cards on cards</span>
-            <span class="bias-tag">Centered everything</span>
-            <span class="bias-tag">Gray text on color</span>
-            <span class="bias-tag">Decorative shadows</span>
-          </div>
-        </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- 3. THE ANTIDOTE - Patterns & Anti-Patterns -->
+  <main class="site-content" id="main-content">
+
+    <!-- 2. THE ANTIDOTE - Patterns & Anti-Patterns -->
     <section class="antidote-section" id="antidote">
       <div class="section-header" data-reveal>
-        <span class="section-number">02</span>
+        <span class="section-number">01</span>
         <h2 class="section-title">The Antidote</h2>
       </div>
       <div class="antidote-content">
@@ -203,10 +166,10 @@
       </div>
     </section>
 
-    <!-- 4. THE SOLUTION - Two-part system -->
+    <!-- 3. THE SOLUTION - Two-part system -->
     <section class="solution-section" id="solution">
       <div class="section-header" data-reveal>
-        <span class="section-number">03</span>
+        <span class="section-number">02</span>
         <h2 class="section-title">The Framework</h2>
       </div>
       <div class="solution-content">
@@ -226,7 +189,7 @@
     <!-- 4. COMMANDS - Glass Terminal -->
     <section class="commands-section" id="commands-section">
       <div class="section-header" data-reveal>
-        <span class="section-number">04</span>
+        <span class="section-number">03</span>
         <h2 class="section-title">Commands in Action</h2>
         <p class="section-subtitle">See how commands transform your designs</p>
       </div>
@@ -239,7 +202,7 @@
     <!-- 5. CASE STUDIES -->
     <section class="casestudies-section" id="casestudies">
       <div class="section-header" data-reveal>
-        <span class="section-number">05</span>
+        <span class="section-number">04</span>
         <h2 class="section-title">See It In Action</h2>
         <p class="section-subtitle">Sample projects transformed with Impeccable commands</p>
       </div>
@@ -335,7 +298,7 @@
     <!-- 6. PLATFORMS -->
     <section class="platforms-section" id="downloads">
       <div class="section-header" data-reveal>
-        <span class="section-number">06</span>
+        <span class="section-number">05</span>
         <h2 class="section-title">Download for Your AI Harness</h2>
         <p class="section-subtitle">Same design intelligence, adapted for your workflow. Download and start using in seconds.</p>
       </div>
@@ -438,7 +401,7 @@
     <!-- 7. FAQ -->
     <section class="faq-section" id="faq">
       <div class="section-header" data-reveal>
-        <span class="section-number">07</span>
+        <span class="section-number">06</span>
         <h2 class="section-title">Frequently Asked Questions</h2>
       </div>
 

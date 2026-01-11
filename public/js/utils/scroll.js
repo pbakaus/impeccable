@@ -1,69 +1,17 @@
-import Lenis from "lenis";
-
-// Check if user prefers reduced motion
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-export function initSmoothScroll() {
-	// Skip smooth scroll entirely if user prefers reduced motion
-	if (prefersReducedMotion) {
-		// Still handle anchor links but with instant scroll
-		document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
-			anchor.addEventListener("click", (e) => {
-				e.preventDefault();
-				const target = document.querySelector(anchor.getAttribute("href"));
-				if (target) {
-					target.scrollIntoView({ behavior: 'auto', block: 'start' });
-				}
-			});
-		});
-		return null;
-	}
-
-	const lenis = new Lenis({
-		duration: 1.2,
-		easing: (t) => Math.min(1, 1.001 - 2 ** (-10 * t)),
-		orientation: "vertical",
-		gestureOrientation: "vertical",
-		smoothWheel: true,
-		wheelMultiplier: 1,
-		touchMultiplier: 2,
-	});
-
-	function raf(time) {
-		lenis.raf(time);
-		requestAnimationFrame(raf);
-	}
-
-	requestAnimationFrame(raf);
-
-	// Handle anchor links
+// Instant anchor scroll - no smooth scrolling for better UX on long pages
+export function initAnchorScroll() {
 	document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
 		anchor.addEventListener("click", (e) => {
 			e.preventDefault();
 			const target = document.querySelector(anchor.getAttribute("href"));
 			if (target) {
-				lenis.scrollTo(target, { offset: -40 });
+				// Instant jump with small offset for visual breathing room
+				const offset = 40;
+				const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
+				window.scrollTo({ top: targetPosition, behavior: 'auto' });
 			}
 		});
 	});
-
-    return lenis;
-}
-
-export function initScrollIndicator() {
-	const indicator = document.querySelector(".hero-scroll-indicator");
-	if (!indicator) return;
-
-	function update() {
-		if (window.scrollY > 20) {
-			indicator.classList.add("hidden");
-		} else {
-			indicator.classList.remove("hidden");
-		}
-	}
-
-	window.addEventListener("scroll", update, { passive: true });
-	update();
 }
 
 export function initHashTracking() {
@@ -109,12 +57,14 @@ export function initHashTracking() {
 		}
 	}, { passive: true });
 
-	// Handle initial hash on page load
+	// Handle initial hash on page load - instant jump
 	if (window.location.hash) {
 		const target = document.querySelector(window.location.hash);
 		if (target) {
 			setTimeout(() => {
-				target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				const offset = 40;
+				const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
+				window.scrollTo({ top: targetPosition, behavior: 'auto' });
 			}, 100);
 		}
 	}

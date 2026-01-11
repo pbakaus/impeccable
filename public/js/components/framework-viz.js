@@ -5,13 +5,14 @@
 
 import { commandCategories, commandRelationships } from '../data.js';
 
+// Colors now reference CSS custom properties for dark mode support
 const categoryColors = {
-	diagnostic: { bg: '#fdf4ff', border: '#d946ef', text: '#a21caf' },
-	quality: { bg: '#f0fdf4', border: '#22c55e', text: '#15803d' },
-	intensity: { bg: '#fffbeb', border: '#f59e0b', text: '#b45309' },
-	adaptation: { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8' },
-	enhancement: { bg: '#fdf2f8', border: '#ec4899', text: '#be185d' },
-	system: { bg: '#f9fafb', border: '#6b7280', text: '#374151' }
+	diagnostic: { bg: 'var(--cat-diagnostic-bg)', border: 'var(--cat-diagnostic-border)', text: 'var(--cat-diagnostic-text)' },
+	quality: { bg: 'var(--cat-quality-bg)', border: 'var(--cat-quality-border)', text: 'var(--cat-quality-text)' },
+	intensity: { bg: 'var(--cat-intensity-bg)', border: 'var(--cat-intensity-border)', text: 'var(--cat-intensity-text)' },
+	adaptation: { bg: 'var(--cat-adaptation-bg)', border: 'var(--cat-adaptation-border)', text: 'var(--cat-adaptation-text)' },
+	enhancement: { bg: 'var(--cat-enhancement-bg)', border: 'var(--cat-enhancement-border)', text: 'var(--cat-enhancement-text)' },
+	system: { bg: 'var(--cat-system-bg)', border: 'var(--cat-system-border)', text: 'var(--cat-system-text)' }
 };
 
 const categoryLabels = {

@@ -4,9 +4,9 @@ import {
 } from "./js/components/glass-terminal.js";
 import { initLensEffect } from "./js/components/lens.js";
 import { initFrameworkViz } from "./js/components/framework-viz.js";
-import { initHeroShader } from "./js/effects/hero-shader.js";
 import { initScrollReveal } from "./js/utils/reveal.js";
-import { initScrollIndicator, initSmoothScroll, initHashTracking } from "./js/utils/scroll.js";
+import { initAnchorScroll, initHashTracking } from "./js/utils/scroll.js";
+import { initThemeToggle } from "./js/utils/theme.js";
 
 // ============================================
 // STATE
@@ -315,10 +315,9 @@ function initLightbox() {
 // ============================================
 
 function init() {
-	initSmoothScroll();
-	initScrollIndicator();
+	initThemeToggle();
+	initAnchorScroll();
 	initHashTracking();
-	initHeroShader();
 	initLensEffect();
 	initScrollReveal();
 	initGlassTerminal();
