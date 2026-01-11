@@ -487,76 +487,49 @@ code {
   margin: 0;
 }
 
-/* Hero Equation - What's Included */
-.hero-equation {
+/* Hero Features - What's Included (inline) */
+.hero-features {
   display: flex;
-  align-items: stretch;
-  gap: var(--spacing-sm);
-  max-width: 480px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  margin-top: var(--spacing-xs);
 }
 
-.equation-block {
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--color-mist);
-  background: var(--color-paper);
-  text-align: left;
+.hero-feature {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.equation-label {
-  display: inline-block;
+.hero-feature-label {
   font-family: var(--font-body);
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--color-paper);
   background: var(--color-ink);
   padding: 2px 6px;
-  margin-bottom: 6px;
+  border-radius: 2px;
 }
 
-.equation-title {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-ink);
-  margin-bottom: 4px;
-}
-
-.equation-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--color-ash);
-  line-height: 1.5;
-}
-
-.equation-operator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-size: 1.75rem;
+.hero-feature-divider {
+  color: var(--color-mist);
   font-weight: 300;
-  color: var(--color-accent);
-  flex-shrink: 0;
-  width: 32px;
 }
 
 @media (max-width: 600px) {
-  .hero-equation {
+  .hero-features {
     flex-direction: column;
+    align-items: flex-start;
     gap: var(--spacing-xs);
-    max-width: 100%;
   }
 
-  .equation-operator {
-    width: auto;
-    height: 24px;
-    font-size: 1.25rem;
+  .hero-feature-divider {
+    display: none;
   }
 }
 
