@@ -112,9 +112,8 @@
 /* Right: The Terminal Stack (Sticky) */
 .glass-terminal-wrapper {
   position: sticky;
-  top: var(--spacing-lg);
-  bottom: var(--spacing-lg);
-  height: calc(100vh - var(--spacing-lg) * 2);
+  top: var(--spacing-xl);
+  height: calc(100vh - var(--spacing-xl) * 2);
   max-height: 800px;
   min-height: 500px;
 }
