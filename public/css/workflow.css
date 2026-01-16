@@ -702,8 +702,6 @@
 }
 
 .faq-list {
-  max-width: var(--width-content);
-  margin: var(--spacing-lg) auto 0;
   display: flex;
   flex-direction: column;
   gap: 0;

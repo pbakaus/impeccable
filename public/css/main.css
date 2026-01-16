@@ -46,10 +46,10 @@ button, input, textarea, select {
   --spacing-xs: 8px;
   --spacing-sm: 16px;
   --spacing-md: 24px;
-  --spacing-lg: 48px;
-  --spacing-xl: 80px;
-  --spacing-2xl: 128px;
-  --spacing-3xl: 192px;
+  --spacing-lg: 32px;
+  --spacing-xl: 48px;
+  --spacing-2xl: 80px;
+  --spacing-3xl: 120px;
 
   /* Width */
   --width-max: 1400px;
@@ -237,44 +237,34 @@ code {
    ============================================ */
 
 .section-header {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: var(--spacing-lg);
   position: relative;
 }
 
 .section-number {
   display: block;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  color: var(--color-accent);
-  margin-bottom: var(--spacing-sm);
+  letter-spacing: 0.05em;
+  color: var(--color-ash);
+  margin-bottom: var(--spacing-xs);
   text-transform: uppercase;
 }
 
 .section-title {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
-  font-weight: 300;
-  line-height: 1;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 400;
+  line-height: 1.2;
   margin: 0;
-  position: relative;
-}
-
-.section-title::after {
-  content: '';
-  position: absolute;
-  bottom: -0.3em;
-  left: 0;
-  width: 60px;
-  height: 2px;
-  background: var(--color-accent);
 }
 
 .section-subtitle {
-  font-size: 1.125rem;
-  color: var(--color-ash);
-  margin-top: var(--spacing-md);
-  max-width: 50ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  margin-top: var(--spacing-sm);
+  max-width: 55ch;
 }
 
 .cheatsheet-link {
@@ -289,11 +279,11 @@ code {
 }
 
 .section-lead {
-  font-size: clamp(1.125rem, 2.5vw, 1.5rem);
-  line-height: 1.5;
+  font-size: 1rem;
+  line-height: 1.6;
   color: var(--color-charcoal);
   max-width: 55ch;
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: var(--spacing-lg);
 }
 
 /* ============================================
@@ -301,12 +291,12 @@ code {
    ============================================ */
 
 .hero-combined {
-  min-height: 100vh;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: var(--spacing-xl) 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--spacing-2xl) 0;
   background: var(--color-paper);
 }
 
@@ -343,7 +333,7 @@ code {
 
 .hero-title-combined {
   font-family: var(--font-display);
-  font-size: clamp(3.5rem, 10vw, 7rem);
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
   font-weight: 300;
   font-style: italic;
   line-height: 1;
@@ -363,9 +353,9 @@ code {
 }
 
 .hero-hook-text {
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  font-size: 1rem;
   line-height: 1.6;
-  color: var(--color-ash);
+  color: var(--color-charcoal);
   max-width: 45ch;
   margin: 0;
 }
@@ -1424,7 +1414,7 @@ code {
 }
 
 .opensource-title {
-  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-size: clamp(1.5rem, 4vw, 2rem);
   font-weight: 300;
 }
 
@@ -1979,35 +1969,20 @@ code {
   font-weight: 600;
 }
 
-/* Contribution CTA */
-.contribute-cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-xl);
-  padding-top: var(--spacing-xl);
-  border-top: 1px solid var(--color-mist);
-  text-align: center;
+/* Contribution inline link */
+.contribute-inline {
+  font-size: 0.875rem;
+  color: var(--color-ash);
+  margin-top: var(--spacing-md);
 }
 
-.contribute-text {
-  font-family: var(--font-display);
-  font-size: 1.125rem;
-  font-style: italic;
-  color: var(--color-charcoal);
-  margin: 0;
+.contribute-inline a {
+  color: var(--color-accent);
+  text-decoration: none;
 }
 
-.btn-small {
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-size: 0.8rem;
-  gap: var(--spacing-xs);
-  min-height: 44px; /* Touch target minimum */
-}
-
-.btn-small svg {
-  flex-shrink: 0;
+.contribute-inline a:hover {
+  text-decoration: underline;
 }
 
 /* ============================================
@@ -2199,138 +2174,6 @@ code {
   text-decoration: underline;
 }
 
-/* ============================================
-   SUPPORT SECTION
-   ============================================ */
-
-.support-section {
-  padding: var(--spacing-2xl) 0;
-  border-top: 1px solid var(--color-mist);
-  background: var(--color-cream);
-  margin-left: calc(-50vw + 50%);
-  margin-right: calc(-50vw + 50%);
-  padding-left: calc(50vw - 50% + var(--spacing-lg));
-  padding-right: calc(50vw - 50% + var(--spacing-lg));
-}
-
-.support-content {
-  max-width: 700px;
-  margin: 0 auto;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-lg);
-}
-
-.support-title {
-  font-size: clamp(2rem, 5vw, 3rem);
-  font-weight: 300;
-  margin: 0;
-}
-
-.support-desc {
-  font-size: 1.125rem;
-  color: var(--color-charcoal);
-  line-height: 1.6;
-  max-width: 50ch;
-  margin: 0;
-}
-
-.support-tiers {
-  display: flex;
-  gap: var(--spacing-md);
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.support-tier {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-md) var(--spacing-lg);
-  min-width: 120px;
-  background: var(--color-paper);
-  border: 1px solid var(--color-mist);
-  text-decoration: none;
-  transition: all var(--duration-base) var(--ease-out);
-}
-
-.support-tier:hover {
-  border-color: var(--color-accent);
-  transform: translateY(-4px);
-  box-shadow: 0 20px 60px var(--color-accent-dim);
-}
-
-.support-tier--popular {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
-}
-
-.tier-badge {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-paper);
-  background: var(--color-accent);
-  padding: 4px 10px;
-  white-space: nowrap;
-}
-
-.tier-amount {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  font-weight: 400;
-  color: var(--color-ink);
-}
-
-.tier-label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-ash);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.support-custom {
-  font-size: 0.9375rem;
-  color: var(--color-accent);
-  text-decoration: none;
-  transition: color var(--duration-fast) var(--ease-out);
-}
-
-.support-custom:hover {
-  color: var(--color-accent-hover);
-  text-decoration: underline;
-}
-
-.support-note {
-  font-size: 0.8125rem;
-  color: var(--color-ash);
-  font-style: italic;
-  margin: 0;
-}
-
-@media (max-width: 600px) {
-  .support-tiers {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .support-tier {
-    width: 100%;
-    max-width: 200px;
-  }
-}
 
 /* ============================================
    CONSULTING SECTION
@@ -2342,13 +2185,17 @@ code {
 }
 
 .consulting-content {
-  max-width: 800px;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-lg);
   flex-wrap: wrap;
+}
+
+.consulting-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
 }
 
 .consulting-text {
@@ -2374,14 +2221,16 @@ code {
 @media (max-width: 600px) {
   .consulting-content {
     flex-direction: column;
-    text-align: center;
+    align-items: flex-start;
   }
 
-  .consulting-text {
-    text-align: center;
+  .consulting-actions {
+    flex-direction: column;
+    width: 100%;
   }
 
-  .consulting-desc {
-    max-width: none;
+  .consulting-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
