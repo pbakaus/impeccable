@@ -11,13 +11,13 @@ function getFilePath(type, provider, id) {
 
   if (type === "skill") {
     if (provider === "cursor") {
-      return join(distDir, "cursor", ".cursor", "rules", `${id}.md`);
+      return join(distDir, "cursor", ".cursor", "skills", id, "SKILL.md");
     } else if (provider === "claude-code") {
       return join(distDir, "claude-code", ".claude", "skills", id, "SKILL.md");
     } else if (provider === "gemini") {
       return join(distDir, "gemini", `GEMINI.${id}.md`);
     } else if (provider === "codex") {
-      return join(distDir, "codex", `AGENTS.${id}.md`);
+      return join(distDir, "codex", ".codex", "skills", id, "SKILL.md");
     }
   } else if (type === "command") {
     if (provider === "cursor") {
@@ -61,4 +61,3 @@ export default function handler(req, res) {
     res.status(500).json({ error: error.message });
   }
 }
-
