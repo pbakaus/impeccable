@@ -10,7 +10,7 @@ import optimize from "./optimize.js";
 import harden from "./harden.js";
 import clarify from "./clarify.js";
 import quieter from "./quieter.js";
-import simplify from "./simplify.js";
+import distill from "./distill.js";
 import colorize from "./colorize.js";
 import delight from "./delight.js";
 import extract from "./extract.js";
@@ -28,7 +28,7 @@ export const commandDemos = {
 	harden,
 	clarify,
 	quieter,
-	simplify,
+	distill,
 	colorize,
 	delight,
 	extract,

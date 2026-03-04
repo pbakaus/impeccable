@@ -12,7 +12,7 @@ Every LLM learned from the same generic templates. Without guidance, you get the
 
 Impeccable fights that bias with:
 - **An expanded skill** with 7 domain-specific reference files ([view source](source/skills/frontend-design/))
-- **17 steering commands** to audit, review, polish, simplify, animate, and more
+- **17 steering commands** to audit, review, polish, distill, animate, and more
 - **Curated anti-patterns** that explicitly tell the AI what NOT to do
 
 ## What's Included
@@ -40,7 +40,7 @@ A comprehensive design skill with 7 domain-specific references ([view skill](sou
 | `/critique` | UX design review: hierarchy, clarity, emotional resonance |
 | `/normalize` | Align with design system standards |
 | `/polish` | Final pass before shipping |
-| `/simplify` | Strip to essence |
+| `/distill` | Strip to essence |
 | `/clarify` | Improve unclear UX copy |
 | `/optimize` | Performance improvements |
 | `/harden` | Error handling, i18n, edge cases |
@@ -114,13 +114,13 @@ cp -r dist/codex/.codex/* ~/.codex/
 
 ## Usage
 
-Once installed, use commands in your AI coding tool:
+Once installed, use commands in your AI harness:
 
 ```
 /audit           # Find issues
 /normalize       # Fix inconsistencies
 /polish          # Final cleanup
-/simplify        # Remove complexity
+/distill         # Remove complexity
 ```
 
 Most commands accept an optional argument to focus on a specific area:

@@ -9,8 +9,7 @@ const PROJECT_ROOT = join(__dirname, "../..");
 export default function handler(req, res) {
   try {
     const { id } = req.query;
-    const sourceDir = join(PROJECT_ROOT, "source");
-    const commandPath = join(sourceDir, "commands", `${id}.md`);
+    const commandPath = join(PROJECT_ROOT, "source", "skills", id, "SKILL.md");
 
     if (!existsSync(commandPath)) {
       return res.status(404).json({ error: "Command not found" });

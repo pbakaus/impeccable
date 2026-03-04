@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Layout Templates</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #f5f5f5;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Template indicator */
+    .template-badge {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      background: #fef3c7;
+      color: #92400e;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid #fcd34d;
+    }
+
+    /* THE TEMPLATE: Hero Metric Layout */
+    .hero-metric {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 24px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-metric::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    }
+
+    .hero-metric-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hero-metric-main {
+      text-align: left;
+    }
+
+    .hero-metric-label {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+
+    .hero-metric-value {
+      font-size: 72px;
+      font-weight: 900;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .hero-metric-change {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.2);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .hero-metric-supporting {
+      display: flex;
+      gap: 32px;
+    }
+
+    .supporting-stat {
+      text-align: right;
+    }
+
+    .supporting-stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .supporting-stat-label {
+      font-size: 12px;
+      opacity: 0.7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Repeat the same template 3 more times */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    .metric-template {
+      border-radius: 16px;
+      padding: 28px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-template::before {
+      content: '';
+      position: absolute;
+      top: -30%;
+      right: -30%;
+      width: 60%;
+      height: 60%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    }
+
+    .metric-template.blue { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
+    .metric-template.green { background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); }
+    .metric-template.orange { background: linear-gradient(135deg, #f97316 0%, #c2410c 100%); }
+    .metric-template.pink { background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); }
+
+    .metric-template-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .metric-template-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+
+    .metric-template-value {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric-template-change {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255,255,255,0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .metric-template-row {
+      display: flex;
+      gap: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .metric-template-sub {
+      flex: 1;
+    }
+
+    .metric-template-sub-value {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .metric-template-sub-label {
+      font-size: 10px;
+      opacity: 0.7;
+      text-transform: uppercase;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="template-badge">Same layout × 5</div>
+
+    <!-- THE TEMPLATE: Hero Metric Layout -->
+    <div class="hero-metric">
+      <div class="hero-metric-content">
+        <div class="hero-metric-main">
+          <div class="hero-metric-label">Total Revenue</div>
+          <div class="hero-metric-value">$2.4M</div>
+          <div class="hero-metric-change">↑ +24.5% from last month</div>
+        </div>
+        <div class="hero-metric-supporting">
+          <div class="supporting-stat">
+            <div class="supporting-stat-value">12.8K</div>
+            <div class="supporting-stat-label">Customers</div>
+          </div>
+          <div class="supporting-stat">
+            <div class="supporting-stat-value">$187</div>
+            <div class="supporting-stat-label">Avg. Order</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Same template repeated 4 more times -->
+    <div class="metrics-grid">
+      <div class="metric-template blue">
+        <div class="metric-template-content">
+          <div class="metric-template-label">Active Users</div>
+          <div class="metric-template-value">48.2K</div>
+          <div class="metric-template-change">↑ +12.3%</div>
+          <div class="metric-template-row">
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">32.1K</div>
+              <div class="metric-template-sub-label">Mobile</div>
+            </div>
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">16.1K</div>
+              <div class="metric-template-sub-label">Desktop</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-template green">
+        <div class="metric-template-content">
+          <div class="metric-template-label">Conversion Rate</div>
+          <div class="metric-template-value">8.7%</div>
+          <div class="metric-template-change">↑ +2.1%</div>
+          <div class="metric-template-row">
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">12.4%</div>
+              <div class="metric-template-sub-label">Returning</div>
+            </div>
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">5.2%</div>
+              <div class="metric-template-sub-label">New</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-template orange">
+        <div class="metric-template-content">
+          <div class="metric-template-label">Avg. Session</div>
+          <div class="metric-template-value">4:32</div>
+          <div class="metric-template-change">↓ -0.8%</div>
+          <div class="metric-template-row">
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">5.2</div>
+              <div class="metric-template-sub-label">Pages/Visit</div>
+            </div>
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">32%</div>
+              <div class="metric-template-sub-label">Bounce</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-template pink">
+        <div class="metric-template-content">
+          <div class="metric-template-label">NPS Score</div>
+          <div class="metric-template-value">72</div>
+          <div class="metric-template-change">↑ +5 pts</div>
+          <div class="metric-template-row">
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">84%</div>
+              <div class="metric-template-sub-label">Promoters</div>
+            </div>
+            <div class="metric-template-sub">
+              <div class="metric-template-sub-value">4%</div>
+              <div class="metric-template-sub-label">Detractors</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Hero Metric Layout Template (×5)</div>
+  </div>
+</body>
+</html>

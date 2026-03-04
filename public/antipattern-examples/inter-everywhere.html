@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Inter Font Everywhere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      background: #f5f5f5;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 48px;
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: #111;
+      letter-spacing: -0.5px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: #666;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .nav-cta {
+      background: #111;
+      color: #fff !important;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+
+    /* Hero */
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-width: 700px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #f0f0f0;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      width: fit-content;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    h1 {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 20px;
+      color: #111;
+      letter-spacing: -2px;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 32px;
+      font-weight: 400;
+    }
+
+    .cta-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-primary {
+      background: #111;
+      color: white;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      color: #333;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 48px;
+      padding-top: 40px;
+      border-top: 1px solid #eee;
+    }
+
+    .feature {
+      padding: 20px;
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+
+    .feature h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #111;
+      letter-spacing: -0.3px;
+    }
+
+    .feature p {
+      font-size: 13px;
+      color: #888;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+
+    /* Testimonial */
+    .testimonial {
+      background: #fafafa;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 24px;
+    }
+
+    .testimonial-text {
+      font-size: 14px;
+      color: #444;
+      line-height: 1.6;
+      font-style: italic;
+      margin-bottom: 16px;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .testimonial-avatar {
+      width: 36px;
+      height: 36px;
+      background: #ddd;
+      border-radius: 50%;
+    }
+
+    .testimonial-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+    }
+
+    .testimonial-role {
+      font-size: 12px;
+      color: #888;
+      font-weight: 400;
+    }
+
+    /* Font specimen overlay */
+    .font-specimen {
+      position: absolute;
+      top: 48px;
+      right: 48px;
+      background: #111;
+      color: #fff;
+      padding: 16px 24px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .font-specimen-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .font-specimen-name {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .font-specimen-weights {
+      font-size: 9px;
+      color: #666;
+      margin-top: 6px;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <div class="logo">genericstartup</div>
+      <div class="nav-links">
+        <a href="#">Product</a>
+        <a href="#">Features</a>
+        <a href="#">Pricing</a>
+        <a href="#" class="nav-cta">Sign Up</a>
+      </div>
+    </nav>
+
+    <div class="font-specimen">
+      <div class="font-specimen-label">Font Used</div>
+      <div class="font-specimen-name">Inter</div>
+      <div class="font-specimen-weights">400 · 500 · 600 · 700 · 800</div>
+    </div>
+
+    <div class="hero">
+      <span class="badge">Now Available</span>
+      <h1>The platform for modern teams</h1>
+      <p class="subtitle">Streamline your workflow with our all-in-one solution. Built for teams who want to move fast and ship faster.</p>
+      <div class="cta-group">
+        <button class="btn-primary">Get Started Free</button>
+        <button class="btn-secondary">Book a Demo</button>
+      </div>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">⚡</div>
+        <h3>Lightning Fast</h3>
+        <p>Built for speed from the ground up. Everything loads instantly.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure by Default</h3>
+        <p>Enterprise-grade security with end-to-end encryption.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔗</div>
+        <h3>Integrations</h3>
+        <p>Connect with 100+ tools your team already uses.</p>
+      </div>
+    </div>
+
+    <div class="testimonial">
+      <p class="testimonial-text">"This product has completely transformed how our team works. We've seen a 40% increase in productivity."</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar"></div>
+        <div>
+          <div class="testimonial-name">Sarah Johnson</div>
+          <div class="testimonial-role">Head of Product, TechCorp</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Inter Font Everywhere</div>
+  </div>
+</body>
+</html>

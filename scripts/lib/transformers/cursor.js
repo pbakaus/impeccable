@@ -2,91 +2,38 @@ import path from 'path';
 import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, replacePlaceholders } from '../utils.js';
 
 /**
- * Generate markdown from structured patterns/antipatterns data
- */
-function generatePatternsMarkdown(patterns) {
-  if (!patterns || (!patterns.patterns?.length && !patterns.antipatterns?.length)) {
-    return '';
-  }
-
-  let md = `## Design Patterns Reference
-
-This reference defines what TO do and what NOT to do when creating frontend interfaces. These patterns fight against model bias—the tendency of LLMs to converge on the same predictable choices.
-
-### What TO Do (Patterns)
-
-Focus on intentional, distinctive design choices:
-`;
-
-  for (const category of patterns.patterns || []) {
-    md += `\n**${category.name}**:\n`;
-    for (const item of category.items || []) {
-      md += `- ${item}\n`;
-    }
-  }
-
-  md += `
-### What NOT to Do (Anti-Patterns)
-
-These patterns create generic "AI slop" aesthetics:
-`;
-
-  for (const category of patterns.antipatterns || []) {
-    md += `\n**${category.name}**:\n`;
-    for (const item of category.items || []) {
-      md += `- ${item}\n`;
-    }
-  }
-
-  md += `
-These anti-patterns are baked into training data from countless generic templates. Without explicit guidance, AI reproduces them. This skill ensures your AI knows both what to do AND what to avoid.
-`;
-
-  return md;
-}
-
-/**
- * Cursor Transformer (Agent Skills Standard)
+ * Cursor Transformer (Skills Only)
  *
- * Commands: Body only in .cursor/commands/ (Cursor doesn't support command frontmatter)
- * Skills: Agent Skills standard with SKILL.md in .cursor/skills/{name}/
- * Reference files are copied to skill subdirectories
+ * All skills output to .cursor/skills/{name}/SKILL.md
+ * Frontmatter: name, description, license
  *
- * Note: Agent Skills in Cursor require nightly channel and are agent-decided rules.
- *
+ * @param {Array} skills - All skills (including user-invokable ones)
+ * @param {string} distDir - Distribution output directory
+ * @param {Object} patterns - Design patterns data (unused)
  * @param {Object} options - Optional settings
- * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.prefix - Prefix to add to user-invokable skill names (e.g., 'i-')
  * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformCursor(commands, skills, distDir, patterns = null, options = {}) {
+export function transformCursor(skills, distDir, patterns = null, options = {}) {
   const { prefix = '', outputSuffix = '' } = options;
   const cursorDir = path.join(distDir, `cursor${outputSuffix}`);
-  const commandsDir = path.join(cursorDir, '.cursor/commands');
   const skillsDir = path.join(cursorDir, '.cursor/skills');
 
   cleanDir(cursorDir);
-  ensureDir(commandsDir);
   ensureDir(skillsDir);
 
-  // Commands: Body only (Cursor doesn't support command frontmatter/args)
-  for (const command of commands) {
-    const commandName = `${prefix}${command.name}`;
-    const commandBody = replacePlaceholders(command.body, 'cursor');
-    const outputPath = path.join(commandsDir, `${commandName}.md`);
-    writeFile(outputPath, commandBody);
-  }
-
-  // Skills: Agent Skills standard with SKILL.md in subdirectories
   let refCount = 0;
   for (const skill of skills) {
-    const skillDir = path.join(skillsDir, skill.name);
+    const skillName = skill.userInvokable ? `${prefix}${skill.name}` : skill.name;
+    const skillDir = path.join(skillsDir, skillName);
 
-    const frontmatter = generateYamlFrontmatter({
-      name: skill.name,
+    const frontmatterObj = {
+      name: skillName,
       description: skill.description,
-      ...(skill.license && { license: skill.license })
-    });
+    };
+    if (skill.license) frontmatterObj.license = skill.license;
 
+    const frontmatter = generateYamlFrontmatter(frontmatterObj);
     const skillBody = replacePlaceholders(skill.body, 'cursor');
     const content = `${frontmatter}\n\n${skillBody}`;
     const outputPath = path.join(skillDir, 'SKILL.md');
@@ -105,7 +52,8 @@ export function transformCursor(commands, skills, distDir, patterns = null, opti
     }
   }
 
+  const userInvokableCount = skills.filter(s => s.userInvokable).length;
   const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
   const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
-  console.log(`✓ Cursor${prefixInfo}: ${commands.length} commands, ${skills.length} skills${refInfo}`);
+  console.log(`✓ Cursor${prefixInfo}: ${skills.length} skills (${userInvokableCount} user-invokable)${refInfo}`);
 }

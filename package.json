@@ -1,9 +1,10 @@
 {
   "name": "impeccable",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Paul Bakaus",
   "dependencies": {
-    "motion": "^12.23.26"
+    "motion": "^12.23.26",
+    "playwright": "^1.57.0"
   },
   "description": "Cross-provider design skills and commands for LLM-powered development tools",
   "keywords": [
@@ -22,7 +23,9 @@
     "rebuild": "bun run clean && bun run build",
     "dev": "bun run server/index.js",
     "start": "bun --production run server/index.js",
-    "test": "bun test"
+    "test": "bun test",
+    "screenshot": "bun run scripts/screenshot-antipatterns.js",
+    "og-image": "bun run scripts/generate-og-image.js"
   },
   "type": "module"
 }

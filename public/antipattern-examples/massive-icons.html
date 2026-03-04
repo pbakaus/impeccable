@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Massive Icons in Cards</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #f8fafc;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 12px;
+    }
+
+    .header p {
+      font-size: 16px;
+      color: #64748b;
+    }
+
+    /* Features grid */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      flex: 1;
+    }
+
+    /* THE PROBLEM: Cards with massive left-aligned icons */
+    .feature-card {
+      background: #f8fafc;
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    /* Oversized icon container */
+    .feature-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .feature-icon svg {
+      width: 40px;
+      height: 40px;
+      stroke: #3b82f6;
+      stroke-width: 1.5;
+    }
+
+    /* Different colored backgrounds */
+    .feature-card:nth-child(2) .feature-icon {
+      background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+    }
+    .feature-card:nth-child(2) .feature-icon svg { stroke: #a855f7; }
+
+    .feature-card:nth-child(3) .feature-icon {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    }
+    .feature-card:nth-child(3) .feature-icon svg { stroke: #22c55e; }
+
+    .feature-card:nth-child(4) .feature-icon {
+      background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+    }
+    .feature-card:nth-child(4) .feature-icon svg { stroke: #f97316; }
+
+    .feature-card:nth-child(5) .feature-icon {
+      background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%);
+    }
+    .feature-card:nth-child(5) .feature-icon svg { stroke: #ec4899; }
+
+    .feature-card:nth-child(6) .feature-icon {
+      background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);
+    }
+    .feature-card:nth-child(6) .feature-icon svg { stroke: #06b6d4; }
+
+    .feature-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.6;
+      text-align: left;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Why Choose Us</h1>
+      <p>Everything you need to build amazing products</p>
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="zap"></i>
+        </div>
+        <h3>Lightning Fast</h3>
+        <p>Built for speed and performance from the ground up.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="shield"></i>
+        </div>
+        <h3>Secure</h3>
+        <p>Enterprise-grade security for your peace of mind.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="refresh-cw"></i>
+        </div>
+        <h3>Automated</h3>
+        <p>Automate repetitive tasks and save time.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="layers"></i>
+        </div>
+        <h3>Scalable</h3>
+        <p>Grows with your business needs seamlessly.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="heart"></i>
+        </div>
+        <h3>User Friendly</h3>
+        <p>Intuitive interface that anyone can use.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i data-lucide="bar-chart-3"></i>
+        </div>
+        <h3>Analytics</h3>
+        <p>Powerful insights to drive decisions.</p>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Massive Rounded Lucide Icons in Cards</div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "fs";
+import { readdirSync, readFileSync, statSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -8,28 +8,34 @@ const PROJECT_ROOT = join(__dirname, "..");
 
 export default function handler(req, res) {
   try {
-    const sourceDir = join(PROJECT_ROOT, "source");
-    const commandsDir = join(sourceDir, "commands");
+    const skillsDir = join(PROJECT_ROOT, "source", "skills");
 
-    const files = readdirSync(commandsDir);
+    const entries = readdirSync(skillsDir);
     const commands = [];
 
-    for (const file of files) {
-      if (file.endsWith(".md")) {
-        const content = readFileSync(join(commandsDir, file), "utf-8");
-        const frontmatterMatch = content.match(/^---\n([\s\S]+?)\n---/);
+    for (const entry of entries) {
+      const entryPath = join(skillsDir, entry);
+      if (!statSync(entryPath).isDirectory()) continue;
 
-        if (frontmatterMatch) {
-          const frontmatter = frontmatterMatch[1];
-          const nameMatch = frontmatter.match(/name:\s*(.+)/);
-          const descMatch = frontmatter.match(/description:\s*(.+)/);
+      const skillMd = join(entryPath, "SKILL.md");
+      if (!existsSync(skillMd)) continue;
 
-          commands.push({
-            id: file.replace(".md", ""),
-            name: nameMatch?.[1]?.trim() || file.replace(".md", ""),
-            description: descMatch?.[1]?.trim() || "No description available",
-          });
-        }
+      const content = readFileSync(skillMd, "utf-8");
+      const frontmatterMatch = content.match(/^---\n([\s\S]+?)\n---/);
+
+      if (frontmatterMatch) {
+        const frontmatter = frontmatterMatch[1];
+        const userInvokable = /user-invokable:\s*true/.test(frontmatter);
+        if (!userInvokable) continue;
+
+        const nameMatch = frontmatter.match(/name:\s*(.+)/);
+        const descMatch = frontmatter.match(/description:\s*(.+)/);
+
+        commands.push({
+          id: entry,
+          name: nameMatch?.[1]?.trim() || entry,
+          description: descMatch?.[1]?.trim() || "No description available",
+        });
       }
     }
 

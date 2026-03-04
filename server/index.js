@@ -49,7 +49,18 @@ const server = serve({
       }
       return new Response("Not Found", { status: 404 });
     },
-    
+    "/antipattern-examples/*": async (req) => {
+      const url = new URL(req.url);
+      const filePath = `./public${url.pathname}`;
+      const assetFile = file(filePath);
+      if (await assetFile.exists()) {
+        return new Response(assetFile, {
+          headers: { "Content-Type": "text/html" }
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    },
+
     // API: Get all skills
     "/api/skills": {
       async GET() {
@@ -97,6 +108,17 @@ const server = serve({
     },
   },
   
+  // Serve root-level static files (og-image.png, favicon, robots.txt, etc.)
+  fetch(req) {
+    const url = new URL(req.url);
+    const filePath = `./public${url.pathname}`;
+    const staticFile = file(filePath);
+    if (staticFile.size > 0) {
+      return new Response(staticFile);
+    }
+    return new Response("Not Found", { status: 404 });
+  },
+
   development: process.env.NODE_ENV !== "production",
 });
 

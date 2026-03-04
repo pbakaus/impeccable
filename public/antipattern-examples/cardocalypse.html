@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Cardocalypse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #f3f4f6;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #e5e7eb;
+      border-radius: 24px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Page card */
+    .page-card {
+      background: #f9fafb;
+      border-radius: 20px;
+      padding: 28px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+
+    /* Header card */
+    .header-card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .logo-card {
+      background: #f3f4f6;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 700;
+      font-size: 16px;
+      color: #374151;
+    }
+
+    .nav-card {
+      background: #f3f4f6;
+      border-radius: 10px;
+      padding: 8px;
+      display: flex;
+      gap: 4px;
+    }
+
+    .nav-item-card {
+      background: white;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    .nav-item-card.active {
+      background: #111;
+      color: white;
+    }
+
+    /* Main content area */
+    .content-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      flex: 1;
+      display: flex;
+      gap: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    /* Sidebar card */
+    .sidebar-card {
+      background: #f9fafb;
+      border-radius: 14px;
+      padding: 16px;
+      width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sidebar-item-card {
+      background: white;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #6b7280;
+      font-weight: 500;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .sidebar-item-card.active {
+      background: #eef2ff;
+      color: #4f46e5;
+      border: 1px solid #c7d2fe;
+    }
+
+    /* Main panel card */
+    .main-panel-card {
+      background: #f9fafb;
+      border-radius: 14px;
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section-title-card {
+      background: white;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-weight: 600;
+      font-size: 15px;
+      color: #1f2937;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    /* Stats row */
+    .stats-row-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .stat-card {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 16px;
+      flex: 1;
+      text-align: center;
+    }
+
+    .stat-value-card {
+      background: white;
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* List card */
+    .list-card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .list-item-card {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .list-item-info-card {
+      background: white;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .avatar-card {
+      background: #e5e7eb;
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+    }
+
+    .list-item-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .list-item-actions-card {
+      background: white;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      gap: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .action-btn-card {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    /* Nesting depth indicator */
+    .depth-legend {
+      position: absolute;
+      top: 48px;
+      right: 48px;
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .depth-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .depth-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: #374151;
+    }
+
+    .depth-box {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+
+    .depth-1 { background: #e5e7eb; }
+    .depth-2 { background: #f9fafb; }
+    .depth-3 { background: #ffffff; }
+    .depth-4 { background: #f9fafb; border: 1px solid #e5e7eb; }
+    .depth-5 { background: #ffffff; border: 1px solid #e5e7eb; }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="depth-legend">
+      <div class="depth-title">Nesting Depth</div>
+      <div class="depth-item"><div class="depth-box depth-1"></div> Level 1</div>
+      <div class="depth-item"><div class="depth-box depth-2"></div> Level 2</div>
+      <div class="depth-item"><div class="depth-box depth-3"></div> Level 3</div>
+      <div class="depth-item"><div class="depth-box depth-4"></div> Level 4</div>
+      <div class="depth-item"><div class="depth-box depth-5"></div> Level 5</div>
+    </div>
+
+    <div class="page-card">
+      <div class="header-card">
+        <div class="logo-card">Dashboard</div>
+        <div class="nav-card">
+          <div class="nav-item-card active">Overview</div>
+          <div class="nav-item-card">Analytics</div>
+          <div class="nav-item-card">Settings</div>
+        </div>
+      </div>
+
+      <div class="content-card">
+        <div class="sidebar-card">
+          <div class="sidebar-item-card active">Dashboard</div>
+          <div class="sidebar-item-card">Projects</div>
+          <div class="sidebar-item-card">Team</div>
+          <div class="sidebar-item-card">Reports</div>
+        </div>
+
+        <div class="main-panel-card">
+          <div class="section-title-card">Overview</div>
+
+          <div class="stats-row-card">
+            <div class="stat-card">
+              <div class="stat-value-card">2,847</div>
+              <div class="stat-label">Total Users</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value-card">$48.2K</div>
+              <div class="stat-label">Revenue</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value-card">94.2%</div>
+              <div class="stat-label">Uptime</div>
+            </div>
+          </div>
+
+          <div class="list-card">
+            <div class="list-item-card">
+              <div class="list-item-info-card">
+                <div class="avatar-card"></div>
+                <span class="list-item-name">John Smith</span>
+              </div>
+              <div class="list-item-actions-card">
+                <div class="action-btn-card">Edit</div>
+                <div class="action-btn-card">Delete</div>
+              </div>
+            </div>
+            <div class="list-item-card">
+              <div class="list-item-info-card">
+                <div class="avatar-card"></div>
+                <span class="list-item-name">Sarah Johnson</span>
+              </div>
+              <div class="list-item-actions-card">
+                <div class="action-btn-card">Edit</div>
+                <div class="action-btn-card">Delete</div>
+              </div>
+            </div>
+            <div class="list-item-card">
+              <div class="list-item-info-card">
+                <div class="avatar-card"></div>
+                <span class="list-item-name">Mike Davis</span>
+              </div>
+              <div class="list-item-actions-card">
+                <div class="action-btn-card">Edit</div>
+                <div class="action-btn-card">Delete</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Cardocalypse (Cards Within Cards)</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Lazy "Impact" Design</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #0f0f0f;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Animated gradient background */
+    .bg-gradient {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+      animation: pulse 8s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Hero with gradient text */
+    .hero {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .hero-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.2));
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      padding: 8px 20px;
+      border-radius: 999px;
+      font-size: 13px;
+      color: #c4b5fd;
+      margin-bottom: 24px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    h1 {
+      font-size: 64px;
+      font-weight: 900;
+      line-height: 1.0;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #a78bfa 50%, #ec4899 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradient-shift 5s ease infinite;
+      background-size: 200% 200%;
+    }
+
+    @keyframes gradient-shift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 32px;
+    }
+
+    /* Metrics with sparklines */
+    .metrics {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .metric-card {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 24px;
+      animation: card-pop 0.5s ease-out;
+    }
+
+    @keyframes card-pop {
+      0% { transform: scale(0.9); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .metric-label {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.4);
+      font-weight: 500;
+    }
+
+    .metric-change {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 6px;
+      animation: bounce 2s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+
+    .metric-change.positive {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+    }
+
+    .metric-change.negative {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+
+    .metric-value {
+      font-size: 36px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fff, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+
+    /* SVG Sparkline */
+    .sparkline {
+      width: 100%;
+      height: 40px;
+    }
+
+    .sparkline-path {
+      fill: none;
+      stroke: url(#sparkline-gradient);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .sparkline-area {
+      fill: url(#sparkline-area-gradient);
+    }
+
+    /* CTA with elastic animation */
+    .cta-section {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+      color: white;
+      padding: 16px 40px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 16px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 0 40px rgba(139, 92, 246, 0.4);
+      animation: elastic 2s ease-in-out infinite;
+      position: relative;
+      overflow: hidden;
+    }
+
+    @keyframes elastic {
+      0%, 100% { transform: scale(1); }
+      25% { transform: scale(1.05); }
+      50% { transform: scale(0.98); }
+      75% { transform: scale(1.02); }
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+      animation: shimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    /* Features grid */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      flex: 1;
+    }
+
+    .feature {
+      background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+
+    .feature:hover {
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+    }
+
+    .feature-icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+      animation: wiggle 3s ease-in-out infinite;
+    }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(5deg); }
+      75% { transform: rotate(-5deg); }
+    }
+
+    .feature h3 {
+      font-size: 14px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+
+    .feature p {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      line-height: 1.4;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="bg-gradient"></div>
+
+    <svg width="0" height="0">
+      <defs>
+        <linearGradient id="sparkline-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#8b5cf6" />
+          <stop offset="100%" stop-color="#ec4899" />
+        </linearGradient>
+        <linearGradient id="sparkline-area-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgba(139, 92, 246, 0.3)" />
+          <stop offset="100%" stop-color="rgba(139, 92, 246, 0)" />
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <div class="content">
+      <div class="hero">
+        <span class="hero-label">✨ Launching Soon</span>
+        <h1>10X Your Growth</h1>
+        <p class="subtitle">Transform your metrics with AI-powered insights</p>
+      </div>
+
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">Revenue</span>
+            <span class="metric-change positive">+127%</span>
+          </div>
+          <div class="metric-value">$2.4M</div>
+          <svg class="sparkline" viewBox="0 0 200 40">
+            <path class="sparkline-area" d="M0,35 L20,30 L40,32 L60,25 L80,28 L100,20 L120,22 L140,15 L160,18 L180,10 L200,5 L200,40 L0,40 Z"/>
+            <path class="sparkline-path" d="M0,35 L20,30 L40,32 L60,25 L80,28 L100,20 L120,22 L140,15 L160,18 L180,10 L200,5"/>
+          </svg>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">Users</span>
+            <span class="metric-change positive">+89%</span>
+          </div>
+          <div class="metric-value">48.2K</div>
+          <svg class="sparkline" viewBox="0 0 200 40">
+            <path class="sparkline-area" d="M0,30 L20,28 L40,35 L60,30 L80,25 L100,28 L120,20 L140,18 L160,15 L180,12 L200,8 L200,40 L0,40 Z"/>
+            <path class="sparkline-path" d="M0,30 L20,28 L40,35 L60,30 L80,25 L100,28 L120,20 L140,18 L160,15 L180,12 L200,8"/>
+          </svg>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">Engagement</span>
+            <span class="metric-change negative">-12%</span>
+          </div>
+          <div class="metric-value">94.2%</div>
+          <svg class="sparkline" viewBox="0 0 200 40">
+            <path class="sparkline-area" d="M0,10 L20,12 L40,8 L60,15 L80,12 L100,18 L120,15 L140,20 L160,18 L180,25 L200,22 L200,40 L0,40 Z"/>
+            <path class="sparkline-path" d="M0,10 L20,12 L40,8 L60,15 L80,12 L100,18 L120,15 L140,20 L160,18 L180,25 L200,22"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="cta-section">
+        <button class="btn-primary">Start Growing Now</button>
+      </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">📈</div>
+          <h3>Analytics</h3>
+          <p>Real-time insights</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🚀</div>
+          <h3>Growth</h3>
+          <p>Automated scaling</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">💎</div>
+          <h3>Premium</h3>
+          <p>Enterprise ready</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">⚡</div>
+          <h3>Speed</h3>
+          <p>Lightning fast</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Lazy "Impact" (Gradients, Sparklines, Elastic)</div>
+  </div>
+</body>
+</html>

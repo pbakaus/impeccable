@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Modal Abuse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #1e1e1e;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #f8fafc;
+      border-radius: 24px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Base app UI (dimmed) */
+    .app-ui {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      filter: brightness(0.4);
+    }
+
+    .app-header {
+      background: white;
+      padding: 16px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-logo {
+      font-weight: 700;
+      font-size: 18px;
+      color: #111;
+    }
+
+    .app-nav {
+      display: flex;
+      gap: 24px;
+    }
+
+    .app-nav a {
+      color: #6b7280;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .app-content {
+      flex: 1;
+      display: flex;
+    }
+
+    .app-sidebar {
+      width: 200px;
+      background: white;
+      border-right: 1px solid #e5e7eb;
+      padding: 16px;
+    }
+
+    .sidebar-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-item.active {
+      background: #f3f4f6;
+      color: #111;
+      font-weight: 500;
+    }
+
+    .app-main {
+      flex: 1;
+      padding: 24px;
+      background: #f9fafb;
+    }
+
+    .app-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .app-card h3 {
+      font-size: 16px;
+      color: #111;
+      margin-bottom: 8px;
+    }
+
+    .app-card p {
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    /* Modal backdrop */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    /* Large modal with advanced settings */
+    .modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px;
+      max-height: 800px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+      overflow: hidden;
+      z-index: 100;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111;
+    }
+
+    .modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: #f3f4f6;
+      color: #6b7280;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-body {
+      padding: 24px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    /* Complex settings form that should be on a dedicated page */
+    .settings-section {
+      margin-bottom: 28px;
+    }
+
+    .settings-section h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      font-size: 14px;
+      color: #374151;
+    }
+
+    .setting-desc {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+
+    .toggle {
+      width: 44px;
+      height: 24px;
+      background: #e5e7eb;
+      border-radius: 12px;
+      position: relative;
+    }
+
+    .toggle.on {
+      background: #3b82f6;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: 0.2s;
+    }
+
+    .toggle.on::after {
+      left: 22px;
+    }
+
+    .select-input {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #374151;
+      background: white;
+    }
+
+    .text-input {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 180px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      padding: 16px 24px;
+      border-top: 1px solid #e5e7eb;
+      background: #f9fafb;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-secondary {
+      background: white;
+      border: 1px solid #d1d5db;
+      color: #374151;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 200;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Base app -->
+    <div class="app-ui">
+      <div class="app-header">
+        <div class="app-logo">Dashboard</div>
+        <div class="app-nav">
+          <a href="#">Home</a>
+          <a href="#">Projects</a>
+          <a href="#">Team</a>
+        </div>
+      </div>
+      <div class="app-content">
+        <div class="app-sidebar">
+          <div class="sidebar-item active">Overview</div>
+          <div class="sidebar-item">Analytics</div>
+          <div class="sidebar-item">Reports</div>
+          <div class="sidebar-item">Settings</div>
+        </div>
+        <div class="app-main">
+          <div class="app-card">
+            <h3>Recent Activity</h3>
+            <p>Your recent actions will appear here...</p>
+          </div>
+          <div class="app-card">
+            <h3>Quick Stats</h3>
+            <p>Overview of your account metrics...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop"></div>
+
+    <!-- Advanced settings crammed into a modal instead of a proper settings page -->
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Advanced Settings</span>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h4>Notifications</h4>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Email notifications</div>
+              <div class="setting-desc">Receive updates via email</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Push notifications</div>
+              <div class="setting-desc">Browser push alerts</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Notification frequency</div>
+            </div>
+            <select class="select-input">
+              <option>Instant</option>
+              <option>Daily digest</option>
+              <option>Weekly</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>Privacy & Security</h4>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Two-factor authentication</div>
+              <div class="setting-desc">Add extra security</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Session timeout</div>
+            </div>
+            <select class="select-input">
+              <option>30 minutes</option>
+              <option>1 hour</option>
+              <option>4 hours</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Activity logging</div>
+              <div class="setting-desc">Track account activity</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>Data & Export</h4>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Auto-backup</div>
+              <div class="setting-desc">Automatic data backups</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Export format</div>
+            </div>
+            <select class="select-input">
+              <option>CSV</option>
+              <option>JSON</option>
+              <option>Excel</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>API Settings</h4>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">API Key</div>
+            </div>
+            <input type="text" class="text-input" value="sk-xxxxx-xxxxx" readonly>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Rate limit</div>
+            </div>
+            <select class="select-input">
+              <option>100/min</option>
+              <option>500/min</option>
+              <option>1000/min</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary">Cancel</button>
+        <button class="btn btn-primary">Save Changes</button>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Advanced Features Hidden in Modal</div>
+  </div>
+</body>
+</html>

@@ -689,6 +689,92 @@
 }
 
 /* ============================================
+   HERO VERSION LINK
+   ============================================ */
+
+.hero-version-link {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  margin-top: var(--spacing-sm);
+}
+
+.hero-version-link a {
+  color: var(--color-ash);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.hero-version-link a:hover {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ============================================
+   CHANGELOG SECTION
+   ============================================ */
+
+.changelog-section {
+  position: relative;
+  padding: var(--spacing-xl) 0;
+  border-top: 1px solid var(--color-mist);
+}
+
+.changelog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.changelog-entry {
+  padding: var(--spacing-md) 0;
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.changelog-entry:first-child {
+  border-top: 1px solid var(--color-mist);
+}
+
+.changelog-version-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.changelog-version {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.changelog-date {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+}
+
+.changelog-items {
+  margin: 0;
+  padding-left: var(--spacing-md);
+  color: var(--color-charcoal);
+  line-height: 1.7;
+}
+
+.changelog-items li {
+  margin-bottom: var(--spacing-xs);
+}
+
+.changelog-items code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-mist);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--color-ink);
+}
+
+/* ============================================
    FAQ SECTION
    ============================================ */
 

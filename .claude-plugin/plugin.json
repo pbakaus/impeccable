@@ -1,13 +1,12 @@
 {
   "name": "impeccable",
-  "description": "Design vocabulary and skills for frontend development. Includes 17 commands (/polish, /simplify, /audit, /bolder, /quieter, etc.) and an enhanced frontend-design skill with curated anti-patterns.",
-  "version": "1.0.0",
+  "description": "Design vocabulary and skills for frontend development. Includes 18 skills (17 user-invokable: /polish, /distill, /audit, /bolder, /quieter, etc.) and an enhanced frontend-design skill with curated anti-patterns.",
+  "version": "1.1.0",
   "author": {
     "name": "Paul Bakaus",
     "email": "paul@paulbakaus.com"
   },
   "homepage": "https://impeccable.style",
   "repository": "https://github.com/pbakaus/impeccable",
-  "commands": "./.claude/commands",
   "skills": "./.claude/skills"
 }

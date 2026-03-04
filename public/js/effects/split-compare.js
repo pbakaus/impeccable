@@ -11,8 +11,8 @@ export function initSplitCompare(container, options = {}) {
 	const {
 		defaultPosition = 70,
 		skewOffset = 8,
-		minPosition = 5,
-		maxPosition = 95,
+		minPosition = -skewOffset,
+		maxPosition = 100 + skewOffset,
 		lerpSpeed = 0.15,
 		animationThreshold = 40, // Re-trigger animations when crossing this threshold
 		onCrossThreshold = null // Callback when crossing threshold toward "after" side
@@ -89,7 +89,8 @@ export function initSplitCompare(container, options = {}) {
 	function handleMouseMove(e) {
 		if (isHovering) {
 			const rect = splitContainer.getBoundingClientRect();
-			targetX = ((e.clientX - rect.left) / rect.width) * 100;
+			const range = 100 + 2 * skewOffset;
+			targetX = ((e.clientX - rect.left) / rect.width) * range - skewOffset;
 			startAnimation();
 		}
 	}
@@ -142,10 +143,13 @@ export function initSplitCompare(container, options = {}) {
 		}
 	}
 
-	// Attach listeners
-	splitContainer.addEventListener('mouseenter', handleMouseEnter);
-	splitContainer.addEventListener('mouseleave', handleMouseLeave);
-	splitContainer.addEventListener('mousemove', handleMouseMove);
+	// Use the parent container for mouse events to create a larger hit area
+	const hitArea = splitContainer.parentElement || splitContainer;
+
+	// Attach listeners — mouse events on the wider hit area
+	hitArea.addEventListener('mouseenter', handleMouseEnter);
+	hitArea.addEventListener('mouseleave', handleMouseLeave);
+	hitArea.addEventListener('mousemove', handleMouseMove);
 	splitContainer.addEventListener('touchstart', handleTouchStart);
 	splitContainer.addEventListener('touchend', handleTouchEnd);
 	splitContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -156,9 +160,9 @@ export function initSplitCompare(container, options = {}) {
 	// Return cleanup function
 	return {
 		destroy() {
-			splitContainer.removeEventListener('mouseenter', handleMouseEnter);
-			splitContainer.removeEventListener('mouseleave', handleMouseLeave);
-			splitContainer.removeEventListener('mousemove', handleMouseMove);
+			hitArea.removeEventListener('mouseenter', handleMouseEnter);
+			hitArea.removeEventListener('mouseleave', handleMouseLeave);
+			hitArea.removeEventListener('mousemove', handleMouseMove);
 			splitContainer.removeEventListener('touchstart', handleTouchStart);
 			splitContainer.removeEventListener('touchend', handleTouchEnd);
 			splitContainer.removeEventListener('touchmove', handleTouchMove);

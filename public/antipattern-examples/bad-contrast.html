@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Bad Contrast Choices</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #1e1e1e;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%);
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Header with gray text on colored bg - BAD */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 48px;
+      font-weight: 800;
+      color: #808080; /* Gray on blue/purple - very hard to read */
+      margin-bottom: 12px;
+    }
+
+    .header p {
+      font-size: 18px;
+      color: #666666; /* Even worse gray */
+    }
+
+    /* Colored cards with gray bg labels - THE PROBLEM */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      border-radius: 16px;
+      padding: 24px;
+      color: white;
+    }
+
+    .card.blue { background: #2563eb; }
+    .card.green { background: #16a34a; }
+    .card.orange { background: #ea580c; }
+
+    /* Gray background labels on colored cards - looks terrible */
+    .card-label {
+      display: inline-block;
+      background: #9ca3af; /* Gray bg on colored card */
+      color: #4b5563; /* Gray text on gray bg */
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff; /* Pure white - harsh */
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 14px;
+      color: #555555; /* Dark gray on colored bg - hard to read */
+      line-height: 1.5;
+    }
+
+    /* Stats section with absolute black bg */
+    .stats {
+      background: #000000; /* Absolute black */
+      border-radius: 16px;
+      padding: 32px;
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 32px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 800;
+      color: #ffffff; /* Pure white */
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: #444444; /* Dark gray on black - nearly invisible */
+    }
+
+    /* Footer area */
+    .footer {
+      background: #f0f0f0; /* Light gray bg */
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-text {
+      color: #a0a0a0; /* Gray text on gray bg - no contrast */
+      font-size: 14px;
+    }
+
+    .footer-btn {
+      background: #ffffff; /* Pure white btn */
+      color: #000000; /* Pure black text */
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      border: none;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Welcome to Our Platform</h1>
+      <p>The best solution for modern teams and businesses</p>
+    </div>
+
+    <div class="cards">
+      <div class="card blue">
+        <span class="card-label">Popular</span>
+        <div class="card-icon">⚡</div>
+        <h3>Fast Performance</h3>
+        <p>Built for speed with optimized code and efficient algorithms.</p>
+      </div>
+      <div class="card green">
+        <span class="card-label">New</span>
+        <div class="card-icon">🔒</div>
+        <h3>Secure & Safe</h3>
+        <p>Enterprise-grade security with encrypted data storage.</p>
+      </div>
+      <div class="card orange">
+        <span class="card-label">Featured</span>
+        <div class="card-icon">📊</div>
+        <h3>Analytics</h3>
+        <p>Powerful insights to help you make better decisions.</p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">10K+</div>
+        <div class="stat-label">Active Users</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">99.9%</div>
+        <div class="stat-label">Uptime Guaranteed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">50M+</div>
+        <div class="stat-label">Data Processed</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer-text">Ready to get started? Sign up today and join thousands of happy users.</span>
+      <button class="footer-btn">Get Started</button>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Gray on Color, Gray Labels, Absolute Black/White</div>
+  </div>
+</body>
+</html>

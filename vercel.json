@@ -4,7 +4,7 @@
   "outputDirectory": "build",
   "functions": {
     "api/**/*.js": {
-      "includeFiles": "source/**,dist/**"
+      "includeFiles": "source/**,dist/**,scripts/**"
     }
   },
   "rewrites": [

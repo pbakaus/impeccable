@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Redundant UX Writing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #f0f4f8;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Page Header */
+    .page-header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 8px;
+    }
+
+    .page-header p {
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    /* Section with DUPLICATE heading */
+    .section {
+      background: #f9fafb;
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    .section-header {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .section-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1f2937;
+      margin-bottom: 4px;
+    }
+
+    .section-header p {
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+
+    .form-sublabel {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-hint {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    /* Button section */
+    .button-section {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: #2563eb;
+      color: white;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 15px;
+      border: none;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+
+    .btn-helper {
+      font-size: 12px;
+      color: #6b7280;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* Form row */
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- PAGE HEADER -->
+    <div class="page-header">
+      <h1>Create Your Account</h1>
+      <p>Sign up to get started with our platform</p>
+    </div>
+
+    <!-- SECTION WITH DUPLICATE HEADING -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Create Your Account</h2>
+        <p>Fill out the form below to create your new account</p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">First Name</label>
+          <span class="form-sublabel">Enter your first name</span>
+          <input type="text" class="form-input" placeholder="Enter first name">
+          <span class="form-hint">Your first name as it appears on documents</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name</label>
+          <span class="form-sublabel">Enter your last name</span>
+          <input type="text" class="form-input" placeholder="Enter last name">
+          <span class="form-hint">Your last name as it appears on documents</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <span class="form-sublabel">Provide a valid email address</span>
+        <input type="email" class="form-input" placeholder="example@email.com">
+        <span class="form-hint">Your email will be used to send you important notifications via email</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Create Password</label>
+        <span class="form-sublabel">Choose a secure password</span>
+        <input type="password" class="form-input" placeholder="Enter password">
+        <span class="form-hint">Password must be at least 8 characters for security</span>
+      </div>
+
+      <div class="button-section">
+        <button class="btn-submit">Create Account</button>
+        <p class="btn-helper">Click the button above to create your account and complete registration</p>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Extreme UX Writing Redundancy</div>
+  </div>
+</body>
+</html>

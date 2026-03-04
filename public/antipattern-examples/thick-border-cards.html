@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anti-Pattern: Left Border Accent Cards</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: #f1f5f9;
+      padding: 40px;
+    }
+
+    .container {
+      width: 1080px;
+      height: 1080px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 12px;
+    }
+
+    .header p {
+      font-size: 16px;
+      color: #64748b;
+    }
+
+    /* Cards grid */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      flex: 1;
+    }
+
+    /* THE PROBLEM: Left border accent on rounded cards */
+    .card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      /* The weird left border that doesn't match the rounded corners */
+      border-left: 4px solid;
+    }
+
+    .card-blue { border-left-color: #3b82f6; }
+    .card-purple { border-left-color: #a855f7; }
+    .card-green { border-left-color: #22c55e; }
+    .card-orange { border-left-color: #f97316; }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      flex: 1;
+    }
+
+    .card-btn {
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      width: fit-content;
+      background: #f1f5f9;
+      color: #475569;
+    }
+
+    /* Stats bar - also with left border accent */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .stat-item {
+      flex: 1;
+      padding: 20px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border-left: 4px solid;
+    }
+
+    .stat-item:nth-child(1) { border-left-color: #06b6d4; }
+    .stat-item:nth-child(2) { border-left-color: #ec4899; }
+    .stat-item:nth-child(3) { border-left-color: #eab308; }
+    .stat-item:nth-child(4) { border-left-color: #6366f1; }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    /* Anti-pattern label */
+    .antipattern-label {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.9);
+      color: #f87171;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      z-index: 10;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Our Services</h1>
+      <p>Discover what we can do for your business</p>
+    </div>
+
+    <div class="cards">
+      <div class="card card-blue">
+        <div class="card-icon">🚀</div>
+        <h3>Growth Strategy</h3>
+        <p>Accelerate your business growth with our proven strategies and expert guidance.</p>
+        <button class="card-btn">Learn More</button>
+      </div>
+
+      <div class="card card-purple">
+        <div class="card-icon">💡</div>
+        <h3>Innovation Lab</h3>
+        <p>Transform ideas into reality with our cutting-edge innovation services.</p>
+        <button class="card-btn">Explore</button>
+      </div>
+
+      <div class="card card-green">
+        <div class="card-icon">📊</div>
+        <h3>Data Analytics</h3>
+        <p>Make data-driven decisions with our comprehensive analytics solutions.</p>
+        <button class="card-btn">Get Started</button>
+      </div>
+
+      <div class="card card-orange">
+        <div class="card-icon">🎯</div>
+        <h3>Marketing</h3>
+        <p>Reach your target audience effectively with our marketing expertise.</p>
+        <button class="card-btn">Contact Us</button>
+      </div>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-value">500+</div>
+        <div class="stat-label">Clients</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">98%</div>
+        <div class="stat-label">Satisfaction</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">24/7</div>
+        <div class="stat-label">Support</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">50+</div>
+        <div class="stat-label">Countries</div>
+      </div>
+    </div>
+
+    <div class="antipattern-label">🚨 AI SLOP: Left Border Accent on Rounded Cards</div>
+  </div>
+</body>
+</html>

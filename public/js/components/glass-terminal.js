@@ -219,8 +219,8 @@ function updateTerminal(cmd, container, allCommands) {
         currentSplitInstance = initSplitCompare(splitComparison, {
             defaultPosition: 50,
             skewOffset: 8,
-            minPosition: 5,
-            maxPosition: 95
+
+
         });
     }
 }
@@ -330,8 +330,8 @@ function setupMobileInteractions(commands) {
                 currentSplitInstance = initSplitCompare(splitComparison, {
                     defaultPosition: 50,
                     skewOffset: 6,
-                    minPosition: 10,
-                    maxPosition: 90
+
+
                 });
             }
         });

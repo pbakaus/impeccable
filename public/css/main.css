@@ -291,6 +291,7 @@ code {
    ============================================ */
 
 .hero-combined {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -298,6 +299,24 @@ code {
   min-height: 100dvh;
   padding: var(--spacing-2xl) 0;
   background: var(--color-paper);
+}
+
+.github-link {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-lg);
+  z-index: 10;
+  color: var(--color-ash);
+  transition: color 0.2s ease;
+}
+
+.github-link:hover {
+  color: var(--color-ink);
+}
+
+.github-link svg {
+  width: 28px;
+  height: 28px;
 }
 
 .hero-combined-container {
@@ -525,6 +544,9 @@ code {
   width: 100%;
   max-width: 600px;
   margin: 0 auto;
+  padding: 20px;
+  margin-top: -20px;
+  margin-bottom: -20px;
 }
 
 .split-container {
@@ -2056,81 +2078,133 @@ code {
   max-width: 60ch;
 }
 
-/* Download options / prefix toggle */
-.download-options {
-  margin-bottom: var(--spacing-lg);
+/* Install terminal (glass terminal style) */
+.install-terminal {
+  max-width: 640px;
+  margin: 0 auto var(--spacing-xl);
 }
 
-.prefix-toggle {
-  display: inline-flex;
+.install-terminal .glass-terminal {
+  height: auto;
+}
+
+.install-terminal .terminal-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.install-terminal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.install-terminal-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ash);
+}
+
+.install-terminal-cmd {
+  display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  cursor: pointer;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-cream);
-  border: 1px solid var(--color-mist);
-  border-radius: 8px;
-  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
-.prefix-toggle:hover {
-  border-color: var(--color-ash);
-}
-
-.prefix-toggle input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.prefix-toggle-slider {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  background: var(--color-mist);
-  border-radius: 24px;
-  transition: background var(--duration-fast) var(--ease-out);
+.install-terminal-cmd .terminal-prompt {
   flex-shrink: 0;
 }
 
-.prefix-toggle-slider::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: var(--color-paper);
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-  transition: transform var(--duration-fast) var(--ease-out);
+.install-terminal-cmd code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  color: var(--color-ink);
+  background: transparent;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.prefix-toggle input:checked + .prefix-toggle-slider {
-  background: var(--color-accent);
+.install-terminal-cmd .copy-btn {
+  flex-shrink: 0;
 }
 
-.prefix-toggle input:checked + .prefix-toggle-slider::after {
-  transform: translateX(20px);
+.install-terminal-cmd .btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
 }
 
-.prefix-toggle input:focus-visible + .prefix-toggle-slider {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+.install-terminal-note {
+  font-size: 0.75rem;
+  color: var(--color-ash);
+  padding-left: calc(0.75rem + var(--spacing-sm)); /* align with code after prompt */
 }
 
-.prefix-toggle-label {
-  font-size: 0.875rem;
+.install-terminal-note code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  background: var(--color-mist);
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--color-ink);
+}
+
+.install-terminal-divider {
+  height: 1px;
+  background: var(--color-mist);
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .install-terminal-row {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .install-terminal-cmd code {
+    font-size: 0.75rem;
+  }
+}
+
+/* Works with provider badges */
+.install-providers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.install-providers-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ash);
+}
+
+.install-providers-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.install-provider-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
   color: var(--color-charcoal);
 }
 
-.prefix-toggle-label code {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  background: var(--color-accent-dim);
-  color: var(--color-accent);
-  padding: 2px 6px;
+.install-provider-badge img {
   border-radius: 4px;
 }
 
@@ -2138,6 +2212,7 @@ code {
   font-size: 0.8125rem;
   color: var(--color-ash);
   margin-top: var(--spacing-sm);
+  text-align: center;
 }
 
 .download-tip a {

@@ -12,6 +12,44 @@ export function renderCommandDemo(commandId) {
   const demo = getCommandDemo(commandId);
 
   if (!demo) {
+    // teach-impeccable is a setup command, not a visual transform — show usage guide instead
+    if (commandId === 'teach-impeccable') {
+      return `
+        <div class="demo-container">
+          <div class="demo-viewport" style="padding: var(--spacing-lg); font-size: 13px; line-height: 1.6;">
+            <div style="display: flex; flex-direction: column; gap: 12px; color: var(--color-ash);">
+              <div style="font-size: 14px; color: var(--color-text); font-weight: 600;">When to run</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="color: var(--color-accent); flex-shrink: 0;">1.</span>
+                  <span>Once per project, before using other commands</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="color: var(--color-accent); flex-shrink: 0;">2.</span>
+                  <span>Again if your brand or design direction changes</span>
+                </div>
+              </div>
+              <div style="font-size: 14px; color: var(--color-text); font-weight: 600; margin-top: 4px;">What it does</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>Scans your codebase for existing design patterns</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>Asks about brand, users, and aesthetic direction</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>Saves a Design Context to your AI config file</span>
+                </div>
+              </div>
+              <div style="font-size: 12px; opacity: 0.6; margin-top: 4px; font-style: italic;">All other commands use this context automatically.</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="demo-container">
         <div class="demo-viewport">

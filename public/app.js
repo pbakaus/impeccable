@@ -218,11 +218,8 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 document.addEventListener("click", (e) => {
 	const bundleBtn = e.target.closest("[data-bundle]");
 	if (bundleBtn) {
-		const { bundle: provider } = bundleBtn.dataset;
-		const prefixToggle = document.getElementById('prefix-toggle');
-		const usePrefixed = prefixToggle && prefixToggle.checked;
-		const bundleName = usePrefixed ? `${provider}-prefixed` : provider;
-		window.location.href = `/api/download/bundle/${bundleName}`;
+		const provider = bundleBtn.dataset.bundle;
+		window.location.href = `/api/download/bundle/${provider}`;
 	}
 
 	// Handle copy button clicks

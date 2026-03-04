@@ -79,6 +79,33 @@
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 
+/* Floating corner badges */
+.split-badge {
+  position: absolute;
+  top: 10px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.split-badge--before {
+  left: 10px;
+  color: var(--color-ash);
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+}
+
+.split-badge--after {
+  right: 10px;
+  color: var(--color-paper);
+  background: var(--color-accent);
+}
+
 /* Mobile adjustments */
 @media (hover: none) {
   .split-container::after {

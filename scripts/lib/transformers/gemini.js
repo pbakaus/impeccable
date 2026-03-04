@@ -2,57 +2,43 @@ import path from 'path';
 import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, replacePlaceholders } from '../utils.js';
 
 /**
- * Gemini Transformer (Full Featured - TOML Commands + Agent Skills)
+ * Gemini Transformer (Skills Only)
  *
- * Commands: Converts to TOML format with {{args}} placeholders in .gemini/commands/
- * Skills: Uses Agent Skills standard with SKILL.md in .gemini/skills/{name}/
- * Reference files are copied to skill subdirectories
+ * All skills output to .gemini/skills/{name}/SKILL.md
+ * Frontmatter: name, description
+ * For user-invokable skills: {{arg}} placeholders become {{args}} in body
  *
- * Note: Gemini CLI skills require gemini-cli@preview and enabling via /settings
- *
+ * @param {Array} skills - All skills (including user-invokable ones)
+ * @param {string} distDir - Distribution output directory
+ * @param {Object} patterns - Design patterns data (unused)
  * @param {Object} options - Optional settings
- * @param {string} options.prefix - Prefix to add to command names (e.g., 'i-')
+ * @param {string} options.prefix - Prefix to add to user-invokable skill names (e.g., 'i-')
  * @param {string} options.outputSuffix - Suffix for output directory (e.g., '-prefixed')
  */
-export function transformGemini(commands, skills, distDir, patterns = null, options = {}) {
+export function transformGemini(skills, distDir, patterns = null, options = {}) {
   const { prefix = '', outputSuffix = '' } = options;
   const geminiDir = path.join(distDir, `gemini${outputSuffix}`);
-  const commandsDir = path.join(geminiDir, '.gemini/commands');
   const skillsDir = path.join(geminiDir, '.gemini/skills');
 
   cleanDir(geminiDir);
-  ensureDir(commandsDir);
   ensureDir(skillsDir);
 
-  // Commands: Transform to TOML
-  for (const command of commands) {
-    const commandName = `${prefix}${command.name}`;
-    // First replace our placeholders, then replace remaining {{arg}} with {{args}}
-    let prompt = replacePlaceholders(command.body, 'gemini');
-    prompt = prompt.replace(/\{\{[^}]+\}\}/g, '{{args}}');
-
-    const toml = [
-      `description = "${command.description.replace(/"/g, '\\"')}"`,
-      `prompt = """`,
-      prompt,
-      `"""`
-    ].join('\n');
-
-    const outputPath = path.join(commandsDir, `${commandName}.toml`);
-    writeFile(outputPath, toml);
-  }
-
-  // Skills: Use Agent Skills standard with SKILL.md in subdirectories
   let refCount = 0;
   for (const skill of skills) {
-    const skillDir = path.join(skillsDir, skill.name);
+    const skillName = skill.userInvokable ? `${prefix}${skill.name}` : skill.name;
+    const skillDir = path.join(skillsDir, skillName);
 
     const frontmatter = generateYamlFrontmatter({
-      name: skill.name,
+      name: skillName,
       description: skill.description,
     });
 
-    const skillBody = replacePlaceholders(skill.body, 'gemini');
+    let skillBody = replacePlaceholders(skill.body, 'gemini');
+    // For user-invokable skills, replace remaining {{arg}} placeholders with {{args}}
+    if (skill.userInvokable) {
+      skillBody = skillBody.replace(/\{\{[^}]+\}\}/g, '{{args}}');
+    }
+
     const content = `${frontmatter}\n\n${skillBody}`;
     const outputPath = path.join(skillDir, 'SKILL.md');
     writeFile(outputPath, content);
@@ -70,8 +56,8 @@ export function transformGemini(commands, skills, distDir, patterns = null, opti
     }
   }
 
+  const userInvokableCount = skills.filter(s => s.userInvokable).length;
   const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
   const prefixInfo = prefix ? ` [${prefix}prefixed]` : '';
-  console.log(`✓ Gemini${prefixInfo}: ${commands.length} commands (TOML), ${skills.length} skills${refInfo}`);
+  console.log(`✓ Gemini${prefixInfo}: ${skills.length} skills (${userInvokableCount} user-invokable)${refInfo}`);
 }
-

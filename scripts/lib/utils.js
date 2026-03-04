@@ -8,26 +8,26 @@ import path from 'path';
 export function parseFrontmatter(content) {
   const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
   const match = content.match(frontmatterRegex);
-  
+
   if (!match) {
     return { frontmatter: {}, body: content };
   }
-  
+
   const [, frontmatterText, body] = match;
   const frontmatter = {};
-  
+
   // Simple YAML parser (handles basic key-value and arrays)
   const lines = frontmatterText.split('\n');
   let currentKey = null;
   let currentArray = null;
-  
+
   for (const line of lines) {
     if (!line.trim()) continue;
-    
+
     // Calculate indent level
     const leadingSpaces = line.length - line.trimStart().length;
     const trimmed = line.trim();
-    
+
     // Array item at level 2 (nested under a key)
     if (trimmed.startsWith('- ') && leadingSpaces >= 2) {
       if (currentArray) {
@@ -40,7 +40,7 @@ export function parseFrontmatter(content) {
       }
       continue;
     }
-    
+
     // Property of array object (indented further)
     if (leadingSpaces >= 4 && currentArray && currentArray.length > 0) {
       const colonIndex = trimmed.indexOf(':');
@@ -52,16 +52,16 @@ export function parseFrontmatter(content) {
       }
       continue;
     }
-    
+
     // Top-level key-value pair
     if (leadingSpaces === 0) {
       const colonIndex = trimmed.indexOf(':');
       if (colonIndex > 0) {
         const key = trimmed.slice(0, colonIndex).trim();
         const value = trimmed.slice(colonIndex + 1).trim();
-        
+
         if (value) {
-          frontmatter[key] = value;
+          frontmatter[key] = value === 'true' ? true : value === 'false' ? false : value;
           currentKey = key;
           currentArray = null;
         } else {
@@ -73,7 +73,7 @@ export function parseFrontmatter(content) {
       }
     }
   }
-  
+
   return { frontmatter, body: body.trim() };
 }
 
@@ -84,51 +84,31 @@ export function readFilesRecursive(dir, fileList = []) {
   if (!fs.existsSync(dir)) {
     return fileList;
   }
-  
+
   const files = fs.readdirSync(dir);
-  
+
   for (const file of files) {
     const filePath = path.join(dir, file);
     const stat = fs.statSync(filePath);
-    
+
     if (stat.isDirectory()) {
       readFilesRecursive(filePath, fileList);
     } else if (file.endsWith('.md')) {
       fileList.push(filePath);
     }
   }
-  
+
   return fileList;
 }
 
 /**
- * Read and parse all source files
- * Supports both:
- * - Single file skills: source/skills/{name}.md
- * - Directory skills: source/skills/{name}/SKILL.md + reference/*.md
+ * Read and parse all source files (unified skills architecture)
+ * All source lives in source/skills/{name}/SKILL.md
+ * Returns { skills } where each skill has userInvokable flag
  */
 export function readSourceFiles(rootDir) {
-  const commandsDir = path.join(rootDir, 'source/commands');
   const skillsDir = path.join(rootDir, 'source/skills');
 
-  const commandFiles = readFilesRecursive(commandsDir);
-
-  const commands = commandFiles.map(filePath => {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const { frontmatter, body } = parseFrontmatter(content);
-    const name = path.basename(filePath, '.md');
-
-    return {
-      name: frontmatter.name || name,
-      description: frontmatter.description || '',
-      args: frontmatter.args || [],
-      context: frontmatter.context || null,
-      body,
-      filePath
-    };
-  });
-
-  // Read skills - handling both file and directory formats
   const skills = [];
 
   if (fs.existsSync(skillsDir)) {
@@ -167,33 +147,19 @@ export function readSourceFiles(rootDir) {
             compatibility: frontmatter.compatibility || '',
             metadata: frontmatter.metadata || null,
             allowedTools: frontmatter['allowed-tools'] || '',
+            userInvokable: frontmatter['user-invokable'] === true || frontmatter['user-invokable'] === 'true',
+            args: frontmatter.args || [],
+            context: frontmatter.context || null,
             body,
             filePath: skillMdPath,
             references
           });
         }
-      } else if (entry.name.endsWith('.md')) {
-        // Single file skill (legacy format)
-        const content = fs.readFileSync(entryPath, 'utf-8');
-        const { frontmatter, body } = parseFrontmatter(content);
-        const name = path.basename(entry.name, '.md');
-
-        skills.push({
-          name: frontmatter.name || name,
-          description: frontmatter.description || '',
-          license: frontmatter.license || '',
-          compatibility: frontmatter.compatibility || '',
-          metadata: frontmatter.metadata || null,
-          allowedTools: frontmatter['allowed-tools'] || '',
-          body,
-          filePath: entryPath,
-          references: []
-        });
       }
     }
   }
 
-  return { commands, skills };
+  return { skills };
 }
 
 /**
@@ -317,6 +283,11 @@ export const PROVIDER_PLACEHOLDERS = {
     model: 'GPT',
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.'
+  },
+  'agents': {
+    model: 'the model',
+    config_file: '.github/copilot-instructions.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.'
   }
 };
 
@@ -332,17 +303,12 @@ export function replacePlaceholders(content, provider) {
     .replace(/\{\{ask_instruction\}\}/g, placeholders.ask_instruction);
 }
 
-// Legacy alias for backward compatibility
-export function replaceModelPlaceholder(content, provider) {
-  return replacePlaceholders(content, provider);
-}
-
 /**
  * Generate YAML frontmatter string
  */
 export function generateYamlFrontmatter(data) {
   const lines = ['---'];
-  
+
   for (const [key, value] of Object.entries(data)) {
     if (Array.isArray(value)) {
       lines.push(`${key}:`);
@@ -355,12 +321,13 @@ export function generateYamlFrontmatter(data) {
           lines.push(`  - ${item}`);
         }
       }
+    } else if (typeof value === 'boolean') {
+      lines.push(`${key}: ${value}`);
     } else {
       lines.push(`${key}: ${value}`);
     }
   }
-  
+
   lines.push('---');
   return lines.join('\n');
 }
-
