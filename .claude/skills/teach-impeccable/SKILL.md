@@ -44,7 +44,19 @@ STOP and call the AskUserQuestionTool to clarify. Focus only on what you couldn'
 
 Skip questions where the answer is already clear from the codebase exploration.
 
-## Step 3: Write Design Context
+## Step 3: Choose Storage Location
+
+Before writing the design context, ask the user where they'd prefer to store this information:
+
+STOP and call the AskUserQuestionTool to clarify.
+**Where would you like to store the design guidelines?**
+
+1. **Direct integration**: Add to CLAUDE.md in the project root (immediately available to Claude)
+2. **Laravel Boost integration**: Create separate guideline file in `.ai/guidelines/design-context.md` (Laravel Boost will merge into CLAUDE.md when you run `php artisan boost:update`)
+
+Always present the options in the order listed above. Option 1 is recommended for most projects. Option 2 is only for projects using Laravel Boost's guideline merging system.
+
+## Step 4: Write Design Context
 
 Synthesize your findings and the user's answers into a `## Design Context` section:
 
@@ -64,6 +76,13 @@ Synthesize your findings and the user's answers into a `## Design Context` secti
 [3-5 principles derived from the conversation that should guide all design decisions]
 ```
 
-Write this section to CLAUDE.md in the project root. If the file exists, append or update the Design Context section.
+**If user chose option 1**: Write this section to CLAUDE.md in the project root. If the file exists, append or update the Design Context section.
 
-Confirm completion and summarize the key design principles that will now guide all future work.
+**If user chose option 2 (Laravel Boost)**: 
+1. Create the `.ai/guidelines/` directory if it doesn't exist
+2. Write the Design Context section to `.ai/guidelines/design-context.md`
+3. Inform the user to run `php artisan boost:update` to merge this guideline into their CLAUDE.md
+
+Confirm completion and summarize the key design principles that will now guide all future work. 
+
+**For Laravel Boost users (option 2):** Remind them to run `php artisan boost:update` to merge the new guideline into their CLAUDE.md.
