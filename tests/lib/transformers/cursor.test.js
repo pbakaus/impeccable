@@ -19,154 +19,135 @@ describe('transformCursor', () => {
   });
 
   test('should create correct directory structure', () => {
-    const commands = [];
     const skills = [];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands'))).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/rules'))).toBe(true);
+
+    transformCursor(skills, TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills'))).toBe(true);
   });
 
-  test('should strip frontmatter from commands and output body only', () => {
-    const commands = [
-      {
-        name: 'test-command',
-        description: 'A test command',
-        args: [{ name: 'target', description: 'Target', required: false }],
-        body: 'This is the command body content.'
-      }
-    ];
-    const skills = [];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
-    const outputPath = path.join(TEST_DIR, 'cursor/commands/test-command.md');
-    expect(fs.existsSync(outputPath)).toBe(true);
-    
-    const content = fs.readFileSync(outputPath, 'utf-8');
-    expect(content).toBe('This is the command body content.');
-    expect(content).not.toContain('---');
-    expect(content).not.toContain('name:');
-    expect(content).not.toContain('description:');
-  });
-
-  test('should strip frontmatter from skills and output body only', () => {
-    const commands = [];
+  test('should create skill with frontmatter and body', () => {
     const skills = [
       {
         name: 'test-skill',
         description: 'A test skill',
         license: 'MIT',
-        body: 'These are the skill instructions.'
+        body: 'Skill instructions here.'
       }
     ];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
-    const outputPath = path.join(TEST_DIR, 'cursor/rules/test-skill.md');
+
+    transformCursor(skills, TEST_DIR);
+
+    const outputPath = path.join(TEST_DIR, 'cursor/.cursor/skills/test-skill/SKILL.md');
     expect(fs.existsSync(outputPath)).toBe(true);
-    
+
     const content = fs.readFileSync(outputPath, 'utf-8');
-    expect(content).toBe('These are the skill instructions.');
-    expect(content).not.toContain('---');
+    expect(content).toContain('---');
+    expect(content).toContain('name: test-skill');
+    expect(content).toContain('description: A test skill');
+    expect(content).toContain('license: MIT');
+    expect(content).toContain('Skill instructions here.');
+  });
+
+  test('should handle skills without license', () => {
+    const skills = [
+      {
+        name: 'no-license-skill',
+        description: 'Skill without license',
+        license: '',
+        body: 'Body content.'
+      }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/no-license-skill/SKILL.md'), 'utf-8');
     expect(content).not.toContain('license:');
   });
 
-  test('should handle multiple commands', () => {
-    const commands = [
-      { name: 'cmd1', description: 'Command 1', args: [], body: 'Body 1' },
-      { name: 'cmd2', description: 'Command 2', args: [], body: 'Body 2' },
-      { name: 'cmd3', description: 'Command 3', args: [], body: 'Body 3' }
-    ];
-    const skills = [];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands/cmd1.md'))).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands/cmd2.md'))).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands/cmd3.md'))).toBe(true);
-  });
-
   test('should handle multiple skills', () => {
-    const commands = [];
     const skills = [
       { name: 'skill1', description: 'Skill 1', license: 'MIT', body: 'Skill body 1' },
       { name: 'skill2', description: 'Skill 2', license: 'Apache', body: 'Skill body 2' }
     ];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/rules/skill1.md'))).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/rules/skill2.md'))).toBe(true);
+
+    transformCursor(skills, TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/skill1/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/skill2/SKILL.md'))).toBe(true);
   });
 
-  test('should clean existing directory before writing', () => {
-    // Create a pre-existing file
-    fs.mkdirSync(path.join(TEST_DIR, 'cursor/commands'), { recursive: true });
-    fs.writeFileSync(path.join(TEST_DIR, 'cursor/commands/old-file.md'), 'old content');
-    
-    const commands = [
-      { name: 'new-cmd', description: 'New', args: [], body: 'New body' }
-    ];
-    
-    transformCursor(commands, [], TEST_DIR);
-    
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands/old-file.md'))).toBe(false);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands/new-cmd.md'))).toBe(true);
-  });
-
-  test('should handle commands with placeholder args in body', () => {
-    const commands = [
+  test('should copy reference files', () => {
+    const skills = [
       {
-        name: 'normalize',
-        description: 'Normalize design',
-        args: [{ name: 'target', description: 'Target', required: false }],
-        body: 'Please normalize {{target}} to match the design system.'
+        name: 'frontend-design',
+        description: 'Design skill',
+        license: 'MIT',
+        body: 'Design instructions.',
+        references: [
+          { name: 'typography', content: 'Typography reference', filePath: '/fake/path/typography.md' },
+          { name: 'color', content: 'Color reference', filePath: '/fake/path/color.md' }
+        ]
       }
     ];
-    
-    transformCursor(commands, [], TEST_DIR);
-    
-    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/commands/normalize.md'), 'utf-8');
-    // Cursor transformer should preserve the body as-is
-    expect(content).toBe('Please normalize {{target}} to match the design system.');
+
+    transformCursor(skills, TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/frontend-design/reference/typography.md'))).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/frontend-design/reference/color.md'))).toBe(true);
+
+    const typoContent = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/frontend-design/reference/typography.md'), 'utf-8');
+    expect(typoContent).toBe('Typography reference');
+  });
+
+  test('should handle skills without references', () => {
+    const skills = [
+      {
+        name: 'simple-skill',
+        description: 'Simple',
+        license: '',
+        body: 'Body',
+        references: []
+      }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/simple-skill/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/simple-skill/reference'))).toBe(false);
   });
 
   test('should log correct summary', () => {
     const consoleMock = mock(() => {});
     const originalLog = console.log;
     console.log = consoleMock;
-    
-    const commands = [{ name: 'cmd1', description: '', args: [], body: 'body1' }];
-    const skills = [{ name: 'skill1', description: '', license: '', body: 'body1' }];
-    
-    transformCursor(commands, skills, TEST_DIR);
-    
+
+    const skills = [
+      { name: 'skill1', description: '', license: '', userInvokable: true, body: 'body1' },
+      { name: 'skill2', description: '', license: '', userInvokable: false, body: 'body2' }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
     console.log = originalLog;
-    
-    expect(consoleMock).toHaveBeenCalledWith('✓ Cursor: 1 commands, 1 skills (downgraded)');
+
+    expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('✓ Cursor:'));
+    expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('2 skills'));
+    expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('1 user-invokable'));
   });
 
-  test('should handle empty commands and skills arrays', () => {
-    transformCursor([], [], TEST_DIR);
-    
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/commands'))).toBe(true);
-    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/rules'))).toBe(true);
-    
-    const commandFiles = fs.readdirSync(path.join(TEST_DIR, 'cursor/commands'));
-    const ruleFiles = fs.readdirSync(path.join(TEST_DIR, 'cursor/rules'));
-    
-    expect(commandFiles).toHaveLength(0);
-    expect(ruleFiles).toHaveLength(0);
+  test('should handle empty skills array', () => {
+    transformCursor([], TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills'))).toBe(true);
   });
 
   test('should preserve line breaks and formatting in body', () => {
-    const commands = [
+    const skills = [
       {
         name: 'formatted',
         description: 'Test',
-        args: [],
+        license: '',
         body: `Line 1
 
 Line 3 after blank line
@@ -177,12 +158,88 @@ Line 3 after blank line
 End.`
       }
     ];
-    
-    transformCursor(commands, [], TEST_DIR);
-    
-    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/commands/formatted.md'), 'utf-8');
+
+    transformCursor(skills, TEST_DIR);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/formatted/SKILL.md'), 'utf-8');
     expect(content).toContain('Line 1\n\nLine 3');
     expect(content).toContain('- Bullet 1\n- Bullet 2');
   });
-});
 
+  test('should support prefix option', () => {
+    const skills = [
+      { name: 'audit', description: 'Audit', license: '', body: 'Audit body' }
+    ];
+
+    transformCursor(skills, TEST_DIR, null, { prefix: 'i-', outputSuffix: '-prefixed' });
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor-prefixed/.cursor/skills/i-audit/SKILL.md'))).toBe(true);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor-prefixed/.cursor/skills/i-audit/SKILL.md'), 'utf-8');
+    expect(content).toContain('name: i-audit');
+  });
+
+  test('should replace {{model}} placeholder', () => {
+    const skills = [
+      {
+        name: 'test',
+        description: 'Test',
+        license: '',
+        body: 'Ask {{model}} for help.'
+      }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/test/SKILL.md'), 'utf-8');
+    expect(content).toContain('Ask the model for help.');
+  });
+
+  test('should replace {{config_file}} placeholder', () => {
+    const skills = [
+      {
+        name: 'test',
+        description: 'Test',
+        license: '',
+        body: 'See {{config_file}} for more.'
+      }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/test/SKILL.md'), 'utf-8');
+    expect(content).toContain('See .cursorrules for more.');
+  });
+
+  test('should replace {{ask_instruction}} placeholder', () => {
+    const skills = [
+      {
+        name: 'test',
+        description: 'Test',
+        license: '',
+        body: 'When unsure, {{ask_instruction}}'
+      }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    const content = fs.readFileSync(path.join(TEST_DIR, 'cursor/.cursor/skills/test/SKILL.md'), 'utf-8');
+    expect(content).toContain('When unsure, ask the user directly to clarify what you cannot infer.');
+  });
+
+  test('should clean existing directory before writing', () => {
+    // Create a pre-existing file structure
+    const existingDir = path.join(TEST_DIR, 'cursor/.cursor/skills/old-skill');
+    fs.mkdirSync(existingDir, { recursive: true });
+    fs.writeFileSync(path.join(existingDir, 'SKILL.md'), 'old content');
+
+    const skills = [
+      { name: 'new-skill', description: 'New', license: '', body: 'New body' }
+    ];
+
+    transformCursor(skills, TEST_DIR);
+
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/old-skill/SKILL.md'))).toBe(false);
+    expect(fs.existsSync(path.join(TEST_DIR, 'cursor/.cursor/skills/new-skill/SKILL.md'))).toBe(true);
+  });
+});

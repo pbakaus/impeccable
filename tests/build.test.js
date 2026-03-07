@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 import * as utils from '../scripts/lib/utils.js';
@@ -22,7 +22,6 @@ describe('build orchestration', () => {
 
   test('should call readSourceFiles with root directory', () => {
     const readSourceFilesSpy = spyOn(utils, 'readSourceFiles').mockReturnValue({
-      commands: [],
       skills: []
     });
 
@@ -35,14 +34,15 @@ describe('build orchestration', () => {
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
-    const { commands, skills } = utils.readSourceFiles(ROOT_DIR);
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    const { skills } = utils.readSourceFiles(ROOT_DIR);
+    const patterns = utils.readPatterns(ROOT_DIR);
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGemini(skills, DIST_DIR, patterns);
+    transformers.transformCodex(skills, DIST_DIR, patterns);
 
     expect(readSourceFilesSpy).toHaveBeenCalledWith(ROOT_DIR);
-    
+
     readSourceFilesSpy.mockRestore();
     transformCursorSpy.mockRestore();
     transformClaudeCodeSpy.mockRestore();
@@ -50,18 +50,16 @@ describe('build orchestration', () => {
     transformCodexSpy.mockRestore();
   });
 
-  test('should call all four transformers with correct arguments', () => {
-    const commands = [
-      { name: 'cmd1', description: 'Command 1', args: [], body: 'Body 1' }
-    ];
+  test('should call all transformers with correct arguments', () => {
     const skills = [
       { name: 'skill1', description: 'Skill 1', license: 'MIT', body: 'Skill body 1' }
     ];
+    const patterns = { patterns: [], antipatterns: [] };
 
     const readSourceFilesSpy = spyOn(utils, 'readSourceFiles').mockReturnValue({
-      commands,
       skills
     });
+    const readPatternsSpy = spyOn(utils, 'readPatterns').mockReturnValue(patterns);
 
     const transformCursorSpy = spyOn(transformers, 'transformCursor').mockImplementation(() => {});
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
@@ -72,17 +70,19 @@ describe('build orchestration', () => {
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
     const sourceFiles = utils.readSourceFiles(ROOT_DIR);
-    transformers.transformCursor(sourceFiles.commands, sourceFiles.skills, DIST_DIR);
-    transformers.transformClaudeCode(sourceFiles.commands, sourceFiles.skills, DIST_DIR);
-    transformers.transformGemini(sourceFiles.commands, sourceFiles.skills, DIST_DIR);
-    transformers.transformCodex(sourceFiles.commands, sourceFiles.skills, DIST_DIR);
+    const patternData = utils.readPatterns(ROOT_DIR);
+    transformers.transformCursor(sourceFiles.skills, DIST_DIR, patternData);
+    transformers.transformClaudeCode(sourceFiles.skills, DIST_DIR, patternData);
+    transformers.transformGemini(sourceFiles.skills, DIST_DIR, patternData);
+    transformers.transformCodex(sourceFiles.skills, DIST_DIR, patternData);
 
-    expect(transformCursorSpy).toHaveBeenCalledWith(commands, skills, DIST_DIR);
-    expect(transformClaudeCodeSpy).toHaveBeenCalledWith(commands, skills, DIST_DIR);
-    expect(transformGeminiSpy).toHaveBeenCalledWith(commands, skills, DIST_DIR);
-    expect(transformCodexSpy).toHaveBeenCalledWith(commands, skills, DIST_DIR);
+    expect(transformCursorSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
+    expect(transformClaudeCodeSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
+    expect(transformGeminiSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
+    expect(transformCodexSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
+    readPatternsSpy.mockRestore();
     transformCursorSpy.mockRestore();
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
@@ -90,10 +90,12 @@ describe('build orchestration', () => {
   });
 
   test('should handle empty source files', () => {
+    const patterns = { patterns: [], antipatterns: [] };
+
     const readSourceFilesSpy = spyOn(utils, 'readSourceFiles').mockReturnValue({
-      commands: [],
       skills: []
     });
+    const readPatternsSpy = spyOn(utils, 'readPatterns').mockReturnValue(patterns);
 
     const transformCursorSpy = spyOn(transformers, 'transformCursor').mockImplementation(() => {});
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
@@ -103,18 +105,20 @@ describe('build orchestration', () => {
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
-    const { commands, skills } = utils.readSourceFiles(ROOT_DIR);
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    const { skills } = utils.readSourceFiles(ROOT_DIR);
+    const patternData = utils.readPatterns(ROOT_DIR);
+    transformers.transformCursor(skills, DIST_DIR, patternData);
+    transformers.transformClaudeCode(skills, DIST_DIR, patternData);
+    transformers.transformGemini(skills, DIST_DIR, patternData);
+    transformers.transformCodex(skills, DIST_DIR, patternData);
 
-    expect(transformCursorSpy).toHaveBeenCalledWith([], [], DIST_DIR);
-    expect(transformClaudeCodeSpy).toHaveBeenCalledWith([], [], DIST_DIR);
-    expect(transformGeminiSpy).toHaveBeenCalledWith([], [], DIST_DIR);
-    expect(transformCodexSpy).toHaveBeenCalledWith([], [], DIST_DIR);
+    expect(transformCursorSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
+    expect(transformClaudeCodeSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
+    expect(transformGeminiSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
+    expect(transformCodexSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
+    readPatternsSpy.mockRestore();
     transformCursorSpy.mockRestore();
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
@@ -123,17 +127,6 @@ describe('build orchestration', () => {
 
   test('integration: full build creates all expected outputs', () => {
     // Create test source files
-    const commandContent = `---
-name: test-command
-description: A test command
-args:
-  - name: target
-    description: Target parameter
-    required: false
----
-
-This is a test command body with {{target}} placeholder.`;
-
     const skillContent = `---
 name: test-skill
 description: A test skill
@@ -142,113 +135,121 @@ license: MIT
 
 This is a test skill body.`;
 
-    utils.writeFile(path.join(TEST_DIR, 'source/commands/test-command.md'), commandContent);
-    utils.writeFile(path.join(TEST_DIR, 'source/skills/test-skill.md'), skillContent);
+    const skillDir = path.join(TEST_DIR, 'source/skills/test-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
     // Run the build process
     const DIST_DIR = path.join(TEST_DIR, 'dist');
-    const { commands, skills } = utils.readSourceFiles(TEST_DIR);
-    
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
+
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGemini(skills, DIST_DIR, patterns);
+    transformers.transformCodex(skills, DIST_DIR, patterns);
 
     // Verify Cursor outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/commands/test-command.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/rules/test-skill.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/test-skill/SKILL.md'))).toBe(true);
 
     // Verify Claude Code outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/commands/test-command.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/skills/test-skill/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/.claude/skills/test-skill/SKILL.md'))).toBe(true);
 
     // Verify Gemini outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'gemini/commands/test-command.toml'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'gemini/GEMINI.test-skill.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'gemini/GEMINI.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'gemini/.gemini/skills/test-skill/SKILL.md'))).toBe(true);
 
     // Verify Codex outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex/prompts/test-command.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex/AGENTS.test-skill.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex/AGENTS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/test-skill/SKILL.md'))).toBe(true);
   });
 
   test('integration: verify transformations are correct', () => {
-    const commandContent = `---
-name: normalize
-description: Normalize design
+    const skillContent = `---
+name: audit
+description: Run technical quality checks
+user-invokable: true
 args:
   - name: target
     description: Target element
     required: false
 ---
 
-Please normalize {{target}} to match the design system.`;
+Please audit {{target}} for technical quality. Ask {{model}} for help.`;
 
-    utils.writeFile(path.join(TEST_DIR, 'source/commands/normalize.md'), commandContent);
+    const skillDir = path.join(TEST_DIR, 'source/skills/audit');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
     const DIST_DIR = path.join(TEST_DIR, 'dist');
-    const { commands, skills } = utils.readSourceFiles(TEST_DIR);
-    
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
 
-    // Verify Cursor: body only, no frontmatter
-    const cursorContent = fs.readFileSync(path.join(DIST_DIR, 'cursor/commands/normalize.md'), 'utf-8');
-    expect(cursorContent).not.toContain('---');
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGemini(skills, DIST_DIR, patterns);
+    transformers.transformCodex(skills, DIST_DIR, patterns);
+
+    // Verify Cursor: full frontmatter with user-invokable
+    const cursorContent = fs.readFileSync(path.join(DIST_DIR, 'cursor/.cursor/skills/audit/SKILL.md'), 'utf-8');
+    expect(cursorContent).toContain('---');
+    expect(cursorContent).toContain('name: audit');
     expect(cursorContent).toContain('{{target}}');
+    expect(cursorContent).toContain('the model');
 
-    // Verify Claude Code: full frontmatter
-    const claudeContent = fs.readFileSync(path.join(DIST_DIR, 'claude-code/commands/normalize.md'), 'utf-8');
+    // Verify Claude Code: full frontmatter with user-invokable and args
+    const claudeContent = fs.readFileSync(path.join(DIST_DIR, 'claude-code/.claude/skills/audit/SKILL.md'), 'utf-8');
     expect(claudeContent).toContain('---');
-    expect(claudeContent).toContain('name: normalize');
+    expect(claudeContent).toContain('name: audit');
+    expect(claudeContent).toContain('user-invokable: true');
     expect(claudeContent).toContain('{{target}}');
+    expect(claudeContent).toContain('Claude');
 
-    // Verify Gemini: TOML with {{args}}
-    const geminiContent = fs.readFileSync(path.join(DIST_DIR, 'gemini/commands/normalize.toml'), 'utf-8');
-    expect(geminiContent).toContain('description = "Normalize design"');
-    expect(geminiContent).toContain('{{args}}');
-    expect(geminiContent).not.toContain('{{target}}');
+    // Verify Gemini: skill in skills directory
+    expect(fs.existsSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'))).toBe(true);
+    const geminiContent = fs.readFileSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'), 'utf-8');
+    expect(geminiContent).toContain('{{args}}'); // Replaced for user-invokable in Gemini
+    expect(geminiContent).toContain('Gemini');
 
-    // Verify Codex: $VARIABLE
-    const codexContent = fs.readFileSync(path.join(DIST_DIR, 'codex/prompts/normalize.md'), 'utf-8');
-    expect(codexContent).toContain('$TARGET');
-    expect(codexContent).not.toContain('{{target}}');
+    // Verify Codex: skill in skills directory
+    expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'))).toBe(true);
+    const codexContent = fs.readFileSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'), 'utf-8');
+    expect(codexContent).toContain('$TARGET'); // Replaced for user-invokable in Codex
+    expect(codexContent).toContain('GPT');
   });
 
-  test('integration: multiple commands and skills', () => {
-    utils.writeFile(path.join(TEST_DIR, 'source/commands/cmd1.md'), '---\nname: cmd1\n---\nBody1');
-    utils.writeFile(path.join(TEST_DIR, 'source/commands/cmd2.md'), '---\nname: cmd2\n---\nBody2');
-    utils.writeFile(path.join(TEST_DIR, 'source/skills/skill1.md'), '---\nname: skill1\n---\nSkill1');
-    utils.writeFile(path.join(TEST_DIR, 'source/skills/skill2.md'), '---\nname: skill2\n---\nSkill2');
+  test('integration: multiple skills', () => {
+    const skill1Dir = path.join(TEST_DIR, 'source/skills/skill1');
+    fs.mkdirSync(skill1Dir, { recursive: true });
+    fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '---\nname: skill1\n---\nSkill1');
+
+    const skill2Dir = path.join(TEST_DIR, 'source/skills/skill2');
+    fs.mkdirSync(skill2Dir, { recursive: true });
+    fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '---\nname: skill2\n---\nSkill2');
 
     const DIST_DIR = path.join(TEST_DIR, 'dist');
-    const { commands, skills } = utils.readSourceFiles(TEST_DIR);
-    
-    expect(commands).toHaveLength(2);
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
+
     expect(skills).toHaveLength(2);
 
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGemini(skills, DIST_DIR, patterns);
+    transformers.transformCodex(skills, DIST_DIR, patterns);
 
     // Verify all files exist
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/commands/cmd1.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/commands/cmd2.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/rules/skill1.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/rules/skill2.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/skill1/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/skill2/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/.claude/skills/skill1/SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/.claude/skills/skill2/SKILL.md'))).toBe(true);
   });
 
   test('should call transformers in correct order', () => {
     const callOrder = [];
 
     const readSourceFilesSpy = spyOn(utils, 'readSourceFiles').mockReturnValue({
-      commands: [],
       skills: []
     });
+    const readPatternsSpy = spyOn(utils, 'readPatterns').mockReturnValue({ patterns: [], antipatterns: [] });
 
     const transformCursorSpy = spyOn(transformers, 'transformCursor').mockImplementation(() => {
       callOrder.push('cursor');
@@ -266,19 +267,34 @@ Please normalize {{target}} to match the design system.`;
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
-    const { commands, skills } = utils.readSourceFiles(ROOT_DIR);
-    transformers.transformCursor(commands, skills, DIST_DIR);
-    transformers.transformClaudeCode(commands, skills, DIST_DIR);
-    transformers.transformGemini(commands, skills, DIST_DIR);
-    transformers.transformCodex(commands, skills, DIST_DIR);
+    const { skills } = utils.readSourceFiles(ROOT_DIR);
+    const patterns = utils.readPatterns(ROOT_DIR);
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGemini(skills, DIST_DIR, patterns);
+    transformers.transformCodex(skills, DIST_DIR, patterns);
 
     expect(callOrder).toEqual(['cursor', 'claude-code', 'gemini', 'codex']);
 
     readSourceFilesSpy.mockRestore();
+    readPatternsSpy.mockRestore();
     transformCursorSpy.mockRestore();
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
   });
-});
 
+  test('should include agents and kiro transformers', () => {
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
+    const DIST_DIR = path.join(TEST_DIR, 'dist');
+
+    // These should not throw
+    transformers.transformAgents(skills, DIST_DIR, patterns);
+    transformers.transformKiro(skills, DIST_DIR, patterns);
+
+    // Verify outputs
+    expect(fs.existsSync(path.join(DIST_DIR, 'agents/.agents/skills'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'kiro/.kiro/skills'))).toBe(true);
+  });
+});
