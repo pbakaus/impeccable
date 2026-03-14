@@ -46,6 +46,11 @@ Skip questions where the answer is already clear from the codebase exploration.
 
 ## Step 3: Write Design Context
 
+First, determine where to write. Check for `composer.json` in the project root. If it exists, look for `laravel/boost` in the `require` or `require-dev` dependencies.
+
+- **If `laravel/boost` is found:** Write to `.ai/guidelines/design-context.md` (create the `.ai/guidelines/` directory if needed)
+- **If not found (or no `composer.json`):** Write to {{config_file}} in the project root
+
 Synthesize your findings and the user's answers into a `## Design Context` section:
 
 ```markdown
@@ -64,6 +69,8 @@ Synthesize your findings and the user's answers into a `## Design Context` secti
 [3-5 principles derived from the conversation that should guide all design decisions]
 ```
 
-Write this section to {{config_file}} in the project root. If the file exists, append or update the Design Context section.
+If writing to {{config_file}} and the file already exists, append or update the Design Context section.
+
+If writing to `.ai/guidelines/design-context.md`, remind the user to run `php artisan boost:update` to merge the guideline into their {{config_file}}.
 
 Confirm completion and summarize the key design principles that will now guide all future work.
