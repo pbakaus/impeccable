@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design.
+The vocabulary you didn't know you needed. 1 skill, 19 commands, and curated anti-patterns for impeccable frontend design.
 
 > **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
 
@@ -52,6 +52,8 @@ A comprehensive design skill with 7 domain-specific references ([view skill](sou
 | `/extract` | Pull into reusable components |
 | `/adapt` | Adapt for different devices |
 | `/onboard` | Design onboarding flows |
+| `/next` | Run next pending recommendation from audit/critique |
+| `/fix-all` | Run all pending recommendations in priority order |
 
 ### Anti-Patterns
 
@@ -127,10 +129,10 @@ cp -r dist/codex/.codex/* ~/.codex/
 Once installed, use commands in your AI harness:
 
 ```
-/audit           # Find issues
-/normalize       # Fix inconsistencies
+/audit           # Find issues and generate a plan
+/next            # Run the next recommended fix
+/fix-all         # Run all recommended fixes in order
 /polish          # Final cleanup
-/distill         # Remove complexity
 ```
 
 Most commands accept an optional argument to focus on a specific area:
@@ -140,7 +142,11 @@ Most commands accept an optional argument to focus on a specific area:
 /polish checkout-form
 ```
 
-**Note:** Codex CLI uses a different syntax: `/prompts:audit`, `/prompts:polish`, etc.
+### The Pipeline
+
+`/audit` and `/critique` now save their recommendations to `.impeccable-plan.md`. Instead of losing track of what to fix next, run `/next` to execute one recommendation at a time, or `/fix-all` to run them all in priority order.
+
+**Note:** Codex CLI uses `$` prefix instead of `/`: `$audit`, `$next`, `$fix-all`, etc.
 
 ## Supported Tools
 
