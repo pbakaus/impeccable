@@ -268,49 +268,57 @@ export const PROVIDER_PLACEHOLDERS = {
     model: 'Claude',
     config_file: 'CLAUDE.md',
     ask_instruction: 'STOP and call the AskUserQuestionTool to clarify.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Use the Skill tool to invoke the skill by name (e.g., Skill tool with skill="harden"). Pass the target area as args.'
   },
   'cursor': {
     model: 'the model',
     config_file: '.cursorrules',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .cursor/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   'gemini': {
     model: 'Gemini',
     config_file: 'GEMINI.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .gemini/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   'codex': {
     model: 'GPT',
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '$'
+    command_prefix: '$',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .codex/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   'agents': {
     model: 'the model',
     config_file: '.github/copilot-instructions.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .agents/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   'kiro': {
     model: 'Claude',
     config_file: '.kiro/settings.json',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .kiro/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   opencode: {
     model: 'Claude',
     config_file: 'AGENTS.md',
     ask_instruction: 'STOP and call the `question` tool to clarify.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .opencode/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   },
   'pi': {
     model: 'the model',
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
-    command_prefix: '/'
+    command_prefix: '/',
+    invoke_skill_instruction: 'Read the skill\'s SKILL.md file from .pi/skills/<skill-name>/SKILL.md and follow its instructions directly.'
   }
 };
 
@@ -369,6 +377,7 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
     .replace(/\{\{config_file\}\}/g, placeholders.config_file)
     .replace(/\{\{ask_instruction\}\}/g, placeholders.ask_instruction)
     .replace(/\{\{command_prefix\}\}/g, cmdPrefix)
+    .replace(/\{\{invoke_skill_instruction\}\}/g, placeholders.invoke_skill_instruction || '')
     .replace(/\{\{available_commands\}\}/g, commandList);
 
   // Replace `/skillname` invocations with the correct command prefix for this provider

@@ -24,7 +24,9 @@ Execute the next pending recommendation from a previous `{{command_prefix}}audit
 N. `{{command_prefix}}command-name` — Description of what to fix (context details)
 ```
 
-**Execute** the command listed, passing along the **Target** from the plan header as the area argument and the item's context description as additional guidance for what to focus on.
+**Execute** the command by invoking it as a skill. {{invoke_skill_instruction}}
+
+The commands in the plan are all impeccable design skills (like `harden`, `normalize`, `adapt`, `polish`, etc.). Pass the **Target** from the plan header as the area argument and the item's context description as additional guidance for what to focus on.
 
 **After execution**: Update `.impeccable-plan.md`:
 - Remove the completed item from `## Pending`

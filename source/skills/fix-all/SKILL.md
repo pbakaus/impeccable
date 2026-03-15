@@ -30,7 +30,7 @@ Running all in sequence.
 
 **For each pending item**:
 1. Announce: "Running N/total: `{{command_prefix}}command-name` — description..."
-2. Execute the command, passing the **Target** from the plan header as the area argument and the item's context as focus guidance
+2. Execute the command by invoking it as a skill. {{invoke_skill_instruction}} The commands in the plan are all impeccable design skills (like `harden`, `normalize`, `adapt`, `polish`, etc.). Pass the **Target** from the plan header as the area argument and the item's context as focus guidance.
 3. Update `.impeccable-plan.md` — move item to `## Completed` with timestamp
 4. Brief status: "Done. Moving to next..."
 
