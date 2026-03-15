@@ -46,8 +46,8 @@ export function transformCodex(skills, distDir, patterns = null, options = {}) {
 
     const frontmatter = generateYamlFrontmatter(frontmatterObj);
 
-    let skillBody = replacePlaceholders(skill.body, 'codex', commandNames);
-    if (prefix) skillBody = prefixSkillReferences(skillBody, prefix, allSkillNames);
+    let skillBody = replacePlaceholders(skill.body, 'codex', commandNames, allSkillNames);
+    if (prefix) skillBody = prefixSkillReferences(skillBody, prefix, allSkillNames, '$');
     // For user-invokable skills, transform remaining {{argname}} to $ARGNAME
     if (skill.userInvokable) {
       skillBody = skillBody.replace(/\{\{([^}]+)\}\}/g, (match, argName) => {
@@ -65,7 +65,7 @@ export function transformCodex(skills, distDir, patterns = null, options = {}) {
       ensureDir(refDir);
       for (const ref of skill.references) {
         const refOutputPath = path.join(refDir, `${ref.name}.md`);
-        const refContent = replacePlaceholders(ref.content, 'codex');
+        const refContent = replacePlaceholders(ref.content, 'codex', [], allSkillNames);
         writeFile(refOutputPath, refContent);
         refCount++;
       }
