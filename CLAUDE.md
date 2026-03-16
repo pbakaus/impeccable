@@ -50,3 +50,18 @@ When bumping the version, update **all** of these locations to keep them in sync
 - `.claude-plugin/plugin.json` → `version`
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
 - `public/index.html` → hero version link text + new changelog entry
+
+## Adding New Skills
+
+When adding a new user-invokable skill, update the command count in **all** of these locations:
+
+- `public/index.html` → meta descriptions, hero box, section lead
+- `public/cheatsheet.html` → meta description, subtitle, `commandCategories`, `commandRelationships`
+- `public/js/data.js` → `commandProcessSteps`, `commandCategories`, `commandRelationships`
+- `public/js/components/framework-viz.js` → `commandSymbols`, `commandNumbers`
+- `public/js/demos/commands/` → new demo file + import in `index.js`
+- `README.md` → intro, command count, commands table
+- `NOTICE.md` → steering commands count
+- `AGENTS.md` → intro command count
+- `.claude-plugin/plugin.json` → description
+- `.claude-plugin/marketplace.json` → metadata description + plugin description

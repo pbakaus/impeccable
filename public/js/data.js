@@ -12,6 +12,11 @@ export const readyCommands = [
   'normalize'  // First command to be fully completed
 ];
 
+// Commands marked as beta — shown with a badge in the UI
+export const betaCommands = [
+  'overdrive'
+];
+
 // Consolidated frontend-design skill with reference domains
 export const skillFocusAreas = {
   'frontend-design': [
@@ -53,7 +58,10 @@ export const commandProcessSteps = {
   'delight': ['Identify', 'Design', 'Implement'],
   'extract': ['Identify', 'Abstract', 'Document'],
   'adapt': ['Analyze', 'Adjust', 'Optimize'],
-  'onboard': ['Map', 'Design', 'Guide']
+  'onboard': ['Map', 'Design', 'Guide'],
+  'typeset': ['Assess', 'Select', 'Scale', 'Refine'],
+  'arrange': ['Assess', 'Grid', 'Rhythm', 'Balance'],
+  'overdrive': ['Assess', 'Choose', 'Build', 'Polish']
 };
 
 export const commandCategories = {
@@ -73,7 +81,10 @@ export const commandCategories = {
   'delight': 'enhancement',
   'extract': 'system',
   'adapt': 'adaptation',
-  'onboard': 'enhancement'
+  'onboard': 'enhancement',
+  'typeset': 'enhancement',
+  'arrange': 'enhancement',
+  'overdrive': 'enhancement'
 };
 
 // Skill relationships - now consolidated into frontend-design skill
@@ -88,7 +99,7 @@ export const skillRelationships = {
 export const commandRelationships = {
   'teach-impeccable': { flow: 'Setup: One-time project context gathering' },
   'audit': { leadsTo: ['normalize', 'harden', 'optimize', 'adapt', 'clarify'], flow: 'Diagnostic: Technical quality audit' },
-  'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter'], flow: 'Diagnostic: UX and design review' },
+  'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter', 'typeset', 'arrange'], flow: 'Diagnostic: UX and design review' },
   'normalize': { combinesWith: ['clarify', 'adapt'], flow: 'Quality: Align with design system' },
   'polish': { flow: 'Quality: Final pass before shipping' },
   'optimize': { flow: 'Quality: Performance improvements' },
@@ -102,6 +113,9 @@ export const commandRelationships = {
   'delight': { combinesWith: ['bolder', 'animate'], flow: 'Enhancement: Add personality' },
   'extract': { flow: 'System: Create design system elements' },
   'adapt': { combinesWith: ['normalize', 'clarify'], flow: 'Adaptation: Different devices/contexts' },
-  'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Enhancement: Onboarding & empty states' }
+  'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Enhancement: Onboarding & empty states' },
+  'typeset': { combinesWith: ['bolder', 'normalize'], flow: 'Enhancement: Fix typography' },
+  'arrange': { combinesWith: ['distill', 'adapt'], flow: 'Enhancement: Fix layout & spacing' },
+  'overdrive': { combinesWith: ['animate', 'delight'], flow: 'Enhancement: Technically extraordinary effects' }
 };
 

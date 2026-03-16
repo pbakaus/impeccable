@@ -78,6 +78,20 @@
   font-weight: 500;
 }
 
+.beta-badge {
+  font-family: var(--font-body);
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
 .manual-cmd-desc {
   font-size: 1rem;
   line-height: 1.6;

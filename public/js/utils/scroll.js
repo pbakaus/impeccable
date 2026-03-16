@@ -22,6 +22,21 @@ export function initHashTracking() {
 	let ticking = false;
 
 	function updateHash() {
+		// Don't override command deep links while user is in the commands section
+		if (currentHash.startsWith('cmd-')) {
+			const cmdEl = document.getElementById(currentHash);
+			if (cmdEl) {
+				const rect = cmdEl.getBoundingClientRect();
+				// Only clear the cmd hash if user scrolled well away from commands section
+				if (rect.top > window.innerHeight * 2 || rect.bottom < -window.innerHeight) {
+					currentHash = '';
+				} else {
+					ticking = false;
+					return;
+				}
+			}
+		}
+
 		const scrollY = window.scrollY;
 		const viewportHeight = window.innerHeight;
 		const triggerPoint = scrollY + viewportHeight * 0.3;
@@ -37,6 +52,9 @@ export function initHashTracking() {
 				activeSection = section.id;
 			}
 		});
+
+		// Don't set #hero — it's the default state, no hash needed
+		if (activeSection === 'hero') activeSection = '';
 
 		if (activeSection !== currentHash) {
 			currentHash = activeSection;
@@ -59,17 +77,23 @@ export function initHashTracking() {
 
 	// Handle initial hash on page load - instant jump
 	if (window.location.hash) {
-		const target = document.querySelector(window.location.hash);
+		const hash = window.location.hash.slice(1);
+		const target = document.getElementById(hash);
 		if (target) {
+			currentHash = hash;
 			setTimeout(() => {
 				const offset = 40;
 				const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
 				window.scrollTo({ top: targetPosition, behavior: 'auto' });
+
+				// If it's a command deep link, activate it
+				if (hash.startsWith('cmd-') && target.classList.contains('manual-entry')) {
+					target.click();
+				}
 			}, 100);
 		}
+	} else {
+		// No hash — don't set one on initial load
 	}
-
-	// Initial check
-	updateHash();
 }
 

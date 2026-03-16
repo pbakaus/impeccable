@@ -3,7 +3,7 @@
  * Clean grid visualization showing all commands organized by category
  */
 
-import { commandCategories, commandRelationships } from '../data.js';
+import { commandCategories, commandRelationships, betaCommands } from '../data.js';
 
 // Colors now reference CSS custom properties for dark mode support
 const categoryColors = {
@@ -42,7 +42,10 @@ const commandSymbols = {
 	delight: 'De',
 	bolder: 'Bo',
 	quieter: 'Qu',
-	onboard: 'On'
+	onboard: 'On',
+	typeset: 'Ty',
+	arrange: 'Ar',
+	overdrive: 'Od'
 };
 
 // Atomic numbers (just for visual interest)
@@ -63,7 +66,10 @@ const commandNumbers = {
 	delight: 13,
 	bolder: 14,
 	quieter: 15,
-	onboard: 16
+	onboard: 16,
+	typeset: 17,
+	arrange: 18,
+	overdrive: 19
 };
 
 export class PeriodicTable {
@@ -327,6 +333,24 @@ export class PeriodicTable {
 		`;
 		name.textContent = `/${cmd}`;
 		el.appendChild(name);
+
+		// Beta badge
+		if (betaCommands.includes(cmd)) {
+			const badge = document.createElement('div');
+			badge.style.cssText = `
+				position: absolute;
+				top: 2px;
+				right: 3px;
+				font-family: var(--font-mono);
+				font-size: 5px;
+				letter-spacing: 0.05em;
+				color: ${colors.text};
+				opacity: 0.45;
+				text-transform: uppercase;
+			`;
+			badge.textContent = 'β';
+			el.appendChild(badge);
+		}
 
 		// Shared handler for activation (hover or focus)
 		const activate = () => {

@@ -1,6 +1,6 @@
-import { renderCommandDemo } from "../demo-renderer.js";
+import { renderCommandDemo, initCommandDemo } from "../demo-renderer.js";
 import { initSplitCompare } from "../effects/split-compare.js";
-import { commandProcessSteps, commandCategories, commandRelationships } from "../data.js";
+import { commandProcessSteps, commandCategories, commandRelationships, betaCommands } from "../data.js";
 
 // Track current split instance and command for cleanup
 let currentSplitInstance = null;
@@ -141,9 +141,11 @@ function renderManualEntry(cmd) {
         }
     }
 
+    const isBeta = betaCommands.includes(cmd.id);
+
     return `
         <div class="manual-entry" data-id="${cmd.id}" id="cmd-${cmd.id}">
-            <h3 class="manual-cmd-name">/${cmd.id}</h3>
+            <h3 class="manual-cmd-name">/${cmd.id}${isBeta ? ' <span class="beta-badge">BETA</span>' : ''}</h3>
             <p class="manual-cmd-desc">${cmd.description}</p>
             ${relationshipHTML}
         </div>
@@ -164,6 +166,7 @@ function setupDesktopScrollSpy(commands) {
                 const cmd = commands.find(c => c.id === cmdId);
                 if (cmd) {
                     updateTerminal(cmd, terminalContent, commands);
+                    history.replaceState(null, '', `#cmd-${cmdId}`);
                 }
             }
         });
@@ -183,6 +186,7 @@ function setupDesktopScrollSpy(commands) {
             const cmd = commands.find(c => c.id === cmdId);
             if (cmd) {
                 updateTerminal(cmd, terminalContent, commands);
+                history.replaceState(null, '', `#cmd-${cmdId}`);
             }
 
             e.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -223,6 +227,7 @@ function updateTerminal(cmd, container, allCommands) {
 
         });
     }
+    initCommandDemo(cmd.id, container);
 }
 
 // ============================================
@@ -293,6 +298,7 @@ function setupMobileInteractions(commands) {
             maxPosition: 90
         });
     }
+    if (commands[0]) initCommandDemo(commands[0].id, demoArea);
 
     // Pill click/tap handler
     pills.forEach(pill => {
@@ -334,6 +340,7 @@ function setupMobileInteractions(commands) {
 
                 });
             }
+            initCommandDemo(cmdId, demoArea);
         });
     });
 }

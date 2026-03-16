@@ -48,10 +48,27 @@ export function initSplitCompare(container, options = {}) {
 	}
 
 	function retriggerAnimations() {
-		// Find all elements with animations in the "after" content and re-trigger them
+		// Re-trigger CSS animations in the "after" content.
+		// If there's a canvas (e.g. overdrive shader), we can't clone-and-replace
+		// because that destroys JS-driven animations. In that case, retrigger
+		// individual elements. Otherwise, use the fast clone approach.
 		const afterContent = splitAfter.querySelector('.split-content');
-		if (afterContent) {
-			// Clone and replace to restart all CSS animations
+		if (!afterContent) return;
+
+		const hasCanvas = afterContent.querySelector('canvas, .od-burn, .od-sparks');
+		if (hasCanvas) {
+			// Safe path: retrigger CSS animations individually, skip canvas
+			afterContent.querySelectorAll('*').forEach(el => {
+				if (el.tagName === 'CANVAS') return;
+				const anim = getComputedStyle(el).animationName;
+				if (anim && anim !== 'none') {
+					el.style.animation = 'none';
+					el.offsetHeight;
+					el.style.animation = '';
+				}
+			});
+		} else {
+			// Fast path: clone and replace to restart all CSS animations
 			const clone = afterContent.cloneNode(true);
 			afterContent.parentNode.replaceChild(clone, afterContent);
 		}

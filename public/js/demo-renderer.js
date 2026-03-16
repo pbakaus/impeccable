@@ -6,6 +6,19 @@ import { getCommandDemo } from './demos/commands/index.js';
 import { getSkillDemo } from './demos/skills/index.js';
 
 /**
+ * Initialize a command demo's JS after its HTML has been inserted into the DOM.
+ * Call this after innerHTML is set and split compare is initialized.
+ */
+export function initCommandDemo(commandId, container) {
+  const demo = getCommandDemo(commandId);
+  if (demo && typeof demo.init === 'function') {
+    const demoArea = container.querySelector('.split-after .split-content') || container;
+    console.log('[initCommandDemo]', commandId, 'demoArea:', demoArea);
+    demo.init(demoArea);
+  }
+}
+
+/**
  * Render a command demo with split-screen comparison
  */
 export function renderCommandDemo(commandId) {

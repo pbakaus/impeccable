@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, Codex app, Codex CLI, and other Agent Skills consumers.
+The vocabulary you didn't know you needed. 1 skill, 20 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, Codex app, Codex CLI, and other Agent Skills consumers.
 
 ## Repository Purpose
 

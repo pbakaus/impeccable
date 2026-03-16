@@ -1,6 +1,6 @@
 {
   "name": "impeccable",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "author": "Paul Bakaus",
   "dependencies": {
     "archiver": "^7.0.1",

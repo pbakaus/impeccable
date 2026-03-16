@@ -1,7 +1,7 @@
 {
   "name": "impeccable",
-  "description": "Design vocabulary and skills for frontend development. Includes 18 skills (17 user-invokable: /polish, /distill, /audit, /bolder, /quieter, etc.) and an enhanced frontend-design skill with curated anti-patterns.",
-  "version": "1.3.0",
+  "description": "Design vocabulary and skills for frontend development. Includes 21 skills (20 user-invokable: /polish, /distill, /audit, /typeset, /overdrive, etc.) and an enhanced frontend-design skill with curated anti-patterns.",
+  "version": "1.5.0",
   "author": {
     "name": "Paul Bakaus",
     "email": "paul@paulbakaus.com"

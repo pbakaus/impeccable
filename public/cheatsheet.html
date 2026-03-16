@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Impeccable Command Cheatsheet</title>
-  <meta name="description" content="Quick reference for all 17 Impeccable commands. Print-friendly cheatsheet for design fluency in AI harnesses.">
+  <meta name="description" content="Quick reference for all 20 Impeccable commands. Print-friendly cheatsheet for design fluency in AI harnesses.">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -160,7 +160,7 @@
 <body>
   <header>
     <h1>Impeccable Commands</h1>
-    <p class="subtitle">Quick reference for all 17 design commands</p>
+    <p class="subtitle">Quick reference for all 20 design commands</p>
     <a href="/" class="back-link">&larr; Back to impeccable.style</a>
   </header>
 
@@ -201,13 +201,16 @@
       'delight': 'enhancement',
       'extract': 'system',
       'adapt': 'adaptation',
-      'onboard': 'enhancement'
+      'onboard': 'enhancement',
+      'typeset': 'enhancement',
+      'arrange': 'enhancement',
+      'overdrive': 'enhancement'
     };
 
     const commandRelationships = {
       'teach-impeccable': { flow: 'One-time project context gathering' },
       'audit': { leadsTo: ['normalize', 'harden', 'optimize', 'adapt', 'clarify'], flow: 'Technical quality audit' },
-      'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter'], flow: 'UX and design review' },
+      'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter', 'typeset', 'arrange'], flow: 'UX and design review' },
       'normalize': { combinesWith: ['clarify', 'adapt'], flow: 'Align with design system' },
       'polish': { flow: 'Final pass before shipping' },
       'optimize': { flow: 'Performance improvements' },
@@ -221,7 +224,10 @@
       'delight': { combinesWith: ['bolder', 'animate'], flow: 'Add personality' },
       'extract': { flow: 'Create design system elements' },
       'adapt': { combinesWith: ['normalize', 'clarify'], flow: 'Different devices/contexts' },
-      'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Onboarding & empty states' }
+      'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Onboarding & empty states' },
+      'typeset': { combinesWith: ['bolder', 'normalize'], flow: 'Fix typography' },
+      'arrange': { combinesWith: ['distill', 'adapt'], flow: 'Fix layout & spacing' },
+      'overdrive': { combinesWith: ['animate', 'delight'], flow: 'Technically extraordinary effects' }
     };
 
     async function loadCommands() {
@@ -261,8 +267,9 @@
                 }
               }
 
+              const isBeta = cmd.id === 'overdrive';
               html += `<div class="command">
-                <div class="command-name">/${cmd.id}</div>
+                <div class="command-name">/${cmd.id}${isBeta ? ' <span style="font-size:0.55rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-accent,#c8956c);border:1px solid;border-radius:3px;padding:1px 5px;vertical-align:middle;margin-left:4px;">BETA</span>' : ''}</div>
                 <div class="command-info">
                   <div class="command-desc">${cmd.description}</div>
                   ${metaHtml ? `<div class="command-meta">${metaHtml}</div>` : ''}
