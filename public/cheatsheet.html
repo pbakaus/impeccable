@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Impeccable Command Cheatsheet</title>
-  <meta name="description" content="Quick reference for all 17 Impeccable commands. Print-friendly cheatsheet for design fluency in AI harnesses.">
+  <meta name="description" content="Quick reference for all 18 Impeccable commands. Print-friendly cheatsheet for design fluency in AI harnesses.">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -160,7 +160,7 @@
 <body>
   <header>
     <h1>Impeccable Commands</h1>
-    <p class="subtitle">Quick reference for all 17 design commands</p>
+    <p class="subtitle">Quick reference for all 18 design commands</p>
     <a href="/" class="back-link">&larr; Back to impeccable.style</a>
   </header>
 
@@ -186,6 +186,7 @@
 
     const commandCategories = {
       'teach-impeccable': 'system',
+      'help': 'system',
       'audit': 'diagnostic',
       'critique': 'diagnostic',
       'normalize': 'quality',
@@ -206,6 +207,7 @@
 
     const commandRelationships = {
       'teach-impeccable': { flow: 'One-time project context gathering' },
+      'help': { leadsTo: ['teach-impeccable', 'audit', 'critique'], flow: 'Discover the right next command' },
       'audit': { leadsTo: ['normalize', 'harden', 'optimize', 'adapt', 'clarify'], flow: 'Technical quality audit' },
       'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter'], flow: 'UX and design review' },
       'normalize': { combinesWith: ['clarify', 'adapt'], flow: 'Align with design system' },

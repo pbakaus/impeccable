@@ -102,7 +102,7 @@ For each issue:
 - **What**: Name the problem clearly
 - **Why it matters**: How this hurts users or undermines goals
 - **Fix**: What to do about it (be concrete)
-- **Command**: Which command to use (prefer: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /critique, /colorize — or other installed skills you're sure exist)
+- **Command**: Which command to use (prefer: /quieter, /polish, /normalize, /clarify, /harden, /distill, /adapt, /animate, /optimize, /audit, /help, /bolder, /extract, /critique, /delight, /onboard, /colorize — or other installed skills you're sure exist)
 
 ### Minor Observations
 Quick notes on smaller issues worth addressing.

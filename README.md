@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design.
+The vocabulary you didn't know you needed. 1 skill, 18 commands, and curated anti-patterns for impeccable frontend design.
 
 > **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
 
@@ -12,7 +12,7 @@ Every LLM learned from the same generic templates. Without guidance, you get the
 
 Impeccable fights that bias with:
 - **An expanded skill** with 7 domain-specific reference files ([view source](source/skills/frontend-design/))
-- **17 steering commands** to audit, review, polish, distill, animate, and more
+- **18 steering commands** to audit, review, polish, distill, animate, and more
 - **Curated anti-patterns** that explicitly tell the AI what NOT to do
 
 ## What's Included
@@ -31,11 +31,12 @@ A comprehensive design skill with 7 domain-specific references ([view skill](sou
 | [responsive-design](source/skills/frontend-design/reference/responsive-design.md) | Mobile-first, fluid design, container queries |
 | [ux-writing](source/skills/frontend-design/reference/ux-writing.md) | Button labels, error messages, empty states |
 
-### 17 Commands
+### 18 Commands
 
 | Command | What it does |
 |---------|--------------|
 | `/teach-impeccable` | One-time setup: gather design context, save to config |
+| `/help` | List available commands and recommend the best next step |
 | `/audit` | Run technical quality checks (a11y, performance, responsive) |
 | `/critique` | UX design review: hierarchy, clarity, emotional resonance |
 | `/normalize` | Align with design system standards |
@@ -127,6 +128,7 @@ cp -r dist/codex/.codex/* ~/.codex/
 Once installed, use commands in your AI harness:
 
 ```
+/help            # Pick the right command
 /audit           # Find issues
 /normalize       # Fix inconsistencies
 /polish          # Final cleanup

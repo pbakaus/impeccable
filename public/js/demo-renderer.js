@@ -50,6 +50,46 @@ export function renderCommandDemo(commandId) {
         </div>
       `;
     }
+    if (commandId === 'help') {
+      return `
+        <div class="demo-container">
+          <div class="demo-viewport" style="padding: var(--spacing-lg); font-size: 13px; line-height: 1.6;">
+            <div style="display: flex; flex-direction: column; gap: 12px; color: var(--color-ash);">
+              <div style="font-size: 14px; color: var(--color-text); font-weight: 600;">What it helps with</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="color: var(--color-accent); flex-shrink: 0;">1.</span>
+                  <span>Shows the command set grouped by purpose</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="color: var(--color-accent); flex-shrink: 0;">2.</span>
+                  <span>Recommends the right next command for your goal</span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="color: var(--color-accent); flex-shrink: 0;">3.</span>
+                  <span>Suggests a short sequence when one command is not enough</span>
+                </div>
+              </div>
+              <div style="font-size: 14px; color: var(--color-text); font-weight: 600; margin-top: 4px;">Common starts</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>New project: <code>/teach-impeccable</code></span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>Something feels wrong: <code>/audit</code> or <code>/critique</code></span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: baseline;">
+                  <span style="opacity: 0.5; flex-shrink: 0;">→</span>
+                  <span>Nearly done: <code>/polish</code></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="demo-container">
         <div class="demo-viewport">
@@ -163,6 +203,5 @@ export function setupDemoTabs() {
     });
   });
 }
-
 
 

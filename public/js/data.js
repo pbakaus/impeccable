@@ -38,6 +38,7 @@ export const skillReferenceDomains = [
 
 export const commandProcessSteps = {
   'teach-impeccable': ['Gather', 'Clarify', 'Document', 'Save'],
+  'help': ['Inspect', 'List', 'Recommend'],
   'audit': ['Scan', 'Document', 'Prioritize', 'Recommend'],
   'critique': ['Evaluate', 'Critique', 'Prioritize', 'Suggest'],
   'normalize': ['Analyze', 'Identify', 'Align', 'Verify'],
@@ -58,6 +59,7 @@ export const commandProcessSteps = {
 
 export const commandCategories = {
   'teach-impeccable': 'system',
+  'help': 'system',
   'audit': 'diagnostic',
   'critique': 'diagnostic',
   'normalize': 'quality',
@@ -87,6 +89,7 @@ export const skillRelationships = {
 
 export const commandRelationships = {
   'teach-impeccable': { flow: 'Setup: One-time project context gathering' },
+  'help': { leadsTo: ['teach-impeccable', 'audit', 'critique'], flow: 'System: Discover the right command' },
   'audit': { leadsTo: ['normalize', 'harden', 'optimize', 'adapt', 'clarify'], flow: 'Diagnostic: Technical quality audit' },
   'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter'], flow: 'Diagnostic: UX and design review' },
   'normalize': { combinesWith: ['clarify', 'adapt'], flow: 'Quality: Align with design system' },
@@ -104,4 +107,3 @@ export const commandRelationships = {
   'adapt': { combinesWith: ['normalize', 'clarify'], flow: 'Adaptation: Different devices/contexts' },
   'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Enhancement: Onboarding & empty states' }
 };
-

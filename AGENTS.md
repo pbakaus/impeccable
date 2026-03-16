@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.
+The vocabulary you didn't know you needed. 1 skill, 18 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.
 
 ## Repository Purpose
 
@@ -247,4 +247,3 @@ End users can copy files directly without needing build tools.
 - [Gemini CLI GEMINI.md](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/gemini-md.md)
 - [Codex CLI Slash Commands](https://developers.openai.com/codex/guides/slash-commands)
 - [Codex CLI Skills](https://developers.openai.com/codex/skills/)
-
