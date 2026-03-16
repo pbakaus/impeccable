@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Impeccable: The missing upgrade to Anthropic's frontend-design skill</title>
-  <meta name="description" content="1 skill, 17 commands, and curated anti-patterns for impeccable frontend design. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.">
+  <meta name="description" content="1 skill, 17 commands, and curated anti-patterns for impeccable frontend design. Works with Cursor, Claude Code, Gemini CLI, Codex app, Codex CLI, Copilot, and more.">
   <meta name="theme-color" content="#1a1a1a">
   <link rel="canonical" href="https://impeccable.style">
 
@@ -12,7 +12,7 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://impeccable.style">
   <meta property="og:title" content="Impeccable: Design skills for AI harnesses">
-  <meta property="og:description" content="1 skill, 17 commands, and curated anti-patterns for impeccable frontend design. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.">
+  <meta property="og:description" content="1 skill, 17 commands, and curated anti-patterns for impeccable frontend design. Works with Cursor, Claude Code, Gemini CLI, Codex app, Codex CLI, Copilot, and more.">
   <meta property="og:image" content="https://impeccable.style/og-image.jpg">
 
   <!-- Twitter -->
@@ -69,7 +69,7 @@
               <img src="assets/cursor-logo.png" alt="Cursor" width="24" height="24" loading="lazy">
               <img src="assets/claude-logo.png" alt="Claude Code" width="24" height="24" loading="lazy">
               <img src="assets/gemini-logo.png" alt="Gemini CLI" width="20" height="20" loading="lazy">
-              <img src="assets/openai-logo.png" alt="Codex CLI" width="20" height="20" loading="lazy">
+              <img src="assets/openai-logo.png" alt="Codex" width="20" height="20" loading="lazy">
               <img src="assets/github-logo.png" alt="VS Code Copilot" width="20" height="20" loading="lazy">
               <img src="assets/antigravity-logo.png" alt="Antigravity" width="20" height="20" loading="lazy">
               <img src="assets/kiro-logo.png" alt="Kiro" width="20" height="20" loading="lazy">
@@ -78,7 +78,7 @@
             </div>
           </div>
         </div>
-        <p class="hero-version-link"><a href="#changelog">v1.3.0 — OpenCode & Pi support</a></p>
+        <p class="hero-version-link"><a href="#changelog">v1.4.0 — Codex app support</a></p>
       </div>
 
       <!-- Right: Before/After Demo -->
@@ -250,7 +250,7 @@
                   </span>
                 </label>
               </div>
-              <span class="install-terminal-note">Contains all provider directories — extract to project root</span>
+              <span class="install-terminal-note">Contains all provider directories — extract to project root. <code>.agents/</code> works with Codex app, Copilot, and Antigravity.</span>
             </div>
           </div>
         </div>
@@ -273,8 +273,8 @@
             <span>Gemini CLI</span>
           </div>
           <div class="install-provider-badge">
-            <img src="assets/openai-logo.png" alt="Codex CLI" width="20" height="20" loading="lazy">
-            <span>Codex CLI</span>
+            <img src="assets/openai-logo.png" alt="Codex" width="20" height="20" loading="lazy">
+            <span>Codex</span>
           </div>
           <div class="install-provider-badge">
             <img src="assets/github-logo.png" alt="VS Code Copilot" width="20" height="20" loading="lazy">
@@ -310,6 +310,18 @@
       </div>
 
       <div class="changelog-list" data-reveal>
+        <div class="changelog-entry">
+          <div class="changelog-version-header">
+            <span class="changelog-version">v1.4.0</span>
+            <span class="changelog-date">March 16, 2026</span>
+          </div>
+          <ul class="changelog-items">
+            <li>Added Codex app support via project-local <code>.agents/skills/</code> output</li>
+            <li>Clarified that <code>.agents/</code> is the shared install target for Codex app, VS Code Copilot, and Antigravity</li>
+            <li>Kept dedicated <code>.codex/</code> output for Codex CLI</li>
+          </ul>
+        </div>
+
         <div class="changelog-entry">
           <div class="changelog-version-header">
             <span class="changelog-version">v1.3.0</span>
@@ -375,7 +387,8 @@
           <summary class="faq-question">Where do I put the downloaded files?</summary>
           <div class="faq-answer">
             <p>The easiest way is <code>npx skills add pbakaus/impeccable</code> — it auto-detects your AI harness and places files correctly.</p>
-            <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, and <code>.agents/</code>.</p>
+            <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, <code>.agents/</code>, <code>.kiro/</code>, <code>.opencode/</code>, and <code>.pi/</code>.</p>
+            <p><code>.agents/</code> is the shared install target for Codex app, VS Code Copilot, and Antigravity. <code>.codex/</code> is the dedicated install target for Codex CLI.</p>
             <p>Project-level installation takes precedence and lets you version control your skills.</p>
           </div>
         </details>
@@ -389,6 +402,7 @@
             <ul>
               <li><strong>Cursor:</strong> Requires Nightly channel + Agent Skills enabled in Settings → Rules</li>
               <li><strong>Gemini CLI:</strong> Requires <code>@google/gemini-cli@preview</code> + Skills enabled via <code>/settings</code></li>
+              <li><strong>Codex app:</strong> Reads <code>AGENTS.md</code> plus project-local skills from <code>.agents/skills/</code></li>
             </ul>
           </div>
         </details>
@@ -401,6 +415,7 @@
               <li><strong>Claude Code:</strong> <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" rel="noopener">Official Documentation</a></li>
               <li><strong>Cursor:</strong> <a href="https://docs.cursor.com" target="_blank" rel="noopener">Cursor Docs</a></li>
               <li><strong>Gemini CLI:</strong> <a href="https://geminicli.com/docs/" target="_blank" rel="noopener">Gemini CLI Docs</a></li>
+              <li><strong>Codex app:</strong> <a href="https://developers.openai.com/codex/using-codex/app/overview" target="_blank" rel="noopener">OpenAI Docs</a></li>
               <li><strong>Codex CLI:</strong> <a href="https://github.com/openai/codex" target="_blank" rel="noopener">Codex GitHub</a></li>
             </ul>
             <p>Once you're comfortable with basic prompting and code generation, come back and give Impeccable a try.</p>

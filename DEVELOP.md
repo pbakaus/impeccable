@@ -10,7 +10,7 @@ This repository uses a **feature-rich source format** that transforms into provi
 
 Different providers have different capabilities:
 - **Claude Code, OpenCode**: Full metadata — args, user-invokable, allowed-tools, license, compatibility
-- **Codex, Agents**: Args converted to `argument-hint` format
+- **Codex CLI, Codex app, Agents**: Args converted to `argument-hint` format
 - **Gemini**: Minimal frontmatter, `{{arg}}` placeholders become `{{args}}`
 - **Cursor, Kiro, Pi**: Basic frontmatter (name, description, license/compatibility)
 
@@ -73,6 +73,7 @@ source/                          → dist/
                                    claude-code/.claude/skills/{name}/SKILL.md
                                    gemini/.gemini/skills/{name}/SKILL.md
                                    codex/.codex/skills/{name}/SKILL.md
+                                   codex-app/.agents/skills/{name}/SKILL.md
                                    agents/.agents/skills/{name}/SKILL.md
                                    kiro/.kiro/skills/{name}/SKILL.md
                                    opencode/.opencode/skills/{name}/SKILL.md
@@ -108,9 +109,16 @@ All providers output skills to `dist/{provider}/.{config}/skills/{name}/SKILL.md
 - Frontmatter: name, description, argument-hint, license
 - For user-invokable skills: `{{argname}}` → `$ARGNAME` (uppercase)
 
+### Codex app
+- Output: `dist/codex-app/.agents/skills/{name}/SKILL.md`
+- Frontmatter: name, description, user-invokable, argument-hint
+- Project-local install for the Codex desktop app via `.agents/skills`
+- Uses Codex-oriented placeholders (`AGENTS.md`, `GPT`) in rendered bodies
+
 ### Agents (VS Code Copilot, Antigravity)
 - Output: `dist/agents/.agents/skills/{name}/SKILL.md`
 - Frontmatter: name, description, user-invokable, argument-hint
+- Shared `.agents` format used by VS Code Copilot and Antigravity
 - Args converted to `argument-hint` format (e.g., `<target> [FORMAT=<value>]`)
 
 ### Kiro
@@ -138,7 +146,7 @@ Add frontmatter and content following the format above.
 bun run build
 ```
 
-This generates all 8 provider formats automatically.
+This generates all 9 provider formats automatically.
 
 ### 3. Test
 
@@ -159,7 +167,7 @@ The build system uses a modular architecture under `scripts/`:
 - `build.js` — Main orchestrator
 - `lib/utils.js` — Shared utilities (frontmatter parsing, file I/O, placeholder replacement)
 - `lib/zip.js` — ZIP bundle generation
-- `lib/transformers/*.js` — One file per provider (cursor, claude-code, gemini, codex, agents, kiro, opencode, pi)
+- `lib/transformers/*.js` — One file per provider (cursor, claude-code, gemini, codex, codex-app, agents, kiro, opencode, pi)
 
 ### Key Functions
 
@@ -170,6 +178,7 @@ The build system uses a modular architecture under `scripts/`:
 - `transformClaudeCode()`: Full metadata with args and allowed-tools
 - `transformGemini()`: Minimal frontmatter, `{{arg}}` → `{{args}}`
 - `transformCodex()`: Args → argument-hint, `{{arg}}` → `$ARGNAME`
+- `transformCodexApp()`: Agent Skills output for Codex app in `.agents/skills`
 - `transformAgents()`: Args → argument-hint, user-invokable flag
 - `transformKiro()`: Basic frontmatter with license/compatibility/metadata
 - `transformOpenCode()`: Full metadata (same as Claude Code)
@@ -196,8 +205,10 @@ The build system uses a modular architecture under `scripts/`:
 - [Anthropic Skills (Claude Code)](https://github.com/anthropics/skills)
 - [Gemini CLI Custom Commands](https://cloud.google.com/blog/topics/developers-practitioners/gemini-cli-custom-slash-commands)
 - [Gemini CLI Skills](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/gemini-md.md)
+- [Codex app overview](https://developers.openai.com/codex/using-codex/app/overview)
+- [Codex AGENTS.md](https://developers.openai.com/codex/configuration/agents-md)
+- [Codex skills](https://developers.openai.com/codex/configuration/skills)
 - [Codex CLI Slash Commands](https://developers.openai.com/codex/guides/slash-commands#create-your-own-slash-commands-with-custom-prompts)
-- [Codex CLI Skills](https://developers.openai.com/codex/skills/)
 - [Pi Skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md)
 
 ## Repository Structure
@@ -217,6 +228,7 @@ impeccable/
 │   ├── claude-code/
 │   ├── gemini/
 │   ├── codex/
+│   ├── codex-app/
 │   ├── agents/
 │   ├── kiro/
 │   ├── opencode/
@@ -231,6 +243,7 @@ impeccable/
 │           ├── claude-code.js
 │           ├── gemini.js
 │           ├── codex.js
+│           ├── codex-app.js
 │           ├── agents.js
 │           ├── kiro.js
 │           ├── opencode.js
@@ -262,4 +275,3 @@ impeccable/
 ## Questions?
 
 Open an issue or submit a PR!
-

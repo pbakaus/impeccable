@@ -284,9 +284,14 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.'
   },
+  'codex-app': {
+    model: 'GPT',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.'
+  },
   'agents': {
     model: 'the model',
-    config_file: '.github/copilot-instructions.md',
+    config_file: 'your project instruction file (AGENTS.md or .github/copilot-instructions.md)',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.'
   },
   'kiro': {

@@ -2,7 +2,7 @@
 
 The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable frontend design.
 
-> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
+> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles for Codex app, Codex CLI, Cursor, Claude Code, Gemini CLI, and more.
 
 ## Why Impeccable?
 
@@ -117,6 +117,13 @@ cp -r dist/gemini/.gemini your-project/
 >
 > [Learn more about Gemini CLI skills](https://geminicli.com/docs/cli/skills/)
 
+**Codex app:**
+```bash
+cp -r dist/codex-app/.agents your-project/
+```
+
+> **Note:** Codex app discovers project skills from `.agents/skills` and reads instructions from `AGENTS.md` in the repo tree.
+
 **Codex CLI:**
 ```bash
 cp -r dist/codex/.codex/* ~/.codex/
@@ -140,10 +147,13 @@ Most commands accept an optional argument to focus on a specific area:
 /polish checkout-form
 ```
 
+**Codex app:** enabled skills are project-local through `.agents/skills`. You can explicitly invoke a skill with `$frontend-design`, and user-invokable skills appear in the slash-command picker.
+
 **Note:** Codex CLI uses a different syntax: `/prompts:audit`, `/prompts:polish`, etc.
 
 ## Supported Tools
 
+- [Codex app](https://developers.openai.com/codex/using-codex/app/overview)
 - [Cursor](https://cursor.com)
 - [Claude Code](https://claude.ai/code)
 - [OpenCode](https://opencode.ai)

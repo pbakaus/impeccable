@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.
+The vocabulary you didn't know you needed. 1 skill, 17 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, Codex app, Codex CLI, and other Agent Skills consumers.
 
 ## Repository Purpose
 
@@ -12,13 +12,13 @@ We use a **feature-rich source format** that gets transformed for each provider:
 
 - **Source files** (`source/`): Full metadata with YAML frontmatter, args, descriptions
 - **Build system** (`scripts/`): Transforms source → provider-specific formats
-- **Distribution** (`dist/`): Committed output files for 4 providers
+- **Distribution** (`dist/`): Generated output files for 9 providers
 
 ### Why Option A?
 
 Cursor doesn't support frontmatter or arguments (lowest common denominator). Instead of limiting all providers, we:
 1. Author with full metadata in source files
-2. Generate full-featured versions for providers that support it (Claude Code, Gemini, Codex)
+2. Generate full-featured or provider-tuned versions for providers that support it (Claude Code, Gemini, Codex CLI, Codex app)
 3. Generate downgraded versions for Cursor (strip frontmatter, rely on appending)
 
 ## Repository Structure
@@ -185,6 +185,13 @@ Run: `bun run build`
   - Reference files in skill subdirectories
 - **Installation**: Extract ZIP into your project root, creates `.codex/` folder
 
+### 5. Codex app
+- **Skills**: Agent Skills standard → `dist/codex-app/.agents/skills/{name}/SKILL.md`
+  - Same `.agents` search path Codex app uses inside the project tree
+  - Uses Codex-oriented placeholder rendering (`AGENTS.md`, `GPT`)
+  - User-invokable skills stay available from the slash-command picker
+- **Installation**: Copy `.agents/` into your project root
+
 ## Key Design Decisions
 
 ### Why commit dist/?
@@ -225,7 +232,7 @@ End users can copy files directly without needing build tools.
 ## Important Notes
 
 - **Source is truth**: Always edit `source/`, never edit `dist/` directly
-- **Test across providers**: Changes affect 4 different outputs
+- **Test across providers**: Changes affect 9 different outputs
 - **Argument handling**: Write prompts that work with both placeholders and appending
 - **Cursor limitations**: No frontmatter/args, so design for graceful degradation
 
@@ -245,6 +252,7 @@ End users can copy files directly without needing build tools.
 - [Anthropic Skills](https://github.com/anthropics/skills)
 - [Gemini CLI Custom Commands](https://cloud.google.com/blog/topics/developers-practitioners/gemini-cli-custom-slash-commands)
 - [Gemini CLI GEMINI.md](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/gemini-md.md)
+- [Codex app overview](https://developers.openai.com/codex/using-codex/app/overview)
+- [Codex AGENTS.md](https://developers.openai.com/codex/configuration/agents-md)
+- [Codex skills](https://developers.openai.com/codex/configuration/skills)
 - [Codex CLI Slash Commands](https://developers.openai.com/codex/guides/slash-commands)
-- [Codex CLI Skills](https://developers.openai.com/codex/skills/)
-

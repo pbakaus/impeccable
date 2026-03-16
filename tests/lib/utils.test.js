@@ -604,6 +604,7 @@ describe('replacePlaceholders', () => {
     expect(replacePlaceholders('Ask {{model}} for help.', 'claude-code')).toBe('Ask Claude for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'gemini')).toBe('Ask Gemini for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'codex')).toBe('Ask GPT for help.');
+    expect(replacePlaceholders('Ask {{model}} for help.', 'codex-app')).toBe('Ask GPT for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'cursor')).toBe('Ask the model for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'agents')).toBe('Ask the model for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'kiro')).toBe('Ask Claude for help.');
@@ -614,7 +615,8 @@ describe('replacePlaceholders', () => {
     expect(replacePlaceholders('See {{config_file}}.', 'cursor')).toBe('See .cursorrules.');
     expect(replacePlaceholders('See {{config_file}}.', 'gemini')).toBe('See GEMINI.md.');
     expect(replacePlaceholders('See {{config_file}}.', 'codex')).toBe('See AGENTS.md.');
-    expect(replacePlaceholders('See {{config_file}}.', 'agents')).toBe('See .github/copilot-instructions.md.');
+    expect(replacePlaceholders('See {{config_file}}.', 'codex-app')).toBe('See AGENTS.md.');
+    expect(replacePlaceholders('See {{config_file}}.', 'agents')).toBe('See your project instruction file (AGENTS.md or .github/copilot-instructions.md).');
     expect(replacePlaceholders('See {{config_file}}.', 'kiro')).toBe('See .kiro/settings.json.');
   });
 

@@ -10,9 +10,11 @@ import {
 import { getFilePath, handleFileDownload } from '../../server/lib/api-handlers.js';
 
 describe('download provider validation', () => {
-  test('allows opencode and pi as individual download providers', () => {
+  test('allows codex-app, opencode, and pi as individual download providers', () => {
+    expect(ALLOWED_FILE_PROVIDERS).toContain('codex-app');
     expect(ALLOWED_FILE_PROVIDERS).toContain('opencode');
     expect(ALLOWED_FILE_PROVIDERS).toContain('pi');
+    expect(isAllowedFileProvider('codex-app')).toBe(true);
     expect(isAllowedFileProvider('opencode')).toBe(true);
     expect(isAllowedFileProvider('pi')).toBe(true);
   });
@@ -27,6 +29,12 @@ describe('download provider validation', () => {
 });
 
 describe('download file paths', () => {
+  test('maps codex-app skills into the shared .agents config directory', () => {
+    expect(getFilePath('skill', 'codex-app', 'frontend-design')).toBe(
+      path.join(process.cwd(), 'dist', 'codex-app', '.agents', 'skills', 'frontend-design', 'SKILL.md')
+    );
+  });
+
   test('maps opencode skills into the .opencode config directory', () => {
     expect(getFilePath('skill', 'opencode', 'frontend-design')).toBe(
       path.join(process.cwd(), 'dist', 'opencode', '.opencode', 'skills', 'frontend-design', 'SKILL.md')

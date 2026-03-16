@@ -8,6 +8,7 @@
  * - Claude Code: .claude/skills/
  * - Gemini: .gemini/skills/
  * - Codex: .codex/skills/
+ * - Codex app: .agents/skills/ (project-local)
  * - Agents: .agents/skills/ (VS Code Copilot + Antigravity)
  *
  * Also assembles a universal ZIP containing all providers,
@@ -23,6 +24,7 @@ import {
   transformClaudeCode,
   transformGemini,
   transformCodex,
+  transformCodexApp,
   transformAgents,
   transformKiro,
   transformOpenCode,
@@ -120,10 +122,17 @@ async function buildStaticSite() {
     return result;
   } catch (error) {
     console.error('Failed to build static site:', error.message);
-    console.error(error.stack);
+    if (error.stack) {
+      console.error(error.stack);
+    } else {
+      console.error(error);
+    }
     if (error.logs) {
       for (const log of error.logs) {
         console.error(log.message || log);
+        if (log.position) {
+          console.error(`  at ${log.position.file}:${log.position.line}:${log.position.column}`);
+        }
       }
     }
     process.exit(1);
@@ -173,7 +182,7 @@ This folder contains skills for all supported tools:
   .claude/    → Claude Code
   .gemini/    → Gemini CLI
   .codex/     → Codex CLI
-  .agents/    → VS Code Copilot, Antigravity
+  .agents/    → Codex app, VS Code Copilot, Antigravity
   .kiro/      → Kiro
   .opencode/  → OpenCode
   .pi/        → Pi
@@ -183,7 +192,7 @@ These are hidden folders (dotfiles) — press Cmd+Shift+. in Finder to see them.
 `);
 
   const label = suffix ? ' (prefixed)' : '';
-  console.log(`✓ Assembled universal${label} directory (${providerMappings.length} providers)`);
+  console.log(`✓ Assembled universal${label} directory (${providerMappings.length} config directories; .agents is shared by Codex app, Copilot, and Antigravity)`);
 }
 
 /**
@@ -345,6 +354,7 @@ async function build() {
   transformClaudeCode(skills, DIST_DIR, patterns);
   transformGemini(skills, DIST_DIR, patterns);
   transformCodex(skills, DIST_DIR, patterns);
+  transformCodexApp(skills, DIST_DIR, patterns);
   transformAgents(skills, DIST_DIR, patterns);
   transformKiro(skills, DIST_DIR, patterns);
   transformOpenCode(skills, DIST_DIR, patterns);
@@ -356,6 +366,7 @@ async function build() {
   transformClaudeCode(skills, DIST_DIR, patterns, prefixOptions);
   transformGemini(skills, DIST_DIR, patterns, prefixOptions);
   transformCodex(skills, DIST_DIR, patterns, prefixOptions);
+  transformCodexApp(skills, DIST_DIR, patterns, prefixOptions);
   transformAgents(skills, DIST_DIR, patterns, prefixOptions);
   transformKiro(skills, DIST_DIR, patterns, prefixOptions);
   transformOpenCode(skills, DIST_DIR, patterns, prefixOptions);
@@ -386,7 +397,18 @@ async function build() {
 
   copyDirSync(skillsSrc, skillsDest);
 
+  // Copy Codex app output to project's .agents directory for local development
+  const codexAppSrc = path.join(DIST_DIR, 'codex-app', '.agents');
+  const codexAppDest = path.join(ROOT_DIR, '.agents');
+  const codexAppSkillsSrc = path.join(codexAppSrc, 'skills');
+  const codexAppSkillsDest = path.join(codexAppDest, 'skills');
+
+  if (fs.existsSync(codexAppSkillsDest)) fs.rmSync(codexAppSkillsDest, { recursive: true });
+
+  copyDirSync(codexAppSkillsSrc, codexAppSkillsDest);
+
   console.log(`📋 Synced to .claude/: skills`);
+  console.log(`📋 Synced to .agents/: skills`);
 
   console.log('\n✨ Build complete!');
 }

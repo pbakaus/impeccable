@@ -183,7 +183,7 @@ describe('transformAgents', () => {
     transformAgents(skills, TEST_DIR);
 
     const content = fs.readFileSync(path.join(TEST_DIR, 'agents/.agents/skills/test/SKILL.md'), 'utf-8');
-    expect(content).toContain('See .github/copilot-instructions.md for details.');
+    expect(content).toContain('See your project instruction file (AGENTS.md or .github/copilot-instructions.md) for details.');
   });
 
   test('should replace {{available_commands}} placeholder', () => {
@@ -236,7 +236,7 @@ describe('transformAgents', () => {
     transformAgents(skills, TEST_DIR);
 
     const refContent = fs.readFileSync(path.join(TEST_DIR, 'agents/.agents/skills/test/reference/ref.md'), 'utf-8');
-    expect(refContent).toContain('Use the model with .github/copilot-instructions.md.');
+    expect(refContent).toContain('Use the model with your project instruction file (AGENTS.md or .github/copilot-instructions.md).');
   });
 
   test('should support prefix option', () => {
