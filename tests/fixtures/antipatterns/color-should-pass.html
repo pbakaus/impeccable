@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color — Clean Patterns</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; background: #fafafa; }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #1a1a1a; }
+    h2 { font-size: 1.5rem; margin: 2rem 0 0.75rem; color: #374151; }
+    p { font-size: 1rem; color: #4b5563; }
+    .cards { display: grid; gap: 1rem; max-width: 28rem; }
+    .card { padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Clean Color Patterns</h1>
+
+  <!-- Tinted blacks and whites -->
+  <h2>Tinted Neutrals</h2>
+  <div class="cards">
+    <div class="card" style="background: rgb(26, 26, 30); padding: 1rem;">
+      <p style="color: rgb(240, 240, 245);">Near-black bg, near-white text — tinted, not pure</p>
+    </div>
+    <div class="card" style="background: rgb(250, 250, 252);">
+      <p style="color: rgb(20, 20, 25);">Near-white bg, near-black text — good contrast, tinted</p>
+    </div>
+  </div>
+
+  <!-- Good contrast -->
+  <h2>Good Contrast</h2>
+  <div class="cards">
+    <div class="card" style="background: rgb(30, 64, 175); padding: 1rem;">
+      <p style="color: rgb(240, 240, 245);">Near-white text on dark blue — high contrast, not pure white</p>
+    </div>
+    <div class="card" style="background: rgb(16, 185, 129); padding: 1rem;">
+      <p style="color: rgb(5, 46, 32);">Dark green text on green bg — same hue family</p>
+    </div>
+  </div>
+
+  <!-- Non-purple accent colors -->
+  <h2>Distinctive Accents</h2>
+  <div class="cards">
+    <h3 style="color: rgb(220, 38, 38); font-size: 1.5rem;">Red heading — not AI purple</h3>
+    <h3 style="color: rgb(180, 83, 9); font-size: 1.5rem;">Amber heading — distinctive</h3>
+  </div>
+<script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

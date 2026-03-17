@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Anti-Patterns — Should Flag</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; background: #fafafa; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.125rem; margin: 2rem 0 0.75rem; color: #6b7280; }
+    .cards { display: grid; gap: 1rem; max-width: 28rem; }
+    .card { padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Color Anti-Patterns</h1>
+
+  <!-- 1. Pure black/white -->
+  <h2>Pure Black &amp; White</h2>
+  <div class="cards">
+    <div class="card" style="background: #000000; color: white; padding: 1rem;">
+      <p>Pure #000 background</p>
+    </div>
+    <div class="card" style="background: #ffffff; color: black;">
+      <p style="color: #000000;">Pure #000 text on pure #fff background</p>
+    </div>
+  </div>
+
+  <!-- 2. Gray on colored background -->
+  <h2>Gray on Color</h2>
+  <div class="cards">
+    <div class="card" style="background: rgb(59, 130, 246); padding: 1rem;">
+      <p style="color: rgb(150, 150, 150);">Gray text on blue background</p>
+    </div>
+    <div class="card" style="background: rgb(16, 185, 129); padding: 1rem;">
+      <p style="color: rgb(180, 180, 180);">Gray text on green background</p>
+    </div>
+  </div>
+
+  <!-- 3. Low contrast -->
+  <h2>Low Contrast</h2>
+  <div class="cards">
+    <div class="card" style="background: white;">
+      <p style="color: rgb(200, 200, 200);">Light gray text on white — very low contrast</p>
+    </div>
+    <div class="card" style="background: rgb(30, 30, 30);">
+      <p style="color: rgb(80, 80, 80);">Dark gray text on near-black — low contrast</p>
+    </div>
+  </div>
+
+  <!-- 4. Gradient text -->
+  <h2>Gradient Text</h2>
+  <div class="cards">
+    <h3 style="background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-size: 2rem;">
+      Gradient Heading
+    </h3>
+  </div>
+
+  <!-- 5. AI color palette -->
+  <h2>AI Color Palette</h2>
+  <div class="cards">
+    <h1 style="color: rgb(139, 92, 246); font-size: 2rem;">Purple heading text</h1>
+  </div>
+<script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

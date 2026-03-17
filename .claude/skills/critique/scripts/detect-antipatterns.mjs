@@ -77,6 +77,39 @@ const ANTIPATTERNS = [
     description:
       'Font sizes are too close together — no clear visual hierarchy. Use fewer sizes with more contrast (aim for at least a 1.25 ratio between steps).',
   },
+  // -------------------------------------------------------------------------
+  // Color & contrast anti-patterns
+  // -------------------------------------------------------------------------
+  {
+    id: 'pure-black-white',
+    name: 'Pure black or white',
+    description:
+      'Pure #000 or #fff never appears in nature. Tint your blacks and whites slightly toward your brand hue for a more natural, cohesive feel.',
+  },
+  {
+    id: 'gray-on-color',
+    name: 'Gray text on colored background',
+    description:
+      'Gray text looks washed out on colored backgrounds. Use a darker shade of the background color instead, or white/near-white for contrast.',
+  },
+  {
+    id: 'low-contrast',
+    name: 'Low contrast text',
+    description:
+      'Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.',
+  },
+  {
+    id: 'gradient-text',
+    name: 'Gradient text',
+    description:
+      'Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.',
+  },
+  {
+    id: 'ai-color-palette',
+    name: 'AI color palette',
+    description:
+      'Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. Choose a distinctive, intentional palette.',
+  },
 ];
 
 /** Check if content looks like a full page (not a component/partial) */
@@ -108,6 +141,187 @@ function isNeutralColor(color) {
   if (!m) return true;
   const [r, g, b] = [+m[1], +m[2], +m[3]];
   return (Math.max(r, g, b) - Math.min(r, g, b)) < 30;
+}
+
+/**
+ * Parse an RGB/RGBA color string into { r, g, b, a } (0-255 for rgb, 0-1 for a).
+ * Returns null if unparseable.
+ */
+function parseRgb(color) {
+  if (!color || color === 'transparent') return null;
+  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  if (!m) return null;
+  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+}
+
+/**
+ * Compute relative luminance (WCAG 2.x formula).
+ * Input: { r, g, b } with values 0-255.
+ */
+function relativeLuminance({ r, g, b }) {
+  const [rs, gs, bs] = [r / 255, g / 255, b / 255].map(c =>
+    c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  );
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Compute WCAG contrast ratio between two colors.
+ * Returns a number >= 1.
+ */
+function contrastRatio(c1, c2) {
+  const l1 = relativeLuminance(c1);
+  const l2 = relativeLuminance(c2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Check if a color is pure black or pure white.
+ */
+function isPureBlackOrWhite(c) {
+  if (!c) return false;
+  return (c.r === 0 && c.g === 0 && c.b === 0) ||
+         (c.r === 255 && c.g === 255 && c.b === 255);
+}
+
+/**
+ * Check if a color has meaningful chroma (is "colored" vs gray/neutral).
+ * Uses simple RGB saturation check.
+ */
+function hasChroma(c, threshold = 30) {
+  if (!c) return false;
+  return (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) >= threshold;
+}
+
+/**
+ * Get the approximate hue (0-360) from RGB.
+ */
+function getHue(c) {
+  if (!c) return 0;
+  const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  let h;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return Math.round(h * 360);
+}
+
+function colorToHex(c) {
+  if (!c) return '?';
+  return '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Resolve the effective background color for an element by walking up ancestors.
+ * Returns { r, g, b } or { r: 255, g: 255, b: 255 } as fallback (white).
+ */
+function resolveBackground(el, window) {
+  let current = el;
+  while (current && current.nodeType === 1) {
+    const style = window.getComputedStyle(current);
+    // Try backgroundColor first, then fall back to parsing the inline background shorthand
+    // (jsdom doesn't decompose background shorthand to backgroundColor reliably)
+    let bg = parseRgb(style.backgroundColor);
+    if (!bg || bg.a < 0.1) {
+      // jsdom doesn't reliably decompose background shorthand — parse raw style attr
+      const rawStyle = current.getAttribute?.('style') || '';
+      const bgMatch = rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i);
+      const inlineBg = bgMatch ? bgMatch[1].trim() : '';
+      bg = parseRgb(inlineBg);
+      if (!bg && inlineBg) {
+        const hexMatch = inlineBg.match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i);
+        if (hexMatch) {
+          const h = hexMatch[1];
+          if (h.length === 6) {
+            bg = { r: parseInt(h.slice(0,2), 16), g: parseInt(h.slice(2,4), 16), b: parseInt(h.slice(4,6), 16), a: 1 };
+          } else {
+            bg = { r: parseInt(h[0]+h[0], 16), g: parseInt(h[1]+h[1], 16), b: parseInt(h[2]+h[2], 16), a: 1 };
+          }
+        }
+      }
+    }
+    if (bg && bg.a > 0.1) {
+      if (bg.a >= 0.5) return bg;
+    }
+    current = current.parentElement;
+  }
+  return { r: 255, g: 255, b: 255 }; // default to white
+}
+
+/**
+ * Analyze an element's colors for anti-patterns.
+ * Needs the element, its computed style, AND access to the window for ancestor bg resolution.
+ */
+function checkElementColors(el, style, tag, window) {
+  if (SAFE_TAGS.has(tag)) return [];
+  const findings = [];
+
+  const textColor = parseRgb(style.color);
+  const bgColor = parseRgb(style.backgroundColor);
+  const fontSize = parseFloat(style.fontSize) || 16;
+  const fontWeight = parseInt(style.fontWeight) || 400;
+
+  // Skip non-text elements (no text content)
+  const hasText = el.textContent?.trim().length > 0;
+  const hasDirectText = hasText && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+
+  // Pure black/white is handled via regex on raw HTML (jsdom's computed bg is unreliable)
+
+  if (hasDirectText && textColor) {
+    // --- Gray text on colored background ---
+    const effectiveBg = resolveBackground(el, window);
+    // Gray = low chroma AND mid-range luminance (not near-white or near-black)
+    const textLum = relativeLuminance(textColor);
+    const isGray = !hasChroma(textColor, 20) && textLum > 0.05 && textLum < 0.85;
+    if (isGray && hasChroma(effectiveBg, 40)) {
+      findings.push({
+        id: 'gray-on-color',
+        snippet: `text ${colorToHex(textColor)} on bg ${colorToHex(effectiveBg)}`,
+      });
+    }
+
+    // --- Low contrast (WCAG AA) ---
+    {
+      const ratio = contrastRatio(textColor, effectiveBg);
+      // jsdom may return fontSize in non-px units — also check tag-based heuristic
+      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
+      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const threshold = isLargeText ? 3.0 : 4.5;
+      if (ratio < threshold) {
+        findings.push({
+          id: 'low-contrast',
+          snippet: `${ratio.toFixed(1)}:1 (need ${threshold}:1) — text ${colorToHex(textColor)} on ${colorToHex(effectiveBg)}`,
+        });
+      }
+    }
+  }
+
+  // --- Gradient text ---
+  const bgClip = style.webkitBackgroundClip || style.backgroundClip || '';
+  const bgImage = style.backgroundImage || '';
+  if (bgClip === 'text' && bgImage.includes('gradient')) {
+    findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient' });
+  }
+
+  // --- AI color palette: purple/violet accent ---
+  // Only flag vivid purple/violet as text color or background on accent-like elements
+  if (hasDirectText && textColor && hasChroma(textColor, 50)) {
+    const hue = getHue(textColor);
+    // Purple/violet range: roughly 260-310
+    if (hue >= 260 && hue <= 310 && relativeLuminance(textColor) < 0.3) {
+      // Check if it's used on a heading or prominent text
+      if (['h1', 'h2', 'h3'].includes(tag) || fontSize >= 20) {
+        findings.push({ id: 'ai-color-palette', snippet: `Purple/violet text (${colorToHex(textColor)}) on heading` });
+      }
+    }
+  }
+
+  return findings;
 }
 
 /**
@@ -236,6 +450,45 @@ function checkPageTypography(document, window) {
     }
   }
 
+  // --- Pure black/white (regex on raw HTML — jsdom doesn't resolve inline bg colors) ---
+  const pureRe = /(?:color|background(?:-color)?)\s*:\s*(?:#000000|#000|rgb\(\s*0,\s*0,\s*0\s*\))\b/gi;
+  if (pureRe.test(html)) {
+    findings.push({ id: 'pure-black-white', snippet: 'Pure #000 in styles' });
+  }
+  const pureWhiteRe = /(?:color|background(?:-color)?)\s*:\s*(?:#ffffff|#fff|rgb\(\s*255,\s*255,\s*255\s*\))\b/gi;
+  if (pureWhiteRe.test(html)) {
+    findings.push({ id: 'pure-black-white', snippet: 'Pure #fff in styles' });
+  }
+
+  // --- AI color palette: purple/violet in raw CSS ---
+  // Very conservative — only flag vivid purple in prominent contexts
+  const purpleHexRe = /#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b/gi;
+  if (purpleHexRe.test(html)) {
+    // Check if used on text (not just borders or backgrounds)
+    const purpleTextRe = /(?:(?:^|;)\s*color\s*:\s*(?:.*?)(?:#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9))|gradient.*?#(?:7c3aed|8b5cf6|a855f7|764ba2|667eea))/gi;
+    if (purpleTextRe.test(html)) {
+      findings.push({ id: 'ai-color-palette', snippet: 'Purple/violet accent colors detected' });
+    }
+  }
+
+  // --- Gradient text (regex on raw HTML — jsdom doesn't compute background-clip) ---
+  const gradientRe = /(?:-webkit-)?background-clip\s*:\s*text/gi;
+  let gm;
+  while ((gm = gradientRe.exec(html)) !== null) {
+    // Check nearby context for gradient
+    const start = Math.max(0, gm.index - 200);
+    const context = html.substring(start, gm.index + gm[0].length + 200);
+    if (/gradient/i.test(context)) {
+      findings.push({ id: 'gradient-text', snippet: 'background-clip: text + gradient' });
+      break; // one finding is enough
+    }
+  }
+
+  // Also check Tailwind gradient text
+  if (/\bbg-clip-text\b/.test(html) && /\bbg-gradient-to-/.test(html)) {
+    findings.push({ id: 'gradient-text', snippet: 'bg-clip-text + bg-gradient (Tailwind)' });
+  }
+
   return findings;
 }
 
@@ -287,11 +540,14 @@ async function detectHtml(filePath) {
 
   const findings = [];
 
-  // Element-level border checks
+  // Element-level checks (borders + colors)
   for (const el of document.querySelectorAll('*')) {
     const tag = el.tagName.toLowerCase();
     const style = window.getComputedStyle(el);
     for (const f of checkElementBorders(tag, style)) {
+      findings.push(finding(f.id, filePath, f.snippet));
+    }
+    for (const f of checkElementColors(el, style, tag, window)) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
   }
@@ -477,6 +733,18 @@ const REGEX_MATCHERS = [
   { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat)\b/gi,
     test: () => true,
     fmt: (m) => `Google Fonts: ${m[1].replace(/\+/g, ' ')}` },
+  // --- Pure black/white ---
+  { id: 'pure-black-white', regex: /(?:color|background(?:-color)?)\s*:\s*(#000000|#000|rgb\(0,\s*0,\s*0\)|#ffffff|#fff|rgb\(255,\s*255,\s*255\))\b/gi,
+    test: () => true,
+    fmt: (m) => `${m[0]}` },
+  // --- Gradient text ---
+  { id: 'gradient-text', regex: /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/gi,
+    test: (m, line) => /gradient/i.test(line),
+    fmt: () => 'background-clip: text + gradient' },
+  // --- Gradient text (Tailwind) ---
+  { id: 'gradient-text', regex: /\bbg-clip-text\b/g,
+    test: (m, line) => /\bbg-gradient-to-/i.test(line),
+    fmt: () => 'bg-clip-text + bg-gradient' },
 ];
 
 const REGEX_ANALYZERS = [

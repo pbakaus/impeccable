@@ -202,6 +202,20 @@ describe('detectHtml — jsdom', () => {
     expect(f.filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
   });
 
+  test('color-should-flag detects all five color issues', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'color-should-flag.html'));
+    expect(f.some(r => r.antipattern === 'pure-black-white')).toBe(true);
+    expect(f.some(r => r.antipattern === 'gray-on-color')).toBe(true);
+    expect(f.some(r => r.antipattern === 'low-contrast')).toBe(true);
+    expect(f.some(r => r.antipattern === 'gradient-text')).toBe(true);
+    expect(f.some(r => r.antipattern === 'ai-color-palette')).toBe(true);
+  });
+
+  test('color-should-pass has zero findings', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'color-should-pass.html'));
+    expect(f).toHaveLength(0);
+  });
+
   test('legitimate-borders has minimal false positives', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'legitimate-borders.html'));
     const borderFindings = f.filter(r => r.antipattern === 'side-tab' || r.antipattern === 'border-accent-on-rounded');
