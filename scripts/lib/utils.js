@@ -59,9 +59,13 @@ export function parseFrontmatter(content) {
       if (colonIndex > 0) {
         const key = trimmed.slice(0, colonIndex).trim();
         const value = trimmed.slice(colonIndex + 1).trim();
+        const normalizedValue =
+          key === 'user-invokable' && /^['"](?:true|false)['"]$/.test(value)
+            ? value.slice(1, -1)
+            : value;
 
         if (value) {
-          frontmatter[key] = value === 'true' ? true : value === 'false' ? false : value;
+          frontmatter[key] = normalizedValue === 'true' ? true : normalizedValue === 'false' ? false : normalizedValue;
           currentKey = key;
           currentArray = null;
         } else {

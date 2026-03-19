@@ -101,7 +101,7 @@ Body.`;
     expect(result.frontmatter['user-invokable']).toBe(true);
   });
 
-  test('should parse user-invokable as string true (code behavior)', () => {
+  test('should parse quoted user-invokable boolean as true', () => {
     const content = `---
 name: test-skill
 user-invokable: 'true'
@@ -110,8 +110,19 @@ user-invokable: 'true'
 Body.`;
 
     const result = parseFrontmatter(content);
-    // The parseFrontmatter function doesn't strip quotes from YAML string values
-    expect(result.frontmatter['user-invokable']).toBe("'true'");
+    expect(result.frontmatter['user-invokable']).toBe(true);
+  });
+
+  test('should keep quoted non-user-invokable booleans as strings', () => {
+    const content = `---
+name: test-skill
+description: 'true'
+---
+
+Body.`;
+
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter.description).toBe("'true'");
   });
 
   test('should parse allowed-tools field', () => {
@@ -377,6 +388,25 @@ Skill instructions here.`;
 name: audit
 description: Run technical quality checks
 user-invokable: true
+---
+
+Audit the code.`;
+
+    const skillDir = path.join(testRootDir, 'source/skills/audit');
+    ensureDir(skillDir);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+
+    const { skills } = readSourceFiles(testRootDir);
+
+    expect(skills).toHaveLength(1);
+    expect(skills[0].userInvokable).toBe(true);
+  });
+
+  test('should read skill with quoted user-invokable flag', () => {
+    const skillContent = `---
+name: audit
+description: Run technical quality checks
+user-invokable: 'true'
 ---
 
 Audit the code.`;
