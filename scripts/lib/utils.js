@@ -62,13 +62,13 @@ export function parseFrontmatter(content) {
       if (colonIndex > 0) {
         const key = trimmed.slice(0, colonIndex).trim();
         const value = trimmed.slice(colonIndex + 1).trim();
-
-        if (value) {
-          // Strip YAML quotes
-          const unquoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))
+        const normalizedValue =
+          (key === 'user-invocable' || key === 'user-invokable') && /^['"](?:true|false)['"]$/.test(value)
             ? value.slice(1, -1)
             : value;
-          frontmatter[key] = unquoted === 'true' ? true : unquoted === 'false' ? false : unquoted;
+
+        if (value) {
+          frontmatter[key] = normalizedValue === 'true' ? true : normalizedValue === 'false' ? false : normalizedValue;
           currentKey = key;
           currentArray = null;
         } else {
