@@ -123,10 +123,13 @@ All providers output skills to `dist/{provider}/.{config}/skills/{name}/SKILL.md
 - Frontmatter: name, description, license, compatibility, metadata
 
 ### Trae (Full Featured)
-- Output: `dist/trae/.trae-cn/builtin_skills/{name}/SKILL.md`
+- Output: `dist/trae/.trae-cn/builtin_skills/{name}/SKILL.md` (China version)
+- Output: `dist/trae/.trae/builtin_skills/{name}/SKILL.md` (International version)
 - Frontmatter: name, description, user-invokable, args, license, compatibility, metadata, allowed-tools
 - Same format as Claude Code
-- Skills are installed to `~/.trae-cn/builtin_skills/`
+- Two variants are generated automatically:
+  - **Trae China**: Skills installed to `~/.trae-cn/builtin_skills/`
+  - **Trae International**: Skills installed to `~/.trae/builtin_skills/`
 
 ## Adding New Content
 
@@ -181,7 +184,7 @@ The build system uses a modular architecture under `scripts/`:
 - `transformKiro()`: Basic frontmatter with license/compatibility/metadata
 - `transformOpenCode()`: Full metadata (same as Claude Code)
 - `transformPi()`: Basic frontmatter with license/compatibility/metadata
-- `transformTrae()`: Full metadata (same as Claude Code), outputs to `.trae-cn/builtin_skills/`
+- `transformTrae()`: Full metadata (same as Claude Code), outputs to both `.trae-cn/builtin_skills/` and `.trae/builtin_skills/`
 
 ## Best Practices
 

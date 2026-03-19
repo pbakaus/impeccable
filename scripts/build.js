@@ -151,7 +151,8 @@ function assembleUniversal(distDir, suffix = '') {
     { provider: 'kiro', configDir: '.kiro' },
     { provider: 'opencode', configDir: '.opencode' },
     { provider: 'pi', configDir: '.pi' },
-    { provider: 'trae', configDir: '.trae-cn' }
+    { provider: 'trae', configDir: '.trae-cn' },
+    { provider: 'trae', configDir: '.trae' }
   ];
 
   for (const { provider, configDir } of providerMappings) {
@@ -179,7 +180,8 @@ This folder contains skills for all supported tools:
   .kiro/      → Kiro
   .opencode/  → OpenCode
   .pi/        → Pi
-  .trae-cn/   → Trae
+  .trae-cn/   → Trae China
+  .trae/      → Trae International
 
 To install, copy the relevant folder(s) into your project root.
 These are hidden folders (dotfiles) — press Cmd+Shift+. in Finder to see them.

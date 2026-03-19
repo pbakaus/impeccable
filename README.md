@@ -127,11 +127,18 @@ cp -r dist/codex/.codex/* ~/.codex/
 
 **Trae:**
 ```bash
-# Global installation (recommended)
+# Trae China (domestic version)
 cp -r dist/trae/.trae-cn/builtin_skills/* ~/.trae-cn/builtin_skills/
+
+# Trae International
+cp -r dist/trae/.trae/builtin_skills/* ~/.trae/builtin_skills/
 ```
 
-> **Note:** Trae uses `~/.trae-cn/builtin_skills/` for skills. After copying, restart Trae IDE to activate the skills.
+> **Note:** Trae has two versions with different config directories:
+> - **Trae China**: `~/.trae-cn/builtin_skills/`
+> - **Trae International**: `~/.trae/builtin_skills/`
+>
+> After copying, restart Trae IDE to activate the skills.
 
 ## Usage
 
