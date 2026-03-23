@@ -14,7 +14,7 @@ if [ -z "$PROVIDER" ]; then
   echo "Usage: $0 <provider>"
   echo "Example: $0 cursor"
   echo "Available providers:"
-  ls -d "$REPO_DIR"/.* | grep -E '\.(cursor|claude|gemini|openai|windsurf)$' | xargs -n1 basename
+  find "$REPO_DIR" -maxdepth 1 -type d -name ".*" ! -name ".git" ! -name ".github" ! -name ".*-plugin" -exec basename {} \; | sed 's/^\.//' | sort
   exit 1
 fi
 
@@ -31,7 +31,8 @@ echo "Linking .$PROVIDER to parent directory..."
 if [ -e "$PARENT_DIR/$PROVIDER_DIR" ]; then
   echo "Warning: '$PARENT_DIR/$PROVIDER_DIR' already exists. Skipping."
 else
-  # Create relative symlink
-  ln -s "$SUBMODULE_NAME/$PROVIDER_DIR" "$PARENT_DIR/$PROVIDER_DIR"
+  # Create relative symlink in the parent directory
+  cd "$PARENT_DIR"
+  ln -s "$SUBMODULE_NAME/$PROVIDER_DIR" "$PROVIDER_DIR"
   echo "Done! Created symlink: $PARENT_DIR/$PROVIDER_DIR -> $SUBMODULE_NAME/$PROVIDER_DIR"
 fi
