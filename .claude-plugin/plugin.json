@@ -8,5 +8,27 @@
   },
   "homepage": "https://impeccable.style",
   "repository": "https://github.com/pbakaus/impeccable",
-  "skills": "./.claude/skills"
+  "skills": [
+    "./.claude/skills/adapt",
+    "./.claude/skills/animate",
+    "./.claude/skills/arrange",
+    "./.claude/skills/audit",
+    "./.claude/skills/bolder",
+    "./.claude/skills/clarify",
+    "./.claude/skills/colorize",
+    "./.claude/skills/critique",
+    "./.claude/skills/delight",
+    "./.claude/skills/distill",
+    "./.claude/skills/extract",
+    "./.claude/skills/frontend-design",
+    "./.claude/skills/harden",
+    "./.claude/skills/normalize",
+    "./.claude/skills/onboard",
+    "./.claude/skills/optimize",
+    "./.claude/skills/overdrive",
+    "./.claude/skills/polish",
+    "./.claude/skills/quieter",
+    "./.claude/skills/teach-impeccable",
+    "./.claude/skills/typeset"
+  ]
 }
