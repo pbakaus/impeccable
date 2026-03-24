@@ -113,7 +113,25 @@ Visit [impeccable.style](https://impeccable.style#casestudies) to see before/aft
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 2: Copy from Repository
+### Option 2: Git Submodule (For version control)
+
+Keep skills updated by adding this repository as a submodule:
+
+```bash
+# 1. Add impeccable as a submodule
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+
+# 2. Link your preferred provider (e.g. cursor, claude, gemini)
+./.impeccable/bin/link.sh cursor
+
+# 3. Commit the changes
+git add .gitmodules .impeccable .cursor
+git commit -m "Add Impeccable skills"
+```
+
+To update the skills later, simply run `git submodule update --remote`.
+
+### Option 3: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -161,6 +179,17 @@ cp -r dist/gemini/.gemini your-project/
 ```bash
 cp -r dist/codex/.codex/* ~/.codex/
 ```
+
+### Option 3: Git Submodule (Advanced)
+
+If you'd like to keep Impeccable updated as a git submodule in your project:
+
+```bash
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+./.impeccable/bin/link.sh <provider>
+```
+
+Replace `<provider>` with your tool (e.g., `cursor`, `claude`, `gemini`, `opencode`, `pi`). This will create a symlink from your project root to the appropriate configuration folder inside the submodule.
 
 ## Usage
 
