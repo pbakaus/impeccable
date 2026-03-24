@@ -61,7 +61,11 @@ export function parseFrontmatter(content) {
         const value = trimmed.slice(colonIndex + 1).trim();
 
         if (value) {
-          frontmatter[key] = value === 'true' ? true : value === 'false' ? false : value;
+          // Strip YAML quotes
+          const unquoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))
+            ? value.slice(1, -1)
+            : value;
+          frontmatter[key] = unquoted === 'true' ? true : unquoted === 'false' ? false : unquoted;
           currentKey = key;
           currentArray = null;
         } else {
@@ -148,7 +152,7 @@ export function readSourceFiles(rootDir) {
             metadata: frontmatter.metadata || null,
             allowedTools: frontmatter['allowed-tools'] || '',
             userInvocable: frontmatter['user-invocable'] === true || frontmatter['user-invocable'] === 'true',
-            args: frontmatter.args || [],
+            argumentHint: frontmatter['argument-hint'] || '',
             context: frontmatter.context || null,
             body,
             filePath: skillMdPath,
@@ -410,7 +414,8 @@ export function generateYamlFrontmatter(data) {
     } else if (typeof value === 'boolean') {
       lines.push(`${key}: ${value}`);
     } else {
-      lines.push(`${key}: ${value}`);
+      const needsQuoting = typeof value === 'string' && /^[\[{]/.test(value);
+      lines.push(`${key}: ${needsQuoting ? `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : value}`);
     }
   }
 

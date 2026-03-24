@@ -1,16 +1,13 @@
 ---
 name: onboard
 description: Design or improve onboarding flows, empty states, and first-time user experiences. Helps users get started successfully and understand value quickly.
-args:
-  - name: target
-    description: The feature or area needing onboarding (optional)
-    required: false
+argument-hint: "[target]"
 user-invocable: true
 ---
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
+Invoke {{command_prefix}}frontend-design — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run {{command_prefix}}teach-impeccable first. Additionally gather: the "aha moment" you want users to reach, and users' experience level.
 
 ---
 

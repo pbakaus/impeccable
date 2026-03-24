@@ -18,16 +18,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns } from './lib/utils.js';
-import {
-  transformCursor,
-  transformClaudeCode,
-  transformGemini,
-  transformCodex,
-  transformAgents,
-  transformKiro,
-  transformOpenCode,
-  transformPi
-} from './lib/transformers/index.js';
+import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
 import { execSync } from 'child_process';
 
@@ -141,18 +132,9 @@ function assembleUniversal(distDir, suffix = '') {
     fs.rmSync(universalDir, { recursive: true, force: true });
   }
 
-  const providerMappings = [
-    { provider: 'cursor', configDir: '.cursor' },
-    { provider: 'claude-code', configDir: '.claude' },
-    { provider: 'gemini', configDir: '.gemini' },
-    { provider: 'codex', configDir: '.codex' },
-    { provider: 'agents', configDir: '.agents' },
-    { provider: 'kiro', configDir: '.kiro' },
-    { provider: 'opencode', configDir: '.opencode' },
-    { provider: 'pi', configDir: '.pi' }
-  ];
+  const providerConfigs = Object.values(PROVIDERS);
 
-  for (const { provider, configDir } of providerMappings) {
+  for (const { provider, configDir } of providerConfigs) {
     const src = path.join(distDir, `${provider}${suffix}`, configDir);
     const dest = path.join(universalDir, configDir);
     if (fs.existsSync(src)) {
@@ -183,7 +165,7 @@ These are hidden folders (dotfiles) — press Cmd+Shift+. in Finder to see them.
 `);
 
   const label = suffix ? ' (prefixed)' : '';
-  console.log(`✓ Assembled universal${label} directory (${providerMappings.length} providers)`);
+  console.log(`✓ Assembled universal${label} directory (${providerConfigs.length} providers)`);
 }
 
 /**
@@ -340,26 +322,12 @@ async function build() {
   const userInvocableCount = skills.filter(s => s.userInvocable).length;
   console.log(`📖 Read ${skills.length} skills (${userInvocableCount} user-invocable) and ${patterns.patterns.length + patterns.antipatterns.length} pattern categories\n`);
 
-  // Transform for each provider
-  transformCursor(skills, DIST_DIR, patterns);
-  transformClaudeCode(skills, DIST_DIR, patterns);
-  transformGemini(skills, DIST_DIR, patterns);
-  transformCodex(skills, DIST_DIR, patterns);
-  transformAgents(skills, DIST_DIR, patterns);
-  transformKiro(skills, DIST_DIR, patterns);
-  transformOpenCode(skills, DIST_DIR, patterns);
-  transformPi(skills, DIST_DIR, patterns);
-
-  // Transform for each provider (prefixed with i-)
-  const prefixOptions = { prefix: 'i-', outputSuffix: '-prefixed' };
-  transformCursor(skills, DIST_DIR, patterns, prefixOptions);
-  transformClaudeCode(skills, DIST_DIR, patterns, prefixOptions);
-  transformGemini(skills, DIST_DIR, patterns, prefixOptions);
-  transformCodex(skills, DIST_DIR, patterns, prefixOptions);
-  transformAgents(skills, DIST_DIR, patterns, prefixOptions);
-  transformKiro(skills, DIST_DIR, patterns, prefixOptions);
-  transformOpenCode(skills, DIST_DIR, patterns, prefixOptions);
-  transformPi(skills, DIST_DIR, patterns, prefixOptions);
+  // Transform for each provider (unprefixed + prefixed)
+  for (const config of Object.values(PROVIDERS)) {
+    const transform = createTransformer(config);
+    transform(skills, DIST_DIR);
+    transform(skills, DIST_DIR, { prefix: 'i-', outputSuffix: '-prefixed' });
+  }
 
   // Assemble universal directory (unprefixed and prefixed)
   assembleUniversal(DIST_DIR);

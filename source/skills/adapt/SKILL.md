@@ -1,13 +1,7 @@
 ---
 name: adapt
 description: Adapt designs to work across different screen sizes, devices, contexts, or platforms. Ensures consistent experience across varied environments.
-args:
-  - name: target
-    description: The feature or component to adapt (optional)
-    required: false
-  - name: context
-    description: What to adapt for (mobile, tablet, desktop, print, email, etc.)
-    required: false
+argument-hint: "[target] [context (mobile, tablet, print...)]"
 user-invocable: true
 ---
 
@@ -15,7 +9,7 @@ Adapt existing designs to work effectively across different contexts - different
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: target platforms/devices and usage contexts.
+Invoke {{command_prefix}}frontend-design — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run {{command_prefix}}teach-impeccable first. Additionally gather: target platforms/devices and usage contexts.
 
 ---
 

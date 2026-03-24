@@ -32,29 +32,18 @@ This is the body content.`;
     expect(result.body).toBe('This is the body content.');
   });
 
-  test('should parse frontmatter with args array', () => {
+  test('should parse frontmatter with argument-hint', () => {
     const content = `---
 name: test-skill
 description: A test skill
-args:
-  - name: target
-    description: The target to normalize
-    required: false
-  - name: output
-    description: Output format
-    required: true
+argument-hint: <output> [TARGET=<value>]
 ---
 
 Body here.`;
 
     const result = parseFrontmatter(content);
     expect(result.frontmatter.name).toBe('test-skill');
-    expect(result.frontmatter.args).toBeArray();
-    expect(result.frontmatter.args).toHaveLength(2);
-    expect(result.frontmatter.args[0].name).toBe('target');
-    expect(result.frontmatter.args[0].description).toBe('The target to normalize');
-    expect(result.frontmatter.args[0].required).toBe(false);
-    expect(result.frontmatter.args[1].required).toBe(true);
+    expect(result.frontmatter['argument-hint']).toBe('<output> [TARGET=<value>]');
   });
 
   test('should return empty frontmatter when no frontmatter present', () => {
@@ -110,8 +99,8 @@ user-invocable: 'true'
 Body.`;
 
     const result = parseFrontmatter(content);
-    // The parseFrontmatter function doesn't strip quotes from YAML string values
-    expect(result.frontmatter['user-invocable']).toBe("'true'");
+    // parseFrontmatter strips YAML quotes, so 'true' becomes boolean true
+    expect(result.frontmatter['user-invocable']).toBe(true);
   });
 
   test('should parse allowed-tools field', () => {
@@ -140,22 +129,15 @@ describe('generateYamlFrontmatter', () => {
     expect(result).toContain('description: A test');
   });
 
-  test('should generate frontmatter with args array', () => {
+  test('should generate frontmatter with argument-hint', () => {
     const data = {
       name: 'test',
       description: 'Test skill',
-      args: [
-        { name: 'target', description: 'The target', required: false },
-        { name: 'output', description: 'Output format', required: true }
-      ]
+      'argument-hint': '<output> [TARGET=<value>]'
     };
 
     const result = generateYamlFrontmatter(data);
-    expect(result).toContain('args:');
-    expect(result).toContain('- name: target');
-    expect(result).toContain('description: The target');
-    expect(result).toContain('required: false');
-    expect(result).toContain('required: true');
+    expect(result).toContain('argument-hint: <output> [TARGET=<value>]');
   });
 
   test('should generate frontmatter with boolean', () => {
@@ -173,9 +155,7 @@ describe('generateYamlFrontmatter', () => {
     const original = {
       name: 'roundtrip-test',
       description: 'Testing roundtrip',
-      args: [
-        { name: 'arg1', description: 'First arg', required: true }
-      ]
+      'argument-hint': '<arg1>'
     };
 
     const yaml = generateYamlFrontmatter(original);
@@ -184,8 +164,7 @@ describe('generateYamlFrontmatter', () => {
 
     expect(parsed.frontmatter.name).toBe(original.name);
     expect(parsed.frontmatter.description).toBe(original.description);
-    expect(parsed.frontmatter.args).toBeArray();
-    expect(parsed.frontmatter.args[0].name).toBe('arg1');
+    expect(parsed.frontmatter['argument-hint']).toBe('<arg1>');
   });
 });
 

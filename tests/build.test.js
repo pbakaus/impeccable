@@ -167,10 +167,7 @@ This is a test skill body.`;
 name: audit
 description: Run technical quality checks
 user-invocable: true
-args:
-  - name: target
-    description: Target element
-    required: false
+argument-hint: "[TARGET=<value>]"
 ---
 
 Please audit {{target}} for technical quality. Ask {{model}} for help.`;
@@ -195,7 +192,7 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     expect(cursorContent).toContain('{{target}}');
     expect(cursorContent).toContain('the model');
 
-    // Verify Claude Code: full frontmatter with user-invocable and args
+    // Verify Claude Code: full frontmatter with user-invocable and argument-hint
     const claudeContent = fs.readFileSync(path.join(DIST_DIR, 'claude-code/.claude/skills/audit/SKILL.md'), 'utf-8');
     expect(claudeContent).toContain('---');
     expect(claudeContent).toContain('name: audit');
@@ -206,13 +203,13 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     // Verify Gemini: skill in skills directory
     expect(fs.existsSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'))).toBe(true);
     const geminiContent = fs.readFileSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'), 'utf-8');
-    expect(geminiContent).toContain('{{args}}'); // Replaced for user-invocable in Gemini
+    expect(geminiContent).toContain('{{target}}'); // No body transform, placeholder preserved
     expect(geminiContent).toContain('Gemini');
 
     // Verify Codex: skill in skills directory
     expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'))).toBe(true);
     const codexContent = fs.readFileSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'), 'utf-8');
-    expect(codexContent).toContain('$TARGET'); // Replaced for user-invocable in Codex
+    expect(codexContent).toContain('{{target}}'); // No body transform, placeholder preserved
     expect(codexContent).toContain('GPT');
   });
 

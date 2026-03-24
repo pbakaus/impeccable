@@ -1,10 +1,7 @@
 ---
 name: colorize
 description: Add strategic color to features that are too monochromatic or lack visual interest. Makes interfaces more engaging and expressive.
-args:
-  - name: target
-    description: The feature or component to colorize (optional)
-    required: false
+argument-hint: "[target]"
 user-invocable: true
 ---
 
@@ -12,7 +9,7 @@ Strategically introduce color to designs that are too monochromatic, gray, or la
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: existing brand colors.
+Invoke {{command_prefix}}frontend-design — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run {{command_prefix}}teach-impeccable first. Additionally gather: existing brand colors.
 
 ---
 

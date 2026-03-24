@@ -1,12 +1,12 @@
 ---
 name: critique
 description: Evaluate design effectiveness from a UX perspective. Assesses visual hierarchy, information architecture, emotional resonance, and overall design quality with actionable feedback.
-argument-hint: [AREA=<value>]
+argument-hint: "[area (feature, page, component...)]"
 ---
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first. Additionally gather: what the interface is trying to accomplish.
+Invoke $frontend-design — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run $teach-impeccable first. Additionally gather: what the interface is trying to accomplish.
 
 ---
 
@@ -98,7 +98,7 @@ For each issue:
 - **What**: Name the problem clearly
 - **Why it matters**: How this hurts users or undermines goals
 - **Fix**: What to do about it (be concrete)
-- **Command**: Which command to use (prefer: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /arrange, /typeset, /critique, /colorize, /overdrive — or other installed skills you're sure exist)
+- **Command**: Which command to use (prefer: $animate, $quieter, $optimize, $adapt, $clarify, $distill, $delight, $onboard, $normalize, $audit, $harden, $polish, $extract, $bolder, $arrange, $typeset, $critique, $colorize, $overdrive — or other installed skills you're sure exist)
 
 ### Minor Observations
 Quick notes on smaller issues worth addressing.

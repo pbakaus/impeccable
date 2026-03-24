@@ -1,12 +1,12 @@
 ---
 name: audit
 description: Perform comprehensive audit of interface quality across accessibility, performance, theming, and responsive design. Generates detailed report of issues with severity ratings and recommendations.
-argument-hint: [AREA=<value>]
+argument-hint: "[area (feature, page, component...)]"
 ---
 
 Run systematic quality checks and generate a comprehensive audit report with prioritized issues and actionable recommendations. Don't fix issues - document them for other commands to address.
 
-**First**: Use the frontend-design skill for design principles and anti-patterns.
+**First**: Invoke $frontend-design for design principles and anti-patterns.
 
 ## Diagnostic Scan
 
@@ -67,7 +67,7 @@ For each issue, document:
 - **Impact**: How it affects users
 - **WCAG/Standard**: Which standard it violates (if applicable)
 - **Recommendation**: How to fix it
-- **Suggested command**: Which command to use (prefer: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /arrange, /typeset, /critique, /colorize, /overdrive — or other installed skills you're sure exist)
+- **Suggested command**: Which command to use (prefer: $animate, $quieter, $optimize, $adapt, $clarify, $distill, $delight, $onboard, $normalize, $audit, $harden, $polish, $extract, $bolder, $arrange, $typeset, $critique, $colorize, $overdrive — or other installed skills you're sure exist)
 
 #### Critical Issues
 [Issues that block core functionality or violate WCAG A]
@@ -104,12 +104,12 @@ Create actionable plan:
 
 ### Suggested Commands for Fixes
 
-Map issues to available commands. Prefer these: /animate, /quieter, /optimize, /adapt, /clarify, /distill, /delight, /onboard, /normalize, /audit, /harden, /polish, /extract, /bolder, /arrange, /typeset, /critique, /colorize, /overdrive. You may also suggest other installed skills you're sure exist, but never invent commands.
+Map issues to available commands. Prefer these: $animate, $quieter, $optimize, $adapt, $clarify, $distill, $delight, $onboard, $normalize, $audit, $harden, $polish, $extract, $bolder, $arrange, $typeset, $critique, $colorize, $overdrive. You may also suggest other installed skills you're sure exist, but never invent commands.
 
 Examples:
-- "Use `/normalize` to align with design system (addresses N theming issues)"
-- "Use `/optimize` to improve performance (addresses N performance issues)"
-- "Use `/harden` to improve resilience (addresses N edge cases)"
+- "Use `$normalize` to align with design system (addresses N theming issues)"
+- "Use `$optimize` to improve performance (addresses N performance issues)"
+- "Use `$harden` to improve resilience (addresses N edge cases)"
 
 **IMPORTANT**: Be thorough but actionable. Too many low-priority issues creates noise. Focus on what actually matters.
 

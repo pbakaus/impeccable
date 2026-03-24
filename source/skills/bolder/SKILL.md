@@ -1,10 +1,7 @@
 ---
 name: bolder
 description: Amplify safe or boring designs to make them more visually interesting and stimulating. Increases impact while maintaining usability.
-args:
-  - name: target
-    description: The feature or component to make bolder (optional)
-    required: false
+argument-hint: "[target]"
 user-invocable: true
 ---
 
@@ -12,7 +9,7 @@ Increase visual impact and personality in designs that are too safe, generic, or
 
 ## MANDATORY PREPARATION
 
-Use the frontend-design skill — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run teach-impeccable first.
+Invoke {{command_prefix}}frontend-design — it contains design principles, anti-patterns, and the **Context Gathering Protocol**. Follow the protocol before proceeding — if no design context exists yet, you MUST run {{command_prefix}}teach-impeccable first.
 
 ---
 
