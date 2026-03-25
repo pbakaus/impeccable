@@ -29,7 +29,6 @@ describe('build orchestration', () => {
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
     const transformGeminiSpy = spyOn(transformers, 'transformGemini').mockImplementation(() => {});
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {});
-    const transformCodexAppSpy = spyOn(transformers, 'transformCodexApp').mockImplementation(() => {});
 
     // Simulate the build process
     const ROOT_DIR = TEST_DIR;
@@ -41,7 +40,6 @@ describe('build orchestration', () => {
     transformers.transformClaudeCode(skills, DIST_DIR, patterns);
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
 
     expect(readSourceFilesSpy).toHaveBeenCalledWith(ROOT_DIR);
 
@@ -50,7 +48,6 @@ describe('build orchestration', () => {
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
-    transformCodexAppSpy.mockRestore();
   });
 
   test('should call all transformers with correct arguments', () => {
@@ -68,7 +65,6 @@ describe('build orchestration', () => {
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
     const transformGeminiSpy = spyOn(transformers, 'transformGemini').mockImplementation(() => {});
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {});
-    const transformCodexAppSpy = spyOn(transformers, 'transformCodexApp').mockImplementation(() => {});
 
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -79,13 +75,11 @@ describe('build orchestration', () => {
     transformers.transformClaudeCode(sourceFiles.skills, DIST_DIR, patternData);
     transformers.transformGemini(sourceFiles.skills, DIST_DIR, patternData);
     transformers.transformCodex(sourceFiles.skills, DIST_DIR, patternData);
-    transformers.transformCodexApp(sourceFiles.skills, DIST_DIR, patternData);
 
     expect(transformCursorSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformClaudeCodeSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformGeminiSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
     expect(transformCodexSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
-    expect(transformCodexAppSpy).toHaveBeenCalledWith(skills, DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
     readPatternsSpy.mockRestore();
@@ -93,7 +87,6 @@ describe('build orchestration', () => {
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
-    transformCodexAppSpy.mockRestore();
   });
 
   test('should handle empty source files', () => {
@@ -108,7 +101,6 @@ describe('build orchestration', () => {
     const transformClaudeCodeSpy = spyOn(transformers, 'transformClaudeCode').mockImplementation(() => {});
     const transformGeminiSpy = spyOn(transformers, 'transformGemini').mockImplementation(() => {});
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {});
-    const transformCodexAppSpy = spyOn(transformers, 'transformCodexApp').mockImplementation(() => {});
 
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -119,13 +111,11 @@ describe('build orchestration', () => {
     transformers.transformClaudeCode(skills, DIST_DIR, patternData);
     transformers.transformGemini(skills, DIST_DIR, patternData);
     transformers.transformCodex(skills, DIST_DIR, patternData);
-    transformers.transformCodexApp(skills, DIST_DIR, patternData);
 
     expect(transformCursorSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformClaudeCodeSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformGeminiSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
     expect(transformCodexSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
-    expect(transformCodexAppSpy).toHaveBeenCalledWith([], DIST_DIR, patterns);
 
     readSourceFilesSpy.mockRestore();
     readPatternsSpy.mockRestore();
@@ -133,7 +123,6 @@ describe('build orchestration', () => {
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
-    transformCodexAppSpy.mockRestore();
   });
 
   test('integration: full build creates all expected outputs', () => {
@@ -159,7 +148,6 @@ This is a test skill body.`;
     transformers.transformClaudeCode(skills, DIST_DIR, patterns);
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
 
     // Verify Cursor outputs
     expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/test-skill/SKILL.md'))).toBe(true);
@@ -172,20 +160,14 @@ This is a test skill body.`;
 
     // Verify Codex outputs
     expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/test-skill/SKILL.md'))).toBe(true);
-
-    // Verify Codex app outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex-app/.agents/skills/test-skill/SKILL.md'))).toBe(true);
   });
 
   test('integration: verify transformations are correct', () => {
     const skillContent = `---
 name: audit
 description: Run technical quality checks
-user-invokable: true
-args:
-  - name: target
-    description: Target element
-    required: false
+user-invocable: true
+argument-hint: "[TARGET=<value>]"
 ---
 
 Please audit {{target}} for technical quality. Ask {{model}} for help.`;
@@ -202,41 +184,33 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformers.transformClaudeCode(skills, DIST_DIR, patterns);
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
 
-    // Verify Cursor: full frontmatter with user-invokable
+    // Verify Cursor: full frontmatter with user-invocable
     const cursorContent = fs.readFileSync(path.join(DIST_DIR, 'cursor/.cursor/skills/audit/SKILL.md'), 'utf-8');
     expect(cursorContent).toContain('---');
     expect(cursorContent).toContain('name: audit');
     expect(cursorContent).toContain('{{target}}');
     expect(cursorContent).toContain('the model');
 
-    // Verify Claude Code: full frontmatter with user-invokable and args
+    // Verify Claude Code: full frontmatter with user-invocable and argument-hint
     const claudeContent = fs.readFileSync(path.join(DIST_DIR, 'claude-code/.claude/skills/audit/SKILL.md'), 'utf-8');
     expect(claudeContent).toContain('---');
     expect(claudeContent).toContain('name: audit');
-    expect(claudeContent).toContain('user-invokable: true');
+    expect(claudeContent).toContain('user-invocable: true');
     expect(claudeContent).toContain('{{target}}');
     expect(claudeContent).toContain('Claude');
 
     // Verify Gemini: skill in skills directory
     expect(fs.existsSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'))).toBe(true);
     const geminiContent = fs.readFileSync(path.join(DIST_DIR, 'gemini/.gemini/skills/audit/SKILL.md'), 'utf-8');
-    expect(geminiContent).toContain('{{args}}'); // Replaced for user-invokable in Gemini
+    expect(geminiContent).toContain('{{target}}'); // No body transform, placeholder preserved
     expect(geminiContent).toContain('Gemini');
 
     // Verify Codex: skill in skills directory
     expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'))).toBe(true);
     const codexContent = fs.readFileSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'), 'utf-8');
-    expect(codexContent).toContain('$TARGET'); // Replaced for user-invokable in Codex
+    expect(codexContent).toContain('{{target}}'); // No body transform, placeholder preserved
     expect(codexContent).toContain('GPT');
-
-    // Verify Codex app: agent skills in .agents directory
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex-app/.agents/skills/audit/SKILL.md'))).toBe(true);
-    const codexAppContent = fs.readFileSync(path.join(DIST_DIR, 'codex-app/.agents/skills/audit/SKILL.md'), 'utf-8');
-    expect(codexAppContent).toContain('user-invokable: true');
-    expect(codexAppContent).toContain('{{target}}');
-    expect(codexAppContent).toContain('GPT');
   });
 
   test('integration: multiple skills', () => {
@@ -258,7 +232,6 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformers.transformClaudeCode(skills, DIST_DIR, patterns);
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
 
     // Verify all files exist
     expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/skill1/SKILL.md'))).toBe(true);
@@ -287,9 +260,6 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     const transformCodexSpy = spyOn(transformers, 'transformCodex').mockImplementation(() => {
       callOrder.push('codex');
     });
-    const transformCodexAppSpy = spyOn(transformers, 'transformCodexApp').mockImplementation(() => {
-      callOrder.push('codex-app');
-    });
 
     const ROOT_DIR = TEST_DIR;
     const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -300,9 +270,8 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformers.transformClaudeCode(skills, DIST_DIR, patterns);
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
 
-    expect(callOrder).toEqual(['cursor', 'claude-code', 'gemini', 'codex', 'codex-app']);
+    expect(callOrder).toEqual(['cursor', 'claude-code', 'gemini', 'codex']);
 
     readSourceFilesSpy.mockRestore();
     readPatternsSpy.mockRestore();
@@ -310,21 +279,18 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformClaudeCodeSpy.mockRestore();
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
-    transformCodexAppSpy.mockRestore();
   });
 
-  test('should include codex-app, agents, and kiro transformers', () => {
+  test('should include agents and kiro transformers', () => {
     const { skills } = utils.readSourceFiles(TEST_DIR);
     const patterns = utils.readPatterns(TEST_DIR);
     const DIST_DIR = path.join(TEST_DIR, 'dist');
 
     // These should not throw
-    transformers.transformCodexApp(skills, DIST_DIR, patterns);
     transformers.transformAgents(skills, DIST_DIR, patterns);
     transformers.transformKiro(skills, DIST_DIR, patterns);
 
     // Verify outputs
-    expect(fs.existsSync(path.join(DIST_DIR, 'codex-app/.agents/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'agents/.agents/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'kiro/.kiro/skills'))).toBe(true);
   });

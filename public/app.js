@@ -6,6 +6,7 @@ import { initLensEffect } from "./js/components/lens.js";
 import { initFrameworkViz } from "./js/components/framework-viz.js";
 import { initScrollReveal } from "./js/utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./js/utils/scroll.js";
+import { initSectionNav } from "./js/components/section-nav.js";
 
 // ============================================
 // STATE
@@ -16,6 +17,16 @@ let allCommands = [];
 // ============================================
 // CONTENT LOADING
 // ============================================
+
+function escapeHtml(value) {
+	if (typeof value !== "string") return "";
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
+}
 
 async function loadContent() {
 	try {
@@ -96,13 +107,13 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 	const tabsHTML = patterns
 		.map((category, i) => `<button
 			class="pattern-tab${i === 0 ? ' active' : ''}"
-			data-tab="${category.name}"
+			data-tab="${escapeHtml(category.name)}"
 			role="tab"
 			id="${tabId(category.name)}"
 			aria-selected="${i === 0 ? 'true' : 'false'}"
 			aria-controls="${panelId(category.name)}"
 			tabindex="${i === 0 ? '0' : '-1'}"
-		>${category.name}</button>`)
+		>${escapeHtml(category.name)}</button>`)
 		.join("");
 
 	// Build panels with WAI-ARIA attributes
@@ -112,7 +123,7 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 			return `
 		<div
 			class="pattern-panel${i === 0 ? ' active' : ''}"
-			data-panel="${category.name}"
+			data-panel="${escapeHtml(category.name)}"
 			role="tabpanel"
 			id="${panelId(category.name)}"
 			aria-labelledby="${tabId(category.name)}"
@@ -122,13 +133,13 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 				<div class="pattern-column pattern-column--anti">
 					<span class="pattern-column-label" id="dont-label-${i}">Don't</span>
 					<ul class="pattern-list" aria-labelledby="dont-label-${i}">
-						${antiItems.map((item) => `<li class="pattern-item pattern-item--anti">${item}</li>`).join("")}
+						${antiItems.map((item) => `<li class="pattern-item pattern-item--anti">${escapeHtml(item)}</li>`).join("")}
 					</ul>
 				</div>
 				<div class="pattern-column pattern-column--do">
 					<span class="pattern-column-label" id="do-label-${i}">Do</span>
 					<ul class="pattern-list" aria-labelledby="do-label-${i}">
-						${category.items.map((item) => `<li class="pattern-item pattern-item--do">${item}</li>`).join("")}
+						${category.items.map((item) => `<li class="pattern-item pattern-item--do">${escapeHtml(item)}</li>`).join("")}
 					</ul>
 				</div>
 			</div>
@@ -167,7 +178,9 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 			p.classList.remove('active');
 			p.setAttribute('hidden', '');
 		});
-		const activePanel = container.querySelector(`[data-panel="${tabName}"]`);
+		const escapedName = CSS.escape(tabName);
+		const activePanel = container.querySelector(`[data-panel="${escapedName}"]`);
+		if (!activePanel) return;
 		activePanel.classList.add('active');
 		activePanel.removeAttribute('hidden');
 	};
@@ -229,10 +242,20 @@ document.addEventListener("click", (e) => {
 	const copyBtn = e.target.closest("[data-copy]");
 	if (copyBtn) {
 		const textToCopy = copyBtn.dataset.copy;
-		navigator.clipboard.writeText(textToCopy).then(() => {
+		const onCopied = () => {
 			copyBtn.classList.add('copied');
 			setTimeout(() => copyBtn.classList.remove('copied'), 1500);
-		});
+		};
+		if (navigator.clipboard?.writeText) {
+			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {});
+		} else {
+			// Fallback for non-HTTPS or older browsers
+			const ta = Object.assign(document.createElement('textarea'), { value: textToCopy, style: 'position:fixed;left:-9999px' });
+			document.body.appendChild(ta);
+			ta.select();
+			try { document.execCommand('copy'); onCopied(); } catch {}
+			ta.remove();
+		}
 	}
 });
 
@@ -248,6 +271,7 @@ function init() {
 	initScrollReveal();
 	initGlassTerminal();
 	initFrameworkViz();
+	initSectionNav();
 	loadContent();
 
 	document.body.classList.add("loaded");

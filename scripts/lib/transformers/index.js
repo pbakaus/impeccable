@@ -1,9 +1,13 @@
-export { transformCursor } from './cursor.js';
-export { transformClaudeCode } from './claude-code.js';
-export { transformGemini } from './gemini.js';
-export { transformCodex } from './codex.js';
-export { transformCodexApp } from './codex-app.js';
-export { transformAgents } from './agents.js';
-export { transformKiro } from './kiro.js';
-export { transformOpenCode } from "./opencode.js";
-export { transformPi } from './pi.js';
+import { createTransformer } from './factory.js';
+import { PROVIDERS } from './providers.js';
+
+export const transformCursor = createTransformer(PROVIDERS.cursor);
+export const transformClaudeCode = createTransformer(PROVIDERS['claude-code']);
+export const transformGemini = createTransformer(PROVIDERS.gemini);
+export const transformCodex = createTransformer(PROVIDERS.codex);
+export const transformAgents = createTransformer(PROVIDERS.agents);
+export const transformKiro = createTransformer(PROVIDERS.kiro);
+export const transformOpenCode = createTransformer(PROVIDERS.opencode);
+export const transformPi = createTransformer(PROVIDERS.pi);
+
+export { createTransformer, PROVIDERS };

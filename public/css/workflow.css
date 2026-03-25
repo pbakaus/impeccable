@@ -93,8 +93,8 @@
 }
 
 .manual-cmd-desc {
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--color-charcoal);
   margin: 0;
 }
@@ -123,10 +123,11 @@
   color: var(--color-ink);
 }
 
-/* Right: The Terminal Stack (Sticky) */
+/* Right: The Terminal Stack (Sticky, vertically centered) */
 .glass-terminal-wrapper {
   position: sticky;
-  top: var(--spacing-xl);
+  top: 50vh;
+  transform: translateY(-50%);
   height: calc(100vh - var(--spacing-xl) * 2);
   max-height: 800px;
   min-height: 500px;
@@ -742,10 +743,9 @@
 
 .changelog-entry {
   padding: var(--spacing-md) 0;
-  border-bottom: 1px solid var(--color-mist);
 }
 
-.changelog-entry:first-child {
+.changelog-entry + .changelog-entry {
   border-top: 1px solid var(--color-mist);
 }
 
@@ -788,6 +788,48 @@
   color: var(--color-ink);
 }
 
+/* Changelog: collapsible older entries */
+.changelog-older {
+  margin-top: var(--spacing-sm);
+}
+
+.changelog-older-toggle {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  padding: var(--spacing-md) 0;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.changelog-older-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.changelog-older-toggle::before {
+  content: '+';
+  font-size: 1.25rem;
+  font-weight: 300;
+  transition: transform 0.3s var(--ease-out);
+}
+
+.changelog-older[open] .changelog-older-toggle::before {
+  transform: rotate(45deg);
+}
+
+.changelog-older-toggle:hover {
+  color: var(--color-accent-hover);
+}
+
+.changelog-older-entries {
+  animation: faqFadeIn 0.3s var(--ease-out);
+}
+
 /* ============================================
    FAQ SECTION
    ============================================ */
@@ -806,10 +848,6 @@
 
 .faq-item {
   border-bottom: 1px solid var(--color-mist);
-}
-
-.faq-item:first-child {
-  border-top: 1px solid var(--color-mist);
 }
 
 .faq-question {

@@ -16,12 +16,12 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local AI harness config generated for Codex app development
-.agents/
-
 # Environment
 .env
 .env.local
 
 # Cloudflare
 .wrangler/
+
+# User design context
+.impeccable.md

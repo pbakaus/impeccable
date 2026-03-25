@@ -49,11 +49,11 @@ When bumping the version, update **all** of these locations to keep them in sync
 - `package.json` → `version`
 - `.claude-plugin/plugin.json` → `version`
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
-- `public/index.html` → hero version link text + new changelog entry
+- `public/index.html` → hero version link text + new changelog entry (user-facing changes only, not internal build/tooling details)
 
 ## Adding New Skills
 
-When adding a new user-invokable skill, update the command count in **all** of these locations:
+When adding a new user-invocable skill, update the command count in **all** of these locations:
 
 - `public/index.html` → meta descriptions, hero box, section lead
 - `public/cheatsheet.html` → meta description, subtitle, `commandCategories`, `commandRelationships`

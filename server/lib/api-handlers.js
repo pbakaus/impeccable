@@ -40,17 +40,17 @@ export async function getSkills() {
 			id: entry.name,
 			name: frontmatter.name || entry.name,
 			description: frontmatter.description || "No description available",
-			userInvokable: frontmatter['user-invokable'] === true || frontmatter['user-invokable'] === 'true',
+			userInvocable: frontmatter['user-invocable'] === true || frontmatter['user-invocable'] === 'true',
 		});
 	}
 
 	return skills;
 }
 
-// Read commands (user-invokable skills)
+// Read commands (user-invocable skills)
 export async function getCommands() {
 	const allSkills = await getSkills();
-	return allSkills.filter(s => s.userInvokable);
+	return allSkills.filter(s => s.userInvocable);
 }
 
 // Get command/skill source content

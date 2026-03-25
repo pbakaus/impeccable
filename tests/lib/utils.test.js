@@ -32,29 +32,18 @@ This is the body content.`;
     expect(result.body).toBe('This is the body content.');
   });
 
-  test('should parse frontmatter with args array', () => {
+  test('should parse frontmatter with argument-hint', () => {
     const content = `---
 name: test-skill
 description: A test skill
-args:
-  - name: target
-    description: The target to normalize
-    required: false
-  - name: output
-    description: Output format
-    required: true
+argument-hint: <output> [TARGET=<value>]
 ---
 
 Body here.`;
 
     const result = parseFrontmatter(content);
     expect(result.frontmatter.name).toBe('test-skill');
-    expect(result.frontmatter.args).toBeArray();
-    expect(result.frontmatter.args).toHaveLength(2);
-    expect(result.frontmatter.args[0].name).toBe('target');
-    expect(result.frontmatter.args[0].description).toBe('The target to normalize');
-    expect(result.frontmatter.args[0].required).toBe(false);
-    expect(result.frontmatter.args[1].required).toBe(true);
+    expect(result.frontmatter['argument-hint']).toBe('<output> [TARGET=<value>]');
   });
 
   test('should return empty frontmatter when no frontmatter present', () => {
@@ -89,29 +78,29 @@ Skill body.`;
     expect(result.frontmatter.license).toBe('MIT');
   });
 
-  test('should parse user-invokable boolean', () => {
+  test('should parse user-invocable boolean', () => {
     const content = `---
 name: test-skill
-user-invokable: true
+user-invocable: true
 ---
 
 Body.`;
 
     const result = parseFrontmatter(content);
-    expect(result.frontmatter['user-invokable']).toBe(true);
+    expect(result.frontmatter['user-invocable']).toBe(true);
   });
 
-  test('should parse user-invokable as string true (code behavior)', () => {
+  test('should parse user-invocable as string true (code behavior)', () => {
     const content = `---
 name: test-skill
-user-invokable: 'true'
+user-invocable: 'true'
 ---
 
 Body.`;
 
     const result = parseFrontmatter(content);
-    // The parseFrontmatter function doesn't strip quotes from YAML string values
-    expect(result.frontmatter['user-invokable']).toBe("'true'");
+    // parseFrontmatter strips YAML quotes, so 'true' becomes boolean true
+    expect(result.frontmatter['user-invocable']).toBe(true);
   });
 
   test('should parse allowed-tools field', () => {
@@ -140,42 +129,33 @@ describe('generateYamlFrontmatter', () => {
     expect(result).toContain('description: A test');
   });
 
-  test('should generate frontmatter with args array', () => {
+  test('should generate frontmatter with argument-hint', () => {
     const data = {
       name: 'test',
       description: 'Test skill',
-      args: [
-        { name: 'target', description: 'The target', required: false },
-        { name: 'output', description: 'Output format', required: true }
-      ]
+      'argument-hint': '<output> [TARGET=<value>]'
     };
 
     const result = generateYamlFrontmatter(data);
-    expect(result).toContain('args:');
-    expect(result).toContain('- name: target');
-    expect(result).toContain('description: The target');
-    expect(result).toContain('required: false');
-    expect(result).toContain('required: true');
+    expect(result).toContain('argument-hint: <output> [TARGET=<value>]');
   });
 
   test('should generate frontmatter with boolean', () => {
     const data = {
       name: 'test',
       description: 'Test',
-      'user-invokable': true
+      'user-invocable': true
     };
 
     const result = generateYamlFrontmatter(data);
-    expect(result).toContain('user-invokable: true');
+    expect(result).toContain('user-invocable: true');
   });
 
   test('should roundtrip: generate and parse back', () => {
     const original = {
       name: 'roundtrip-test',
       description: 'Testing roundtrip',
-      args: [
-        { name: 'arg1', description: 'First arg', required: true }
-      ]
+      'argument-hint': '<arg1>'
     };
 
     const yaml = generateYamlFrontmatter(original);
@@ -184,8 +164,7 @@ describe('generateYamlFrontmatter', () => {
 
     expect(parsed.frontmatter.name).toBe(original.name);
     expect(parsed.frontmatter.description).toBe(original.description);
-    expect(parsed.frontmatter.args).toBeArray();
-    expect(parsed.frontmatter.args[0].name).toBe('arg1');
+    expect(parsed.frontmatter['argument-hint']).toBe('<arg1>');
   });
 });
 
@@ -372,11 +351,11 @@ Skill instructions here.`;
     expect(skills[0].body).toBe('Skill instructions here.');
   });
 
-  test('should read skill with user-invokable flag', () => {
+  test('should read skill with user-invocable flag', () => {
     const skillContent = `---
 name: audit
 description: Run technical quality checks
-user-invokable: true
+user-invocable: true
 ---
 
 Audit the code.`;
@@ -388,7 +367,7 @@ Audit the code.`;
     const { skills } = readSourceFiles(testRootDir);
 
     expect(skills).toHaveLength(1);
-    expect(skills[0].userInvokable).toBe(true);
+    expect(skills[0].userInvocable).toBe(true);
   });
 
   test('should read skill with reference files', () => {
@@ -478,7 +457,7 @@ name: test-skill
 description: A comprehensive test skill
 license: Apache-2.0
 compatibility: claude-code
-user-invokable: true
+user-invocable: true
 allowed-tools: Bash,Edit
 ---
 
@@ -494,7 +473,7 @@ Body content.`;
     expect(skills[0].description).toBe('A comprehensive test skill');
     expect(skills[0].license).toBe('Apache-2.0');
     expect(skills[0].compatibility).toBe('claude-code');
-    expect(skills[0].userInvokable).toBe(true);
+    expect(skills[0].userInvocable).toBe(true);
     expect(skills[0].allowedTools).toBe('Bash,Edit');
   });
 });
@@ -604,7 +583,6 @@ describe('replacePlaceholders', () => {
     expect(replacePlaceholders('Ask {{model}} for help.', 'claude-code')).toBe('Ask Claude for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'gemini')).toBe('Ask Gemini for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'codex')).toBe('Ask GPT for help.');
-    expect(replacePlaceholders('Ask {{model}} for help.', 'codex-app')).toBe('Ask GPT for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'cursor')).toBe('Ask the model for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'agents')).toBe('Ask the model for help.');
     expect(replacePlaceholders('Ask {{model}} for help.', 'kiro')).toBe('Ask Claude for help.');
@@ -615,8 +593,7 @@ describe('replacePlaceholders', () => {
     expect(replacePlaceholders('See {{config_file}}.', 'cursor')).toBe('See .cursorrules.');
     expect(replacePlaceholders('See {{config_file}}.', 'gemini')).toBe('See GEMINI.md.');
     expect(replacePlaceholders('See {{config_file}}.', 'codex')).toBe('See AGENTS.md.');
-    expect(replacePlaceholders('See {{config_file}}.', 'codex-app')).toBe('See AGENTS.md.');
-    expect(replacePlaceholders('See {{config_file}}.', 'agents')).toBe('See your project instruction file (AGENTS.md or .github/copilot-instructions.md).');
+    expect(replacePlaceholders('See {{config_file}}.', 'agents')).toBe('See .github/copilot-instructions.md.');
     expect(replacePlaceholders('See {{config_file}}.', 'kiro')).toBe('See .kiro/settings.json.');
   });
 
@@ -679,7 +656,7 @@ describe('prefixSkillReferences', () => {
     const result = prefixSkillReferences('Run /audit then /polish. The audit skill is great.', 'i-', ['audit', 'polish']);
     expect(result).toContain('/i-audit');
     expect(result).toContain('/i-polish');
-    expect(result).toContain('the i-audit skill');
+    expect(result).toContain('The i-audit skill');
   });
 
   test('should not partially match longer skill names', () => {
@@ -689,8 +666,7 @@ describe('prefixSkillReferences', () => {
 
   test('should handle case-insensitive "the X skill" matching', () => {
     const result = prefixSkillReferences('The audit skill is useful.', 'i-', ['audit']);
-    // The regex replaces case-insensitively, so "The" becomes "the" in the replacement
-    expect(result).toBe('the i-audit skill is useful.');
+    expect(result).toBe('The i-audit skill is useful.');
   });
 
   test('should return content unchanged with empty prefix', () => {

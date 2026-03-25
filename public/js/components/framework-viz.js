@@ -1,11 +1,11 @@
 /**
  * Periodic Table of Commands
  * Clean grid visualization showing all commands organized by category
+ * Hover tooltips show description and relationships inline.
  */
 
 import { commandCategories, commandRelationships, betaCommands } from '../data.js';
 
-// Colors now reference CSS custom properties for dark mode support
 const categoryColors = {
 	diagnostic: { bg: 'var(--cat-diagnostic-bg)', border: 'var(--cat-diagnostic-border)', text: 'var(--cat-diagnostic-text)' },
 	quality: { bg: 'var(--cat-quality-bg)', border: 'var(--cat-quality-border)', text: 'var(--cat-quality-text)' },
@@ -24,7 +24,6 @@ const categoryLabels = {
 	system: 'System'
 };
 
-// Short symbols for each command (like element symbols)
 const commandSymbols = {
 	'teach-impeccable': 'Ti',
 	audit: 'Au',
@@ -48,34 +47,18 @@ const commandSymbols = {
 	overdrive: 'Od'
 };
 
-// Atomic numbers (just for visual interest)
 const commandNumbers = {
 	'teach-impeccable': 0,
-	audit: 1,
-	critique: 2,
-	normalize: 3,
-	polish: 4,
-	optimize: 5,
-	harden: 6,
-	clarify: 7,
-	distill: 8,
-	adapt: 9,
-	extract: 10,
-	animate: 11,
-	colorize: 12,
-	delight: 13,
-	bolder: 14,
-	quieter: 15,
-	onboard: 16,
-	typeset: 17,
-	arrange: 18,
-	overdrive: 19
+	audit: 1, critique: 2, normalize: 3, polish: 4, optimize: 5,
+	harden: 6, clarify: 7, distill: 8, adapt: 9, extract: 10,
+	animate: 11, colorize: 12, delight: 13, bolder: 14, quieter: 15,
+	onboard: 16, typeset: 17, arrange: 18, overdrive: 19
 };
 
 export class PeriodicTable {
 	constructor(container) {
 		this.container = container;
-		this.infoPanel = null;
+		this.activeTooltip = null;
 		this.activeElement = null;
 		this.init();
 	}
@@ -89,24 +72,21 @@ export class PeriodicTable {
 			padding: 20px;
 			height: 100%;
 			box-sizing: border-box;
+			position: relative;
 		`;
 
 		this.renderTable();
-		this.renderInfoPanel();
 	}
 
 	renderTable() {
-		// Group commands by category
 		const groups = {};
 		Object.entries(commandCategories).forEach(([cmd, cat]) => {
 			if (!groups[cat]) groups[cat] = [];
 			groups[cat].push(cmd);
 		});
 
-		// Category order
 		const categoryOrder = ['diagnostic', 'quality', 'adaptation', 'enhancement', 'intensity', 'system'];
 
-		// Create grid container
 		const grid = document.createElement('div');
 		grid.style.cssText = `
 			display: grid;
@@ -118,7 +98,6 @@ export class PeriodicTable {
 		categoryOrder.forEach(cat => {
 			const commands = groups[cat];
 			if (!commands) return;
-
 			const group = this.createCategoryGroup(cat, commands);
 			grid.appendChild(group);
 		});
@@ -126,50 +105,10 @@ export class PeriodicTable {
 		this.container.appendChild(grid);
 	}
 
-	renderInfoPanel() {
-		this.infoPanel = document.createElement('div');
-		this.infoPanel.style.cssText = `
-			background: var(--color-cream);
-			border: 1px solid var(--color-mist);
-			border-radius: 8px;
-			padding: 16px 20px;
-			height: 96px;
-			display: flex;
-			align-items: center;
-			gap: 20px;
-			flex-shrink: 0;
-			overflow: hidden;
-		`;
+	showTooltip(el, cmd) {
+		this.hideTooltip();
 
-		// Default state
-		this.showDefaultInfo();
-
-		this.container.appendChild(this.infoPanel);
-	}
-
-	showDefaultInfo() {
-		// Use "Tap" on touch devices, "Hover over" on desktop
-		const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-		const action = isTouchDevice ? 'Tap' : 'Hover over';
-
-		this.infoPanel.innerHTML = `
-			<div style="
-				font-family: var(--font-body);
-				font-size: 14px;
-				color: var(--color-ash);
-				font-style: italic;
-			">
-				${action} a command to see details
-			</div>
-		`;
-	}
-
-	showCommandInfo(cmd) {
-		const category = commandCategories[cmd];
-		const colors = categoryColors[category];
 		const rel = commandRelationships[cmd] || {};
-
-		// Normalize to arrays (pairs can be string or array)
 		const toArray = (val) => {
 			if (!val) return [];
 			if (Array.isArray(val)) return val;
@@ -180,69 +119,67 @@ export class PeriodicTable {
 		const leadsTo = toArray(rel.leadsTo);
 		const combinesWith = toArray(rel.combinesWith);
 
-		// Build related info
-		let relatedHtml = '';
+		// Build relationships line
+		let relParts = [];
+		if (pairs.length > 0) relParts.push(`pairs with ${pairs.map(p => '/' + p).join(', ')}`);
+		if (combinesWith.length > 0) relParts.push(`+ ${combinesWith.map(p => '/' + p).join(', ')}`);
+		if (leadsTo.length > 0) relParts.push(`then ${leadsTo.map(p => '/' + p).join(', ')}`);
 
-		if (pairs.length > 0) {
-			const list = pairs.map(p => `<span style="font-family: var(--font-mono); color: var(--color-ink)">/${p}</span>`).join(', ');
-			relatedHtml += `<span style="color: var(--color-ash)">Pairs with:</span> ${list}`;
-		}
-		if (combinesWith.length > 0) {
-			const list = combinesWith.map(p => `<span style="font-family: var(--font-mono); color: var(--color-ink)">/${p}</span>`).join(', ');
-			if (relatedHtml) relatedHtml += '<span style="color: var(--color-mist); margin: 0 8px;">•</span>';
-			relatedHtml += `<span style="color: var(--color-ash)">Combines with:</span> ${list}`;
-		}
-		if (leadsTo.length > 0) {
-			const list = leadsTo.map(p => `<span style="font-family: var(--font-mono); color: var(--color-ink)">/${p}</span>`).join(', ');
-			if (relatedHtml) relatedHtml += '<span style="color: var(--color-mist); margin: 0 8px;">•</span>';
-			relatedHtml += `<span style="color: var(--color-ash)">Then:</span> ${list}`;
-		}
+		// Strip category prefix from flow for cleaner display
+		const flow = (rel.flow || '').replace(/^[^:]+:\s*/, '');
 
-		this.infoPanel.innerHTML = `
-			<div style="flex: 1; min-width: 0;">
-				<div style="
-					display: flex;
-					align-items: baseline;
-					gap: 10px;
-					margin-bottom: 4px;
-				">
-					<span style="
-						font-family: var(--font-mono);
-						font-size: 15px;
-						font-weight: 500;
-						color: var(--color-ink);
-					">/${cmd}</span>
-					<span style="
-						font-size: 11px;
-						text-transform: uppercase;
-						letter-spacing: 0.05em;
-						color: ${colors.text};
-						font-weight: 500;
-					">${categoryLabels[category]}</span>
-				</div>
-				<div style="
-					font-family: var(--font-body);
-					font-size: 13px;
-					color: var(--color-charcoal);
-					line-height: 1.4;
-					margin-bottom: ${relatedHtml ? '6px' : '0'};
-				">${rel.flow || 'Design command'}</div>
-				${relatedHtml ? `<div style="font-size: 12px; line-height: 1.4;">${relatedHtml}</div>` : ''}
-			</div>
+		const tooltip = document.createElement('div');
+		tooltip.className = 'ptable-tooltip';
+		tooltip.style.cssText = `
+			position: absolute;
+			z-index: 20;
+			background: var(--color-paper);
+			border: 1px solid var(--color-mist);
+			border-radius: 6px;
+			padding: 10px 14px;
+			box-shadow: 0 8px 24px -4px rgba(0,0,0,0.12);
+			pointer-events: none;
+			max-width: 280px;
+			opacity: 0;
+			transition: opacity 0.15s ease;
 		`;
+
+		tooltip.innerHTML = `
+			<div style="font-family: var(--font-body); font-size: 13px; color: var(--color-charcoal); line-height: 1.4; margin-bottom: ${relParts.length ? '6px' : '0'};">${flow}</div>
+			${relParts.length ? `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--color-ash); line-height: 1.4;">${relParts.join(' · ')}</div>` : ''}
+		`;
+
+		this.container.appendChild(tooltip);
+
+		// Position relative to element
+		const elRect = el.getBoundingClientRect();
+		const containerRect = this.container.getBoundingClientRect();
+
+		const left = elRect.left - containerRect.left;
+		const top = elRect.bottom - containerRect.top + 6;
+
+		tooltip.style.left = `${Math.min(left, containerRect.width - 290)}px`;
+		tooltip.style.top = `${top}px`;
+
+		// Fade in
+		requestAnimationFrame(() => { tooltip.style.opacity = '1'; });
+
+		this.activeTooltip = tooltip;
+	}
+
+	hideTooltip() {
+		if (this.activeTooltip) {
+			this.activeTooltip.remove();
+			this.activeTooltip = null;
+		}
 	}
 
 	createCategoryGroup(category, commands) {
 		const colors = categoryColors[category];
 
 		const group = document.createElement('div');
-		group.style.cssText = `
-			display: flex;
-			flex-direction: column;
-			gap: 6px;
-		`;
+		group.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
 
-		// Category label
 		const label = document.createElement('div');
 		label.style.cssText = `
 			font-family: var(--font-body);
@@ -256,13 +193,8 @@ export class PeriodicTable {
 		label.textContent = categoryLabels[category];
 		group.appendChild(label);
 
-		// Elements row
 		const row = document.createElement('div');
-		row.style.cssText = `
-			display: flex;
-			flex-wrap: wrap;
-			gap: 6px;
-		`;
+		row.style.cssText = `display: flex; flex-wrap: wrap; gap: 6px;`;
 
 		commands.forEach(cmd => {
 			const element = this.createElement(cmd, category);
@@ -352,16 +284,12 @@ export class PeriodicTable {
 			el.appendChild(badge);
 		}
 
-		// Shared handler for activation (hover or focus)
+		// Hover/focus: show tooltip
 		const activate = () => {
-			// Visual feedback
 			el.style.transform = 'translateY(-2px)';
 			el.style.boxShadow = `0 4px 12px ${colors.border}40`;
+			this.showTooltip(el, cmd);
 
-			// Update info panel
-			this.showCommandInfo(cmd);
-
-			// Track active element
 			if (this.activeElement && this.activeElement !== el) {
 				this.activeElement.style.transform = 'translateY(0)';
 				this.activeElement.style.boxShadow = 'none';
@@ -369,29 +297,24 @@ export class PeriodicTable {
 			this.activeElement = el;
 		};
 
-		// Shared handler for deactivation
 		const deactivate = () => {
 			el.style.transform = 'translateY(0)';
 			el.style.boxShadow = 'none';
+			this.hideTooltip();
 		};
 
-		// Mouse events (desktop)
 		el.addEventListener('mouseenter', activate);
 		el.addEventListener('mouseleave', deactivate);
-
-		// Keyboard focus events
 		el.addEventListener('focus', activate);
 		el.addEventListener('blur', deactivate);
 
-		// Touch events - activate on tap, stay active until another tap
 		el.addEventListener('touchstart', (e) => {
-			e.preventDefault(); // Prevent double-firing with click
+			e.preventDefault();
 			activate();
 		}, { passive: false });
 
-		// Click/Enter to scroll to command
 		el.addEventListener('click', () => {
-			activate(); // Also activate on click for touch devices
+			activate();
 			const target = document.getElementById(`cmd-${cmd}`);
 			if (target) {
 				target.scrollIntoView({ behavior: 'smooth', block: 'center' });

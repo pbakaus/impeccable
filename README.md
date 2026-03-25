@@ -2,7 +2,7 @@
 
 The vocabulary you didn't know you needed. 1 skill, 20 commands, and curated anti-patterns for impeccable frontend design.
 
-> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles for Codex app, Codex CLI, Cursor, Claude Code, Gemini CLI, and more.
+> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles for Codex CLI, Cursor, Claude Code, Gemini CLI, and more.
 
 ## Why Impeccable?
 
@@ -55,6 +55,43 @@ A comprehensive design skill with 7 domain-specific references ([view skill](sou
 | `/typeset` | Fix font choices, hierarchy, sizing |
 | `/arrange` | Fix layout, spacing, visual rhythm |
 | `/overdrive` | Add technically extraordinary effects |
+
+#### Usage Examples
+
+**`/audit`** - Run quality checks, get a report (no edits)
+```
+/audit blog              # Audit blog hub + post pages
+/audit dashboard         # Check dashboard components
+/audit checkout flow     # Focus on checkout UX
+```
+*When to use:* Before making changes, to understand what needs fixing.
+
+**`/normalize`** - Align with design system
+```
+/normalize blog          # Apply design tokens, fix spacing
+/normalize buttons       # Standardize button styles
+```
+*When to use:* After audit, to fix inconsistencies.
+
+**`/critique`** - UX design review
+```
+/critique landing page   # Review landing page UX
+/critique onboarding     # Check onboarding flow
+```
+*When to use:* When you want design feedback, not technical fixes.
+
+**`/polish`** - Final pass before shipping
+```
+/polish feature modal    # Clean up modal before release
+/polish settings page    # Final review of settings UI
+```
+*When to use:* Last step before deploying to production.
+
+**Combining commands:**
+```
+/audit /normalize /polish blog    # Full workflow: audit → fix → polish
+/critique /harden checkout        # UX review + add error handling
+```
 
 ### Anti-Patterns
 
@@ -120,17 +157,32 @@ cp -r dist/gemini/.gemini your-project/
 >
 > [Learn more about Gemini CLI skills](https://geminicli.com/docs/cli/skills/)
 
-**Codex app:**
+**Codex app / Copilot / Antigravity:**
 ```bash
-cp -r dist/codex-app/.agents your-project/
+cp -r dist/agents/.agents your-project/
 ```
 
-> **Note:** Codex app discovers project skills from `.agents/skills` and reads instructions from `AGENTS.md` in the repo tree.
+> **Note:** This shared `.agents` bundle works for Codex app, VS Code Copilot, and Antigravity. Codex app discovers project skills from `.agents/skills` and reads instructions from `AGENTS.md` in the repo tree.
 
 **Codex CLI:**
 ```bash
 cp -r dist/codex/.codex/* ~/.codex/
 ```
+
+**Trae:**
+```bash
+# Trae China (domestic version)
+cp -r dist/trae/.trae-cn/skills/* ~/.trae-cn/skills/
+
+# Trae International
+cp -r dist/trae/.trae/skills/* ~/.trae/skills/
+```
+
+> **Note:** Trae has two versions with different config directories:
+> - **Trae China**: `~/.trae-cn/skills/`
+> - **Trae International**: `~/.trae/skills/`
+>
+> After copying, restart Trae IDE to activate the skills.
 
 ## Usage
 
@@ -150,7 +202,7 @@ Most commands accept an optional argument to focus on a specific area:
 /polish checkout-form
 ```
 
-**Codex app:** enabled skills are project-local through `.agents/skills`. You can explicitly invoke a skill with `$frontend-design`, and user-invokable skills appear in the slash-command picker.
+**Codex app:** project-local skills are loaded from `.agents/skills`.
 
 **Note:** Codex CLI uses a different syntax: `/prompts:audit`, `/prompts:polish`, etc.
 
@@ -165,6 +217,7 @@ Most commands accept an optional argument to focus on a specific area:
 - [Codex CLI](https://github.com/openai/codex)
 - [VS Code Copilot](https://code.visualstudio.com)
 - [Kiro](https://kiro.dev)
+- [Trae](https://trae.ai)
 
 ## Contributing
 

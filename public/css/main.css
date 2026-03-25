@@ -134,6 +134,98 @@ button, input, textarea, select {
 }
 
 /* ============================================
+   FLOATING BOTTOM NAV
+   ============================================ */
+
+.section-nav {
+  position: fixed;
+  bottom: var(--spacing-md);
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: oklch(98% 0 0 / 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-mist);
+  border-radius: 100px;
+  box-shadow: 0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease-out), transform 0.4s var(--ease-out);
+}
+
+.section-nav.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.section-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  text-decoration: none;
+  border-radius: 100px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.section-nav-item:hover {
+  background: var(--color-mist);
+  text-decoration: none;
+}
+
+.section-nav-item.is-active {
+  background: var(--color-ink);
+}
+
+.section-nav-item.is-active .section-nav-num {
+  color: var(--color-paper);
+}
+
+.section-nav-item.is-active .section-nav-label {
+  color: var(--color-paper);
+}
+
+.section-nav-num {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  letter-spacing: 0.02em;
+  transition: color 0.2s ease;
+}
+
+.section-nav-label {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-charcoal);
+  transition: color 0.2s ease;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .section-nav-label {
+    display: none;
+  }
+  .section-nav-item {
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 400px) {
+  .section-nav {
+    display: none;
+  }
+}
+
+
+/* ============================================
    BASE STYLES
    ============================================ */
 
@@ -297,7 +389,7 @@ code {
   justify-content: center;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: var(--spacing-2xl) 0;
+  padding: var(--spacing-lg) 0 var(--spacing-2xl);
   background: var(--color-paper);
 }
 
@@ -308,15 +400,27 @@ code {
   z-index: 10;
   color: var(--color-ash);
   transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
 }
 
 .github-link:hover {
   color: var(--color-ink);
+  text-decoration: none;
 }
 
-.github-link svg {
-  width: 28px;
-  height: 28px;
+.github-stars {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  transition: color 0.2s ease;
+}
+
+.github-link:hover .github-stars {
+  color: var(--color-ink);
 }
 
 .hero-combined-container {
@@ -468,8 +572,9 @@ code {
 
 .hero-logos-inline {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .hero-logos-inline .hero-logos-label {
@@ -482,6 +587,7 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .hero-logos-inline .hero-logos-row img {
@@ -586,7 +692,7 @@ code {
 
 .split-after {
   /* Angled clip-path matching divider's skewX(-10deg): top-right, bottom-left */
-  clip-path: polygon(78% 0%, 100% 0%, 100% 100%, 62% 100%);
+  clip-path: polygon(58% 0%, 100% 0%, 100% 100%, 42% 100%);
   z-index: 2;
   background: var(--color-paper);
 }
@@ -595,7 +701,7 @@ code {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 70%;
+  left: 50%;
   width: 3px;
   background: var(--color-accent);
   transform: translateX(-50%) skewX(-10deg);
@@ -2288,6 +2394,41 @@ code {
   color: var(--color-accent);
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+/* Tooltips */
+.has-tooltip {
+  position: relative;
+  cursor: default;
+}
+
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 100;
+}
+
+.has-tooltip:hover::after {
+  opacity: 1;
+}
+
+/* Hero logo icon wrapper */
+.hero-logo-icon {
+  display: inline-flex;
+  align-items: center;
 }
 
 .download-tip {

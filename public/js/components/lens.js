@@ -5,8 +5,7 @@ export function initLensEffect() {
 	if (!container) return;
 
 	initSplitCompare(container, {
-		defaultPosition: 70,
-		skewOffset: 8
+		defaultPosition: 50
 	});
 }
 
