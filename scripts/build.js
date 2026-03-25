@@ -8,7 +8,7 @@
  * - Claude Code: .claude/skills/
  * - Gemini: .gemini/skills/
  * - Codex: .codex/skills/
- * - Agents: .agents/skills/ (VS Code Copilot + Antigravity)
+ * - Agents: .agents/skills/ (Codex app, VS Code Copilot + Antigravity)
  *
  * Also assembles a universal ZIP containing all providers,
  * and builds Tailwind CSS for production deployment.
@@ -155,7 +155,7 @@ This folder contains skills for all supported tools:
   .claude/    → Claude Code
   .gemini/    → Gemini CLI
   .codex/     → Codex CLI
-  .agents/    → VS Code Copilot, Antigravity
+  .agents/    → Codex app, VS Code Copilot, Antigravity
   .kiro/      → Kiro
   .opencode/  → OpenCode
   .pi/        → Pi
@@ -167,7 +167,7 @@ These are hidden folders (dotfiles) — press Cmd+Shift+. in Finder to see them.
 `);
 
   const label = suffix ? ' (prefixed)' : '';
-  console.log(`✓ Assembled universal${label} directory (${providerConfigs.length} providers)`);
+  console.log(`✓ Assembled universal${label} directory (${providerConfigs.length} providers; .agents is shared by Codex app, Copilot, and Antigravity)`);
 }
 
 /**

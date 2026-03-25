@@ -12,6 +12,7 @@ Last verified: 2026-03-24
 | Claude Code | https://code.claude.com/docs/en/skills |
 | Cursor | https://cursor.com/docs/context/skills |
 | Gemini CLI | https://geminicli.com/docs/cli/skills/ |
+| Codex app | https://developers.openai.com/codex/using-codex/app/overview |
 | Codex CLI | https://developers.openai.com/codex/skills |
 | GitHub Copilot (Agents) | https://code.visualstudio.com/docs/copilot/customization/agent-skills |
 | Kiro | https://kiro.dev/docs/skills/ |
@@ -59,6 +60,7 @@ Notes:
 | Claude Code | `.claude/skills/` | - |
 | Cursor | `.cursor/skills/` | `.agents/skills/`, `.claude/skills/`, `.codex/skills/` |
 | Gemini CLI | `.gemini/skills/` | `.agents/skills/` |
+| Codex app | `.agents/skills/` | - |
 | Codex CLI | `.agents/skills/` (primary) | - |
 | GitHub Copilot | `.github/skills/` | `.agents/skills/`, `.claude/skills/` |
 | Kiro | `.kiro/skills/` | - |

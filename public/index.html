@@ -269,7 +269,7 @@
                   </span>
                 </label>
               </div>
-              <span class="install-terminal-note">Contains all provider directories — extract to project root</span>
+              <span class="install-terminal-note">Contains all provider directories — extract to project root. <code>.agents/</code> works with Codex app, Copilot, and Antigravity.</span>
             </div>
           </div>
         </div>
@@ -394,6 +394,7 @@
           <div class="faq-answer">
             <p>The easiest way is <code>npx skills add pbakaus/impeccable</code> — it auto-detects your AI harness and places files correctly.</p>
             <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, and <code>.agents/</code>.</p>
+            <p><code>.agents/</code> is the shared install target for Codex app, VS Code Copilot, and Antigravity. <code>.codex/</code> is the dedicated install target for Codex CLI.</p>
             <p>Project-level installation takes precedence and lets you version control your skills.</p>
           </div>
         </details>
@@ -419,6 +420,7 @@
             <ul>
               <li><strong>Cursor:</strong> Requires Nightly channel + Agent Skills enabled in Settings → Rules</li>
               <li><strong>Gemini CLI:</strong> Requires <code>@google/gemini-cli@preview</code> + Skills enabled via <code>/settings</code></li>
+              <li><strong>Codex app:</strong> Reads <code>AGENTS.md</code> plus project-local skills from <code>.agents/skills/</code></li>
             </ul>
           </div>
         </details>
@@ -431,6 +433,7 @@
               <li><strong>Claude Code:</strong> <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" rel="noopener">Official Documentation</a></li>
               <li><strong>Cursor:</strong> <a href="https://docs.cursor.com" target="_blank" rel="noopener">Cursor Docs</a></li>
               <li><strong>Gemini CLI:</strong> <a href="https://geminicli.com/docs/" target="_blank" rel="noopener">Gemini CLI Docs</a></li>
+              <li><strong>Codex app:</strong> <a href="https://developers.openai.com/codex/using-codex/app/overview" target="_blank" rel="noopener">OpenAI Docs</a></li>
               <li><strong>Codex CLI:</strong> <a href="https://github.com/openai/codex" target="_blank" rel="noopener">Codex GitHub</a></li>
             </ul>
             <p>Once you're comfortable with basic prompting and code generation, come back and give Impeccable a try.</p>
