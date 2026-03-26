@@ -70,4 +70,35 @@ export const PROVIDERS = {
     displayName: 'Trae',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
   },
+  openclaw: {
+    provider: 'openclaw',
+    configDir: '.openclaw',
+    displayName: 'OpenClaw',
+    frontmatterFields: ['license', 'compatibility'],
+    // OpenClaw uses an extended SKILL.md frontmatter schema with permissions,
+    // triggers, and metadata. These are injected via frontmatterEnrich rather
+    // than FIELD_SPECS since they have a fixed structure per-provider.
+    // See: https://github.com/rohitg00/skillkit/pull/86
+    frontmatterEnrich: (fm) => {
+      fm.version = '1.0.0';
+      fm.permissions = { filesystem: 'none', network: false };
+      fm.triggers = [{ command: `/${fm.name}` }];
+      fm.metadata = {
+        openclaw: {
+          requires: { bins: [], env: [] },
+        },
+      };
+      // OpenClaw gateway routes skills by trigger-phrase descriptions.
+      // Descriptions must start with a verb phrase like "Use when".
+      if (
+        fm.description &&
+        !/^(Use when|Use for|Use to|Run when|Run |Invoke when|Invoke )/i.test(fm.description)
+      ) {
+        const desc = fm.description;
+        // Bridge naturally: "Run X" → "Use when you want to run X"
+        const lower = desc[0].toLowerCase() + desc.slice(1);
+        fm.description = `Use when you want to ${lower}`;
+      }
+    },
+  },
 };

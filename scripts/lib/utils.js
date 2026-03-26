@@ -321,7 +321,15 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'RULES.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
-  }
+  },
+  // OpenClaw is model-agnostic — the gateway routes to whatever LLM the
+  // operator configures (Anthropic, OpenRouter, local). Use generic phrasing.
+  'openclaw': {
+    model: 'the model',
+    config_file: 'SOUL.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
+  },
 };
 
 /**
@@ -407,6 +415,11 @@ export function generateYamlFrontmatter(data) {
 
   for (const [key, value] of Object.entries(data)) {
     if (Array.isArray(value)) {
+      // Handle arrays of objects with arbitrary keys (e.g., OpenClaw triggers)
+      if (value.length > 0 && typeof value[0] === 'object' && !('name' in value[0])) {
+        lines.push(...serializeYamlValue(key, value, 0));
+        continue;
+      }
       lines.push(`${key}:`);
       for (const item of value) {
         if (typeof item === 'object') {
@@ -417,6 +430,9 @@ export function generateYamlFrontmatter(data) {
           lines.push(`  - ${item}`);
         }
       }
+    } else if (typeof value === 'object' && value !== null) {
+      // Handle nested objects (e.g., OpenClaw permissions, metadata)
+      lines.push(...serializeYamlValue(key, value, 0));
     } else if (typeof value === 'boolean') {
       lines.push(`${key}: ${value}`);
     } else {
@@ -427,4 +443,39 @@ export function generateYamlFrontmatter(data) {
 
   lines.push('---');
   return lines.join('\n');
+}
+
+/**
+ * Recursively serialize a YAML key-value pair with proper indentation.
+ * Handles nested objects and arrays for extended frontmatter schemas.
+ */
+function serializeYamlValue(key, value, depth) {
+  const indent = '  '.repeat(depth);
+  const lines = [];
+
+  if (Array.isArray(value)) {
+    lines.push(`${indent}${key}:`);
+    for (const item of value) {
+      if (typeof item === 'object' && item !== null) {
+        const entries = Object.entries(item);
+        lines.push(`${indent}  - ${entries[0][0]}: ${entries[0][1]}`);
+        for (const [k, v] of entries.slice(1)) {
+          lines.push(`${indent}    ${k}: ${v}`);
+        }
+      } else {
+        lines.push(`${indent}  - ${item}`);
+      }
+    }
+  } else if (typeof value === 'object' && value !== null) {
+    lines.push(`${indent}${key}:`);
+    for (const [k, v] of Object.entries(value)) {
+      lines.push(...serializeYamlValue(k, v, depth + 1));
+    }
+  } else if (typeof value === 'boolean') {
+    lines.push(`${indent}${key}: ${value}`);
+  } else {
+    lines.push(`${indent}${key}: ${value}`);
+  }
+
+  return lines;
 }

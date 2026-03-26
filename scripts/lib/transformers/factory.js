@@ -46,7 +46,7 @@ const FIELD_SPECS = {
  * @returns {Function} transform(skills, distDir, options?)
  */
 export function createTransformer(config) {
-  const { provider, configDir, displayName, frontmatterFields = [], bodyTransform, placeholderProvider } = config;
+  const { provider, configDir, displayName, frontmatterFields = [], bodyTransform, placeholderProvider, frontmatterEnrich } = config;
   const placeholderKey = placeholderProvider || provider;
 
   const activeFields = frontmatterFields
@@ -82,6 +82,11 @@ export function createTransformer(config) {
         if (spec.condition && !spec.condition(skill)) continue;
         const val = spec.value ? spec.value(skill) : skill[spec.sourceKey];
         if (val) frontmatterObj[spec.yamlKey] = val;
+      }
+
+      // Provider-specific frontmatter enrichment (e.g., OpenClaw extended schema)
+      if (frontmatterEnrich) {
+        frontmatterEnrich(frontmatterObj, skill);
       }
 
       const frontmatter = generateYamlFrontmatter(frontmatterObj);
