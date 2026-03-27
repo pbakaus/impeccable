@@ -9,5 +9,6 @@ export const transformAgents = createTransformer(PROVIDERS.agents);
 export const transformKiro = createTransformer(PROVIDERS.kiro);
 export const transformOpenCode = createTransformer(PROVIDERS.opencode);
 export const transformPi = createTransformer(PROVIDERS.pi);
+export const transformOpenClaw = createTransformer(PROVIDERS.openclaw);
 
 export { createTransformer, PROVIDERS };
