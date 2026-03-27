@@ -1,6 +1,6 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 20 commands, and curated anti-patterns for impeccable style. Works with Cursor, Claude Code, Gemini CLI, and Codex CLI.
+The vocabulary you didn't know you needed. 1 skill, 20 commands, and curated anti-patterns for impeccable style. Works across 11 harnesses, including Cursor, Claude Code, Gemini CLI, Codex CLI, OpenCode, Pi, Trae, and Qoder.
 
 ## Repository Purpose
 
@@ -12,13 +12,13 @@ We use a **feature-rich source format** that gets transformed for each provider:
 
 - **Source files** (`source/`): Full metadata with YAML frontmatter, args, descriptions
 - **Build system** (`scripts/`): Transforms source → provider-specific formats
-- **Distribution** (`dist/`): Committed output files for 4 providers
+- **Distribution** (`dist/`): Committed output files for all supported providers
 
 ### Why Option A?
 
 Cursor doesn't support frontmatter or arguments (lowest common denominator). Instead of limiting all providers, we:
 1. Author with full metadata in source files
-2. Generate full-featured versions for providers that support it (Claude Code, Gemini, Codex)
+2. Generate full-featured versions for providers that support it (Claude Code, Gemini, Codex, OpenCode, Pi, Qoder, etc.)
 3. Generate downgraded versions for Cursor (strip frontmatter, rely on appending)
 
 ## Repository Structure
@@ -44,6 +44,9 @@ impeccable/
 │   │   │   └── commands/*.toml
 │   │   ├── GEMINI.md
 │   │   └── GEMINI.*.md
+│   ├── qoder/                   # Agent skills
+│   │   └── .qoder/
+│   │       └── skills/*/SKILL.md
 │   └── codex/                   # Custom prompts + Agent Skills
 │       └── .codex/
 │           ├── prompts/*.md
@@ -185,6 +188,11 @@ Run: `bun run build`
   - Reference files in skill subdirectories
 - **Installation**: Extract ZIP into your project root, creates `.codex/` folder
 
+### 5. Qoder (Agent Skills)
+- **Skills**: Agent Skills standard → `dist/qoder/.qoder/skills/{name}/SKILL.md`
+- **Frontmatter**: `name`, `description`, and selected optional fields (`user-invocable`, `argument-hint`, `license`)
+- **Installation**: Extract ZIP into your project root, creates `.qoder/` folder
+
 ## Key Design Decisions
 
 ### Why commit dist/?
@@ -225,7 +233,7 @@ End users can copy files directly without needing build tools.
 ## Important Notes
 
 - **Source is truth**: Always edit `source/`, never edit `dist/` directly
-- **Test across providers**: Changes affect 4 different outputs
+- **Test across providers**: Changes affect all provider outputs
 - **Argument handling**: Write prompts that work with both placeholders and appending
 - **Cursor limitations**: No frontmatter/args, so design for graceful degradation
 

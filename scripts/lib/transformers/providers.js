@@ -70,4 +70,10 @@ export const PROVIDERS = {
     displayName: 'Trae',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
   },
+  'qoder': {
+  provider: 'qoder',
+  configDir: '.qoder',
+  displayName: 'Qoder',
+  frontmatterFields: ['user-invocable', 'argument-hint', 'license'],
+}
 };

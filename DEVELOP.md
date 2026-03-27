@@ -36,8 +36,8 @@ Your skill instructions here...
 - `allowed-tools` (optional, experimental): Pre-approved tools list
 
 **Body placeholders** (replaced per-provider during build):
-- `{{model}}` -- Provider-specific model name (e.g., "Claude", "Gemini", "GPT")
-- `{{config_file}}` -- Provider-specific config file (e.g., "CLAUDE.md", ".cursorrules")
+- `{{model}}` -- Provider-specific model name (e.g., "Claude", "Gemini", "GPT", "Qoder")
+- `{{config_file}}` -- Provider-specific config file (e.g., "CLAUDE.md", ".cursorrules", "QODER.md")
 - `{{ask_instruction}}` -- How to ask the user for clarification
 - `{{command_prefix}}` -- Slash command prefix (`/` for most, `$` for Codex)
 - `{{available_commands}}` -- Comma-separated list of user-invocable commands
@@ -110,7 +110,11 @@ scripts/
 
 3. Run `bun run build` -- the provider is automatically picked up by the build loop.
 
-4. Update `HARNESSES.md` with the provider's capabilities.
+4. Add the provider to `FILE_DOWNLOAD_PROVIDER_CONFIG_DIRS` in `lib/download-providers.js` so API downloads resolve correctly.
+
+5. Add/extend download tests in `tests/server/download-validation.test.js` for allowlist and path mapping.
+
+6. Update `HARNESSES.md` with the provider's capabilities.
 
 ### Provider Config Options
 
@@ -155,6 +159,7 @@ scripts/
 - [Kiro Skills](https://kiro.dev/docs/skills/)
 - [OpenCode Skills](https://opencode.ai/docs/skills/)
 - [Pi Skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md)
+- Qoder Skills docs: TBD (add official docs link when available)
 
 ## Repository Structure
 

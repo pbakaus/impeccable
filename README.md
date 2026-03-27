@@ -145,6 +145,11 @@ cp -r dist/opencode/.opencode your-project/
 cp -r dist/pi/.pi your-project/
 ```
 
+**Qoder:**
+```bash
+cp -r dist/qoder/.qoder your-project/
+```
+
 **Gemini CLI:**
 ```bash
 cp -r dist/gemini/.gemini your-project/
@@ -203,6 +208,7 @@ Most commands accept an optional argument to focus on a specific area:
 - [Claude Code](https://claude.ai/code)
 - [OpenCode](https://opencode.ai)
 - [Pi](https://pi.dev)
+- [Qoder](https://qoder.com)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
 - [VS Code Copilot](https://code.visualstudio.com)

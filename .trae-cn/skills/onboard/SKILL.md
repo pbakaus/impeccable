@@ -1,8 +1,13 @@
 ---
 name: onboard
-description: Designs and improves onboarding flows, empty states, and first-run experiences to help users reach value quickly. Use when the user mentions onboarding, first-time users, empty states, activation, getting started, or new user flows.
-user-invocable: true
+description: 
+---
+
+---
+name: onboard
+description: "Designs and improves onboarding flows, empty states, and first-run experiences to help users reach value quickly. Use when the user mentions onboarding, first-time users, empty states, activation, getting started, or new user flows."
 argument-hint: "[target]"
+user-invocable: true
 ---
 
 ## MANDATORY PREPARATION
@@ -243,3 +248,4 @@ Test with real users:
 - **Time to value**: How long until users get first value?
 
 Remember: You're a product educator with excellent teaching instincts. Get users to their "aha moment" as quickly as possible. Teach the essential, make it contextual, respect user time and intelligence.
+
