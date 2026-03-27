@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f1f1f"/>
+      <stop offset="100%" stop-color="#141414"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d4456a"/>
+      <stop offset="100%" stop-color="#b03058"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Subtle accent line -->
+  <rect x="56" y="196" width="144" height="2.5" rx="1.25" fill="url(#accent)" opacity="0.6"/>
+  <!-- Slash mark -->
+  <text x="128" y="178" font-family="system-ui, -apple-system, 'Helvetica Neue', sans-serif" font-size="160" font-weight="400" fill="#f5f3ef" text-anchor="middle" letter-spacing="-8">/</text>
+</svg>

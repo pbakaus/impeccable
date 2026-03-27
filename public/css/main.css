@@ -2184,10 +2184,126 @@ code {
   max-width: 60ch;
 }
 
+/* Install steps layout */
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  max-width: 640px;
+  margin: 0 auto var(--spacing-xl);
+}
+
+.install-step-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.install-step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-accent);
+  color: var(--color-accent);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.install-step-meta {
+  padding-top: 6px;
+}
+
+.install-step-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.install-step-desc {
+  font-size: 0.875rem;
+  color: var(--color-ash);
+  margin: 2px 0 0;
+}
+
+/* Subscribe card (step 2) */
+.install-subscribe {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.install-subscribe iframe {
+  display: block;
+  max-width: 100%;
+}
+
+.install-subscribe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--color-paper);
+  text-decoration: none;
+  padding: 1rem 2rem;
+  background: var(--color-ink);
+  border: 1px solid var(--color-ink);
+  transition: all var(--duration-base) var(--ease-out);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.install-subscribe-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent);
+  transform: translateY(100%);
+  transition: transform var(--duration-base) var(--ease-out);
+  z-index: 0;
+}
+
+.install-subscribe-btn:hover::before {
+  transform: translateY(0);
+}
+
+.install-subscribe-btn svg,
+.install-subscribe-btn span {
+  position: relative;
+  z-index: 1;
+}
+
+.install-subscribe-btn:hover {
+  color: var(--color-paper);
+}
+
+.install-subscribe-note {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .install-subscribe {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* Install terminal (glass terminal style) */
 .install-terminal {
   max-width: 640px;
-  margin: 0 auto var(--spacing-xl);
+  margin: 0 auto;
 }
 
 .install-terminal .glass-terminal {
@@ -2314,86 +2430,274 @@ code {
   border-radius: 4px;
 }
 
-/* Prefix toggle (inline with download button) */
-.install-terminal-cmd--download {
+/* Install alternatives (collapsible) */
+.install-alternatives {
+  max-width: 640px;
+  margin: var(--spacing-sm) auto 0;
+}
+
+.install-alternatives-toggle {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ash);
+  cursor: pointer;
+  padding: var(--spacing-sm) 0;
+  list-style: none;
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
+  gap: 6px;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
-.prefix-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 6px;
-  transition: border-color var(--duration-fast) var(--ease-out);
+.install-alternatives-toggle::-webkit-details-marker {
+  display: none;
 }
 
-.prefix-toggle:hover {
-  border-color: rgba(0, 0, 0, 0.2);
-}
-
-.prefix-toggle input {
-  position: absolute;
-  opacity: 0;
+.install-alternatives-toggle::before {
+  content: '';
+  display: inline-block;
   width: 0;
   height: 0;
-}
-
-.prefix-toggle-slider {
-  position: relative;
-  width: 32px;
-  height: 18px;
-  background: var(--color-mist);
-  border-radius: 18px;
-  transition: background var(--duration-fast) var(--ease-out);
-  flex-shrink: 0;
-}
-
-.prefix-toggle-slider::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  background: var(--color-paper);
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-.prefix-toggle input:checked + .prefix-toggle-slider {
+.install-alternatives[open] .install-alternatives-toggle::before {
+  transform: rotate(90deg);
+}
+
+.install-alternatives-toggle:hover {
+  color: var(--color-charcoal);
+}
+
+.install-alternatives-content {
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  background: var(--color-paper);
+  overflow: hidden;
+  animation: altFadeIn 0.2s var(--ease-out);
+}
+
+@keyframes altFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.install-alt-method {
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.install-alt-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ash);
+  margin-bottom: 6px;
+}
+
+.install-alt-method .install-terminal-cmd {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.install-alt-method .terminal-prompt {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: bold;
+  user-select: none;
+}
+
+.install-alt-method code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+
+.install-alt-note {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-ash);
+  margin-top: 4px;
+}
+
+.install-alt-note code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  background: var(--color-mist);
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--color-ink);
+}
+
+.install-alt-download {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.install-alt-divider {
+  height: 1px;
+  background: var(--color-mist);
+}
+
+.install-prefix-options {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.install-prefix-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--color-mist);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  line-height: 1;
+}
+
+.install-prefix-option:hover {
+  border-color: var(--color-charcoal);
+}
+
+.install-prefix-option:has(input:checked) {
+  border-color: var(--color-accent);
+}
+
+.install-prefix-option input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--color-mist);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0;
+  transition: all var(--duration-fast) var(--ease-out);
+  position: relative;
+}
+
+.install-prefix-option input:checked {
+  border-color: var(--color-accent);
   background: var(--color-accent);
 }
 
-.prefix-toggle input:checked + .prefix-toggle-slider::after {
-  transform: translateX(14px);
+.install-prefix-option input:checked::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  background: var(--color-paper);
+  border-radius: 50%;
 }
 
-.prefix-toggle input:focus-visible + .prefix-toggle-slider {
+.install-prefix-option input:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-.prefix-toggle-label {
-  font-size: 0.75rem;
-  color: var(--color-charcoal);
-  white-space: nowrap;
+.install-prefix-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 1px;
 }
 
-.prefix-toggle-label code {
+.install-prefix-option-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1;
+}
+
+.install-prefix-option-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.install-prefix-option-examples code {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   background: var(--color-accent-dim);
   color: var(--color-accent);
-  padding: 1px 4px;
+  padding: 2px 6px;
   border-radius: 3px;
+}
+
+.install-prefix-option-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.install-prefix-reason {
+  font-size: 0.6875rem;
+  color: var(--color-ash);
+  line-height: 1.4;
+  padding-left: 2px;
+}
+
+.install-prefix-option-label code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.install-alt-method .install-prefix-options {
+  margin-top: var(--spacing-sm);
+}
+
+.install-alt-method .install-alt-download {
+  margin-top: var(--spacing-sm);
+}
+
+/* Hidden prefix checkbox for download logic */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  .install-prefix-options {
+    flex-direction: column;
+  }
+
+  .install-alt-method {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .install-alt-method code {
+    font-size: 0.75rem;
+  }
 }
 
 /* Tooltips */

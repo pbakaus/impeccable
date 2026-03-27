@@ -227,6 +227,20 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 // EVENT HANDLERS
 // ============================================
 
+// Sync prefix radio buttons to hidden checkbox + update download button label
+document.querySelectorAll('input[name="prefix-choice"]').forEach((radio) => {
+	radio.addEventListener('change', () => {
+		const prefixToggle = document.getElementById('prefix-toggle');
+		if (prefixToggle) prefixToggle.checked = radio.value === 'prefixed';
+		const btnLabel = document.querySelector('#download-zip-btn span');
+		if (btnLabel) {
+			btnLabel.textContent = radio.value === 'prefixed'
+				? 'Download prefixed zip'
+				: 'Download universal zip';
+		}
+	});
+});
+
 // Handle bundle download clicks via event delegation
 document.addEventListener("click", (e) => {
 	const bundleBtn = e.target.closest("[data-bundle]");

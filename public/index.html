@@ -208,74 +208,119 @@
     <section class="platforms-section" id="downloads">
       <div class="section-header" data-reveal>
         <span class="section-number">04</span>
-        <h2 class="section-title">Install</h2>
-        <p class="section-subtitle">One command. Every provider.</p>
+        <h2 class="section-title">Get Started</h2>
+        <p class="section-subtitle">Two steps to impeccable design.</p>
       </div>
 
-      <!-- Primary install: glass terminal style -->
-      <div class="install-terminal" data-reveal>
-        <div class="glass-terminal">
-          <div class="terminal-header">
-            <span class="terminal-dot red"></span>
-            <span class="terminal-dot yellow"></span>
-            <span class="terminal-dot green"></span>
-            <span class="terminal-title">install</span>
+      <div class="install-steps">
+        <!-- Step 1: Install -->
+        <div class="install-step" data-reveal>
+          <div class="install-step-header">
+            <span class="install-step-number">1</span>
+            <div class="install-step-meta">
+              <h3 class="install-step-title">Install the skills</h3>
+              <p class="install-step-desc">One command. Every provider.</p>
+            </div>
           </div>
-          <div class="terminal-body">
-            <div class="install-terminal-row">
-              <span class="install-terminal-label">All tools</span>
-              <div class="install-terminal-cmd">
-                <span class="terminal-prompt">$</span>
-                <code>npx skills add pbakaus/impeccable</code>
-                <button class="copy-btn" aria-label="Copy command" data-copy="npx skills add pbakaus/impeccable">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
-                  </svg>
-                </button>
+
+          <!-- Primary: npx command -->
+          <div class="install-terminal">
+            <div class="glass-terminal">
+              <div class="terminal-header">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+                <span class="terminal-title">install</span>
               </div>
-              <span class="install-terminal-note">Auto-detects your AI harness and installs to the right location</span>
-            </div>
-            <div class="install-terminal-divider"></div>
-            <div class="install-terminal-row">
-              <span class="install-terminal-label">Claude Code</span>
-              <div class="install-terminal-cmd">
-                <span class="terminal-prompt">$</span>
-                <code>/plugin marketplace add pbakaus/impeccable</code>
-                <button class="copy-btn" aria-label="Copy command" data-copy="/plugin marketplace add pbakaus/impeccable">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
-                  </svg>
-                </button>
+              <div class="terminal-body">
+                <div class="install-terminal-row">
+                  <div class="install-terminal-cmd">
+                    <span class="terminal-prompt">$</span>
+                    <code>npx skills add pbakaus/impeccable</code>
+                    <button class="copy-btn" aria-label="Copy command" data-copy="npx skills add pbakaus/impeccable">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <span class="install-terminal-note">Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and more. Auto-detects your AI harness.</span>
+                </div>
               </div>
-              <span class="install-terminal-note">Then open <code>/plugin</code> to install from Discover tab</span>
             </div>
-            <div class="install-terminal-divider"></div>
-            <div class="install-terminal-row">
-              <span class="install-terminal-label">Manual</span>
-              <div class="install-terminal-cmd install-terminal-cmd--download">
-                <button class="btn btn-secondary btn-small" data-bundle="universal" aria-label="Download universal ZIP">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                  </svg>
-                  <span>Download universal ZIP</span>
-                </button>
-                <label class="prefix-toggle">
-                  <input type="checkbox" id="prefix-toggle" />
-                  <span class="prefix-toggle-slider"></span>
-                  <span class="prefix-toggle-label">
-                    Prefix with <code>/i-</code>
-                  </span>
-                </label>
+          </div>
+
+          <!-- Alternatives (collapsible) -->
+          <details class="install-alternatives">
+            <summary class="install-alternatives-toggle">Other install methods</summary>
+            <div class="install-alternatives-content">
+              <div class="install-alt-method">
+                <span class="install-alt-label">Claude Code plugin</span>
+                <div class="install-terminal-cmd">
+                  <span class="terminal-prompt">$</span>
+                  <code>/plugin marketplace add pbakaus/impeccable</code>
+                  <button class="copy-btn" aria-label="Copy command" data-copy="/plugin marketplace add pbakaus/impeccable">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+                <span class="install-alt-note">Then open <code>/plugin</code> to install from Discover tab</span>
               </div>
-              <span class="install-terminal-note">Contains all provider directories — extract to project root</span>
+              <div class="install-alt-divider"></div>
+              <div class="install-alt-method">
+                <span class="install-alt-label">Manual download</span>
+                <span class="install-alt-note">Contains all provider directories. Extract to your project root.</span>
+                <div class="install-prefix-options">
+                  <label class="install-prefix-option" data-prefix="default">
+                    <input type="radio" name="prefix-choice" value="default" checked />
+                    <div class="install-prefix-option-content">
+                      <span class="install-prefix-option-label">Default names</span>
+                      <span class="install-prefix-option-examples"><code>/polish</code> <code>/audit</code> <code>/typeset</code></span>
+                    </div>
+                  </label>
+                  <div class="install-prefix-option-wrap">
+                    <label class="install-prefix-option" data-prefix="prefixed">
+                      <input type="radio" name="prefix-choice" value="prefixed" />
+                      <div class="install-prefix-option-content">
+                        <span class="install-prefix-option-label">Prefixed with <code>/i-</code></span>
+                        <span class="install-prefix-option-examples"><code>/i-polish</code> <code>/i-audit</code> <code>/i-typeset</code></span>
+                      </div>
+                    </label>
+                    <span class="install-prefix-reason">Avoids conflicts with built-in commands or other skill packs</span>
+                  </div>
+                </div>
+                <div class="install-alt-download">
+                  <button class="btn btn-primary" data-bundle="universal" aria-label="Download universal zip" id="download-zip-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    <span>Download universal zip</span>
+                  </button>
+                </div>
+                <input type="checkbox" id="prefix-toggle" class="sr-only" />
+              </div>
             </div>
+          </details>
+        </div>
+
+        <!-- Step 2: Subscribe -->
+        <div class="install-step" data-reveal>
+          <div class="install-step-header">
+            <span class="install-step-number">2</span>
+            <div class="install-step-meta">
+              <h3 class="install-step-title">Stay up to date</h3>
+              <p class="install-step-desc">New skills, pattern updates, and design tips.</p>
+            </div>
+          </div>
+          <div class="install-subscribe">
+            <iframe src="https://impeccablestyle.substack.com/embed" width="100%" height="150" style="border: 1px solid #e8e4df; border-radius: 8px; background: white;" frameborder="0" scrolling="no"></iframe>
           </div>
         </div>
       </div>
 
-      <p class="download-tip" data-reveal>Once installed, keep the <a href="/cheatsheet">command cheatsheet</a> handy for quick reference. To update, run <code>npx skills update</code>.</p>
+      <p class="download-tip" data-reveal>Keep the <a href="/cheatsheet">command cheatsheet</a> handy for quick reference. To update skills, run <code>npx skills update</code>.</p>
     </section>
 
     <!-- 5. CHANGELOG -->
@@ -379,6 +424,7 @@
           </div>
         </details>
       </div>
+
     </section>
 
     <!-- 6. FAQ -->
@@ -490,7 +536,14 @@
         </a>
         <span class="footer-author-divider"></span>
         <a href="https://www.paulbakaus.com" class="footer-newsletter" target="_blank" rel="noopener">
-          Renaissance Geek
+          Blog
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+        <span class="footer-author-divider"></span>
+        <a href="https://impeccablestyle.substack.com" class="footer-newsletter" target="_blank" rel="noopener">
+          Newsletter
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M5 12h14M12 5l7 7-7 7"/>
           </svg>
