@@ -121,15 +121,16 @@ Keep skills updated by adding this repository as a submodule:
 # 1. Add impeccable as a submodule
 git submodule add https://github.com/pbakaus/impeccable .impeccable
 
-# 2. Link your preferred provider (e.g. cursor, claude, gemini)
+# 2. Link your preferred provider's skill folders (e.g. cursor, claude, gemini)
 ./.impeccable/bin/link.sh cursor
 
 # 3. Commit the changes
+# (This creates symlinks inside .cursor/skills/*, without replacing your whole .cursor folder)
 git add .gitmodules .impeccable .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-To update the skills later, simply run `git submodule update --remote`.
+To update the skills later, simply run `git submodule update --remote`. If new skills are added upstream, run the link script again to create symlinks for the new folders.
 
 ### Option 3: Copy from Repository
 
@@ -189,7 +190,7 @@ git submodule add https://github.com/pbakaus/impeccable .impeccable
 ./.impeccable/bin/link.sh <provider>
 ```
 
-Replace `<provider>` with your tool (e.g., `cursor`, `claude`, `gemini`, `opencode`, `pi`). This will create a symlink from your project root to the appropriate configuration folder inside the submodule.
+Replace `<provider>` with your tool (e.g., `cursor`, `claude`, `gemini`, `opencode`, `pi`). This will create symlinks only for the skill subfolders inside your existing provider config (for example, `.claude/skills/*`), instead of replacing the whole provider directory.
 
 ## Usage
 

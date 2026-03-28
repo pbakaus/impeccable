@@ -19,20 +19,47 @@ if [ -z "$PROVIDER" ]; then
 fi
 
 PROVIDER_DIR=".$PROVIDER"
+SOURCE_SKILLS_DIR="$REPO_DIR/$PROVIDER_DIR/skills"
+TARGET_PROVIDER_DIR="$PARENT_DIR/$PROVIDER_DIR"
+TARGET_SKILLS_DIR="$TARGET_PROVIDER_DIR/skills"
 
 if [ ! -d "$REPO_DIR/$PROVIDER_DIR" ]; then
   echo "Error: Provider directory '$PROVIDER_DIR' not found in $REPO_DIR"
   exit 1
 fi
 
-echo "Linking .$PROVIDER to parent directory..."
-
-# Check if target already exists in parent
-if [ -e "$PARENT_DIR/$PROVIDER_DIR" ]; then
-  echo "Warning: '$PARENT_DIR/$PROVIDER_DIR' already exists. Skipping."
-else
-  # Create relative symlink in the parent directory
-  cd "$PARENT_DIR"
-  ln -s "$SUBMODULE_NAME/$PROVIDER_DIR" "$PROVIDER_DIR"
-  echo "Done! Created symlink: $PARENT_DIR/$PROVIDER_DIR -> $SUBMODULE_NAME/$PROVIDER_DIR"
+if [ ! -d "$SOURCE_SKILLS_DIR" ]; then
+  echo "Error: Skills directory '$SOURCE_SKILLS_DIR' not found"
+  exit 1
 fi
+
+echo "Linking skill folders from $PROVIDER_DIR into parent directory..."
+
+mkdir -p "$TARGET_SKILLS_DIR"
+
+LINKED=0
+SKIPPED=0
+
+for skill_dir in "$SOURCE_SKILLS_DIR"/*; do
+  [ -d "$skill_dir" ] || continue
+
+  skill_name="$(basename "$skill_dir")"
+  target_path="$TARGET_SKILLS_DIR/$skill_name"
+  relative_source="$SUBMODULE_NAME/$PROVIDER_DIR/skills/$skill_name"
+
+  if [ -e "$target_path" ] || [ -L "$target_path" ]; then
+    echo "Warning: '$target_path' already exists. Skipping $skill_name."
+    SKIPPED=$((SKIPPED + 1))
+    continue
+  fi
+
+  (
+    cd "$PARENT_DIR"
+    ln -s "$relative_source" "$PROVIDER_DIR/skills/$skill_name"
+  )
+
+  echo "Linked: $target_path -> $relative_source"
+  LINKED=$((LINKED + 1))
+done
+
+echo "Done! Linked $LINKED skill folder(s), skipped $SKIPPED existing folder(s)."
