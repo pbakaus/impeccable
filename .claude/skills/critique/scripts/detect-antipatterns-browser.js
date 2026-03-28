@@ -1211,29 +1211,28 @@ if (IS_BROWSER) {
   const styleEl = document.createElement('style');
   styleEl.textContent = `
     .impeccable-overlay:not(.impeccable-banner) {
-      pointer-events: auto;
+      pointer-events: none;
       outline: 2px solid ${OUTLINE_COLOR};
-      outline-offset: 0px;
       border-radius: 4px;
-      transition: outline-offset 0.2s ease;
+      transition: outline-color 0.3s ease;
     }
-    .impeccable-overlay:not(.impeccable-banner):hover {
-      outline-offset: 4px;
+    .impeccable-overlay.impeccable-hover {
+      outline-color: rgba(0,0,0,0.85);
       z-index: 100001 !important;
     }
-    .impeccable-overlay:not(.impeccable-banner):hover .impeccable-label {
-      transform: translateY(-4px);
+    .impeccable-label-name,
+    .impeccable-label-detail {
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .impeccable-overlay:not(.impeccable-banner) .impeccable-tooltip {
-      bottom: -28px; top: auto !important;
-      opacity: 0;
-      transform: translateY(-4px);
-      pointer-events: none;
-      transition: opacity 0.15s ease, transform 0.2s ease;
+    .impeccable-label-detail {
+      position: absolute; top: 100%; left: 0;
     }
-    .impeccable-overlay:not(.impeccable-banner):hover .impeccable-tooltip {
-      opacity: 1;
-      transform: translateY(0);
+    .impeccable-overlay.impeccable-hover .impeccable-label-name,
+    .impeccable-overlay.impeccable-hover .impeccable-label-detail {
+      transform: translateY(-100%);
+    }
+    .impeccable-hidden .impeccable-overlay:not(.impeccable-banner) {
+      display: none !important;
     }
   `;
   (document.head || document.documentElement).appendChild(styleEl);
@@ -1329,35 +1328,44 @@ if (IS_BROWSER) {
       zIndex: '99999', boxSizing: 'border-box',
     });
 
+    const typeText = findings.map(f => TYPE_LABELS[f.type || f.id] || f.type || f.id).join(', ');
+    const detailText = findings.map(f => f.detail || f.snippet).join(' | ');
+
     const label = document.createElement('div');
     label.className = 'impeccable-label';
-    label.textContent = findings.map(f => TYPE_LABELS[f.type || f.id] || f.type || f.id).join(', ');
     Object.assign(label.style, {
       position: 'absolute', top: '-22px', left: '0',
-      background: LABEL_BG, color: 'white',
-      fontSize: '11px', fontFamily: 'system-ui, sans-serif', fontWeight: '600',
-      padding: '2px 8px', borderRadius: '3px', whiteSpace: 'nowrap',
-      lineHeight: '16px', letterSpacing: '0.02em',
-      transition: 'transform 0.2s ease',
+      clipPath: 'inset(0 -999px)',
     });
-    outline.appendChild(label);
 
-    const tooltip = document.createElement('div');
-    tooltip.className = 'impeccable-tooltip';
-    tooltip.innerHTML = findings.map(f => f.detail || f.snippet).join('<br>');
-    Object.assign(tooltip.style, {
-      position: 'absolute', bottom: '-28px', left: '0',
-      background: 'rgba(0,0,0,0.85)', color: '#e5e5e5',
-      fontSize: '11px', fontFamily: 'ui-monospace, monospace',
+    const rowBase = {
       padding: '2px 8px', borderRadius: '3px', whiteSpace: 'nowrap',
-      lineHeight: '16px', letterSpacing: '0.02em', zIndex: '100000',
-    });
-    outline.appendChild(tooltip);
+      fontSize: '11px', fontWeight: '600', letterSpacing: '0.02em',
+      color: 'white', lineHeight: '16px',
+    };
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'impeccable-label-name';
+    nameRow.textContent = typeText;
+    Object.assign(nameRow.style, { ...rowBase, background: LABEL_BG, fontFamily: 'system-ui, sans-serif' });
+    label.appendChild(nameRow);
+
+    const detailRow = document.createElement('div');
+    detailRow.className = 'impeccable-label-detail';
+    detailRow.textContent = detailText;
+    Object.assign(detailRow.style, { ...rowBase, background: 'rgba(0,0,0,0.85)', fontFamily: 'ui-monospace, monospace', fontWeight: '400' });
+    label.appendChild(detailRow);
+
+    outline.appendChild(label);
 
     // Start hidden; the IntersectionObserver will show it once the target is rendered
     outline.style.display = 'none';
     el._impeccableOverlay = outline;
     visibilityObserver.observe(el);
+
+    // Drive hover state from the target element so pointer events pass through
+    el.addEventListener('mouseenter', () => outline.classList.add('impeccable-hover'));
+    el.addEventListener('mouseleave', () => outline.classList.remove('impeccable-hover'));
 
     document.body.appendChild(outline);
     overlays.push(outline);
@@ -1371,8 +1379,17 @@ if (IS_BROWSER) {
       position: 'fixed', top: '0', left: '0', right: '0', zIndex: '100000',
       background: LABEL_BG, color: 'white',
       fontFamily: 'system-ui, sans-serif', fontSize: '13px',
-      padding: '8px 16px', display: 'flex', flexWrap: 'wrap',
-      gap: '12px', alignItems: 'center', pointerEvents: 'auto',
+      display: 'flex', alignItems: 'center', pointerEvents: 'auto',
+      height: '36px',
+    });
+
+    // Scrollable findings area
+    const scrollArea = document.createElement('div');
+    Object.assign(scrollArea.style, {
+      flex: '1', minWidth: '0', overflowX: 'auto', overflowY: 'hidden',
+      display: 'flex', gap: '8px', alignItems: 'center',
+      padding: '0 12px', scrollSnapType: 'x mandatory',
+      scrollbarWidth: 'none',
     });
     for (const f of findings) {
       const tag = document.createElement('span');
@@ -1380,17 +1397,49 @@ if (IS_BROWSER) {
       Object.assign(tag.style, {
         background: 'rgba(255,255,255,0.15)', padding: '2px 8px',
         borderRadius: '3px', fontSize: '12px', fontFamily: 'ui-monospace, monospace',
+        whiteSpace: 'nowrap', flexShrink: '0', scrollSnapAlign: 'start',
       });
-      banner.appendChild(tag);
+      scrollArea.appendChild(tag);
     }
+    banner.appendChild(scrollArea);
+
+    // Controls area (always visible on the right)
+    const controls = document.createElement('div');
+    Object.assign(controls.style, {
+      display: 'flex', alignItems: 'center', gap: '2px',
+      padding: '0 8px', flexShrink: '0',
+    });
+
+    // Toggle visibility button
+    const toggle = document.createElement('button');
+    toggle.textContent = '\u25C9'; // circle with dot (visible state)
+    toggle.title = 'Toggle overlay visibility';
+    Object.assign(toggle.style, {
+      background: 'none', border: 'none',
+      color: 'white', fontSize: '16px', cursor: 'pointer', padding: '0 4px',
+      opacity: '0.85', transition: 'opacity 0.15s',
+    });
+    let overlaysVisible = true;
+    toggle.addEventListener('click', () => {
+      overlaysVisible = !overlaysVisible;
+      document.body.classList.toggle('impeccable-hidden', !overlaysVisible);
+      toggle.textContent = overlaysVisible ? '\u25C9' : '\u25CB'; // filled vs empty circle
+      toggle.style.opacity = overlaysVisible ? '0.85' : '0.5';
+    });
+    controls.appendChild(toggle);
+
+    // Close button
     const close = document.createElement('button');
     close.textContent = '\u00d7';
+    close.title = 'Dismiss banner';
     Object.assign(close.style, {
-      marginLeft: 'auto', background: 'none', border: 'none',
+      background: 'none', border: 'none',
       color: 'white', fontSize: '18px', cursor: 'pointer', padding: '0 4px',
     });
     close.addEventListener('click', () => banner.remove());
-    banner.appendChild(close);
+    controls.appendChild(close);
+
+    banner.appendChild(controls);
     document.body.appendChild(banner);
     overlays.push(banner);
   };
@@ -1457,13 +1506,11 @@ if (IS_BROWSER) {
       // Merge into existing overlay if this element already has one
       const existing = el._impeccableOverlay;
       if (existing) {
-        const label = existing.querySelector('.impeccable-label');
-        if (label) {
-          const newType = TYPE_LABELS[f.type] || f.type;
-          label.textContent += ', ' + newType;
-        }
-        const tooltip = existing.querySelector('.impeccable-tooltip');
-        if (tooltip) tooltip.innerHTML += '<br>' + (f.detail || '');
+        const nameRow = existing.querySelector('.impeccable-label-name');
+        const detailRow = existing.querySelector('.impeccable-label-detail');
+        const newType = TYPE_LABELS[f.type] || f.type;
+        if (nameRow) nameRow.textContent += ', ' + newType;
+        if (detailRow) detailRow.textContent += ' | ' + (f.detail || '');
       } else {
         highlight(el, [f]);
       }
