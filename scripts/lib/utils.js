@@ -321,6 +321,12 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'RULES.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
+  },
+  'rovo-dev': {
+    model: 'Rovo Dev',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
   }
 };
 

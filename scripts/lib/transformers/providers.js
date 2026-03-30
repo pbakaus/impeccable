@@ -70,4 +70,10 @@ export const PROVIDERS = {
     displayName: 'Trae',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
   },
+  'rovo-dev': {
+    provider: 'rovo-dev',
+    configDir: '.rovodev',
+    displayName: 'Rovo Dev',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
 };
