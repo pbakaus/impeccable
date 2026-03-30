@@ -8,7 +8,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, lstatSync, symlinkSync, readlinkSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -100,34 +100,47 @@ function prefixSkillContent(content, prefix, allSkillNames) {
   return result;
 }
 
+function isSkillDir(skillsDir, name) {
+  // Skill entries can be real directories or symlinks to directories (npx skills uses symlinks)
+  const full = join(skillsDir, name);
+  try {
+    return statSync(full).isDirectory() && existsSync(join(full, 'SKILL.md'));
+  } catch { return false; }
+}
+
+function isRealSkillDir(skillsDir, name) {
+  // Only real directories, not symlinks -- renaming the real dir renames the symlink targets too
+  const full = join(skillsDir, name);
+  try {
+    const lstat = lstatSync(full);
+    return lstat.isDirectory() && !lstat.isSymbolicLink() && existsSync(join(full, 'SKILL.md'));
+  } catch { return false; }
+}
+
 function renameSkillsWithPrefix(root, prefix) {
   // First pass: collect all skill names across all providers (use first provider found)
   let allSkillNames = [];
   for (const d of PROVIDER_DIRS) {
     const skillsDir = join(root, d, 'skills');
     if (!existsSync(skillsDir)) continue;
-    const entries = readdirSync(skillsDir, { withFileTypes: true });
-    allSkillNames = entries
-      .filter(e => e.isDirectory() && existsSync(join(skillsDir, e.name, 'SKILL.md')))
-      .map(e => e.name);
+    const entries = readdirSync(skillsDir);
+    allSkillNames = entries.filter(name => isSkillDir(skillsDir, name));
     if (allSkillNames.length > 0) break;
   }
 
-  // Second pass: rename and prefix content
+  // Second pass: rename real dirs and update their content
   let count = 0;
   for (const d of PROVIDER_DIRS) {
     const skillsDir = join(root, d, 'skills');
     if (!existsSync(skillsDir)) continue;
     try {
-      const entries = readdirSync(skillsDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const skillMd = join(skillsDir, entry.name, 'SKILL.md');
-        if (!existsSync(skillMd)) continue;
-        if (entry.name.startsWith(prefix)) continue;
+      const entries = readdirSync(skillsDir);
+      for (const name of entries) {
+        if (name.startsWith(prefix)) continue;
+        if (!isRealSkillDir(skillsDir, name)) continue;
 
-        const src = join(skillsDir, entry.name);
-        const dest = join(skillsDir, prefix + entry.name);
+        const src = join(skillsDir, name);
+        const dest = join(skillsDir, prefix + name);
 
         renameSync(src, dest);
 
@@ -139,11 +152,34 @@ function renameSkillsWithPrefix(root, prefix) {
       }
     } catch {}
   }
+
+  // Third pass: fix symlinks that now point to renamed targets (npx skills uses these)
+  for (const d of PROVIDER_DIRS) {
+    const skillsDir = join(root, d, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    try {
+      const entries = readdirSync(skillsDir);
+      for (const name of entries) {
+        if (name.startsWith(prefix)) continue;
+        const full = join(skillsDir, name);
+        try {
+          if (!lstatSync(full).isSymbolicLink()) continue;
+          const target = readlinkSync(full);
+          const newTarget = target.replace(new RegExp(`/${escapeRegex(name)}$`), `/${prefix}${name}`);
+          unlinkSync(full);
+          symlinkSync(newTarget, join(skillsDir, prefix + name));
+        } catch {}
+      }
+    } catch {}
+  }
+
   return count;
 }
 
 async function install(flags) {
   const force = flags.includes('--force');
+  const yes = flags.includes('-y') || flags.includes('--yes');
+  const prefixFlag = flags.find(f => f.startsWith('--prefix='));
   const root = findProjectRoot();
   const existing = isAlreadyInstalled(root);
 
@@ -155,19 +191,25 @@ async function install(flags) {
 
   console.log('Installing impeccable skills via npx skills...\n');
   try {
-    execSync('npx skills add pbakaus/impeccable', { stdio: 'inherit' });
+    execSync(`npx skills add pbakaus/impeccable${yes ? ' -y' : ''}`, { stdio: 'inherit' });
   } catch (e) {
     process.exit(e.status ?? 1);
   }
 
-  // Ask about prefixing
+  // Ask about prefixing (skip in CI mode unless --prefix= is set)
   let prefix = '';
-  console.log();
-  const wantPrefix = await ask('Prefix commands to avoid conflicts? e.g. /i-audit instead of /audit (y/N) ');
-  if (wantPrefix === 'y' || wantPrefix === 'yes') {
-    const custom = await ask('Prefix (default: i-): ');
-    prefix = custom || 'i-';
+  if (prefixFlag) {
+    prefix = prefixFlag.split('=')[1] || 'i-';
+  } else if (!yes) {
+    console.log();
+    const wantPrefix = await ask('Prefix commands to avoid conflicts? e.g. /i-audit instead of /audit (y/N) ');
+    if (wantPrefix === 'y' || wantPrefix === 'yes') {
+      const custom = await ask('Prefix (default: i-): ');
+      prefix = custom || 'i-';
+    }
+  }
 
+  if (prefix) {
     const count = renameSkillsWithPrefix(root, prefix);
     if (count > 0) {
       console.log(`\nRenamed ${count} skills with "${prefix}" prefix.`);
@@ -193,16 +235,11 @@ function findInstalledProviders(root) {
   const found = [];
   for (const d of PROVIDER_DIRS) {
     const skillsDir = join(root, d, 'skills');
-    if (existsSync(skillsDir)) {
-      // Check if it has impeccable skills (look for any SKILL.md)
-      try {
-        const entries = readdirSync(skillsDir, { withFileTypes: true });
-        const hasSkills = entries.some(e =>
-          e.isDirectory() && existsSync(join(skillsDir, e.name, 'SKILL.md'))
-        );
-        if (hasSkills) found.push(d);
-      } catch {}
-    }
+    if (!existsSync(skillsDir)) continue;
+    try {
+      const entries = readdirSync(skillsDir);
+      if (entries.some(name => isSkillDir(skillsDir, name))) found.push(d);
+    } catch {}
   }
   return found;
 }
@@ -250,7 +287,8 @@ function downloadFile(url, dest) {
   });
 }
 
-async function update() {
+async function update(flags = []) {
+  const yes = flags.includes('-y') || flags.includes('--yes');
   // Try npx skills update first
   console.log('Checking for skills manager...');
   let noLockFile = true;
@@ -295,12 +333,14 @@ async function update() {
     }
     if (modified.length > 10) console.log(`    ... and ${modified.length - 10} more`);
     console.log();
-    const ans = await ask('  Overwrite local changes? (y/N) ');
-    if (ans !== 'y' && ans !== 'yes') {
-      console.log('Aborted.');
-      process.exit(0);
+    if (!yes) {
+      const ans = await ask('  Overwrite local changes? (y/N) ');
+      if (ans !== 'y' && ans !== 'yes') {
+        console.log('Aborted.');
+        process.exit(0);
+      }
     }
-  } else {
+  } else if (!yes) {
     const ans = await ask(`Update skills in ${providers.length} provider folder(s)? (Y/n) `);
     if (ans === 'n' || ans === 'no') {
       console.log('Aborted.');
@@ -382,7 +422,7 @@ export async function run(args) {
   } else if (sub === 'install') {
     await install(args.slice(1));
   } else if (sub === 'update') {
-    await update();
+    await update(args.slice(1));
   } else {
     console.error(`Unknown skills command: ${sub}`);
     console.error(`Run 'impeccable skills --help' for available commands.`);
