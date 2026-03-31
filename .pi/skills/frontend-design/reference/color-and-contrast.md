@@ -86,6 +86,12 @@ These commonly fail contrast or cause readability issues:
 
 Pure gray (`oklch(50% 0 0)`) and pure black (`#000`) don't exist in nature—real shadows and surfaces always have a color cast. Even a chroma of 0.005-0.01 is enough to feel natural without being obviously tinted. (See tinted neutrals example above.)
 
+### Gradient & Glass Surface Contrast
+
+**Gradients**: Measure contrast at the lightest (worst-case) stop of the gradient, not the average. Text over a blue-to-white gradient must pass contrast against the white end.
+
+**Frosted glass / backdrop-filter**: Never place text over `backdrop-filter: blur()` without a solid scrim behind the text. Blurred backgrounds are unpredictable — the contrast depends on whatever content scrolls behind. Minimum scrim: `rgba(10, 10, 10, 0.65)` for light text, `rgba(255, 255, 255, 0.75)` for dark text. Never use `backdrop-filter` over user-generated or dynamic content without a scrim.
+
 ### Testing
 
 Don't trust your eyes. Use tools:
@@ -107,21 +113,57 @@ You can't just swap colors. Dark mode requires different design decisions:
 | Vibrant accents | Desaturate accents slightly |
 | White backgrounds | Never pure black—use dark gray (oklch 12-18%) |
 
-```css
-/* Dark mode depth via surface color, not shadow */
-:root[data-theme="dark"] {
-  --surface-1: oklch(15% 0.01 250);
-  --surface-2: oklch(20% 0.01 250);  /* "Higher" = lighter */
-  --surface-3: oklch(25% 0.01 250);
+**Surface elevation**: Higher = lighter. Space levels 6-8 lightness points apart:
 
-  /* Reduce text weight slightly */
-  --body-weight: 350;  /* Instead of 400 */
+```css
+:root[data-theme="dark"] {
+  --surface-1: oklch(15% 0.01 250);  /* Base */
+  --surface-2: oklch(20% 0.01 250);  /* Card */
+  --surface-3: oklch(25% 0.01 250);  /* Raised (modal, popover) */
+  --surface-4: oklch(30% 0.01 250);  /* Highest (tooltip) */
+
+  --body-weight: 350;  /* Reduce weight slightly — light-on-dark reads heavier */
 }
 ```
 
-### Token Hierarchy
+**Text hierarchy via opacity**: Instead of multiple gray shades, use opacity on a single off-white base (`rgba(255,255,255,N)`): 0.87 primary, 0.7 secondary, 0.5 tertiary, 0.3 disabled. Never use pure `#FFFFFF` for body text — it's too harsh. Off-white like `#EDECF4` or `rgba(255,255,255,0.87)` is easier on the eyes.
 
-Use two layers: primitive tokens (`--blue-500`) and semantic tokens (`--color-primary: var(--blue-500)`). For dark mode, only redefine the semantic layer—primitives stay the same.
+**Borders & shadows**: Standard `box-shadow` is invisible on dark surfaces. Use `rgba(255,255,255,0.08)` borders for card edges, or colored glow/dense multi-layer black shadows for depth.
+
+**Accent adjustments**: Brand accents that pass contrast on white often fail on dark gray. Increase lightness by +15-25% and reduce chroma by 10-15%. A violet at `oklch(55% 0.15 280)` becomes `oklch(72% 0.12 280)` in dark mode.
+
+### Token Strategy
+
+Choose the right level of indirection for your project:
+
+**Flat tokens** (simple, direct): Define colors by name or role and override them in dark mode. No alias chains. Works well for most projects and avoids the complexity of multi-layer systems.
+
+```css
+:root {
+  --color-ink: oklch(15% 0.01 250);
+  --color-surface: oklch(98% 0.01 250);
+  --color-accent: oklch(55% 0.15 250);
+}
+[data-theme="dark"] {
+  --color-ink: oklch(90% 0.01 250);
+  --color-surface: oklch(15% 0.01 250);
+  --color-accent: oklch(70% 0.12 250);
+}
+```
+
+**Two-layer tokens** (primitive + semantic): Useful for large teams or multi-brand design systems where the same primitives map to different roles per brand. Adds indirection, so only adopt if the mapping complexity justifies it.
+
+**Rule of thumb**: Start flat. Add a semantic layer only when you have multiple themes beyond light/dark, or when multiple teams need independent color decisions.
+
+### Dark Mode Contrast Re-Verification
+
+Light-mode contrast passing does NOT guarantee dark-mode contrast passes. Every text/background pair must be independently verified in both modes. Common failures:
+
+- Mid-gray text (`#6B6B6B`) on dark surfaces — often lands at 4.0:1 or below
+- Accent colors that pass on white but fail on dark gray (brand violet at `oklch(55% 0.15 280)` on `oklch(15% 0.01 250)` = ~3.8:1)
+- Disabled-state text that was already borderline in light mode
+
+**Adjust accents for dark mode**: Increase lightness by +15-25% and reduce chroma by 10-15% to maintain contrast without garish saturation.
 
 ## Alpha Is A Design Smell
 

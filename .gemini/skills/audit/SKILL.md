@@ -26,6 +26,9 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 - **Semantic HTML**: Improper heading hierarchy, missing landmarks, divs instead of buttons
 - **Alt text**: Missing or poor image descriptions
 - **Form issues**: Inputs without labels, poor error messaging, missing required indicators
+- **Focus management**: Missing or invisible focus rings, no logical tab order, no focus trapping in modals, no return focus after dismiss
+- **ARIA live regions**: Dynamic content changes not announced to screen readers (toast notifications, form errors, loading states)
+- **Dark mode contrast**: Pairs that pass in light mode but fail in dark — re-verify every text/background combination independently
 
 **Score 0-4**: 0=Inaccessible (fails WCAG A), 1=Major gaps (few ARIA labels, no keyboard nav), 2=Partial (some a11y effort, significant gaps), 3=Good (WCAG AA mostly met, minor gaps), 4=Excellent (WCAG AA fully met, approaches AAA)
 

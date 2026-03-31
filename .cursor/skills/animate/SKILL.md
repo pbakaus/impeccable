@@ -116,6 +116,17 @@ Use appropriate techniques for each animation:
 
 **Exit animations are faster than entrances.** Use ~75% of enter duration.
 
+### Pre-Animation State
+
+**Define the starting state in CSS, not JS.** CSS is synchronous — JS is not. If the initial hidden state (`opacity: 0`, `translateY(20px)`) is set by JS, users see a flash of the element's final position before JS executes.
+
+```css
+/* Element starts hidden via CSS */
+.card { opacity: 0; transform: translateY(20px); }
+```
+
+Then animate from that state with CSS transitions/keyframes or GSAP.
+
 ### CSS Animations
 ```css
 /* Prefer for simple, declarative animations */
@@ -124,17 +135,20 @@ Use appropriate techniques for each animation:
 - transform + opacity only (GPU-accelerated)
 ```
 
-### JavaScript Animation
-```javascript
-/* Use for complex, interactive animations */
-- Web Animations API for programmatic control
-- Framer Motion for React
-- GSAP for complex sequences
-```
+### JavaScript Animation (GSAP)
+
+Use GSAP (or equivalent) for sequenced choreography, scroll-driven timelines, and interactive animations that CSS can't express:
+
+- **Inline values per component** — no shared animation config files
+- **Clean up on unmount** — `gsap.killTweensOf(ref.current)` in every `useEffect` cleanup, no exceptions
+- **Reduced motion** — check `window.matchMedia('(prefers-reduced-motion: reduce)')` and set `gsap.defaults({ duration: 0 })` instead of per-tween conditionals
+
+For simpler needs: Web Animations API for programmatic control, Framer Motion for React declarative animation.
 
 ### Performance
 - **GPU acceleration**: Use `transform` and `opacity`, avoid layout properties
-- **will-change**: Add sparingly for known expensive animations
+- **will-change**: Add sparingly and only when animation is imminent (`:hover`, `.animating`), not preemptively
+- **Shadow animation**: Animate a `::after` pseudo-element's opacity over a pre-rendered shadow rather than animating `box-shadow` directly (avoids expensive repaints)
 - **Reduce paint**: Minimize repaints, use `contain` where appropriate
 - **Monitor FPS**: Ensure 60fps on target devices
 
@@ -148,6 +162,8 @@ Use appropriate techniques for each animation:
   }
 }
 ```
+
+For GSAP: check `prefers-reduced-motion` at runtime and set `gsap.defaults({ duration: 0 })`.
 
 **NEVER**:
 - Use bounce or elastic easing curves—they feel dated and draw attention to the animation itself

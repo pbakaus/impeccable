@@ -117,7 +117,8 @@ elements.forEach((el, i) => {
 **Reduce Paint & Composite**:
 - Use `transform` and `opacity` for animations (GPU-accelerated)
 - Avoid animating layout properties (width, height, top, left)
-- Use `will-change` sparingly for known expensive operations
+- Use `will-change` sparingly and only when animation is imminent (`:hover`, `.animating`) — not preemptively
+- **Shadow animation**: Never animate `box-shadow` directly (triggers paint every frame). Render the target shadow on a `::after` pseudo-element and animate its `opacity` instead
 - Minimize paint areas (smaller is faster)
 
 ### Animation Performance

@@ -82,7 +82,7 @@ Build a clear type scale:
 
 - Use `tabular-nums` for data tables and numbers that should align
 - Apply proper `letter-spacing`: slightly open for small caps and uppercase, default or tight for large display text
-- Use semantic token names (`--text-body`, `--text-heading`), not value names (`--font-16`)
+- Name tokens by role or typeface, not raw value — avoid `--font-16`. Both `--text-body` and `--font-untitled-sans` work; follow whatever convention the project already uses
 - Set `font-kerning: normal` and consider OpenType features where appropriate
 
 ### Weight Consistency

@@ -11,7 +11,26 @@ Timing matters more than easing. These durations feel right for most UI:
 | **300-500ms** | Layout changes | Accordion, modal, drawer |
 | **500-800ms** | Entrance animations | Page load, hero reveals |
 
-**Exit animations are faster than entrances**—use ~75% of enter duration.
+**Exit animations are faster than entrances**—use 60-75% of enter duration.
+
+### Duration by Element Size & Distance
+
+Larger elements and longer distances need more time. Use these as starting points, not rigid rules:
+
+| Element size | Enter | Exit |
+|-------------|-------|------|
+| Small (icon, badge, tooltip) | 100-150ms | 75-100ms |
+| Medium (card, menu, toast) | 200-300ms | 150-200ms |
+| Large (modal, drawer, panel) | 300-500ms | 200-350ms |
+| Full-screen (page, overlay) | 400-600ms | 250-400ms |
+
+| Travel distance | Duration |
+|----------------|----------|
+| < 100px | 100-200ms |
+| 100-500px | 200-350ms |
+| > 500px | 350-500ms |
+
+**Stagger intervals**: 30-50ms for tight lists, 60-80ms for grids, 100-150ms for hero sequences.
 
 ## Easing: Pick the Right Curve
 
@@ -38,6 +57,10 @@ Timing matters more than easing. These durations feel right for most UI:
 
 **Avoid bounce and elastic curves.** They were trendy in 2015 but now feel tacky and amateurish. Real objects don't bounce when they stop—they decelerate smoothly. Overshoot effects draw attention to the animation itself rather than the content.
 
+## Pre-Animation State Must Live in CSS
+
+CSS is synchronous; JavaScript is not. If an element's initial state (e.g., `opacity: 0; transform: translateY(20px)`) is set by JS, users see a flash of the final state before JS runs. Always define the pre-animation state in your stylesheet so the element is hidden/positioned correctly on first paint, then animate from that state.
+
 ## The Only Two Properties You Should Animate
 
 **transform** and **opacity** only—everything else causes layout recalculation. For height animations (accordions), use `grid-template-rows: 0fr → 1fr` instead of animating `height` directly.
@@ -46,16 +69,27 @@ Timing matters more than easing. These durations feel right for most UI:
 
 Use CSS custom properties for cleaner stagger: `animation-delay: calc(var(--i, 0) * 50ms)` with `style="--i: 0"` on each item. **Cap total stagger time**—10 items at 50ms = 500ms total. For many items, reduce per-item delay or cap staggered count.
 
+## JavaScript Animation (GSAP)
+
+CSS handles simple transitions well. For sequenced, interactive, or complex choreography, use a JS animation library like GSAP. Key rules when mixing JS animation with component lifecycles:
+
+- **Pre-animation state in CSS** (see above). GSAP animates *from* this state.
+- **Inline values, not shared config files.** Durations and easings belong in the component using them — a shared `animations.js` config becomes a coupling magnet.
+- **Clean up on unmount.** In React, call `gsap.killTweensOf(ref.current)` in every `useEffect` cleanup. Orphaned tweens write to detached DOM nodes and leak memory.
+- **Reduced motion guard:**
+  ```js
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    gsap.defaults({ duration: 0 });
+  }
+  ```
+  This collapses all GSAP animation to instant state changes without requiring per-tween conditionals.
+
 ## Reduced Motion
 
 This is not optional. Vestibular disorders affect ~35% of adults over 40.
 
+**CSS approach:**
 ```css
-/* Define animations normally */
-.card {
-  animation: slide-up 500ms ease-out;
-}
-
 /* Provide alternative for reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .card {
@@ -71,6 +105,8 @@ This is not optional. Vestibular disorders affect ~35% of adults over 40.
   }
 }
 ```
+
+**JS approach (GSAP):** Check `prefers-reduced-motion` at runtime and set `gsap.defaults({ duration: 0 })` — see GSAP section above.
 
 **What to preserve**: Functional animations like progress bars, loading spinners (slowed down), and focus indicators should still work—just without spatial movement.
 
@@ -93,6 +129,8 @@ This is not optional. Vestibular disorders affect ~35% of adults over 40.
 ## Performance
 
 Don't use `will-change` preemptively—only when animation is imminent (`:hover`, `.animating`). For scroll-triggered animations, use Intersection Observer instead of scroll events; unobserve after animating once. Create motion tokens for consistency (durations, easings, common transitions).
+
+**Shadow animation trick**: Never animate `box-shadow` directly — it triggers paint on every frame. Instead, render the target shadow on a `::after` pseudo-element and animate its `opacity` from 0→1. The shadow is painted once and composited cheaply.
 
 ---
 

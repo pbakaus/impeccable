@@ -41,6 +41,12 @@ ask the user directly to clarify what you cannot infer. Focus only on what you c
 - Specific accessibility requirements? (WCAG level, known user needs)
 - Considerations for reduced motion, color blindness, or other accommodations?
 
+### Stack Constraints
+- CSS approach? (CSS Modules, Tailwind, CSS-in-JS, vanilla CSS, SCSS — check existing files first)
+- Animation library? (CSS-only, GSAP, Framer Motion, none — check existing dependencies)
+- Any tools or patterns that are explicitly banned? (e.g., no Tailwind, no BEM, no styled-components)
+- Component naming or file structure conventions? (check for existing patterns like `ComponentName/index.tsx`)
+
 Skip questions where the answer is already clear from the codebase exploration.
 
 ## Step 3: Write Design Context
@@ -61,6 +67,9 @@ Synthesize your findings and the user's answers into a `## Design Context` secti
 
 ### Design Principles
 [3-5 principles derived from the conversation that should guide all design decisions]
+
+### Stack Constraints
+[CSS approach, animation library, banned patterns, file structure conventions — only include if the project has opinions]
 ```
 
 Write this section to `.impeccable.md` in the project root. If the file already exists, update the Design Context section in place.

@@ -117,7 +117,7 @@ Check what features your font supports at [Wakamai Fondue](https://wakamaifondue
 
 ## Typography System Architecture
 
-Name tokens semantically (`--text-body`, `--text-heading`), not by value (`--font-size-16`). Include font stacks, size scale, weights, line-heights, and letter-spacing in your token system.
+Name tokens by what they represent, not their raw value — `--font-size-16` tells you nothing about where to use it. Both role-based names (`--text-body`, `--text-heading`) and typeface-based names (`--font-untitled-sans`, `--font-space-grotesk`) work — choose the convention your project already uses and be consistent. Include font stacks, size scale, weights, line-heights, and letter-spacing in your token system.
 
 ## Accessibility Considerations
 
