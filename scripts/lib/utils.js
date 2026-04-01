@@ -322,6 +322,12 @@ export const PROVIDER_PLACEHOLDERS = {
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
+  'qoder': {
+  model: 'Qoder',
+  config_file: 'QODER.md',
+  ask_instruction: 'ask the user directly in a concise way if clarification is needed.',
+  command_prefix: '/'
+  },
   'rovo-dev': {
     model: 'Rovo Dev',
     config_file: 'AGENTS.md',

@@ -10,11 +10,13 @@ import {
 import { getFilePath, handleFileDownload } from '../../server/lib/api-handlers.js';
 
 describe('download provider validation', () => {
-  test('allows opencode and pi as individual download providers', () => {
+  test('allows opencode, pi, and qoder as individual download providers', () => {
     expect(ALLOWED_FILE_PROVIDERS).toContain('opencode');
     expect(ALLOWED_FILE_PROVIDERS).toContain('pi');
+    expect(ALLOWED_FILE_PROVIDERS).toContain('qoder');
     expect(isAllowedFileProvider('opencode')).toBe(true);
     expect(isAllowedFileProvider('pi')).toBe(true);
+    expect(isAllowedFileProvider('qoder')).toBe(true);
   });
 
   test('separates file downloads from bundle downloads', () => {
@@ -36,6 +38,12 @@ describe('download file paths', () => {
   test('maps pi commands into the .pi config directory', () => {
     expect(getFilePath('command', 'pi', 'audit')).toBe(
       path.join(process.cwd(), 'dist', 'pi', '.pi', 'skills', 'audit', 'SKILL.md')
+    );
+  });
+
+  test('maps qoder skills into the .qoder config directory', () => {
+    expect(getFilePath('skill', 'qoder', 'colorize')).toBe(
+      path.join(process.cwd(), 'dist', 'qoder', '.qoder', 'skills', 'colorize', 'SKILL.md')
     );
   });
 
