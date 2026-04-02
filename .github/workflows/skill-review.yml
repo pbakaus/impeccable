@@ -1,0 +1,23 @@
+# Tessl skill review + optional AI optimization suggestions on SKILL.md PRs.
+# Superset of tesslio/skill-review; uses TESSL_API_TOKEN for optimize. See:
+# https://github.com/giuseppe-trisciuoglio/developer-kit/pull/160
+name: Skill Review & Optimize
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/SKILL.md"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tesslio/skill-review-and-optimize@d81583861aaf29d1da7f10e6539efef4e27b0dd5
+        with:
+          optimize: "true"
+          tessl-token: ${{ secrets.TESSL_API_TOKEN }}
