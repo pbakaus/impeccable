@@ -102,7 +102,7 @@ Body.`;
     expect(result.frontmatter['user-invocable']).toBe(true);
   });
 
-  test('should keep quoted non-user-invocable booleans as strings', () => {
+  test('should keep quoted non-user-invocable booleans as plain strings', () => {
     const content = `---
 name: test-skill
 description: 'true'
@@ -111,7 +111,7 @@ description: 'true'
 Body.`;
 
     const result = parseFrontmatter(content);
-    expect(result.frontmatter.description).toBe("'true'");
+    expect(result.frontmatter.description).toBe('true');
   });
 
   test('should parse allowed-tools field', () => {
