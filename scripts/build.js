@@ -570,6 +570,20 @@ async function build() {
     }
   }
 
+  // Copy antipattern examples (self-contained HTML, not Bun entrypoints)
+  const examplesDir = path.join(ROOT_DIR, 'public', 'antipattern-examples');
+  if (fs.existsSync(examplesDir)) {
+    copyDirSync(examplesDir, path.join(buildDir, 'antipattern-examples'));
+  }
+
+  // Copy browser detector script (referenced by antipattern examples at /js/...)
+  const detectorSrc = path.join(ROOT_DIR, 'src', 'detect-antipatterns-browser.js');
+  if (fs.existsSync(detectorSrc)) {
+    const jsDir = path.join(buildDir, 'js');
+    fs.mkdirSync(jsDir, { recursive: true });
+    fs.copyFileSync(detectorSrc, path.join(jsDir, 'detect-antipatterns-browser.js'));
+  }
+
   // Read source files (unified skills architecture)
   const { skills } = readSourceFiles(ROOT_DIR);
   const patterns = readPatterns(ROOT_DIR);
