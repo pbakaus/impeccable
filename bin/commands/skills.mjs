@@ -114,13 +114,28 @@ async function downloadAndExtractBundle() {
 
 /**
  * Compare local skills against a downloaded bundle.
- * Returns true if all local SKILL.md files match the bundle.
+ * Only checks skills that exist in the bundle (ignores user's custom
+ * skills that aren't part of impeccable).
+ * Returns true if every bundle skill matches the local copy.
  */
 function isUpToDate(root, providers, bundleDir) {
   for (const provider of providers) {
-    const localHash = hashSkillsDir(join(root, provider, 'skills'));
-    const remoteHash = hashSkillsDir(join(bundleDir, provider, 'skills'));
-    if (localHash !== remoteHash) return false;
+    const bundleSkillsDir = join(bundleDir, provider, 'skills');
+    const localSkillsDir = join(root, provider, 'skills');
+    if (!existsSync(bundleSkillsDir)) continue;
+
+    for (const name of readdirSync(bundleSkillsDir)) {
+      const bundleMd = join(bundleSkillsDir, name, 'SKILL.md');
+      const localMd = join(localSkillsDir, name, 'SKILL.md');
+      if (!existsSync(bundleMd)) continue;
+
+      // Missing locally = needs update
+      if (!existsSync(localMd)) return false;
+
+      const bundleHash = createHash('sha256').update(readFileSync(bundleMd)).digest('hex');
+      const localHash = createHash('sha256').update(readFileSync(localMd)).digest('hex');
+      if (bundleHash !== localHash) return false;
+    }
   }
   return true;
 }
