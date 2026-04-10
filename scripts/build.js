@@ -21,6 +21,7 @@ import { readSourceFiles, readPatterns } from './lib/utils.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
 import { generateSubPages } from './build-sub-pages.js';
+import { ANTIPATTERNS } from '../src/detect-antipatterns.mjs';
 
 /**
  * Generate authoritative counts from source data and write to public/js/generated/counts.js.
@@ -112,14 +113,6 @@ function generateCounts(rootDir, skills, buildDir) {
  * Returns the number of validation errors. Build fails if > 0.
  */
 function validateAntipatternRules(rootDir) {
-  const detectPath = path.join(rootDir, 'src/detect-antipatterns.mjs');
-  const src = fs.readFileSync(detectPath, 'utf-8');
-  const apMatch = src.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
-  if (!apMatch) {
-    console.error('  ❌ Could not extract ANTIPATTERNS from detect-antipatterns.mjs');
-    return 1;
-  }
-  const antipatterns = new Function(`return [${apMatch[1]}]`)();
   const { antipatterns: skillSections } = readPatterns(rootDir);
 
   // Build section -> joined-DON'T-text lookup for substring matching.
@@ -134,7 +127,7 @@ function validateAntipatternRules(rootDir) {
 
   let errors = 0;
   let validated = 0;
-  for (const rule of antipatterns) {
+  for (const rule of ANTIPATTERNS) {
     if (!rule.skillGuideline) continue;
     if (!rule.skillSection) {
       console.error(`  ❌ Rule '${rule.id}' declares skillGuideline but no skillSection`);
@@ -158,7 +151,7 @@ function validateAntipatternRules(rootDir) {
   if (errors > 0) {
     console.error(`\n❌ ${errors} anti-pattern rule(s) drift between src/detect-antipatterns.mjs and source/skills/impeccable/SKILL.md`);
   } else {
-    console.log(`✓ Validated ${validated}/${antipatterns.length} anti-pattern rules against impeccable SKILL.md`);
+    console.log(`✓ Validated ${validated}/${ANTIPATTERNS.length} anti-pattern rules against impeccable SKILL.md`);
   }
   return errors;
 }

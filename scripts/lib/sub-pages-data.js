@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readSourceFiles, parseFrontmatter } from './utils.js';
+import { ANTIPATTERNS } from '../../src/detect-antipatterns.mjs';
 import {
   DETECTION_LAYERS,
   VISUAL_EXAMPLES,
@@ -92,19 +93,11 @@ export const CATEGORY_DESCRIPTIONS = {
 };
 
 /**
- * Parse the ANTIPATTERNS array out of src/detect-antipatterns.mjs.
- * Mirrors the trick in scripts/build.js validateAntipatternRules() so we
- * don't have to run the browser-only module.
+ * Returns the ANTIPATTERNS array from src/detect-antipatterns.mjs.
+ * Previously extracted via regex + new Function(); now uses a direct ESM import.
  */
-export function readAntipatternRules(rootDir) {
-  const detectPath = path.join(rootDir, 'src/detect-antipatterns.mjs');
-  const src = fs.readFileSync(detectPath, 'utf-8');
-  const match = src.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
-  if (!match) {
-    throw new Error(`Could not extract ANTIPATTERNS from ${detectPath}`);
-  }
-  // eslint-disable-next-line no-new-func
-  return new Function(`return [${match[1]}]`)();
+export function readAntipatternRules(_rootDir) {
+  return ANTIPATTERNS;
 }
 
 /**
