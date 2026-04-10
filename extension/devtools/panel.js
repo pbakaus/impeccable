@@ -501,10 +501,10 @@ function renderFindings(findings) {
 }
 
 function inspectElement(selector) {
-  const escaped = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const json = JSON.stringify(selector);
   chrome.devtools.inspectedWindow.eval(
     `(function() {
-      var el = document.querySelector('${escaped}');
+      var el = document.querySelector(${json});
       if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); inspect(el); }
     })()`
   );
