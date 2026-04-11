@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 import {
   ANTIPATTERNS, checkElementBorders, checkElementMotion, checkElementGlow, isNeutralColor, isFullPage,
   detectText, extractStyleBlocks, extractCSSinJS,
+  browserScriptPathFromModulePath,
   walkDir, SCANNABLE_EXTENSIONS,
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
@@ -89,6 +90,19 @@ describe('isNeutralColor', () => {
   test('blue is not neutral', () => expect(isNeutralColor('rgb(59, 130, 246)')).toBe(false));
   test('transparent is neutral', () => expect(isNeutralColor('transparent')).toBe(true));
   test('null is neutral', () => expect(isNeutralColor(null)).toBe(true));
+});
+
+describe('browserScriptPathFromModulePath', () => {
+  test('builds a valid Windows browser script path without duplicating the drive letter', () => {
+    const scriptPath = browserScriptPathFromModulePath(
+      'C:\\Users\\alice\\impeccable\\src\\detect-antipatterns.mjs',
+      path.win32
+    );
+
+    expect(scriptPath).toBe(
+      'C:\\Users\\alice\\impeccable\\src\\detect-antipatterns-browser.js'
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

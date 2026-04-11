@@ -26,10 +26,11 @@ const IS_BROWSER = typeof window !== 'undefined';
 const IS_NODE = !IS_BROWSER;
 
 // @browser-strip-start
-let fs, path;
+let fs, path, fileURLToPath;
 if (!IS_BROWSER) {
   fs = (await import('node:fs')).default;
   path = (await import('node:path')).default;
+  ({ fileURLToPath } = await import('node:url'));
 }
 // @browser-strip-end
 
@@ -2677,6 +2678,17 @@ async function detectHtml(filePath) {
 // Puppeteer detection (for URLs)
 // ---------------------------------------------------------------------------
 
+function browserScriptPathFromModulePath(modulePath, pathModule = path) {
+  return pathModule.resolve(
+    pathModule.dirname(modulePath),
+    'detect-antipatterns-browser.js'
+  );
+}
+
+function resolveBrowserScriptPath(moduleUrl = import.meta.url, pathModule = path) {
+  return browserScriptPathFromModulePath(fileURLToPath(moduleUrl), pathModule);
+}
+
 async function detectUrl(url) {
   let puppeteer;
   try {
@@ -2686,10 +2698,7 @@ async function detectUrl(url) {
   }
 
   // Read the browser detection script — reuse it instead of reimplementing
-  const browserScriptPath = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    'detect-antipatterns-browser.js'
-  );
+  const browserScriptPath = resolveBrowserScriptPath();
   let browserScript;
   try {
     browserScript = fs.readFileSync(browserScriptPath, 'utf-8');
@@ -3503,7 +3512,7 @@ The server provides:
   }
 
   const http = await import('node:http');
-  const scriptPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'detect-antipatterns-browser.js');
+  const scriptPath = resolveBrowserScriptPath();
 
   let browserScript;
   try {
@@ -3579,6 +3588,7 @@ export {
   ANTIPATTERNS, SAFE_TAGS, OVERUSED_FONTS, GENERIC_FONTS,
   checkElementBorders, checkElementMotion, checkElementGlow, checkPageTypography, checkPageLayout, isNeutralColor, isFullPage,
   detectHtml, detectUrl, detectText,
+  browserScriptPathFromModulePath, resolveBrowserScriptPath,
   walkDir, formatFindings, SCANNABLE_EXTENSIONS, SKIP_DIRS,
   extractStyleBlocks, extractCSSinJS,
   buildImportGraph, resolveImport,
