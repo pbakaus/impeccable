@@ -231,6 +231,14 @@ The detector catches 24 issues across AI slop (side-tab borders, purple gradient
 - [Trae](https://trae.ai)
 - [Rovo Dev](https://www.atlassian.com/software/rovo)
 
+## Community & Ecosystem
+
+Join the community and ecosystem conversations:
+
+- GitHub Discussions: file bugs, request features, and help newcomers.
+- [Impeccable on npm](https://www.npmjs.com/package/impeccable): grab the CLI, follow releases, and star the package.
+- Follow @pbakaus on Twitter for release notes, sample lint reports, and video highlights of new rules.
+
 ## Contributing
 
 See [DEVELOP.md](DEVELOP.md) for contributor guidelines and build instructions.
