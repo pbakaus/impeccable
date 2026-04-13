@@ -51,6 +51,8 @@ const state = {
   pendingEvents: [],
   // Queue: agent poll response callbacks waiting for browser events
   pendingPolls: [],
+  // Debounce timer for exit event (avoids false exits on transient disconnects)
+  exitTimer: null,
 };
 
 /** Push an event from the browser into the queue or resolve a waiting poll. */
@@ -293,6 +295,8 @@ function setupWebSocket(server) {
         if (msg.type === 'auth' && msg.token === state.token) {
           authenticated = true;
           state.wsClients.add(ws);
+          // Cancel any pending exit timer (client reconnected)
+          clearTimeout(state.exitTimer);
           ws.send(JSON.stringify({
             type: 'auth_ok',
             hasProjectContext: hasProjectContext(),
@@ -316,9 +320,16 @@ function setupWebSocket(server) {
 
     ws.on('close', () => {
       state.wsClients.delete(ws);
-      // If all browser clients disconnected, signal exit to agent
+      // If all browser clients disconnected, debounce before signaling exit.
+      // The browser script reconnects within 3s, and HMR page reloads cause
+      // brief disconnects. Wait 8s to avoid false exits.
       if (authenticated && state.wsClients.size === 0) {
-        enqueueEvent({ type: 'exit' });
+        clearTimeout(state.exitTimer);
+        state.exitTimer = setTimeout(() => {
+          if (state.wsClients.size === 0) {
+            enqueueEvent({ type: 'exit' });
+          }
+        }, 8000);
       }
     });
 

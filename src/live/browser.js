@@ -13,15 +13,18 @@
   'use strict';
   if (typeof window === 'undefined') return;
 
+  // Guard against double-init. Bun's HTML loader may process the <script> tag
+  // and create a bundled copy alongside the external load, or HMR may re-execute.
+  // Check BEFORE reading token/port to catch all cases.
+  if (window.__IMPECCABLE_LIVE_INIT__) return;
+  window.__IMPECCABLE_LIVE_INIT__ = true;
+
   const TOKEN = window.__IMPECCABLE_TOKEN__;
   const PORT = window.__IMPECCABLE_PORT__;
   if (!TOKEN || !PORT) {
-    console.warn('[impeccable] Live script loaded without token/port. Aborting.');
+    window.__IMPECCABLE_LIVE_INIT__ = false; // reset so the real load can init
     return;
   }
-
-  if (window.__IMPECCABLE_LIVE_INIT__) return;
-  window.__IMPECCABLE_LIVE_INIT__ = true;
 
   // ---------------------------------------------------------------------------
   // Design tokens
@@ -498,6 +501,7 @@
           e.stopPropagation();
           visibleVariant = idx;
           showVariantInDOM(currentSessionId, idx);
+          updateSelectedElement();
           updateBarContent('cycling');
         });
       }
@@ -639,7 +643,17 @@
     if (next < 1 || next > arrivedVariants) return;
     visibleVariant = next;
     showVariantInDOM(currentSessionId, next);
+    // Update selectedElement to the newly visible variant's content
+    updateSelectedElement();
     updateBarContent('cycling');
+  }
+
+  function updateSelectedElement() {
+    if (!currentSessionId) return;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    if (!wrapper) return;
+    const visEl = wrapper.querySelector('[data-impeccable-variant="' + visibleVariant + '"] > :first-child');
+    if (visEl) selectedElement = visEl;
   }
 
   // ---------------------------------------------------------------------------
@@ -647,31 +661,53 @@
   // ---------------------------------------------------------------------------
 
   function startVariantObserver(sessionId) {
-    const obs = new MutationObserver(() => {
+    let updating = false; // re-entrancy guard
+
+    const obs = new MutationObserver((mutations) => {
+      if (updating) return;
+
+      // Only react to mutations that add nodes with data-impeccable-variant,
+      // or mutations inside the variant wrapper. Ignore our own bar/UI changes.
+      let dominated = false;
+      for (const m of mutations) {
+        if (m.target.closest?.('[data-impeccable-variants]')) { dominated = true; break; }
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1 && (n.dataset?.impeccableVariants || n.dataset?.impeccableVariant)) {
+            dominated = true; break;
+          }
+        }
+        if (dominated) break;
+      }
+      if (!dominated) return;
+
       const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (!wrapper) return;
+
       const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
       const count = variants.length;
-      if (count > arrivedVariants) {
-        arrivedVariants = count;
-        if (visibleVariant === 0 && arrivedVariants > 0) {
-          visibleVariant = 1;
-          showVariantInDOM(sessionId, 1);
-        }
-        // Update bar to reflect new dots
-        if (state === 'GENERATING') updateBarContent('generating');
-        else if (state === 'CYCLING') updateBarContent('cycling');
+
+      // Nothing new
+      if (count <= arrivedVariants) return;
+
+      updating = true;
+      arrivedVariants = count;
+      if (visibleVariant === 0 && arrivedVariants > 0) {
+        visibleVariant = 1;
+        showVariantInDOM(sessionId, 1);
       }
+
       const expected = parseInt(wrapper.dataset.impeccableVariantCount || '0');
-      if (expected > 0 && expected !== expectedVariants) {
-        expectedVariants = expected;
-        if (state === 'GENERATING') updateBarContent('generating');
-      }
+      if (expected > 0) expectedVariants = expected;
+
       if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
         state = 'CYCLING';
         updateBarContent('cycling');
+      } else if (state === 'GENERATING') {
+        updateBarContent('generating');
       }
+      updating = false;
     });
+
     obs.observe(document.body, { childList: true, subtree: true });
     return obs;
   }
@@ -709,7 +745,8 @@
           hasProjectContext = !!msg.hasProjectContext;
           if (!hasProjectContext) showToast('No .impeccable.md found. Variants will be brand-agnostic.', 6000);
           console.log('[impeccable] Live mode connected.');
-          state = 'PICKING';
+          // Only go to PICKING if we're not already in a resumed session
+          if (state === 'IDLE') state = 'PICKING';
           break;
         case 'auth_fail':
           console.error('[impeccable] Auth failed:', msg.reason);
@@ -894,6 +931,38 @@
   // Init
   // ---------------------------------------------------------------------------
 
+  // Resume an active variant session after HMR/page reload.
+  // If a [data-impeccable-variants] wrapper exists in the DOM, the agent wrote
+  // variants before HMR fired. Pick up where we left off.
+  function resumeSession() {
+    const wrapper = document.querySelector('[data-impeccable-variants]');
+    if (!wrapper) return false;
+
+    currentSessionId = wrapper.dataset.impeccableVariants;
+    expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || '0');
+    const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+    arrivedVariants = variants.length;
+    visibleVariant = arrivedVariants > 0 ? 1 : 0;
+
+    // Find the visible variant's content element for highlight positioning.
+    // The wrapper has display:contents (no box), so we target the actual
+    // content element inside the currently visible variant.
+    const visEl = wrapper.querySelector('[data-impeccable-variant]:not([style*="display: none"]):not([data-impeccable-variant="original"])');
+    selectedElement = (visEl && visEl.firstElementChild) || visEl || wrapper.parentElement;
+
+    // Set display state BEFORE starting observer (avoid triggering it)
+    if (arrivedVariants > 0) showVariantInDOM(currentSessionId, 1);
+
+    state = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
+    showBar(state === 'CYCLING' ? 'cycling' : 'generating');
+    startScrollTracking();
+
+    // Start observing for more variants AFTER initial setup
+    if (variantObserver) variantObserver.disconnect();
+    variantObserver = startVariantObserver(currentSessionId);
+    return true;
+  }
+
   function init() {
     initHighlight();
     initBar();
@@ -902,7 +971,13 @@
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
     connectWS();
-    console.log('[impeccable] Live variant mode ready. Hover over elements to pick one.');
+
+    // Check for an active session to resume (variant wrapper already in DOM after HMR)
+    if (!resumeSession()) {
+      console.log('[impeccable] Live variant mode ready. Hover over elements to pick one.');
+    } else {
+      console.log('[impeccable] Resumed active variant session ' + currentSessionId + ' (' + arrivedVariants + '/' + expectedVariants + ' variants).');
+    }
   }
 
   if (document.readyState === 'loading') {
