@@ -124,6 +124,7 @@ DO vary font weights and sizes to create clear visual hierarchy.
 DO vary your font choices across projects. If you used a serif display font on the last project, look for a sans, monospace, or display face on this one.
 
 DO NOT use overused fonts like Inter, Roboto, Arial, Open Sans, or system defaults — but also do not simply switch to your second-favorite. Every font in the reflex_fonts_to_reject list above is banned. Look further.
+DO NOT hedge a type stack by listing two display or body families as interchangeable choices ("Family A or Family B"). That is deferred commitment, not a type system. Commit to one primary family per role; a second family is only legitimate as a named license fallback.
 DO NOT use monospace typography as lazy shorthand for "technical/developer" vibes.
 DO NOT put large icons with rounded corners above every heading. They rarely add value and make sites look templated.
 DO NOT use only one font family for the entire page. Pair a distinctive display font with a refined body font.
@@ -166,6 +167,7 @@ DO tint your neutrals toward your brand hue. Even a subtle hint creates subconsc
 DO NOT use gray text on colored backgrounds; it looks washed out. Use a shade of the background color instead.
 DO NOT use pure black (#000) or pure white (#fff). Always tint; pure black/white never appears in nature.
 DO NOT use the AI color palette: cyan-on-dark, purple-to-blue gradients, neon accents on dark backgrounds.
+DO NOT use the saturated tech-product-blue accent (hue ~215–225, high chroma, lightness ~50% — the flat bright blue that reads as "a dev-tool landing page"). If the brand genuinely needs blue, shift the hue off that default and pair it with a non-neutral secondary.
 DO NOT use gradient text for impact — see <absolute_bans> below for the strict definition. Solid colors only for text.
 DO NOT default to dark mode with glowing accents. It looks "cool" without requiring actual design decisions.
 DO NOT default to light mode "to be safe" either. The point is to choose, not to retreat to a safe option.
@@ -224,6 +226,7 @@ DO NOT: Use border-left or border-right greater than 1px as a colored accent str
 DO NOT: Use glassmorphism everywhere (blur effects, glass cards, glow borders used decoratively rather than purposefully).
 DO NOT: Use sparklines as decoration. Tiny charts that look sophisticated but convey nothing meaningful.
 DO NOT: Use rounded rectangles with generic drop shadows. Safe, forgettable, could be any AI output.
+DO NOT: Use the default rounded-full pill chip (faint tinted background, faint hairline border, ~11–12px label) for "Beta"/"New" tags or section labels. That exact pill has become a category tell for dev-tool dashboards. Pick a distinctive label shape — bracketed uppercase `[NEW]`, rectangular with a thick underline, inline italic, or type weight and color alone. If you keep the pill, change at least two of: radius, weight, case, border, spacing.
 DO NOT: Use modals unless there's truly no better alternative. Modals are lazy.
 
 ### Motion
