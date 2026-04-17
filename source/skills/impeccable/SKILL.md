@@ -124,7 +124,7 @@ DO vary font weights and sizes to create clear visual hierarchy.
 DO vary your font choices across projects. If you used a serif display font on the last project, look for a sans, monospace, or display face on this one.
 
 DO NOT use overused fonts like Inter, Roboto, Arial, Open Sans, or system defaults — but also do not simply switch to your second-favorite. Every font in the reflex_fonts_to_reject list above is banned. Look further.
-DO NOT hedge a type stack by listing two display or body families as interchangeable choices ("Family A or Family B"). That is deferred commitment, not a type system. Commit to one primary family per role; a second family is only legitimate as a named license fallback.
+DO NOT pair fonts by reflex. Run `font_selection_procedure` on EACH role — display, body, any third — independently; each must clear `reflex_fonts_to_reject` and Steps 1–4 on their own merits. A pair where only one role survived the procedure is still monoculture; the reflex just moved into the other role.
 DO NOT use monospace typography as lazy shorthand for "technical/developer" vibes.
 DO NOT put large icons with rounded corners above every heading. They rarely add value and make sites look templated.
 DO NOT use only one font family for the entire page. Pair a distinctive display font with a refined body font.
