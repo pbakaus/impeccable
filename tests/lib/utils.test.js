@@ -166,6 +166,61 @@ describe('generateYamlFrontmatter', () => {
     expect(parsed.frontmatter.description).toBe(original.description);
     expect(parsed.frontmatter['argument-hint']).toBe('<arg1>');
   });
+
+  test('should quote descriptions that contain a colon-space (mapping-value trap)', () => {
+    // Regression for issue #102: unquoted ": " in a description makes strict
+    // YAML parsers (Codex's skill loader, GitHub's frontmatter preview)
+    // reject the file with "mapping values are not allowed in this context".
+    const data = {
+      name: 'harden',
+      description: 'Make interfaces production-ready: error handling, empty states'
+    };
+
+    const result = generateYamlFrontmatter(data);
+    expect(result).toContain('description: "Make interfaces production-ready: error handling, empty states"');
+    const parsed = parseFrontmatter(`${result}\n\nBody`);
+    expect(parsed.frontmatter.description).toBe(data.description);
+  });
+
+  test('should quote descriptions ending with a colon', () => {
+    const data = {
+      name: 'test',
+      description: 'Trailing colon edge case:'
+    };
+
+    const result = generateYamlFrontmatter(data);
+    expect(result).toContain('description: "Trailing colon edge case:"');
+    const parsed = parseFrontmatter(`${result}\n\nBody`);
+    expect(parsed.frontmatter.description).toBe(data.description);
+  });
+
+  test('should quote values beginning with a YAML reserved indicator', () => {
+    // Leading '#' would be treated as a comment; '&' as an anchor; '*' as an
+    // alias. Generator must quote these so the scalar survives parsing.
+    const data = {
+      name: 'reserved',
+      description: '# not actually a comment',
+      tagline: '&anchor-looking-value'
+    };
+
+    const result = generateYamlFrontmatter(data);
+    expect(result).toContain('description: "# not actually a comment"');
+    expect(result).toContain('tagline: "&anchor-looking-value"');
+  });
+
+  test('should quote values that contain a mid-string " #" comment marker', () => {
+    const data = {
+      name: 'comment',
+      description: 'Value with inline #hashtag - note the space before #'
+    };
+
+    const result = generateYamlFrontmatter(data);
+    expect(result).toContain(
+      'description: "Value with inline #hashtag - note the space before #"'
+    );
+    const parsed = parseFrontmatter(`${result}\n\nBody`);
+    expect(parsed.frontmatter.description).toBe(data.description);
+  });
 });
 
 describe('ensureDir', () => {

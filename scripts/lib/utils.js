@@ -477,7 +477,24 @@ export function generateYamlFrontmatter(data) {
     } else if (typeof value === 'boolean') {
       lines.push(`${key}: ${value}`);
     } else {
-      const needsQuoting = typeof value === 'string' && /^[\[{]/.test(value);
+      // Strings need quoting when they contain YAML-significant structures that
+      // would otherwise change the meaning of the mapping value:
+      // - Leading flow-collection indicators ('[' or '{') -> parsed as
+      //   sequence/mapping instead of scalar.
+      // - ': ' or trailing ':' -> parsed as a nested mapping ("mapping values
+      //   are not allowed in this context"). This is the common failure mode:
+      //   `description: Make X production-ready: error handling, ...` breaks
+      //   strict YAML parsers like Codex's loader.
+      // - Leading '#' or ' #' anywhere -> treated as a comment, silently
+      //   truncating the value.
+      // - Leading YAML reserved indicators (&, *, !, |, >, %, @, `) -> parsed
+      //   as anchors, tags, block scalars, directives, etc.
+      // - Leading whitespace or wrapping quotes -> round-trip instability.
+      const needsQuoting = typeof value === 'string' && (
+        /^[\[{#&*!|>%@` \t'"-]/.test(value)
+        || /: |:$/.test(value)
+        || / #/.test(value)
+      );
       lines.push(`${key}: ${needsQuoting ? `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : value}`);
     }
   }
