@@ -227,11 +227,22 @@ function initWhyTabs() {
 	const panels = Array.from(container.querySelectorAll('.why-panel'));
 	if (!tabs.length || !panels.length) return;
 
-	const activate = (index) => {
+	const CYCLE_MS = 7000;
+	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	let current = 0;
+	let timer = null;
+	let autoRotate = !reducedMotion;
+	let visible = false;
+
+	const activate = (index, fromAuto = false) => {
+		current = index;
 		tabs.forEach((tab, i) => {
 			const on = i === index;
 			tab.classList.toggle('is-active', on);
 			tab.setAttribute('aria-selected', on ? 'true' : 'false');
+			// Reset cycling class, re-add on the new active tab so the
+			// progress indicator restarts cleanly.
+			tab.classList.remove('is-cycling');
 		});
 		panels.forEach((panel, i) => {
 			const on = i === index;
@@ -239,19 +250,80 @@ function initWhyTabs() {
 			if (on) panel.removeAttribute('hidden');
 			else panel.setAttribute('hidden', '');
 		});
+		if (autoRotate && visible) {
+			// Force reflow so the animation restart is picked up.
+			const active = tabs[index];
+			void active.offsetWidth;
+			active.classList.add('is-cycling');
+		}
+	};
+
+	const scheduleNext = () => {
+		clearTimeout(timer);
+		if (!autoRotate || !visible) return;
+		timer = setTimeout(() => {
+			const next = (current + 1) % tabs.length;
+			activate(next, true);
+			scheduleNext();
+		}, CYCLE_MS);
+	};
+
+	const stopAuto = () => {
+		autoRotate = false;
+		clearTimeout(timer);
+		tabs.forEach((t) => t.classList.remove('is-cycling'));
 	};
 
 	tabs.forEach((tab, index) => {
-		tab.addEventListener('click', () => activate(index));
+		tab.addEventListener('click', () => {
+			stopAuto();
+			activate(index);
+		});
 		tab.addEventListener('keydown', (e) => {
 			if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
 			e.preventDefault();
+			stopAuto();
 			const dir = e.key === 'ArrowDown' ? 1 : -1;
 			const next = (index + dir + tabs.length) % tabs.length;
 			tabs[next].focus();
 			activate(next);
 		});
 	});
+
+	container.addEventListener('mouseenter', () => {
+		// Pause auto-rotation on hover. Resume only if still allowed and
+		// user hasn't interacted (stopAuto flips autoRotate off).
+		clearTimeout(timer);
+		tabs.forEach((t) => t.classList.remove('is-cycling'));
+	});
+	container.addEventListener('mouseleave', () => {
+		if (autoRotate && visible) {
+			// Re-apply cycling class to current tab and resume the timer.
+			const active = tabs[current];
+			void active.offsetWidth;
+			active.classList.add('is-cycling');
+			scheduleNext();
+		}
+	});
+
+	// Observe visibility so we only rotate while the user can see it.
+	const io = new IntersectionObserver((entries) => {
+		entries.forEach((e) => {
+			visible = e.isIntersecting;
+			if (visible) {
+				if (autoRotate) {
+					const active = tabs[current];
+					void active.offsetWidth;
+					active.classList.add('is-cycling');
+					scheduleNext();
+				}
+			} else {
+				clearTimeout(timer);
+				tabs.forEach((t) => t.classList.remove('is-cycling'));
+			}
+		});
+	}, { threshold: 0.35 });
+	io.observe(container);
 }
 
 if (document.readyState === "loading") {
