@@ -4,7 +4,7 @@ Reduce visual intensity in designs that are too bold, aggressive, or overstimula
 
 ## Register
 
-Editorial: "quieter" means more restrained palette, more whitespace, more typographic air. Drama is reduced, not eliminated — the POV stays intact.
+Brand: "quieter" means more restrained palette, more whitespace, more typographic air. Drama is reduced, not eliminated — the POV stays intact.
 
 Product: "quieter" means reducing visual noise — fewer background accents, flatter cards, less color, less motion. The tool should disappear more completely into the task.
 

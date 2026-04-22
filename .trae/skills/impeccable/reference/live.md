@@ -94,7 +94,7 @@ All three carry `fallback: "agent-driven"`. Follow **Handle fallback** below.
 
 ### 3. Load the action's reference
 
-If `event.action` is `impeccable` (the default freeform action), use SKILL.md's shared laws plus the loaded register reference (`editorial.md` or `product.md`). Do not load a sub-command reference.
+If `event.action` is `impeccable` (the default freeform action), use SKILL.md's shared laws plus the loaded register reference (`brand.md` or `product.md`). Do not load a sub-command reference.
 
 Any other `event.action` (`bolder`, `quieter`, `distill`, `polish`, `typeset`, `colorize`, `layout`, `adapt`, `animate`, `delight`, `overdrive`): Read `reference/<action>.md` before planning. Each sub-command encodes a specific discipline; skipping its reference produces generic output.
 
@@ -116,7 +116,7 @@ Then commit each variant to a different **primary axis** of difference:
 2. **Layout topology** — stacked / side-by-side / grid / asymmetric / overlay
 3. **Typographic system** — pairing, scale ratio, case/weight strategy
 4. **Color strategy** — Restrained / Committed / Full palette / Drenched
-5. **Density** — minimal / dense / editorial
+5. **Density** — minimal / comfortable / dense
 6. **Structural decomposition** — merge, split, progressive disclosure
 
 Three variants → three DIFFERENT primary axes, not three riffs on color.

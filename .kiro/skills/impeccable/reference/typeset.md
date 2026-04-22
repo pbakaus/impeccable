@@ -4,7 +4,7 @@ Assess and improve typography that feels generic, inconsistent, or poorly struct
 
 ## Register
 
-Editorial: run the font selection procedure in [editorial.md](editorial.md). Two-family pairing (display + body). Fluid `clamp()` scale, ≥1.25 ratio between steps.
+Brand: run the font selection procedure in [brand.md](brand.md). Pairing follows the brand's lane (display serif + sans body for editorial/luxury, one committed sans for tech, etc.). Fluid `clamp()` scale, ≥1.25 ratio between steps.
 
 Product: system fonts and familiar sans stacks are legitimate here. One well-tuned family typically carries the whole UI. Fixed `rem` scale, 1.125–1.2 ratio between more closely-spaced steps.
 

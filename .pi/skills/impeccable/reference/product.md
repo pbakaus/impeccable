@@ -13,7 +13,7 @@ Product UI's failure mode isn't flatness, it's strangeness without purpose: over
 - **System fonts are legitimate.** `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` gives you native feel on every platform. Inter is the common cross-platform default for a reason.
 - **One family is often right.** Product UIs don't need display/body pairing. A well-tuned sans carries headings, buttons, labels, body, data.
 - **Fixed rem scale, not fluid.** Clamp-sized headings don't serve product UI. Users view at consistent DPI, and a fluid h1 that shrinks in a sidebar looks worse, not better.
-- **Tighter scale ratio.** 1.125–1.2 between steps is typical. More type elements here than in editorial; exaggerated contrast creates noise.
+- **Tighter scale ratio.** 1.125–1.2 between steps is typical. More type elements here than on brand surfaces; exaggerated contrast creates noise.
 - **Line length still applies for prose** (65–75ch). Data and compact UI can run denser — tables at 120ch+ are fine.
 
 ## Color
@@ -54,7 +54,7 @@ Every interactive component has: default, hover, focus, active, disabled, loadin
 
 ## Product permissions
 
-Product can afford things editorial can't.
+Product can afford things brand surfaces can't.
 
 - System fonts and familiar sans defaults (Inter, SF Pro, system-ui stacks).
 - Standard navigation patterns: top bar + side nav, breadcrumbs, tabs, command palettes.

@@ -6,25 +6,27 @@ There is **one** user-invocable skill, `impeccable`, with **23 commands** undern
 
 - `SKILL.md` — frontmatter (with the auto-trigger-optimized description and the `allowed-tools` list), shared design laws, and the **Commands** router table.
 - `reference/` — one `<command>.md` per command (`audit.md`, `polish.md`, `critique.md`, etc.) plus the domain reference files (`typography.md`, `color-and-contrast.md`, etc.). When a sub-command is matched, the router loads its reference file.
-- `reference/editorial.md` and `reference/product.md` — the two register references. SKILL.md's Setup section selects one based on the task cue, the surface in focus, or the `register` field in PRODUCT.md (first match wins).
+- `reference/brand.md` and `reference/product.md` — the two register references. SKILL.md's Setup section selects one based on the task cue, the surface in focus, or the `register` field in PRODUCT.md (first match wins).
 - `scripts/command-metadata.json` — single source of truth for each command's description, argument hint, and (eventually) category. Both the build and `pin.mjs` read from this.
 - `scripts/pin.mjs` — creates/removes lightweight redirect shims so users can have `/audit` as a standalone shortcut that delegates to `/impeccable audit`.
 - `scripts/cleanup-deprecated.mjs` — runs once after an update to remove leftover files from renamed/merged commands.
 
 **Do not add standalone skills** unless there's a strong reason. The consolidation was deliberate: the `/` menu pollution problem is real and gets worse as users install more plugins.
 
-### Register (editorial vs product)
+### Register (brand vs product)
 
 Every design task belongs to one of two registers:
 
-- **Editorial** — design IS the product: marketing, landing pages, brand sites, editorial content. Distinctiveness is the bar.
+- **Brand** — design IS the product: marketing, landing pages, brand sites, campaign surfaces, portfolios, long-form content. Distinctiveness is the bar. Spans every visual lane (tech-minimal, luxury, editorial-magazine, consumer-warm, brutalist, etc.) — do not default to only one.
 - **Product** — design SERVES the product: app UI, admin, dashboards, tools. Earned familiarity is the bar — fluent users of Linear / Figma / Notion / Raycast / Stripe should trust it.
 
-PRODUCT.md at the project root carries a `## Register` section with a bare value (`editorial` or `product`). `/impeccable teach` asks about register first because it shapes every downstream answer.
+PRODUCT.md at the project root carries a `## Register` section with a bare value (`brand` or `product`). `/impeccable teach` asks about register first because it shapes every downstream answer.
+
+Historical note: this was originally named "editorial" (v3 consolidation). Renamed to "brand" in v3.x because "editorial" biased models toward magazine/broadsheet aesthetics on every brief. PRODUCT.md files in existing projects with `register: editorial` are still handled (the loader normalizes the value) but should be migrated on next `/impeccable teach`.
 
 Sub-command reference files add a short `## Register` section near the top *only where the answer diverges between the two*. Don't restate the register files' content in sub-commands — link instead. Sub-commands where register meaningfully diverges today: `typeset`, `animate`, `bolder`, `delight`, `colorize`, `layout`, `quieter`.
 
-**a11y lives in `audit.md`**, not in SKILL.md, `editorial.md`, or `product.md`. Models over-cautious themselves into safe, underdesigned output when reminded about accessibility at design time. The audit command is the dedicated place for that check.
+**a11y lives in `audit.md`**, not in SKILL.md, `brand.md`, or `product.md`. Models over-cautious themselves into safe, underdesigned output when reminded about accessibility at design time. The audit command is the dedicated place for that check.
 
 ## CSS
 

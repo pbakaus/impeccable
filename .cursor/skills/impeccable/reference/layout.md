@@ -4,7 +4,7 @@ Assess and improve layout and spacing that feels monotonous, crowded, or structu
 
 ## Register
 
-Editorial: asymmetric compositions, fluid spacing with `clamp()`, intentional grid-breaking for emphasis. Rhythm through contrast — tight groupings paired with generous separations.
+Brand: asymmetric compositions, fluid spacing with `clamp()`, intentional grid-breaking for emphasis. Rhythm through contrast — tight groupings paired with generous separations.
 
 Product: predictable grids, consistent densities, familiar navigation patterns. Responsive behavior is structural (collapse sidebar, responsive table), not fluid typography. Consistency IS an affordance.
 

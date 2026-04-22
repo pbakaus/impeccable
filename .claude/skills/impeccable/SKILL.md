@@ -56,13 +56,15 @@ If DESIGN.md is missing: nudge once per session (*"Run `/impeccable document` fo
 
 ### 2. Register
 
-Every design task is **editorial** (marketing, landing, brand, content — design IS the product) or **product** (app UI, admin, dashboard, tool — design SERVES the product).
+Every design task is **brand** (marketing, landing, campaign, long-form content, portfolio — design IS the product) or **product** (app UI, admin, dashboard, tool — design SERVES the product).
 
 Identify before designing. Priority: (1) cue in the task itself ("landing page" vs "dashboard"); (2) the surface in focus (the page, file, or route being worked on); (3) `register` field in PRODUCT.md. First match wins.
 
 If PRODUCT.md lacks the `register` field (legacy), infer it once from its "Users" and "Product Purpose" sections, then cache the inferred value for the session. Suggest the user run `/impeccable teach` to add the field explicitly.
 
-Load the matching reference: [reference/editorial.md](reference/editorial.md) or [reference/product.md](reference/product.md). The shared design laws below apply to both.
+Legacy value: `editorial` is an accepted alias for `brand` (the register was renamed in a recent version). Treat `editorial` as `brand` without asking.
+
+Load the matching reference: [reference/brand.md](reference/brand.md) or [reference/product.md](reference/product.md). The shared design laws below apply to both.
 
 ## Shared design laws
 
@@ -73,10 +75,10 @@ Apply to every design, both registers. Match implementation complexity to the ae
 - Use OKLCH. Reduce chroma as lightness approaches 0 or 100 — high chroma at extremes looks garish.
 - Never use `#000` or `#fff`. Tint every neutral toward the brand hue (chroma 0.005–0.01 is enough).
 - Pick a **color strategy** before picking colors. Four steps on the commitment axis:
-  - **Restrained** — tinted neutrals + one accent ≤10%. Product default; editorial minimalism.
-  - **Committed** — one saturated color carries 30–60% of the surface. Editorial default for brand-owned pages.
-  - **Full palette** — 3–4 named roles, each used deliberately. Editorial campaigns; product data viz.
-  - **Drenched** — the surface IS the color. Editorial heroes, campaign pages.
+  - **Restrained** — tinted neutrals + one accent ≤10%. Product default; brand minimalism.
+  - **Committed** — one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
+  - **Full palette** — 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
+  - **Drenched** — the surface IS the color. Brand heroes, campaign pages.
 - The "one accent ≤10%" rule is Restrained only. Committed / Full palette / Drenched exceed it on purpose. Don't collapse every design to Restrained by reflex.
 
 ### Theme

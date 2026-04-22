@@ -39,7 +39,7 @@ Before asking questions, thoroughly scan the project to discover what you can:
 
 Also form a **register hypothesis** from what you find:
 
-- Marketing / editorial signals: `/`, `/about`, `/pricing`, `/blog/*`, `/docs/*`, hero sections, big typography, scroll-driven sections, landing-page-shaped content.
+- Brand signals: `/`, `/about`, `/pricing`, `/blog/*`, `/docs/*`, hero sections, big typography, scroll-driven sections, landing-page-shaped content.
 - Product signals: `/app/*`, `/dashboard`, `/settings`, `/(auth)`, forms, data tables, side/top nav, app-shell components.
 
 Register is a hypothesis at this point, not a decision — Step 3 confirms it.
@@ -52,22 +52,22 @@ STOP and call the `question` tool to clarify. Focus only on what you couldn't in
 
 ### Register (ask first — it shapes everything below)
 
-Every design task is either **editorial** (marketing, landing, brand, content — design IS the product) or **product** (app UI, admin, dashboards, tools — design SERVES the product).
+Every design task is either **brand** (marketing, landing, campaign, long-form content, portfolio — design IS the product) or **product** (app UI, admin, dashboards, tools — design SERVES the product).
 
-If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [product / editorial] surface — does that match your intent, or should we treat it differently?"*
+If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [brand / product] surface — does that match your intent, or should we treat it differently?"*
 
 If the signal is genuinely split (e.g. a product with a big marketing landing), STOP and call the `question` tool to clarify. which register describes the **primary** surface. The register can be overridden per task later, but PRODUCT.md carries one default.
 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
 - What job are they trying to get done?
-- For editorial: what emotions should the interface evoke? (confidence, delight, calm, urgency)
+- For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency)
 - For product: what workflow are they in? What's the primary task on any given screen?
 
 ### Brand & Personality
 - How would you describe the brand personality in 3 words?
 - Reference sites or apps that capture the right feel? What specifically about them?
-  - For editorial, push for brand / magazine references.
+  - For brand, push for real-world references in the right lane (tech-minimal, editorial-magazine, consumer-warm, brutalist-grid, etc.) — not generic "modern" adjectives.
   - For product, push for category best-tool references (Linear, Figma, Notion, Raycast, Stripe).
 - What should this explicitly NOT look like? Any anti-references?
 
@@ -101,13 +101,13 @@ product
 [What this should NOT look like. Specific bad-example sites or patterns to avoid.]
 
 ## Design Principles
-[3-5 strategic principles derived from the conversation. Principles like "practice what you preach", "editorial over marketing", "expert confidence" — NOT visual rules like "use OKLCH" or "magenta accent".]
+[3-5 strategic principles derived from the conversation. Principles like "practice what you preach", "show, don't tell", "expert confidence" — NOT visual rules like "use OKLCH" or "magenta accent".]
 
 ## Accessibility & Inclusion
 [WCAG level, known user needs, considerations]
 ```
 
-Register is either `editorial` or `product` as a bare value. No prose, no commentary.
+Register is either `brand` or `product` as a bare value. No prose, no commentary.
 
 Write to `PROJECT_ROOT/PRODUCT.md`. If `.impeccable.md` existed, the loader already renamed it — merge into that content rather than starting from scratch.
 
@@ -125,7 +125,7 @@ If the user prefers to skip, mention they can run `/impeccable document` any tim
 ## Step 6: Confirm and wrap up
 
 Summarize:
-- Register captured (editorial / product)
+- Register captured (brand / product)
 - What was written (PRODUCT.md, DESIGN.md, or both)
 - The 3-5 strategic principles from PRODUCT.md that will guide future work
 - If DESIGN.md is pending, remind the user how to generate it later

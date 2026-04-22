@@ -4,7 +4,7 @@ Increase visual impact and personality in designs that are too safe, generic, or
 
 ## Register
 
-Editorial: "bolder" means distinctive. Extreme scale, unexpected color, typographic risk, committed POV.
+Brand: "bolder" means distinctive. Extreme scale, unexpected color, typographic risk, committed POV.
 
 Product: "bolder" rarely means theatrics — those undermine trust. It means stronger hierarchy, clearer weight contrast, one sharper accent, more committed density. The amplification is in clarity, not drama.
 
