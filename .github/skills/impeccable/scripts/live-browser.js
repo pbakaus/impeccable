@@ -1357,6 +1357,11 @@
       if (visibleVariant === 0 && arrivedVariants > 0) {
         visibleVariant = 1;
         showVariantInDOM(sessionId, 1);
+        // showVariantInDOM hid the original (display:none); if we were still
+        // anchored to the original's content, its boundingRect is now zero
+        // and the bar snaps to (0,0). Re-point at the visible variant instead.
+        const visEl = pickVariantContent(wrapper, visibleVariant);
+        if (visEl) selectedElement = visEl;
       }
 
       const expected = parseInt(wrapper.dataset.impeccableVariantCount || '0');
@@ -1427,16 +1432,26 @@
           if (state === 'IDLE') state = 'PICKING';
           break;
         case 'done':
-          // Generate completion: handle no-HMR fallback
-          if (arrivedVariants === 0 && expectedVariants > 0 && msg.file) {
-            console.log('[impeccable] No HMR detected. Fetching variants from source file...');
-            injectVariantsFromSource(msg.file, currentSessionId);
-            return;
+          // Variants already arrived via HMR → normal transition.
+          if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
+            if (state === 'GENERATING') {
+              state = 'CYCLING';
+              updateBarContent('cycling');
+            }
+            break;
           }
-          if (state === 'GENERATING') {
-            state = 'CYCLING';
-            updateBarContent('cycling');
-          }
+          // HMR didn't propagate in time. Give it a 2s grace window, then
+          // reload the page. resumeSession counts variants off the rendered
+          // DOM on load and transitions straight to CYCLING — reload is the
+          // one universal recovery path: HTML, JSX/TSX, Vue, Svelte, static
+          // servers, anything. We used to try DOMParser on the raw source,
+          // but JSX expressions aren't valid HTML and the parse fails.
+          setTimeout(() => {
+            if (arrivedVariants >= expectedVariants && expectedVariants > 0) return;
+            if (state !== 'GENERATING') return;
+            saveSession();
+            window.location.reload();
+          }, 2000);
           break;
         case 'error':
           console.error('[impeccable] Error:', msg.message);
@@ -2030,15 +2045,14 @@ void main() {
     sendEvent({ type: 'accept', id: currentSessionId, variantId: String(visibleVariant) });
     markSessionHandled();
 
-    // Instantly commit the accepted variant in the DOM (fire-and-forget)
-    var wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
-    if (wrapper) {
-      var accepted = wrapper.querySelector('[data-impeccable-variant="' + visibleVariant + '"]');
-      if (accepted && accepted.firstElementChild) {
-        var parent = wrapper.parentElement;
-        if (parent) parent.replaceChild(accepted.firstElementChild.cloneNode(true), wrapper);
-      }
-    }
+    // The accepted variant is already the only visible child of the wrapper
+    // (all other variants are display:none). HMR from the source rewrite will
+    // replace the wrapper imminently. Don't eagerly replaceChild here — React
+    // reconciliation races with our mutation and throws NotFoundError in Next
+    // 16 / Turbopack. Schedule a fallback that runs the manual swap only if
+    // HMR hasn't cleaned up by then (keeps static-server flows working).
+    const acceptedSessionId = currentSessionId;
+    const acceptedVariant = visibleVariant;
 
     state = 'CONFIRMED';
     updateBarContent('confirmed');
@@ -2053,6 +2067,19 @@ void main() {
       selectedAction = 'impeccable';
       state = 'PICKING';
     }, 1800);
+
+    // Static-server / no-HMR fallback: if the wrapper is still around 2s after
+    // the cleanup above, swap it out manually. By now React has either moved
+    // on or the app isn't React at all.
+    setTimeout(function() {
+      const wrapper = document.querySelector('[data-impeccable-variants="' + acceptedSessionId + '"]');
+      if (!wrapper) return;
+      const accepted = wrapper.querySelector('[data-impeccable-variant="' + acceptedVariant + '"]');
+      if (accepted && accepted.firstElementChild) {
+        const parent = wrapper.parentElement;
+        if (parent) parent.replaceChild(accepted.firstElementChild.cloneNode(true), wrapper);
+      }
+    }, 2000);
   }
 
   function handleDiscard() {
@@ -2117,26 +2144,31 @@ void main() {
   }
 
   function cleanup() {
-    // Remove any leftover variant wrapper from the live DOM.
-    // After discard, the agent cleans the source, but on dev servers without
-    // HMR the DOM still has the old wrapper, which confuses the picker.
-    if (currentSessionId) {
-      const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
-      if (wrapper) {
-        // Restore the original element into the DOM
-        const orig = wrapper.querySelector('[data-impeccable-variant="original"]');
-        if (orig) {
-          const content = orig.firstElementChild;
-          if (content) {
-            wrapper.parentElement.replaceChild(content, wrapper);
-          } else {
-            wrapper.remove();
-          }
-        } else {
-          wrapper.remove();
+    // Hide the wrapper immediately so variants disappear. DON'T structurally
+    // mutate the DOM yet — HMR from the agent's source rewrite is on its way,
+    // and a manual replaceChild under React causes NotFoundError when the
+    // reconciler later tries to remove a wrapper we already removed.
+    // Schedule a 2s fallback that does the manual swap only if HMR hasn't
+    // replaced the wrapper by then (keeps static-server / no-HMR flows alive).
+    const cleanupSessionId = currentSessionId;
+    if (cleanupSessionId) {
+      const wrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
+      if (wrapper) wrapper.style.display = 'none';
+    }
+    setTimeout(function() {
+      if (!cleanupSessionId) return;
+      const wrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
+      if (!wrapper) return;
+      const orig = wrapper.querySelector('[data-impeccable-variant="original"]');
+      if (orig) {
+        const content = orig.firstElementChild;
+        if (content) {
+          wrapper.parentElement.replaceChild(content, wrapper);
+          return;
         }
       }
-    }
+      wrapper.remove();
+    }, 2000);
     hideBar();
     hideHighlight();
     stopScrollTracking();

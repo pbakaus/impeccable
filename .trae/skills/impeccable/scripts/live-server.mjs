@@ -84,7 +84,8 @@ function broadcast(msg) {
 
 function loadBrowserScripts() {
   // Detection script: look relative to the skill scripts dir, then fall back
-  // to the npm package location (src/detect-antipatterns-browser.js)
+  // to the npm package location (src/detect-antipatterns-browser.js).
+  // This one IS cached — detect.js rarely changes during a session.
   const detectPaths = [
     path.join(__dirname, '..', '..', '..', '..', 'src', 'detect-antipatterns-browser.js'),
     path.join(process.cwd(), 'node_modules', 'impeccable', 'src', 'detect-antipatterns-browser.js'),
@@ -94,16 +95,16 @@ function loadBrowserScripts() {
     try { detectScript = fs.readFileSync(p, 'utf-8'); break; } catch { /* try next */ }
   }
 
+  // live-browser.js: DO NOT cache. Return the path so the /live.js handler
+  // can re-read on every request. Editing the browser script during iteration
+  // should land on the next tab reload, not require a server restart.
   const livePath = path.join(__dirname, 'live-browser.js');
-  let liveScript = '';
-  try {
-    liveScript = fs.readFileSync(livePath, 'utf-8');
-  } catch {
+  if (!fs.existsSync(livePath)) {
     process.stderr.write('Error: live-browser.js not found at ' + livePath + '\n');
     process.exit(1);
   }
 
-  return { detectScript, liveScript };
+  return { detectScript, livePath };
 }
 
 function hasProjectContext() {
@@ -163,7 +164,7 @@ function validateEvent(msg) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, liveScriptWithToken }) {
+function createRequestHandler({ detectScript, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -175,8 +176,28 @@ function createRequestHandler({ detectScript, liveScriptWithToken }) {
 
     // --- Scripts ---
     if (p === '/live.js') {
-      res.writeHead(200, { 'Content-Type': 'application/javascript' });
-      res.end(liveScriptWithToken);
+      // Re-read from disk each request so edits to live-browser.js land on
+      // the next tab reload. No-store headers prevent browser caching across
+      // sessions — during iteration, a cached old script silently breaks
+      // every subsequent session.
+      let liveScript;
+      try {
+        liveScript = fs.readFileSync(livePath, 'utf-8');
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error reading live-browser.js: ' + err.message);
+        return;
+      }
+      const body =
+        `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
+        `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
+        liveScript;
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+      });
+      res.end(body);
       return;
     }
     if (p === '/detect.js' || p === '/') {
@@ -632,13 +653,8 @@ const annotRoot = path.join(process.cwd(), '.impeccable-live', 'annotations');
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, liveScript } = loadBrowserScripts();
-const liveScriptWithToken =
-  `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
-  `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
-  liveScript;
-
-httpServer = http.createServer(createRequestHandler({ detectScript, liveScriptWithToken }));
+const { detectScript, livePath } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   fs.writeFileSync(LIVE_PID_FILE, JSON.stringify({ pid: process.pid, port: state.port, token: state.token }));
