@@ -841,6 +841,391 @@ function renderLiveModeMain() {
 }
 
 /**
+/**
+ * Render the /designing page.
+ *
+ * Editorial orientation: four-phase loop (start → iterate → polish →
+ * maintain) as the spine, plus three appendix sections (register,
+ * interop, avoid) and a CTA climax. Cards are rare: most sections
+ * rely on typography, hairline rules, and whitespace for structure.
+ */
+function renderDesigningMain() {
+  const loopNodes = [
+    { id: 'start',    num: '01', name: 'Start',    hint: 'From a blank file, through a brief, to a designed feature.' },
+    { id: 'iterate',  num: '02', name: 'Iterate',  hint: 'Refine in place. Command line or in the browser.' },
+    { id: 'polish',   num: '03', name: 'Polish',   hint: 'The pre-ship gauntlet. Audit, clarify, harden.' },
+    { id: 'maintain', num: '04', name: 'Maintain', hint: 'Pay down design debt before it solidifies.' },
+  ];
+  const nodeHtml = loopNodes.map((n) => `
+      <a class="designing-loop-node designing-loop-node--${n.id}" href="#${n.id}">
+        <span class="designing-loop-num">${n.num}</span>
+        <span class="designing-loop-name">${n.name}</span>
+        <span class="designing-loop-hint">${escapeHtml(n.hint)}</span>
+      </a>`).join('');
+
+  return `
+<div class="designing-page">
+  <section class="designing-hero">
+    <header class="designing-page-header">
+      <span class="designing-page-eyebrow">The core loop</span>
+      <h1 class="designing-page-title">Designing <em>with Impeccable</em></h1>
+      <p class="designing-page-lede">Shipping a real interface is a loop. Four phases, each with one place to begin.</p>
+    </header>
+
+    <div class="designing-loop-wrap" aria-label="The four-phase loop">
+    <span class="designing-loop-wrap-eyebrow">The core loop</span>
+    <div class="designing-loop">
+      ${nodeHtml}
+      <div class="designing-loop-wheel" aria-hidden="true">
+        <svg class="designing-loop-wheel-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <circle class="designing-loop-wheel-ring" cx="50" cy="50" r="46"/>
+          <!-- 12 tick marks at 30° increments. Cardinals (0/90/180/270) stronger. -->
+          <line class="designing-loop-wheel-tick designing-loop-wheel-tick--cardinal" x1="50" y1="2.5" x2="50" y2="5.5"/>
+          <line class="designing-loop-wheel-tick" x1="73" y1="8.7" x2="72" y2="11.4"/>
+          <line class="designing-loop-wheel-tick" x1="91.3" y1="27" x2="88.6" y2="28"/>
+          <line class="designing-loop-wheel-tick designing-loop-wheel-tick--cardinal" x1="97.5" y1="50" x2="94.5" y2="50"/>
+          <line class="designing-loop-wheel-tick" x1="91.3" y1="73" x2="88.6" y2="72"/>
+          <line class="designing-loop-wheel-tick" x1="73" y1="91.3" x2="72" y2="88.6"/>
+          <line class="designing-loop-wheel-tick designing-loop-wheel-tick--cardinal" x1="50" y1="97.5" x2="50" y2="94.5"/>
+          <line class="designing-loop-wheel-tick" x1="27" y1="91.3" x2="28" y2="88.6"/>
+          <line class="designing-loop-wheel-tick" x1="8.7" y1="73" x2="11.4" y2="72"/>
+          <line class="designing-loop-wheel-tick designing-loop-wheel-tick--cardinal" x1="2.5" y1="50" x2="5.5" y2="50"/>
+          <line class="designing-loop-wheel-tick" x1="8.7" y1="27" x2="11.4" y2="28"/>
+          <line class="designing-loop-wheel-tick" x1="27" y1="8.7" x2="28" y2="11.4"/>
+          <!-- Clockwise-orbiting accent dot, animates with offset-path. -->
+          <circle class="designing-loop-wheel-dot" cx="0" cy="0" r="2.2"/>
+        </svg>
+        <span class="designing-loop-wheel-arrow designing-loop-wheel-arrow--ne">↘</span>
+        <span class="designing-loop-wheel-arrow designing-loop-wheel-arrow--se">↙</span>
+        <span class="designing-loop-wheel-arrow designing-loop-wheel-arrow--sw">↖</span>
+        <span class="designing-loop-wheel-arrow designing-loop-wheel-arrow--nw">↗</span>
+        <div class="designing-loop-wheel-center">
+          <span class="designing-loop-wheel-center-label">designing</span>
+          <span class="designing-loop-wheel-center-mark">impeccable</span>
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <section class="designing-phase" id="start">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">01 &middot; Start</span>
+      <h2 class="designing-phase-title">From a blank file to a designed feature.</h2>
+      <p class="designing-phase-sub">Run <code>/impeccable teach</code> once per project to establish PRODUCT.md and DESIGN.md. Then reach for <code>/impeccable craft</code> and describe what you want to build. Shape, build, and iterate happen inside one invocation.</p>
+      <div class="designing-phase-commands">
+        <a class="designing-phase-cmd" href="/docs/teach">/impeccable teach</a>
+        <a class="designing-phase-cmd" href="/docs/craft">/impeccable craft</a>
+        <a class="designing-phase-cmd" href="/docs/shape">/impeccable shape</a>
+      </div>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-start-grid">
+        <div class="docs-viz-file" style="margin:0">
+          <div class="docs-viz-file-header">
+            <span class="docs-viz-file-name">PRODUCT.md</span>
+            <span class="docs-viz-file-status">Written by teach</span>
+          </div>
+          <div class="docs-viz-file-body">
+            <div class="docs-viz-file-row">
+              <span class="docs-viz-file-k">Register</span>
+              <span class="docs-viz-file-v">Product. Design serves the task.</span>
+            </div>
+            <div class="docs-viz-file-row">
+              <span class="docs-viz-file-k">Users</span>
+              <span class="docs-viz-file-v">SREs on call, reading fast, often in the dark.</span>
+            </div>
+            <div class="docs-viz-file-row">
+              <span class="docs-viz-file-k">Voice</span>
+              <span class="docs-viz-file-v">Calm, clinical, no hype.</span>
+            </div>
+            <div class="docs-viz-file-row">
+              <span class="docs-viz-file-k">Anti-references</span>
+              <span class="docs-viz-file-v">Purple gradients. Glassmorphism. Hype.</span>
+            </div>
+          </div>
+        </div>
+        <div class="designing-start-grid-prose">
+          <p>Teach runs a short discovery interview about audience, register, voice, and anti-references. It writes <code>PRODUCT.md</code> and, if there's code to scan, a <code>DESIGN.md</code>.</p>
+          <p>From that point on, every command reads both files before generating. Craft, polish, critique, live, all of them.</p>
+        </div>
+      </div>
+
+      <aside class="designing-codex">
+        <span class="designing-codex-eyebrow">A note on image-gen</span>
+        <p class="designing-codex-body">Harnesses that can generate images take this further. On Codex and Gemini, craft generates reference visuals first, then implements from them. The mood board is built into the flow, not a separate step you have to remember.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="designing-phase" id="iterate">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">02 &middot; Iterate</span>
+      <h2 class="designing-phase-title">Refine what's there.</h2>
+      <p class="designing-phase-sub">Once something exists, you're iterating. There are two paths: specific commands for named dimensions, or Live Mode for visual exploration.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-iterate-split">
+        <div class="designing-iterate-col">
+          <span class="designing-iterate-kind">Command line</span>
+          <h3 class="designing-iterate-name">When the edit has a name.</h3>
+          <p class="designing-iterate-when">Type a command and let the skill encode a specific discipline. Best when you know the word: typography, layout, color, motion.</p>
+          <div class="designing-iterate-terminal" aria-hidden="true">
+            <div class="designing-iterate-terminal-line"><span class="designing-iterate-terminal-prompt">$</span><span>/impeccable polish pricing</span></div>
+            <div class="designing-iterate-terminal-line"><span class="designing-iterate-terminal-prompt">$</span><span>/impeccable bolder hero</span></div>
+            <div class="designing-iterate-terminal-line"><span class="designing-iterate-terminal-prompt">$</span><span>/impeccable typeset checkout</span></div>
+          </div>
+        </div>
+
+        <div class="designing-iterate-col">
+          <span class="designing-iterate-kind">Live Mode</span>
+          <h3 class="designing-iterate-name">When the edit is easier to point at.</h3>
+          <p class="designing-iterate-when">Pick any element in the browser, draw, type, hit Go. Three production-quality variants. Accept one and it writes to source.</p>
+          <div class="designing-iterate-live" aria-hidden="true">
+            <div class="docs-viz-live-frame" style="max-width:100%">
+              <div class="docs-viz-live-chrome">
+                <span class="docs-viz-live-dot"></span>
+                <span class="docs-viz-live-dot"></span>
+                <span class="docs-viz-live-dot"></span>
+                <span class="docs-viz-live-url">localhost:3000</span>
+              </div>
+              <div class="docs-viz-live-stage">
+                <div class="docs-viz-live-target">
+                  <span class="docs-viz-live-kicker">No. 04</span>
+                  <h4 class="docs-viz-live-title">Letters, <em>occasionally</em>.</h4>
+                  <button class="docs-viz-live-btn" type="button">Send me one</button>
+                </div>
+                <div class="docs-viz-live-outline"></div>
+                <div class="docs-viz-live-ctx">
+                  <button class="docs-viz-live-ctx-nav" type="button">‹</button>
+                  <span class="docs-viz-live-ctx-counter">2 / 3</span>
+                  <button class="docs-viz-live-ctx-nav" type="button">›</button>
+                  <span class="docs-viz-live-ctx-divider"></span>
+                  <button class="docs-viz-live-ctx-accept" type="button">Accept</button>
+                </div>
+                <div class="docs-viz-live-gbar">
+                  <span class="docs-viz-live-gbar-brand">/</span>
+                  <span class="docs-viz-live-gbar-btn is-active">Pick</span>
+                  <span class="docs-viz-live-gbar-divider"></span>
+                  <span class="docs-viz-live-gbar-x">✕</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <table class="designing-iterate-table">
+        <caption>When to reach for which</caption>
+        <tbody>
+          <tr>
+            <th scope="row">Fix something "off" that you can't name</th>
+            <td><a href="/live-mode">/impeccable live</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Apply a specific discipline: type, layout, color, motion</th>
+            <td><a href="/docs/typeset">/typeset</a> &middot; <a href="/docs/layout">/layout</a> &middot; <a href="/docs/colorize">/colorize</a> &middot; <a href="/docs/animate">/animate</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Explore three directions side by side</th>
+            <td><a href="/live-mode">/impeccable live</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Ask "is this any good?"</th>
+            <td><a href="/docs/critique">/impeccable critique</a></td>
+          </tr>
+          <tr>
+            <th scope="row">Bring a safe design to life, or tone a shouting one down</th>
+            <td><a href="/docs/bolder">/bolder</a> &middot; <a href="/docs/quieter">/quieter</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="designing-phase" id="polish">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">03 &middot; Polish</span>
+      <h2 class="designing-phase-title">The pre-ship gauntlet.</h2>
+      <p class="designing-phase-sub">Three commands in sequence before anything ships. They don't redesign; they find what still needs to change.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-polish">
+        <div class="designing-polish-col">
+          <span class="designing-polish-cmd"><a href="/docs/audit">/impeccable audit</a></span>
+          <h3 class="designing-polish-name">Score it.</h3>
+          <p class="designing-polish-desc">Five dimensions scored 0 to 4: accessibility, performance, theming, responsive, anti-patterns. Findings tagged P0 to P3.</p>
+        </div>
+        <div class="designing-polish-col">
+          <span class="designing-polish-cmd"><a href="/docs/clarify">/impeccable clarify</a></span>
+          <h3 class="designing-polish-name">Rewrite the copy.</h3>
+          <p class="designing-polish-desc">Labels, error messages, empty-state prose, microcopy. Tuned to the audience from PRODUCT.md.</p>
+        </div>
+        <div class="designing-polish-col">
+          <span class="designing-polish-cmd"><a href="/docs/harden">/impeccable harden</a></span>
+          <h3 class="designing-polish-name">Stress-test reality.</h3>
+          <p class="designing-polish-desc">60-character names, German product titles, prices in the billions, 500s, offline. Production data is messy.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="designing-phase" id="maintain">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">04 &middot; Maintain</span>
+      <h2 class="designing-phase-title">Design debt is real. Pay it down.</h2>
+      <p class="designing-phase-sub">Features ship, drift happens. Two commands close the gap before it solidifies.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-maintain">
+        <div class="designing-maintain-col">
+          <span class="designing-maintain-label"><a href="/docs/extract">/impeccable extract</a></span>
+          <h3 class="designing-maintain-name">Consolidate drift.</h3>
+          <p class="designing-maintain-desc">Find patterns used three or more times with the same intent. Propose tokens and primitives. Migrate call sites in the same pass.</p>
+          <div class="designing-extract-viz" aria-hidden="true">
+            <div class="designing-extract-before">
+              <span class="designing-extract-btn">Subscribe</span>
+              <span class="designing-extract-btn">Submit</span>
+              <span class="designing-extract-btn">Join</span>
+              <span class="designing-extract-btn">Send</span>
+              <span class="designing-extract-btn">Go</span>
+              <span class="designing-extract-btn">OK</span>
+            </div>
+            <span class="designing-extract-arrow">→</span>
+            <span class="designing-extract-after">Button</span>
+          </div>
+        </div>
+
+        <div class="designing-maintain-col">
+          <span class="designing-maintain-label"><a href="/docs/document">/impeccable document</a></span>
+          <h3 class="designing-maintain-name">Re-capture the system.</h3>
+          <p class="designing-maintain-desc">Scans tokens, components, and rendered output. Writes a spec-compliant DESIGN.md that every other command reads.</p>
+          <div class="designing-designmd-preview" aria-hidden="true">
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">01</span><span>Overview</span></div>
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">02</span><span>Colors</span></div>
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">03</span><span>Typography</span></div>
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">04</span><span>Elevation</span></div>
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">05</span><span>Components</span></div>
+            <div class="designing-designmd-preview-line"><span class="designing-designmd-preview-num">06</span><span>Do's and Don'ts</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="designing-phase designing-phase--appendix" aria-label="Brand vs product register">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">Before any of this</span>
+      <h2 class="designing-phase-title">Pick a register.</h2>
+      <p class="designing-phase-sub">Brand and product surfaces have different defaults. Impeccable tracks this in <code>PRODUCT.md</code> as a single field, so commands like <code>typeset</code>, <code>animate</code>, and <code>colorize</code> adapt their vocabulary to match.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-register">
+        <div class="designing-register-preview" aria-hidden="true">
+          <div class="designing-register-mini designing-register-mini--brand">
+            <span class="designing-register-mini-label">No. 04 &middot; Dispatch</span>
+            <span class="designing-register-mini-title">Letters, occasionally.</span>
+          </div>
+          <div class="designing-register-mini designing-register-mini--product">
+            <span class="designing-register-mini-label">Newsletter</span>
+            <span class="designing-register-mini-title">Subscribe to updates</span>
+          </div>
+        </div>
+        <div>
+          <p style="font-family:var(--font-body);font-size:0.9375rem;line-height:1.65;color:var(--color-charcoal);margin:0;max-width:52ch">The same element, rendered in brand register (editorial masthead) and product register (utility). Register is answered once during <code>teach</code> and applies to every downstream command.</p>
+          <a class="designing-register-link" href="/tutorials/brand-vs-product">Read the brand-vs-product tutorial &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="designing-phase designing-phase--appendix" aria-label="DESIGN.md interop">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">Interop</span>
+      <h2 class="designing-phase-title">Your system travels.</h2>
+      <p class="designing-phase-sub"><code>DESIGN.md</code> follows <a href="https://stitch.withgoogle.com/docs/design-md/format/" target="_blank" rel="noopener">the format Google Stitch publishes</a>. Not a lock-in. When you outgrow Impeccable or want a second opinion from another tool, the file comes with you.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="designing-interop" aria-hidden="true">
+        <div class="designing-interop-side">
+          <span class="designing-interop-side-label">Writes it</span>
+          <span class="designing-interop-node">Impeccable</span>
+        </div>
+        <div class="designing-interop-node designing-interop-node--center">DESIGN.md</div>
+        <div class="designing-interop-side">
+          <span class="designing-interop-side-label">Reads it</span>
+          <div class="designing-interop-side-list">
+            <span class="designing-interop-node">Google Stitch</span>
+            <span class="designing-interop-node">Other tools</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="designing-phase designing-phase--appendix" aria-label="What to avoid">
+    <header class="designing-phase-head">
+      <span class="designing-phase-num">Common mistakes</span>
+      <h2 class="designing-phase-title">What to avoid.</h2>
+      <p class="designing-phase-sub">An anti-patterns list, for using the anti-patterns tool.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <ul class="designing-avoid">
+        <li>
+          <span class="designing-avoid-x" aria-hidden="true">×</span>
+          <div>
+            <span class="designing-avoid-title">Running both Impeccable and Anthropic's frontend-design skill</span>
+            <p class="designing-avoid-desc">Anthropic still promotes their skill in Claude Code, but it's been unmaintained and is now behind on recommended patterns. Run both and they collide on vocabulary, cancelling each other out. Pick one.</p>
+          </div>
+        </li>
+        <li>
+          <span class="designing-avoid-x" aria-hidden="true">×</span>
+          <div>
+            <span class="designing-avoid-title">Pinning every command</span>
+            <p class="designing-avoid-desc">Pinning brings back <code>/audit</code>, <code>/polish</code>, <code>/critique</code> as shortcuts. Pin everything and you've re-exploded the <code>/</code> menu the v3.0 consolidation cleaned up. Pin the two or three you reach for daily.</p>
+          </div>
+        </li>
+        <li>
+          <span class="designing-avoid-x" aria-hidden="true">×</span>
+          <div>
+            <span class="designing-avoid-title">Skipping <code>teach</code></span>
+            <p class="designing-avoid-desc">Commands still run without PRODUCT.md and DESIGN.md. They default to generic SaaS patterns. The floor is meaningfully higher with context. Run teach once; every later command benefits.</p>
+          </div>
+        </li>
+        <li>
+          <span class="designing-avoid-x" aria-hidden="true">×</span>
+          <div>
+            <span class="designing-avoid-title">Treating it like a linter</span>
+            <p class="designing-avoid-desc">Impeccable is an opinionated design partner, not a validator. It has a point of view. Push back with a reason and it'll work with you. Ignore the opinion without a reason and output gets worse, not better.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <nav class="designing-cta" aria-label="Where to go next">
+    <a class="designing-cta-card" href="/docs/teach">
+      <span class="designing-cta-card-kind">New project</span>
+      <h2 class="designing-cta-card-title">Start with <em>teach</em></h2>
+      <p class="designing-cta-card-desc">Five minutes of discovery, one PRODUCT.md, one DESIGN.md. Every command downstream gets sharper from here.</p>
+    </a>
+    <a class="designing-cta-card" href="/tutorials">
+      <span class="designing-cta-card-kind">Walk a scenario</span>
+      <h2 class="designing-cta-card-title">Open a <em>tutorial</em></h2>
+      <p class="designing-cta-card-desc">Four short walkthroughs of the highest-leverage flows: getting started, Live Mode, critique with the overlay, brand vs product.</p>
+    </a>
+  </nav>
+</div>`;
+}
+
+/**
  * Render a tutorial detail page main content.
  */
 function renderTutorialDetail(tutorial, knownSkillIds) {
@@ -928,6 +1313,7 @@ export async function generateSubPages(rootDir) {
     tutorials: path.join(rootDir, 'public/tutorials'),
     visualMode: path.join(rootDir, 'public/visual-mode'),
     liveMode: path.join(rootDir, 'public/live-mode'),
+    designing: path.join(rootDir, 'public/designing'),
   };
 
   // Fresh output dirs each time so stale files don't linger.
@@ -1049,6 +1435,22 @@ export async function generateSubPages(rootDir) {
       extraHead,
     });
     const out = path.join(outDirs.liveMode, 'index.html');
+    fs.writeFileSync(out, html, 'utf-8');
+    generated.push(out);
+  }
+
+  // Designing: orientation page about the core loop.
+  {
+    const html = renderPage({
+      title: 'Designing with Impeccable',
+      description:
+        'The core loop: start, iterate, polish, maintain. How to use Impeccable end-to-end, from a blank file to shipped feature to paid-down design debt.',
+      bodyHtml: renderDesigningMain(),
+      activeNav: 'designing',
+      canonicalPath: '/designing',
+      bodyClass: 'sub-page designing-page-body',
+    });
+    const out = path.join(outDirs.designing, 'index.html');
     fs.writeFileSync(out, html, 'utf-8');
     generated.push(out);
   }

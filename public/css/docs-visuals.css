@@ -1371,9 +1371,20 @@
   color: oklch(70% 0.18 145);
 }
 
-/* Demo section — wraps the animated homepage .live-demo block */
+/* Demo section — wraps the animated homepage .live-demo block.
+   The homepage uses a 2-col grid (frame + support cells). /live-mode
+   replaces the support cells with the stages section below, so the
+   frame should take the full width here. */
 .live-mode-demo-wrap {
   margin: 0;
+}
+
+.live-mode-demo-wrap .live-demo {
+  grid-template-columns: 1fr;
+}
+
+.live-mode-demo-wrap .live-demo-frame {
+  max-width: none;
 }
 
 .live-mode-demo-caption {
@@ -1622,4 +1633,1183 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   font-weight: 600;
+}
+
+
+/* ============================================
+   DESIGNING WITH IMPECCABLE (/designing)
+
+   Editorial orientation page. Cards are rare — most sections
+   rely on typography, whitespace, and hairline rules for structure.
+   Four core phases get full weight; three appendix sections (register,
+   interop, avoid) render at a quieter tier. CTA climax at the bottom.
+
+   Spacing follows DESIGN.md: 8 / 16 / 24 / 32 / 48 / 80 / 120.
+   Two card radii: 8 (inline chrome like terminal, live frame) and 12
+   (only the loop spine + CTA climax). No freestyle paddings.
+   ============================================ */
+
+.designing-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 5vw, 4rem) clamp(1.25rem, 3vw, 2rem) clamp(4rem, 8vw, 6rem);
+}
+
+/* ---------- Hero ---------- */
+
+/* Hero wrapper: hero text on the left, compass loop on the right when
+   there's enough room. Single column below ~880px so both halves stay
+   legible. */
+.designing-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  column-gap: clamp(1.5rem, 4vw, 3rem);
+  row-gap: var(--spacing-xl, 48px);
+  align-items: center;
+  margin-bottom: var(--spacing-2xl, 80px);
+}
+
+@media (max-width: 880px) {
+  .designing-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}
+
+.designing-page-header {
+  max-width: 46ch;
+}
+
+.designing-page-eyebrow {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+  margin-bottom: var(--spacing-sm, 16px);
+}
+
+.designing-page-title {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(2.75rem, 6vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  margin: 0 0 var(--spacing-md, 24px) 0;
+}
+
+.designing-page-title em {
+  font-style: italic;
+  color: var(--color-accent);
+}
+
+.designing-page-lede {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: clamp(1rem, 1.6vw, 1.125rem);
+  line-height: 1.65;
+  color: var(--color-charcoal);
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* ---------- Loop spine ---------- */
+/*
+ * Editorial compass. A thin ink circle is the loop itself; four phase
+ * labels sit at the N/E/S/W compass points and read clockwise. Four
+ * small clockwise arrow glyphs mark the transit points on the ring.
+ * The center carries a quiet italic wordmark so the circle has a
+ * typographic anchor.
+ */
+
+.designing-loop-wrap {
+  padding: 0;
+}
+
+.designing-loop-wrap-eyebrow {
+  display: none;
+}
+
+.designing-loop {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) clamp(200px, 26vw, 280px) minmax(96px, 1fr);
+  grid-template-rows: auto clamp(200px, 26vw, 280px) auto;
+  column-gap: clamp(0.75rem, 2vw, 1.25rem);
+  row-gap: clamp(0.75rem, 2vw, 1.25rem);
+  max-width: 540px;
+  margin: 0 auto;
+  align-items: center;
+  justify-items: center;
+}
+
+/* When the loop stands alone (e.g. stacked below the hero on narrow
+   viewports), the eyebrow comes back and a touch more air surrounds it. */
+@media (max-width: 880px) {
+  .designing-loop-wrap {
+    padding-top: clamp(1rem, 3vw, 2rem);
+  }
+  .designing-loop-wrap-eyebrow {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-ash);
+    text-align: center;
+    margin-bottom: clamp(1rem, 2vw, 1.5rem);
+  }
+}
+
+.designing-loop-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: inherit;
+  max-width: 24ch;
+}
+
+.designing-loop-node--start {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: center;
+  align-items: center;
+}
+.designing-loop-node--iterate {
+  grid-column: 3;
+  grid-row: 2;
+  text-align: left;
+  align-items: flex-start;
+}
+.designing-loop-node--polish {
+  grid-column: 2;
+  grid-row: 3;
+  text-align: center;
+  align-items: center;
+}
+.designing-loop-node--maintain {
+  grid-column: 1;
+  grid-row: 2;
+  text-align: right;
+  align-items: flex-end;
+}
+
+.designing-loop-num {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  color: var(--color-accent);
+  text-transform: uppercase;
+}
+
+.designing-loop-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  line-height: 1;
+  color: var(--color-ink);
+  transition: color 180ms var(--ease-out, ease);
+  margin-top: 2px;
+}
+
+.designing-loop-node:hover .designing-loop-name {
+  color: var(--color-accent);
+}
+
+.designing-loop-hint {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-charcoal);
+  margin-top: 6px;
+  max-width: 20ch;
+}
+
+/* Hide hints inside the compressed hero-side compass; the full phase
+   description lives in its section below. Shown again when the compass
+   stacks under the hero on narrow viewports. */
+@media (min-width: 881px) {
+  .designing-hero .designing-loop-hint {
+    display: none;
+  }
+}
+
+/* The wheel — center cell. Thin ink circle + clockwise arrow glyphs at
+   the 45° positions + an italic wordmark in the middle. */
+.designing-loop-wheel {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  align-self: center;
+  justify-self: center;
+}
+
+.designing-loop-wheel-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.designing-loop-wheel-ring {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 1;
+  opacity: 0.85;
+}
+
+.designing-loop-wheel-tick {
+  stroke: var(--color-ink);
+  stroke-width: 1;
+  opacity: 0.18;
+}
+
+.designing-loop-wheel-tick--cardinal {
+  stroke-width: 1.25;
+  opacity: 0.4;
+}
+
+.designing-loop-wheel-dot {
+  fill: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .designing-loop-wheel-dot {
+    offset-path: path("M 50 4 A 46 46 0 1 1 50 96 A 46 46 0 1 1 50 4");
+    animation: designingWheelOrbit 22s linear infinite;
+  }
+}
+
+@keyframes designingWheelOrbit {
+  from { offset-distance: 0%; }
+  to   { offset-distance: 100%; }
+}
+
+.designing-loop-wheel-arrow {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--color-cream);
+  color: var(--color-accent);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 50%;
+  user-select: none;
+}
+
+/* 45° offsets: cos 45° ≈ 0.7071. At radius 50% of wheel size, that's
+   ~35.4% along each axis from center. */
+.designing-loop-wheel-arrow--ne { top: calc(50% - 35.4%); left: calc(50% + 35.4%); transform: translate(-50%, -50%); }
+.designing-loop-wheel-arrow--se { top: calc(50% + 35.4%); left: calc(50% + 35.4%); transform: translate(-50%, -50%); }
+.designing-loop-wheel-arrow--sw { top: calc(50% + 35.4%); left: calc(50% - 35.4%); transform: translate(-50%, -50%); }
+.designing-loop-wheel-arrow--nw { top: calc(50% - 35.4%); left: calc(50% - 35.4%); transform: translate(-50%, -50%); }
+
+.designing-loop-wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.designing-loop-wheel-center-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ash);
+}
+
+.designing-loop-wheel-center-mark {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(1.125rem, 2.2vw, 1.375rem);
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+@media (max-width: 720px) {
+  .designing-loop {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(7, auto);
+    row-gap: 12px;
+    justify-items: start;
+  }
+  .designing-loop-node {
+    text-align: left;
+    align-items: flex-start;
+    max-width: none;
+  }
+  .designing-loop-node--start    { grid-column: 1; grid-row: 1; }
+  .designing-loop-node--iterate  { grid-column: 1; grid-row: 3; }
+  .designing-loop-node--polish   { grid-column: 1; grid-row: 5; }
+  .designing-loop-node--maintain { grid-column: 1; grid-row: 7; }
+  .designing-loop-wheel { display: none; }
+}
+
+/* ============================================
+   PHASE SECTIONS — editorial, text-dominant
+   ============================================ */
+
+.designing-phase {
+  scroll-margin-top: 80px;
+  padding-top: var(--spacing-xl, 48px);
+  padding-bottom: var(--spacing-xl, 48px);
+  border-top: 1px solid var(--color-mist);
+}
+
+/* First phase after the loop: no border (loop-wrap already separates),
+   but keep a little top air so the eye settles. */
+.designing-loop-wrap + .designing-phase {
+  border-top: 0;
+  padding-top: var(--spacing-lg, 32px);
+}
+
+/* Transition from spine to appendix: rely on whitespace, not a thicker
+   rule. Design system uses only 1px mist separators. */
+.designing-phase:not(.designing-phase--appendix) + .designing-phase--appendix {
+  margin-top: var(--spacing-2xl, 80px);
+}
+
+.designing-phase-head {
+  margin-bottom: var(--spacing-lg, 32px);
+}
+
+.designing-phase-num {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-sm, 16px);
+}
+
+.designing-phase--appendix .designing-phase-num {
+  color: var(--color-ash);
+}
+
+.designing-phase-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(1.875rem, 3.5vw, 2.5rem);
+  line-height: 1.15;
+  color: var(--color-ink);
+  margin: 0 0 var(--spacing-sm, 16px) 0;
+  max-width: 22ch;
+}
+
+.designing-phase--appendix .designing-phase-title {
+  font-size: clamp(1.25rem, 2.2vw, 1.625rem);
+  font-style: normal;
+  max-width: 32ch;
+}
+
+.designing-phase-sub {
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--color-charcoal);
+  margin: 0;
+  max-width: 60ch;
+}
+
+.designing-phase--appendix .designing-phase-sub {
+  font-size: 0.9375rem;
+  max-width: 64ch;
+}
+
+.designing-phase-commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--spacing-md, 24px);
+}
+
+.designing-phase-cmd {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--color-mist);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.designing-phase-cmd:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.designing-phase-body {
+  margin-top: var(--spacing-lg, 32px);
+}
+
+/* ============================================
+   PHASE 1 — Start
+   ============================================ */
+
+.designing-start-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .designing-start-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.designing-start-grid-prose {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-ink);
+  max-width: 36ch;
+}
+
+.designing-start-grid-prose p {
+  margin: 0 0 1rem 0;
+}
+
+.designing-start-grid-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.designing-start-grid-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent);
+}
+
+/* Codex aside — quieter, pull-quote shape, not a card */
+.designing-codex {
+  margin-top: var(--spacing-xl, 48px);
+  padding: var(--spacing-md, 24px) 0 var(--spacing-md, 24px) var(--spacing-md, 24px);
+  border-left: 2px solid var(--color-accent);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--spacing-md, 24px);
+  row-gap: 6px;
+  align-items: baseline;
+}
+
+@media (max-width: 640px) {
+  .designing-codex {
+    grid-template-columns: 1fr;
+  }
+}
+
+.designing-codex-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.designing-codex-body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-ink);
+  margin: 0;
+  max-width: 56ch;
+}
+
+.designing-codex-body code,
+.designing-codex-body strong {
+  font-family: inherit;
+  font-weight: inherit;
+  font-size: inherit;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.designing-codex-hosts {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-ash);
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .designing-codex-hosts {
+    grid-column: 1;
+  }
+}
+
+/* ============================================
+   PHASE 2 — Iterate
+   ============================================ */
+
+.designing-iterate-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 720px) {
+  .designing-iterate-split {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xl, 48px);
+  }
+}
+
+.designing-iterate-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 16px);
+}
+
+.designing-iterate-kind {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.designing-iterate-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.designing-iterate-when {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--color-charcoal);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 36ch;
+}
+
+.designing-iterate-terminal {
+  background: var(--color-ink);
+  color: oklch(90% 0 0);
+  border-radius: 8px;
+  padding: 24px 22px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 2.2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.designing-iterate-col {
+  align-self: stretch;
+}
+
+.designing-iterate-terminal-line {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.designing-iterate-terminal-prompt {
+  color: var(--color-accent);
+  user-select: none;
+}
+
+/* Pass-through wrapper for the embedded docs-viz-live-frame.
+   Overrides shrink the stage so the frame matches the terminal
+   height on the opposite column. */
+.designing-iterate-live .docs-viz-live-frame {
+  box-shadow: 0 4px 18px oklch(0% 0 0 / 0.05);
+}
+
+.designing-iterate-live .docs-viz-live-stage {
+  min-height: 180px;
+  padding: 20px 18px 52px;
+}
+
+.designing-iterate-live .docs-viz-live-stage--tall {
+  min-height: 180px;
+}
+
+.designing-iterate-live .docs-viz-live-target {
+  width: 60%;
+}
+
+.designing-iterate-live .docs-viz-live-outline {
+  inset: 14px 14px 44px;
+}
+
+.designing-iterate-live .docs-viz-live-ctx {
+  top: 16px;
+}
+
+.designing-iterate-live .docs-viz-live-gbar {
+  bottom: 10px;
+}
+
+/* Decision table (replaces the old matrix card) */
+.designing-iterate-table {
+  margin-top: var(--spacing-xl, 48px);
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+}
+
+.designing-iterate-table caption {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ash);
+  text-align: left;
+  padding-bottom: 10px;
+}
+
+.designing-iterate-table th,
+.designing-iterate-table td {
+  text-align: left;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-mist);
+  vertical-align: top;
+}
+
+.designing-iterate-table th {
+  font-weight: 500;
+  color: var(--color-charcoal);
+  width: 55%;
+}
+
+.designing-iterate-table td {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+}
+
+.designing-iterate-table td a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.designing-iterate-table td a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* ============================================
+   PHASE 3 — Polish (3-column editorial, no cards)
+   ============================================ */
+
+.designing-polish {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 720px) {
+  .designing-polish {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg, 32px);
+  }
+}
+
+.designing-polish-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 16px);
+  padding-top: var(--spacing-sm, 16px);
+  border-top: 1px solid var(--color-ink);
+}
+
+.designing-polish-cmd {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-accent);
+}
+
+.designing-polish-cmd a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.designing-polish-cmd a:hover { text-decoration-thickness: 2px; }
+
+.designing-polish-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.designing-polish-desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-charcoal);
+  margin: 0;
+}
+
+/* ============================================
+   PHASE 4 — Maintain (two editorial columns + one hero viz each)
+   ============================================ */
+
+.designing-maintain {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 720px) {
+  .designing-maintain {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xl, 48px);
+  }
+}
+
+.designing-maintain-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 16px);
+}
+
+.designing-maintain-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.designing-maintain-label a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+.designing-maintain-label a:hover { text-decoration-thickness: 2px; }
+
+.designing-maintain-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.designing-maintain-desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-charcoal);
+  margin: 0 0 var(--spacing-md, 24px) 0;
+}
+
+/* Extract consolidation viz — inline, no card */
+.designing-extract-viz {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.designing-extract-before {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.designing-extract-btn {
+  padding: 6px 4px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 9px;
+  text-align: center;
+  color: var(--color-charcoal);
+}
+
+.designing-extract-btn:nth-child(1) { background: oklch(97% 0.01 20); }
+.designing-extract-btn:nth-child(3) { background: oklch(97% 0.01 220); color: oklch(40% 0.06 220); }
+.designing-extract-btn:nth-child(4) { border-radius: 0; }
+.designing-extract-btn:nth-child(6) { border-radius: 999px; }
+
+.designing-extract-arrow {
+  color: var(--color-accent);
+  font-size: 16px;
+}
+
+.designing-extract-after {
+  padding: 10px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  text-align: center;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* DESIGN.md inline preview */
+.designing-designmd-preview {
+  padding: 10px 14px;
+  background: var(--color-cream);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.85;
+  color: var(--color-ink);
+}
+
+.designing-designmd-preview-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.designing-designmd-preview-num {
+  color: var(--color-ash);
+  min-width: 18px;
+}
+
+/* ============================================
+   APPENDIX: Register (cross-link, quieter aside)
+   ============================================ */
+
+.designing-register {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: clamp(1.5rem, 4vw, 2.5rem);
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .designing-register {
+    grid-template-columns: 1fr;
+  }
+}
+
+.designing-register-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.designing-register-mini {
+  padding: 14px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 88px;
+  justify-content: center;
+}
+
+.designing-register-mini--brand {
+  background: oklch(96% 0.02 30);
+}
+
+.designing-register-mini--brand .designing-register-mini-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: oklch(40% 0.12 30);
+}
+
+.designing-register-mini--brand .designing-register-mini-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: oklch(20% 0.1 30);
+  line-height: 1.1;
+}
+
+.designing-register-mini--product {
+  background: var(--color-cream);
+}
+
+.designing-register-mini--product .designing-register-mini-label {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-ash);
+}
+
+.designing-register-mini--product .designing-register-mini-title {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.2;
+}
+
+.designing-register-link {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  display: inline-block;
+  margin-top: var(--spacing-md, 24px);
+  margin-bottom: var(--spacing-sm, 16px);
+}
+
+.designing-register-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* ============================================
+   APPENDIX: Interop (minimal inline diagram)
+   ============================================ */
+
+.designing-interop {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px 24px;
+  align-items: center;
+  justify-items: center;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--color-ink);
+  padding: 32px 16px;
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  background: var(--color-cream);
+}
+
+@media (max-width: 640px) {
+  .designing-interop {
+    grid-template-columns: 1fr;
+    padding: 24px 16px;
+  }
+}
+
+.designing-interop-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+}
+
+.designing-interop-side-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ash);
+}
+
+.designing-interop-side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--color-ink);
+}
+
+.designing-interop-node {
+  padding: 8px 16px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.designing-interop-node--center {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-color: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  padding: 12px 20px;
+}
+
+.designing-interop-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  font-size: 18px;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .designing-interop-arrow { transform: rotate(90deg); }
+}
+
+/* ============================================
+   APPENDIX: What to avoid (inline list, no cards)
+   ============================================ */
+
+.designing-avoid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.designing-avoid li {
+  padding: var(--spacing-sm, 16px) 0;
+  border-bottom: 1px solid var(--color-mist);
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: var(--spacing-sm, 16px);
+  align-items: baseline;
+}
+
+.designing-avoid li:last-child {
+  border-bottom: 0;
+}
+
+.designing-avoid-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: oklch(95% 0.04 25);
+  color: oklch(55% 0.22 25);
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  align-self: start;
+  margin-top: 3px;
+}
+
+.designing-avoid-title {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.designing-avoid-desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  margin: 0;
+  max-width: 62ch;
+}
+
+/* ============================================
+   CTA climax (largest typographic moment)
+   ============================================ */
+
+.designing-cta {
+  margin-top: var(--spacing-3xl, 120px);
+  padding-top: var(--spacing-xl, 48px);
+  border-top: 1px solid var(--color-mist);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 720px) {
+  .designing-cta {
+    grid-template-columns: 1fr;
+  }
+}
+
+.designing-cta-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 16px);
+  padding: var(--spacing-lg, 32px);
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+.designing-cta-card:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+.designing-cta-card-kind {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.designing-cta-card-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: clamp(1.5rem, 2.5vw, 1.875rem);
+  line-height: 1.1;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.designing-cta-card-title em {
+  color: var(--color-accent);
+  font-style: italic;
+}
+
+.designing-cta-card-desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  margin: 0;
 }

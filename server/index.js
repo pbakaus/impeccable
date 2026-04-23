@@ -56,6 +56,8 @@ const server = serve({
     },
     "/anti-patterns": () => serveGenerated(path.join(ROOT_DIR, "public/anti-patterns/index.html")),
     "/visual-mode": () => serveGenerated(path.join(ROOT_DIR, "public/visual-mode/index.html")),
+    "/live-mode": () => serveGenerated(path.join(ROOT_DIR, "public/live-mode/index.html")),
+    "/designing": () => serveGenerated(path.join(ROOT_DIR, "public/designing/index.html")),
     "/tutorials": () => serveGenerated(path.join(ROOT_DIR, "public/tutorials/index.html")),
     "/tutorials/:slug": (req) => {
       const slug = req.params.slug.replace(/[^a-z0-9-]/gi, "");
