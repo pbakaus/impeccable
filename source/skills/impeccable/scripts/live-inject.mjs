@@ -22,6 +22,16 @@ const CONFIG_PATH = process.env.IMPECCABLE_LIVE_CONFIG || path.join(__dirname, '
 const MARKER_OPEN_TEXT = 'impeccable-live-start';
 const MARKER_CLOSE_TEXT = 'impeccable-live-end';
 
+/**
+ * Hard-excluded directory patterns. These are NEVER user-facing pages and
+ * matching them would silently inject tracking scripts into third-party
+ * code. The user cannot turn these off via config — they are the floor.
+ */
+const HARD_EXCLUDES = [
+  '**/node_modules/**',
+  '**/.git/**',
+];
+
 export async function injectCli() {
   const args = process.argv.slice(2);
 
@@ -71,8 +81,10 @@ Output (JSON):
   const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
   validateConfig(config);
 
+  const resolvedFiles = resolveFiles(process.cwd(), config);
+
   if (args.includes('--remove')) {
-    const results = config.files.map((relFile) => {
+    const results = resolvedFiles.map((relFile) => {
       const absFile = path.resolve(process.cwd(), relFile);
       if (!fs.existsSync(absFile)) return { file: relFile, error: 'file_not_found' };
       const content = fs.readFileSync(absFile, 'utf-8');
@@ -93,7 +105,7 @@ Output (JSON):
     process.exit(1);
   }
 
-  const results = config.files.map((relFile) => {
+  const results = resolvedFiles.map((relFile) => {
     const absFile = path.resolve(process.cwd(), relFile);
     if (!fs.existsSync(absFile)) return { file: relFile, error: 'file_not_found' };
     const content = fs.readFileSync(absFile, 'utf-8');
@@ -108,6 +120,95 @@ Output (JSON):
   if (!anyInserted) process.exit(1);
 }
 
+/**
+ * Expand config.files (which may contain glob patterns) into a literal list
+ * of existing file paths relative to rootDir. Literal entries pass through;
+ * glob patterns are expanded via fs.globSync. HARD_EXCLUDES and config.exclude
+ * are applied as filters. Duplicates are removed. Order is preserved by
+ * first appearance.
+ */
+export function resolveFiles(rootDir, config) {
+  const patterns = config.files;
+  const userExcludes = Array.isArray(config.exclude) ? config.exclude : [];
+  const allExcludes = [...HARD_EXCLUDES, ...userExcludes];
+  const excludeRegexes = allExcludes.map(globToRegex);
+
+  const isExcluded = (relPath) => excludeRegexes.some((re) => re.test(relPath));
+  const isGlob = (s) => /[*?[]/.test(s);
+
+  const seen = new Set();
+  const out = [];
+  for (const pat of patterns) {
+    if (!isGlob(pat)) {
+      // Literal path — include even if it doesn't exist yet; the caller
+      // reports file_not_found per-entry. Exclude list doesn't apply to
+      // explicit literal entries (user named it on purpose).
+      if (!seen.has(pat)) {
+        seen.add(pat);
+        out.push(pat);
+      }
+      continue;
+    }
+    let matches;
+    try {
+      matches = fs.globSync(pat, { cwd: rootDir, withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of matches) {
+      if (!ent.isFile || !ent.isFile()) continue;
+      const abs = path.join(ent.parentPath || ent.path || rootDir, ent.name);
+      const rel = path.relative(rootDir, abs).split(path.sep).join('/');
+      if (isExcluded(rel)) continue;
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * Convert a glob pattern to a RegExp. Supports:
+ *   **  → any number of path segments (including zero)
+ *   *   → any chars except `/`
+ *   ?   → any single char except `/`
+ * Paths are normalized to forward slashes before matching.
+ */
+function globToRegex(pattern) {
+  let re = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        // ** — any number of segments, including zero. Handle the common
+        // **/ and /** forms so `a/**/b` matches `a/b` as well as `a/x/y/b`.
+        if (pattern[i + 2] === '/') {
+          re += '(?:.*/)?';
+          i += 3;
+        } else {
+          re += '.*';
+          i += 2;
+        }
+      } else {
+        re += '[^/]*';
+        i += 1;
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+      i += 1;
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      re += '\\' + c;
+      i += 1;
+    } else {
+      re += c;
+      i += 1;
+    }
+  }
+  return new RegExp('^' + re + '$');
+}
+
 // ---------------------------------------------------------------------------
 // Core operations
 // ---------------------------------------------------------------------------
@@ -119,6 +220,14 @@ function validateConfig(cfg) {
   }
   if (!cfg.files.every((f) => typeof f === 'string' && f.length > 0)) {
     throw new Error('config.files must contain only non-empty strings');
+  }
+  if (cfg.exclude !== undefined) {
+    if (!Array.isArray(cfg.exclude)) {
+      throw new Error('config.exclude, if present, must be a string array');
+    }
+    if (!cfg.exclude.every((f) => typeof f === 'string' && f.length > 0)) {
+      throw new Error('config.exclude must contain only non-empty strings');
+    }
   }
   if (typeof cfg.insertBefore !== 'string' && typeof cfg.insertAfter !== 'string') {
     throw new Error('config.insertBefore or config.insertAfter (string) required');

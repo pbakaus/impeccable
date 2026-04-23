@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadContext } from './load-context.mjs';
+import { resolveFiles } from './live-inject.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
@@ -82,12 +83,19 @@ The agent should then:
   // 4. Load PRODUCT.md + DESIGN.md context (auto-migrates legacy .impeccable.md)
   const ctx = loadContext(process.cwd());
 
-  // 5. Emit everything the agent needs
+  // 5. Compute drift-heal: compare resolved inject targets against the
+  //    project's HTML files. Orphans are HTML files not covered by config.
+  //    Warning only — the agent decides whether to act.
+  const resolvedFiles = resolveFiles(process.cwd(), checkResult.config);
+  const drift = scanForDrift(process.cwd(), resolvedFiles, checkResult.config);
+
+  // 6. Emit everything the agent needs
   console.log(JSON.stringify({
     ok: true,
     serverPort: serverInfo.port,
     serverToken: serverInfo.token,
-    pageFiles: checkResult.config.files,
+    pageFiles: resolvedFiles,
+    configDrift: drift,
     hasProduct: ctx.hasProduct,
     product: ctx.product,
     productPath: ctx.productPath,
@@ -96,6 +104,98 @@ The agent should then:
     designPath: ctx.designPath,
     migrated: ctx.migrated,
   }, null, 2));
+}
+
+/**
+ * Drift-heal scan. Walks the project for HTML files under common
+ * page-source directories (public/, src/, app/, pages/) and reports any
+ * that aren't covered by the resolved inject targets. This is purely
+ * advisory — the agent can ignore it, or suggest the user add the
+ * orphans to config.files.
+ *
+ * Skipped if config.files already contains at least one glob pattern
+ * covering everything in practice (signaled by the orphan count being 0).
+ */
+function scanForDrift(rootDir, resolvedFiles, config) {
+  const SCAN_ROOTS = ['public', 'src', 'app', 'pages'];
+  const IGNORE_DIRS = new Set([
+    'node_modules', '.git', '.next', '.nuxt', '.svelte-kit', '.astro',
+    '.turbo', '.vercel', '.cache', 'coverage', 'dist', 'build',
+  ]);
+
+  const resolvedSet = new Set(resolvedFiles.map((f) => f.split(path.sep).join('/')));
+
+  // Files matching the user's `exclude` globs are intentional omissions,
+  // not drift. Compile them to regexes so the orphan list stays signal.
+  const userExcludeRegexes = (Array.isArray(config.exclude) ? config.exclude : [])
+    .map((p) => globToRegex(p));
+  const isUserExcluded = (rel) => userExcludeRegexes.some((re) => re.test(rel));
+
+  const orphans = [];
+
+  const walk = (dir, relBase) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      const rel = relBase ? `${relBase}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (IGNORE_DIRS.has(e.name) || e.name.startsWith('.')) continue;
+        walk(path.join(dir, e.name), rel);
+      } else if (e.isFile() && e.name.endsWith('.html')) {
+        if (resolvedSet.has(rel)) continue;
+        if (isUserExcluded(rel)) continue;
+        orphans.push(rel);
+      }
+    }
+  };
+
+  for (const root of SCAN_ROOTS) {
+    const abs = path.join(rootDir, root);
+    if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+      walk(abs, root);
+    }
+  }
+
+  if (orphans.length === 0) return null;
+  const capped = orphans.slice(0, 20);
+  return {
+    orphans: capped,
+    orphanCount: orphans.length,
+    hint: `${orphans.length} HTML file(s) exist but aren't in config.files. Consider adding them, or use a glob pattern like "public/**/*.html".`,
+  };
+}
+
+/**
+ * Same glob-to-regex mapping used by live-inject.mjs. Kept inline here
+ * to avoid a circular import (live-inject.mjs already imports nothing
+ * from live.mjs). The two must stay in sync.
+ */
+function globToRegex(pattern) {
+  let re = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        if (pattern[i + 2] === '/') { re += '(?:.*/)?'; i += 3; }
+        else { re += '.*'; i += 2; }
+      } else {
+        re += '[^/]*';
+        i += 1;
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+      i += 1;
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      re += '\\' + c;
+      i += 1;
+    } else {
+      re += c;
+      i += 1;
+    }
+  }
+  return new RegExp('^' + re + '$');
 }
 
 // ---------------------------------------------------------------------------

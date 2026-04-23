@@ -147,11 +147,22 @@ export function readSourceFiles(rootDir) {
             }
           }
 
-          // Read script files if they exist
+          // Read script files if they exist.
+          //
+          // Per-project artifacts (state files that belong to the consuming
+          // project, not the distributable skill) must be excluded here so
+          // the build never bundles them into the skill that ships to users.
+          // - config.json: the live-mode inject-target list for the current
+          //   project. Written by the agent at first /impeccable live; tied
+          //   to the project's filesystem layout.
+          const PER_PROJECT_ARTIFACTS = new Set(['config.json']);
           const scripts = [];
           const scriptsDir = path.join(entryPath, 'scripts');
           if (fs.existsSync(scriptsDir)) {
-            const scriptFiles = fs.readdirSync(scriptsDir).filter(f => fs.statSync(path.join(scriptsDir, f)).isFile());
+            const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
+              if (PER_PROJECT_ARTIFACTS.has(f)) return false;
+              return fs.statSync(path.join(scriptsDir, f)).isFile();
+            });
             for (const scriptFile of scriptFiles) {
               const scriptPath = path.join(scriptsDir, scriptFile);
               const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
