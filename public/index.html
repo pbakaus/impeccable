@@ -60,7 +60,7 @@
         <a href="/" data-nav="home" aria-current="page">Home</a>
         <a href="/docs" data-nav="docs">Docs</a>
         <a href="/anti-patterns" data-nav="anti-patterns">Anti-Patterns</a>
-        <a href="/docs/live" data-nav="live">Live</a>
+        <a href="/live-mode" data-nav="live">Live</a>
         <a href="/visual-mode" data-nav="visual-mode">Overlay</a>
       </nav>
       <a href="https://github.com/pbakaus/impeccable" class="site-header-github" target="_blank" rel="noopener" aria-label="Impeccable on GitHub, 21k stars">
@@ -288,13 +288,14 @@
                       <span class="why-productmd-v">Purple gradients. Glassmorphism. "Boost your productivity."</span>
                     </div>
                   </div>
-                  <div class="why-productmd-footer">
-                    <span class="why-productmd-footer-dot"></span>
-                    Every command reads this before writing a line of code.
-                  </div>
                 </div>
+                <aside class="why-productmd-commands">
+                  <span class="why-productmd-commands-label">Commands</span>
+                  <code>/impeccable teach</code>
+                  <code>/impeccable document</code>
+                  <code>/impeccable shape</code>
+                </aside>
               </div>
-              <p class="why-panel-meta"><code>/impeccable teach</code> &middot; <code>/impeccable document</code> &middot; <code>/impeccable shape</code></p>
             </article>
 
             <article class="why-panel why-panel--antidote" id="why-panel-1" role="tabpanel" data-index="1" hidden>
@@ -336,9 +337,9 @@
                       <span class="gallery-stack-label">Bad Contrast</span>
                     </a>
                   </div>
+                  <a class="gallery-stack-link" href="/anti-patterns">Browse the full catalog &rarr;</a>
                 </div>
               </div>
-              <p class="why-panel-meta"><a href="/anti-patterns">Browse the full catalog &rarr;</a></p>
             </article>
 
             <article class="why-panel" id="why-panel-2" role="tabpanel" data-index="2" hidden>
@@ -370,17 +371,17 @@
 
             <article class="why-panel" id="why-panel-3" role="tabpanel" data-index="3" hidden>
               <h3 class="why-panel-title">Brand work is not product UI.</h3>
-              <p class="why-panel-body">Most design skills, including Anthropic's own frontend-design skill, collapse everything into one vocabulary. But a landing page and a dashboard live by contradictory rules. Impeccable carries two registers: <em>brand</em> (design IS the product: marketing, portfolios, editorial) and <em>product</em> (design SERVES the product: app UI, tools, dashboards). Register-aware commands (<code>typeset</code>, <code>animate</code>, <code>colorize</code>, <code>bolder</code>, <code>quieter</code>, <code>layout</code>, <code>delight</code>) adjust their choices to match.</p>
+              <p class="why-panel-body">Most design skills, including Anthropic's own frontend-design skill, collapse everything into one vocabulary. But a landing page and a dashboard live by contradictory rules. Impeccable runs in two modes: <em>brand</em> (design IS the product: marketing, portfolios, editorial) and <em>product</em> (design SERVES the product: app UI, tools, dashboards). Commands like <code>typeset</code>, <code>animate</code>, <code>colorize</code>, <code>bolder</code>, <code>quieter</code>, <code>layout</code>, and <code>delight</code> adjust their choices to match.</p>
               <div class="why-visual why-visual--registers">
                 <div class="why-register why-register--brand">
-                  <span class="why-register-label">Brand register</span>
+                  <span class="why-register-label">Brand mode</span>
                   <div class="why-register-mock why-register-mock--brand">
                     <span class="why-brand-hero-mono">Issue 04</span>
                     <div class="why-brand-hero-title"><em>Shape</em> the story.</div>
                   </div>
                 </div>
                 <div class="why-register why-register--product">
-                  <span class="why-register-label">Product register</span>
+                  <span class="why-register-label">Product mode</span>
                   <div class="why-register-mock why-register-mock--product">
                     <div class="why-product-row"><span class="why-product-k">Users</span><span class="why-product-v">12,482</span></div>
                     <div class="why-product-row"><span class="why-product-k">Active now</span><span class="why-product-v">1,207</span></div>
@@ -388,7 +389,7 @@
                   </div>
                 </div>
               </div>
-              <p class="why-panel-meta">The register is inferred from your task and confirmed in <code>PRODUCT.md</code>.</p>
+              <p class="why-panel-meta">The mode is inferred from your task and confirmed in <code>PRODUCT.md</code>.</p>
             </article>
 
             <article class="why-panel" id="why-panel-4" role="tabpanel" data-index="4" hidden>
@@ -424,7 +425,6 @@
                   </div>
                 </div>
               </div>
-              <p class="why-panel-meta">Works in Claude Code, Cursor, Codex, Gemini CLI, Antigravity, Kiro, OpenCode, and more.</p>
             </article>
 
             <article class="why-panel" id="why-panel-5" role="tabpanel" data-index="5" hidden>
@@ -471,7 +471,6 @@
                 </div>
                 <div class="why-dm-foot">Readable by every DESIGN.md-aware tool.</div>
               </div>
-              <p class="why-panel-meta">Spec-compliant. Interoperable. Not a proprietary sidecar.</p>
             </article>
 
             <article class="why-panel" id="why-panel-6" role="tabpanel" data-index="6" hidden>
@@ -1143,7 +1142,7 @@
       <nav class="footer-links" aria-label="Footer">
         <a href="/docs">Docs</a>
         <a href="/anti-patterns">Anti-Patterns</a>
-        <a href="/docs/live">Live Mode</a>
+        <a href="/live-mode">Live Mode</a>
         <a href="/visual-mode">Overlay</a>
         <a href="#language">Commands</a>
         <a href="/privacy">Privacy</a>

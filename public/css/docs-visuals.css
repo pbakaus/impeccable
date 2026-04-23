@@ -1255,3 +1255,371 @@
   content: "✓";
   font-weight: 700;
 }
+
+/* ============================================
+   LIVE MODE LANDING PAGE (/live-mode)
+
+   Marketing-style landing that mirrors /visual-mode's structure.
+   Hosts the animated homepage live-demo and surfaces the tutorial,
+   reference, and install pathways.
+   ============================================ */
+
+.live-mode-page {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2.5rem, 5vw, 3.5rem);
+  max-width: 960px;
+  margin: 0 auto;
+  padding: clamp(2rem, 4vw, 3rem) clamp(1.25rem, 3vw, 2rem) clamp(4rem, 8vw, 6rem);
+}
+
+.live-mode-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 56ch;
+}
+
+.live-mode-page-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+}
+
+.live-mode-page-eyebrow-badge {
+  padding: 2px 7px;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+}
+
+.live-mode-page-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.live-mode-page-lede {
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--color-charcoal);
+  margin: 0;
+  max-width: 56ch;
+}
+
+.live-mode-start {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 10px 14px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.live-mode-start-prompt {
+  color: var(--color-accent);
+  user-select: none;
+}
+
+.live-mode-start-cmd {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.live-mode-start-cmd::-webkit-scrollbar { display: none; }
+
+.live-mode-start-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: oklch(75% 0 0);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.live-mode-start-copy:hover {
+  background: oklch(22% 0 0);
+  color: oklch(92% 0 0);
+}
+
+.live-mode-start-copy.is-copied {
+  color: oklch(70% 0.18 145);
+}
+
+/* Demo section — wraps the animated homepage .live-demo block */
+.live-mode-demo-wrap {
+  margin: 0;
+}
+
+.live-mode-demo-caption {
+  margin: 14px 0 0;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-ash);
+  line-height: 1.55;
+  font-style: italic;
+}
+
+/* Three-card "what happens" section */
+.live-mode-stages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.live-mode-stages-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 1.75rem;
+  color: var(--color-ink);
+  margin: 0 0 8px 0;
+}
+
+.live-mode-stages-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 720px) {
+  .live-mode-stages-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.live-mode-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+}
+
+.live-mode-stage-num {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  text-transform: uppercase;
+}
+
+.live-mode-stage-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.375rem;
+  color: var(--color-ink);
+  margin: 0;
+  line-height: 1.15;
+}
+
+.live-mode-stage-desc {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-charcoal);
+  margin: 0;
+}
+
+.live-mode-stage-viz {
+  margin-top: 4px;
+  padding: 14px;
+  background: var(--color-cream);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 92px;
+}
+
+/* Three pathway cards — tutorial, reference, install */
+.live-mode-pathways {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.live-mode-pathways-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 1.75rem;
+  color: var(--color-ink);
+  margin: 0 0 8px 0;
+}
+
+.live-mode-pathways-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 720px) {
+  .live-mode-pathways-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.live-mode-pathway {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.live-mode-pathway:hover {
+  border-color: var(--color-accent);
+}
+
+.live-mode-pathway-kind {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+}
+
+.live-mode-pathway-title {
+  font-family: var(--font-body);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.live-mode-pathway-desc {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-charcoal);
+  line-height: 1.55;
+  margin: 0;
+  flex: 1;
+}
+
+.live-mode-pathway-cta {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  margin-top: 6px;
+}
+
+/* Frameworks strip */
+.live-mode-frameworks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+}
+
+.live-mode-frameworks-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  text-transform: uppercase;
+}
+
+.live-mode-frameworks-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-mode-frameworks-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-mode-frameworks-list li::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* Docs/live page callout pointing back to /live-mode */
+.docs-live-callout {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  margin: 0 0 clamp(1.25rem, 2.5vw, 1.75rem);
+  background: var(--color-accent-dim);
+  border: 1px solid var(--color-accent-soft);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+.docs-live-callout-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent);
+  color: var(--color-paper);
+  border-radius: 50%;
+  font-size: 14px;
+}
+
+.docs-live-callout-text {
+  flex: 1;
+}
+
+.docs-live-callout-text a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}

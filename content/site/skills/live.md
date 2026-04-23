@@ -2,6 +2,11 @@
 tagline: "Iterate on UI in the browser. Pick an element, drop a comment, get three variants. Accept one and it writes to source."
 ---
 
+<div class="docs-live-callout">
+  <span class="docs-live-callout-icon" aria-hidden="true">▸</span>
+  <span class="docs-live-callout-text">See it in action, with the animated demo, at <a href="/live-mode">/live-mode</a>. This page is the reference for what your AI harness reads when the command runs.</span>
+</div>
+
 <div class="docs-viz-hero docs-viz-hero--plain">
   <div class="docs-viz-live-frame">
     <div class="docs-viz-live-chrome">

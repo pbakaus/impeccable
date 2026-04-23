@@ -153,7 +153,10 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 		</div>`;
 	}).join('');
 
-	container.innerHTML = `<div class="patterns-tabs">${tabsHTML}</div>${panelsHTML}`;
+	container.innerHTML = `<div class="patterns-tabs-wrap"><div class="patterns-tabs" data-scroll="start">${tabsHTML}</div></div>${panelsHTML}`;
+
+	const tabsEl = container.querySelector('.patterns-tabs');
+	const tabsWrap = container.querySelector('.patterns-tabs-wrap');
 
 	container.addEventListener('click', (e) => {
 		const tab = e.target.closest('.patterns-tab');
@@ -163,7 +166,34 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 		container.querySelectorAll('.patterns-content').forEach(p => p.classList.remove('is-active'));
 		tab.classList.add('is-active');
 		container.querySelector(`.patterns-content[data-index="${index}"]`).classList.add('is-active');
+		// Center the clicked tab inside the tabs strip (not the page). Using
+		// scrollBy on the container keeps the page scroll untouched.
+		if (tabsEl) {
+			const tabRect = tab.getBoundingClientRect();
+			const stripRect = tabsEl.getBoundingClientRect();
+			const offset = (tabRect.left + tabRect.width / 2) - (stripRect.left + stripRect.width / 2);
+			tabsEl.scrollBy({ left: offset, behavior: 'smooth' });
+		}
 	});
+
+	// Track scroll position so the edge-fade mask only appears on sides where
+	// there's actually more content. At the start, no left fade; at the end,
+	// no right fade; if no overflow, no fade at all.
+	const updateScrollState = () => {
+		if (!tabsEl) return;
+		const { scrollLeft, scrollWidth, clientWidth } = tabsEl;
+		const max = scrollWidth - clientWidth;
+		let state;
+		if (max <= 1) state = 'none';
+		else if (scrollLeft <= 1) state = 'start';
+		else if (scrollLeft >= max - 1) state = 'end';
+		else state = 'middle';
+		tabsEl.dataset.scroll = state;
+		if (tabsWrap) tabsWrap.dataset.scroll = state;
+	};
+	tabsEl?.addEventListener('scroll', updateScrollState, { passive: true });
+	window.addEventListener('resize', updateScrollState);
+	updateScrollState();
 }
 
 // ============================================

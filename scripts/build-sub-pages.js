@@ -598,6 +598,249 @@ ${specimenCards}
 }
 
 /**
+ * Render the animated Live Mode demo block. HTML structure matches the
+ * homepage #live-demo exactly so public/js/components/live-demo.js can
+ * drive it without modification. The CSS (.live-demo-*) lives in
+ * public/css/live-mode.css, imported by main.css and also loaded on this
+ * page via extraHead.
+ */
+function renderLiveModeDemo() {
+  return `
+<div class="live-demo" id="live-demo" aria-label="Live Mode interactive demo loop">
+  <div class="live-demo-frame-col"><div class="live-demo-frame">
+    <div class="live-demo-chrome">
+      <span class="live-demo-dot"></span>
+      <span class="live-demo-dot"></span>
+      <span class="live-demo-dot"></span>
+      <span class="live-demo-url">localhost:3000</span>
+    </div>
+
+    <div class="live-demo-stage">
+      <div class="live-demo-skeleton" aria-hidden="true">
+        <div class="live-demo-skel-nav">
+          <span class="live-demo-skel-logo"></span>
+          <span class="live-demo-skel-link"></span>
+          <span class="live-demo-skel-link"></span>
+          <span class="live-demo-skel-link"></span>
+          <span class="live-demo-skel-cta"></span>
+        </div>
+        <div class="live-demo-skel-heading"></div>
+        <div class="live-demo-skel-line"></div>
+        <div class="live-demo-skel-line live-demo-skel-line--short"></div>
+      </div>
+
+      <div class="live-demo-target" data-demo-target>
+        <div class="live-demo-variant is-active" data-variant="original">
+          <div class="live-demo-card live-demo-card--plain">
+            <span class="live-demo-card-kicker">Newsletter</span>
+            <h3>Subscribe for updates</h3>
+            <p>Monthly-ish design notes.</p>
+            <button type="button">Subscribe</button>
+          </div>
+        </div>
+        <div class="live-demo-variant" data-variant="1">
+          <div class="live-demo-card live-demo-card--v1">
+            <span class="live-demo-card-kicker">No. 04</span>
+            <h3>Letters, <em>occasionally</em>.</h3>
+            <p>A postcard from the editor, about once a month. No tracking pixels, no "just checking in."</p>
+            <button type="button">Send me one</button>
+          </div>
+        </div>
+        <div class="live-demo-variant" data-variant="2">
+          <div class="live-demo-card live-demo-card--v2">
+            <div class="live-demo-card-stamp">☞</div>
+            <span class="live-demo-card-kicker">Dispatch</span>
+            <h3>Design&nbsp;notes, <br>every&nbsp;other<br>Thursday.</h3>
+            <button type="button">Join the list →</button>
+          </div>
+        </div>
+        <div class="live-demo-variant" data-variant="3">
+          <div class="live-demo-card live-demo-card--v3">
+            <div class="live-demo-card-sticker"><span>&star;</span><span>&star;</span><span>&star;</span></div>
+            <span class="live-demo-card-kicker">Field Notes</span>
+            <h3>A monthly letter, for people who still read email for pleasure.</h3>
+            <button type="button">Receive the letter <span aria-hidden="true">✺</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="live-demo-outline" data-demo-outline aria-hidden="true"></div>
+
+      <div class="live-demo-annotations" data-demo-annotations aria-hidden="true">
+        <svg class="live-demo-stroke" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M 10,40 Q 60,10 110,38 T 210,32 T 290,20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" pathLength="1"/>
+        </svg>
+        <div class="live-demo-comment">more playful</div>
+      </div>
+
+      <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
+        <div class="live-demo-ctx-row live-demo-ctx-row--configure">
+          <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
+            <span data-demo-cmd-name>delight</span>
+            <span class="live-demo-ctx-pill-caret" aria-hidden="true">▾</span>
+          </button>
+          <span class="live-demo-ctx-input" data-demo-input>
+            <span data-demo-input-text></span><span class="live-demo-ctx-caret"></span>
+          </span>
+          <button type="button" class="live-demo-ctx-count">×3</button>
+          <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">→</span></button>
+        </div>
+        <div class="live-demo-ctx-row live-demo-ctx-row--generating">
+          <span class="live-demo-ctx-spinner" aria-hidden="true"></span>
+          <span>Generating variants…</span>
+        </div>
+        <div class="live-demo-ctx-row live-demo-ctx-row--cycling">
+          <button type="button" class="live-demo-ctx-nav" aria-label="Previous variant">‹</button>
+          <span class="live-demo-ctx-counter" data-demo-counter>1 / 3</span>
+          <button type="button" class="live-demo-ctx-nav" aria-label="Next variant">›</button>
+          <span class="live-demo-ctx-divider"></span>
+          <button type="button" class="live-demo-ctx-discard" aria-label="Discard">✕</button>
+          <button type="button" class="live-demo-ctx-accept" data-demo-accept>Accept</button>
+        </div>
+        <div class="live-demo-ctx-row live-demo-ctx-row--accepted">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Variant 3 written to source</span>
+        </div>
+      </div>
+
+      <div class="live-demo-cursor" data-demo-cursor aria-hidden="true">
+        <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
+          <path d="M1 1 L1 17 L5 13 L8 20 L11 19 L7.5 12 L13 12 Z" fill="#111" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="live-demo-gbar" data-demo-gbar>
+      <span class="live-demo-gbar-brand">/</span>
+      <button type="button" class="live-demo-gbar-btn is-active" data-demo-gbar-pick>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+        <span>Pick</span>
+      </button>
+      <button type="button" class="live-demo-gbar-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button type="button" class="live-demo-gbar-btn">
+        <span class="live-demo-gbar-dmd" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+      </button>
+      <span class="live-demo-gbar-divider"></span>
+      <button type="button" class="live-demo-gbar-x" aria-label="Exit live mode">✕</button>
+    </div>
+  </div>
+  </div>
+</div>`;
+}
+
+/**
+ * Render the /live-mode page main content.
+ *
+ * Marketing-style single-column layout mirroring /visual-mode's structure.
+ * Surfaces the animated homepage live-demo, a three-stage narrative,
+ * pathway cards (tutorial / reference / install), and the supported
+ * framework strip.
+ */
+function renderLiveModeMain() {
+  return `
+<div class="live-mode-page">
+  <header class="live-mode-page-header">
+    <p class="live-mode-page-eyebrow">New in v3.0 <span class="live-mode-page-eyebrow-badge">Beta</span></p>
+    <h1 class="live-mode-page-title">Live Mode</h1>
+    <p class="live-mode-page-lede">Pick any element in the browser. Drop a comment or a stroke. Three production-quality variants swap in via your framework's HMR. Accept the one you want and it writes back to source.</p>
+    <div class="live-mode-start" aria-label="Start live mode command">
+      <span class="live-mode-start-prompt">$</span>
+      <code class="live-mode-start-cmd">/impeccable live</code>
+      <button class="live-mode-start-copy" type="button" aria-label="Copy command" data-copy="/impeccable live">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="live-mode-demo-wrap" aria-label="Live Mode interactive demo">
+    ${renderLiveModeDemo()}
+    <p class="live-mode-demo-caption">Click the frame or scroll it into view to start the loop. Respects <code>prefers-reduced-motion</code>.</p>
+  </section>
+
+  <section class="live-mode-stages" aria-label="What happens in a live mode session">
+    <h2 class="live-mode-stages-title">What happens, in three moves</h2>
+    <div class="live-mode-stages-grid">
+      <article class="live-mode-stage">
+        <span class="live-mode-stage-num">01 &middot; Pick</span>
+        <h3 class="live-mode-stage-name">Point at what bugs you</h3>
+        <p class="live-mode-stage-desc">Click any element on your running dev server. Add a comment pin where the issue lives. Draw a stroke through the bit you want to change. Or just type "more playful".</p>
+        <div class="live-mode-stage-viz">
+          <div class="docs-viz-picker-row" style="min-height:72px;padding:10px">
+            <div class="docs-viz-picker-target" style="font-size:12px;padding:6px 12px">
+              Newsletter card
+              <span class="docs-viz-picker-pin" style="width:18px;height:18px;font-size:9px">1</span>
+            </div>
+          </div>
+        </div>
+      </article>
+      <article class="live-mode-stage">
+        <span class="live-mode-stage-num">02 &middot; Generate</span>
+        <h3 class="live-mode-stage-name">Three genuinely different takes</h3>
+        <p class="live-mode-stage-desc">Variants anchor to different archetypes, not three riffs on color. Each one explores a different primary axis: hierarchy, typography, density, layout, or palette strategy.</p>
+        <div class="live-mode-stage-viz">
+          <div class="docs-viz-variants" style="width:100%;gap:4px">
+            <div class="docs-viz-variant docs-viz-variant--v1" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">No.04</span></div>
+            <div class="docs-viz-variant docs-viz-variant--v2 is-active" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">Dispatch</span></div>
+            <div class="docs-viz-variant docs-viz-variant--v3" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">Field</span></div>
+          </div>
+        </div>
+      </article>
+      <article class="live-mode-stage">
+        <span class="live-mode-stage-num">03 &middot; Accept</span>
+        <h3 class="live-mode-stage-name">Lands in real source</h3>
+        <p class="live-mode-stage-desc">The accepted variant replaces the picked element in your source file. CSS consolidates into your real stylesheet, not inline. Discard all three and the original stays.</p>
+        <div class="live-mode-stage-viz">
+          <span class="docs-viz-accept-pill">Variant 2 written to source</span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="live-mode-pathways" aria-label="Where to go next">
+    <h2 class="live-mode-pathways-title">Where next</h2>
+    <div class="live-mode-pathways-grid">
+      <a class="live-mode-pathway" href="/tutorials/iterate-live">
+        <span class="live-mode-pathway-kind">Tutorial</span>
+        <h3 class="live-mode-pathway-title">Walk it step by step</h3>
+        <p class="live-mode-pathway-desc">A ten-minute walkthrough from first run to accepted variant. Covers CSP patching, the picker actions, and the fallback flow for generated files.</p>
+        <span class="live-mode-pathway-cta">Open the tutorial &rarr;</span>
+      </a>
+      <a class="live-mode-pathway" href="/docs/live">
+        <span class="live-mode-pathway-kind">Reference</span>
+        <h3 class="live-mode-pathway-title">Full command reference</h3>
+        <p class="live-mode-pathway-desc">Everything your AI harness reads when <code>/impeccable live</code> runs: the poll loop, the wrap/accept helpers, the CSP templates, and every event shape.</p>
+        <span class="live-mode-pathway-cta">Read the reference &rarr;</span>
+      </a>
+      <a class="live-mode-pathway" href="/#downloads">
+        <span class="live-mode-pathway-kind">Install</span>
+        <h3 class="live-mode-pathway-title">Get Impeccable set up</h3>
+        <p class="live-mode-pathway-desc">Install the skill and CLI once, then run <code>/impeccable live</code> from your AI harness. Works with Claude Code, Cursor, Codex, Gemini, and more.</p>
+        <span class="live-mode-pathway-cta">See the install steps &rarr;</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="live-mode-frameworks" aria-label="Supported frameworks">
+    <span class="live-mode-frameworks-label">Supported dev servers</span>
+    <ul class="live-mode-frameworks-list">
+      <li>Vite</li>
+      <li>Next.js (incl. monorepos)</li>
+      <li>SvelteKit</li>
+      <li>Astro</li>
+      <li>Nuxt</li>
+      <li>Bun</li>
+      <li>Plain static HTML</li>
+    </ul>
+  </section>
+</div>`;
+}
+
+/**
  * Render a tutorial detail page main content.
  */
 function renderTutorialDetail(tutorial, knownSkillIds) {
@@ -647,7 +890,7 @@ ${rules.map(renderRuleCard).join('\n')}
   <header class="anti-patterns-header">
     <p class="sub-page-eyebrow">${totalRules} rules</p>
     <h1 class="sub-page-title">Anti-patterns</h1>
-    <p class="sub-page-lede">The full catalog of patterns <a href="/docs/impeccable">/impeccable</a> teaches against. ${detectedCount} are caught by a deterministic detector (<code>npx impeccable detect</code> or the browser extension). ${llmCount} can only be flagged by <a href="/docs/critique">/impeccable critique</a>'s LLM review pass. Want to see them live on real pages? Try <a href="/visual-mode">Visual Mode</a>, or iterate past them on your own dev server with <a href="/docs/live">Live Mode</a>.</p>
+    <p class="sub-page-lede">The full catalog of patterns <a href="/docs/impeccable">/impeccable</a> teaches against. ${detectedCount} are caught by a deterministic detector (<code>npx impeccable detect</code> or the browser extension). ${llmCount} can only be flagged by <a href="/docs/critique">/impeccable critique</a>'s LLM review pass. Want to see them live on real pages? Try <a href="/visual-mode">Visual Mode</a>, or iterate past them on your own dev server with <a href="/live-mode">Live Mode</a>.</p>
   </header>
 
   <details class="anti-patterns-legend">
@@ -684,6 +927,7 @@ export async function generateSubPages(rootDir) {
     antiPatterns: path.join(rootDir, 'public/anti-patterns'),
     tutorials: path.join(rootDir, 'public/tutorials'),
     visualMode: path.join(rootDir, 'public/visual-mode'),
+    liveMode: path.join(rootDir, 'public/live-mode'),
   };
 
   // Fresh output dirs each time so stale files don't linger.
@@ -780,6 +1024,31 @@ export async function generateSubPages(rootDir) {
       bodyClass: 'sub-page visual-mode-page-body',
     });
     const out = path.join(outDirs.visualMode, 'index.html');
+    fs.writeFileSync(out, html, 'utf-8');
+    generated.push(out);
+  }
+
+  // Live Mode: marketing landing mirroring /visual-mode. Needs live-mode.css
+  // (not imported by sub-pages.css to keep the base bundle small) and the
+  // live-demo JS module to animate the demo.
+  {
+    const extraHead = `
+    <link rel="stylesheet" href="../css/live-mode.css">
+    <script type="module">
+      import { initLiveDemo } from "../js/components/live-demo.js";
+      document.addEventListener("DOMContentLoaded", initLiveDemo);
+    </script>`;
+    const html = renderPage({
+      title: 'Live Mode | Impeccable',
+      description:
+        'Iterate on UI in the browser. Pick an element, drop a comment, get three production-quality variants, accept one, and it writes back to source. /impeccable live.',
+      bodyHtml: renderLiveModeMain(),
+      activeNav: 'live',
+      canonicalPath: '/live-mode',
+      bodyClass: 'sub-page live-mode-page-body',
+      extraHead,
+    });
+    const out = path.join(outDirs.liveMode, 'index.html');
     fs.writeFileSync(out, html, 'utf-8');
     generated.push(out);
   }

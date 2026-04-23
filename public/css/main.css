@@ -11,6 +11,7 @@
 /* Section partials (landing page only) */
 @import "./problem-section.css";
 @import "./workflow.css";
+@import "./live-mode.css";
 @import "./gallery.css";
 @import "./skill-demos.css";
 
@@ -1153,7 +1154,7 @@ code {
 
 .language-content {
   display: grid;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-sm);
 }
 
 /* Grid and flex items default to min-width: auto, which lets them expand to
@@ -2442,28 +2443,76 @@ code {
   padding: var(--spacing-lg);
 }
 
-.patterns-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.patterns-tabs-wrap {
+  position: relative;
   margin-bottom: var(--spacing-md);
 }
 
-@media (max-width: 768px) {
-  .patterns-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    margin-left: calc(-1 * var(--spacing-lg));
-    margin-right: calc(-1 * var(--spacing-lg));
-    padding-left: var(--spacing-lg);
-    padding-right: var(--spacing-lg);
-  }
+.patterns-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
 
-  .patterns-tabs::-webkit-scrollbar {
-    display: none;
-  }
+.patterns-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Edge fade only on sides where more content exists. data-scroll is set
+   by JS: start | middle | end | none. */
+.patterns-tabs[data-scroll="start"] {
+  mask-image: linear-gradient(to right, black calc(100% - 40px), transparent);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 40px), transparent);
+}
+.patterns-tabs[data-scroll="middle"] {
+  mask-image: linear-gradient(to right, transparent, black 32px, black calc(100% - 40px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 32px, black calc(100% - 40px), transparent);
+}
+.patterns-tabs[data-scroll="end"] {
+  mask-image: linear-gradient(to right, transparent, black 32px);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 32px);
+}
+.patterns-tabs[data-scroll="none"] {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+/* Chevrons sit on the wrapper (outside the mask) so they're always fully
+   opaque, regardless of edge fade. Visible only when scroll can progress
+   in that direction. */
+.patterns-tabs-wrap::before,
+.patterns-tabs-wrap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-top: 1.5px solid var(--color-ash);
+  border-right: 1.5px solid var(--color-ash);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.patterns-tabs-wrap::before {
+  left: 2px;
+  transform: translateY(-50%) rotate(-135deg);
+}
+.patterns-tabs-wrap::after {
+  right: 2px;
+  transform: translateY(-50%) rotate(45deg);
+}
+.patterns-tabs-wrap[data-scroll="start"]::after,
+.patterns-tabs-wrap[data-scroll="middle"]::after { opacity: 1; }
+.patterns-tabs-wrap[data-scroll="end"]::before,
+.patterns-tabs-wrap[data-scroll="middle"]::before { opacity: 1; }
+
+.patterns-tab {
+  scroll-snap-align: start;
+  flex-shrink: 0;
 }
 
 .patterns-tab {
