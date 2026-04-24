@@ -30,8 +30,9 @@
   padding: 0;
 }
 
+.docs-viz-hero .docs-viz-caption,
 .docs-viz-caption {
-  margin: 10px 0 0;
+  margin: 16px 0 0;
   font-family: var(--font-body);
   font-size: 0.8125rem;
   color: var(--color-ash);
