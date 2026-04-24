@@ -182,11 +182,11 @@ Ask questions along these lines (adapt to the specific findings; do NOT ask gene
 - Every question must reference specific findings from the report. Never ask generic "who is your audience?" questions.
 - Keep it to 2-4 questions maximum. Respect the user's time.
 - Offer concrete options, not open-ended prompts.
-- If findings are straightforward (e.g., only 1-2 clear issues), skip questions and go directly to Step 5.
+- If findings are straightforward (e.g., only 1-2 clear issues), skip questions and go directly to Recommended Actions.
 
 ### Recommended Actions
 
-**After receiving the user's answers**, present a prioritized action summary reflecting the user's priorities and scope from Step 4.
+**After receiving the user's answers**, present a prioritized action summary reflecting the user's priorities and scope from Ask the User.
 
 #### Action Summary
 
