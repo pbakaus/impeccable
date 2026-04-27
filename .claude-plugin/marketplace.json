@@ -12,12 +12,12 @@
     {
       "name": "impeccable",
       "description": "Design fluency for frontend development. 1 skill with 23 commands (/impeccable polish, /impeccable audit, /impeccable critique, etc.) and curated anti-pattern detection.",
-      "version": "3.0.1",
+      "version": "3.0.2",
       "author": {
         "name": "Paul Bakaus",
         "email": "paul@paulbakaus.com"
       },
-      "source": "./",
+      "source": "./plugin",
       "category": "design",
       "homepage": "https://impeccable.style",
       "tags": ["design", "frontend", "ui", "ux", "skills", "commands"]

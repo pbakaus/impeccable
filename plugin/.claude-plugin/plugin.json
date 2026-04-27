@@ -8,5 +8,5 @@
   },
   "homepage": "https://impeccable.style",
   "repository": "https://github.com/pbakaus/impeccable",
-  "skills": "./.claude/skills/"
+  "skills": "./skills/"
 }

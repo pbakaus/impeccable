@@ -137,7 +137,7 @@
 
 
       </div>
-      <p class="hero-version-link"><a href="#changelog">v3.0.1: live mode hardened</a></p>
+      <p class="hero-version-link"><a href="#changelog">v3.0.2: leaner Claude Code plugin</a></p>
       </div>
 
 
@@ -933,6 +933,17 @@
       </div>
 
       <div class="changelog-list" data-reveal>
+        <div class="changelog-entry">
+          <div class="changelog-version-header">
+            <span class="changelog-version">v3.0.2</span>
+            <span class="changelog-date">April 27, 2026</span>
+          </div>
+          <ul class="changelog-items">
+            <li><strong>Claude Code plugin install shrunk by 380×.</strong> The marketplace now ships only the runtime payload (~770 KB) instead of the entire monorepo (291 MB). Plugin source moved from <code>./</code> to <code>./plugin</code>, so the cache no longer copies <code>node_modules</code>, build scripts, tests, or the other harness directories. Reported in <a href="https://github.com/pbakaus/impeccable/issues/107" target="_blank" rel="noopener">#107</a>.</li>
+            <li><strong>Slash commands now register reliably on Claude Code.</strong> The <code>skills</code> field in <code>plugin.json</code> was missing the trailing slash that the documented schema expects (<code>"./skills/"</code>, not <code>"./skills"</code>), which caused Claude Code's plugin loader to skip command registration on some setups. Reported by three users in <a href="https://github.com/pbakaus/impeccable/issues/86" target="_blank" rel="noopener">#86</a>.</li>
+          </ul>
+        </div>
+
         <div class="changelog-entry">
           <div class="changelog-version-header">
             <span class="changelog-version">v3.0.1</span>
