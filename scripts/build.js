@@ -538,6 +538,10 @@ function generateCFConfig(buildDir) {
 /skills/:id /docs/:id 301
 /anti-patterns /slop#catalog 301
 /visual-mode /slop#see-it 301
+/neon-mirai /neo-mirai/ 301
+/neon-mirai/ /neo-mirai/ 301
+/cases/neon-mirai /cases/neo-mirai 301
+/cases/neon-mirai/ /cases/neo-mirai 301
 `;
   fs.writeFileSync(path.join(buildDir, '_redirects'), redirects);
 
@@ -565,8 +569,8 @@ async function build() {
   console.log(`✓ Generated ${subPageFiles.length} sub-page(s)\n`);
 
   const casePageFiles = [
-    path.join(ROOT_DIR, 'public', 'cases', 'neon-mirai', 'index.html'),
-    path.join(ROOT_DIR, 'public', 'neon-mirai', 'index.html'),
+    path.join(ROOT_DIR, 'public', 'cases', 'neo-mirai', 'index.html'),
+    path.join(ROOT_DIR, 'public', 'neo-mirai', 'index.html'),
   ].filter((pagePath) => fs.existsSync(pagePath));
 
   // Bundle HTML, JS, and CSS with Bun (including generated sub-pages)

@@ -69,20 +69,20 @@ function renderCraftCaseCallout() {
 <aside class="craft-case-callout" aria-labelledby="craft-case-title">
   <div class="craft-case-copy">
     <span class="craft-case-eyebrow">Real example</span>
-    <h2 id="craft-case-title">Neon Mirai: generated reference to shipped page.</h2>
+    <h2 id="craft-case-title">Neo Mirai: generated reference to shipped page.</h2>
     <p>A retro-futurist AI design conference moved through the full loop: brand toolkit, hi-fi mock, semantic implementation, regenerated assets, responsive fixes, and browser polish.</p>
     <div class="code-block-wrap craft-case-command">
       <pre class="code-block code-block--bash"><code>npx impeccable craft retro-futurist AI design conference website</code></pre>
       <button class="code-block-copy" type="button" data-copy="npx impeccable craft retro-futurist AI design conference website" aria-label="Copy to clipboard"></button>
     </div>
     <p class="craft-case-link-row">
-      <a href="/cases/neon-mirai">Read the case</a>
-      <a href="/neon-mirai/">Open the build</a>
+      <a href="/cases/neo-mirai">Read the case</a>
+      <a href="/neo-mirai/">Open the build</a>
     </p>
   </div>
   <div class="craft-case-images" aria-hidden="true">
     <img src="../assets/openai_image_2_hifi.jpg" alt="" loading="lazy" width="864" height="1821" />
-    <img src="../assets/cases/neon-mirai/home.png" alt="" loading="lazy" width="1440" height="1100" />
+    <img src="../assets/cases/neo-mirai/home.png" alt="" loading="lazy" width="1440" height="1100" />
   </div>
 </aside>`;
 }
@@ -1046,11 +1046,11 @@ function renderDesigningMain() {
 
       <div class="designing-start-step">
         <span class="designing-start-step-label">shape + craft &middot; in pictures</span>
-        <p class="designing-start-step-note">Since image generation crossed the reference-quality threshold, <code>shape</code> can draft a brand toolkit you review at a glance, and <code>craft</code> can code toward a hi-fi mock instead of a paragraph. Neon Mirai is the full loop: generated direction, implemented page, browser iteration.</p>
+        <p class="designing-start-step-note">Since image generation crossed the reference-quality threshold, <code>shape</code> can draft a brand toolkit you review at a glance, and <code>craft</code> can code toward a hi-fi mock instead of a paragraph. Neo Mirai is the full loop: generated direction, implemented page, browser iteration.</p>
 
         <div class="designing-visualize-spread">
           <figure class="designing-visualize-plate designing-visualize-plate--brand">
-            <a class="designing-visualize-plate-frame" href="/cases/neon-mirai" aria-label="Read the Neon Mirai case study">
+            <a class="designing-visualize-plate-frame" href="/cases/neo-mirai" aria-label="Read the Neo Mirai case study">
               <img src="../assets/openai_image_2_brand.jpg" alt="Auto-generated brand toolkit plate: identity lockups, colour palette, type specimens, icon system, and application mocks for a fictional AI design conference, rendered in warm earth tones." loading="lazy" width="1536" height="1024" />
             </a>
             <figcaption class="designing-visualize-plate-cap">
@@ -1060,7 +1060,7 @@ function renderDesigningMain() {
           </figure>
 
           <figure class="designing-visualize-plate designing-visualize-plate--hifi">
-            <a class="designing-visualize-plate-frame" href="/cases/neon-mirai" aria-label="Read the Neon Mirai case study">
+            <a class="designing-visualize-plate-frame" href="/cases/neo-mirai" aria-label="Read the Neo Mirai case study">
               <img src="../assets/openai_image_2_hifi.jpg" alt="Auto-generated hi-fi landing-page mock: a long vertical editorial comp for a fictional Tokyo AI design conference, in warm earth tones with committed serif display type." loading="lazy" width="864" height="1821" />
             </a>
             <figcaption class="designing-visualize-plate-cap">
@@ -1070,17 +1070,17 @@ function renderDesigningMain() {
           </figure>
 
           <figure class="designing-visualize-plate designing-visualize-plate--live">
-            <a class="designing-visualize-plate-frame" href="/neon-mirai/" aria-label="Open the Neon Mirai live site">
-              <img src="../assets/cases/neon-mirai/live-page.png" alt="Full-page screenshot of the implemented Neon Mirai website." loading="lazy" width="1440" height="3013" />
+            <a class="designing-visualize-plate-frame" href="/neo-mirai/" aria-label="Open the Neo Mirai live site">
+              <img src="../assets/cases/neo-mirai/live-page.png" alt="Full-page screenshot of the implemented Neo Mirai website." loading="lazy" width="1440" height="3013" />
             </a>
             <figcaption class="designing-visualize-plate-cap">
               <span class="designing-visualize-plate-kind">Ship</span>
-              <p class="designing-visualize-plate-note">Live build. The mock became semantic markup, regenerated assets, responsive fixes, nav state, speaker carousel behavior, and browser-verified polish. <a href="/neon-mirai/">Open the live site</a>.</p>
+              <p class="designing-visualize-plate-note">Live build. The mock became semantic markup, regenerated assets, responsive fixes, nav state, speaker carousel behavior, and browser-verified polish. <a href="/neo-mirai/">Open the live site</a>.</p>
             </figcaption>
           </figure>
         </div>
 
-        <p class="designing-visualize-foot">The first two plates were generated by <strong>OpenAI GPT Image 2</strong>. The third is the implemented Neon Mirai page. <strong>Gemini Nano Banana Pro</strong>, <strong>Imagen 4 Ultra</strong>, and <strong>Grok Imagen</strong> work the same way, via Codex, Gemini CLI, and compatible harnesses.</p>
+        <p class="designing-visualize-foot">The first two plates were generated by <strong>OpenAI GPT Image 2</strong>. The third is the implemented Neo Mirai page. <strong>Gemini Nano Banana Pro</strong>, <strong>Imagen 4 Ultra</strong>, and <strong>Grok Imagen</strong> work the same way, via Codex, Gemini CLI, and compatible harnesses.</p>
       </div>
     </div>
   </section>

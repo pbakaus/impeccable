@@ -2,9 +2,9 @@
 
 Build a feature with impeccable UX and UI quality through a structured process: shape the design, load the right references, then build and iterate visually until the result is delightful.
 
-## Real Example: Neon Mirai
+## Real Example: Neo Mirai
 
-Neon Mirai is the full craft loop in public. A retro-futurist AI design conference started with generated brand and hi-fi reference images, then shipped as a responsive static site in `public/neon-mirai`.
+Neo Mirai is the full craft loop in public. A retro-futurist AI design conference started with generated brand and hi-fi reference images, then shipped as a responsive static site in `public/neo-mirai`.
 
 Repro command:
 
