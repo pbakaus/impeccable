@@ -1,0 +1,24 @@
+# Comment `/apply-optimize` on a PR to commit suggested optimizations from the review workflow.
+# Pairs with skill-review.yml (tesslio/skill-review-and-optimize).
+name: Apply Skill Optimization
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  apply:
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/apply-optimize')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.issue.pull_request.head.ref }}
+      - uses: tesslio/skill-review-and-optimize@d81583861aaf29d1da7f10e6539efef4e27b0dd5
+        with:
+          mode: "apply"
