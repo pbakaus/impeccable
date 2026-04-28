@@ -45,7 +45,7 @@ export function restorePerProjectArtifacts(rootDir, stashed) {
  * Returns { frontmatter: object, body: string }
  */
 export function parseFrontmatter(content) {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
   const match = content.match(frontmatterRegex);
 
   if (!match) {
@@ -56,7 +56,7 @@ export function parseFrontmatter(content) {
   const frontmatter = {};
 
   // Simple YAML parser (handles basic key-value and arrays)
-  const lines = frontmatterText.split('\n');
+  const lines = frontmatterText.split(/\r?\n/);
   let currentKey = null;
   let currentArray = null;
 
