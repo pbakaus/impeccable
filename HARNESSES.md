@@ -3,7 +3,7 @@
 Source of truth for what each AI coding harness supports in terms of agent skills.
 Used to inform provider configs in `scripts/lib/transformers/providers.js`.
 
-Last verified: 2026-03-24
+Last verified: 2026-04-28
 
 ## Official Documentation
 
@@ -17,6 +17,7 @@ Last verified: 2026-03-24
 | Kiro | https://kiro.dev/docs/skills/ |
 | OpenCode | https://opencode.ai/docs/skills/ |
 | Pi | https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md |
+| Qoder | https://docs.qoder.com/extensions/skills |
 | Trae | TBD (no official skills docs found yet) |
 | Rovo Dev | https://support.atlassian.com/rovo/docs/extend-rovo-dev-cli-with-agent-skills |
 
@@ -30,22 +31,22 @@ Provider-specific extensions beyond the spec: `user-invocable`, `argument-hint`,
 
 Fields marked with * are spec-standard. Others are provider extensions.
 
-| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Kiro | OpenCode | Pi | Rovo Dev |
-|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:--------:|:--:|:--------:|
-| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes |
-| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes |
-| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | No | Yes | Yes | Yes |
-| `user-invocable` | Yes | No | No | No | Yes | No | Yes | No | Yes |
-| `argument-hint` | Yes | No | No | No | Yes | No | Yes | No | Yes |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD |
-| `model` | Yes | No | No | No | No | No | Yes | No | No |
-| `effort` | Yes | No | No | No | No | No | No | No | No |
-| `context` | Yes | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | Yes | No | No |
-| `hooks` | Yes | No | No | No | No | No | No | No | No |
+| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Kiro | OpenCode | Pi | Qoder | Rovo Dev |
+|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:--------:|:--:|:-----:|:--------:|
+| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
+| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
+| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
+| `allowed-tools`* | Yes | No | Ignored | No | No | No | Yes | Yes | Yes | Yes |
+| `user-invocable` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes |
+| `argument-hint` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes |
+| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD | TBD |
+| `model` | Yes | No | No | No | No | No | Yes | No | No | No |
+| `effort` | Yes | No | No | No | No | No | No | No | No | No |
+| `context` | Yes | No | No | No | No | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | Yes | No | No | No |
+| `hooks` | Yes | No | No | No | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
@@ -65,6 +66,7 @@ Notes:
 | Kiro | `.kiro/skills/` | - |
 | OpenCode | `.opencode/skills/` | `.agents/skills/`, `.claude/skills/` |
 | Pi | `.pi/skills/` | `.agents/skills/` |
+| Qoder | `.qoder/skills/` | `~/.qoder/skills/` (user-level) |
 | Trae China | `.trae-cn/skills/` | TBD |
 | Trae International | `.trae/skills/` | TBD |
 | Rovo Dev | `.rovodev/skills/` | `~/.rovodev/skills/` (user-level) |

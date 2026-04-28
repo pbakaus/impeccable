@@ -154,6 +154,7 @@ scripts/
 - [Kiro Skills](https://kiro.dev/docs/skills/)
 - [OpenCode Skills](https://opencode.ai/docs/skills/)
 - [Pi Skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md)
+- [Qoder Skills](https://docs.qoder.com/extensions/skills)
 
 ## Repository Structure
 

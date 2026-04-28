@@ -23,6 +23,7 @@ assignees: ''
 - [ ] VS Code Copilot
 - [ ] Kiro
 - [ ] OpenCode
+- [ ] Qoder
 - [ ] All providers
 
 ## Alternatives considered

@@ -69,6 +69,12 @@ export const PROVIDERS = {
     displayName: 'Pi',
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  qoder: {
+    provider: 'qoder',
+    configDir: '.qoder',
+    displayName: 'Qoder',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
   'trae-cn': {
     provider: 'trae-cn',
     configDir: '.trae-cn',

@@ -17,5 +17,5 @@
 - [ ] Source files updated in `source/`
 - [ ] `bun run build` ran successfully
 - [ ] `bun test` passes
-- [ ] Tested with at least one provider (Cursor / Claude Code / Gemini CLI / Codex / Copilot / Kiro / OpenCode)
+- [ ] Tested with at least one provider (Cursor / Claude Code / Gemini CLI / Codex / Copilot / Kiro / OpenCode / Qoder)
 - [ ] README / DEVELOP.md updated if needed
