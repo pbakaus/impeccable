@@ -112,7 +112,7 @@ async function downloadAndExtractBundle() {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/')
+    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/')
     .replace(/^version:\s*.+$/m, 'version: NORMALIZED');
 }
 
