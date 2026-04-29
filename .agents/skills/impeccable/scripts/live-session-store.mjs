@@ -56,8 +56,7 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
         .filter((name) => name.endsWith('.jsonl'))
         .map((name) => name.slice(0, -'.jsonl'.length))
         .map((id) => this.getSnapshot(id))
-        .filter(Boolean)
-        .filter((snapshot) => !COMPLETED_PHASES.has(snapshot.phase));
+        .filter(Boolean);
     },
   };
 }

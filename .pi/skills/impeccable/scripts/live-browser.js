@@ -2262,15 +2262,19 @@
 
   function sendEvent(msg, opts) {
     msg.token = TOKEN;
+    function handleFailure(err) {
+      console.error('[impeccable] Failed to send event:', err);
+      if (opts && opts.throwOnError) throw err;
+      return null;
+    }
     return fetch('http://localhost:' + PORT + '/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(msg),
-    }).catch(err => {
-      console.error('[impeccable] Failed to send event:', err);
-      if (opts && opts.throwOnError) throw err;
-      return null;
-    });
+    }).then(res => {
+      if (res.ok) return res;
+      return handleFailure(new Error('HTTP ' + res.status + ' ' + res.statusText));
+    }).catch(handleFailure);
   }
 
   function checkpointPayload(reason) {
