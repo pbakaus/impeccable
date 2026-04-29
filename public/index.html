@@ -935,6 +935,17 @@
       <div class="changelog-list" data-reveal>
         <div class="changelog-entry">
           <div class="changelog-version-header">
+            <span class="changelog-version">Extension v1.0.2</span>
+            <span class="changelog-date">April 29, 2026</span>
+          </div>
+          <ul class="changelog-items">
+            <li><strong>Popup scan no longer hangs after a page reload.</strong> The toolbar-icon flow worked the first time but got stuck on "Scanning…" on subsequent clicks if the page had been reloaded in between. The service worker only cleared its content-script-injected flag when DevTools was open, so the popup-only path saw a stale flag and silently sent its scan request to a tab whose content script had already been wiped. Reset is now unconditional; auto-rescan stays gated to DevTools.</li>
+            <li><strong>Detector flags the new monoculture.</strong> The overused-font rule now catches Fraunces, Geist, Mona Sans, Plus Jakarta Sans, Space Grotesk, Recoleta, and Instrument Sans alongside Inter and the older defaults. Brand exceptions for Vercel, Next.js, and GitHub on their own domains.</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-version-header">
             <span class="changelog-version">CLI v2.1.8</span>
             <span class="changelog-date">April 28, 2026</span>
           </div>
