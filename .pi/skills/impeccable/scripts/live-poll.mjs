@@ -153,7 +153,7 @@ Options:
         );
         event._acceptResult = JSON.parse(out.trim());
       } catch (err) {
-        event._acceptResult = { handled: false, error: err.message };
+        event._acceptResult = { handled: false, mode: 'error', error: err.message };
       }
 
       const completionType = completionTypeForAcceptResult(event.type, event._acceptResult);

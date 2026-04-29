@@ -78,6 +78,31 @@ describe('live-session-store', () => {
     assert.match(snapshot.diagnostics[0].error, /journal_parse_failed/);
   });
 
+  it('preserves zero-valued checkpoint revisions and empty explicit fields', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'zero-checkpoint' });
+    store.appendEvent({
+      type: 'checkpoint',
+      id: 'zero-checkpoint',
+      revision: 0,
+      phase: '',
+      owner: '',
+      arrivedVariants: 0,
+      visibleVariant: 0,
+      paramValues: { density: 0 },
+    });
+
+    const snapshot = store.getSnapshot('zero-checkpoint');
+    assert.equal(
+      snapshot.checkpointRevision,
+      0,
+      'event=live_session_store.zero_checkpoint_revision actor=browser operation=checkpoint_replay risk=zero_revision_dropped expected=0 actual=' + snapshot.checkpointRevision,
+    );
+    assert.equal(snapshot.phase, '');
+    assert.equal(snapshot.activeOwner, '');
+    assert.equal(snapshot.visibleVariant, 0);
+    assert.deepEqual(snapshot.paramValues, { density: 0 });
+  });
+
   it('ignores stale checkpoints and keeps the newest browser state', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'checkpoint-session' });
     store.appendEvent({

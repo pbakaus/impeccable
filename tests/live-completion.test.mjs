@@ -12,9 +12,17 @@ describe('live completion type classification', () => {
     );
   });
 
+  it('treats unhandled non-error accept as normal manual agent handoff', () => {
+    assert.equal(
+      completionTypeForAcceptResult('accept', { handled: false, error: 'Session markers not found' }),
+      'agent_done',
+      'event=live_poll.manual_accept_completion actor=agent operation=accept_manual_cleanup risk=manual_handoff_recorded_as_agent_error expected=agent_done actual=error',
+    );
+  });
+
   it('classifies handled accept/discard and real failures explicitly', () => {
     assert.equal(completionTypeForAcceptResult('accept', { handled: true }), 'complete');
     assert.equal(completionTypeForAcceptResult('discard', { handled: true }), 'discarded');
-    assert.equal(completionTypeForAcceptResult('accept', { handled: false, error: 'boom' }), 'error');
+    assert.equal(completionTypeForAcceptResult('accept', { handled: false, mode: 'error', error: 'boom' }), 'error');
   });
 });

@@ -458,6 +458,47 @@ describe('live-server integration', () => {
     assert.equal(acked.type, 'timeout', 'acked event should be removed from the poll queue');
   });
 
+  it('wakes a parked poll as soon as a missed-ack lease expires', async () => {
+    await drainPolls(server);
+
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'lease-wakeup-1',
+        action: 'polish',
+        count: 1,
+        element: { outerHTML: '<section>wakeup</section>', tagName: 'section' },
+      }),
+    });
+    assert.equal(postRes.status, 200);
+
+    const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=60`).then(r => r.json());
+    assert.equal(first.id, 'lease-wakeup-1');
+
+    const startedAt = Date.now();
+    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=60`).then(r => r.json());
+    const elapsed = Date.now() - startedAt;
+
+    assert.equal(
+      redelivered.id,
+      'lease-wakeup-1',
+      'event=live_poll.lease_expiry_wakeup actor=agent operation=poll_before_lease_expiry risk=parked_poll_waits_full_timeout expected=lease-wakeup-1 actual=' + redelivered.id,
+    );
+    assert.ok(
+      elapsed < 250,
+      'event=live_poll.lease_expiry_latency actor=agent operation=poll_before_lease_expiry risk=redelivery_waits_full_timeout expected=<250 actual=' + elapsed,
+    );
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: 'lease-wakeup-1', type: 'done' }),
+    });
+  });
+
   it('agent reply is forwarded via SSE to browser', async () => {
     // Use raw HTTP to read SSE (no EventSource in Node.js)
     const controller = new AbortController();

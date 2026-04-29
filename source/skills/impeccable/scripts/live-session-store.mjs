@@ -151,8 +151,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
   switch (event.type) {
     case 'generate':
       next.phase = 'generate_requested';
-      next.pageUrl = event.pageUrl || next.pageUrl;
-      next.expectedVariants = event.count || next.expectedVariants;
+      next.pageUrl = event.pageUrl ?? next.pageUrl;
+      next.expectedVariants = event.count ?? next.expectedVariants;
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
       next.pendingEvent = toPendingEvent(event);
       if (event.screenshotPath) upsertArtifact(next.annotationArtifacts, { type: 'screenshot', path: event.screenshotPath });
@@ -160,16 +160,16 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
     case 'variants_ready':
     case 'agent_done':
       next.phase = 'variants_ready';
-      next.sourceFile = event.file || next.sourceFile;
-      next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants || next.expectedVariants);
+      next.sourceFile = event.file ?? next.sourceFile;
+      next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants ?? next.expectedVariants);
       next.pendingEventSeq = null;
       next.pendingEvent = null;
       break;
     case 'checkpoint':
-      if ((event.revision || 0) >= (next.checkpointRevision || 0)) {
-        next.phase = event.phase || next.phase;
-        next.checkpointRevision = event.revision || next.checkpointRevision;
-        next.activeOwner = event.owner || next.activeOwner;
+      if ((event.revision ?? 0) >= (next.checkpointRevision ?? 0)) {
+        next.phase = event.phase ?? next.phase;
+        next.checkpointRevision = event.revision ?? next.checkpointRevision;
+        next.activeOwner = event.owner ?? next.activeOwner;
         next.arrivedVariants = event.arrivedVariants ?? next.arrivedVariants;
         next.visibleVariant = event.visibleVariant ?? next.visibleVariant;
         if (event.paramValues) next.paramValues = { ...event.paramValues };
