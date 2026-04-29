@@ -73,9 +73,10 @@ const execFileP = promisify(execFile);
 export function createFakeAgent() {
   return {
     /** @type {VariantAgent['generateVariants']} */
-    async generateVariants(event /*, context */) {
+    async generateVariants(event, context = {}) {
       const text = extractText(event.element?.outerHTML) || 'Title';
       const cls = 'hero-title';
+      const useAstroGlobalCss = context.wrapInfo?.styleMode === 'astro-global-prefixed';
 
       // Variant 1 — red color, with a `range` param tuning hue lightness.
       const variant1 = {
@@ -124,24 +125,36 @@ export function createFakeAgent() {
         ],
       };
 
-      // Scoped CSS — `@scope ([data-impeccable-variant="N"])` per variant,
-      // wired against the params declared above.
-      const scopedCss = [
-        '@scope ([data-impeccable-variant="1"]) {',
-        '  :scope > h1 {',
-        '    color: oklch(var(--p-lightness, 0.5) 0.25 25);',
-        '  }',
-        '}',
-        '@scope ([data-impeccable-variant="2"]) {',
-        '  :scope > h1 { font-weight: 900; }',
-        '  :scope[data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
-        '  :scope[data-p-face="mono"]  > h1 { font-family: ui-monospace, monospace; }',
-        '}',
-        '@scope ([data-impeccable-variant="3"]) {',
-        '  :scope > h1 { text-transform: uppercase; letter-spacing: 0.04em; }',
-        '  :scope[data-p-italic] > h1 { font-style: italic; }',
-        '}',
-      ].join('\n');
+      // Scoped CSS for most frameworks. Astro component styles are transformed
+      // and scoped by the compiler, so live preview CSS must use a global style
+      // tag plus explicit variant prefixes instead of raw @scope rules.
+      const scopedCss = useAstroGlobalCss
+        ? [
+            '[data-impeccable-variant="1"] > h1 {',
+            '  color: oklch(var(--p-lightness, 0.5) 0.25 25);',
+            '}',
+            '[data-impeccable-variant="2"] > h1 { font-weight: 900; }',
+            '[data-impeccable-variant="2"][data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
+            '[data-impeccable-variant="2"][data-p-face="mono"]  > h1 { font-family: ui-monospace, monospace; }',
+            '[data-impeccable-variant="3"] > h1 { text-transform: uppercase; letter-spacing: 0.04em; }',
+            '[data-impeccable-variant="3"][data-p-italic] > h1 { font-style: italic; }',
+          ].join('\n')
+        : [
+            '@scope ([data-impeccable-variant="1"]) {',
+            '  :scope > h1 {',
+            '    color: oklch(var(--p-lightness, 0.5) 0.25 25);',
+            '  }',
+            '}',
+            '@scope ([data-impeccable-variant="2"]) {',
+            '  :scope > h1 { font-weight: 900; }',
+            '  :scope[data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
+            '  :scope[data-p-face="mono"]  > h1 { font-family: ui-monospace, monospace; }',
+            '}',
+            '@scope ([data-impeccable-variant="3"]) {',
+            '  :scope > h1 { text-transform: uppercase; letter-spacing: 0.04em; }',
+            '  :scope[data-p-italic] > h1 { font-style: italic; }',
+            '}',
+          ].join('\n');
 
       return {
         scopedCss,
@@ -192,9 +205,10 @@ function htmlToJsx(html) {
  *   - inner element class= becomes className=
  *   - data-impeccable-params stays a single-quoted JSON string (JSX-legal)
  */
-function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file }) {
+function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, styleMode }) {
   const isJsx = commentSyntax.open === '{/*';
   const isSvelte = !!file && file.endsWith('.svelte');
+  const isAstroGlobalCss = styleMode === 'astro-global-prefixed';
 
   const styleLines = isJsx
     ? [
@@ -203,7 +217,7 @@ function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file })
         indent + '  `}</style>',
       ]
     : [
-        indent + '  <style data-impeccable-css="' + sessionId + '">',
+        indent + '  <style' + (isAstroGlobalCss ? ' is:inline' : '') + ' data-impeccable-css="' + sessionId + '">',
         ...output.scopedCss.split('\n').map((l) => indent + '    ' + l),
         indent + '  </style>',
       ];
@@ -258,6 +272,7 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
     output,
     commentSyntax: wrapInfo.commentSyntax,
     file: wrapInfo.file,
+    styleMode: wrapInfo.styleMode,
   });
 
   const next = [
@@ -338,7 +353,7 @@ export async function runAgentLoop({
         log(`wrapped: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
         // 2. Agent generates variant content (LLM-pluggable seam)
-        const output = await agent.generateVariants(event, { wrapTarget });
+        const output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
         if (output.variants.length !== event.count) {
           log(`warning: agent returned ${output.variants.length} variants, expected ${event.count}`);
         }

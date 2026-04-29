@@ -1,0 +1,147 @@
+/**
+ * Tests for durable live-session state.
+ * Run with: node --test tests/live-session-store.test.mjs
+ */
+
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, appendFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+import { createLiveSessionStore } from '../source/skills/impeccable/scripts/live-session-store.mjs';
+
+describe('live-session-store', () => {
+  let tmp;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'impeccable-session-store-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('rebuilds an active snapshot from an append-only journal after process restart', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'session-a' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'session-a',
+      action: 'polish',
+      count: 3,
+      pageUrl: 'http://localhost:4321/',
+      element: { outerHTML: '<section class="hero">Hero</section>', tagName: 'section' },
+      screenshotPath: join(tmp, '.impeccable-live', 'annotations', 'session-a.png'),
+    });
+    store.appendEvent({ type: 'variants_ready', id: 'session-a', file: 'src/pages/index.astro', arrivedVariants: 3 });
+    store.appendEvent({ type: 'accept_intent', id: 'session-a', variantId: 2, paramValues: { density: 'packed' } });
+
+    const restarted = createLiveSessionStore({ cwd: tmp, sessionId: 'session-a' });
+    const snapshot = restarted.getSnapshot('session-a');
+
+    assert.equal(snapshot.id, 'session-a');
+    assert.equal(snapshot.phase, 'accept_requested');
+    assert.equal(snapshot.expectedVariants, 3);
+    assert.equal(snapshot.arrivedVariants, 3);
+    assert.equal(snapshot.sourceFile, 'src/pages/index.astro');
+    assert.equal(snapshot.visibleVariant, 2);
+    assert.deepEqual(snapshot.paramValues, { density: 'packed' });
+    assert.equal(snapshot.annotationArtifacts[0].path.endsWith('session-a.png'), true);
+
+    const active = restarted.listActiveSessions();
+    assert.equal(
+      active.length,
+      1,
+      'event=live_session_store.active_restart actor=agent operation=list_active_sessions risk=server_restart_loses_live_state expected=one active session actual=' + active.length + ' suggestion=inspect journal replay and completed phase filtering',
+    );
+    assert.equal(active[0].id, 'session-a');
+  });
+
+  it('reports corrupted journal lines while preserving valid prior events', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'corrupt-session' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'corrupt-session',
+      action: 'layout',
+      count: 2,
+      element: { outerHTML: '<div>Card</div>', tagName: 'div' },
+    });
+
+    appendFileSync(join(tmp, '.impeccable-live', 'sessions', 'corrupt-session.jsonl'), '{not json}\n');
+
+    const restarted = createLiveSessionStore({ cwd: tmp, sessionId: 'corrupt-session' });
+    const snapshot = restarted.getSnapshot('corrupt-session');
+
+    assert.equal(snapshot.phase, 'generate_requested');
+    assert.equal(snapshot.expectedVariants, 2);
+    assert.equal(snapshot.diagnostics.length, 1);
+    assert.match(snapshot.diagnostics[0].error, /journal_parse_failed/);
+  });
+
+  it('ignores stale checkpoints and keeps the newest browser state', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'checkpoint-session' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'checkpoint-session',
+      action: 'layout',
+      count: 3,
+      element: { outerHTML: '<section>Hero</section>', tagName: 'section' },
+    });
+    store.appendEvent({ type: 'checkpoint', id: 'checkpoint-session', revision: 5, phase: 'cycling', visibleVariant: 3, paramValues: { density: 'packed' } });
+    store.appendEvent({ type: 'checkpoint', id: 'checkpoint-session', revision: 2, phase: 'cycling', visibleVariant: 1, paramValues: { density: 'airy' } });
+
+    const snapshot = store.getSnapshot('checkpoint-session');
+    assert.equal(snapshot.checkpointRevision, 5);
+    assert.equal(snapshot.visibleVariant, 3);
+    assert.deepEqual(snapshot.paramValues, { density: 'packed' });
+    assert.equal(
+      snapshot.diagnostics.some((d) => d.error === 'stale_checkpoint_ignored' && d.revision === 2),
+      true,
+      'event=live_session_store.stale_checkpoint actor=browser operation=checkpoint_replay risk=old_browser_state_overwrites_newer_choice expected=stale diagnostic actual=' + JSON.stringify(snapshot.diagnostics),
+    );
+  });
+
+  it('keeps completed sessions auditable but excludes them from active sessions by default', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'done-session' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'done-session',
+      action: 'bolder',
+      count: 1,
+      element: { outerHTML: '<h1>Title</h1>', tagName: 'h1' },
+    });
+    store.appendEvent({ type: 'agent_done', id: 'done-session', file: 'src/pages/index.astro' });
+    store.appendEvent({ type: 'complete', id: 'done-session' });
+
+    const active = store.listActiveSessions();
+    const completed = store.getSnapshot('done-session', { includeCompleted: true });
+
+    assert.equal(active.length, 0);
+    assert.equal(completed.phase, 'completed');
+    assert.equal(completed.sourceFile, 'src/pages/index.astro');
+  });
+
+  it('writes a rebuildable snapshot cache without making it authoritative', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'cache-session' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'cache-session',
+      action: 'colorize',
+      count: 2,
+      element: { outerHTML: '<div>Palette</div>', tagName: 'div' },
+    });
+
+    const snapshotPath = join(tmp, '.impeccable-live', 'sessions', 'cache-session.snapshot.json');
+    const cached = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
+    assert.equal(cached.phase, 'generate_requested');
+
+    // Simulate stale snapshot cache. Restart must prefer journal truth and repair cache.
+    appendFileSync(snapshotPath, '');
+    const restarted = createLiveSessionStore({ cwd: tmp, sessionId: 'cache-session' });
+    restarted.appendEvent({ type: 'agent_done', id: 'cache-session', file: 'src/pages/index.astro' });
+    const repaired = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
+
+    assert.equal(repaired.phase, 'variants_ready');
+    assert.equal(repaired.sourceFile, 'src/pages/index.astro');
+  });
+});

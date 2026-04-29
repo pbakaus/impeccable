@@ -22,6 +22,7 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
 import { resolveContextDir } from './load-context.mjs';
+import { createLiveSessionStore } from './live-session-store.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PID file in the project root so both the server and agent can find it
@@ -57,10 +58,11 @@ const state = {
   token: null,
   port: null,
   sseClients: new Set(),   // SSE response objects (server→browser push)
-  pendingEvents: [],        // browser events waiting for agent poll
+  pendingEvents: [],        // browser events waiting for agent ack ({ event, leaseUntil })
   pendingPolls: [],         // agent poll callbacks waiting for browser events
   exitTimer: null,
   sessionDir: null,         // per-session tmp dir for annotation screenshots
+  sessionStore: null,
 };
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
@@ -68,10 +70,46 @@ const state = {
 const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
 
 function enqueueEvent(event) {
-  if (state.pendingPolls.length > 0) {
-    state.pendingPolls.shift()(event);
-  } else {
-    state.pendingEvents.push(event);
+  if (!event || (event.id && state.pendingEvents.some((entry) => entry.event?.id === event.id && entry.event?.type === event.type))) return;
+  state.pendingEvents.push({ event, leaseUntil: 0 });
+  flushPendingPolls();
+}
+
+function restorePendingEventsFromStore() {
+  if (!state.sessionStore) return;
+  for (const snapshot of state.sessionStore.listActiveSessions()) {
+    if (snapshot.pendingEvent) enqueueEvent(snapshot.pendingEvent);
+  }
+}
+
+function findAvailablePendingEvent(now = Date.now()) {
+  return state.pendingEvents.find((entry) => !entry.leaseUntil || entry.leaseUntil <= now);
+}
+
+function leaseEvent(entry, leaseMs) {
+  if (!entry.event?.id) {
+    const idx = state.pendingEvents.indexOf(entry);
+    if (idx !== -1) state.pendingEvents.splice(idx, 1);
+    return entry.event;
+  }
+  entry.leaseUntil = Date.now() + leaseMs;
+  return entry.event;
+}
+
+function acknowledgePendingEvent(id) {
+  if (!id) return false;
+  const idx = state.pendingEvents.findIndex((entry) => entry.event?.id === id);
+  if (idx === -1) return false;
+  state.pendingEvents.splice(idx, 1);
+  return true;
+}
+
+function flushPendingPolls() {
+  while (state.pendingPolls.length > 0) {
+    const entry = findAvailablePendingEvent();
+    if (!entry) return;
+    const poll = state.pendingPolls.shift();
+    poll.resolve(leaseEvent(entry, poll.leaseMs));
   }
 }
 
@@ -103,13 +141,16 @@ function loadBrowserScripts() {
   // live-browser.js: DO NOT cache. Return the path so the /live.js handler
   // can re-read on every request. Editing the browser script during iteration
   // should land on the next tab reload, not require a server restart.
+  const sessionPath = path.join(__dirname, 'live-browser-session.js');
   const livePath = path.join(__dirname, 'live-browser.js');
-  if (!fs.existsSync(livePath)) {
-    process.stderr.write('Error: live-browser.js not found at ' + livePath + '\n');
-    process.exit(1);
+  for (const p of [sessionPath, livePath]) {
+    if (!fs.existsSync(p)) {
+      process.stderr.write('Error: live browser script not found at ' + p + '\n');
+      process.exit(1);
+    }
   }
 
-  return { detectScript, livePath };
+  return { detectScript, sessionPath, livePath };
 }
 
 function hasProjectContext() {
@@ -170,6 +211,13 @@ function validateEvent(msg) {
       return null;
     case 'discard':
       return isValidId(msg.id) ? null : 'discard: missing or malformed id';
+    case 'checkpoint':
+      if (!isValidId(msg.id)) return 'checkpoint: missing or malformed id';
+      if (!Number.isInteger(msg.revision) || msg.revision < 0) return 'checkpoint: revision must be a non-negative integer';
+      if (msg.paramValues !== undefined && (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues))) {
+        return 'checkpoint: paramValues must be an object';
+      }
+      return null;
     case 'exit':
       return null;
     case 'prefetch':
@@ -184,7 +232,7 @@ function validateEvent(msg) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, livePath }) {
+function createRequestHandler({ detectScript, sessionPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -200,17 +248,20 @@ function createRequestHandler({ detectScript, livePath }) {
       // the next tab reload. No-store headers prevent browser caching across
       // sessions — during iteration, a cached old script silently breaks
       // every subsequent session.
+      let sessionScript;
       let liveScript;
       try {
+        sessionScript = fs.readFileSync(sessionPath, 'utf-8');
         liveScript = fs.readFileSync(livePath, 'utf-8');
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end('Error reading live-browser.js: ' + err.message);
+        res.end('Error reading live browser scripts: ' + err.message);
         return;
       }
       const body =
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
+        sessionScript + '\n' +
         liveScript;
       res.writeHead(200, {
         'Content-Type': 'application/javascript',
@@ -305,6 +356,26 @@ function createRequestHandler({ detectScript, livePath }) {
     }
 
     // --- Health ---
+    if (p === '/status') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
+      const sessions = state.sessionStore ? state.sessionStore.listActiveSessions() : [];
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        port: state.port,
+        connectedClients: state.sseClients.size,
+        pendingEvents: state.pendingEvents.map((entry) => ({
+          id: entry.event?.id,
+          type: entry.event?.type,
+          leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
+          leaseUntil: entry.leaseUntil || null,
+        })),
+        activeSessions: sessions,
+      }));
+      return;
+    }
+
     if (p === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -449,7 +520,16 @@ function createRequestHandler({ detectScript, livePath }) {
           res.end(JSON.stringify({ error }));
           return;
         }
-        enqueueEvent(msg);
+        if (state.sessionStore && msg.id) {
+          try {
+            state.sessionStore.appendEvent(msg);
+          } catch (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'session_store_append_failed', message: err.message }));
+            return;
+          }
+        }
+        if (msg.type !== 'checkpoint') enqueueEvent(msg);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       });
@@ -492,13 +572,16 @@ function handlePollGet(req, res, url) {
     return;
   }
   const timeout = parseInt(url.searchParams.get('timeout') || DEFAULT_POLL_TIMEOUT, 10);
-  if (state.pendingEvents.length > 0) {
+  const leaseMs = parseInt(url.searchParams.get('leaseMs') || '30000', 10);
+  const available = findAvailablePendingEvent();
+  if (available) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(state.pendingEvents.shift()));
+    res.end(JSON.stringify(leaseEvent(available, leaseMs)));
     return;
   }
+  const poll = { resolve, leaseMs };
   const timer = setTimeout(() => {
-    const idx = state.pendingPolls.indexOf(resolve);
+    const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ type: 'timeout' }));
@@ -508,10 +591,10 @@ function handlePollGet(req, res, url) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(event));
   }
-  state.pendingPolls.push(resolve);
+  state.pendingPolls.push(poll);
   req.on('close', () => {
     clearTimeout(timer);
-    const idx = state.pendingPolls.indexOf(resolve);
+    const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
   });
 }
@@ -531,6 +614,20 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
+    acknowledgePendingEvent(msg.id);
+    if (state.sessionStore && msg.id) {
+      try {
+        const eventType = msg.type === 'discard' || msg.type === 'discarded'
+          ? 'discarded'
+          : msg.type === 'complete'
+            ? 'complete'
+            : msg.type === 'error'
+              ? 'agent_error'
+              : 'agent_done';
+        state.sessionStore.appendEvent({ type: eventType, id: msg.id, file: msg.file, message: msg.message });
+      } catch { /* keep reply path best-effort; browser still needs SSE */ }
+    }
+    flushPendingPolls();
     // Forward the reply to the browser via SSE
     broadcast({ type: msg.type || 'done', id: msg.id, message: msg.message, file: msg.file, data: msg.data });
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -551,7 +648,7 @@ function shutdown() {
   }
   for (const res of state.sseClients) { try { res.end(); } catch {} }
   state.sseClients.clear();
-  for (const resolve of state.pendingPolls) resolve({ type: 'exit' });
+  for (const poll of state.pendingPolls) poll.resolve({ type: 'exit' });
   state.pendingPolls.length = 0;
   if (httpServer) httpServer.close();
   process.exit(0);
@@ -587,6 +684,7 @@ Endpoints:
   /events              SSE stream (server→browser) + POST (browser→server)
   /poll                Long-poll for agent CLI
   /source              Raw source file reader (no-HMR fallback)
+  /status              Durable recovery status (token-protected)
   /health              Health check`);
   process.exit(0);
 }
@@ -669,6 +767,8 @@ try {
 } catch {}
 
 state.token = randomUUID();
+state.sessionStore = createLiveSessionStore({ cwd: process.cwd() });
+restorePendingEventsFromStore();
 const portArg = args.find(a => a.startsWith('--port='));
 state.port = portArg ? parseInt(portArg.split('=')[1], 10) : await findOpenPort();
 // Annotation screenshots live in the project root so the agent's Read tool
@@ -678,8 +778,8 @@ const annotRoot = path.join(process.cwd(), '.impeccable-live', 'annotations');
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, livePath } = loadBrowserScripts();
-httpServer = http.createServer(createRequestHandler({ detectScript, livePath }));
+const { detectScript, sessionPath, livePath } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   fs.writeFileSync(LIVE_PID_FILE, JSON.stringify({ pid: process.pid, port: state.port, token: state.token }));

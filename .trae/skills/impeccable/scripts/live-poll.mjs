@@ -31,6 +31,18 @@ function readServerInfo() {
   }
 }
 
+async function postReply(base, token, { id, type, message, file }) {
+  const res = await fetch(`${base}/poll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, id, type, message, file }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
 export async function pollCli() {
   const args = process.argv.slice(2);
 
@@ -69,23 +81,7 @@ Options:
     }
 
     try {
-      const res = await fetch(`${base}/poll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: info.token,
-          id,
-          type: status,
-          message,
-          file: filePath,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        console.error(`Reply failed (${res.status}):`, body.error || res.statusText);
-        process.exit(1);
-      }
+      await postReply(base, info.token, { id, type: status, message, file: filePath });
 
       // Success — silent exit (agent doesn't need output for replies)
     } catch (err) {
@@ -158,6 +154,21 @@ Options:
       } catch (err) {
         event._acceptResult = { handled: false, error: err.message };
       }
+
+      const completionType = event._acceptResult?.handled === true
+        ? (event.type === 'discard' ? 'discarded' : 'complete')
+        : 'error';
+      try {
+        await postReply(base, info.token, {
+          id: event.id,
+          type: completionType,
+          message: event._acceptResult?.error,
+          file: event._acceptResult?.file,
+        });
+      } catch (err) {
+        event._completionAck = { ok: false, error: err.message };
+      }
+      if (!event._completionAck) event._completionAck = { ok: true, type: completionType };
     }
 
     // Second signal path: stderr banner in case the agent parses stdout

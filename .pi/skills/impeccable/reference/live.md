@@ -12,8 +12,9 @@ Execute in order. No step skipped, no step reordered.
 2. Navigate to the URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). If you can't infer it confidently, tell the user once to open their dev/preview URL. Never use `serverPort` as that URL; it's the helper, not the app.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
 4. On `generate`: read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
-5. On `accept` / `discard`: the poll script already cleaned up; just poll again.
-6. On `exit`: run the cleanup at the bottom.
+5. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges durable completion (`complete` / `discarded`), and prints `_completionAck`; finish any carbonize cleanup before polling again.
+6. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
+7. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
@@ -43,12 +44,30 @@ LOOP:
   Read JSON; dispatch on "type"
 
   "generate"  → Handle Generate; reply done; LOOP
-  "accept"    → Handle Accept; LOOP
+  "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
   "discard"   → Handle Discard; LOOP
   "prefetch"  → Handle Prefetch; LOOP
   "timeout"   → LOOP
   "exit"      → break → Cleanup
 ```
+
+## Recovery commands
+
+The live helper persists an append-only journal under `.impeccable-live/sessions`. Browser checkpoints are advisory but durable; the journal is canonical.
+
+Use these commands when the chat was interrupted, polling was missed, the helper restarted, or the browser reloaded:
+
+```bash
+node .pi/skills/impeccable/scripts/live-status.mjs
+node .pi/skills/impeccable/scripts/live-resume.mjs --id SESSION_ID
+node .pi/skills/impeccable/scripts/live-complete.mjs --id SESSION_ID
+```
+
+- `live-status.mjs` prints connected helper state, active durable sessions, and queued pending events. It works even when the helper is down by reading the journal directly.
+- `live-resume.mjs` prints the active snapshot, pending event, checkpoint phase, visible variant, parameter values, and the next safe agent action.
+- `live-complete.mjs` is the canonical manual final acknowledgement. Use it only after you have verified cleanup is complete and no further poll acknowledgement will happen automatically.
+
+Server restart rule: start `live-server.mjs` again, then poll. Startup requeues unacknowledged pending events from the journal, so do not ask the user to click Go again unless `live-resume.mjs` says no active session exists.
 
 ## Handle `generate`
 
@@ -88,7 +107,12 @@ The helper searches ID first, then classes, then tag + class combo. If `event.pa
 
 If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
-Output on success: `{ file, insertLine, commentSyntax }`.
+Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples }`.
+
+`styleMode` controls how preview CSS must be authored:
+
+- `scoped`: default for HTML, JSX, Vue, and Svelte. Use a normal `<style data-impeccable-css="SESSION_ID">` block with `@scope ([data-impeccable-variant="N"])` rules.
+- `astro-global-prefixed`: required for `.astro` files. Use `<style is:inline data-impeccable-css="SESSION_ID">` and explicit `[data-impeccable-variant="N"]` selector prefixes. `is:inline` keeps the temporary preview CSS out of Astro's component-style transform; the variant prefixes provide isolation. Do not put raw `@scope` rules into Astro component styles; Astro hoists/transforms component CSS and can scope the preview selectors away from the generated variant DOM.
 
 **Fallback errors.** Wrap only writes into files it judges to be source (tracked by git, not marked GENERATED, not listed in config's `generatedFiles`). If it can't land on a source file, it errors without writing; accepting a variant into a generated file is silent data loss. Three shapes:
 
@@ -208,7 +232,9 @@ When the prompt and PRODUCT.md anti-references conflict (the prompt asks for X, 
 
 Complete HTML replacement of the original element for each variant, not a CSS-only patch. Consider the element's context (computed styles, parent structure, CSS variables from `event.element`).
 
-Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Colocate scoped CSS as a `<style>` tag inside the variant wrapper; `<style>` works anywhere in modern browsers and this ensures CSS and HTML arrive atomically (no FOUC).
+Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Colocate CSS as a `<style>` tag inside the variant wrapper; `<style>` works anywhere in modern browsers and this ensures CSS and HTML arrive atomically (no FOUC).
+
+For normal `styleMode: "scoped"` files:
 
 ```html
 <!-- Variants: insert below this line -->
@@ -227,9 +253,31 @@ Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Col
 </div>
 ```
 
+For `styleMode: "astro-global-prefixed"` files:
+
+```astro
+<!-- Variants: insert below this line -->
+<style is:inline data-impeccable-css="SESSION_ID">
+  [data-impeccable-variant="1"] .variant-class { ... }
+  [data-impeccable-variant="2"] .variant-class { ... }
+  [data-impeccable-variant="3"] .variant-class { ... }
+</style>
+<div data-impeccable-variant="1">
+  <!-- variant 1: full element replacement (single top-level element) -->
+</div>
+<div data-impeccable-variant="2" style="display: none">
+  <!-- variant 2: full element replacement -->
+</div>
+<div data-impeccable-variant="3" style="display: none">
+  <!-- variant 3: full element replacement -->
+</div>
+```
+
+Astro rule: never use raw `@scope ([data-impeccable-variant="N"])` inside `.astro` live preview styles. Prefix every selector with `[data-impeccable-variant="N"]` and add `is:inline` to the temporary style tag so Astro does not transform the preview CSS.
+
 **Each variant div contains exactly one top-level element: the full replacement for the original.** Use the same tag as the original (e.g. `<section>` if the user picked a `<section>`). Loose siblings (heading + paragraph + div as direct children of the variant div) break the outline tracking and the accept flow, which both assume one child.
 
-The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no scoped CSS, omit the `<style>` tag entirely. Use `@scope` for CSS isolation (Chrome 118+ / Firefox 128+ / Safari 17.4+).
+The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no scoped CSS, omit the `<style>` tag entirely. Use `@scope` for CSS isolation in non-Astro files (Chrome 118+ / Firefox 128+ / Safari 17.4+).
 
 One edit, all variants; the browser's MutationObserver picks everything up in one pass.
 
@@ -369,8 +417,9 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 ## Handle `accept`
 
-Event: `{id, variantId, _acceptResult}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically; the browser DOM is already updated.
+Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically, then acknowledged durable completion to the helper. The browser DOM is already updated.
 
+- `_completionAck.ok !== true`: do not poll yet. Run `live-status.mjs` / `live-resume.mjs`, complete the cleanup manually if needed, then run `live-complete.mjs --id EVENT_ID`.
 - `_acceptResult.handled: true` and `carbonize: false`: nothing to do. Poll again.
 - `_acceptResult.handled: true` and `carbonize: true`: **post-accept cleanup is required before the next poll.** See the "Required after accept (carbonize)" section below. The `event._acceptResult.todo` field and a stderr banner both list the steps explicitly; neither is decorative.
 - `_acceptResult.handled: false, mode: "fallback"`: the session lived in a generated file and the script refused to persist there. You've already written the accepted variant into true source during Handle fallback Step 3; just clean up the temporary wrapper in the served file if any, and poll again.
@@ -394,7 +443,7 @@ A background agent may be used for the rewrite, but the current thread is respon
 
 ## Handle `discard`
 
-Event: `{id, _acceptResult}`. The poll script already restored the original and removed all variant markers. Nothing to do. Poll again.
+Event: `{id, _acceptResult, _completionAck}`. The poll script already restored the original, removed all variant markers, and acknowledged `discarded` durable completion. Nothing to do unless `_completionAck.ok !== true`; in that case run `live-complete.mjs --id EVENT_ID --discarded`, then poll again.
 
 ## Handle `prefetch`
 

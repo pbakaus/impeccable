@@ -224,10 +224,20 @@ for (const { name, fixture } of fixtures) {
         const sourceFile = await locateSessionFile(tmp);
         const after = readFileSync(sourceFile, 'utf-8');
         assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
-        assert.match(after, /<style data-impeccable-css="/, 'colocated <style> block present');
-        assert.match(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'scoped CSS for variant 1');
-        assert.match(after, /@scope \(\[data-impeccable-variant="2"\]\)/, 'scoped CSS for variant 2');
-        assert.match(after, /@scope \(\[data-impeccable-variant="3"\]\)/, 'scoped CSS for variant 3');
+        if (sourceFile.endsWith('.astro')) {
+          assert.match(after, /<style is:inline data-impeccable-css="/, 'Astro live CSS uses an inline compiler-bypassing style block');
+          assert.match(
+            after,
+            /\[data-impeccable-variant="1"\]\s*>\s*h1/,
+            'event=live_e2e.astro_css_prefix actor=agent operation=write_variants risk=astro_scopes_preview_css_away expected=variant-prefixed global selector actual=missing suggestion=inspect fake agent styleMode handling',
+          );
+          assert.doesNotMatch(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'Astro live CSS does not use raw @scope');
+        } else {
+          assert.match(after, /<style data-impeccable-css="/, 'colocated <style> block present');
+          assert.match(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'scoped CSS for variant 1');
+          assert.match(after, /@scope \(\[data-impeccable-variant="2"\]\)/, 'scoped CSS for variant 2');
+          assert.match(after, /@scope \(\[data-impeccable-variant="3"\]\)/, 'scoped CSS for variant 3');
+        }
         // Param manifest assertions are scoped to fake-agent mode. The fake
         // agent deterministically emits one param per variant covering all
         // three kinds; the LLM agent is non-deterministic and may legitimately
@@ -244,6 +254,21 @@ for (const { name, fixture } of fixtures) {
         await clickNext(page);
         const visible = await getVisibleVariant(page);
         assert.equal(visible, 2, 'variant 2 visible after one Next');
+        if (agentMode === 'fake') {
+          await page.waitForFunction(() => {
+            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
+            return h1 && getComputedStyle(h1).fontWeight === '900';
+          }, null, { timeout: 5_000 }).catch(() => {});
+          const variantWeight = await page.evaluate(() => {
+            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
+            return h1 ? getComputedStyle(h1).fontWeight : null;
+          });
+          assert.equal(
+            variantWeight,
+            '900',
+            'event=live_e2e.variant_css_applied actor=browser operation=render_visible_variant risk=unstyled_live_preview expected=font-weight 900 actual=' + variantWeight + ' suggestion=inspect live CSS style mode and selector shape',
+          );
+        }
 
         // 7. Accept variant 2
         t.diagnostic('Accepting variant 2');

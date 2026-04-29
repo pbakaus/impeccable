@@ -185,6 +185,7 @@ The agent should insert variant HTML at insertLine.`);
 
   const { startLine, endLine } = match;
   const commentSyntax = detectCommentSyntax(targetFile);
+  const styleMode = detectStyleMode(targetFile);
   const isJsx = commentSyntax.open === '{/*';
   const indent = lines[startLine].match(/^(\s*)/)[1];
 
@@ -269,6 +270,9 @@ The agent should insert variant HTML at insertLine.`);
     endLine: startLine + wrapperLines.length + (originalLines.length - 1), // 1-indexed
     insertLine: insertLine + 1,     // 1-indexed: where variants go
     commentSyntax: commentSyntax,
+    styleMode: styleMode.mode,
+    styleTag: styleMode.styleTag,
+    cssSelectorPrefixExamples: buildCssSelectorPrefixExamples(styleMode.mode, count),
     originalLineCount: originalLines.length,
   }));
 }
@@ -333,6 +337,25 @@ function detectCommentSyntax(filePath) {
   }
   // HTML, Vue, Svelte, Astro all use HTML comments
   return { open: '<!--', close: '-->' };
+}
+
+function detectStyleMode(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.astro') {
+    return {
+      mode: 'astro-global-prefixed',
+      styleTag: '<style is:inline data-impeccable-css="SESSION_ID">',
+    };
+  }
+  return {
+    mode: 'scoped',
+    styleTag: '<style data-impeccable-css="SESSION_ID">',
+  };
+}
+
+function buildCssSelectorPrefixExamples(styleMode, count) {
+  if (styleMode !== 'astro-global-prefixed') return [];
+  return Array.from({ length: count }, (_, i) => `[data-impeccable-variant="${i + 1}"]`);
 }
 
 /**
