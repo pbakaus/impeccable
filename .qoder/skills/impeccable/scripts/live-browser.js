@@ -2622,11 +2622,15 @@
       if (!isTransparentColor(cs.backgroundColor)) return cs.backgroundColor;
       node = node.parentElement;
     }
-    return (
-      getComputedStyle(document.body).backgroundColor ||
-      getComputedStyle(document.documentElement).backgroundColor ||
-      '#ffffff'
-    );
+    // The walk already passed through <body> and <html>; if they had been
+    // opaque we would have returned. Falling through with the previous
+    // `getComputedStyle(body).backgroundColor || …` chain is a trap: that
+    // call returns the literal string `"rgba(0, 0, 0, 0)"` for a page that
+    // never set its own bg, which is truthy and short-circuits the chain to
+    // transparent-black — modern-screenshot then renders the capture on a
+    // black canvas and the shader overlay flashes solid black during load.
+    // The browser canvas defaults to white, so we do too.
+    return '#ffffff';
   }
 
   // Capture the element (with current annotations baked in) and return a PNG

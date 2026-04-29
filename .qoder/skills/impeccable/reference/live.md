@@ -74,7 +74,7 @@ Reading annotations precisely:
 ### 2. Wrap the element
 
 ```bash
-node .qoder/skills/impeccable/scripts/live-wrap.mjs --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div"
+node .qoder/skills/impeccable/scripts/live-wrap.mjs --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div" --text "TEXT_SNIPPET"
 ```
 
 Flag mapping — keep them separate, don't collapse into `--query`:
@@ -82,8 +82,11 @@ Flag mapping — keep them separate, don't collapse into `--query`:
 - `--element-id` ← `event.element.id`
 - `--classes` ← `event.element.classes` joined with commas
 - `--tag` ← `event.element.tagName`
+- `--text` ← first ~80 chars of `event.element.textContent` (trim, single-line). **Pass this every call.** When the picked element shares classes + tag with sibling components (a list of `<Card>`s, repeating sections), this is what disambiguates which branch in source to wrap. Without it, wrap silently lands on the first match and may rewrite the wrong element.
 
 The helper searches ID first, then classes, then tag + class combo. If `event.pageUrl` implies the file (e.g. `/` is usually `index.html`), pass `--file PATH` to skip the search. `--query` is a fallback for raw text search only — do not use it for normal element lookups.
+
+If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"` — read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
 Output on success: `{ file, insertLine, commentSyntax }`.
 
@@ -181,6 +184,25 @@ The first variant has no `display: none` (visible by default). All others do. If
 
 One edit, all variants — the browser's MutationObserver picks everything up in one pass.
 
+**Author every `:scope` rule with a descendant combinator.** The `@scope` boundary is the **variant wrapper `<div data-impeccable-variant="N">`**, not the element you're designing. A bare `:scope { background: cream; }` styles the wrapper, not the inner replacement, so the cream lands on a `display: contents` shell while the actual element keeps page defaults. Always step in: `:scope > .card`, `:scope > section`, `:scope .hero-title`, etc. The fake test agent's CSS in `tests/live-e2e/agent.mjs` is a faithful template — every rule starts `:scope > ...`.
+
+**JSX / TSX target files.** Wrap `<style>` content in a template literal so the CSS `{` / `}` aren't parsed as JSX expressions, and use `className=` / `style={{…}}` on every variant element. Keep `data-impeccable-*` attributes as-is — they're plain strings:
+
+```tsx
+<style data-impeccable-css="SESSION_ID">{`
+  @scope ([data-impeccable-variant="1"]) { ... }
+  @scope ([data-impeccable-variant="2"]) { ... }
+`}</style>
+<div data-impeccable-variant="1">
+  {/* variant 1 */}
+</div>
+<div data-impeccable-variant="2" style={{ display: 'none' }}>
+  {/* variant 2 */}
+</div>
+```
+
+The wrap script already gives you a single-rooted JSX wrapper — a `<div data-impeccable-variants="…">` outer element with the marker comments tucked inside. Drop the variants block above into the "Variants: insert below this line" comment and the source stays valid TSX.
+
 ### 7. Parameters (composition-sized, 0–4 per variant)
 
 Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement. The browser docks a small panel to the right of the outline with one control per parameter. The user drags/clicks and sees instant feedback: there is zero regeneration cost because the knob toggles a CSS variable or data attribute that the variant's scoped CSS is already authored against.
@@ -245,6 +267,16 @@ node .qoder/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --file
 `RELATIVE_PATH` is relative to project root (`public/index.html`, `src/App.tsx`, etc.) — the browser fetches source directly if the dev server lacks HMR.
 
 Then run `live-poll.mjs` again immediately.
+
+### Aborting an in-flight session
+
+If wrap or generation fails after the browser has flipped to GENERATING (e.g. wrap landed on the wrong source branch and you've already reverted it, or generation hit an unrecoverable error), tell the **browser** so its bar resets to PICKING:
+
+```bash
+node .qoder/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "Short reason"
+```
+
+Don't run `live-accept --discard` for this — that's a pure file mutator, the browser doesn't see it, and the bar gets stuck on the GENERATING dots forever (the user has to refresh). `--discard` is only correct when the **browser** initiated the discard (user clicked ✕ during CYCLING) and the agent is just running source-side cleanup the browser already triggered.
 
 ## Handle fallback
 

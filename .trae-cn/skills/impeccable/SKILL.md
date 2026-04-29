@@ -34,7 +34,7 @@ Other harnesses should follow the same checklist when they can expose this state
 
 ### 1. Context gathering
 
-Two files at the project root, case-insensitive:
+Two files, case-insensitive. The loader looks at the project root by default and falls back to `.agents/context/` and `docs/` if the root is clean. Override with `IMPECCABLE_CONTEXT_DIR=path/to/dir` (absolute or relative to cwd).
 
 - **PRODUCT.md** — required. Users, brand, tone, anti-references, strategic principles.
 - **DESIGN.md** — optional, strongly recommended. Colors, typography, elevation, components.
@@ -45,7 +45,7 @@ Load both in one call:
 node .trae-cn/skills/impeccable/scripts/load-context.mjs
 ```
 
-Consume the full JSON output. Never pipe through `head`, `tail`, `grep`, or `jq`.
+Consume the full JSON output. Never pipe through `head`, `tail`, `grep`, or `jq`. The output's `contextDir` field tells you where the files were resolved from.
 
 If the output is already in this session's conversation history, don't re-run. Exceptions requiring a fresh load: you just ran `/impeccable teach` or `/impeccable document` (they rewrite the files), or the user manually edited one.
 

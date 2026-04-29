@@ -21,11 +21,16 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
+import { resolveContextDir } from './load-context.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PID file in the project root so both the server and agent can find it
 // predictably (os.tmpdir() varies across platforms).
 const LIVE_PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
+// PRODUCT.md / DESIGN.md / DESIGN.json live wherever load-context.mjs resolves.
+// Keeps live-server in sync with the loader when users keep the docs in
+// .agents/context/, docs/, or a path set via IMPECCABLE_CONTEXT_DIR.
+const CONTEXT_DIR = resolveContextDir(process.cwd());
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
 
@@ -113,7 +118,7 @@ function hasProjectContext() {
   // concern, surfaced by the design panel's own empty state. Legacy
   // .impeccable.md is auto-migrated to PRODUCT.md by load-context.mjs.
   try {
-    fs.accessSync(path.join(process.cwd(), 'PRODUCT.md'), fs.constants.R_OK);
+    fs.accessSync(path.join(CONTEXT_DIR, 'PRODUCT.md'), fs.constants.R_OK);
     return true;
   } catch { return false; }
 }
@@ -315,8 +320,8 @@ function createRequestHandler({ detectScript, livePath }) {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
 
-      const mdPath = path.join(process.cwd(), 'DESIGN.md');
-      const jsonPath = path.join(process.cwd(), 'DESIGN.json');
+      const mdPath = path.join(CONTEXT_DIR, 'DESIGN.md');
+      const jsonPath = path.join(CONTEXT_DIR, 'DESIGN.json');
       const mdStat = statOrNull(mdPath);
       const jsonStat = statOrNull(jsonPath);
 

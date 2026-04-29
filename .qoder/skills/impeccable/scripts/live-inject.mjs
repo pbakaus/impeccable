@@ -388,7 +388,16 @@ export function patchCspMeta(content, port) {
 
     const newContentAttr = `content=${contentAttr.quote}${patched}${contentAttr.quote}`;
     const marker = `${CSP_MARKER_ATTR}="${Buffer.from(original, 'utf-8').toString('base64')}"`;
-    const newAttrs = attrs.replace(contentAttr.full, newContentAttr) + ' ' + marker;
+    // The tagRe captures any whitespace between the last attribute and the
+    // closing `/>` as part of `attrs`. Naively appending ` ${marker}` after
+    // a replace would land it BEFORE that trailing space, leaving a double
+    // space inside attrs and clobbering the space before `/>`. Split off
+    // the trailing whitespace, splice the marker into the attribute body,
+    // and re-append the original trailing whitespace so a self-closing
+    // `<meta … />` round-trips byte-for-byte.
+    const trailingWs = (attrs.match(/[ \t]*$/) || [''])[0];
+    const attrsBody = attrs.slice(0, attrs.length - trailingWs.length);
+    const newAttrs = attrsBody.replace(contentAttr.full, newContentAttr) + ' ' + marker + trailingWs;
     const newTag = tag.full.replace(attrs, newAttrs);
 
     result = result.slice(0, tag.start) + newTag + result.slice(tag.end);

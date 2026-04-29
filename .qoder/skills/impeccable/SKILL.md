@@ -1,7 +1,7 @@
 ---
 name: impeccable
 description: Use when the user wants to design, redesign, shape, critique, audit, polish, clarify, distill, harden, optimize, adapt, animate, colorize, extract, or otherwise improve a frontend interface. Covers websites, landing pages, dashboards, product UI, app shells, components, forms, settings, onboarding, and empty states. Handles UX review, visual hierarchy, information architecture, cognitive load, accessibility, performance, responsive behavior, theming, anti-patterns, typography, fonts, spacing, layout, alignment, color, motion, micro-interactions, UX copy, error states, edge cases, i18n, and reusable design systems or tokens. Also use for bland designs that need to become bolder or more delightful, loud designs that should become quieter, live browser iteration on UI elements, or ambitious visual effects that should feel technically extraordinary. Not for backend-only or non-UI tasks.
-version: 3.0.4
+version: 3.0.5
 user-invocable: true
 argument-hint: "[craft|shape · audit|critique · animate|bolder|colorize|delight|layout|overdrive|quieter|typeset · adapt|clarify|distill · harden|onboard|optimize|polish · teach|document|extract|live] [target]"
 license: Apache 2.0. Based on Anthropic's frontend-design skill. See NOTICE.md for attribution.
@@ -36,7 +36,7 @@ Other harnesses should follow the same checklist when they can expose this state
 
 ### 1. Context gathering
 
-Two files at the project root, case-insensitive:
+Two files, case-insensitive. The loader looks at the project root by default and falls back to `.agents/context/` and `docs/` if the root is clean. Override with `IMPECCABLE_CONTEXT_DIR=path/to/dir` (absolute or relative to cwd).
 
 - **PRODUCT.md** — required. Users, brand, tone, anti-references, strategic principles.
 - **DESIGN.md** — optional, strongly recommended. Colors, typography, elevation, components.
@@ -47,7 +47,7 @@ Load both in one call:
 node .qoder/skills/impeccable/scripts/load-context.mjs
 ```
 
-Consume the full JSON output. Never pipe through `head`, `tail`, `grep`, or `jq`.
+Consume the full JSON output. Never pipe through `head`, `tail`, `grep`, or `jq`. The output's `contextDir` field tells you where the files were resolved from.
 
 If the output is already in this session's conversation history, don't re-run. Exceptions requiring a fresh load: you just ran `/impeccable teach` or `/impeccable document` (they rewrite the files), or the user manually edited one.
 
