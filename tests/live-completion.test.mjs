@@ -20,6 +20,14 @@ describe('live completion type classification', () => {
     );
   });
 
+  it('keeps carbonize-required accepts recoverable until cleanup is completed', () => {
+    assert.equal(
+      completionTypeForAcceptResult('accept', { handled: true, carbonize: true }),
+      'agent_done',
+      'event=live_poll.carbonize_completion actor=agent operation=accept_with_carbonize risk=carbonize_session_marked_completed_before_cleanup expected=agent_done actual=complete',
+    );
+  });
+
   it('classifies handled accept/discard and real failures explicitly', () => {
     assert.equal(completionTypeForAcceptResult('accept', { handled: true }), 'complete');
     assert.equal(completionTypeForAcceptResult('discard', { handled: true }), 'discarded');

@@ -33,9 +33,11 @@ export async function resumeCli() {
   const pending = snapshot.pendingEvent || null;
   const nextAction = pending
     ? `Run live-poll.mjs, handle ${pending.type} ${pending.id}, then acknowledge with live-poll.mjs --reply ${pending.id} done.`
-    : snapshot.phase === 'accept_requested'
-      ? `Run live-complete.mjs --id ${snapshot.id} after verifying the accepted variant is written.`
-      : `Inspect ${snapshot.id}; no pending agent event is currently queued.`;
+    : snapshot.phase === 'carbonize_required'
+      ? `Finish carbonize cleanup${snapshot.sourceFile ? ` in ${snapshot.sourceFile}` : ''}, then run live-complete.mjs --id ${snapshot.id}.`
+      : snapshot.phase === 'accept_requested'
+        ? `Run live-complete.mjs --id ${snapshot.id} after verifying the accepted variant is written.`
+        : `Inspect ${snapshot.id}; no pending agent event is currently queued.`;
 
   console.log(JSON.stringify({ active: true, snapshot, pendingEvent: pending, nextAction }, null, 2));
 }

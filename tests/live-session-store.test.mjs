@@ -126,6 +126,27 @@ describe('live-session-store', () => {
     );
   });
 
+  it('keeps carbonize-required accepted sessions active until explicit completion', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'carbonize-session' });
+    store.appendEvent({
+      type: 'accept',
+      id: 'carbonize-session',
+      variantId: '2',
+      paramValues: { tone: 'sharp' },
+    });
+    store.appendEvent({ type: 'agent_done', id: 'carbonize-session', file: 'src/App.jsx', carbonize: true });
+
+    const snapshot = store.getSnapshot('carbonize-session');
+    assert.equal(
+      snapshot.phase,
+      'carbonize_required',
+      'event=live_session_store.carbonize_required actor=agent operation=accept_ack risk=carbonize_session_hidden_from_recovery expected=carbonize_required actual=' + snapshot.phase,
+    );
+    assert.equal(snapshot.sourceFile, 'src/App.jsx');
+    assert.equal(snapshot.pendingEvent, null);
+    assert.equal(store.listActiveSessions().some((s) => s.id === 'carbonize-session'), true);
+  });
+
   it('clears pending events when an agent error is acknowledged', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'error-session' });
     store.appendEvent({

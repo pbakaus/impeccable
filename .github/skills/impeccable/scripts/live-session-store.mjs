@@ -159,11 +159,18 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       break;
     case 'variants_ready':
     case 'agent_done':
-      next.phase = 'variants_ready';
+      next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';
       next.sourceFile = event.file ?? next.sourceFile;
       next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants ?? next.expectedVariants);
       next.pendingEventSeq = null;
       next.pendingEvent = null;
+      if (event.carbonize === true) {
+        next.diagnostics.push({
+          error: 'carbonize_cleanup_required',
+          file: event.file || null,
+          message: 'Accepted variant still has carbonize markers that must be folded into source CSS.',
+        });
+      }
       break;
     case 'checkpoint':
       if ((event.revision ?? 0) >= (next.checkpointRevision ?? 0)) {

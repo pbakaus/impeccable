@@ -163,6 +163,7 @@ Options:
           type: completionType,
           message: event._acceptResult?.error,
           file: event._acceptResult?.file,
+          data: event._acceptResult?.carbonize === true ? { carbonize: true } : undefined,
         });
       } catch (err) {
         event._completionAck = { ok: false, error: err.message };

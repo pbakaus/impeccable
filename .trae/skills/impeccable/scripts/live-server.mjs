@@ -649,7 +649,13 @@ function handlePollPost(req, res) {
             : msg.type === 'error'
               ? 'agent_error'
               : 'agent_done';
-        state.sessionStore.appendEvent({ type: eventType, id: msg.id, file: msg.file, message: msg.message });
+        state.sessionStore.appendEvent({
+          type: eventType,
+          id: msg.id,
+          file: msg.file,
+          message: msg.message,
+          carbonize: msg.data?.carbonize === true,
+        });
       } catch { /* keep reply path best-effort; browser still needs SSE */ }
     }
     flushPendingPolls();

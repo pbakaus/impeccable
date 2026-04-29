@@ -2260,7 +2260,7 @@
     state = currentSessionId ? 'GENERATING' : 'IDLE';
   }
 
-  function sendEvent(msg) {
+  function sendEvent(msg, opts) {
     msg.token = TOKEN;
     return fetch('http://localhost:' + PORT + '/events', {
       method: 'POST',
@@ -2268,7 +2268,8 @@
       body: JSON.stringify(msg),
     }).catch(err => {
       console.error('[impeccable] Failed to send event:', err);
-      throw err;
+      if (opts && opts.throwOnError) throw err;
+      return null;
     });
   }
 
@@ -2976,7 +2977,7 @@ void main() {
     state = 'SAVING';
     updateBarContent('saving');
 
-    sendEvent(acceptPayload)
+    sendEvent(acceptPayload, { throwOnError: true })
       .then(() => {
         markSessionHandled();
         confirmAcceptAfterReceipt();
@@ -3029,7 +3030,7 @@ void main() {
 
   function handleDiscard() {
     if (!currentSessionId) return;
-    sendEvent({ type: 'discard', id: currentSessionId })
+    sendEvent({ type: 'discard', id: currentSessionId }, { throwOnError: true })
       .then(() => {
         markSessionHandled();
         cleanup();

@@ -48,6 +48,21 @@ describe('live recovery CLI commands', () => {
     );
   }));
 
+  it('resumes carbonize-required sessions with a cleanup-specific next action', () => withTempProject((cwd) => {
+    const store = createLiveSessionStore({ cwd });
+    store.appendEvent({ type: 'accept', id: 'cli-carbonize-1', variantId: '1' });
+    store.appendEvent({ type: 'agent_done', id: 'cli-carbonize-1', file: 'src/App.jsx', carbonize: true });
+
+    const resume = runJson(RESUME_SCRIPT, ['--id', 'cli-carbonize-1'], cwd);
+    assert.equal(resume.active, true);
+    assert.equal(resume.snapshot.phase, 'carbonize_required');
+    assert.match(
+      resume.nextAction,
+      /Finish carbonize cleanup in src\/App\.jsx/,
+      'event=live_resume.carbonize_next_action actor=agent operation=recover_carbonize risk=carbonize_cleanup_hidden_after_accept expected=cleanup-specific action actual=' + resume.nextAction,
+    );
+  }));
+
   it('marks a session completed through the canonical completion command', () => withTempProject((cwd) => {
     const store = createLiveSessionStore({ cwd });
     store.appendEvent({ type: 'generate', id: 'cli-recover-3', action: 'impeccable', count: 1, pageUrl: '/', element: { outerHTML: '<p>Copy</p>' } });
