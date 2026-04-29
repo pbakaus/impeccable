@@ -32,11 +32,15 @@ function readServerInfo() {
   }
 }
 
-async function postReply(base, token, { id, type, message, file }) {
+export function buildPollReplyPayload(token, { id, type, message, file, data }) {
+  return { token, id, type, message, file, data };
+}
+
+async function postReply(base, token, reply) {
   const res = await fetch(`${base}/poll`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, id, type, message, file }),
+    body: JSON.stringify(buildPollReplyPayload(token, reply)),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
