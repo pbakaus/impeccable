@@ -130,6 +130,52 @@ describe('live-server integration', () => {
     assert.ok(data.error.includes('generate'));
   });
 
+  // Regression: ids reach `execFileSync` argv and DOM attribute selectors.
+  // Anything outside the strict generator pattern must be rejected before it
+  // can leak into a downstream child_process or selector.
+  it('POST /events rejects accept with shell metacharacters in id', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'accept',
+        id: '"; rm -rf /; #',
+        variantId: '0',
+      }),
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('id'));
+  });
+
+  it('POST /events rejects accept with non-numeric variantId', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'accept',
+        id: 'a1b2c3d4',
+        variantId: '0; touch /tmp/owned',
+      }),
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('variantId'));
+  });
+
+  it('POST /events rejects discard with malformed id', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, type: 'discard', id: 'not a uuid' }),
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('id'));
+  });
+
   it('POST /events accepts valid exit event', async () => {
     const res = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',
@@ -163,7 +209,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'test-e2e-1',
+        id: 'a1b2c3d4',
         action: 'bolder',
         count: 2,
         element: { outerHTML: '<div>test</div>', tagName: 'div' },
@@ -174,7 +220,7 @@ describe('live-server integration', () => {
     // Poll should resolve with the event
     const event = await pollPromise;
     assert.equal(event.type, 'generate');
-    assert.equal(event.id, 'test-e2e-1');
+    assert.equal(event.id, 'a1b2c3d4');
     assert.equal(event.action, 'bolder');
     assert.equal(event.count, 2);
   });
@@ -299,7 +345,7 @@ describe('live-server integration', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: server.token, type: 'generate',
-        id: 'annot-1', action: 'polish', count: 2,
+        id: 'aa11bb22', action: 'polish', count: 2,
         element: { outerHTML: '<div>x</div>', tagName: 'div' },
         screenshotPath: '/tmp/fake.png',
         comments: [{ x: 10, y: 20, text: 'tighten this' }],
@@ -310,7 +356,7 @@ describe('live-server integration', () => {
 
     const pollRes = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=2000`);
     const event = await pollRes.json();
-    assert.equal(event.id, 'annot-1');
+    assert.equal(event.id, 'aa11bb22');
     assert.equal(event.screenshotPath, '/tmp/fake.png');
     assert.equal(event.comments.length, 1);
     assert.equal(event.strokes.length, 1);
@@ -321,7 +367,7 @@ describe('live-server integration', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: server.token, type: 'generate',
-        id: 'annot-bad', action: 'polish', count: 2,
+        id: 'cc33dd44', action: 'polish', count: 2,
         element: { outerHTML: '<div>x</div>', tagName: 'div' },
         comments: 'not-an-array',
       }),

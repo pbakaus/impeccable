@@ -131,11 +131,21 @@ const VISUAL_ACTIONS = [
   'colorize', 'layout', 'adapt', 'animate', 'delight', 'overdrive',
 ];
 
+// Browser generates ids via crypto.randomUUID().slice(0, 8) (8 hex chars)
+// and variantIds via String(small integer). Restrict to those shapes so
+// any value that reaches a downstream child_process or DOM selector is
+// inert by construction.
+const ID_PATTERN = /^[0-9a-f]{8}$/;
+const VARIANT_ID_PATTERN = /^[0-9]{1,3}$/;
+
+function isValidId(v) { return typeof v === 'string' && ID_PATTERN.test(v); }
+function isValidVariantId(v) { return typeof v === 'string' && VARIANT_ID_PATTERN.test(v); }
+
 function validateEvent(msg) {
   if (!msg || typeof msg !== 'object' || !msg.type) return 'Missing or invalid message';
   switch (msg.type) {
     case 'generate':
-      if (!msg.id || typeof msg.id !== 'string') return 'generate: missing id';
+      if (!isValidId(msg.id)) return 'generate: missing or malformed id';
       if (!msg.action || !VISUAL_ACTIONS.includes(msg.action)) return 'generate: invalid action';
       if (!Number.isInteger(msg.count) || msg.count < 1 || msg.count > 8) return 'generate: count must be 1-8';
       if (!msg.element || !msg.element.outerHTML) return 'generate: missing element context';
@@ -145,8 +155,8 @@ function validateEvent(msg) {
       if (msg.strokes !== undefined && !Array.isArray(msg.strokes)) return 'generate: strokes must be array';
       return null;
     case 'accept':
-      if (!msg.id) return 'accept: missing id';
-      if (!msg.variantId) return 'accept: missing variantId';
+      if (!isValidId(msg.id)) return 'accept: missing or malformed id';
+      if (!isValidVariantId(msg.variantId)) return 'accept: missing or malformed variantId';
       if (msg.paramValues !== undefined) {
         if (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues)) {
           return 'accept: paramValues must be an object';
@@ -154,7 +164,7 @@ function validateEvent(msg) {
       }
       return null;
     case 'discard':
-      return msg.id ? null : 'discard: missing id';
+      return isValidId(msg.id) ? null : 'discard: missing or malformed id';
     case 'exit':
       return null;
     case 'prefetch':
