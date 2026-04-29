@@ -101,6 +101,28 @@ describe('live-session-store', () => {
     );
   });
 
+  it('clears pending events when an agent error is acknowledged', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'error-session' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'error-session',
+      action: 'polish',
+      count: 1,
+      element: { outerHTML: '<button>Try</button>', tagName: 'button' },
+    });
+    store.appendEvent({ type: 'agent_error', id: 'error-session', message: 'accept failed' });
+
+    const snapshot = store.getSnapshot('error-session');
+    assert.equal(snapshot.phase, 'agent_error');
+    assert.equal(snapshot.pendingEvent, null);
+    assert.equal(snapshot.pendingEventSeq, null);
+    assert.equal(
+      store.listActiveSessions()[0].pendingEvent,
+      null,
+      'event=live_session_store.agent_error_ack actor=agent operation=restart_replay risk=acknowledged_error_event_redelivered expected=null actual=' + JSON.stringify(store.listActiveSessions()[0].pendingEvent),
+    );
+  });
+
   it('keeps completed sessions auditable but excludes them from active sessions by default', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'done-session' });
     store.appendEvent({

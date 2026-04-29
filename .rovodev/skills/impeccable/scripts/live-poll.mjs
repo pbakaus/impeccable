@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { completionTypeForAcceptResult } from './live-completion.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -155,9 +156,7 @@ Options:
         event._acceptResult = { handled: false, error: err.message };
       }
 
-      const completionType = event._acceptResult?.handled === true
-        ? (event.type === 'discard' ? 'discarded' : 'complete')
-        : 'error';
+      const completionType = completionTypeForAcceptResult(event.type, event._acceptResult);
       try {
         await postReply(base, info.token, {
           id: event.id,

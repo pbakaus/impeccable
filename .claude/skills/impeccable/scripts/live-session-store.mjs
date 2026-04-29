@@ -202,6 +202,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       break;
     case 'agent_error':
       next.phase = 'agent_error';
+      next.pendingEventSeq = null;
+      next.pendingEvent = null;
       next.diagnostics.push({ error: 'agent_error', message: event.message || 'unknown agent error' });
       break;
     default:
