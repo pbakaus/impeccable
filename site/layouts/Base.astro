@@ -9,6 +9,12 @@ interface Props {
   canonicalPath?: string;
   bodyClass?: string;
   noIndex?: boolean;
+  mainId?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  twitterSite?: string;
+  twitterCreator?: string;
 }
 
 const {
@@ -18,6 +24,12 @@ const {
   canonicalPath,
   bodyClass,
   noIndex = false,
+  mainId = 'main',
+  ogTitle,
+  ogDescription,
+  ogImage,
+  twitterSite,
+  twitterCreator,
 } = Astro.props;
 
 const canonical = canonicalPath
@@ -35,16 +47,40 @@ const canonical = canonicalPath
   <meta name="theme-color" content="#fafafa">
   {noIndex && <meta name="robots" content="noindex">}
   {canonical && <link rel="canonical" href={canonical}>}
+
+  {ogTitle && (
+    <>
+      <meta property="og:type" content="website">
+      <meta property="og:url" content={canonical || 'https://impeccable.style'}>
+      <meta property="og:title" content={ogTitle}>
+      <meta property="og:description" content={ogDescription || description}>
+      {ogImage && <meta property="og:image" content={ogImage}>}
+    </>
+  )}
+
+  {twitterSite && (
+    <>
+      <meta name="twitter:card" content="summary_large_image">
+      <meta name="twitter:site" content={twitterSite}>
+      {twitterCreator && <meta name="twitter:creator" content={twitterCreator}>}
+      <meta name="twitter:title" content={ogTitle || title}>
+      <meta name="twitter:description" content={ogDescription || description}>
+      {ogImage && <meta name="twitter:image" content={ogImage}>}
+    </>
+  )}
+
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <slot name="head" />
 </head>
 <body class={bodyClass}>
-  <a href="#main" class="skip-link">Skip to content</a>
+  <a href={`#${mainId}`} class="skip-link">Skip to content</a>
+  <slot name="before-header" />
   <Header activeNav={activeNav} />
-  <main id="main">
+  <slot name="after-header" />
+  <main id={mainId}>
     <slot />
   </main>
   <Footer />
