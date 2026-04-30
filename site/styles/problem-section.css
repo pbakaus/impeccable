@@ -1,0 +1,121 @@
+/**
+ * Problem Section - Split Screen Comparison
+ * Interactive before/after comparison with angled divider
+ */
+
+/* Subtle grid background for the container */
+.split-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--color-mist) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-mist) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Hover hint */
+.split-container::after {
+  content: '← Drag →';
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ash);
+  background: var(--color-paper);
+  padding: 4px 12px;
+  border-radius: 4px;
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+  z-index: 10;
+}
+
+.split-container:hover::after {
+  opacity: 0;
+}
+
+/* Hover state for impeccable card */
+.split-after .impeccable-card {
+  box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+}
+
+/* Entry animation for the divider */
+@keyframes splitEntry {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) skewX(-10deg) scaleY(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) skewX(-10deg) scaleY(1);
+  }
+}
+
+.split-divider {
+  animation: splitEntry 0.6s var(--ease-out) 0.3s backwards;
+}
+
+/* Labels hover states */
+.split-label-item {
+  transition: color var(--duration-fast) var(--ease-out);
+  cursor: default;
+}
+
+.split-label-item:hover {
+  color: var(--color-text);
+}
+
+.split-label-item[data-point="after"]:hover .split-label-dot--accent {
+  transform: scale(1.3);
+}
+
+.split-label-dot {
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+/* Floating corner badges */
+.split-badge {
+  position: absolute;
+  top: 10px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.split-badge--before {
+  left: 10px;
+  color: var(--color-ash);
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+}
+
+.split-badge--after {
+  right: 10px;
+  color: var(--color-paper);
+  background: var(--color-accent);
+}
+
+/* Mobile adjustments */
+@media (hover: none) {
+  .split-container::after {
+    content: '← Swipe →';
+  }
+}
+
+@media (max-width: 600px) {
+  .split-label {
+    font-size: 0.5625rem;
+    padding: 4px 10px;
+  }
+}

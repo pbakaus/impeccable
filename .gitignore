@@ -73,3 +73,4 @@ public/slop/
 # Codex CLI consumes `.agents/skills/`; `.codex/` is not used. Ignore it so
 # local artifacts or old trees are never committed.
 .codex/
+.astro/

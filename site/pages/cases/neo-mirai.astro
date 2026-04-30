@@ -1,0 +1,105 @@
+---
+import Base from '../../layouts/Base.astro';
+import '../../styles/sub-pages.css';
+---
+
+<Base
+  title="Neo Mirai case study | Impeccable"
+  description="How Impeccable turned generated brand and hi-fi references into the shipped Neo Mirai conference website."
+  canonicalPath="/cases/neo-mirai"
+  bodyClass="sub-page neon-case-page"
+>
+
+  <section class="neon-case-hero">
+    <div class="neon-case-hero-copy">
+      <a class="neon-case-back" href="/designing#start">Designing with Impeccable</a>
+      <span class="neon-case-eyebrow">Case study</span>
+      <h1>Neo Mirai: generated mock to shipped page.</h1>
+      <p>A retro-futurist AI design conference became a real static site through the full Impeccable loop: visual reference, brand direction, implementation, asset regeneration, responsive fixes, animation polish, and browser verification.</p>
+      <div class="neon-case-actions">
+        <a class="neon-case-primary" href="/neo-mirai/">Open the live build</a>
+        <a class="neon-case-secondary" href="/docs/craft">Read the craft docs</a>
+      </div>
+    </div>
+    <a class="neon-case-hero-shot" href="/neo-mirai/" aria-label="Open the Neo Mirai live build">
+      <img src="/assets/cases/neo-mirai/live-fold.png" alt="The shipped Neo Mirai conference website hero and agenda, showing a warm retro-futurist Tokyo skyline and large NEO MIRAI headline." width="1440" height="1100">
+    </a>
+  </section>
+
+  <section class="neon-case-strip" aria-label="From generated references to shipped website">
+    <figure>
+      <span>01 &middot; Visualize</span>
+      <img src="/assets/openai_image_2_hifi.jpg" alt="Generated hi-fi website mock for the Neo Mirai conference page." loading="lazy" width="864" height="1821">
+      <figcaption>Hi-fi north star. A concrete composition to build toward, not a paragraph to interpret.</figcaption>
+    </figure>
+    <figure>
+      <span>02 &middot; Shape</span>
+      <img src="/assets/openai_image_2_brand.jpg" alt="Generated Neo Mirai brand toolkit plate with palette, typography, symbols, and application mockups." loading="lazy" width="1536" height="1024">
+      <figcaption>Brand toolkit. Identity, palette, type, image language, and motion direction before code.</figcaption>
+    </figure>
+    <figure>
+      <span>03 &middot; Ship</span>
+      <a href="/neo-mirai/" aria-label="Open the Neo Mirai live build">
+        <img src="/assets/cases/neo-mirai/live-page.png" alt="Full-page screenshot of the implemented Neo Mirai website." loading="lazy" width="1440" height="3013">
+      </a>
+      <figcaption>Implemented page. Semantic HTML, responsive layout, regenerated assets, real states, and polish.</figcaption>
+    </figure>
+  </section>
+
+  <section class="neon-case-body">
+    <div class="neon-case-column">
+      <span class="neon-case-section-label">What changed</span>
+      <h2>The mock did not become a screenshot. It became a system.</h2>
+    </div>
+    <div class="neon-case-notes">
+      <article>
+        <h3>Composition matching</h3>
+        <p>The build preserved the mock's asymmetric rhythm: full-bleed hero artwork, dark agenda block, orange manifesto band, drifting installation grid, and structured ticket field.</p>
+      </article>
+      <article>
+        <h3>Asset regeneration</h3>
+        <p>Image-native pieces stayed image-native. The manifesto city, speaker portraits, pine overlay, and supporting illustrations were regenerated or isolated where raster detail mattered.</p>
+      </article>
+      <article>
+        <h3>Browser iteration</h3>
+        <p>The page was tested in the browser after each pass. Overlaps, bad crops, active nav state, speaker carousel behavior, mobile heights, and large-viewport balance were fixed visually.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="neon-case-details" aria-label="Mock and live page comparison">
+    <figure>
+      <img src="/assets/openai_image_2_hifi.jpg" alt="Generated hi-fi Neo Mirai page mock." loading="lazy" width="864" height="1821">
+      <figcaption><span>North-star mock</span> The reference image preserved the intended rhythm: full-bleed hero, dark agenda, speaker carousel, installation field, manifesto, and tickets.</figcaption>
+    </figure>
+    <figure>
+      <a href="/neo-mirai/" aria-label="Open the Neo Mirai live build">
+        <img src="/assets/cases/neo-mirai/live-page.png" alt="Full-page screenshot of the implemented Neo Mirai website." loading="lazy" width="1440" height="3013">
+      </a>
+      <figcaption><span>Live build</span> The shipped page keeps the same visual ambition while becoming responsive markup, real links, carousel controls, hover states, and browser-tested layout.</figcaption>
+    </figure>
+  </section>
+
+  <section class="neon-case-command">
+    <div>
+      <span class="neon-case-section-label">Reproduce the loop</span>
+      <h2>Use craft when the output has to feel designed.</h2>
+      <p><code>/impeccable craft</code> is the right command when a feature needs shaping, visual direction, implementation, and browser iteration in one run.</p>
+    </div>
+    <div class="code-block-wrap"><pre class="code-block"><code>/impeccable craft retro-futurist AI design conference website</code></pre><button class="code-block-copy" type="button" data-copy="/impeccable craft retro-futurist AI design conference website" aria-label="Copy to clipboard"></button></div>
+  </section>
+
+  <script is:inline>
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-copy]');
+      if (!button) return;
+      const text = button.getAttribute('data-copy');
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        button.classList.add('is-copied');
+        setTimeout(() => button.classList.remove('is-copied'), 1500);
+      }).catch(() => {});
+    });
+  </script>
+
+</Base>
