@@ -1274,7 +1274,9 @@ import Base from '../layouts/Base.astro';
     </section>
 
 <Fragment slot="scripts">
-  <script is:inline type="module" src="/app.js"></script>
+  <script>
+    import '../scripts/app.js';
+  </script>
 </Fragment>
 
 </Base>

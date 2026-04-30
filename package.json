@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.3.0",
+    "@paper-design/shaders": "^0.0.76",
     "astro": "^6.2.1",
     "jsdom": "29.0.0",
     "marked": "^16.4.2"
