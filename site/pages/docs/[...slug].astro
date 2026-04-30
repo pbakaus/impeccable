@@ -1,0 +1,44 @@
+---
+import { getCollection, render } from 'astro:content';
+import fs from 'node:fs';
+import path from 'node:path';
+import Doc from '../../layouts/Doc.astro';
+import { SKILL_CATEGORIES } from '../../data/sub-pages-data';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('skills');
+
+  const metadataPath = path.join(process.cwd(), 'source/skills/impeccable/scripts/command-metadata.json');
+  const commandMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+
+  const allCommands = entries.map(e => ({
+    slug: e.id,
+    category: SKILL_CATEGORIES[e.id] || 'system',
+  }));
+
+  return entries.map(entry => ({
+    params: { slug: entry.id },
+    props: {
+      entry,
+      metadata: commandMetadata[entry.id] || { description: entry.data.tagline, argumentHint: '' },
+      allCommands,
+    },
+  }));
+}
+
+const { entry, metadata, allCommands } = Astro.props;
+const { Content } = await render(entry);
+const slug = entry.id;
+const category = SKILL_CATEGORIES[slug] || 'system';
+---
+
+<Doc
+  title={slug}
+  description={metadata.description}
+  tagline={entry.data.tagline}
+  slug={slug}
+  category={category}
+  allCommands={allCommands}
+>
+  <Content />
+</Doc>
