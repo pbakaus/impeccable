@@ -64,6 +64,7 @@ public/docs/
 public/anti-patterns/
 public/tutorials/
 public/visual-mode/
+public/slop/
 
 # Note: harness skill directories (.claude/skills/, .cursor/skills/, etc.)
 # are intentionally tracked. npx skills reads them from this repo at install

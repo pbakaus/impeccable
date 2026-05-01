@@ -587,16 +587,12 @@ async function build() {
   await createAllZips(DIST_DIR);
 
   // Generate static API data and Cloudflare Pages config
-  // Write API data to public/_data/ so Astro copies it to build/ at site-build time.
-  const publicDataDir = path.join(ROOT_DIR, 'public');
-  generateApiData(publicDataDir, skills, patterns);
-  // Dist files and CF config go directly to build/ since they're build-time
-  // outputs that shouldn't live in public/ (they'd bloat the Astro source tree).
-  // These run even if Astro hasn't built yet — the deploy script ensures
-  // build:skills runs before build:site, so build/ exists by then.
-  fs.mkdirSync(buildDir, { recursive: true });
-  copyDistToBuild(DIST_DIR, buildDir);
-  generateCFConfig(buildDir);
+  // Write API data and CF config to public/ so Astro copies them to build/.
+  // Astro wipes build/ before writing, so anything written directly to build/
+  // during build:skills would be destroyed when build:site runs.
+  const publicDir = path.join(ROOT_DIR, 'public');
+  generateApiData(publicDir, skills, patterns);
+  generateCFConfig(publicDir);
 
   // Copy all provider outputs to project root for local testing.
   // `.codex/` is intentionally excluded: Codex no longer consumes that layout; keep

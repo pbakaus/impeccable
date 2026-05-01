@@ -43,7 +43,7 @@
   "scripts": {
     "build:skills": "bun run scripts/build.js",
     "build:site": "astro build",
-    "build": "bun run build:skills && bun run build:site",
+    "build": "bun run build:skills && bun run build:site && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
     "build:extension": "node scripts/build-extension.js",
     "clean": "rm -rf dist build",
@@ -62,11 +62,12 @@
     "og-image": "bun run scripts/generate-og-image.js"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.3.0",
-    "@paper-design/shaders": "^0.0.76",
-    "astro": "^6.2.1",
     "jsdom": "29.0.0",
     "marked": "^16.4.2"
+  },
+  "devDependencies": {
+    "astro": "^6.2.1",
+    "@paper-design/shaders": "^0.0.76"
   },
   "optionalDependencies": {
     "puppeteer": "^24.42.0"
