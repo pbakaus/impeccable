@@ -17,6 +17,18 @@ for (const cat of CATEGORY_ORDER) {
     .filter(e => SKILL_CATEGORIES[e.id] === cat)
     .sort((a, b) => a.id.localeCompare(b.id));
 }
+
+const allCommands = entries.map(e => ({
+  slug: e.id,
+  category: SKILL_CATEGORIES[e.id] || 'system',
+}));
+
+const sidebarGroups: Record<string, { slug: string }[]> = {};
+for (const cat of CATEGORY_ORDER) {
+  sidebarGroups[cat] = allCommands
+    .filter(c => c.category === cat)
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+}
 ---
 
 <Base
@@ -24,34 +36,71 @@ for (const cat of CATEGORY_ORDER) {
   description="23 commands for design fluency. Browse the full reference for every /impeccable sub-command."
   activeNav="docs"
   canonicalPath="/docs"
-  bodyClass="sub-page"
+  bodyClass="sub-page skills-layout-page"
 >
-  <div class="docs-index">
-    <header class="docs-index-header">
-      <h1 class="sub-page-title">Commands</h1>
-      <p class="sub-page-lede">23 commands for design fluency. One skill, six categories, from shaping a new feature to hardening it for production.</p>
-    </header>
+  <div class="skills-layout">
+    <aside class="skills-sidebar" aria-label="Commands">
+      <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
+        <span class="skills-sidebar-toggle-label">Commands</span>
+        <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="skills-sidebar-inner" id="skills-sidebar-inner">
+        <p class="skills-sidebar-label">Commands</p>
+        {CATEGORY_ORDER.map(cat => (
+          <div class="skills-sidebar-group">
+            <span class="skills-sidebar-category">{CATEGORY_LABELS[cat]}</span>
+            <ul class="skills-sidebar-list">
+              {sidebarGroups[cat].map(cmd => (
+                <li>
+                  <a href={`/docs/${cmd.slug}`}>
+                    <span>{cmd.slug}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </aside>
 
-    {CATEGORY_ORDER.map(cat => (
-      <section class="docs-category-section" id={`category-${cat}`}>
-        <header class="docs-category-header">
-          <h2 class="docs-category-title">{CATEGORY_LABELS[cat]}</h2>
-          <p class="docs-category-desc">{CATEGORY_DESCRIPTIONS[cat]}</p>
+    <div class="skills-main">
+      <div class="docs-index">
+        <header class="docs-index-header">
+          <h1 class="sub-page-title">Commands</h1>
+          <p class="sub-page-lede">23 commands for design fluency. One skill, six categories, from shaping a new feature to hardening it for production.</p>
         </header>
-        <div class="docs-card-grid">
-          {grouped[cat].map(entry => (
-            <a href={`/docs/${entry.id}`} class="docs-command-card">
-              <h3 class="docs-command-name">/impeccable {entry.id}</h3>
-              <p class="docs-command-tagline">{entry.data.tagline}</p>
-            </a>
-          ))}
-        </div>
-      </section>
-    ))}
+
+        {CATEGORY_ORDER.map(cat => (
+          <section class="docs-category-section" id={`category-${cat}`}>
+            <header class="docs-category-header">
+              <h2 class="docs-category-title">{CATEGORY_LABELS[cat]}</h2>
+              <p class="docs-category-desc">{CATEGORY_DESCRIPTIONS[cat]}</p>
+            </header>
+            <div class="docs-card-grid">
+              {grouped[cat].map(entry => (
+                <a href={`/docs/${entry.id}`} class="docs-command-card">
+                  <h3 class="docs-command-name">/impeccable {entry.id}</h3>
+                  <p class="docs-command-tagline">{entry.data.tagline}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   </div>
 
+  <script is:inline>
+    document.addEventListener('click', (e) => {
+      const toggle = e.target.closest('.skills-sidebar-toggle');
+      if (!toggle) return;
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+    });
+  </script>
+
   <style>
-    .docs-index { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    .docs-index { padding: 2rem 0 4rem; }
     .docs-index-header { margin-bottom: 3rem; }
     .docs-category-section { margin-bottom: 2.5rem; }
     .docs-category-header { margin-bottom: 1rem; }
