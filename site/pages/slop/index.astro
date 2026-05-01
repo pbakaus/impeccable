@@ -51,18 +51,34 @@ import '../../styles/sub-pages.css';
     <p class="sub-page-lede">37 patterns that mark an interface as AI-generated, and the detection overlay that catches them in place. Watch it flag them live, try it on 11 synthetic specimens, or browse the full catalog. 25 rules run deterministically (<code>npx impeccable detect</code> or the browser extension); 12 need <a href="/docs/critique">/impeccable critique</a>'s LLM review pass.</p>
   </header>
 
-  <section class="slop-section visual-mode-demo-wrap" id="see-it" aria-label="Detection overlay demo">
+  <section class="slop-section slop-then-now" id="see-it" aria-label="Detection overlay demo">
     <h2 class="slop-section-heading"><span class="slop-section-num">01</span> See it</h2>
-    <div class="visual-mode-preview">
-      <div class="visual-mode-preview-header">
-        <span class="visual-mode-preview-dot red"></span>
-        <span class="visual-mode-preview-dot yellow"></span>
-        <span class="visual-mode-preview-dot green"></span>
-        <span class="visual-mode-preview-title">Live on a synthetic slop page</span>
+    <p class="slop-then-now-lede">Every wave of AI-generated UIs converges on a recognizable aesthetic. The detector catches both. The patterns just change.</p>
+    <div class="slop-then-now-frames">
+      <div class="slop-then-now-frame">
+        <div class="visual-mode-preview">
+          <div class="visual-mode-preview-header">
+            <span class="visual-mode-preview-dot red"></span>
+            <span class="visual-mode-preview-dot yellow"></span>
+            <span class="visual-mode-preview-dot green"></span>
+            <span class="visual-mode-preview-title">2022: purple gradients, glassmorphism, neon glow</span>
+          </div>
+          <iframe src="/antipattern-examples/old-slop-2022.html" class="visual-mode-frame" loading="lazy" title="Impeccable overlay running on a 2022-era AI slop page"></iframe>
+        </div>
       </div>
-      <iframe src="/antipattern-examples/visual-mode-demo.html" class="visual-mode-frame" loading="lazy" title="Impeccable overlay running on a demo page"></iframe>
+      <div class="slop-then-now-frame">
+        <div class="visual-mode-preview">
+          <div class="visual-mode-preview-header">
+            <span class="visual-mode-preview-dot red"></span>
+            <span class="visual-mode-preview-dot yellow"></span>
+            <span class="visual-mode-preview-dot green"></span>
+            <span class="visual-mode-preview-title">2026: Fraunces, warm cream, editorial restraint</span>
+          </div>
+          <iframe src="/antipattern-examples/new-slop-2026.html" class="visual-mode-frame" loading="lazy" title="Impeccable overlay running on a 2026-era AI slop page"></iframe>
+        </div>
+      </div>
     </div>
-    <p class="visual-mode-demo-caption">Hover or tap any outlined element to see which rule fired.</p>
+    <p class="visual-mode-demo-caption">Hover either page to see which rules fired. Same engine, different decade, both flagged.</p>
   </section>
 
   <section class="slop-section visual-mode-gallery" id="try-it-live" aria-label="Try the overlay on synthetic specimens">

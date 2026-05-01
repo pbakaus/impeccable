@@ -1443,6 +1443,43 @@ main#main {
   background: white;
 }
 
+/* Then vs Now: two detector frames side by side */
+.slop-then-now-lede {
+  color: var(--color-charcoal);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  max-width: 56ch;
+  margin-bottom: var(--spacing-lg);
+}
+
+.slop-then-now-frames {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+.slop-then-now-frame .visual-mode-preview {
+  height: 100%;
+}
+
+.slop-then-now-frame .visual-mode-frame {
+  height: 480px;
+}
+
+.slop-then-now-frame .visual-mode-preview-title {
+  font-size: 0.6875rem;
+}
+
+@media (max-width: 900px) {
+  .slop-then-now-frames {
+    grid-template-columns: 1fr;
+  }
+
+  .slop-then-now-frame .visual-mode-frame {
+    height: 400px;
+  }
+}
+
 /* Three invocation methods grid. Section wrapper margins come from
    .slop-section; this block only controls the grid of cards. */
 .visual-mode-methods-grid {
