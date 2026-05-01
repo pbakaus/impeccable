@@ -54,31 +54,21 @@ import '../../styles/sub-pages.css';
   <section class="slop-section slop-then-now" id="see-it" aria-label="Detection overlay demo">
     <h2 class="slop-section-heading"><span class="slop-section-num">01</span> See it</h2>
     <p class="slop-then-now-lede">Every wave of AI-generated UIs converges on a recognizable aesthetic. The detector catches both. The patterns just change.</p>
-    <div class="slop-then-now-frames">
-      <div class="slop-then-now-frame">
-        <div class="visual-mode-preview">
-          <div class="visual-mode-preview-header">
-            <span class="visual-mode-preview-dot red"></span>
-            <span class="visual-mode-preview-dot yellow"></span>
-            <span class="visual-mode-preview-dot green"></span>
-            <span class="visual-mode-preview-title">2022: purple gradients, glassmorphism, neon glow</span>
-          </div>
-          <iframe src="/antipattern-examples/old-slop-2022.html" class="visual-mode-frame" loading="lazy" title="Impeccable overlay running on a 2022-era AI slop page"></iframe>
-        </div>
-      </div>
-      <div class="slop-then-now-frame">
-        <div class="visual-mode-preview">
-          <div class="visual-mode-preview-header">
-            <span class="visual-mode-preview-dot red"></span>
-            <span class="visual-mode-preview-dot yellow"></span>
-            <span class="visual-mode-preview-dot green"></span>
-            <span class="visual-mode-preview-title">2026: Fraunces, warm cream, editorial restraint</span>
-          </div>
-          <iframe src="/antipattern-examples/new-slop-2026.html" class="visual-mode-frame" loading="lazy" title="Impeccable overlay running on a 2026-era AI slop page"></iframe>
-        </div>
-      </div>
+    <div class="slop-era-toggle" role="tablist" aria-label="Select slop era">
+      <button class="slop-era-tab is-active" role="tab" aria-selected="true" data-era="2022">2022</button>
+      <button class="slop-era-tab" role="tab" aria-selected="false" data-era="2026">2026</button>
     </div>
-    <p class="visual-mode-demo-caption">Hover either page to see which rules fired. Same engine, different decade, both flagged.</p>
+    <div class="visual-mode-preview">
+      <div class="visual-mode-preview-header">
+        <span class="visual-mode-preview-dot red"></span>
+        <span class="visual-mode-preview-dot yellow"></span>
+        <span class="visual-mode-preview-dot green"></span>
+        <span class="visual-mode-preview-title" data-title-2022="Purple gradients, glassmorphism, neon glow" data-title-2026="Fraunces, warm cream, editorial restraint">Purple gradients, glassmorphism, neon glow</span>
+      </div>
+      <iframe src="/antipattern-examples/old-slop-2022.html" class="visual-mode-frame slop-era-frame" data-era="2022" loading="lazy" title="Impeccable overlay on 2022-era AI slop"></iframe>
+      <iframe src="/antipattern-examples/new-slop-2026.html" class="visual-mode-frame slop-era-frame" data-era="2026" loading="lazy" title="Impeccable overlay on 2026-era AI slop" style="display:none"></iframe>
+    </div>
+    <p class="visual-mode-demo-caption">Hover or tap any outlined element to see which rule fired. Toggle the era to see how the patterns shifted.</p>
   </section>
 
   <section class="slop-section visual-mode-gallery" id="try-it-live" aria-label="Try the overlay on synthetic specimens">
@@ -814,6 +804,22 @@ import '../../styles/sub-pages.css';
       if (!toggle) return;
       const expanded = toggle.getAttribute('aria-expanded') === 'true';
       toggle.setAttribute('aria-expanded', String(!expanded));
+    });
+
+    // Slop era toggle (2022 vs 2026)
+    document.addEventListener('click', (e) => {
+      const tab = e.target.closest('.slop-era-tab');
+      if (!tab) return;
+      const era = tab.getAttribute('data-era');
+      document.querySelectorAll('.slop-era-tab').forEach(t => {
+        t.classList.toggle('is-active', t === tab);
+        t.setAttribute('aria-selected', String(t === tab));
+      });
+      document.querySelectorAll('.slop-era-frame').forEach(f => {
+        f.style.display = f.getAttribute('data-era') === era ? '' : 'none';
+      });
+      const title = document.querySelector('.visual-mode-preview-title[data-title-2022]');
+      if (title) title.textContent = title.getAttribute('data-title-' + era);
     });
 
     // Before/after split-compare: drag on touch, hover OR drag on mouse.

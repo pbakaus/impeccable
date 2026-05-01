@@ -1443,41 +1443,63 @@ main#main {
   background: white;
 }
 
-/* Then vs Now: two detector frames side by side */
+/* Then vs Now: era toggle above the detector frame */
+.slop-then-now {
+  text-align: center;
+}
+
+.slop-then-now .slop-section-heading {
+  text-align: left;
+}
+
 .slop-then-now-lede {
   color: var(--color-charcoal);
   font-size: 1.0625rem;
   line-height: 1.6;
-  max-width: 56ch;
-  margin-bottom: var(--spacing-lg);
+  max-width: 48ch;
+  margin: 0 auto var(--spacing-md);
 }
 
-.slop-then-now-frames {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-md);
+.slop-era-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
 }
 
-.slop-then-now-frame .visual-mode-preview {
-  height: 100%;
+.slop-then-now .visual-mode-preview {
+  text-align: left;
 }
 
-.slop-then-now-frame .visual-mode-frame {
-  height: 480px;
+.slop-then-now .visual-mode-demo-caption {
+  text-align: center;
 }
 
-.slop-then-now-frame .visual-mode-preview-title {
-  font-size: 0.6875rem;
+.slop-era-tab {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-ash);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-@media (max-width: 900px) {
-  .slop-then-now-frames {
-    grid-template-columns: 1fr;
-  }
+.slop-era-tab + .slop-era-tab {
+  border-left: 1px solid var(--color-mist);
+}
 
-  .slop-then-now-frame .visual-mode-frame {
-    height: 400px;
-  }
+.slop-era-tab.is-active {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.slop-era-tab:not(.is-active):hover {
+  background: var(--color-mist);
+  color: var(--color-ink);
 }
 
 /* Three invocation methods grid. Section wrapper margins come from
