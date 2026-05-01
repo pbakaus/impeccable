@@ -1443,21 +1443,21 @@ main#main {
   background: white;
 }
 
-/* Then vs Now: era toggle above the detector frame */
-.slop-then-now {
-  text-align: center;
-}
-
-.slop-then-now .slop-section-heading {
-  text-align: left;
+/* Then vs Now: era toggle inline with lede */
+.slop-then-now-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
 }
 
 .slop-then-now-lede {
   color: var(--color-charcoal);
   font-size: 1.0625rem;
   line-height: 1.6;
-  max-width: 48ch;
-  margin: 0 auto var(--spacing-md);
+  max-width: 52ch;
+  margin: 0;
 }
 
 .slop-era-toggle {
@@ -1465,15 +1465,14 @@ main#main {
   border: 1px solid var(--color-mist);
   border-radius: 8px;
   overflow: hidden;
-  margin-bottom: var(--spacing-md);
+  flex-shrink: 0;
 }
 
-.slop-then-now .visual-mode-preview {
-  text-align: left;
-}
-
-.slop-then-now .visual-mode-demo-caption {
-  text-align: center;
+@media (max-width: 600px) {
+  .slop-then-now-intro {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .slop-era-tab {
