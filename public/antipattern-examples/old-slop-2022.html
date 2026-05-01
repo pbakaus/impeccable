@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumina — The future of intelligent workflows</title>
+<link rel="icon" href="data:," />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a14;
+    --bg-elev: #14141f;
+    --text: #ffffff;
+    --text-muted: rgba(255, 255, 255, 0.6);
+    --border: rgba(255, 255, 255, 0.08);
+    --purple: #8b5cf6;
+    --violet: #7c3aed;
+    --pink: #ec4899;
+    --cyan: #06b6d4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Nav */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(24px);
+    background: rgba(10, 10, 20, 0.6);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1180px; margin: 0 auto;
+    padding: 18px 32px;
+    display: flex; align-items: center; gap: 40px;
+  }
+  .logo {
+    font-weight: 700; font-size: 22px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--purple), var(--pink));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .nav-links { display: flex; gap: 28px; font-size: 14px; }
+  .nav-links a { color: var(--text-muted); text-decoration: none; }
+  .nav-cta { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+  .nav-cta a { font-size: 14px; color: var(--text-muted); text-decoration: none; }
+  .pill {
+    background: linear-gradient(135deg, var(--purple), var(--pink));
+    color: #fff;
+    padding: 9px 18px; border-radius: 999px;
+    font-weight: 600; font-size: 14px;
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.5);
+  }
+
+  /* Hero */
+  .hero {
+    padding: 140px 32px 160px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -200px; left: 50%;
+    transform: translateX(-50%);
+    width: 800px; height: 800px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, transparent 70%);
+    filter: blur(80px);
+    z-index: 0;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    top: 100px; right: 5%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(6, 182, 212, 0.3) 0%, transparent 70%);
+    filter: blur(80px);
+    z-index: 0;
+  }
+  .hero > * { position: relative; z-index: 1; }
+  .eyebrow {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 32px;
+  }
+  .h1 {
+    font-weight: 800;
+    font-size: clamp(48px, 7vw, 88px);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    max-width: 920px;
+    margin: 0 auto 28px;
+    background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 50%, var(--pink) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lede {
+    font-size: 20px;
+    color: var(--text-muted);
+    max-width: 620px;
+    margin: 0 auto 44px;
+  }
+  .ctas { display: flex; gap: 16px; justify-content: center; margin-bottom: 48px; }
+  .btn {
+    padding: 14px 32px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s ease;
+    border: 0;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--purple), var(--pink));
+    color: #fff;
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.5), 0 4px 16px rgba(139, 92, 246, 0.3);
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 60px rgba(139, 92, 246, 0.7);
+  }
+  .btn-ghost {
+    color: #fff;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+  }
+  .trust { font-size: 13px; color: var(--text-muted); }
+  .trust strong { color: #fff; font-weight: 600; }
+
+  /* Logo strip */
+  .logos {
+    padding: 56px 32px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .logos-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 32px;
+    font-weight: 600; font-size: 18px; color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  /* Features */
+  .features {
+    padding: 120px 32px;
+    max-width: 1180px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .features-head {
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto 80px;
+  }
+  .features-head h2 {
+    font-weight: 800;
+    font-size: clamp(36px, 4.5vw, 52px);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin: 0 0 20px;
+    background: linear-gradient(135deg, #fff, #c4b5fd);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .features-head p { font-size: 18px; color: var(--text-muted); margin: 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 40px 32px;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .card:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.04);
+    transform: translateY(-4px);
+  }
+  .icon {
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--purple), var(--pink));
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.4);
+  }
+  .card h3 {
+    font-weight: 700;
+    font-size: 22px;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .card p {
+    font-size: 15px;
+    color: var(--text-muted);
+    margin: 0;
+  }
+
+  /* CTA */
+  .cta-section {
+    padding: 120px 32px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
+  }
+  .cta-section > * { position: relative; }
+  .cta-section h2 {
+    font-weight: 800;
+    font-size: clamp(36px, 5vw, 60px);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin: 0 0 20px;
+    max-width: 720px;
+    margin-left: auto; margin-right: auto;
+    background: linear-gradient(135deg, #fff, #c4b5fd, var(--pink));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .cta-section p {
+    font-size: 18px;
+    color: var(--text-muted);
+    margin: 0 auto 40px;
+    max-width: 540px;
+  }
+
+  /* Footer */
+  .footer {
+    padding: 40px 32px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <div class="logo">Lumina ✨</div>
+      <div class="nav-links">
+        <a href="#">Product</a>
+        <a href="#">Solutions</a>
+        <a href="#">Pricing</a>
+        <a href="#">Customers</a>
+        <a href="#">Docs</a>
+      </div>
+      <div class="nav-cta">
+        <a href="#">Sign in</a>
+        <a href="#" class="pill">Get started →</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="eyebrow">🚀 Powered by AI</div>
+    <h1 class="h1">Build faster with intelligent workflows</h1>
+    <p class="lede">The all-in-one platform that helps modern teams ship better products in record time. Powered by AI, designed for humans.</p>
+    <div class="ctas">
+      <a href="#" class="btn btn-primary">Join the waitlist →</a>
+      <a href="#" class="btn btn-ghost">Watch demo</a>
+    </div>
+    <div class="trust">Backed by <strong>top-tier investors</strong></div>
+  </section>
+
+  <section class="logos">
+    <div class="logos-inner">
+      <span>Northwind</span>
+      <span>Halcyon</span>
+      <span>Meridian</span>
+      <span>Fieldnote</span>
+      <span>Atlas &amp; Co.</span>
+      <span>Verity</span>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="features-head">
+      <h2>Everything you need to ship faster</h2>
+      <p>One platform. Endless possibilities. Built for the future.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Lightning Fast</h3>
+        <p>Move from idea to production in minutes, not months. Our AI handles the heavy lifting so you can focus on what matters.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>Enterprise Secure</h3>
+        <p>SOC 2 compliant infrastructure with end-to-end encryption. Your data is safe, always.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📈</div>
+        <h3>Built to Scale</h3>
+        <p>From your first prototype to millions of users, Lumina grows with your team without breaking a sweat.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <h2>Ready to transform how your team builds?</h2>
+    <p>Join thousands of teams already shipping faster with Lumina.</p>
+    <a href="#" class="btn btn-primary">Get early access →</a>
+  </section>
+
+  <footer class="footer">
+    © 2022 Lumina, Inc. Powered by AI in San Francisco.
+  </footer>
+<script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

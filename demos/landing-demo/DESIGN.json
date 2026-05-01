@@ -1,0 +1,281 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-04-29T00:00:00Z",
+  "title": "Design System: Lumina",
+  "extensions": {
+    "colorMeta": {
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream",
+        "canonical": "oklch(96.5% 0.012 80)",
+        "tonalRamp": [
+          "oklch(15% 0.012 80)",
+          "oklch(25% 0.012 80)",
+          "oklch(35% 0.012 80)",
+          "oklch(50% 0.012 80)",
+          "oklch(65% 0.012 80)",
+          "oklch(80% 0.012 80)",
+          "oklch(90% 0.012 80)",
+          "oklch(96.5% 0.012 80)"
+        ]
+      },
+      "cream-warm": {
+        "role": "neutral",
+        "displayName": "Cream Warm",
+        "canonical": "oklch(92% 0.020 75)",
+        "tonalRamp": [
+          "oklch(15% 0.020 75)",
+          "oklch(25% 0.020 75)",
+          "oklch(35% 0.020 75)",
+          "oklch(50% 0.020 75)",
+          "oklch(65% 0.020 75)",
+          "oklch(78% 0.020 75)",
+          "oklch(85% 0.020 75)",
+          "oklch(92% 0.020 75)"
+        ]
+      },
+      "peach": {
+        "role": "neutral",
+        "displayName": "Peach",
+        "canonical": "oklch(91% 0.040 60)",
+        "tonalRamp": [
+          "oklch(20% 0.040 60)",
+          "oklch(30% 0.060 60)",
+          "oklch(45% 0.080 60)",
+          "oklch(60% 0.080 60)",
+          "oklch(72% 0.060 60)",
+          "oklch(82% 0.050 60)",
+          "oklch(88% 0.045 60)",
+          "oklch(91% 0.040 60)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line (Hairline Border)",
+        "canonical": "oklch(89% 0.018 75)",
+        "tonalRamp": [
+          "oklch(15% 0.018 75)",
+          "oklch(25% 0.018 75)",
+          "oklch(40% 0.018 75)",
+          "oklch(55% 0.018 75)",
+          "oklch(70% 0.018 75)",
+          "oklch(80% 0.018 75)",
+          "oklch(85% 0.018 75)",
+          "oklch(89% 0.018 75)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(15% 0.010 60)",
+        "tonalRamp": [
+          "oklch(15% 0.010 60)",
+          "oklch(22% 0.010 60)",
+          "oklch(30% 0.010 60)",
+          "oklch(40% 0.010 60)",
+          "oklch(55% 0.010 60)",
+          "oklch(70% 0.010 60)",
+          "oklch(85% 0.010 60)",
+          "oklch(94% 0.010 60)"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "Soft",
+        "canonical": "oklch(40% 0.012 60)",
+        "tonalRamp": [
+          "oklch(15% 0.012 60)",
+          "oklch(25% 0.012 60)",
+          "oklch(35% 0.012 60)",
+          "oklch(40% 0.012 60)",
+          "oklch(55% 0.012 60)",
+          "oklch(70% 0.012 60)",
+          "oklch(82% 0.012 60)",
+          "oklch(92% 0.012 60)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Burnt Orange Accent",
+        "canonical": "oklch(60% 0.150 40)",
+        "tonalRamp": [
+          "oklch(15% 0.060 40)",
+          "oklch(25% 0.090 40)",
+          "oklch(35% 0.120 40)",
+          "oklch(48% 0.150 40)",
+          "oklch(60% 0.150 40)",
+          "oklch(72% 0.130 40)",
+          "oklch(85% 0.080 40)",
+          "oklch(95% 0.040 40)"
+        ]
+      },
+      "accent-deep": {
+        "role": "primary",
+        "displayName": "Accent Deep",
+        "canonical": "oklch(50% 0.150 38)",
+        "tonalRamp": [
+          "oklch(15% 0.060 38)",
+          "oklch(25% 0.090 38)",
+          "oklch(35% 0.120 38)",
+          "oklch(50% 0.150 38)",
+          "oklch(62% 0.140 38)",
+          "oklch(75% 0.110 38)",
+          "oklch(86% 0.070 38)",
+          "oklch(95% 0.035 38)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headlines only. Fraunces, weight 400, optical-sized for large display."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headlines (the features-head h2, cta-section h2)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card headings inside the feature grid."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "The supporting paragraph that sits below a hero headline."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default paragraph copy. Cap line length at 65–75ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "The eyebrow chip and any small uppercase labels."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-button",
+        "value": "ease",
+        "duration": "150ms",
+        "purpose": "Default easing for button hover transforms."
+      },
+      {
+        "name": "ease-card",
+        "value": "ease",
+        "duration": "300ms",
+        "purpose": "Card hover transition (currently unused but reserved)."
+      }
+    ],
+    "breakpoints": [
+      { "name": "container", "value": "1180px" },
+      { "name": "logo-strip", "value": "1100px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The default CTA. Ink background, cream text, fully rounded.",
+      "html": "<a href=\"#\" class=\"ds-btn-primary\">Start free trial</a>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px; background: #1f1a15; color: #faf6ef; font-family: 'Inter', system-ui, sans-serif; font-weight: 500; font-size: 15px; text-decoration: none; transition: transform 150ms ease; } .ds-btn-primary:hover { transform: translateY(-1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary CTA, always paired with the primary.",
+      "html": "<a href=\"#\" class=\"ds-btn-ghost\">Watch demo</a>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 999px; background: transparent; color: #1f1a15; border: 1px solid #1f1a15; font-family: 'Inter', system-ui, sans-serif; font-weight: 500; font-size: 15px; text-decoration: none; transition: transform 150ms ease; } .ds-btn-ghost:hover { transform: translateY(-1px); }"
+    },
+    {
+      "name": "Nav Pill",
+      "kind": "button",
+      "refersTo": "nav-pill",
+      "description": "Compact primary CTA used in the nav. Smaller padding than the full button.",
+      "html": "<a href=\"#\" class=\"ds-nav-pill\">Get started</a>",
+      "css": ".ds-nav-pill { display: inline-flex; align-items: center; padding: 9px 18px; border-radius: 999px; background: #1f1a15; color: #faf6ef; font-family: 'Inter', system-ui, sans-serif; font-weight: 500; font-size: 14px; text-decoration: none; }"
+    },
+    {
+      "name": "Eyebrow Chip",
+      "kind": "chip",
+      "description": "The small uppercase label sitting above the hero headline. Pure typography, no background.",
+      "html": "<div class=\"ds-eyebrow\">AI-native workflows</div>",
+      "css": ".ds-eyebrow { display: inline-block; font-family: 'Inter', system-ui, sans-serif; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: #a8431f; }"
+    },
+    {
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Tonal-layered card on cream-warm with hairline border. Flat, no shadow.",
+      "html": "<div class=\"ds-card\">\n  <div class=\"ds-card-icon\">⚡</div>\n  <h3 class=\"ds-card-title\">Lightning Fast</h3>\n  <p class=\"ds-card-body\">Move from idea to production in minutes.</p>\n</div>",
+      "css": ".ds-card { background: #f4ebdc; border: 1px solid #e6dccb; border-radius: 20px; padding: 40px 32px; text-align: center; max-width: 280px; } .ds-card-icon { width: 56px; height: 56px; border-radius: 14px; background: #faf6ef; border: 1px solid #e6dccb; display: inline-flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 24px; } .ds-card-title { font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; margin: 0 0 12px; color: #1f1a15; } .ds-card-body { font-family: 'Inter', system-ui, sans-serif; font-size: 15px; color: #5b4f44; margin: 0; line-height: 1.55; }"
+    },
+    {
+      "name": "Hero Headline",
+      "kind": "custom",
+      "description": "The display-scale headline with the One-Italic Rule applied: italic accent on a single word.",
+      "html": "<h1 class=\"ds-hero-h1\">Build faster with <em>intelligent</em> workflows</h1>",
+      "css": ".ds-hero-h1 { font-family: 'Fraunces', Georgia, serif; font-weight: 400; font-size: clamp(48px, 7vw, 88px); line-height: 1.05; letter-spacing: -0.02em; color: #1f1a15; max-width: 720px; margin: 0; } .ds-hero-h1 em { font-style: italic; color: #a8431f; }"
+    },
+    {
+      "name": "Logo Strip Wordmark",
+      "kind": "custom",
+      "description": "The italic Fraunces wordmarks in the logo row — the exception to the One-Italic Rule.",
+      "html": "<span class=\"ds-logo-mark\">Northwind</span>",
+      "css": ".ds-logo-mark { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 22px; color: #5b4f44; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Editorial confidence in warm light.",
+    "overview": "The system reads as a printed magazine spread, transposed to a screen. Cream paper as the page surface, ink-dark headlines in Fraunces, restrained pacing carried by whitespace. Density is mid. The accent (a burnt orange warming toward the lower stop of the cream-to-peach hero gradient) appears sparingly: on the eyebrow chip, the logo dot, and the italic emphasis inside the hero headline. Nowhere else.\n\nWhat the system explicitly rejects, per PRODUCT.md anti-references: glassmorphism, dark mode with neon glow, gradient text, side-stripe accents on cards, and the broader \"Fraunces-cream-peach SaaS template\" that this very page exemplifies. The DESIGN.md documents the current visual reality so the live-mode design panel can render it accurately. The brand intent is to diffuse away from it.",
+    "keyCharacteristics": [
+      "Warm-paper palette anchored on cream (#faf6ef)",
+      "Display in Fraunces, body in Inter",
+      "Editorial-leaning layout vocabulary",
+      "Rounded throughout (14px, 20px, 999px)",
+      "Flat: no shadows, depth via tonal layering"
+    ],
+    "rules": [
+      {
+        "name": "The Cream-Family Rule",
+        "body": "Every neutral surface tints toward the brand hue. No pure white anywhere, no pure black, no untinted gray. The eye should never read this page as 'default browser.'",
+        "section": "colors"
+      },
+      {
+        "name": "The 10% Accent Rule",
+        "body": "The burnt orange covers no more than 10% of any rendered surface. Its rarity is the point.",
+        "section": "colors"
+      },
+      {
+        "name": "The One-Italic Rule",
+        "body": "Italic appears exactly once per page: on a single emphasized word inside the hero headline. Nowhere else. The logo strip's italic Fraunces wordmarks are the exception that proves it (wordmark, not running italic).",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Gradient-Text Rule",
+        "body": "Type is solid color, always. The hero's cream-to-peach gradient is a section background, never a typographic effect.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat at rest. Hover lift uses transform: translateY(-1px), never a shadow. Glassmorphism, neon glow, and elevation halos are absent by design.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep the burnt-orange accent under 10% of any visible surface; it's a typographic accent and a logo dot, not a button.",
+      "Do use Fraunces for display and Inter for body; respect the One-Italic Rule.",
+      "Do carry depth via tonal layering and hairline borders, not shadows.",
+      "Do tint every neutral toward the cream hue. Reject pure white and pure gray.",
+      "Do keep buttons fully rounded (999px) and cards moderately rounded (20px); the contrast is intentional."
+    ],
+    "donts": [
+      "Don't add box-shadows to surfaces. The system is flat by default; hover lift uses transform, not shadow.",
+      "Don't introduce gradient text or background-clip: text. The hero gradient is a section background, never a typographic effect.",
+      "Don't add glassmorphism, neon glow, dark mode by default, or side-stripe colored borders. All banned in PRODUCT.md anti-references.",
+      "Don't introduce a fourth color outside the cream / ink / orange family without an explicit reason recorded in PRODUCT.md.",
+      "Don't drift into the broader 'Fraunces-cream-peach SaaS template' the page already exemplifies. The PRODUCT.md anti-references this aesthetic; departure-mode variants should diffuse away from it."
+    ]
+  }
+}
