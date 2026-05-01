@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import '../../styles/sub-pages.css';
 import {
   SKILL_CATEGORIES,
   CATEGORY_ORDER,
@@ -25,10 +26,6 @@ for (const cat of CATEGORY_ORDER) {
   canonicalPath="/docs"
   bodyClass="sub-page"
 >
-  <Fragment slot="head">
-    <link rel="stylesheet" href="/css/sub-pages.css">
-  </Fragment>
-
   <div class="docs-index">
     <header class="docs-index-header">
       <h1 class="sub-page-title">Commands</h1>

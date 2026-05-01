@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import '../../styles/sub-pages.css';
 
 const tutorials = (await getCollection('tutorials'))
   .sort((a, b) => a.data.order - b.data.order);
@@ -13,10 +14,6 @@ const tutorials = (await getCollection('tutorials'))
   canonicalPath="/tutorials"
   bodyClass="sub-page"
 >
-  <Fragment slot="head">
-    <link rel="stylesheet" href="/css/sub-pages.css">
-  </Fragment>
-
   <div class="tutorials-index">
     <header class="tutorials-index-header">
       <h1 class="sub-page-title">Tutorials</h1>

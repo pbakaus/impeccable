@@ -1,5 +1,6 @@
 ---
 import Base from './Base.astro';
+import '../styles/sub-pages.css';
 import {
   SKILL_CATEGORIES,
   CATEGORY_ORDER,
@@ -36,10 +37,6 @@ for (const cat of CATEGORY_ORDER) {
   canonicalPath={`/docs/${slug}`}
   bodyClass="sub-page skills-layout-page"
 >
-  <Fragment slot="head">
-    <link rel="stylesheet" href="/css/sub-pages.css">
-  </Fragment>
-
   <div class="skills-layout">
     <aside class="skills-sidebar" aria-label="Commands">
       <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
