@@ -11,13 +11,10 @@ export default defineConfig({
     '/cheatsheet': '/docs',
     '/gallery': '/slop#try-it-live',
     '/skills': '/docs',
-    '/skills/[id]': '/docs/[id]',
     '/anti-patterns': '/slop#catalog',
     '/visual-mode': '/slop#see-it',
     '/neon-mirai': '/neo-mirai/',
-    '/neon-mirai/': '/neo-mirai/',
     '/cases/neon-mirai': '/cases/neo-mirai',
-    '/cases/neon-mirai/': '/cases/neo-mirai',
   },
   vite: {
     build: {

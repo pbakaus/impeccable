@@ -1,0 +1,3 @@
+# Dynamic redirects that Astro's redirect config can't handle.
+# Cloudflare Pages processes this file natively.
+/skills/:id /docs/:id 301
