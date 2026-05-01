@@ -1468,6 +1468,15 @@ main#main {
   flex-shrink: 0;
 }
 
+.slop-then-now .visual-mode-preview {
+  max-width: none;
+  margin: 0;
+}
+
+.slop-then-now .visual-mode-demo-caption {
+  text-align: left;
+}
+
 @media (max-width: 600px) {
   .slop-then-now-intro {
     flex-direction: column;
