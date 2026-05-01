@@ -10,6 +10,7 @@ interface Props {
   bodyClass?: string;
   noIndex?: boolean;
   mainId?: string;
+  mainClass?: string;
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
@@ -25,6 +26,7 @@ const {
   bodyClass,
   noIndex = false,
   mainId = 'main',
+  mainClass,
   ogTitle,
   ogDescription,
   ogImage,
@@ -80,7 +82,7 @@ const canonical = canonicalPath
   <slot name="before-header" />
   <Header activeNav={activeNav} />
   <slot name="after-header" />
-  <main id={mainId}>
+  <main id={mainId} class={mainClass}>
     <slot />
   </main>
   <Footer />

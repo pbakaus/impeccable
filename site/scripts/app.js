@@ -33,8 +33,8 @@ function escapeHtml(value) {
 async function loadContent() {
 	try {
 		const [commandsRes, patternsRes] = await Promise.all([
-			fetch("/api/commands"),
-			fetch("/api/patterns"),
+			fetch("/_data/api/commands.json"),
+			fetch("/_data/api/patterns.json"),
 		]);
 
 		// Check for HTTP errors
