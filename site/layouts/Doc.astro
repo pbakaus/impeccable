@@ -1,0 +1,120 @@
+---
+import Base from './Base.astro';
+import '../styles/sub-pages.css';
+import {
+  SKILL_CATEGORIES,
+  CATEGORY_ORDER,
+  CATEGORY_LABELS,
+  COMMAND_RELATIONSHIPS,
+} from '../data/sub-pages-data';
+
+interface Props {
+  title: string;
+  description: string;
+  tagline: string;
+  slug: string;
+  category: string;
+  allCommands: { slug: string; category: string }[];
+}
+
+const { title, description, tagline, slug, category, allCommands } = Astro.props;
+
+const categoryLabel = CATEGORY_LABELS[category] || category;
+const relationships = COMMAND_RELATIONSHIPS[slug] || {};
+
+const sidebarGroups: Record<string, { slug: string }[]> = {};
+for (const cat of CATEGORY_ORDER) {
+  sidebarGroups[cat] = allCommands
+    .filter(c => c.category === cat)
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+}
+---
+
+<Base
+  title={`${title} | Impeccable`}
+  description={description}
+  activeNav="docs"
+  canonicalPath={`/docs/${slug}`}
+  bodyClass="sub-page skills-layout-page"
+>
+  <div class="skills-layout">
+    <aside class="skills-sidebar" aria-label="Commands">
+      <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
+        <span class="skills-sidebar-toggle-label">Commands</span>
+        <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="skills-sidebar-inner" id="skills-sidebar-inner">
+        <p class="skills-sidebar-label">Commands</p>
+        {CATEGORY_ORDER.map(cat => (
+          <div class="skills-sidebar-group">
+            <span class="skills-sidebar-category">{CATEGORY_LABELS[cat]}</span>
+            <ul class="skills-sidebar-list">
+              {sidebarGroups[cat].map(cmd => (
+                <li>
+                  <a href={`/docs/${cmd.slug}`} aria-current={cmd.slug === slug ? 'page' : undefined}>
+                    <span>{cmd.slug}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </aside>
+
+    <div class="skills-main">
+      <div class="skills-detail">
+        <nav class="skills-breadcrumb" aria-label="Breadcrumb">
+          <a href="/docs">Docs</a>
+          <span aria-hidden="true">/</span>
+          <span>{slug}</span>
+        </nav>
+
+        <header class="sub-page-header">
+          <span class="sub-page-eyebrow">{categoryLabel}</span>
+          <h1 class="sub-page-title">/impeccable {slug}</h1>
+          {tagline && <p class="sub-page-lede">{tagline}</p>}
+        </header>
+
+        <div class="skills-detail-body docs-body">
+          <slot />
+        </div>
+
+        {(relationships.leadsTo || relationships.pairs || relationships.combinesWith) && (
+          <footer class="skills-relationships">
+            <h2 class="skills-relationships-title">Related commands</h2>
+            <div class="skills-relationships-list">
+              {relationships.leadsTo?.map(cmd => (
+                <a href={`/docs/${cmd}`} class="skills-relationship-chip" data-relation="leads-to">
+                  <span class="skills-relationship-label">leads to</span>
+                  <span class="skills-relationship-name">{cmd}</span>
+                </a>
+              ))}
+              {relationships.pairs && (
+                <a href={`/docs/${relationships.pairs}`} class="skills-relationship-chip" data-relation="pairs">
+                  <span class="skills-relationship-label">pairs with</span>
+                  <span class="skills-relationship-name">{relationships.pairs}</span>
+                </a>
+              )}
+              {relationships.combinesWith?.map(cmd => (
+                <a href={`/docs/${cmd}`} class="skills-relationship-chip" data-relation="combines">
+                  <span class="skills-relationship-label">combines with</span>
+                  <span class="skills-relationship-name">{cmd}</span>
+                </a>
+              ))}
+            </div>
+          </footer>
+        )}
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    document.addEventListener('click', (e) => {
+      const toggle = e.target.closest('.skills-sidebar-toggle');
+      if (!toggle) return;
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+    });
+  </script>
+</Base>

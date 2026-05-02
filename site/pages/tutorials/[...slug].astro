@@ -1,0 +1,49 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import '../../styles/sub-pages.css';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('tutorials');
+  return entries.map(entry => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<Base
+  title={`${entry.data.title} | Impeccable`}
+  description={entry.data.description}
+  activeNav="docs"
+  canonicalPath={`/tutorials/${entry.id}`}
+  bodyClass="sub-page"
+>
+  <div class="tutorial-page">
+    <nav class="skills-breadcrumb" aria-label="Breadcrumb">
+      <a href="/docs">Docs</a>
+      <span aria-hidden="true">/</span>
+      <a href="/tutorials">Tutorials</a>
+      <span aria-hidden="true">/</span>
+      <span>{entry.data.title}</span>
+    </nav>
+
+    <header class="sub-page-header">
+      <span class="sub-page-eyebrow">Tutorial</span>
+      <h1 class="sub-page-title">{entry.data.title}</h1>
+      {entry.data.tagline && <p class="sub-page-lede">{entry.data.tagline}</p>}
+    </header>
+
+    <div class="skills-detail-body docs-body tutorial-body">
+      <Content />
+    </div>
+  </div>
+
+  <style>
+    .tutorial-page { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    .tutorial-body { margin-top: 2rem; }
+  </style>
+</Base>

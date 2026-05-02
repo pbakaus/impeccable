@@ -157,17 +157,17 @@ If you're unsure, you're in default mode. The cost of being wrong about default 
 
 Three variants → three DIFFERENT axes. The trio reads as *the same brand at three angles*. Do not introduce new fonts, new palette hues, or new aesthetic-family signals — those belong to departure mode.
 
-**Departure mode.** Each variant anchors to a different **aesthetic lane**, drawn from non-monoculture options. Lanes (illustrative, not exhaustive):
+**While planning each variant, also name its 2–3 parameter knobs** (per the §7 budget table). Parameters are part of the design, not a decoration added afterward. If the variant explores density, expose a density knob. If it explores color commitment, expose a color-amount range. Deciding "what's tunable" during planning produces better knobs than retrofitting them onto finished HTML.
 
-- Tech-minimal (Stripe / Linear / Vercel-restraint)
-- Brutalist-utility (system fonts, raw HTML defaults, Craigslist-energy)
-- Terminal-native (actual code surface, syntax-highlighted UI as the design)
-- Industrial-signage (dimensional type, arrow systems, ISO standards, wayfinding)
-- Technical-drawing (isometric line art, callout numbers, blueprint blue, exploded-view diagrams)
-- Drenched-saturated (Liquid Death / Mailchimp full-palette / single-hue commitment)
-- Swiss-grid-rigorous (visible grid as voice, tight type, accumulated systems)
+**Departure mode.** Each variant anchors to a different **aesthetic direction**, derived from the brand's stated voice and register in PRODUCT.md. Do NOT pick from a fixed catalog of lane categories. The right three directions for this brand are not the same as the right three for another brand, and picking from a list is itself the training-data reflex (the model selects "Swiss-grid, Terminal, Industrial-signage" every time because those are the furthest-from-editorial items in any enumerated list).
 
-Avoid the **reflex-reject lanes** in [brand.md](brand.md). Don't trade one monoculture for another. *Editorial-typographic is currently a reflex-reject lane* — three variants that all read as "magazine cover" is the second-order training reflex, the trap one tier deeper than SaaS-cream.
+Instead, work from the brand:
+
+1. Read PRODUCT.md's Brand Personality words. What physical, spatial, or material experiences would embody those words if design were not involved? (A personality described as "specific, earned, unmistakable" evokes a hand-stamped letter, a numbered print, a watchmaker's loupe. A personality described as "restless, loud, unfiltered" evokes a concert poster, a spray-painted wall, a megaphone.)
+2. From those physical experiences, derive three visual directions that are genuinely different from each other AND from the current surface you're departing.
+3. Avoid the **reflex-reject lanes** in [brand.md](brand.md). Don't trade one monoculture for another. If you find yourself reaching for "Swiss-grid" or "Terminal" or "Industrial-signage" by reflex, you are pattern-matching a catalog in your training data, not reading the brand. Start over from the personality words.
+4. Each direction must be expressible in one concrete sentence that names a real-world referent ("a museum exhibition label system for a contemporary art gallery" not "clean and minimal"). If your sentence contains only adjectives, it's not concrete enough.
+5. **While planning each direction, also name its 2–3 parameter knobs** (per the §7 budget table). The same principle as default mode: decide "what's tunable" during planning, not after writing the HTML. A departure-mode hero with 0 parameters is not "bold creative vision," it's a missed opportunity for the user to fine-tune the direction they pick.
 
 #### Phase D: Squint test
 
@@ -175,7 +175,7 @@ Avoid the **reflex-reject lanes** in [brand.md](brand.md). Don't trade one monoc
 
 **Departure mode squint.** Two passes, family before sentence:
 
-1. **Family pass.** Label each variant with one design-family word: *editorial / brutalist / terminal / signage / drenched / swiss / technical-drawing / tech-minimal*. If any two variants share a family label, rework. *This pass is non-negotiable in departure mode and catches the editorial-monoculture failure that the sentence pass misses.*
+1. **Family pass.** Label each variant with one design-family word of your own choosing (any concrete noun: *exhibition, storefront, cockpit, recipe-card, playbill, field-manual*). If any two variants share a label, or if the label could apply to the other variants equally well, rework. Do not use a fixed vocabulary list for the labels. *This pass is non-negotiable in departure mode and catches the monoculture failure that the sentence pass misses.*
 2. **Sentence pass.** Write three one-sentence descriptions side by side. If two of them rhyme ("both feature big type" / "both are stacks of sections" / "both center the CTA"), rework the offender.
 
 **When the primary axis is color or theme, forbid the trio from sharing theme + dominant hue.** Two dark-plus-one-dark is not distinct. Aim for three color worlds, not three shades of the same.
@@ -260,7 +260,7 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **When to add.** As soon as the variant’s scoped CSS has a meaningful continuous or stepped axis: density, color amount, type scale, motion intensity, column weight, and so on. If you can imagine the user muttering “a bit tighter” or “a touch more accent” **without** wanting a full regeneration, wire that axis. **Not** micro-margins or one-off nudges; those are not parameters.
 
-**Freeform (`action` is `impeccable`) bias.** You did not load `reference/bolder.md` (etc.), so you must **choose** 1–2 signature-like axes yourself. Prefer knobs that sit on the same dimensions as your three directions (e.g. all three riffs on editorial density → expose `density` or a `steps` “air / snug / packed”; two directions differ mostly in chroma → add `color-amount`). A hero, section, or other **large** surface that ships with **0** params needs a one-line reason in your head (e.g. “truly a fixed-point A/B/C comparison, no shared dial”), not a default habit.
+**Freeform (`action` is `impeccable`) bias.** You did not load a sub-command reference, so you must **choose** signature axes yourself. Match the budget table: for a hero or large composition, that means **2–3 axes per variant**, not 1. Prefer knobs that sit on the dimensions where your three variants actually differ (if density varies, expose it as a `steps` knob; if color commitment varies, expose it as a `range`). A hero that ships with **0** params is almost always a mistake, not a judgment call. A hero with exactly **1** param is underweight unless the design is genuinely a fixed-point comparison. Start from the budget table, not from zero.
 
 **Budget scales with the element's visual weight, not token budget.** Knobs need real estate to read as tunable; three sliders on a single control are noise.
 

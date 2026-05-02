@@ -58,12 +58,20 @@ extension/detector/
 evals/
 tests/evals-v2/
 
-# Generated sub-pages (built from source/skills + content/site at build time)
+# Generated sub-pages (legacy, now replaced by Astro content collections)
 public/docs/
 public/anti-patterns/
 public/tutorials/
 public/visual-mode/
 public/slop/
+
+# Build artifacts written to public/ so Astro copies them to build/
+public/_data/
+public/_headers
+public/_redirects
+public/_routes.json
+public/js/detect-antipatterns-browser.js
+public/js/generated/
 
 # Note: harness skill directories (.claude/skills/, .cursor/skills/, etc.)
 # are intentionally tracked. npx skills reads them from this repo at install
@@ -73,3 +81,4 @@ public/slop/
 # Codex CLI consumes `.agents/skills/`; `.codex/` is not used. Ignore it so
 # local artifacts or old trees are never committed.
 .codex/
+.astro/

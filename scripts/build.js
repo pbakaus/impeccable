@@ -21,7 +21,8 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
-import { generateSubPages } from './build-sub-pages.js';
+// Sub-page generation is now handled by Astro content collections.
+// import { generateSubPages } from './build-sub-pages.js';
 
 /**
  * Generate authoritative counts from source data and write to public/js/generated/counts.js.
@@ -137,12 +138,10 @@ function validateSkillFrontmatter(skills) {
 function validateNoEmDashes(rootDir) {
   const targets = [
     'content/site',
-    'public/index.html',
-    'public/privacy.html',
-    'scripts/build-sub-pages.js',
-    'scripts/lib/sub-pages-data.js',
+    'site/components',
+    'site/layouts',
   ];
-  const extensions = new Set(['.html', '.md', '.js', '.mjs', '.css']);
+  const extensions = new Set(['.html', '.md', '.js', '.mjs', '.css', '.astro']);
   const emDashPatterns = [/—/g, /&mdash;/gi, /&#8212;/gi, /&#x2014;/gi];
   let errors = 0;
 
@@ -188,30 +187,13 @@ function validateNoEmDashes(rootDir) {
  *
  * Returns the number of validation errors. Build fails if > 0.
  */
-function validateSiteHeader(rootDir) {
-  const pages = [
-    'public/index.html',
-    'public/privacy.html',
-  ];
-  const marker = '<!-- site-header v1 -->';
-  let errors = 0;
-  for (const rel of pages) {
-    const full = path.join(rootDir, rel);
-    if (!fs.existsSync(full)) {
-      console.error(`  ❌ ${rel} is missing`);
-      errors++;
-      continue;
-    }
-    const src = fs.readFileSync(full, 'utf-8');
-    if (!src.includes(marker)) {
-      console.error(`  ❌ ${rel} is missing the shared site header marker '${marker}'`);
-      errors++;
-    }
-  }
-  if (errors === 0) {
-    console.log(`✓ Validated site header on ${pages.length} hand-authored pages`);
-  }
-  return errors;
+function validateSiteHeader(_rootDir) {
+  // With Astro, the shared header is a component (site/components/Header.astro).
+  // There's nothing to validate per-page — the component is imported by Base.astro
+  // and rendered identically everywhere. This function is kept as a no-op so the
+  // call site doesn't need to change.
+  console.log('✓ Site header is a shared Astro component (no per-page validation needed)');
+  return 0;
 }
 
 /**
@@ -236,11 +218,10 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
-/**
- * Build static site using Bun's HTML bundler
- * Bun's HTML loader resolves <link rel="stylesheet"> and inlines CSS @imports.
- */
-async function buildStaticSite(extraEntrypoints = []) {
+// buildStaticSite (Bun HTML bundler) removed — now handled by Astro.
+
+// Placeholder so the line-number-based edits below don't shift.
+async function _REMOVED() {
   const entrypoints = [
     path.join(ROOT_DIR, 'public', 'index.html'),
     path.join(ROOT_DIR, 'public', 'privacy.html'),
@@ -563,42 +544,20 @@ function generateCFConfig(buildDir) {
 async function build() {
   console.log('🔨 Building cross-provider design skills...\n');
 
-  // Pre-generate sub-pages (docs, slop, tutorials, live-mode, designing) from source
-  console.log('📝 Generating sub-pages...');
-  const { files: subPageFiles } = await generateSubPages(ROOT_DIR);
-  console.log(`✓ Generated ${subPageFiles.length} sub-page(s)\n`);
+  // Sub-page generation, HTML bundling, and static-asset copying are now
+  // handled by Astro (bun run build:site). This script focuses on skills,
+  // API data, and Cloudflare config.
 
-  const casePageFiles = [
-    path.join(ROOT_DIR, 'public', 'cases', 'neo-mirai', 'index.html'),
-    path.join(ROOT_DIR, 'public', 'neo-mirai', 'index.html'),
-  ].filter((pagePath) => fs.existsSync(pagePath));
-
-  // Bundle HTML, JS, and CSS with Bun (including generated sub-pages)
-  await buildStaticSite([...subPageFiles, ...casePageFiles]);
-
-  // Copy root-level static assets that need stable (unhashed) URLs
-  const staticAssets = ['og-image.jpg', 'robots.txt', 'sitemap.xml', 'favicon.svg', 'apple-touch-icon.png'];
-  const buildDir = path.join(ROOT_DIR, 'build');
-  for (const asset of staticAssets) {
-    const src = path.join(ROOT_DIR, 'public', asset);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(buildDir, asset));
-    }
-  }
-
-  // Copy antipattern examples (self-contained HTML, not Bun entrypoints)
-  const examplesDir = path.join(ROOT_DIR, 'public', 'antipattern-examples');
-  if (fs.existsSync(examplesDir)) {
-    copyDirSync(examplesDir, path.join(buildDir, 'antipattern-examples'));
-  }
-
-  // Copy browser detector script (referenced by antipattern examples at /js/...)
+  // Copy browser detector to public/js/ so the antipattern examples can
+  // reference it (Astro serves public/ as-is).
   const detectorSrc = path.join(ROOT_DIR, 'src', 'detect-antipatterns-browser.js');
   if (fs.existsSync(detectorSrc)) {
-    const jsDir = path.join(buildDir, 'js');
+    const jsDir = path.join(ROOT_DIR, 'public', 'js');
     fs.mkdirSync(jsDir, { recursive: true });
     fs.copyFileSync(detectorSrc, path.join(jsDir, 'detect-antipatterns-browser.js'));
   }
+
+  const buildDir = path.join(ROOT_DIR, 'build');
 
   // Read source files (unified skills architecture)
   const { skills } = readSourceFiles(ROOT_DIR);
@@ -628,9 +587,12 @@ async function build() {
   await createAllZips(DIST_DIR);
 
   // Generate static API data and Cloudflare Pages config
-  generateApiData(buildDir, skills, patterns);
-  copyDistToBuild(DIST_DIR, buildDir);
-  generateCFConfig(buildDir);
+  // Write API data and CF config to public/ so Astro copies them to build/.
+  // Astro wipes build/ before writing, so anything written directly to build/
+  // during build:skills would be destroyed when build:site runs.
+  const publicDir = path.join(ROOT_DIR, 'public');
+  generateApiData(publicDir, skills, patterns);
+  generateCFConfig(publicDir);
 
   // Copy all provider outputs to project root for local testing.
   // `.codex/` is intentionally excluded: Codex no longer consumes that layout; keep

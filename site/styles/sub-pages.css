@@ -1,0 +1,2376 @@
+/*
+ * impeccable.style — shared styles for sub-pages and the site-wide header
+ *
+ * Imported by all generated pages under /skills, /anti-patterns, /tutorials,
+ * and by the hand-authored pages (index, cheatsheet, gallery, privacy) via
+ * a direct <link> tag so they all share the same header + prose typography.
+ */
+
+@import "./tokens.css";
+@import "./docs-visuals.css";
+
+/* ============================================
+   SKIP LINK (a11y)
+   ============================================ */
+
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 0 0 8px 8px;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   BASE
+   ============================================ */
+
+/* No smooth scroll — long editorial pages feel slow on anchor jumps, and
+   a secretly-smooth CSS rule also overrides JS `behavior: 'auto'` calls. */
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ============================================
+   SHARED SITE HEADER
+   ============================================ */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 14px clamp(var(--spacing-md), 4vw, var(--spacing-2xl));
+  background: color-mix(in oklch, var(--color-paper) 94%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  backdrop-filter: saturate(1.4) blur(16px);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+/* Kill any inherited text-decoration from page-level `a` rules. */
+.site-header a,
+.site-header a:hover {
+  text-decoration: none;
+  text-decoration-thickness: 0;
+}
+
+.site-header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  flex-shrink: 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.site-header-brand:hover {
+  color: var(--color-accent);
+}
+
+.site-header-brand-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.site-header-brand-name {
+  display: inline-block;
+}
+
+.site-header-right {
+  display: flex;
+  align-items: center;
+  gap: clamp(var(--spacing-sm), 2vw, var(--spacing-md));
+  min-width: 0;
+}
+
+.site-header-nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(var(--spacing-sm), 2vw, var(--spacing-md));
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  min-width: 0;
+}
+
+.site-header-nav a {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  color: var(--color-charcoal);
+  padding: 4px 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.site-header-nav a:hover {
+  color: var(--color-accent);
+}
+
+.site-header-nav a[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.site-header-nav a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+/* GitHub star pill — subtle, inviting nudge without shouting */
+.site-header-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 99px;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-charcoal);
+  flex-shrink: 0;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.site-header-github svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.site-header-github:hover {
+  background: var(--color-paper);
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+.site-header-github-star {
+  color: #f59e0b;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 820px) {
+  .site-header {
+    padding: 12px var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+
+  .site-header-brand {
+    font-size: 1.0625rem;
+  }
+
+  .site-header-brand-logo {
+    width: 22px;
+    height: 22px;
+  }
+
+  .site-header-right {
+    gap: var(--spacing-sm);
+  }
+
+  .site-header-nav {
+    font-size: 0.8125rem;
+    gap: var(--spacing-sm);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* fade the right edge so users see there's more to scroll */
+    mask-image: linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 0%, black calc(100% - 24px), transparent 100%);
+  }
+
+  .site-header-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-header-nav a[data-nav="home"] {
+    /* Brand already acts as home link on mobile */
+    display: none;
+  }
+
+  .site-header-github {
+    padding: 4px 8px;
+  }
+
+  .site-header-github-label {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-header-brand-name {
+    /* Logo alone on narrow screens */
+    display: none;
+  }
+}
+
+/* ============================================
+   SUB-PAGE LAYOUT SHELL
+   ============================================ */
+
+main#main {
+  display: block;
+}
+
+.sub-page-content {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 4rem) clamp(1.25rem, 4vw, 2.5rem) 6rem;
+}
+
+.skill-detail {
+  /* No max-width on the article itself. The editorial body sections
+     (header, editorial wrapper, skill source, references) each cap
+     themselves at 720px for readable line length, while the hero is
+     allowed to break out on wide viewports. */
+  width: 100%;
+}
+
+.sub-page-header {
+  margin-bottom: clamp(2.5rem, 6vw, 4rem);
+}
+
+.sub-page-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+  margin-bottom: var(--spacing-sm);
+}
+
+.sub-page-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  margin-bottom: var(--spacing-md);
+}
+
+.sub-page-lede {
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+  line-height: 1.55;
+  color: var(--color-charcoal);
+  max-width: 62ch;
+}
+
+/* ============================================
+   DOCS-BROWSER LAYOUT (used by /skills)
+   ============================================ */
+
+:root {
+  --site-header-height: 62px;
+  --skills-sidebar-width: 200px;
+}
+
+.skills-layout-page main#main {
+  /* Reset: the docs layout provides its own max-width container. */
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.skills-layout {
+  display: grid;
+  grid-template-columns: var(--skills-sidebar-width) minmax(0, 1fr);
+  gap: clamp(var(--spacing-lg), 4vw, var(--spacing-2xl));
+  /*
+   * Match horizontal padding to .site-header so the sidebar content lines
+   * up with the brand logo in the nav bar above. Intentionally no max-width
+   * so the docs-browser feels wall-to-wall on wide screens.
+   */
+  padding: 0 clamp(var(--spacing-md), 4vw, var(--spacing-2xl));
+  align-items: start;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+
+.skills-sidebar {
+  position: sticky;
+  top: var(--site-header-height);
+  align-self: start;
+  max-height: calc(100vh - var(--site-header-height));
+  overflow-y: auto;
+  padding: var(--spacing-lg) 0 var(--spacing-2xl);
+  border-right: 1px solid var(--color-mist);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-mist) transparent;
+}
+
+/* Desktop only: reserve full viewport height so the border-right
+   divider reaches the bottom of the viewport even on short pages.
+   On mobile this rule would leave a viewport-sized empty block
+   above the main content when the menu is collapsed. */
+@media (min-width: 921px) {
+  .skills-sidebar {
+    min-height: calc(100vh - var(--site-header-height));
+  }
+}
+
+.skills-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.skills-sidebar::-webkit-scrollbar-thumb {
+  background: var(--color-mist);
+  border-radius: 3px;
+}
+
+.skills-sidebar-inner {
+  padding-right: var(--spacing-md);
+}
+
+/* Mobile menu toggle. Hidden on desktop. */
+.skills-sidebar-toggle {
+  display: none;
+}
+
+.skills-sidebar-toggle-chevron {
+  transition: transform var(--duration-base) var(--ease-out);
+  flex-shrink: 0;
+  color: var(--color-ash);
+}
+
+/* Label at the top of the sidebar — hidden visually, kept for a11y tree. */
+.skills-sidebar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.skills-sidebar-group {
+  margin-bottom: 1.5rem;
+}
+
+.skills-sidebar-group:last-child {
+  margin-bottom: 0;
+}
+
+.skills-sidebar-divider {
+  border: none;
+  height: 1px;
+  background: var(--color-mist);
+  margin: 0 0 1.5rem 0;
+  width: 100%;
+}
+
+.skills-sidebar-group-title {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-ash);
+  margin-bottom: 6px;
+  /* Match the link text's 14px left inset (2 border + 12 padding) so
+     category titles and link labels start at the same x position. */
+  padding: 0 0 0 14px;
+}
+
+.skills-sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.skills-sidebar-list li {
+  margin: 0;
+}
+
+.skills-sidebar-list a {
+  display: block;
+  /* Border sits inside the normal flow (no negative margin) because
+     the sidebar's `overflow-y: auto` coerces overflow-x to auto too
+     per CSS spec, which would clip any border hanging left of the
+     column. Text is inset 14px (2 border + 12 padding) from the column
+     edge; group titles above use the same 14px inset. Accepts a small
+     misalignment with the header logo in exchange for a visible
+     active-state accent. */
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-charcoal);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.skills-sidebar-list a:hover {
+  color: var(--color-accent);
+  background: color-mix(in oklch, var(--color-accent-dim) 30%, transparent);
+}
+
+.skills-sidebar-list a[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 600;
+  border-left-color: var(--color-accent);
+}
+
+.skills-sidebar-list a[aria-current="page"]:hover {
+  color: var(--color-ink);
+  background: transparent;
+}
+
+.skills-sidebar-sub a {
+  padding-left: 24px;
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+}
+
+/* ============================================
+   OVERVIEW MAIN CONTENT
+   ============================================ */
+
+.skills-main {
+  min-width: 0;
+  padding: clamp(2rem, 4vw, 3.5rem) 0 clamp(4rem, 8vw, 6rem);
+}
+
+/* ============================================
+   DOCS OVERVIEW — /skills page
+   ============================================ */
+
+.docs-overview {
+  max-width: 920px;
+}
+
+.docs-overview-header {
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.docs-overview-header .sub-page-lede {
+  max-width: 60ch;
+}
+
+/* Home command hero — the /impeccable root card that sits above the
+   category sections. It gets special treatment because it's the entry
+   point, not just another command in a category. */
+.docs-home-card {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+  padding: clamp(1.5rem, 3vw, 2rem);
+  background: #ffffff;
+  border: 1px solid var(--color-mist);
+  border-radius: 12px;
+  margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
+}
+
+.docs-home-card-identity {
+  min-width: 0;
+}
+
+.docs-home-card-eyebrow {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-accent);
+  margin-bottom: var(--spacing-sm);
+}
+
+.docs-home-card-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 500;
+  font-style: italic;
+  color: var(--color-ink);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.docs-home-card-tagline {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  line-height: 1.5;
+  margin: 0 0 var(--spacing-md) 0;
+  max-width: 32ch;
+}
+
+.docs-home-card-desc {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-ink);
+  max-width: 36ch;
+  margin: 0;
+}
+
+.docs-home-card-desc code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  background: var(--color-accent-dim);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.docs-home-card-modes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.docs-home-card-modes a {
+  display: block;
+  text-decoration: none;
+  padding-left: 10px;
+  border-left: 2px solid transparent;
+  transition:
+    border-color var(--duration-fast) var(--ease-out, ease),
+    color var(--duration-fast) var(--ease-out, ease);
+}
+
+.docs-home-card-modes a:hover {
+  border-left-color: var(--color-accent);
+}
+
+.docs-home-card-modes a:hover .docs-home-mode-label {
+  color: var(--color-accent);
+}
+
+.docs-home-mode-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 2px;
+}
+
+.docs-home-mode-slash {
+  color: var(--color-accent);
+  font-weight: 400;
+}
+
+.docs-home-mode-hint {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-charcoal);
+  line-height: 1.4;
+}
+
+/* Category sections with rich command cards */
+.docs-categories {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2.5rem, 5vw, 3.5rem);
+}
+
+.docs-category-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.docs-category-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 500;
+  font-style: italic;
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  margin: 0 0 4px 0;
+}
+
+.docs-category-desc {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-charcoal);
+  max-width: 58ch;
+  margin: 0;
+}
+
+.docs-category-count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Dense two-column rows for each command: name on the left, description +
+   relationship on the right. Mirrors the original cheatsheet density. */
+.docs-category-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.command-row {
+  display: grid;
+  grid-template-columns: minmax(11rem, 13rem) 1fr;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) 0;
+  border-bottom: 1px solid var(--color-mist);
+  align-items: baseline;
+}
+
+.command-row:last-child {
+  border-bottom: none;
+}
+
+.command-row-name {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.command-row-name a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-out, ease);
+}
+
+.command-row-name a:hover {
+  border-bottom-color: var(--color-accent);
+}
+
+.command-row-namespace {
+  color: var(--color-ash);
+  font-weight: 400;
+}
+
+.command-row-beta {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: 1px;
+  margin-left: 4px;
+}
+
+.command-row-info {
+  min-width: 0;
+}
+
+.command-row-desc {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.command-row-rel {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-ash);
+  margin-top: 4px;
+}
+
+.command-row-rel a {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-charcoal);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-mist);
+  transition: color var(--duration-fast) var(--ease-out, ease),
+              border-color var(--duration-fast) var(--ease-out, ease);
+}
+
+.command-row-rel a:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* Narrow viewport: stack name above info */
+@media (max-width: 820px) {
+  .docs-home-card {
+    grid-template-columns: 1fr;
+  }
+
+  .command-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* ============================================
+   ANTI-PATTERNS INDEX
+   ============================================ */
+
+.anti-patterns-sidebar-list a {
+  display: flex !important;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.anti-patterns-sidebar-count {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The anti-patterns page lets the grid of rule cards use the full
+   column width. Header, lede, and legend stay capped for line length. */
+.anti-patterns-content {
+  width: 100%;
+}
+
+.anti-patterns-header {
+  max-width: 720px;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.anti-patterns-header .sub-page-lede code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  color: var(--color-ink);
+  background: var(--color-cream);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-mist);
+}
+
+.anti-patterns-header .sub-page-lede a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.9375em;
+}
+
+.anti-patterns-legend {
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  border-radius: 10px;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+  max-width: 720px;
+}
+
+.anti-patterns-legend-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 14px var(--spacing-lg);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.anti-patterns-legend-summary::-webkit-details-marker {
+  display: none;
+}
+
+.anti-patterns-legend-summary:hover {
+  background: color-mix(in oklch, var(--color-mist) 40%, transparent);
+}
+
+.anti-patterns-legend-title {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.anti-patterns-legend-chevron {
+  color: var(--color-ash);
+  transition: transform var(--duration-base) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.anti-patterns-legend[open] .anti-patterns-legend-chevron {
+  transform: rotate(180deg);
+}
+
+.anti-patterns-legend-body {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+  border-top: 1px solid var(--color-mist);
+  margin-top: 4px;
+  padding-top: var(--spacing-md);
+}
+
+.anti-patterns-legend-body p {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-charcoal);
+}
+
+.anti-patterns-legend-body a {
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.anti-patterns-legend-body a:hover {
+  color: var(--color-accent);
+}
+
+.anti-patterns-sections {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3rem, 6vw, 4.5rem);
+}
+
+.anti-patterns-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-mist);
+  margin-bottom: var(--spacing-md);
+}
+
+/* Catalog subsections sit under the "The catalog" h2 on /slop, so they
+   must read clearly as h3 — smaller, uppercase mono label instead of
+   display italic, to avoid competing with the parent section heading. */
+.anti-patterns-section-title {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ink);
+}
+
+.anti-patterns-section-count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-ash);
+}
+
+/* ============================================
+   SLOP PAGE (/slop)
+   Merger of the former /anti-patterns + /visual-mode.
+   Reuses .anti-patterns-* for the catalog and .visual-mode-*
+   for the demo / gallery / methods blocks; the rules below wire
+   the four numbered top-level sections and the nested sidebar.
+   ============================================ */
+
+.slop-content { width: 100%; }
+
+.slop-header {
+  max-width: 720px;
+}
+
+.slop-section {
+  margin-top: clamp(3rem, 6vw, 4.5rem);
+  scroll-margin-top: 80px;
+}
+
+.slop-section-heading {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.5vw, 2.75rem);
+  font-weight: 500;
+  font-style: italic;
+  color: var(--color-ink);
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-mist);
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-md);
+}
+
+.slop-section-num {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.slop-catalog-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.slop-catalog-lede {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-charcoal);
+  max-width: 72ch;
+  margin-top: var(--spacing-sm);
+}
+
+.slop-catalog-lede strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.slop-catalog-lede a {
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.slop-catalog-lede a:hover {
+  color: var(--color-accent);
+}
+
+/* Sidebar: nested catalog-section list under "The catalog". */
+.slop-sidebar-sublist {
+  list-style: none;
+  margin: 6px 0 4px 0;
+  padding: 0 0 0 var(--spacing-md);
+  border-left: 1px solid var(--color-mist);
+}
+
+.slop-sidebar-sublist li {
+  margin: 0;
+}
+
+.slop-sidebar-sublist a {
+  display: flex !important;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  padding: 4px 0;
+}
+
+.slop-sidebar-sublist a:hover {
+  color: var(--color-ink);
+}
+
+.slop-sidebar-sublist .anti-patterns-sidebar-count {
+  font-size: 0.625rem;
+}
+
+.rule-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.rule-card {
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.rule-card:hover {
+  border-color: var(--color-ash);
+}
+
+/* Visual example preview at the top of each card. */
+.rule-card-visual {
+  position: relative;
+  height: 160px;
+  background: var(--color-cream);
+  border-bottom: 1px solid var(--color-mist);
+  overflow: hidden;
+}
+
+.rule-card-visual-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  /* Prevent the inline snippet's styles from bleeding outside the box. */
+  overflow: hidden;
+}
+
+.rule-card-body {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.rule-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+.rule-card-category {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 99px;
+}
+
+.rule-card-category[data-category="slop"] {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+.rule-card-category[data-category="quality"] {
+  color: var(--color-charcoal);
+  background: var(--color-mist);
+}
+
+/* Detection layer badge: CLI, Browser, or LLM only. */
+.rule-card-layer {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--color-mist);
+}
+
+.rule-card-layer[data-layer="cli"] {
+  color: var(--color-charcoal);
+  border-color: var(--color-mist);
+  background: var(--color-paper);
+}
+
+.rule-card-layer[data-layer="browser"] {
+  color: oklch(40% 0.12 230);
+  border-color: oklch(90% 0.05 230);
+  background: oklch(97% 0.02 230);
+}
+
+.rule-card-layer[data-layer="llm"] {
+  color: oklch(45% 0.15 45);
+  border-color: oklch(92% 0.08 45);
+  background: oklch(98% 0.03 45);
+}
+
+/* Layer legend dl inside the How-to-read block. */
+.anti-patterns-legend-layers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.anti-patterns-legend-layers > div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: var(--spacing-md);
+  align-items: baseline;
+}
+
+.anti-patterns-legend-layers dt {
+  margin: 0;
+}
+
+.anti-patterns-legend-layers dd {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-charcoal);
+}
+
+.anti-patterns-legend-layers dd code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.rule-card-name {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  line-height: 1.35;
+}
+
+.rule-card-desc {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  flex: 1;
+}
+
+.rule-card-skill-link {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-charcoal);
+  text-decoration: none;
+  align-self: flex-start;
+  padding-top: 4px;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.rule-card-skill-link:hover {
+  color: var(--color-accent);
+}
+
+.rule-card-skill-link::after {
+  content: " →";
+}
+
+/* ============================================
+   TUTORIALS INDEX
+   ============================================ */
+
+.tutorials-content {
+  max-width: 720px;
+}
+
+.tutorial-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.tutorial-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 10px;
+  color: var(--color-ink);
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.tutorial-card:hover {
+  border-color: var(--color-ink);
+}
+
+.tutorial-card-number {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial-card:hover .tutorial-card-number {
+  color: var(--color-accent);
+}
+
+.tutorial-card-body {
+  min-width: 0;
+}
+
+.tutorial-card-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-ink);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.tutorial-card-tagline {
+  font-size: 0.9375rem;
+  color: var(--color-charcoal);
+  line-height: 1.5;
+}
+
+.tutorial-card-arrow {
+  font-family: var(--font-body);
+  font-size: 1.25rem;
+  color: var(--color-ash);
+  transition: color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.tutorial-card:hover .tutorial-card-arrow {
+  color: var(--color-accent);
+  transform: translateX(4px);
+}
+
+/* ============================================
+   TUTORIAL EMBEDS (live overlays, screenshots)
+   ============================================ */
+
+.tutorial-embed {
+  margin: var(--spacing-lg) 0 var(--spacing-xl);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-mist);
+  box-shadow: 0 8px 30px -6px rgba(0, 0, 0, 0.12);
+  max-width: none;
+}
+
+.tutorial-embed-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--color-cream);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.tutorial-embed-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tutorial-embed-dot.red { background: #ff5f56; }
+.tutorial-embed-dot.yellow { background: #ffbd2e; }
+.tutorial-embed-dot.green { background: #27c93f; }
+
+.tutorial-embed-title {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-ash);
+}
+
+.tutorial-embed-iframe {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: none;
+  background: white;
+}
+
+.tutorial-embed-caption {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  margin-top: var(--spacing-sm);
+  font-style: italic;
+  max-width: 60ch;
+}
+
+/* ============================================
+   TUTORIAL DETAIL
+   ============================================ */
+
+.tutorial-detail {
+  max-width: 680px;
+}
+
+.tutorial-detail-header {
+  margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
+}
+
+.tutorial-detail-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  margin-bottom: var(--spacing-md);
+}
+
+.tutorial-detail-tagline {
+  font-family: var(--font-body);
+  font-size: clamp(1.0625rem, 1.5vw, 1.1875rem);
+  line-height: 1.55;
+  color: var(--color-charcoal);
+  max-width: 60ch;
+}
+
+.tutorial-detail-body {
+  max-width: 65ch;
+}
+
+/* ============================================
+   VISUAL MODE PAGE
+   ============================================ */
+
+.visual-mode-demo-wrap {
+  margin-bottom: clamp(3rem, 6vw, 4.5rem);
+}
+
+.visual-mode-demo-caption {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  font-style: italic;
+  margin-top: var(--spacing-sm);
+  text-align: center;
+}
+
+/* Mac-window chrome around the iframe. Lives inside sub-pages.css, which
+   is not loaded on the homepage — the homepage has its own copy in
+   main.css. The max-width + auto margins would disable grid stretch on
+   the homepage and collapse the preview to the iframe's intrinsic width. */
+.visual-mode-preview {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-mist);
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.12);
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.visual-mode-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--color-cream);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.visual-mode-preview-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.visual-mode-preview-dot.red { background: #ff5f56; }
+.visual-mode-preview-dot.yellow { background: #ffbd2e; }
+.visual-mode-preview-dot.green { background: #27c93f; }
+
+.visual-mode-preview-title {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-ash);
+}
+
+.visual-mode-frame {
+  display: block;
+  width: 100%;
+  height: 580px;
+  border: none;
+  background: white;
+}
+
+/* Then vs Now: era toggle inline with lede */
+.slop-then-now-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.slop-then-now-lede {
+  color: var(--color-charcoal);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  max-width: 52ch;
+  margin: 0;
+}
+
+.slop-era-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-mist);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.slop-then-now .visual-mode-preview {
+  max-width: none;
+  margin: 0;
+}
+
+.slop-then-now .visual-mode-demo-caption {
+  text-align: left;
+}
+
+@media (max-width: 600px) {
+  .slop-then-now-intro {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.slop-era-tab {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-ash);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.slop-era-tab + .slop-era-tab {
+  border-left: 1px solid var(--color-mist);
+}
+
+.slop-era-tab.is-active {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.slop-era-tab:not(.is-active):hover {
+  background: var(--color-mist);
+  color: var(--color-ink);
+}
+
+/* Three invocation methods grid. Section wrapper margins come from
+   .slop-section; this block only controls the grid of cards. */
+.visual-mode-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.visual-mode-method {
+  padding: var(--spacing-lg);
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.visual-mode-method:hover {
+  border-color: var(--color-ash);
+}
+
+.visual-mode-method[data-coming-soon] {
+  background: var(--color-cream);
+}
+
+.visual-mode-method-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+}
+
+.visual-mode-method-name {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-ink);
+  line-height: 1.25;
+}
+
+.visual-mode-method-name a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent);
+}
+
+.visual-mode-method-name a:hover {
+  color: var(--color-accent);
+}
+
+.visual-mode-method-name code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-style: normal;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--color-ink);
+}
+
+.visual-mode-method-desc {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  flex: 1;
+}
+
+.visual-mode-method-desc a {
+  color: var(--color-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.visual-mode-method-desc a:hover {
+  color: var(--color-accent);
+}
+
+/* Gallery (specimens) section header. Title comes from .slop-section-heading;
+   this block just scopes the lede + spacing under the heading. */
+.visual-mode-gallery-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.visual-mode-gallery-lede {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  max-width: 60ch;
+  margin-top: var(--spacing-sm);
+}
+
+/* ============================================
+   ANTI-PATTERNS: IN THE WILD (merged gallery)
+   ============================================ */
+
+.gallery-section {
+  margin-top: clamp(3rem, 6vw, 4.5rem);
+}
+
+.gallery-section-lede {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-charcoal);
+  max-width: 60ch;
+  margin-bottom: var(--spacing-lg);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 10px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.gallery-card:hover {
+  border-color: var(--color-ink);
+  transform: translateY(-2px);
+}
+
+.gallery-card-thumb {
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-cream);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.gallery-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  display: block;
+}
+
+.gallery-card-body {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.gallery-card-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-ink);
+  line-height: 1.25;
+}
+
+.gallery-card:hover .gallery-card-title {
+  color: var(--color-accent);
+}
+
+.gallery-card-desc {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--color-charcoal);
+}
+
+/* ============================================
+   MOBILE: collapsible sidebar behind a toggle
+   ============================================ */
+
+@media (max-width: 920px) {
+  .skills-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .skills-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    border-right: none;
+    padding: var(--spacing-md) 0;
+    margin-bottom: var(--spacing-lg);
+  }
+
+  /* Show the toggle button and collapse the menu by default. */
+  .skills-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--color-cream);
+    border: 1px solid var(--color-mist);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    text-align: left;
+    transition: border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .skills-sidebar-toggle:hover {
+    border-color: var(--color-ink);
+  }
+
+  .skills-sidebar-toggle[aria-expanded="true"] .skills-sidebar-toggle-chevron {
+    transform: rotate(180deg);
+  }
+
+  .skills-sidebar-inner {
+    display: none;
+    padding-right: 0;
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-mist);
+    margin-top: var(--spacing-md);
+  }
+
+  .skills-sidebar-toggle[aria-expanded="true"] + .skills-sidebar-inner {
+    display: block;
+  }
+
+  .skills-sidebar-group {
+    margin-bottom: var(--spacing-md);
+  }
+}
+
+/* ============================================
+   SKILL DETAIL — BEFORE/AFTER DEMO
+   ============================================ */
+
+/* Ported from main.css for use on sub-pages. The split-compare effect
+   is initialized by js/effects/split-compare.js loaded on demand. */
+
+.split-comparison {
+  position: relative;
+  width: 100%;
+  /* 500px visible + 64px buffer (32px per side) = 564px total.
+     box-sizing: border-box is inherited, so children sit in 500px. */
+  max-width: 564px;
+  /* 32px padding is an invisible hover buffer so the divider does not
+     immediately snap back when the pointer grazes the visible box
+     edge. Negative top/bottom margins collapse the padding out of
+     layout flow so the demo keeps its rhythm in the page. */
+  padding: 32px;
+  margin: -32px 0 calc(clamp(2rem, 4vw, 3rem) - 32px);
+}
+
+.split-container {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  border-radius: 12px;
+  overflow: hidden;
+  /* Match the page background so the 32px padding area is invisible.
+     The border + border-radius define the visible box; individual
+     demo content provides its own colors on top. */
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.split-before,
+.split-after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.split-before {
+  z-index: 1;
+}
+
+.split-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* No padding: demos that fill the container (overdrive) need full
+     bleed, and demos with smaller content (polish, bolder) already
+     center themselves via flex. */
+}
+
+.split-after {
+  clip-path: polygon(58% 0%, 100% 0%, 100% 100%, 42% 100%);
+  z-index: 2;
+  background: var(--color-paper);
+}
+
+.split-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  background: var(--color-accent);
+  transform: translateX(-50%) skewX(-10deg);
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Before | caption | After all on one row. The caption lives in the
+   middle column; if a skill has no caption we emit an empty <span> so
+   the grid still has three cells and Before/After sit at the edges. */
+.split-labels {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--spacing-md);
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+}
+
+.split-label-item[data-point="before"] {
+  color: var(--color-ash);
+  justify-self: start;
+}
+
+.split-label-item[data-point="after"] {
+  color: var(--color-accent);
+  justify-self: end;
+}
+
+.skill-demo-caption {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-ash);
+  font-style: italic;
+  text-align: center;
+  justify-self: center;
+  /* Allow wrapping inside the middle column if the text is long. */
+  max-width: 100%;
+}
+
+.skill-demo-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-ash);
+  margin-bottom: var(--spacing-sm);
+  /* Eyebrow now lives inside .split-comparison (which has 32px
+     padding), so it aligns with the visible card edge automatically. */
+}
+
+/* ============================================
+   SKILL DETAIL
+   ============================================ */
+
+/* Editorial hero: on wide viewports, text header on the left and the
+   before/after demo floats to the right as a hero module and is allowed
+   to break out of the 720px body cap. On narrow viewports everything
+   stacks within the 720px column. */
+.skill-detail-hero {
+  max-width: 720px;
+  margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
+}
+
+/* Stacked spacing between header and demo on narrow viewports; cancelled
+   when the hero switches to two columns at >=1280px. */
+.skill-detail-hero--has-demo .skill-demo {
+  margin-top: clamp(2rem, 4vw, 2.5rem);
+}
+
+@media (min-width: 1280px) {
+  .skill-detail-hero--has-demo {
+    /* Wider editorial hero at large viewports. Fixed 564px demo column
+       (500px visible + 64px hover buffer) keeps the split-container at
+       its designed 500x360 landscape aspect ratio. Text column takes
+       whatever's left, clamped by the hero's own max-width. */
+    max-width: 1200px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 564px;
+    gap: clamp(var(--spacing-xl), 4vw, var(--spacing-2xl));
+    align-items: center;
+  }
+
+  .skill-detail-hero--has-demo .skill-detail-header {
+    margin-bottom: 0;
+  }
+
+  .skill-detail-hero--has-demo .skill-demo {
+    align-self: center;
+    margin-top: 0;
+  }
+}
+
+/* Body sections stay at a readable line length regardless of the hero
+   width above them. */
+.skill-detail-editorial,
+.skill-source-card,
+.skill-references {
+  max-width: 720px;
+}
+
+.skill-detail-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  margin-bottom: var(--spacing-sm);
+}
+
+.skill-detail-eyebrow a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.skill-detail-eyebrow a:hover {
+  color: var(--color-accent);
+}
+
+.skill-detail-title {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 5.5vw, 5rem);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  margin-bottom: var(--spacing-md);
+  white-space: nowrap;
+}
+
+.skill-detail-title-slash {
+  color: var(--color-accent);
+  font-weight: 300;
+}
+
+/* Sub-commands: show "/impeccable" as a smaller label above the command name
+   so it stacks and the command name stays at full display size. */
+.skill-detail-title-namespace {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-ash);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4em;
+  line-height: 1;
+}
+
+.skill-detail-title-namespace .skill-detail-title-slash {
+  color: var(--color-accent);
+  font-weight: 400;
+}
+
+.skill-detail-tagline {
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+  font-weight: 400;
+  color: var(--color-charcoal);
+  line-height: 1.55;
+  max-width: 60ch;
+  margin-bottom: var(--spacing-md);
+}
+
+.skill-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: var(--spacing-sm);
+}
+
+.skill-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  color: var(--color-charcoal);
+}
+
+.skill-meta-category[data-category="create"] {
+  background: var(--cat-create-bg);
+  border-color: var(--cat-create-border);
+  color: var(--cat-create-text);
+}
+
+.skill-meta-category[data-category="evaluate"] {
+  background: var(--cat-evaluate-bg);
+  border-color: var(--cat-evaluate-border);
+  color: var(--cat-evaluate-text);
+}
+
+.skill-meta-category[data-category="refine"] {
+  background: var(--cat-refine-bg);
+  border-color: var(--cat-refine-border);
+  color: var(--cat-refine-text);
+}
+
+.skill-meta-category[data-category="simplify"] {
+  background: var(--cat-simplify-bg);
+  border-color: var(--cat-simplify-border);
+  color: var(--cat-simplify-text);
+}
+
+.skill-meta-category[data-category="harden"] {
+  background: var(--cat-harden-bg);
+  border-color: var(--cat-harden-border);
+  color: var(--cat-harden-text);
+}
+
+.skill-meta-category[data-category="system"] {
+  background: var(--cat-system-bg);
+  border-color: var(--cat-system-border);
+  color: var(--cat-system-text);
+}
+
+.skill-meta-args {
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.skill-detail-editorial {
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+/* "The skill itself" card: visually contains the auto-rendered SKILL.md
+   body so it reads as a distinct reference block, not a continuation of
+   the editorial section above. */
+.skill-source-card {
+  background: var(--color-paper);
+  border: 1px solid var(--color-mist);
+  border-radius: 12px;
+  padding: clamp(var(--spacing-md), 3vw, var(--spacing-xl));
+  margin-top: clamp(2rem, 4vw, 3rem);
+  box-shadow: 0 1px 0 oklch(90% 0 0);
+}
+
+.skill-source-card-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.skill-source-card-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-accent);
+  padding: 3px 8px;
+  background: var(--color-accent-dim);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.skill-source-card-subtitle {
+  font-size: 0.8125rem;
+  color: var(--color-ash);
+  font-style: italic;
+}
+
+.skill-source-card-body {
+  max-width: none;
+}
+
+.skill-source-card-body > :first-child {
+  margin-top: 0;
+}
+
+.skill-source-card-body > :last-child {
+  margin-bottom: 0;
+}
+
+.skill-references {
+  margin-top: clamp(3rem, 6vw, 4.5rem);
+  padding-top: clamp(2rem, 4vw, 3rem);
+  border-top: 1px solid var(--color-mist);
+}
+
+.skill-references-heading {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-ink);
+  margin-bottom: var(--spacing-md);
+}
+
+.skill-reference {
+  border-top: 1px solid var(--color-mist);
+}
+
+.skill-reference:last-child {
+  border-bottom: 1px solid var(--color-mist);
+}
+
+.skill-reference > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 16px 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.skill-reference > summary::-webkit-details-marker {
+  display: none;
+}
+
+.skill-reference > summary::before {
+  content: "+";
+  flex-shrink: 0;
+  width: 18px;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--color-accent);
+  line-height: 1;
+  transition: transform var(--duration-base) var(--ease-out);
+}
+
+.skill-reference[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.skill-reference > summary:hover {
+  color: var(--color-accent);
+}
+
+.skill-reference-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ash);
+  flex-shrink: 0;
+}
+
+.skill-reference-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-style: italic;
+  color: var(--color-ink);
+}
+
+.skill-reference-body {
+  padding: var(--spacing-sm) 0 var(--spacing-md) 34px;
+  max-width: 62ch;
+}
+
+/* ============================================
+   PROSE — rendered markdown bodies
+   ============================================ */
+
+.prose {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-charcoal);
+  max-width: 65ch;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  color: var(--color-ink);
+  font-weight: 600;
+  scroll-margin-top: 5rem;
+  line-height: 1.25;
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+}
+
+.prose h1 { font-family: var(--font-display); font-size: 1.875rem; font-weight: 500; font-style: italic; }
+.prose h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; font-style: italic; margin-top: 2.2em; }
+.prose h3 { font-size: 1.125rem; margin-top: 1.8em; }
+.prose h4 { font-size: 1rem; }
+
+.prose h2:first-child,
+.prose h3:first-child {
+  margin-top: 0;
+}
+
+.prose p {
+  margin-top: 0;
+  margin-bottom: 1.1em;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.2em 0;
+  padding-left: 1.25rem;
+}
+
+.prose li {
+  margin-bottom: 0.4em;
+}
+
+.prose a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--color-accent-dim);
+  transition: text-decoration-color var(--duration-fast) var(--ease-out);
+}
+
+.prose a:hover {
+  text-decoration-color: var(--color-accent);
+}
+
+.prose strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-cream);
+  border: 1px solid var(--color-mist);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--color-ink);
+}
+
+.prose .code-block-wrap {
+  position: relative;
+  margin: 1.25em 0;
+}
+
+.prose .code-block-wrap .code-block {
+  margin: 0;
+}
+
+.prose .code-block {
+  padding: var(--spacing-md);
+  background: oklch(12% 0.005 350);
+  color: oklch(92% 0.005 350);
+  border-radius: 10px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  border: 1px solid oklch(20% 0.005 350);
+}
+
+.code-block-copy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  background: oklch(20% 0.005 350);
+  border: 1px solid oklch(30% 0.005 350);
+  color: oklch(78% 0.005 350);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.code-block-wrap:hover .code-block-copy,
+.code-block-copy:focus-visible {
+  opacity: 1;
+}
+
+.code-block-copy::before {
+  content: "Copy";
+}
+
+.code-block-copy:hover {
+  background: oklch(30% 0.005 350);
+  color: oklch(92% 0.005 350);
+  border-color: oklch(40% 0.005 350);
+}
+
+.code-block-copy.is-copied {
+  opacity: 1;
+  background: var(--color-accent);
+  color: var(--color-paper);
+  border-color: var(--color-accent);
+}
+
+.code-block-copy.is-copied::before {
+  content: "Copied";
+}
+
+.prose .code-block code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.prose blockquote {
+  margin: 1.5em 0;
+  padding: 0 0 0 var(--spacing-md);
+  border-left: 3px solid var(--color-mist);
+  color: var(--color-ash);
+  font-style: italic;
+}
+
+.prose hr {
+  border: none;
+  height: 1px;
+  background: var(--color-mist);
+  margin: 2.5em 0;
+}
