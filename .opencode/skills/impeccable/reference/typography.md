@@ -43,13 +43,6 @@ The tactical selection procedure and the reflex-reject list live in [reference/b
 
 **System fonts are underrated**: `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui` looks native, loads instantly, and is highly readable. Consider this for apps where performance > personality.
 
-### Hero anti-patterns
-
-Two structural shapes have become category-defining tells of late-2025/early-2026 AI-generated marketing pages. Both warrant their own check.
-
-- **Italic-serif display headline.** Oversized italic serif (Fraunces, Recoleta, Newsreader-italic, Playfair, Cormorant, Tiempos-italic) at hero scale as the primary `h1`. Reads as taste in isolation, but is now the universal AI-startup landing page hero. The brand register's editorial / magazine-cover lane may legitimately want this — judge by [register](brand.md). For everything else: set roman, or move to a non-serif display face. Emphasis via weight, size, or a single italicized word inside a roman headline (which the detector explicitly does not flag).
-- **Hero eyebrow / pill chip.** A tiny uppercase letter-spaced label sitting as a sibling immediately above an oversized hero headline (e.g. `AI-NATIVE WORKFLOWS` over `Build faster with intelligent workflows`), or the same shape rendered as a pill chip with `border-radius: 999px` and a tinted background. Now in nearly every newly-shipped SaaS landing page. Drop the eyebrow, integrate the kicker into the headline, or repurpose the slot as a navigation breadcrumb.
-
 ### Pairing Principles
 
 **The non-obvious truth**: You often don't need a second font. One well-chosen font family in multiple weights creates cleaner hierarchy than two competing typefaces. Only add a second font when you need genuine contrast (e.g., display headlines + body serif).
