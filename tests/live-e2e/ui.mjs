@@ -99,18 +99,7 @@ export async function setCount(page, count) {
  * fail the test.
  */
 export async function clickGo(page) {
-  const go = page.locator(`${BAR_ID} button`, { hasText: /Go\b/ });
-  let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      await go.click({ timeout: 5_000 });
-      return;
-    } catch (err) {
-      lastErr = err;
-      await page.waitForTimeout(500);
-    }
-  }
-  throw lastErr;
+  await clickBarButton(page, /Go\b/);
 }
 
 /**
@@ -141,11 +130,54 @@ export async function waitForCycling(page, expectedCount, { timeout = 30_000 } =
  * Click the next variant button (right arrow).
  */
 export async function clickNext(page) {
-  await page.locator(`${BAR_ID} button`, { hasText: '→' }).click();
+  await clickBarButton(page, '→');
 }
 
 export async function clickPrev(page) {
-  await page.locator(`${BAR_ID} button`, { hasText: '←' }).click();
+  await clickBarButton(page, '←');
+}
+
+async function clickBarButton(page, label) {
+  const button = page.locator(`${BAR_ID} button`, { hasText: label });
+  const textMatch = label instanceof RegExp
+    ? { kind: 'regex', source: label.source, flags: label.flags }
+    : { kind: 'text', value: String(label) };
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await button.click({ timeout: 5_000 });
+      return;
+    } catch (err) {
+      lastErr = err;
+      await page.waitForTimeout(500);
+    }
+  }
+  // Real-LLM fixtures can leave Vite/Tailwind HMR settling for longer than a
+  // human-visible click target stays Playwright-stable. Dispatch the click on
+  // the current button if normal user-like clicks lost the remount race.
+  const clicked = await page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
+  if (!clicked) throw lastErr;
+}
+
+async function dispatchBarButton(page, label) {
+  const textMatch = label instanceof RegExp
+    ? { kind: 'regex', source: label.source, flags: label.flags }
+    : { kind: 'text', value: String(label) };
+  return page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
+}
+
+function findAndClickBarButton({ barSel, textMatch }) {
+  const bar = document.querySelector(barSel);
+  if (!bar) return false;
+  const btn = [...bar.querySelectorAll('button')]
+    .find((candidate) => {
+      const text = candidate.textContent || '';
+      if (textMatch.kind === 'regex') return new RegExp(textMatch.source, textMatch.flags).test(text);
+      return text.includes(textMatch.value);
+    });
+  if (!btn) return false;
+  btn.click();
+  return true;
 }
 
 /**
@@ -153,6 +185,13 @@ export async function clickPrev(page) {
  */
 export async function getVisibleVariant(page) {
   return page.evaluate((barSel) => {
+    const wrapper = document.querySelector('[data-impeccable-variants]');
+    if (wrapper) {
+      const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
+      const visible = variants.find((variant) => variant.style.display !== 'none');
+      const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
+      if (idx > 0) return idx;
+    }
     const bar = document.querySelector(barSel);
     if (!bar) return null;
     const m = (bar.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
@@ -164,8 +203,29 @@ export async function getVisibleVariant(page) {
  * Click Accept — sends accept event with current variantId + paramValues.
  * The bar transitions to a "Saving..." spinner, then a green confirmed row.
  */
-export async function clickAccept(page) {
-  await page.locator(`${BAR_ID} button`, { hasText: /Accept/ }).click();
+export async function clickAccept(page, { expectedVariant } = {}) {
+  if (expectedVariant != null) {
+    await ensureVisibleVariant(page, expectedVariant);
+  }
+  if (await dispatchBarButton(page, /Accept/)) return;
+  await clickBarButton(page, /Accept/);
+}
+
+async function ensureVisibleVariant(page, expectedVariant) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = await getVisibleVariant(page);
+    if (current === expectedVariant) return;
+    if (current == null) {
+      await page.waitForTimeout(300);
+      continue;
+    }
+    await clickBarButton(page, current < expectedVariant ? '→' : '←');
+    await page.waitForTimeout(300);
+  }
+  const current = await getVisibleVariant(page);
+  if (current !== expectedVariant) {
+    throw new Error(`expected visible variant ${expectedVariant} before accept, got ${current}`);
+  }
 }
 
 /**

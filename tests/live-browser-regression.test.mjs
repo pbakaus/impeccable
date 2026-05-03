@@ -68,4 +68,30 @@ describe('live-browser.js regression guards', () => {
       'server-lost cleanup should keep the current session phase in local recovery state instead of rewriting it to GENERATING',
     );
   });
+
+  it('source reinjection preserves the visible variant after cycling', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /Replace the live element[\s\S]{0,900}?visibleVariant\s*=\s*1;\s*showVariantInDOM\(sessionId,\s*1\);/,
+      'event=live_browser.visible_variant_reset actor=browser operation=hmr_source_reinject risk=late_hmr_accepts_variant_1_after_user_cycles expected=preserve visible variant actual=reset_to_first',
+    );
+    assert.match(
+      SOURCE,
+      /previousVisibleVariant[\s\S]{0,900}?savedVisibleVariant[\s\S]{0,500}?showVariantInDOM\(sessionId, visibleVariant\);/,
+      'source reinjection should preserve the in-memory or saved visible variant instead of always showing variant 1',
+    );
+  });
+
+  it('handleAccept reads the visible DOM variant before sending accept', () => {
+    assert.match(
+      SOURCE,
+      /function readVisibleVariantFromDOM\(sessionId\)[\s\S]{0,900}?variant\.style\.display === 'none'[\s\S]{0,500}?return idx;/,
+      'live-browser should be able to derive the accepted variant from the currently visible DOM node',
+    );
+    assert.match(
+      SOURCE,
+      /function handleAccept\(\)[\s\S]{0,180}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
+      'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
+    );
+  });
 });

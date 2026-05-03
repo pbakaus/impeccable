@@ -1875,19 +1875,26 @@
           return;
         }
 
+        const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
+
         // Replace the live element with the full wrapper from source
         const wrapper = srcWrapper.cloneNode(true);
         liveEl.parentElement.replaceChild(wrapper, liveEl);
 
-        // Update state: count variants, show the first one
+        // Update state: count variants, preserving the user's current variant
+        // when a late HMR/source reinjection lands after they have cycled.
         const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
         arrivedVariants = variants.length;
         expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
-        visibleVariant = 1;
-        showVariantInDOM(sessionId, 1);
+        const saved = loadSession();
+        const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
+        visibleVariant = previousVisibleVariant > 0 && previousVisibleVariant <= arrivedVariants
+          ? previousVisibleVariant
+          : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
+        showVariantInDOM(sessionId, visibleVariant);
 
         // Update selectedElement to the visible variant's content
-        selectedElement = pickVariantContent(wrapper, 1) || wrapper.parentElement;
+        selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
 
         state = 'CYCLING';
         hideShaderOverlay();
@@ -1919,6 +1926,18 @@
     if (!wrapper) return;
     const visEl = pickVariantContent(wrapper, visibleVariant);
     if (visEl) selectedElement = visEl;
+  }
+
+  function readVisibleVariantFromDOM(sessionId) {
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    if (!wrapper) return 0;
+    const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+    for (const variant of variants) {
+      if (variant.style.display === 'none') continue;
+      const idx = parseInt(variant.dataset.impeccableVariant || '0', 10);
+      if (idx > 0) return idx;
+    }
+    return 0;
   }
 
   // Resolve the element that represents the variant's visible content.
@@ -2111,8 +2130,10 @@
       updating = true;
       arrivedVariants = count;
       if (visibleVariant === 0 && arrivedVariants > 0) {
-        visibleVariant = 1;
-        showVariantInDOM(sessionId, 1);
+        const saved = loadSession();
+        const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
+        visibleVariant = savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1;
+        showVariantInDOM(sessionId, visibleVariant);
         // showVariantInDOM hid the original (display:none); if we were still
         // anchored to the original's content, its boundingRect is now zero
         // and the bar snaps to (0,0). Re-point at the visible variant instead.
@@ -2967,6 +2988,8 @@ void main() {
 
   function handleAccept() {
     if (!currentSessionId || arrivedVariants === 0) return;
+    const domVisibleVariant = readVisibleVariantFromDOM(currentSessionId);
+    if (domVisibleVariant > 0) visibleVariant = domVisibleVariant;
     const acceptPayload = { type: 'accept', id: currentSessionId, variantId: String(visibleVariant) };
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
