@@ -2241,6 +2241,7 @@
 
   /** Server died or became unreachable. Reset UI to a clean state. */
   function handleServerLost() {
+    const recoveryState = currentSessionId ? state : 'IDLE';
     if (state === 'GENERATING' || state === 'CYCLING' || state === 'SAVING') {
       showToast('Live server disconnected. Session ended.', 5000);
     }
@@ -2257,7 +2258,8 @@
     // transient disconnect as an explicit discard.
     selectedElement = null;
     selectedAction = 'impeccable';
-    state = currentSessionId ? 'GENERATING' : 'IDLE';
+    state = recoveryState;
+    if (currentSessionId) saveSession();
   }
 
   function sendEvent(msg, opts) {

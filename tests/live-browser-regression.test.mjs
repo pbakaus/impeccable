@@ -55,4 +55,17 @@ describe('live-browser.js regression guards', () => {
       'detectPageTheme must keep its readOpaque helper that filters out fully-transparent backgrounds before computing luminance',
     );
   });
+
+  it('handleServerLost preserves the current recoverable phase', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /state\s*=\s*currentSessionId\s*\?\s*['"]GENERATING['"]\s*:\s*['"]IDLE['"]/,
+      'event=live_browser.server_lost_phase actor=browser operation=sse_disconnect risk=cycling_or_saving_session_saved_as_generating expected=preserve current phase actual=forced generating',
+    );
+    assert.match(
+      SOURCE,
+      /function handleServerLost\(\)[\s\S]{0,300}?const recoveryState = currentSessionId \? state : 'IDLE';[\s\S]{0,1200}?state = recoveryState;[\s\S]{0,120}?if \(currentSessionId\) saveSession\(\);/,
+      'server-lost cleanup should keep the current session phase in local recovery state instead of rewriting it to GENERATING',
+    );
+  });
 });
