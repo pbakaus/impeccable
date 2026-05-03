@@ -2291,7 +2291,13 @@ main#main {
   margin: 0;
 }
 
+/* Fenced code blocks: covers Astro+Shiki's auto-generated <pre class="astro-code">
+   in markdown bodies and the legacy hand-written <pre class="code-block"> still
+   used by the case-study pages. Shiki sets background/color inline, so its theme
+   wins on .astro-code; the CSS values here apply to .code-block. */
+.prose pre,
 .prose .code-block {
+  margin: 1.25em 0;
   padding: var(--spacing-md);
   background: oklch(12% 0.005 350);
   color: oklch(92% 0.005 350);
@@ -2301,6 +2307,7 @@ main#main {
   font-size: 0.8125rem;
   line-height: 1.55;
   border: 1px solid oklch(20% 0.005 350);
+  max-width: 100%;
 }
 
 .code-block-copy {
@@ -2352,12 +2359,14 @@ main#main {
   content: "Copied";
 }
 
+.prose pre code,
 .prose .code-block code {
   background: transparent;
   border: none;
   padding: 0;
   color: inherit;
   font-size: inherit;
+  border-radius: 0;
 }
 
 .prose blockquote {
