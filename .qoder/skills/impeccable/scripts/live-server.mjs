@@ -63,6 +63,7 @@ const state = {
   exitTimer: null,
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
+  leaseTimer: null,
 };
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
@@ -101,16 +102,39 @@ function acknowledgePendingEvent(id) {
   const idx = state.pendingEvents.findIndex((entry) => entry.event?.id === id);
   if (idx === -1) return false;
   state.pendingEvents.splice(idx, 1);
+  scheduleLeaseFlush();
   return true;
+}
+
+function scheduleLeaseFlush() {
+  if (state.leaseTimer) {
+    clearTimeout(state.leaseTimer);
+    state.leaseTimer = null;
+  }
+  if (state.pendingPolls.length === 0) return;
+  const now = Date.now();
+  const nextLeaseUntil = state.pendingEvents
+    .map((entry) => entry.leaseUntil || 0)
+    .filter((leaseUntil) => leaseUntil > now)
+    .sort((a, b) => a - b)[0];
+  if (!nextLeaseUntil) return;
+  state.leaseTimer = setTimeout(() => {
+    state.leaseTimer = null;
+    flushPendingPolls();
+  }, Math.max(0, nextLeaseUntil - now));
 }
 
 function flushPendingPolls() {
   while (state.pendingPolls.length > 0) {
     const entry = findAvailablePendingEvent();
-    if (!entry) return;
+    if (!entry) {
+      scheduleLeaseFlush();
+      return;
+    }
     const poll = state.pendingPolls.shift();
     poll.resolve(leaseEvent(entry, poll.leaseMs));
   }
+  scheduleLeaseFlush();
 }
 
 /** Push a message to all connected SSE clients. */
@@ -592,6 +616,7 @@ function handlePollGet(req, res, url) {
     res.end(JSON.stringify(event));
   }
   state.pendingPolls.push(poll);
+  scheduleLeaseFlush();
   req.on('close', () => {
     clearTimeout(timer);
     const idx = state.pendingPolls.indexOf(poll);
@@ -624,7 +649,13 @@ function handlePollPost(req, res) {
             : msg.type === 'error'
               ? 'agent_error'
               : 'agent_done';
-        state.sessionStore.appendEvent({ type: eventType, id: msg.id, file: msg.file, message: msg.message });
+        state.sessionStore.appendEvent({
+          type: eventType,
+          id: msg.id,
+          file: msg.file,
+          message: msg.message,
+          carbonize: msg.data?.carbonize === true,
+        });
       } catch { /* keep reply path best-effort; browser still needs SSE */ }
     }
     flushPendingPolls();
@@ -643,6 +674,8 @@ let httpServer = null;
 
 function shutdown() {
   try { fs.unlinkSync(LIVE_PID_FILE); } catch {}
+  if (state.leaseTimer) clearTimeout(state.leaseTimer);
+  state.leaseTimer = null;
   if (state.sessionDir) {
     try { fs.rmSync(state.sessionDir, { recursive: true, force: true }); } catch {}
   }

@@ -56,8 +56,7 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
         .filter((name) => name.endsWith('.jsonl'))
         .map((name) => name.slice(0, -'.jsonl'.length))
         .map((id) => this.getSnapshot(id))
-        .filter(Boolean)
-        .filter((snapshot) => !COMPLETED_PHASES.has(snapshot.phase));
+        .filter(Boolean);
     },
   };
 }
@@ -151,25 +150,32 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
   switch (event.type) {
     case 'generate':
       next.phase = 'generate_requested';
-      next.pageUrl = event.pageUrl || next.pageUrl;
-      next.expectedVariants = event.count || next.expectedVariants;
+      next.pageUrl = event.pageUrl ?? next.pageUrl;
+      next.expectedVariants = event.count ?? next.expectedVariants;
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
       next.pendingEvent = toPendingEvent(event);
       if (event.screenshotPath) upsertArtifact(next.annotationArtifacts, { type: 'screenshot', path: event.screenshotPath });
       break;
     case 'variants_ready':
     case 'agent_done':
-      next.phase = 'variants_ready';
-      next.sourceFile = event.file || next.sourceFile;
-      next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants || next.expectedVariants);
+      next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';
+      next.sourceFile = event.file ?? next.sourceFile;
+      next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants ?? next.expectedVariants);
       next.pendingEventSeq = null;
       next.pendingEvent = null;
+      if (event.carbonize === true) {
+        next.diagnostics.push({
+          error: 'carbonize_cleanup_required',
+          file: event.file || null,
+          message: 'Accepted variant still has carbonize markers that must be folded into source CSS.',
+        });
+      }
       break;
     case 'checkpoint':
-      if ((event.revision || 0) >= (next.checkpointRevision || 0)) {
-        next.phase = event.phase || next.phase;
-        next.checkpointRevision = event.revision || next.checkpointRevision;
-        next.activeOwner = event.owner || next.activeOwner;
+      if ((event.revision ?? 0) >= (next.checkpointRevision ?? 0)) {
+        next.phase = event.phase ?? next.phase;
+        next.checkpointRevision = event.revision ?? next.checkpointRevision;
+        next.activeOwner = event.owner ?? next.activeOwner;
         next.arrivedVariants = event.arrivedVariants ?? next.arrivedVariants;
         next.visibleVariant = event.visibleVariant ?? next.visibleVariant;
         if (event.paramValues) next.paramValues = { ...event.paramValues };
@@ -202,6 +208,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       break;
     case 'agent_error':
       next.phase = 'agent_error';
+      next.pendingEventSeq = null;
+      next.pendingEvent = null;
       next.diagnostics.push({ error: 'agent_error', message: event.message || 'unknown agent error' });
       break;
     default:

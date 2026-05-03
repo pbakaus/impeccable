@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { completionTypeForAcceptResult } from './live-completion.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -31,11 +32,15 @@ function readServerInfo() {
   }
 }
 
-async function postReply(base, token, { id, type, message, file }) {
+export function buildPollReplyPayload(token, { id, type, message, file, data }) {
+  return { token, id, type, message, file, data };
+}
+
+async function postReply(base, token, reply) {
   const res = await fetch(`${base}/poll`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, id, type, message, file }),
+    body: JSON.stringify(buildPollReplyPayload(token, reply)),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -152,18 +157,17 @@ Options:
         );
         event._acceptResult = JSON.parse(out.trim());
       } catch (err) {
-        event._acceptResult = { handled: false, error: err.message };
+        event._acceptResult = { handled: false, mode: 'error', error: err.message };
       }
 
-      const completionType = event._acceptResult?.handled === true
-        ? (event.type === 'discard' ? 'discarded' : 'complete')
-        : 'error';
+      const completionType = completionTypeForAcceptResult(event.type, event._acceptResult);
       try {
         await postReply(base, info.token, {
           id: event.id,
           type: completionType,
           message: event._acceptResult?.error,
           file: event._acceptResult?.file,
+          data: event._acceptResult?.carbonize === true ? { carbonize: true } : undefined,
         });
       } catch (err) {
         event._completionAck = { ok: false, error: err.message };

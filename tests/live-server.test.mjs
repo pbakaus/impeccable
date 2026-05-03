@@ -8,10 +8,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execSync, spawn } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-server.mjs');
+const COMPLETE_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-complete.mjs');
 // ---------------------------------------------------------------------------
 // Helper: start/stop server for integration tests
 // ---------------------------------------------------------------------------
@@ -101,7 +102,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'status-test-1',
+        id: 'a1b2c3d5',
         action: 'impeccable',
         count: 1,
         pageUrl: '/',
@@ -114,8 +115,8 @@ describe('live-server integration', () => {
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.equal(data.status, 'ok');
-    assert.equal(data.activeSessions.some((s) => s.id === 'status-test-1'), true);
-    assert.equal(data.pendingEvents.some((e) => e.id === 'status-test-1' && e.type === 'generate'), true);
+    assert.equal(data.activeSessions.some((s) => s.id === 'a1b2c3d5'), true);
+    assert.equal(data.pendingEvents.some((e) => e.id === 'a1b2c3d5' && e.type === 'generate'), true);
 
     await drainPolls(server);
   });
@@ -280,7 +281,7 @@ describe('live-server integration', () => {
 
   it('persists browser events to the durable session journal before poll delivery', async () => {
     await drainPolls(server);
-    const journalPath = join(REPO_ROOT, '.impeccable-live', 'sessions', 'persist-test-1.jsonl');
+    const journalPath = join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d6.jsonl');
     rmSync(journalPath, { force: true });
 
     const postRes = await fetch(`http://localhost:${server.port}/events`, {
@@ -289,7 +290,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'persist-test-1',
+        id: 'a1b2c3d6',
         action: 'layout',
         count: 3,
         pageUrl: 'http://localhost:4321/',
@@ -309,7 +310,7 @@ describe('live-server integration', () => {
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'persist-test-1', type: 'done' }),
+      body: JSON.stringify({ token: server.token, id: 'a1b2c3d6', type: 'done' }),
     });
   });
 
@@ -321,7 +322,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'checkpoint',
-        id: 'checkpoint-test-1',
+        id: 'a1b2c3d7',
         phase: 'cycling',
         revision: 2,
         owner: 'browser-a',
@@ -339,7 +340,7 @@ describe('live-server integration', () => {
       'event=live_server.checkpoint_not_polled actor=browser operation=checkpoint risk=checkpoint_starves_agent_queue expected=timeout actual=' + polled.type + ' suggestion=journal checkpoint without enqueueing agent work',
     );
 
-    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'checkpoint-test-1.snapshot.json'), 'utf-8'));
+    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d7.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.visibleVariant, 2);
     assert.deepEqual(snapshot.paramValues, { density: 'packed' });
   });
@@ -356,7 +357,7 @@ describe('live-server integration', () => {
         body: JSON.stringify({
           token: firstServer.token,
           type: 'generate',
-          id: 'restart-replay-1',
+          id: 'a1b2c3d8',
           action: 'polish',
           count: 2,
           pageUrl: 'http://localhost:4321/',
@@ -374,8 +375,8 @@ describe('live-server integration', () => {
 
       assert.equal(
         replayed.id,
-        'restart-replay-1',
-        'event=live_server.restart_replay actor=agent operation=poll_after_helper_restart risk=server_restart_loses_unpolled_event expected=restart-replay-1 actual=' + replayed.id + ' suggestion=rebuild pending poll queue from live-session-store active snapshots on startup',
+        'a1b2c3d8',
+        'event=live_server.restart_replay actor=agent operation=poll_after_helper_restart risk=server_restart_loses_unpolled_event expected=a1b2c3d8 actual=' + replayed.id + ' suggestion=rebuild pending poll queue from live-session-store active snapshots on startup',
       );
       assert.equal(replayed.type, 'generate');
     } finally {
@@ -399,7 +400,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'complete-ack-1',
+        id: 'a1b2c3d9',
         action: 'impeccable',
         count: 1,
         pageUrl: '/',
@@ -407,15 +408,45 @@ describe('live-server integration', () => {
       }),
     });
     const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50`).then(r => r.json());
-    assert.equal(polled.id, 'complete-ack-1');
+    assert.equal(polled.id, 'a1b2c3d9');
     const ack = await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'complete-ack-1', type: 'complete' }),
+      body: JSON.stringify({ token: server.token, id: 'a1b2c3d9', type: 'complete' }),
     });
     assert.equal(ack.status, 200);
-    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'complete-ack-1.snapshot.json'), 'utf-8'));
+    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d9.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.phase, 'completed');
+  });
+
+  it('manual live-complete acknowledges the running helper queue before writing fallback journal state', async () => {
+    await drainPolls(server);
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'a1b2c3dc',
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Manual</button>' },
+      }),
+    });
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50&leaseMs=50`).then(r => r.json());
+    assert.equal(polled.id, 'a1b2c3dc');
+
+    const completed = JSON.parse(execFileSync(process.execPath, [COMPLETE_SCRIPT, '--id', 'a1b2c3dc'], { cwd: REPO_ROOT, encoding: 'utf-8' }));
+    assert.equal(completed.phase, 'completed');
+
+    await new Promise(r => setTimeout(r, 75));
+    const stale = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50&leaseMs=50`).then(r => r.json());
+    assert.equal(
+      stale.type,
+      'timeout',
+      'event=live_complete.running_server_ack actor=agent operation=manual_complete risk=completed_session_redelivered_from_memory expected=timeout actual=' + stale.id,
+    );
   });
 
   it('does not drop polled events until the agent acknowledges them', async () => {
@@ -427,7 +458,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'lease-test-1',
+        id: 'a1b2c3da',
         action: 'polish',
         count: 2,
         element: { outerHTML: '<section>lease</section>', tagName: 'section' },
@@ -436,7 +467,7 @@ describe('live-server integration', () => {
     assert.equal(postRes.status, 200);
 
     const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
-    assert.equal(first.id, 'lease-test-1');
+    assert.equal(first.id, 'a1b2c3da');
 
     const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=25&leaseMs=50`).then(r => r.json());
     assert.equal(leased.type, 'timeout', 'leased event should not be redelivered before lease expiry');
@@ -445,14 +476,14 @@ describe('live-server integration', () => {
     const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
     assert.equal(
       redelivered.id,
-      'lease-test-1',
+      'a1b2c3da',
       'event=live_poll.lease_redelivery actor=agent operation=poll_after_missed_ack risk=agent_missed_event_loses_live_state expected=same event redelivered after lease expiry actual=' + redelivered.id + ' suggestion=inspect pending event lease bookkeeping',
     );
 
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'lease-test-1', type: 'done' }),
+      body: JSON.stringify({ token: server.token, id: 'a1b2c3da', type: 'done' }),
     });
     const acked = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50&leaseMs=50`).then(r => r.json());
     assert.equal(acked.type, 'timeout', 'acked event should be removed from the poll queue');
@@ -467,7 +498,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({
         token: server.token,
         type: 'generate',
-        id: 'lease-wakeup-1',
+        id: 'a1b2c3db',
         action: 'polish',
         count: 1,
         element: { outerHTML: '<section>wakeup</section>', tagName: 'section' },
@@ -476,7 +507,7 @@ describe('live-server integration', () => {
     assert.equal(postRes.status, 200);
 
     const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=60`).then(r => r.json());
-    assert.equal(first.id, 'lease-wakeup-1');
+    assert.equal(first.id, 'a1b2c3db');
 
     const startedAt = Date.now();
     const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=60`).then(r => r.json());
@@ -484,8 +515,8 @@ describe('live-server integration', () => {
 
     assert.equal(
       redelivered.id,
-      'lease-wakeup-1',
-      'event=live_poll.lease_expiry_wakeup actor=agent operation=poll_before_lease_expiry risk=parked_poll_waits_full_timeout expected=lease-wakeup-1 actual=' + redelivered.id,
+      'a1b2c3db',
+      'event=live_poll.lease_expiry_wakeup actor=agent operation=poll_before_lease_expiry risk=parked_poll_waits_full_timeout expected=a1b2c3db actual=' + redelivered.id,
     );
     assert.ok(
       elapsed < 250,
@@ -495,7 +526,7 @@ describe('live-server integration', () => {
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'lease-wakeup-1', type: 'done' }),
+      body: JSON.stringify({ token: server.token, id: 'a1b2c3db', type: 'done' }),
     });
   });
 
