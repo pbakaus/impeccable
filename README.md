@@ -97,7 +97,26 @@ Visit [impeccable.style](https://impeccable.style#casestudies) to see before/aft
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 2: Copy from Repository
+### Option 2: Git Submodule (For version control)
+
+Keep skills updated by adding this repository as a submodule:
+
+```bash
+# 1. Add impeccable as a submodule
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+
+# 2. Link your preferred provider's skill folders (e.g. cursor, claude, gemini)
+./.impeccable/bin/link.sh cursor
+
+# 3. Commit the changes
+# (This creates symlinks inside .cursor/skills/*, without replacing your whole .cursor folder)
+git add .gitmodules .impeccable .cursor
+git commit -m "Add Impeccable skills"
+```
+
+To update the skills later, simply run `git submodule update --remote`. If new skills are added upstream, run the link script again to create symlinks for the new folders.
+
+### Option 3: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -188,6 +207,17 @@ cp -r dist/qoder/.qoder your-project/
 # Or global (applies to all projects)
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
+
+### Option 3: Git Submodule (Advanced)
+
+If you'd like to keep Impeccable updated as a git submodule in your project:
+
+```bash
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+./.impeccable/bin/link.sh <provider>
+```
+
+Replace `<provider>` with your tool (e.g., `cursor`, `claude`, `gemini`, `opencode`, `pi`). This will create symlinks only for the skill subfolders inside your existing provider config (for example, `.claude/skills/*`), instead of replacing the whole provider directory.
 
 ## Usage
 
