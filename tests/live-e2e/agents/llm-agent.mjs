@@ -46,7 +46,7 @@ const SYSTEM_INSTRUCTIONS = [
   'OUTPUT CONTRACT — return ONLY a JSON object with this exact shape. No prose, no code fences, no commentary:',
   '',
   '{',
-  '  "scopedCss": "string — contents of a <style data-impeccable-css> block, with @scope ([data-impeccable-variant=\\"N\\"]) rules per variant",',
+  '  "scopedCss": "string — contents of the preview CSS block, authored according to wrapInfo.cssAuthoring",',
   '  "variants": [',
   '    {',
   '      "innerHtml": "string — single top-level HTML element matching the picked element\'s tag, e.g. <h1 class=\\"hero-title\\">Title</h1>",',
@@ -65,7 +65,8 @@ const SYSTEM_INSTRUCTIONS = [
   '- PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain the same class="hero-title" string (you may add additional class names alongside, never remove or rename the original). This is a hard requirement — automated harnesses verify the original class survives across the variant set.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
-  '- The scopedCss should declare @scope ([data-impeccable-variant="N"]) rules wired against the params you emit (CSS vars for range/toggle, attribute selectors for steps/toggle).',
+  '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
+  '- Wire scopedCss rules against the params you emit (CSS vars for range/toggle, attribute selectors for steps/toggle).',
   '- Use HTML attribute syntax in innerHtml (class=, not className=). The orchestrator translates per file syntax.',
   '- Do NOT emit the wrapping <div data-impeccable-variant="N">. The orchestrator wraps your content.',
   '- Do NOT emit the outer <style data-impeccable-css> tag. Only its contents go in scopedCss.',
@@ -96,7 +97,7 @@ export async function createLlmAgent(opts = {}) {
   const client = new Anthropic({ apiKey });
 
   return {
-    async generateVariants(event /*, context */) {
+    async generateVariants(event, context = {}) {
       const userMessage = [
         'Produce variants for the following pick. Reply with the JSON object only — no prose.',
         '',
@@ -111,6 +112,11 @@ export async function createLlmAgent(opts = {}) {
               tagName: event.element?.tagName,
               className: event.element?.className,
               textContent: event.element?.textContent?.slice(0, 200),
+            },
+            wrapInfo: {
+              styleMode: context.wrapInfo?.styleMode,
+              styleTag: context.wrapInfo?.styleTag,
+              cssAuthoring: context.wrapInfo?.cssAuthoring,
             },
           },
           null,

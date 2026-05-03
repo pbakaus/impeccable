@@ -107,12 +107,14 @@ The helper searches ID first, then classes, then tag + class combo. If `event.pa
 
 If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
-Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples }`.
+Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }`.
 
-`styleMode` controls how preview CSS must be authored:
+`styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess:
 
-- `scoped`: default for HTML, JSX, Vue, and Svelte. Use a normal `<style data-impeccable-css="SESSION_ID">` block with `@scope ([data-impeccable-variant="N"])` rules.
-- `astro-global-prefixed`: required for `.astro` files. Use `<style is:inline data-impeccable-css="SESSION_ID">` and explicit `[data-impeccable-variant="N"]` selector prefixes. `is:inline` keeps the temporary preview CSS out of Astro's component-style transform; the variant prefixes provide isolation. Do not put raw `@scope` rules into Astro component styles; Astro hoists/transforms component CSS and can scope the preview selectors away from the generated variant DOM.
+- `scoped`: use `@scope ([data-impeccable-variant="N"])` rules.
+- `astro-global-prefixed`: use explicit `[data-impeccable-variant="N"]` selector prefixes and the exact `styleTag` returned by the tool.
+
+Use `cssAuthoring` as the source of truth for the current file. It includes the exact `styleTag`, selector strategy, selector examples, requirements, and forbidden patterns. Do not apply a framework-specific exception unless the returned `styleMode` / `cssAuthoring.mode` says to.
 
 **Fallback errors.** Wrap only writes into files it judges to be source (tracked by git, not marked GENERATED, not listed in config's `generatedFiles`). If it can't land on a source file, it errors without writing; accepting a variant into a generated file is silent data loss. Three shapes:
 
@@ -234,13 +236,12 @@ Complete HTML replacement of the original element for each variant, not a CSS-on
 
 Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Colocate CSS as a `<style>` tag inside the variant wrapper; `<style>` works anywhere in modern browsers and this ensures CSS and HTML arrive atomically (no FOUC).
 
-For normal `styleMode: "scoped"` files:
+Use the `cssAuthoring` object returned by `live-wrap.mjs` to author the temporary preview CSS. The style opening tag shown below is the common case; replace it with `cssAuthoring.styleTag` when the tool returns a different one. The variant markup shape is otherwise stable:
 
 ```html
 <!-- Variants: insert below this line -->
 <style data-impeccable-css="SESSION_ID">
-  @scope ([data-impeccable-variant="1"]) { ... }
-  @scope ([data-impeccable-variant="2"]) { ... }
+  /* rules matching cssAuthoring.rulePattern */
 </style>
 <div data-impeccable-variant="1">
   <!-- variant 1: full element replacement (single top-level element) -->
@@ -252,36 +253,14 @@ For normal `styleMode: "scoped"` files:
   <!-- variant 3: full element replacement -->
 </div>
 ```
-
-For `styleMode: "astro-global-prefixed"` files:
-
-```astro
-<!-- Variants: insert below this line -->
-<style is:inline data-impeccable-css="SESSION_ID">
-  [data-impeccable-variant="1"] .variant-class { ... }
-  [data-impeccable-variant="2"] .variant-class { ... }
-  [data-impeccable-variant="3"] .variant-class { ... }
-</style>
-<div data-impeccable-variant="1">
-  <!-- variant 1: full element replacement (single top-level element) -->
-</div>
-<div data-impeccable-variant="2" style="display: none">
-  <!-- variant 2: full element replacement -->
-</div>
-<div data-impeccable-variant="3" style="display: none">
-  <!-- variant 3: full element replacement -->
-</div>
-```
-
-Astro rule: never use raw `@scope ([data-impeccable-variant="N"])` inside `.astro` live preview styles. Prefix every selector with `[data-impeccable-variant="N"]` and add `is:inline` to the temporary style tag so Astro does not transform the preview CSS.
 
 **Each variant div contains exactly one top-level element: the full replacement for the original.** Use the same tag as the original (e.g. `<section>` if the user picked a `<section>`). Loose siblings (heading + paragraph + div as direct children of the variant div) break the outline tracking and the accept flow, which both assume one child.
 
-The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no scoped CSS, omit the `<style>` tag entirely. Use `@scope` for CSS isolation in non-Astro files (Chrome 118+ / Firefox 128+ / Safari 17.4+).
+The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no preview CSS, omit the `<style>` tag entirely.
 
 One edit, all variants; the browser's MutationObserver picks everything up in one pass.
 
-**Author every `:scope` rule with a descendant combinator.** The `@scope` boundary is the **variant wrapper `<div data-impeccable-variant="N">`**, not the element you're designing. A bare `:scope { background: cream; }` styles the wrapper, not the inner replacement, so the cream lands on a `display: contents` shell while the actual element keeps page defaults. Always step in: `:scope > .card`, `:scope > section`, `:scope .hero-title`, etc. The fake test agent's CSS in `tests/live-e2e/agent.mjs` is a faithful template; every rule starts `:scope > ...`.
+For `styleMode: "scoped"`, author every `:scope` rule with a descendant combinator. The `@scope` boundary is the **variant wrapper `<div data-impeccable-variant="N">`**, not the element you're designing. A bare `:scope { background: cream; }` styles the wrapper, not the inner replacement, so the cream lands on a `display: contents` shell while the actual element keeps page defaults. Always step in: `:scope > .card`, `:scope > section`, `:scope .hero-title`, etc. The fake test agent's CSS in `tests/live-e2e/agent.mjs` is a faithful template; every scoped rule starts `:scope > ...`.
 
 **JSX / TSX target files.** Wrap `<style>` content in a template literal so the CSS `{` / `}` aren't parsed as JSX expressions, and use `className=` / `style={{…}}` on every variant element. Keep `data-impeccable-*` attributes as-is; they're plain strings:
 
