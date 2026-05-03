@@ -180,7 +180,7 @@ import '../styles/sub-pages.css';
         <h2 class="section-title">The Foundation</h2>
       </div>
       <div class="foundation-content">
-        <p class="section-lead" data-reveal>Before commands, before detection, Impeccable teaches your AI real design. Deep reference knowledge across 7 dimensions, loaded every time your AI writes code.</p>
+        <p class="section-lead" data-reveal>Before any command runs, Impeccable teaches your AI how design works. Seven reference files load on every prompt: typography, color, motion, spatial, interaction, responsive, UX writing.</p>
 
         <div class="foundation-grid" data-reveal>
           <!-- 7 dimension cards, rendered by JS -->
@@ -201,7 +201,7 @@ import '../styles/sub-pages.css';
       </div>
       <div class="language-content">
         <div class="language-intro-row" data-reveal>
-          <p class="section-lead">23 commands form a shared vocabulary between you and your AI. Each one encodes a specific design discipline, so you can steer with precision. Pick any to see it in action, or <a href="/docs" class="cheatsheet-link">browse the full reference &rarr;</a></p>
+          <p class="section-lead">23 commands give you a shared design vocabulary with your AI. Each maps to one discipline (<code>/typeset</code> for type, <code>/colorize</code> for color, <code>/animate</code> for motion), so you can ask for the exact thing without explaining it. Pick any to see it in action, or <a href="/docs" class="cheatsheet-link">browse the full reference &rarr;</a></p>
           <div class="language-view-toggle" role="tablist" aria-label="Commands view">
             <button type="button" role="tab" class="language-view-tab is-active" data-view="palette" aria-selected="true">Palette</button>
             <button type="button" role="tab" class="language-view-tab" data-view="periodic" aria-selected="false">Periodic</button>
@@ -358,7 +358,7 @@ import '../styles/sub-pages.css';
 
             <article class="why-panel" id="why-panel-2" role="tabpanel" data-index="2" hidden>
               <h3 class="why-panel-title">Built to live in your production codebase.</h3>
-              <p class="why-panel-body">Impeccable isn't a sketchpad. It reads your existing tokens, components, and rendered output; polishes what's there; flags regressions; iterates with your design system rather than around it. Daily-driver for real work on real apps, not a one-shot mock factory.</p>
+              <p class="why-panel-body">Impeccable reads your existing tokens, components, and rendered output. It polishes what's there, flags regressions, and stays inside your design system instead of inventing a new one each run.</p>
               <div class="why-visual why-visual--terminal">
                 <div class="why-terminal">
                   <div class="why-terminal-header">
@@ -408,7 +408,7 @@ import '../styles/sub-pages.css';
 
             <article class="why-panel" id="why-panel-4" role="tabpanel" data-index="4" hidden>
               <h3 class="why-panel-title">Design where the work actually happens.</h3>
-              <p class="why-panel-body">The waterfall era (designer in canvas, throws a mock over the wall) is over. Most product work now starts directly in Claude Code, Cursor, Codex, Gemini, or Copilot, on the real codebase, in the browser. Impeccable is native to that world. No canvas. No handoff. Open your AI harness, type a command, ship the change.</p>
+              <p class="why-panel-body">The waterfall era (designer in canvas, throws a mock over the wall) is over. Most product work now starts directly in Claude Code, Cursor, Codex, Gemini, or Copilot, on the real codebase, in the browser. Impeccable runs there. No canvas. No handoff. Open your AI harness, type a command, ship the change.</p>
               <div class="why-visual why-visual--v2">
                 <div class="v2-side v2-side--old">
                   <span class="v2-label">The old way</span>
@@ -963,7 +963,7 @@ import '../styles/sub-pages.css';
           </div>
           <ul class="changelog-items">
             <li><strong>Live mode lands valid TSX through the wrap → preview → accept → carbonize loop on Vite/Next React/TSX projects.</strong> The wrapper now keeps a single JSX-slot child instead of three adjacent siblings, so it round-trips cleanly inside <code>return (...)</code>, array <code>.map(...)</code>, and <code>asChild</code> parents like Radix's <code>&lt;DialogPrimitive.Title&gt;</code>. Carbonize stopped double-wrapping CSS in nested template literals on TSX targets, accept and discard restore the picked element at its original indent (with relative depth between lines preserved), and the screenshot overlay no longer flashes solid black on default-background pages. Closes <a href="https://github.com/pbakaus/impeccable/issues/114" target="_blank" rel="noopener">#114</a>, with thanks again to <a href="https://github.com/dergachoff" target="_blank" rel="noopener">@dergachoff</a> for the detailed bug report.</li>
-            <li><strong>Wrap correctly disambiguates repeated identical-class siblings.</strong> A list of <code>&lt;Card className="card"&gt;</code> rendered three times with the same classes used to land on the first one regardless of which the user picked. <code>live-wrap.mjs</code> now accepts <code>--text TEXT</code> (the picked element's <code>textContent</code>) and narrows candidates accordingly, falling back to first-match when the text is too short or doesn't appear literally in source (data-driven children like <code>&#123;title&#125;</code>), and erroring with <code>element_ambiguous</code> when multiple branches still match equally.</li>
+            <li><strong>Wrap correctly disambiguates repeated identical-class siblings.</strong> A list of <code>&lt;Card className="card"&gt;</code> rendered three times with the same classes used to land on the first one regardless of which the user picked. <code>live-wrap.mjs</code> now accepts <code>--text TEXT</code> (the picked element's <code>textContent</code>) and narrows candidates accordingly, falling back to first-match when the text is too short or doesn't appear literally in source (children with interpolated values like <code>&#123;title&#125;</code>), and erroring with <code>element_ambiguous</code> when multiple branches still match equally.</li>
             <li><strong><code>live-inject</code> CSP-meta unwrap now byte-for-byte preserves self-closing tag whitespace.</strong> The patch+revert cycle on a <code>&lt;meta http-equiv="Content-Security-Policy" ... /&gt;</code> tag was eating the space before <code>/&gt;</code> via a double-space artifact in the marker insertion path; common Vite shapes that ship a CSP meta now round-trip cleanly.</li>
             <li><strong><code>live.md</code> spec gained explicit guidance for three real authoring traps.</strong> Variant CSS must use a descendant combinator (<code>:scope &gt; .card</code>, not bare <code>:scope</code>) or it lands on the wrapper instead of the picked element. JSX <code>&lt;style&gt;</code> bodies need <code>&#123;`...`&#125;</code> template-literal wrapping. Aborting an in-flight session uses <code>live-poll --reply EVENT_ID error "msg"</code>, not <code>live-accept --discard</code>; the latter only mutates source while the bar stays stuck on GENERATING dots forever.</li>
           </ul>
@@ -1046,7 +1046,7 @@ import '../styles/sub-pages.css';
               </div>
               <ul class="changelog-items">
                 <li><strong>Renamed <code>frontend-design</code> to <code>impeccable</code>.</strong> The core skill now shares its name with the project, and the teach subcommand moved from <code>/teach-impeccable</code> to <code>/impeccable teach</code>. One skill, one namespace.</li>
-                <li><strong>Data-driven skill rewrite.</strong> The core skill was rebuilt against an internal eval framework that runs the same brief through frontier models with and without the skill loaded, then measures how much the output collapses into monoculture. The result: dramatically more font and color diversity, sharper overall design quality, and much stronger Codex support. The biggest unlock was an anti-attractor procedure that forces the model to enumerate and reject its reflex defaults before picking. Validated on gpt-5.4 and Qwen 3.6 Plus across 15 niches.</li>
+                <li><strong>Skill rewritten against evals.</strong> Fifteen briefs ran through gpt-5.4 and Qwen 3.6 Plus, with and without the skill loaded, then graded side by side. More font and color variety, fewer purple gradients, much better Codex output. The single change that moved the numbers most: before the model commits to a font or palette, it has to name its first three instincts and reject them.</li>
                 <li><strong>Anti-pattern detection engine.</strong> 27 deterministic rules across typography, color, layout, motion, and quality. Handles oklch, oklab, lch, and lab color formats, CSS variables inside border shorthands, gradient-backed text, and emoji-only nodes.</li>
                 <li><strong>CLI: <code>npx impeccable detect</code>.</strong> Scans HTML, CSS, JSX/TSX, Vue, Svelte, and CSS-in-JS. Framework detection, multi-file import tracking, Puppeteer-backed live URL scanning, CI-ready JSON output, and a <code>--fast</code> regex mode for huge codebases.</li>
                 <li><strong>Chrome DevTools extension.</strong> One-click detection on any page: yours, staging, production, or someone else's. Reads live computed styles, surfaces findings in an interactive panel, and highlights elements on the page. In Chrome Web Store review.</li>

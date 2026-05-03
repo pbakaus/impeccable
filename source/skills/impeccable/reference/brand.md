@@ -64,7 +64,7 @@ Brand surfaces have permission for Committed, Full palette, and Drenched strateg
 
 - Name a real reference before picking a strategy. "Klim Type Foundry #ff4500 orange drench", "Stripe purple-on-white restraint", "Liquid Death acid-green full palette", "Mailchimp yellow full palette", "Condé Nast Traveler muted navy restraint", "Vercel pure black monochrome". Unnamed ambition becomes beige.
 - Palette IS voice. A calm brand and a restless brand should not share palette mechanics.
-- When the strategy is Committed or Drenched, the color is load-bearing. Don't hedge with neutrals around the edges — commit.
+- When the strategy is Committed or Drenched, color carries the brand. Don't hedge with neutrals around the edges. Commit.
 - Don't converge across projects. If the last brand surface was restrained-on-cream, this one is not.
 
 ## Layout

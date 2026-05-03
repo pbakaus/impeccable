@@ -130,7 +130,7 @@ Test the interface through the eyes of 5 distinct user archetypes. Each persona 
 - Are primary actions in the thumb zone (bottom half of screen)?
 - Is state preserved if the user leaves and returns?
 - Does it work on slow connections (3G)?
-- Can forms leverage autocomplete and smart defaults?
+- Can forms use autocomplete and smart defaults?
 - Are touch targets at least 44×44pt?
 
 **Red Flags** (report these specifically):
