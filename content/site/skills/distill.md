@@ -17,7 +17,7 @@ It works in two passes:
 1. **Assess the complexity sources**. Too many elements, excessive variation, information overload, visual noise, confusing hierarchy, feature creep. Name each one.
 2. **Edit ruthlessly**. Remove what is not essential. Combine what can be combined. Hide what can wait. Consolidate variation into a single treatment. Commit to a single visual language.
 
-The principle: simplicity is not about fewer features. It is about fewer obstacles between users and their goals. Every element on the page has to justify its existence.
+The principle: every element on the page has to justify its existence. Fewer obstacles, not fewer features.
 
 ## Try it
 

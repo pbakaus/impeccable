@@ -47,7 +47,7 @@ A few things you can do before pressing Go:
 
 - **Click the command chip** (default is `impeccable`, the freeform action). Pick a specific action like `bolder`, `delight`, `layout`, or `typeset` to constrain the variants along one dimension.
 - **Type in the freeform field.** "More playful." "Less SaaS." "Feel like a newsletter from a magazine."
-- **Drop a comment pin** by clicking anywhere on the picked element. The pin's position is load-bearing: a comment near the title is about the title, not the whole element.
+- **Drop a comment pin** by clicking anywhere on the picked element. The pin's position matters: a comment near the title is about the title, not the whole element.
 - **Draw a stroke** by dragging across the element. Closed loop = "this part matters." Arrow = direction. Cross = "delete this." The skill reads strokes by shape, not by pixel content.
 
 When the brief feels clear, hit **Go**.

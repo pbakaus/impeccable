@@ -105,5 +105,5 @@ From there, pair with `/impeccable polish` or `/impeccable distill` to act on th
 ## Pitfalls
 
 - **Running it on incomplete work.** Critique is for finished pages. An empty state with three TODOs will score badly because it is not done, not because it is bad.
-- **Ignoring the questions at the end.** They are usually the highest-leverage fixes.
+- **Ignoring the questions at the end.** They are usually the fixes that change the design most.
 - **Treating the heuristic scores as a grade.** They are diagnostic, not evaluative. A 3/4 on a heuristic that matters less for your context is fine.

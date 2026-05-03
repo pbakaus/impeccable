@@ -51,9 +51,23 @@ Edit any of these directly and reload. No rebuild needed for CSS changes.
 - **`--color-ash`** (55%) is for secondary labels, captions, relationship meta lines.
 - **Never use pure black or pure white.** Use the tinted tokens.
 
-## No em dashes, no `--` either
+## Prose: read STYLE.md before writing user-facing copy
 
-CLAUDE.md feedback from multiple sessions: "no em dashes in project copy" does NOT mean "replace with `--`". It means **use actual punctuation**: commas, colons, semicolons, periods, parentheses. The `--` substitution makes the problem worse. The build validator (`validateNoEmDashes` in `scripts/build.js`) catches real em dashes but not the `--` double-hyphen habit, so you have to catch yourself.
+Editorial brief is at `STYLE.md` (root). Read it before editing the homepage, sub-pages, command editorials, tutorials, or READMEs. The site has been called out for AI prose; the rules there exist to keep that from creeping back.
+
+The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a STYLE.md amendment.
+
+The validator scans `content/site/`, `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `source/skills/impeccable/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
+
+The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. STYLE.md lists them. Use them on every editorial pass.
+
+## Two content trees: keep them in sync
+
+After the Astro migration, editorials and tutorials live in TWO places that are both real:
+- `content/site/skills/<id>.md` and `content/site/tutorials/<id>.md` — read by `scripts/build.js` for taglines and as source of truth for downstream tooling.
+- `site/content/skills/<id>.md` and `site/content/tutorials/<id>.md` — read by Astro's content collection; this is what actually renders on the site.
+
+There is no automated sync. **Edit both** when changing any editorial or tutorial body. `diff -rq content/site/ site/content/` should always be clean except for `anti-patterns-catalog.js`. Unifying these is on the cleanup list.
 
 ## Development Server
 

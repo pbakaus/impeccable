@@ -129,21 +129,82 @@ function validateSkillFrontmatter(skills) {
 }
 
 /**
- * Scan user-facing copy for em dashes (— or &mdash;).
- * Em dashes in project copy are a known anti-pattern here; flag them loudly.
- * Only scans files where we author copy, not vendored or generated output.
+ * Scan user-facing copy for AI-prose anti-patterns:
+ *   - em dashes (— or &mdash;)
+ *   - double-hyphen substitutes (` -- `)
+ *   - denylisted phrases that read as AI tells in marketing copy
  *
- * Returns the number of occurrences found.
+ * The denylist is the editorial brief in STYLE.md, enforced. Each rule has a
+ * rationale that prints with the failure so the next author understands why.
+ *
+ * Scope: every surface a reader sees. Not source/skills/impeccable/, where
+ * LLM-facing reference instructions can use technical phrasings the marketing
+ * copy can't.
+ *
+ * Returns the number of occurrences found. Build fails if > 0.
  */
-function validateNoEmDashes(rootDir) {
+function validateProse(rootDir) {
   const targets = [
     'content/site',
     'site/components',
+    'site/content',
     'site/layouts',
+    'site/pages',
+    'README.md',
+    'README.npm.md',
   ];
   const extensions = new Set(['.html', '.md', '.js', '.mjs', '.css', '.astro']);
   const emDashPatterns = [/—/g, /&mdash;/gi, /&#8212;/gi, /&#x2014;/gi];
+  // Phrase rules: { re, rationale }. Add to STYLE.md when adding here.
+  const phraseRules = [
+    { re: /\bload-bearing\b/i, rationale: 'AI tell. Stolen-engineer diction; almost always vague. Name what the thing actually does.' },
+    { re: /\bhighest-leverage\b/i, rationale: 'AI tell. Vague claim of impact. Say what specifically pays off.' },
+    { re: /\bbiggest unlock\b/i, rationale: 'AI tell. Marketing-speak. Describe the actual change.' },
+    { re: /\breflex defaults?\b/i, rationale: 'Internal jargon leaking into user-facing copy. Say "instincts" or "first guesses".' },
+    { re: /\bcollapses? into monoculture\b/i, rationale: 'Internal eval-speak. Describe what actually went wrong.' },
+    { re: /\bdata-driven\b/i, rationale: 'Empty marketing adjective. Cite the data instead.' },
+    { re: /\bseamless(?:ly)?\b/i, rationale: 'Hollow positive. Say what specifically works without friction.' },
+    { re: /\brobust(?:ness)?\b/i, rationale: 'Hollow positive. Cite the failure mode it handles.' },
+    { re: /\bdelves?\b|\bdelved\b|\bdelving\b/i, rationale: 'Top AI tell. Use "explore", "look at", or just delete.' },
+    { re: /\belevate(?:s|d)?\b/i, rationale: 'Marketing verb. Use the specific verb (improve, raise, sharpen).' },
+    { re: /\bempower(?:s|ed|ing)?\b/i, rationale: 'Marketing verb. Use "let you" or "make possible".' },
+    { re: /\bunderscore(?:s|d)?\b/i, rationale: 'AI tell. Use "show" or "make clear".' },
+    { re: /\bpivotal\b/i, rationale: 'Hollow positive. Use "central", "key", or describe the role.' },
+    { re: /\bin today's\b/i, rationale: 'Throat-clearing opener. Cut the clause; start at the point.' },
+    { re: /\bgone are the days\b/i, rationale: 'Throat-clearing. Make the point directly.' },
+    { re: /\bwhether you're\b/i, rationale: 'Audience-pandering. Pick one reader; write to them.' },
+    { re: /\blet's dive in\b/i, rationale: 'Throat-clearing. Just start.' },
+    { re: /\bin summary\b|\bin conclusion\b/i, rationale: 'Summarizing closer. End on the strongest sentence; trust the reader.' },
+    { re: /\bmoreover\b|\bfurthermore\b/i, rationale: 'Transition crutch on a metronome. Drop, or use "also".' },
+    { re: /\btapestry\b/i, rationale: 'AI scenery noun. Cut.' },
+  ];
   let errors = 0;
+
+  const checkLine = (line, rel, lineNum) => {
+    for (const re of emDashPatterns) {
+      if (re.test(line)) {
+        console.error(`  ❌ ${rel}:${lineNum}: em dash → ${line.trim().slice(0, 120)}`);
+        console.error(`        Use commas, colons, semicolons, periods, or parentheses.`);
+        errors++;
+        re.lastIndex = 0;
+        break;
+      }
+      re.lastIndex = 0;
+    }
+    if (/ -- /.test(line)) {
+      console.error(`  ❌ ${rel}:${lineNum}: \` -- \` em-dash substitute → ${line.trim().slice(0, 120)}`);
+      console.error(`        Worse than the em dash. Pick real punctuation.`);
+      errors++;
+    }
+    for (const rule of phraseRules) {
+      if (rule.re.test(line)) {
+        const matched = line.match(rule.re)?.[0] ?? '';
+        console.error(`  ❌ ${rel}:${lineNum}: "${matched}" → ${line.trim().slice(0, 120)}`);
+        console.error(`        ${rule.rationale}`);
+        errors++;
+      }
+    }
+  };
 
   const scan = (absPath, rel) => {
     const stat = fs.statSync(absPath);
@@ -156,16 +217,7 @@ function validateNoEmDashes(rootDir) {
     if (!extensions.has(path.extname(absPath))) return;
     const src = fs.readFileSync(absPath, 'utf-8');
     const lines = src.split('\n');
-    lines.forEach((line, i) => {
-      for (const re of emDashPatterns) {
-        if (re.test(line)) {
-          console.error(`  ❌ ${rel}:${i + 1}: em dash in copy → ${line.trim().slice(0, 120)}`);
-          errors++;
-          break;
-        }
-        re.lastIndex = 0;
-      }
-    });
+    lines.forEach((line, i) => checkLine(line, rel, i + 1));
   };
 
   for (const target of targets) {
@@ -174,9 +226,9 @@ function validateNoEmDashes(rootDir) {
   }
 
   if (errors === 0) {
-    console.log(`✓ No em dashes in project copy`);
+    console.log(`✓ Prose validator: no AI tells in user-facing copy`);
   } else {
-    console.error(`\n❌ ${errors} em dash(es) in project copy. Use commas, colons, or parentheses.`);
+    console.error(`\n❌ ${errors} prose issue(s) in user-facing copy. See STYLE.md for the rules.`);
   }
   return errors;
 }
@@ -672,10 +724,10 @@ async function build() {
   // Verify every hand-authored HTML page carries the shared site header
   const headerErrors = validateSiteHeader(ROOT_DIR);
 
-  // Scan user-facing copy for em dashes
-  const emDashErrors = validateNoEmDashes(ROOT_DIR);
+  // Scan user-facing copy for AI tells (em dashes, marketing fluff, denylisted phrases)
+  const proseErrors = validateProse(ROOT_DIR);
 
-  if (countErrors > 0 || headerErrors > 0 || emDashErrors > 0) {
+  if (countErrors > 0 || headerErrors > 0 || proseErrors > 0) {
     process.exit(1);
   }
 

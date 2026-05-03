@@ -23,7 +23,7 @@ Two files at your project root shape everything the skill does:
 - **`PRODUCT.md`** carries register (brand vs product), target users, brand personality, anti-references, design principles. Answers "who, what, why".
 - **`DESIGN.md`** carries colors, typography, elevation, components, do's and don'ts, in the six-section Google Stitch format. Answers "how it looks".
 
-Every command reads both files before generating. **Register** is the load-bearing switch. Brand (marketing, landing, portfolio, where design IS the product) and product (app UI, dashboards, tools, where design SERVES the product) have different defaults for type, motion, color, and density. Specifying it once in PRODUCT.md means `/impeccable typeset` will not push editorial-magazine fonts on a dashboard, and will not push product-fluent defaults on a campaign page. See the [brand vs product tutorial](/tutorials/brand-vs-product) for how the two diverge.
+Every command reads both files before generating. **Register** decides which defaults load. Brand (marketing, landing, portfolio, where design IS the product) and product (app UI, dashboards, tools, where design SERVES the product) have different defaults for type, motion, color, and density. Specifying it once in PRODUCT.md means `/impeccable typeset` will not push editorial-magazine fonts on a dashboard, and will not push product-fluent defaults on a campaign page. See the [brand vs product tutorial](/tutorials/brand-vs-product) for how the two diverge.
 
 On first use in a project, the skill runs the `teach` flow automatically: a short interview that writes PRODUCT.md and then delegates to `/impeccable document` for DESIGN.md. Future commands read the files without asking again.
 

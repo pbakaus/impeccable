@@ -6,14 +6,14 @@ The vocabulary you didn't know you needed. 1 skill, 23 commands, and curated ant
 
 ## Why Impeccable?
 
-Anthropic created [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design), a skill that guides Claude toward better UI design. Impeccable builds on that foundation with deeper expertise and more control.
+Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) was the first widely-used design skill for Claude. Impeccable started from there.
 
-Every LLM learned from the same generic templates. Without guidance, you get the same predictable mistakes: Inter font, purple gradients, cards nested in cards, gray text on colored backgrounds.
+Every model trained on the same SaaS templates. Skip the guidance and you get the same handful of tells on every project: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
 
-Impeccable fights that bias with:
-- **An expanded skill** with 7 domain-specific reference files ([view source](source/skills/impeccable/))
-- **23 commands** to audit, review, polish, distill, animate, and more
-- **Curated anti-patterns** that explicitly tell the AI what NOT to do
+Impeccable adds:
+- **7 domain reference files** ([view source](source/skills/impeccable/)). Typography, color, motion, spatial, interaction, responsive, UX writing. Load on every command, alongside a brand-vs-product register that adjusts the defaults.
+- **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
+- **27 deterministic anti-pattern rules** plus a 12-rule LLM critique pass. CLI and browser extension run the deterministic ones with no LLM and no API key. Each is tied to specific design guidance the skill teaches against.
 
 ## What's Included
 

@@ -109,7 +109,7 @@ Build a clear type scale:
 - **Performance**: Are web fonts loading efficiently without layout shift?
 - **Accessibility**: Does text meet WCAG contrast ratios? Is it zoomable to 200%?
 
-Remember: Typography is the foundation of interface design — it carries the majority of information. Getting it right is the highest-leverage improvement you can make.
+Remember: Typography is the foundation of interface design. It carries most of the information on the page. Getting it right changes the design more than any other single move.
 
 ## Live-mode signature params
 
