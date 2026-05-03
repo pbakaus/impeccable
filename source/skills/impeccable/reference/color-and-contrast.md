@@ -2,11 +2,11 @@
 
 ## Color Spaces: Use OKLCH
 
-**Stop using HSL.** Use OKLCH (or LCH) instead. It's perceptually uniform, meaning equal steps in lightness *look* equal—unlike HSL where 50% lightness in yellow looks bright while 50% in blue looks dark.
+**Stop using HSL.** Use OKLCH (or LCH) instead. It's perceptually uniform, meaning equal steps in lightness *look* equal, unlike HSL where 50% lightness in yellow looks bright while 50% in blue looks dark.
 
-The OKLCH function takes three components: `oklch(lightness chroma hue)` where lightness is 0-100%, chroma is roughly 0-0.4, and hue is 0-360. To build a primary color and its lighter / darker variants, hold the chroma+hue roughly constant and vary the lightness — but **reduce chroma as you approach white or black**, because high chroma at extreme lightness looks garish.
+The OKLCH function takes three components: `oklch(lightness chroma hue)` where lightness is 0-100%, chroma is roughly 0-0.4, and hue is 0-360. To build a primary color and its lighter / darker variants, hold the chroma+hue roughly constant and vary the lightness, but **reduce chroma as you approach white or black**, because high chroma at extreme lightness looks garish.
 
-The hue you pick is a brand decision and should not come from a default. Do not reach for blue (hue 250) or warm orange (hue 60) by reflex — those are the dominant AI-design defaults, not the right answer for any specific brand.
+The hue you pick is a brand decision and should not come from a default. Do not reach for blue (hue 250) or warm orange (hue 60) by reflex; those are the dominant AI-design defaults, not the right answer for any specific brand.
 
 ## Building Functional Palettes
 
@@ -36,8 +36,8 @@ A complete system needs:
 This rule is about **visual weight**, not pixel count:
 
 - **60%**: Neutral backgrounds, white space, base surfaces
-- **30%**: Secondary colors—text, borders, inactive states
-- **10%**: Accent—CTAs, highlights, focus states
+- **30%**: Secondary colors: text, borders, inactive states
+- **10%**: Accent: CTAs, highlights, focus states
 
 The common mistake: using the accent color everywhere because it's "the brand color." Accent colors work *because* they're rare. Overuse kills their power.
 
@@ -59,15 +59,15 @@ The common mistake: using the accent color everywhere because it's "the brand co
 These commonly fail contrast or cause readability issues:
 
 - Light gray text on white (the #1 accessibility fail)
-- **Gray text on any colored background**—gray looks washed out and dead on color. Use a darker shade of the background color, or transparency
-- Red text on green background (or vice versa)—8% of men can't distinguish these
+- **Gray text on any colored background**: gray looks washed out and dead on color. Use a darker shade of the background color, or transparency
+- Red text on green background (or vice versa): 8% of men can't distinguish these
 - Blue text on red background (vibrates visually)
 - Yellow text on white (almost always fails)
 - Thin light text on images (unpredictable contrast)
 
 ### Never Use Pure Gray or Pure Black
 
-Pure gray (`oklch(50% 0 0)`) and pure black (`#000`) don't exist in nature—real shadows and surfaces always have a color cast. Even a chroma of 0.005-0.01 is enough to feel natural without being obviously tinted. (See tinted neutrals example above.)
+Pure gray (`oklch(50% 0 0)`) and pure black (`#000`) don't exist in nature; real shadows and surfaces always have a color cast. Even a chroma of 0.005-0.01 is enough to feel natural without being obviously tinted. (See tinted neutrals example above.)
 
 ### Testing
 
@@ -88,13 +88,13 @@ You can't just swap colors. Dark mode requires different design decisions:
 | Shadows for depth | Lighter surfaces for depth (no shadows) |
 | Dark text on light | Light text on dark (reduce font weight) |
 | Vibrant accents | Desaturate accents slightly |
-| White backgrounds | Never pure black—use dark gray (oklch 12-18%) |
+| White backgrounds | Never pure black; use dark gray (oklch 12-18%) |
 
-In dark mode, depth comes from surface lightness, not shadow. Build a 3-step surface scale where higher elevations are lighter (e.g. 15% / 20% / 25% lightness). Use the SAME hue and chroma as your brand color (whatever it is for THIS project — do not reach for blue) and only vary the lightness. Reduce body text weight slightly (e.g. 350 instead of 400) because light text on dark reads as heavier than dark text on light.
+In dark mode, depth comes from surface lightness, not shadow. Build a 3-step surface scale where higher elevations are lighter (e.g. 15% / 20% / 25% lightness). Use the SAME hue and chroma as your brand color (whatever it is for THIS project; do not reach for blue) and only vary the lightness. Reduce body text weight slightly (e.g. 350 instead of 400) because light text on dark reads as heavier than dark text on light.
 
 ### Token Hierarchy
 
-Use two layers: primitive tokens (`--blue-500`) and semantic tokens (`--color-primary: var(--blue-500)`). For dark mode, only redefine the semantic layer—primitives stay the same.
+Use two layers: primitive tokens (`--blue-500`) and semantic tokens (`--color-primary: var(--blue-500)`). For dark mode, only redefine the semantic layer; primitives stay the same.
 
 ## Alpha Is A Design Smell
 

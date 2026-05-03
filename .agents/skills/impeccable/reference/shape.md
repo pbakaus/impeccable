@@ -42,8 +42,8 @@ Discovery must include at least one user-answer round unless PRODUCT.md, DESIGN.
 Force a visual decision on three fronts. Skip anything PRODUCT.md or DESIGN.md already answers; ask only what's missing.
 
 - **Color strategy for this surface.** Pick one: Restrained / Committed / Full palette / Drenched. Can override the project default if the surface earns it (e.g. a drenched hero inside an otherwise Restrained product).
-- **Theme via scene sentence.** Write one sentence of physical context for this surface — who uses it, where, under what ambient light, in what mood. The sentence forces dark vs light. If it doesn't, add detail until it does.
-- **Two or three named anchor references.** Specific products, brands, objects — not adjectives like "modern" or "clean."
+- **Theme via scene sentence.** Write one sentence of physical context for this surface: who uses it, where, under what ambient light, in what mood. The sentence forces dark vs light. If it doesn't, add detail until it does.
+- **Two or three named anchor references.** Specific products, brands, objects. Not adjectives like "modern" or "clean."
 
 ### Scope
 
@@ -54,7 +54,7 @@ Always ask. Sketch quality and shipped quality are different outputs; don't gues
 - **Interactivity.** Static visual / interactive prototype / shipped-quality component?
 - **Time intent.** Quick exploration, or polish until it ships?
 
-Scope answers are task-scoped. Don't write them to PRODUCT.md or DESIGN.md — carry them through the design brief only.
+Scope answers are task-scoped. Don't write them to PRODUCT.md or DESIGN.md; carry them through the design brief only.
 
 ### Constraints
 - Are there technical constraints? (Framework, performance budget, browser support)
@@ -124,7 +124,7 @@ Color strategy (Restrained / Committed / Full palette / Drenched) + the theme sc
 If you ran the Visual Direction Probe step, name which probe direction won and what changed in the brief because of it.
 
 **4. Scope**
-Fidelity, breadth, interactivity, and time intent from the Scope section of the interview. Task-scoped — these don't persist beyond the brief.
+Fidelity, breadth, interactivity, and time intent from the Scope section of the interview. Task-scoped; these don't persist beyond the brief.
 
 **5. Layout Strategy**
 High-level spatial approach: what gets emphasis, what's secondary, how information flows. Describe the visual hierarchy and rhythm, not specific CSS.

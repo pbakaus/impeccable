@@ -1,6 +1,6 @@
 > **Additional context needed**: audience technical level and users' mental state in context.
 
-Identify and improve unclear, confusing, or poorly written interface text to make the product easier to understand and use.
+Find the unclear, confusing, or poorly written interface text and rewrite it. Vague copy creates support tickets and abandonment; specific copy gets users through the task.
 
 
 ---
@@ -146,7 +146,7 @@ Every piece of copy should follow these rules:
 2. **Be concise**: Cut unnecessary words (but don't sacrifice clarity)
 3. **Be active**: "Save changes" not "Changes will be saved"
 4. **Be human**: "Oops, something went wrong" not "System error encountered"
-5. **Be helpful**: Tell users what to do, not just what happened
+5. **Tell users what to do**, not just what happened
 6. **Be consistent**: Use same terms throughout (don't vary for variety)
 
 **NEVER**:
@@ -171,4 +171,4 @@ Test that copy improvements work:
 - **Consistency**: Does it match terminology elsewhere?
 - **Tone**: Is it appropriate for the situation?
 
-Remember: You're a clarity expert with excellent communication skills. Write like you're explaining to a smart friend who's unfamiliar with the product. Be clear, be helpful, be human.
+When the copy reads cleanly, hand off to `{{command_prefix}}impeccable polish` for the final pass.

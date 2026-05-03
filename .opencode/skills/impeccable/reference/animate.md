@@ -1,6 +1,6 @@
 > **Additional context needed**: performance constraints.
 
-Analyze a feature and strategically add animations and micro-interactions that enhance understanding, provide feedback, and create delight.
+Add motion that conveys state, gives feedback, and clarifies hierarchy. Cut motion that exists only for decoration. Animation fatigue is a real cost; spend the budget on the moments that need it.
 
 ---
 
@@ -8,7 +8,7 @@ Analyze a feature and strategically add animations and micro-interactions that e
 
 Brand: orchestrated page-load sequences, staggered reveals, scroll-driven animation. Motion is part of the voice; one well-rehearsed entrance beats scattered micro-interactions.
 
-Product: 150–250 ms on most transitions. Motion conveys state — feedback, reveal, loading, transitions between views. No page-load choreography; users are in a task and won't wait for it.
+Product: 150–250 ms on most transitions. Motion conveys state: feedback, reveal, loading, transitions between views. No page-load choreography; users are in a task and won't wait for it.
 
 ---
 
@@ -105,12 +105,12 @@ Use appropriate techniques for each animation:
 
 **Easing curves (use these, not CSS defaults):**
 ```css
-/* Recommended - natural deceleration */
---ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);    /* Smooth, refined */
+/* Recommended: natural deceleration */
+--ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);    /* Smooth */
 --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);   /* Slightly snappier */
 --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);     /* Confident, decisive */
 
-/* AVOID - feel dated and tacky */
+/* AVOID: feel dated and tacky */
 /* bounce: cubic-bezier(0.34, 1.56, 0.64, 1); */
 /* elastic: cubic-bezier(0.68, -0.6, 0.32, 1.6); */
 ```
@@ -153,12 +153,12 @@ Use appropriate techniques for each animation:
 ```
 
 **NEVER**:
-- Use bounce or elastic easing curves—they feel dated and draw attention to the animation itself
+- Use bounce or elastic easing curves; they feel dated and draw attention to the animation itself
 - Animate layout properties casually (`width`, `height`, `top`, `left`, margins) when transform, FLIP, or grid-based techniques would work
-- Use durations over 500ms for feedback—it feels laggy
-- Animate without purpose—every animation needs a reason
-- Ignore `prefers-reduced-motion`—this is an accessibility violation
-- Animate everything—animation fatigue makes interfaces feel exhausting
+- Use durations over 500ms for feedback (it feels laggy)
+- Animate without purpose (every animation needs a reason)
+- Ignore `prefers-reduced-motion` (this is an accessibility violation)
+- Animate everything (animation fatigue makes interfaces feel exhausting)
 - Block interaction during animations unless intentional
 
 ## Verify Quality
@@ -172,4 +172,4 @@ Test animations thoroughly:
 - **Doesn't block**: Users can interact during/after animations
 - **Adds value**: Makes interface clearer or more delightful
 
-Remember: Motion should enhance understanding and provide feedback, not just add decoration. Animate with purpose, respect performance constraints, and always consider accessibility. Great animation is invisible - it just makes everything feel right.
+When the motion clarifies state instead of decorating it, hand off to `/impeccable polish` for the final pass.

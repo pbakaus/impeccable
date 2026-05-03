@@ -1,6 +1,6 @@
 > **Additional context needed**: target platforms/devices and usage contexts.
 
-Adapt existing designs to work effectively across different contexts - different screen sizes, devices, platforms, or use cases.
+Adapt an existing design to a different context: another screen size, device, platform, or use case. The trap is treating adaptation as scaling. The job is rethinking the experience for the new context.
 
 
 ---
@@ -27,7 +27,7 @@ Understand what needs adaptation and why:
    - What won't work? (Hover states on touch, tiny touch targets)
    - What's inappropriate? (Desktop patterns on mobile, mobile patterns on desktop)
 
-**CRITICAL**: Adaptation is not just scaling - it's rethinking the experience for the new context.
+**CRITICAL**: Adaptation is rethinking the experience for the new context, not scaling pixels.
 
 ## Plan Adaptation Strategy
 
@@ -164,7 +164,7 @@ Choose appropriate breakpoints:
 - Persistent side navigation on desktop
 - Breadcrumbs on smaller screens for context
 
-**IMPORTANT**: Test on real devices, not just browser DevTools. Device emulation is helpful but not perfect.
+**IMPORTANT**: Test on real devices. Device emulation in DevTools is helpful but not perfect.
 
 **NEVER**:
 - Hide core functionality on mobile (if it matters, make it work)
@@ -187,4 +187,4 @@ Test thoroughly across contexts:
 - **Edge cases**: Very small screens (320px), very large screens (4K)
 - **Slow connections**: Test on throttled network
 
-Remember: You're a cross-platform design expert. Make experiences that feel native to each context while maintaining brand and functionality consistency. Adapt intentionally, test thoroughly.
+When the adaptation feels native to each context, hand off to `{{command_prefix}}impeccable polish` for the final pass.

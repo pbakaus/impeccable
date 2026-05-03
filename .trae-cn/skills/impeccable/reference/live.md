@@ -8,17 +8,17 @@ A running dev server with hot module replacement (Vite, Next.js, Bun, etc.), OR 
 
 Execute in order. No step skipped, no step reordered.
 
-1. `live.mjs` — boot.
-2. Navigate to the URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). If you can't infer it confidently, tell the user once to open their dev/preview URL. Never use `serverPort` as that URL — it's the helper, not the app.
+1. `live.mjs`: boot.
+2. Navigate to the URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). If you can't infer it confidently, tell the user once to open their dev/preview URL. Never use `serverPort` as that URL; it's the helper, not the app.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
-4. On `generate` — read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
-5. On `accept` / `discard` — the poll script already cleaned up; just poll again.
-6. On `exit` — run the cleanup at the bottom.
+4. On `generate`: read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
+5. On `accept` / `discard`: the poll script already cleaned up; just poll again.
+6. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
-- **Cursor**: run the poll in the **foreground** (blocking shell — not a background terminal, not a subagent). Cursor background terminals and subagents do not reliably resume the chat with poll stdout.
-- **Codex**: run the poll in the **foreground** (blocking shell — not a background task, not a subagent). Codex background exec sessions do not reliably surface poll stdout back into the conversation at the moment events arrive, so a "fire-and-forget" background poll will stall live mode.
+- **Cursor**: run the poll in the **foreground** (blocking shell; not a background terminal, not a subagent). Cursor background terminals and subagents do not reliably resume the chat with poll stdout.
+- **Codex**: run the poll in the **foreground** (blocking shell; not a background task, not a subagent). Codex background exec sessions do not reliably surface poll stdout back into the conversation at the moment events arrive, so a "fire-and-forget" background poll will stall live mode.
 - **Other harnesses**: foreground unless you know stdout reliably returns to this session.
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
@@ -29,7 +29,7 @@ Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodi
 node .trae-cn/skills/impeccable/scripts/live.mjs
 ```
 
-Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath, migrated }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation — **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent — extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt. If `migrated: true`, the loader auto-renamed legacy `.impeccable.md` to `PRODUCT.md`; mention this once and suggest `/impeccable document` for the matching DESIGN.md.
+Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath, migrated }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt. If `migrated: true`, the loader auto-renamed legacy `.impeccable.md` to `PRODUCT.md`; mention this once and suggest `/impeccable document` for the matching DESIGN.md.
 
 `serverPort` and `serverToken` belong to the small **Impeccable live helper** HTTP server (serves `/live.js`, SSE, and `/poll`). That port is **not** your dev server and is usually not the URL you open to view the app. The browser page is whatever origin serves one of the `pageFiles` entries (Vite / Next / Bun / tunnel / LAN hostname).
 
@@ -54,11 +54,11 @@ LOOP:
 
 Event: `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
 
-Speed matters — the user is watching a spinner. Minimize tool calls by using the `wrap` helper and writing all variants in a single edit.
+Speed matters; the user is watching a spinner. Minimize tool calls by using the `wrap` helper and writing all variants in a single edit.
 
 ### 1. Read the screenshot (if present)
 
-`event.screenshotPath` is **only sent when the user placed at least one comment or stroke before Go.** When present, it's an absolute path to a PNG of the element as rendered with the annotations baked in. **Read it before planning** — annotations encode user intent not recoverable from `element.outerHTML` alone.
+`event.screenshotPath` is **only sent when the user placed at least one comment or stroke before Go.** When present, it's an absolute path to a PNG of the element as rendered with the annotations baked in. **Read it before planning**: annotations encode user intent not recoverable from `element.outerHTML` alone.
 
 When `screenshotPath` is absent, don't ask for one and don't go looking for the current rendering. The omission is deliberate: without annotations, a screenshot would anchor the model on the existing design and fight the three-distinct-directions brief. Work from `element.outerHTML`, the computed styles in `event.element`, and the freeform prompt if present.
 
@@ -68,7 +68,7 @@ Reading annotations precisely:
 
 - **Comment position carries meaning.** Its `{x, y}` is element-local CSS px (same coord space as `element.boundingRect`). Find the child under that point and apply the comment text LOCALLY to that sub-element. A comment near the title is about the title, not a global description.
 - **Comments and strokes are independent annotations** unless clearly paired by overlap or tight proximity. Don't let the visual weight of a prominent stroke override the precise location of a textually-specific comment elsewhere.
-- **Strokes are gestures — read them by shape.** Closed loop = "this thing" (emphasis / focus); arrow = direction (move / point to); cross or slash = delete; free scribble = emphasis or delete depending on context. A loop around region X means "pay attention to X," not "only change pixels inside X."
+- **Strokes are gestures; read them by shape.** Closed loop = "this thing" (emphasis / focus); arrow = direction (move / point to); cross or slash = delete; free scribble = emphasis or delete depending on context. A loop around region X means "pay attention to X," not "only change pixels inside X."
 - **When a stroke's intent is ambiguous** (circle or arrow? emphasis or move?), state your reading in one sentence of rationale rather than silently guessing. If the uncertainty materially changes the brief, ask one short clarifying question before generating.
 
 ### 2. Wrap the element
@@ -77,24 +77,24 @@ Reading annotations precisely:
 node .trae-cn/skills/impeccable/scripts/live-wrap.mjs --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div" --text "TEXT_SNIPPET"
 ```
 
-Flag mapping — keep them separate, don't collapse into `--query`:
+Flag mapping. Keep them separate, don't collapse into `--query`:
 
 - `--element-id` ← `event.element.id`
 - `--classes` ← `event.element.classes` joined with commas
 - `--tag` ← `event.element.tagName`
 - `--text` ← first ~80 chars of `event.element.textContent` (trim, single-line). **Pass this every call.** When the picked element shares classes + tag with sibling components (a list of `<Card>`s, repeating sections), this is what disambiguates which branch in source to wrap. Without it, wrap silently lands on the first match and may rewrite the wrong element.
 
-The helper searches ID first, then classes, then tag + class combo. If `event.pageUrl` implies the file (e.g. `/` is usually `index.html`), pass `--file PATH` to skip the search. `--query` is a fallback for raw text search only — do not use it for normal element lookups.
+The helper searches ID first, then classes, then tag + class combo. If `event.pageUrl` implies the file (e.g. `/` is usually `index.html`), pass `--file PATH` to skip the search. `--query` is a fallback for raw text search only; do not use it for normal element lookups.
 
-If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"` — read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
+If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
 Output on success: `{ file, insertLine, commentSyntax }`.
 
-**Fallback errors.** Wrap only writes into files it judges to be source (tracked by git, not marked GENERATED, not listed in config's `generatedFiles`). If it can't land on a source file, it errors without writing — accepting a variant into a generated file is silent data loss. Three shapes:
+**Fallback errors.** Wrap only writes into files it judges to be source (tracked by git, not marked GENERATED, not listed in config's `generatedFiles`). If it can't land on a source file, it errors without writing; accepting a variant into a generated file is silent data loss. Three shapes:
 
-- `{ error: "file_is_generated", file, hint }` — user-supplied `--file` points at a generated file.
-- `{ error: "element_not_in_source", generatedMatch, hint }` — element exists only in a generated file (the next build would wipe any edits).
-- `{ error: "element_not_found", hint }` — element isn't in any project file; likely runtime-injected (JS component, data-driven render).
+- `{ error: "file_is_generated", file, hint }`: user-supplied `--file` points at a generated file.
+- `{ error: "element_not_in_source", generatedMatch, hint }`: element exists only in a generated file (the next build would wipe any edits).
+- `{ error: "element_not_found", hint }`: element isn't in any project file; likely runtime-injected (JS component, dynamic render from data).
 
 All three carry `fallback: "agent-driven"`. Follow **Handle fallback** below.
 
@@ -104,9 +104,9 @@ If `event.action` is `impeccable` (the default freeform action), use SKILL.md's 
 
 Any other `event.action` (`bolder`, `quieter`, `distill`, `polish`, `typeset`, `colorize`, `layout`, `adapt`, `animate`, `delight`, `overdrive`): Read `reference/<action>.md` before planning. Each sub-command encodes a specific discipline; skipping its reference produces generic output. Those files may require specific params; layer them on top of the §7 budget, not instead of it.
 
-### 4. Plan three variants — identity first, then mode, then axes
+### 4. Plan three variants: identity first, then mode, then axes
 
-The wrong frame for live mode is "show three different design directions." Live runs on an existing surface — the brand has already been chosen. The job is variation **within identity**, not selection between identities. Failure mode: three editorial-typographic variants on a brief that wasn't editorial. Bigger failure mode: three off-brand variants the user can't accept because they don't look like their product.
+The wrong frame for live mode is "show three different design directions." Live runs on an existing surface; the brand has already been chosen. The job is variation **within identity**, not selection between identities. Failure mode: three editorial-typographic variants on a brief that wasn't editorial. Bigger failure mode: three off-brand variants the user can't accept because they don't look like their product.
 
 Four phases. Do them in order.
 
@@ -114,48 +114,48 @@ Four phases. Do them in order.
 
 The existing surface has an identity already. Read it before planning anything. Sources, in priority order:
 
-1. **DESIGN.md** if loaded — read the visual system fields (palette, type pairing, motion, components). This is the authoritative answer.
-2. **CSS custom properties** in the page's stylesheets (`:root { --color-...; --font-...; ... }`) — these are de-facto tokens.
-3. **Computed styles** on the picked element and its parent — colors, fonts, spacing scales, corner radii.
-4. **Sibling components on the page** — what visual rhetoric do existing components use? (Asymmetric or centered? Dense or airy? Bold or quiet?)
+1. **DESIGN.md** if loaded: read the visual system fields (palette, type pairing, motion, components). This is the authoritative answer.
+2. **CSS custom properties** in the page's stylesheets (`:root { --color-...; --font-...; ... }`): these are de-facto tokens.
+3. **Computed styles** on the picked element and its parent: colors, fonts, spacing scales, corner radii.
+4. **Sibling components on the page**: what visual rhetoric do existing components use? (Asymmetric or centered? Dense or airy? Bold or quiet?)
 
-Write down what you see in **one sentence**. The sentence describes the surface that's actually on screen — it is not aspirational, not opinionated, not edited toward what the brand "should" be. Capture, in roughly this order:
+Write down what you see in **one sentence**. The sentence describes the surface that's actually on screen; it is not aspirational, not opinionated, not edited toward what the brand "should" be. Capture, in roughly this order:
 
 - The dominant surface color and accent color, by hex or token name (use the actual values, not categories like "warm" or "neutral").
-- The type pairing — the actual font names loaded, primary first.
-- The layout topology — how the dominant elements are arranged (stacked / side-by-side / grid / asymmetric / overlay).
-- The surface treatment — corners, borders, shadows, density of decoration.
+- The type pairing: the actual font names loaded, primary first.
+- The layout topology: how the dominant elements are arranged (stacked / side-by-side / grid / asymmetric / overlay).
+- The surface treatment: corners, borders, shadows, density of decoration.
 - The voice tone you read off the copy itself, not off the aesthetic feel.
 
 Be specific. "Modern" is not a color, "elegant" is not a type pairing, "clean" is not a layout. If you can't extract a real value for an axis, skip it rather than fabricate. The point is to record what is, not to describe what you wish it were.
 
-Do not include adjectives that name an aesthetic family ("editorial-leaning", "terminal-flavored", "brutalist") — those are conclusions, not data. They belong to Phase C lane selection in departure mode, not to identity description. Letting them sneak into Phase A is how the identity-lock collapses into a self-fulfilling prophecy.
+Do not include adjectives that name an aesthetic family ("editorial-leaning", "terminal-flavored", "brutalist"); those are conclusions, not data. They belong to Phase C lane selection in departure mode, not to identity description. Letting them sneak into Phase A is how the identity-lock collapses into a self-fulfilling prophecy.
 
-This sentence is the **identity lock**. Every variant must be readable as the same brand if rendered side by side. Skipping this phase is the primary cause of off-brand variants. Absence of DESIGN.md is never an excuse — extract from CSS and computed styles instead.
+This sentence is the **identity lock**. Every variant must be readable as the same brand if rendered side by side. Skipping this phase is the primary cause of off-brand variants. Absence of DESIGN.md is never an excuse; extract from CSS and computed styles instead.
 
 #### Phase B: Pick mode (default vs departure)
 
-**Default mode** — the existing identity is preserved. Variants vary expression axes within it. *This is the right mode for ~90% of live sessions.* The user picked an element on a real product they're shipping; they expect variants of *their* hero, not three different brands' heroes.
+**Default mode**: the existing identity is preserved. Variants vary expression axes within it. *This is the right mode for ~90% of live sessions.* The user picked an element on a real product they're shipping; they expect variants of *their* hero, not three different brands' heroes.
 
-**Departure mode** — the existing identity is rejected. Variants propose alternatives consistent with PRODUCT.md voice. Trigger only when at least one is true:
+**Departure mode**: the existing identity is rejected. Variants propose alternatives consistent with PRODUCT.md voice. Trigger only when at least one is true:
 
-- PRODUCT.md anti-references explicitly call out the current surface ("the current `index.html` is itself an example"; "diffuse away from this"; "the page on screen is the failure"). Generic anti-references that describe what to avoid in general do **not** trigger departure mode — only ones that point at *this* surface specifically.
+- PRODUCT.md anti-references explicitly call out the current surface ("the current `index.html` is itself an example"; "diffuse away from this"; "the page on screen is the failure"). Generic anti-references that describe what to avoid in general do **not** trigger departure mode; only ones that point at *this* surface specifically.
 - The user's freeform prompt explicitly asks for departure ("rebuild this from scratch", "what if it weren't editorial at all", "show me something completely different").
 
-If you're unsure, you're in default mode. The cost of being wrong about default is "three on-brand variants with similar feel" — recoverable, the user picks none. The cost of being wrong about departure is "three off-brand variants" — unrecoverable, the user is annoyed.
+If you're unsure, you're in default mode. The cost of being wrong about default is "three on-brand variants with similar feel": recoverable, the user picks none. The cost of being wrong about departure is "three off-brand variants": unrecoverable, the user is annoyed.
 
 #### Phase C: Plan three variants
 
 **Default mode.** Each variant commits to a different **primary axis** of difference, while preserving the identity sentence. The six axes:
 
-1. **Hierarchy** — which element commands the eye?
-2. **Layout topology** — stacked / side-by-side / grid / asymmetric / overlay
-3. **Typographic system** — pairing logic, scale ratio, case/weight strategy *within the available faces*
-4. **Color strategy** — which existing palette role carries the surface (Restrained / Committed / Full palette / Drenched). Use the brand's existing palette tokens, not new colors.
-5. **Density** — minimal / comfortable / dense
-6. **Structural decomposition** — merge, split, progressive disclosure
+1. **Hierarchy**: which element commands the eye?
+2. **Layout topology**: stacked / side-by-side / grid / asymmetric / overlay
+3. **Typographic system**: pairing logic, scale ratio, case/weight strategy *within the available faces*
+4. **Color strategy**: which existing palette role carries the surface (Restrained / Committed / Full palette / Drenched). Use the brand's existing palette tokens, not new colors.
+5. **Density**: minimal / comfortable / dense
+6. **Structural decomposition**: merge, split, progressive disclosure
 
-Three variants → three DIFFERENT axes. The trio reads as *the same brand at three angles*. Do not introduce new fonts, new palette hues, or new aesthetic-family signals — those belong to departure mode.
+Three variants → three DIFFERENT axes. The trio reads as *the same brand at three angles*. Do not introduce new fonts, new palette hues, or new aesthetic-family signals; those belong to departure mode.
 
 **While planning each variant, also name its 2–3 parameter knobs** (per the §7 budget table). Parameters are part of the design, not a decoration added afterward. If the variant explores density, expose a density knob. If it explores color commitment, expose a color-amount range. Deciding "what's tunable" during planning produces better knobs than retrofitting them onto finished HTML.
 
@@ -171,7 +171,7 @@ Instead, work from the brand:
 
 #### Phase D: Squint test
 
-**Default mode squint.** Read each variant's identity sentence and compare to the locked identity from Phase A. If any variant has drifted to a different palette, type voice, or visual rhetoric, it has crossed into departure mode by accident — rework. Then check that each variant commits to a different primary axis. Three "tighter density" variants is failure.
+**Default mode squint.** Read each variant's identity sentence and compare to the locked identity from Phase A. If any variant has drifted to a different palette, type voice, or visual rhetoric, it has crossed into departure mode by accident; rework. Then check that each variant commits to a different primary axis. Three "tighter density" variants is failure.
 
 **Departure mode squint.** Two passes, family before sentence:
 
@@ -182,33 +182,33 @@ Instead, work from the brand:
 
 **For action-specific invocations**, each variant must vary along the dimension the action names:
 
-- `bolder` — amplify a different dimension per variant (scale / saturation / structural change). Not three "slightly bigger" variants.
-- `quieter` — pull back a different dimension (color / ornament / spacing).
-- `distill` — remove a different class of excess (visual noise / redundant content / nested structure).
-- `polish` — target a different refinement axis (rhythm / hierarchy / micro-details like corner radii, focus states, optical kerning).
-- `typeset` — different type pairing AND different scale ratio each. Not three riffs on one pairing.
-- `colorize` — different hue family each (not shades of one hue). Vary chroma and contrast strategy.
-- `layout` — different structural arrangement (stacked / side-by-side / grid / asymmetric). Not spacing tweaks.
-- `adapt` — different target context per variant (mobile-first / tablet / desktop / print or low-data). Don't make three mobile layouts.
-- `animate` — different motion vocabulary (cascade stagger / clip wipe / scale-and-focus / morph / parallax). Not three staggered fades.
-- `delight` — different flavor of personality (unexpected micro-interaction / typographic surprise / illustrated accent / sonic-or-haptic moment / easter-egg interaction).
-- `overdrive` — different convention broken (scale / structure / motion / input model / state transitions). Skip `overdrive.md`'s "propose and ask" step — live mode is non-interactive.
+- `bolder`: amplify a different dimension per variant (scale / saturation / structural change). Not three "slightly bigger" variants.
+- `quieter`: pull back a different dimension (color / ornament / spacing).
+- `distill`: remove a different class of excess (visual noise / redundant content / nested structure).
+- `polish`: target a different refinement axis (rhythm / hierarchy / micro-details like corner radii, focus states, optical kerning).
+- `typeset`: different type pairing AND different scale ratio each. Not three riffs on one pairing.
+- `colorize`: different hue family each (not shades of one hue). Vary chroma and contrast strategy.
+- `layout`: different structural arrangement (stacked / side-by-side / grid / asymmetric). Not spacing tweaks.
+- `adapt`: different target context per variant (mobile-first / tablet / desktop / print or low-data). Don't make three mobile layouts.
+- `animate`: different motion vocabulary (cascade stagger / clip wipe / scale-and-focus / morph / parallax). Not three staggered fades.
+- `delight`: different flavor of personality (unexpected micro-interaction / typographic surprise / illustrated accent / sonic-or-haptic moment / easter-egg interaction).
+- `overdrive`: different convention broken (scale / structure / motion / input model / state transitions). Skip `overdrive.md`'s "propose and ask" step; live mode is non-interactive.
 
 ### 5. Apply the freeform prompt (if present)
 
-`event.freeformPrompt` is the user's ceiling on direction — all variants must honor it — but still explore meaningfully different *interpretations*. The interpretations stay within whichever mode you picked in Phase B.
+`event.freeformPrompt` is the user's ceiling on direction (all variants must honor it), but still explore meaningfully different *interpretations*. The interpretations stay within whichever mode you picked in Phase B.
 
 In **default mode**, the prompt narrows the axes you choose, not the identity. *"Make it feel more confident"* → variant 1 amplifies hierarchy (one element commands the eye), variant 2 commits the existing accent color (Committed strategy on the brand's hue), variant 3 tightens density and removes decorative slack. Three different axes, same brand.
 
 In **departure mode**, the prompt narrows the lanes you draw from, not the families. *"Make it feel like a newspaper front page"* would itself be a departure-mode prompt; honor it but pick three meaningfully different newspaper-adjacent lanes (broadsheet vs. tabloid vs. trade journal), and run the family pass to confirm they don't collapse into one.
 
-When the prompt and PRODUCT.md anti-references conflict (the prompt asks for X, the anti-references ban X), the anti-references win — they describe the brand's standing position, the prompt is one moment.
+When the prompt and PRODUCT.md anti-references conflict (the prompt asks for X, the anti-references ban X), the anti-references win; they describe the brand's standing position, the prompt is one moment.
 
 ### 6. Write all variants in a single edit
 
 Complete HTML replacement of the original element for each variant, not a CSS-only patch. Consider the element's context (computed styles, parent structure, CSS variables from `event.element`).
 
-Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Colocate scoped CSS as a `<style>` tag inside the variant wrapper — `<style>` works anywhere in modern browsers and this ensures CSS and HTML arrive atomically (no FOUC).
+Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Colocate scoped CSS as a `<style>` tag inside the variant wrapper; `<style>` works anywhere in modern browsers and this ensures CSS and HTML arrive atomically (no FOUC).
 
 ```html
 <!-- Variants: insert below this line -->
@@ -227,15 +227,15 @@ Write CSS + all variants in ONE edit at the `insertLine` reported by `wrap`. Col
 </div>
 ```
 
-**Each variant div contains exactly one top-level element — the full replacement for the original.** Use the same tag as the original (e.g. `<section>` if the user picked a `<section>`). Loose siblings (heading + paragraph + div as direct children of the variant div) break the outline tracking and the accept flow, which both assume one child.
+**Each variant div contains exactly one top-level element: the full replacement for the original.** Use the same tag as the original (e.g. `<section>` if the user picked a `<section>`). Loose siblings (heading + paragraph + div as direct children of the variant div) break the outline tracking and the accept flow, which both assume one child.
 
 The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no scoped CSS, omit the `<style>` tag entirely. Use `@scope` for CSS isolation (Chrome 118+ / Firefox 128+ / Safari 17.4+).
 
-One edit, all variants — the browser's MutationObserver picks everything up in one pass.
+One edit, all variants; the browser's MutationObserver picks everything up in one pass.
 
-**Author every `:scope` rule with a descendant combinator.** The `@scope` boundary is the **variant wrapper `<div data-impeccable-variant="N">`**, not the element you're designing. A bare `:scope { background: cream; }` styles the wrapper, not the inner replacement, so the cream lands on a `display: contents` shell while the actual element keeps page defaults. Always step in: `:scope > .card`, `:scope > section`, `:scope .hero-title`, etc. The fake test agent's CSS in `tests/live-e2e/agent.mjs` is a faithful template — every rule starts `:scope > ...`.
+**Author every `:scope` rule with a descendant combinator.** The `@scope` boundary is the **variant wrapper `<div data-impeccable-variant="N">`**, not the element you're designing. A bare `:scope { background: cream; }` styles the wrapper, not the inner replacement, so the cream lands on a `display: contents` shell while the actual element keeps page defaults. Always step in: `:scope > .card`, `:scope > section`, `:scope .hero-title`, etc. The fake test agent's CSS in `tests/live-e2e/agent.mjs` is a faithful template; every rule starts `:scope > ...`.
 
-**JSX / TSX target files.** Wrap `<style>` content in a template literal so the CSS `{` / `}` aren't parsed as JSX expressions, and use `className=` / `style={{…}}` on every variant element. Keep `data-impeccable-*` attributes as-is — they're plain strings:
+**JSX / TSX target files.** Wrap `<style>` content in a template literal so the CSS `{` / `}` aren't parsed as JSX expressions, and use `className=` / `style={{…}}` on every variant element. Keep `data-impeccable-*` attributes as-is; they're plain strings:
 
 ```tsx
 <style data-impeccable-css="SESSION_ID">{`
@@ -250,7 +250,7 @@ One edit, all variants — the browser's MutationObserver picks everything up in
 </div>
 ```
 
-The wrap script already gives you a single-rooted JSX wrapper — a `<div data-impeccable-variants="…">` outer element with the marker comments tucked inside. Drop the variants block above into the "Variants: insert below this line" comment and the source stays valid TSX.
+The wrap script already gives you a single-rooted JSX wrapper: a `<div data-impeccable-variants="…">` outer element with the marker comments tucked inside. Drop the variants block above into the "Variants: insert below this line" comment and the source stays valid TSX.
 
 ### 7. Parameters (composition-sized, 0–4 per variant)
 
@@ -264,14 +264,14 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Budget scales with the element's visual weight, not token budget.** Knobs need real estate to read as tunable; three sliders on a single control are noise.
 
-- **Leaf / tiny** — a single button, icon, input, bare heading, solitary paragraph: **0 params.**
-- **Small composition** — labeled input, simple card, short callout (≤ ~5 visual children): **0–1** params when one dominant axis is obvious; otherwise **0.**
-- **Medium composition** — section component, nav cluster, dense card, short feature block (6–15 visual children): **target 2**; **1** is acceptable if the block is simple; **0** only when variants are truly fixed points.
-- **Large composition** — hero section, full page region, spread layout, strong internal structure (16+ visual children or multiple sub-sections): **target 2–3**; **up to 4** when several independent axes (e.g. structure `steps` + `density` + one accent) are all authored in scoped CSS.
+- **Leaf / tiny**: a single button, icon, input, bare heading, solitary paragraph: **0 params.**
+- **Small composition**: labeled input, simple card, short callout (≤ ~5 visual children): **0–1** params when one dominant axis is obvious; otherwise **0.**
+- **Medium composition**: section component, nav cluster, dense card, short feature block (6–15 visual children): **target 2**; **1** is acceptable if the block is simple; **0** only when variants are truly fixed points.
+- **Large composition**: hero section, full page region, spread layout, strong internal structure (16+ visual children or multiple sub-sections): **target 2–3**; **up to 4** when several independent axes (e.g. structure `steps` + `density` + one accent) are all authored in scoped CSS.
 
 **When in doubt, ask whether a dial exists before defaulting to zero.** The user can always request more variants, but the point of live mode is instant tuning without another Go. Crowding the panel is bad; **under-shipping** knobs on a dense composition is the more common failure for freeform. Count by **visual** children, not DOM depth; a shallow-but-wide hero is still large.
 
-**Hard cap per variant** — at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
+**Hard cap per variant**: at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
 
 **How to declare.** Put a JSON manifest on the variant wrapper:
 
@@ -291,9 +291,9 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Three kinds:**
 
-- `range` — smooth slider. Drives a CSS custom property `--p-<id>` on the variant wrapper. Author CSS with `var(--p-color-amount, 0.5)`. Fields: `min`, `max`, `step`, `default` (number), `label`.
-- `steps` — segmented radio. Drives a data attribute `data-p-<id>` on the variant wrapper. Author CSS with `:scope[data-p-density="airy"] .grid { ... }`. Fields: `options` (array of `{value, label}`), `default` (string), `label`.
-- `toggle` — on/off switch. Drives BOTH a CSS var (`--p-<id>: 0|1`) and a data attribute (present when on, absent when off). Use whichever is more convenient. Fields: `default` (boolean), `label`.
+- `range`: smooth slider. Drives a CSS custom property `--p-<id>` on the variant wrapper. Author CSS with `var(--p-color-amount, 0.5)`. Fields: `min`, `max`, `step`, `default` (number), `label`.
+- `steps`: segmented radio. Drives a data attribute `data-p-<id>` on the variant wrapper. Author CSS with `:scope[data-p-density="airy"] .grid { ... }`. Fields: `options` (array of `{value, label}`), `default` (string), `label`.
+- `toggle`: on/off switch. Drives BOTH a CSS var (`--p-<id>: 0|1`) and a data attribute (present when on, absent when off). Use whichever is more convenient. Fields: `default` (boolean), `label`.
 
 **Signature params per action.** For named sub-commands, read that action’s `reference/<action>.md` for one or two **MUST** params (e.g. `layout` → `density`). Those are non-negotiable when the design can express them. **Freeform has no file-level MUST**; the **Freeform (`impeccable`) bias** in this section is the stand-in. If the user’s action is both stylized and sub-command (e.g. `colorize`), the sub-command’s MUST list takes precedence for its axes; still respect the **Hard cap** and add no redundant duplicate knobs.
 
@@ -313,7 +313,7 @@ The carbonize cleanup step (see below) reads that comment and bakes the chosen v
 node .trae-cn/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --file RELATIVE_PATH
 ```
 
-`RELATIVE_PATH` is relative to project root (`public/index.html`, `src/App.tsx`, etc.) — the browser fetches source directly if the dev server lacks HMR.
+`RELATIVE_PATH` is relative to project root (`public/index.html`, `src/App.tsx`, etc.); the browser fetches source directly if the dev server lacks HMR.
 
 Then run `live-poll.mjs` again immediately.
 
@@ -325,7 +325,7 @@ If wrap or generation fails after the browser has flipped to GENERATING (e.g. wr
 node .trae-cn/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "Short reason"
 ```
 
-Don't run `live-accept --discard` for this — that's a pure file mutator, the browser doesn't see it, and the bar gets stuck on the GENERATING dots forever (the user has to refresh). `--discard` is only correct when the **browser** initiated the discard (user clicked ✕ during CYCLING) and the agent is just running source-side cleanup the browser already triggered.
+Don't run `live-accept --discard` for this; that's a pure file mutator, the browser doesn't see it, and the bar gets stuck on the GENERATING dots forever (the user has to refresh). `--discard` is only correct when the **browser** initiated the discard (user clicked ✕ during CYCLING) and the agent is just running source-side cleanup the browser already triggered.
 
 ## Handle fallback
 
@@ -337,9 +337,9 @@ The goal is the same: give the user three variants to choose from AND persist th
 
 Use the error payload:
 
-- `element_not_in_source` with `generatedMatch: "public/docs/foo.html"` — the served HTML is generated. Find the generator (grep for writers of that path, e.g. `scripts/build-sub-pages.js`, an Astro/Next template) and locate the template or partial that emits this element.
-- `element_not_found` — the element is runtime-injected. Look for the component that renders it (React/Vue/Svelte), the JS that assembles it, or the data source that feeds it.
-- `file_is_generated` with `file: "..."` — user pointed at a generated file explicitly. Same resolution as `element_not_in_source`.
+- `element_not_in_source` with `generatedMatch: "public/docs/foo.html"`: the served HTML is generated. Find the generator (grep for writers of that path, e.g. `scripts/build-sub-pages.js`, an Astro/Next template) and locate the template or partial that emits this element.
+- `element_not_found`: the element is runtime-injected. Look for the component that renders it (React/Vue/Svelte), the JS that assembles it, or the data source that feeds it.
+- `file_is_generated` with `file: "..."`: user pointed at a generated file explicitly. Same resolution as `element_not_in_source`.
 
 Read the candidate source until you're confident where a change to the element would belong. If the change is purely visual, that source might be a shared stylesheet, not the template.
 
@@ -347,19 +347,19 @@ Read the candidate source until you're confident where a change to the element w
 
 The browser bar is waiting for variants. Even without a wrapper in source, you still need to show something:
 
-1. Manually write the wrapper scaffold into the **served** file (the one the browser actually loaded). Use the same structure `live-wrap.mjs` produces — `<!-- impeccable-variants-start ID --><div data-impeccable-variants="ID" data-impeccable-variant-count="3" style="display: contents">…</div><!-- end -->`.
+1. Manually write the wrapper scaffold into the **served** file (the one the browser actually loaded). Use the same structure `live-wrap.mjs` produces; `<!-- impeccable-variants-start ID --><div data-impeccable-variants="ID" data-impeccable-variant-count="3" style="display: contents">…</div><!-- end -->`.
 2. Insert your three variant divs inside it, same shape as the deterministic path.
 3. Signal done with `--reply EVENT_ID done --file <served file>`. The browser's no-HMR fallback will fetch and inject.
 
-This served-file edit is **temporary** — next regen wipes it, and that's fine. The real work happens on accept.
+This served-file edit is **temporary**: next regen wipes it, and that's fine. The real work happens on accept.
 
 ### Step 3: On accept, write to true source
 
-When the accept event arrives (`_acceptResult.handled` will usually be `false` here because accept also refuses to persist into generated files — see Handle accept for the carbonize branch), extract the accepted variant's content and write it into the source you identified in Step 1:
+When the accept event arrives (`_acceptResult.handled` will usually be `false` here because accept also refuses to persist into generated files; see Handle accept for the carbonize branch), extract the accepted variant's content and write it into the source you identified in Step 1:
 
 - Structural change → edit the template / component source.
 - Visual-only change → add or update rules in the appropriate stylesheet; remove the inline `<style>` scope.
-- Data-driven → update the data source or the render logic.
+- Dynamic from data → update the data source or the render logic.
 
 Then remove the temporary wrapper from the served file if it's still there.
 
@@ -371,22 +371,22 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 Event: `{id, variantId, _acceptResult}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically; the browser DOM is already updated.
 
-- `_acceptResult.handled: true` and `carbonize: false` — nothing to do. Poll again.
-- `_acceptResult.handled: true` and `carbonize: true` — **post-accept cleanup is required before the next poll.** See the "Required after accept (carbonize)" section below. The `event._acceptResult.todo` field and a stderr banner both list the steps explicitly; neither is decorative.
-- `_acceptResult.handled: false, mode: "fallback"` — the session lived in a generated file and the script refused to persist there. You've already written the accepted variant into true source during Handle fallback Step 3; just clean up the temporary wrapper in the served file if any, and poll again.
-- `_acceptResult.handled: false` without `mode` — manual cleanup: read file, find markers, edit.
+- `_acceptResult.handled: true` and `carbonize: false`: nothing to do. Poll again.
+- `_acceptResult.handled: true` and `carbonize: true`: **post-accept cleanup is required before the next poll.** See the "Required after accept (carbonize)" section below. The `event._acceptResult.todo` field and a stderr banner both list the steps explicitly; neither is decorative.
+- `_acceptResult.handled: false, mode: "fallback"`: the session lived in a generated file and the script refused to persist there. You've already written the accepted variant into true source during Handle fallback Step 3; just clean up the temporary wrapper in the served file if any, and poll again.
+- `_acceptResult.handled: false` without `mode`: manual cleanup: read file, find markers, edit.
 
 ### Required after accept (carbonize)
 
-When `_acceptResult.carbonize === true`, the accepted variant was stitched into source with helper markers and inline CSS so the browser can render it immediately with no visual gap. That stitch-in is **temporary**. The agent must rewrite it into permanent form before doing anything else. Skipping this leaves dead `@scope` rules for unaccepted variants, a pointless `data-impeccable-variant` wrapper, and `impeccable-carbonize-start/end` comment noise in the source file — all of which accumulate across sessions.
+When `_acceptResult.carbonize === true`, the accepted variant was stitched into source with helper markers and inline CSS so the browser can render it immediately with no visual gap. That stitch-in is **temporary**. The agent must rewrite it into permanent form before doing anything else. Skipping this leaves dead `@scope` rules for unaccepted variants, a pointless `data-impeccable-variant` wrapper, and `impeccable-carbonize-start/end` comment noise in the source file; all of which accumulate across sessions.
 
 Do these five steps in the current thread, synchronously, before the next poll. Do not poll again until the file is clean.
 
-1. **Locate the carbonize block** in the source file (`_acceptResult.file`). It's bracketed by `<!-- impeccable-carbonize-start SESSION_ID -->` and `<!-- impeccable-carbonize-end SESSION_ID -->` and contains a `<style data-impeccable-css="SESSION_ID">` element. If the variant declared parameters, an `<!-- impeccable-param-values SESSION_ID: {...} -->` comment sits alongside the style tag with the user's chosen values — read it first; it drives steps 3 and 4 below.
-2. **Move the CSS rules** into the project's real stylesheet. Which stylesheet depends on the project (e.g. `public/css/workflow.css` for this repo, or the component's co-located CSS file for a Vite/Next project — pick whichever already owns styling for the surrounding element).
+1. **Locate the carbonize block** in the source file (`_acceptResult.file`). It's bracketed by `<!-- impeccable-carbonize-start SESSION_ID -->` and `<!-- impeccable-carbonize-end SESSION_ID -->` and contains a `<style data-impeccable-css="SESSION_ID">` element. If the variant declared parameters, an `<!-- impeccable-param-values SESSION_ID: {...} -->` comment sits alongside the style tag with the user's chosen values; read it first; it drives steps 3 and 4 below.
+2. **Move the CSS rules** into the project's real stylesheet. Which stylesheet depends on the project (e.g. `public/css/workflow.css` for this repo, or the component's co-located CSS file for a Vite/Next project; pick whichever already owns styling for the surrounding element).
 3. **Bake in parameter values while rewriting selectors.** For `@scope ([data-impeccable-variant="N"])` wrappers: retarget to real, semantic classes on the accepted HTML (`.why-visual--v2 .v2-label { … }`). For `:scope[data-p-<id>="VALUE"]` selectors: keep only the branch matching the chosen value from the param-values comment; drop the others (they're dead after accept). For `var(--p-<id>, DEFAULT)` in the CSS: either substitute the literal value, or if the param is still useful as a knob going forward, leave the var and update its initial declaration to the chosen value.
-4. **Unwrap the accepted content.** Delete the `<div data-impeccable-variant="N" style="display: contents">` that wraps it. Drop `data-impeccable-params` and any `data-p-*` attributes from it — those are live-mode plumbing, not source.
-5. **Delete the inline `<style>` block, the `<!-- impeccable-param-values -->` comment if present, and both `<!-- impeccable-carbonize-start/end -->` markers.** Also drop any `@scope` rules for variants other than the accepted one — those are dead code now.
+4. **Unwrap the accepted content.** Delete the `<div data-impeccable-variant="N" style="display: contents">` that wraps it. Drop `data-impeccable-params` and any `data-p-*` attributes from it; those are live-mode plumbing, not source.
+5. **Delete the inline `<style>` block, the `<!-- impeccable-param-values -->` comment if present, and both `<!-- impeccable-carbonize-start/end -->` markers.** Also drop any `@scope` rules for variants other than the accepted one; those are dead code now.
 
 Then poll again.
 
@@ -398,16 +398,16 @@ Event: `{id, _acceptResult}`. The poll script already restored the original and 
 
 ## Handle `prefetch`
 
-Event: `{pageUrl}`. The browser fires this the first time the user selects an element on a given route, as a latency shortcut — it signals the user is likely about to Go on a page you haven't read yet.
+Event: `{pageUrl}`. The browser fires this the first time the user selects an element on a given route, as a latency shortcut; it signals the user is likely about to Go on a page you haven't read yet.
 
 Resolve `pageUrl` to the underlying file:
 
 - Root `/` → the `pageFile` returned by `live.mjs` (usually `public/index.html` or equivalent).
 - Sub-routes (e.g. `/docs`, `/docs/live`) → the generated or source file for that route. Use your knowledge of the project layout (multi-page static sites often resolve `/foo` → `public/foo/index.html`; SPAs may map all routes to a single entry).
 
-Read the file into context, then poll again. No `--reply` — this is speculative pre-work; Go will come later. If you can't confidently resolve the route to a file, skip and poll again.
+Read the file into context, then poll again. No `--reply`: this is speculative pre-work; Go will come later. If you can't confidently resolve the route to a file, skip and poll again.
 
-Dedupe is the browser's job (one prefetch per unique pathname per session) — trust it. If the same file shows up twice from different routes mapping to the same file, the second Read is cached anyway.
+Dedupe is the browser's job (one prefetch per unique pathname per session); trust it. If the same file shows up twice from different routes mapping to the same file, the second Read is cached anyway.
 
 ## Exit
 
@@ -446,7 +446,7 @@ Schema:
 }
 ```
 
-`files` is the inject target — **the HTML files the browser actually loads**, not necessarily source. Each entry is either a literal path (`"public/index.html"`) or a glob pattern (`"public/**/*.html"`). Tracked or generated doesn't matter here; wrap has its own generated-file guard and routes accepts through the fallback flow.
+`files` is the inject target; **the HTML files the browser actually loads**, not necessarily source. Each entry is either a literal path (`"public/index.html"`) or a glob pattern (`"public/**/*.html"`). Tracked or generated doesn't matter here; wrap has its own generated-file guard and routes accepts through the fallback flow.
 
 `exclude` (optional) is a list of glob patterns matching files to skip, even if a `files` glob would have included them. Use for email templates, demo fixtures, or any HTML that isn't a live page.
 
@@ -464,13 +464,13 @@ Schema:
 | Nuxt | `["app.vue"]` | `</body>` | `html` |
 | Svelte / SvelteKit | `["src/app.html"]` | `</body>` | `html` |
 | Astro | `[" <root layout .astro>"]` | `</body>` | `html` |
-| Multi-page (separate HTML per route) | `["public/**/*.html"]` — a glob covering the served directory | `</body>` | `html` |
+| Multi-page (separate HTML per route) | `["public/**/*.html"]`: a glob covering the served directory | `</body>` | `html` |
 
 Pick an anchor that exists in every file (`</body>` almost always works). Use `insertAfter` if the anchor should match **after** a specific line.
 
 For multi-page sites, **prefer a glob over a literal file list**. New pages added later are picked up automatically on the next `live-inject.mjs` run; no config maintenance needed.
 
-For multi-page sites whose pages are *rebuilt* by a generator (Astro, static-site generators, custom scripts like `build-sub-pages.js`), the inject survives only until the next regeneration. Re-run `live.mjs` after each build. Accept is unaffected — it writes to true source via the fallback flow.
+For multi-page sites whose pages are *rebuilt* by a generator (Astro, static-site generators, custom scripts like `build-sub-pages.js`), the inject survives only until the next regeneration. Re-run `live.mjs` after each build. Accept is unaffected; it writes to true source via the fallback flow.
 
 ### Drift-heal warning
 
@@ -498,7 +498,7 @@ When `configDrift` is present, surface it to the user once per session before en
 >
 > Add them, or switch `files` to a glob like `["public/**/*.html"]` and let it track new pages automatically?
 
-Don't auto-update the config — let the user decide. `configDrift` is `null` when there's no drift.
+Don't auto-update the config; let the user decide. `configDrift` is `null` when there's no drift.
 
 ### CSP detection (first-time only)
 
@@ -512,21 +512,21 @@ node .trae-cn/skills/impeccable/scripts/detect-csp.mjs
 
 Output: `{ shape, signals }` where `shape` is one of `append-arrays`, `append-string`, `middleware`, `meta-tag`, or `null`. The shape is named by *patch mechanism*, so one template covers many frameworks.
 
-- **`null`** — no CSP; skip to writing `config.json` with `cspChecked: true`.
-- **`append-arrays`** — CSP defined as structured directive arrays. Auto-patchable. See *append-arrays* below. Covers:
+- **`null`**: no CSP; skip to writing `config.json` with `cspChecked: true`.
+- **`append-arrays`**: CSP defined as structured directive arrays. Auto-patchable. See *append-arrays* below. Covers:
   - Monorepo helpers with `additionalScriptSrc` / `additionalConnectSrc` options (Next.js + shared config package)
   - SvelteKit `kit.csp.directives`
   - Nuxt `nuxt-security` module's `contentSecurityPolicy`
-- **`append-string`** — CSP written as a literal value string. Auto-patchable. See *append-string* below. Covers:
+- **`append-string`**: CSP written as a literal value string. Auto-patchable. See *append-string* below. Covers:
   - Inline `next.config.*` `headers()` with a CSP literal
   - Nuxt `routeRules` / `nitro.routeRules` headers
-- **`middleware`** or **`meta-tag`** — rarer. Detected but not auto-patched in v1. Show the user the detected files and ask them to add `http://localhost:8400` to `script-src` and `connect-src` manually, then mark `cspChecked: true` and proceed.
+- **`middleware`** or **`meta-tag`**: rarer. Detected but not auto-patched in v1. Show the user the detected files and ask them to add `http://localhost:8400` to `script-src` and `connect-src` manually, then mark `cspChecked: true` and proceed.
 
 #### Consent prompt template
 
 Use this phrasing so the experience is consistent across agents:
 
-> **CSP patch needed.** I detected a Content Security Policy in your project that blocks `http://localhost:8400` — the live picker won't load without an allowance. Here's the change I'd make:
+> **CSP patch needed.** I detected a Content Security Policy in your project that blocks `http://localhost:8400`: the live picker won't load without an allowance. Here's the change I'd make:
 >
 > ```diff
 > [file: <patchTarget>]
@@ -553,9 +553,9 @@ const __impeccableLiveDev =
 
 **Append `...__impeccableLiveDev` to the script-src and connect-src directive arrays.** Per-framework specifics:
 
-- **Next.js + monorepo helper** — edit the *app's* `next.config.*` (not the shared helper), appending to `additionalScriptSrc` and `additionalConnectSrc` passed into `createBaseNextConfig` (or equivalent). Keeps the shared package clean.
-- **SvelteKit** — edit `svelte.config.js`, appending to `kit.csp.directives['script-src']` and `kit.csp.directives['connect-src']`.
-- **Nuxt + nuxt-security** — edit `nuxt.config.*`, appending to `security.headers.contentSecurityPolicy['script-src']` and `['connect-src']`.
+- **Next.js + monorepo helper**: edit the *app's* `next.config.*` (not the shared helper), appending to `additionalScriptSrc` and `additionalConnectSrc` passed into `createBaseNextConfig` (or equivalent). Keeps the shared package clean.
+- **SvelteKit**: edit `svelte.config.js`, appending to `kit.csp.directives['script-src']` and `kit.csp.directives['connect-src']`.
+- **Nuxt + nuxt-security**: edit `nuxt.config.*`, appending to `security.headers.contentSecurityPolicy['script-src']` and `['connect-src']`.
 
 Reference outputs:
 - `tests/framework-fixtures/nextjs-turborepo/expected-after-patch.ts` (Next.js)
@@ -580,8 +580,8 @@ Then in the CSP value string:
 (Leading space on the dev string so it concatenates cleanly into the existing value. Convert the literal CSP directives into template strings as part of the edit if they aren't already.)
 
 Per-framework specifics:
-- **Next.js inline `headers()`** — edit `next.config.*`, splicing the variable into the CSP value.
-- **Nuxt `routeRules`** — edit `nuxt.config.*`, splicing into the CSP in `routeRules['/**'].headers['Content-Security-Policy']`.
+- **Next.js inline `headers()`**: edit `next.config.*`, splicing the variable into the CSP value.
+- **Nuxt `routeRules`**: edit `nuxt.config.*`, splicing into the CSP in `routeRules['/**'].headers['Content-Security-Policy']`.
 
 Reference outputs:
 - `tests/framework-fixtures/nextjs-inline-csp/expected-after-patch.js` (Next.js)
@@ -589,6 +589,6 @@ Reference outputs:
 
 ### Troubleshooting
 
-If a user says "no" to the CSP patch at setup time and later complains that live doesn't work: their dev CSP blocks `http://localhost:8400`. Fix: delete `cspChecked` from `config.json` and re-run `live.mjs` — setup will ask again.
+If a user says "no" to the CSP patch at setup time and later complains that live doesn't work: their dev CSP blocks `http://localhost:8400`. Fix: delete `cspChecked` from `config.json` and re-run `live.mjs`: setup will ask again.
 
 Then re-run `live.mjs`.

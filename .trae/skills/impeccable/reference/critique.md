@@ -2,7 +2,7 @@
 
 ### Gather Assessments
 
-Launch two independent assessments. **Neither may see the other's output** — this isolation is what makes the combined score honest. Running both in one head silently anchors them to each other; do not shortcut it for cost, speed, or context-size reasons.
+Launch two independent assessments. **Neither may see the other's output.** This isolation is what makes the combined score honest. Running both in one head silently anchors them to each other; do not shortcut it for cost, speed, or context-size reasons.
 
 Delegate each assessment to a separate sub-agent (Claude Code's `Agent` tool, Codex's subagent spawning, etc.). Each returns structured findings as text. Do NOT output findings to the user yet.
 
@@ -52,7 +52,7 @@ npx impeccable --json [--fast] [target]
 - For 500+ files, narrow scope or ask the user
 - Exit code 0 = clean, 2 = findings
 
-**Browser visualization** — **required** when browser automation tools are available AND the target is a viewable page. The `[Human]` overlay tab is the user-facing deliverable; the critique is incomplete without it. Skip only if the target is not a viewable page (CSS-only file, non-browser target).
+**Browser visualization**: **required** when browser automation tools are available AND the target is a viewable page. The `[Human]` overlay tab is the user-facing deliverable; the critique is incomplete without it. Skip only if the target is not a viewable page (CSS-only file, non-browser target).
 
 The overlay is a **visual aid for the user**. It highlights issues directly in their browser. Do NOT scroll through the page to screenshot overlays. Instead, read the console output to get the results programmatically.
 
@@ -160,7 +160,7 @@ Provocative questions that might unlock better solutions:
 - Be direct. Vague feedback wastes everyone's time.
 - Be specific. "The submit button," not "some elements."
 - Say what's wrong AND why it matters to users.
-- Give concrete suggestions, not just "consider exploring..."
+- Give concrete suggestions. Cut "consider exploring..." entirely.
 - Prioritize ruthlessly. If everything is important, nothing is.
 - Don't soften criticism. Developers need honest feedback to ship great design.
 

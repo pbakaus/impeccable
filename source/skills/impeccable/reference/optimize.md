@@ -1,4 +1,4 @@
-Identify and fix performance issues to create faster, smoother user experiences.
+Performance is a feature. Identify the actual bottleneck for THIS interface, fix it, then measure. Don't optimize what isn't slow.
 
 ## Assess Performance Issues
 
@@ -255,4 +255,4 @@ Test that optimizations worked:
 - **No regressions**: Ensure functionality still works
 - **User perception**: Does it *feel* faster?
 
-Remember: Performance is a feature. Fast experiences feel more responsive, more polished, more professional. Optimize systematically, measure ruthlessly, and prioritize user-perceived performance.
+When the user-facing numbers move, hand off to `{{command_prefix}}impeccable polish` for the final pass.

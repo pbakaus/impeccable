@@ -1,4 +1,4 @@
-Assess and improve typography that feels generic, inconsistent, or poorly structured — turning default-looking text into intentional, well-crafted type.
+Typography carries most of the information on the page. Replace generic defaults (Inter, Roboto, system fallback at flat scale) with type that reflects the brand and scales with intentional contrast.
 
 ---
 
@@ -39,7 +39,7 @@ Analyze what's weak or generic about the current type:
    - Are font weights used consistently? (Not bold in one section, semibold in another for the same role)
    - Is letter-spacing intentional or default everywhere?
 
-**CRITICAL**: The goal isn't to make text "fancier" — it's to make it clearer, more readable, and more intentional. Good typography is invisible; bad typography is distracting.
+**CRITICAL**: The goal isn't to make text "fancier." It's to make it clearer, more readable, and more intentional. Good typography is invisible; bad typography is distracting.
 
 ## Plan Typography Improvements
 
@@ -49,7 +49,7 @@ Create a systematic plan:
 
 - **Font selection**: Do fonts need replacing? What fits the brand/context?
 - **Type scale**: Establish a modular scale (e.g., 1.25 ratio) with clear hierarchy
-- **Weight strategy**: Which weights serve which roles? (Regular for body, Semibold for labels, Bold for headings — or whatever fits)
+- **Weight strategy**: Which weights serve which roles? (Regular for body, Semibold for labels, Bold for headings, or whatever fits)
 - **Spacing**: Line-heights, letter-spacing, and margins between typographic elements
 
 ## Improve Typography Systematically
@@ -58,7 +58,7 @@ Create a systematic plan:
 
 If fonts need replacing:
 - Choose fonts that reflect the brand personality
-- Pair with genuine contrast (serif + sans, geometric + humanist) — or use a single family in multiple weights
+- Pair with genuine contrast (serif + sans, geometric + humanist), or use a single family in multiple weights
 - Ensure web font loading doesn't cause layout shift (`font-display: swap`, metric-matched fallbacks)
 
 ### Establish Hierarchy
@@ -66,7 +66,7 @@ If fonts need replacing:
 Build a clear type scale:
 - **5 sizes cover most needs**: caption, secondary, body, subheading, heading
 - **Use a consistent ratio** between levels (1.25, 1.333, or 1.5)
-- **Combine dimensions**: Size + weight + color + space for strong hierarchy — don't rely on size alone
+- **Combine dimensions**: Size + weight + color + space for strong hierarchy. Don't rely on size alone
 - **App UIs**: Use a fixed `rem`-based type scale, optionally adjusted at 1-2 breakpoints. Fluid sizing undermines the spatial predictability that dense, container-based layouts need
 - **Marketing / content pages**: Use fluid sizing via `clamp(min, preferred, max)` for headings and display text. Keep body text fixed
 
@@ -92,11 +92,11 @@ Build a clear type scale:
 
 **NEVER**:
 - Use more than 2-3 font families
-- Pick sizes arbitrarily — commit to a scale
+- Pick sizes arbitrarily; commit to a scale
 - Set body text below 16px
 - Use decorative/display fonts for body text
 - Disable browser zoom (`user-scalable=no`)
-- Use `px` for font sizes — use `rem` to respect user settings
+- Use `px` for font sizes; use `rem` to respect user settings
 - Default to Inter/Roboto/Open Sans when personality matters
 - Pair fonts that are similar but not identical (two geometric sans-serifs)
 
@@ -109,7 +109,7 @@ Build a clear type scale:
 - **Performance**: Are web fonts loading efficiently without layout shift?
 - **Accessibility**: Does text meet WCAG contrast ratios? Is it zoomable to 200%?
 
-Remember: Typography is the foundation of interface design. It carries most of the information on the page. Getting it right changes the design more than any other single move.
+When the type carries the hierarchy on its own, hand off to `$impeccable polish` for the final pass.
 
 ## Live-mode signature params
 

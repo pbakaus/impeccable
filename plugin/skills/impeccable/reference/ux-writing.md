@@ -40,7 +40,7 @@ Empty states are onboarding moments: (1) Acknowledge briefly, (2) Explain the va
 
 ## Voice vs Tone
 
-**Voice** is your brand's personality—consistent everywhere.
+**Voice** is your brand's personality, consistent everywhere.
 **Tone** adapts to the moment.
 
 | Moment | Tone Shift |
@@ -54,7 +54,7 @@ Empty states are onboarding moments: (1) Acknowledge briefly, (2) Explain the va
 
 ## Writing for Accessibility
 
-**Link text** must have standalone meaning—"View pricing plans" not "Click here". **Alt text** describes information, not the image—"Revenue increased 40% in Q4" not "Chart". Use `alt=""` for decorative images. **Icon buttons** need `aria-label` for screen reader context.
+**Link text** must have standalone meaning: "View pricing plans" not "Click here". **Alt text** describes information, not the image: "Revenue increased 40% in Q4" not "Chart". Use `alt=""` for decorative images. **Icon buttons** need `aria-label` for screen reader context.
 
 ## Writing for Translation
 
@@ -96,7 +96,7 @@ Be specific: "Saving your draft..." not "Loading...". For long waits, set expect
 
 ## Confirmation Dialogs: Use Sparingly
 
-Most confirmation dialogs are design failures—consider undo instead. When you must confirm: name the action, explain consequences, use specific button labels ("Delete project" / "Keep project", not "Yes" / "No").
+Most confirmation dialogs are design failures; consider undo instead. When you must confirm: name the action, explain consequences, use specific button labels ("Delete project" / "Keep project", not "Yes" / "No").
 
 ## Form Instructions
 

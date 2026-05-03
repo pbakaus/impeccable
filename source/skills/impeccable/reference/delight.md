@@ -1,12 +1,12 @@
 > **Additional context needed**: what's appropriate for the domain (playful vs professional vs quirky vs elegant).
 
-Identify opportunities to add moments of joy, personality, and unexpected polish that transform functional interfaces into delightful experiences.
+Find the moments where personality and unexpected polish would turn a functional interface into one users remember and tell other people about. Add only where the moment earns it; delight everywhere reads as noise.
 
 ---
 
 ## Register
 
-Brand: delight can be distributed — copy voice, section transitions, discovery rewards, seasonal touches, personality across the whole surface.
+Brand: delight can be distributed across copy voice, section transitions, discovery rewards, seasonal touches, personality across the whole surface.
 
 Product: delight at specific moments, not pages. Completion, first-time actions, error recovery, milestone crossings. Reliability and consistency carry the rest of the experience; delight pushed everywhere reads as noise.
 
@@ -236,14 +236,14 @@ Add personality and joy through these methods:
 - Countdown with encouraging messages
 
 ```
-Loading messages — write ones specific to your product, not generic AI filler:
+Loading messages: write ones specific to your product, not generic AI filler:
 - "Crunching your latest numbers..."
 - "Syncing with your team's changes..."
 - "Preparing your dashboard..."
 - "Checking for updates since yesterday..."
 ```
 
-**WARNING**: Avoid cliched loading messages like "Herding pixels", "Teaching robots to dance", "Consulting the magic 8-ball", "Counting backwards from infinity". These are AI-slop copy — instantly recognizable as machine-generated. Write messages that are specific to what your product actually does.
+**WARNING**: Avoid cliched loading messages like "Herding pixels", "Teaching robots to dance", "Consulting the magic 8-ball", "Counting backwards from infinity". These are AI-slop copy, instantly recognizable as machine-generated. Write messages that are specific to what your product actually does.
 
 ### Celebration Moments
 
@@ -299,4 +299,4 @@ Test that delight actually delights:
 - **Appropriate**: Matches brand and context
 - **Accessible**: Works with reduced motion, screen readers
 
-Remember: Delight is the difference between a tool and an experience. Add personality, surprise users positively, and create moments worth sharing. But always respect usability - delight should enhance, never obstruct.
+When the moments feel earned, hand off to `{{command_prefix}}impeccable polish` for the final pass.
