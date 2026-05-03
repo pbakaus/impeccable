@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -29,10 +29,58 @@ function runInject(cwd, configPath, args) {
   }
 }
 
+function runInjectDefault(cwd, args) {
+  try {
+    const out = execFileSync('node', [INJECT, ...args], {
+      cwd,
+      encoding: 'utf-8',
+      env: { ...process.env, IMPECCABLE_LIVE_CONFIG: '' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return JSON.parse(out.trim());
+  } catch (err) {
+    const body = err.stdout?.toString().trim() || err.stderr?.toString().trim() || '';
+    return JSON.parse(body || '{}');
+  }
+}
+
 describe('live-inject — insert/remove round-trip preserves file bytes', () => {
   let tmp;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-inject-test-')); });
   afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it('reports .impeccable/live/config.json as the default missing config path', () => {
+    const result = runInjectDefault(tmp, ['--check']);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'config_missing');
+    assert.equal(result.path, join(realpathSync(tmp), '.impeccable', 'live', 'config.json'));
+  });
+
+  it('uses .impeccable/live/config.json without an environment override', () => {
+    const original = `<html>
+  <body>
+    <p>Content</p>
+  </body>
+</html>
+`;
+    writeFileSync(join(tmp, 'index.html'), original);
+    const configDir = join(tmp, '.impeccable', 'live');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify({
+      files: ['index.html'],
+      insertBefore: '</body>',
+      commentSyntax: 'html',
+    }));
+
+    const inserted = runInjectDefault(tmp, ['--port', '8400']);
+    assert.equal(inserted.ok, true);
+    assert.match(readFileSync(join(tmp, 'index.html'), 'utf-8'), /localhost:8400\/live\.js/);
+
+    const removed = runInjectDefault(tmp, ['--remove']);
+    assert.equal(removed.ok, true);
+    assert.equal(readFileSync(join(tmp, 'index.html'), 'utf-8'), original);
+  });
 
   it('round-trips an HTML file without mangling indentation', () => {
     const original = `<!DOCTYPE html>

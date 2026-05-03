@@ -38,8 +38,8 @@ All commands are accessed through `/impeccable`:
 | Command | What it does |
 |---------|--------------|
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
-| `/impeccable teach` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md |
-| `/impeccable document` | Generate DESIGN.md from existing project code |
+| `/impeccable teach` | One-time setup: gather design context, write root PRODUCT.md and DESIGN.md |
+| `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
 | `/impeccable shape` | Plan UX/UI before writing code |
 | `/impeccable critique` | UX design review: hierarchy, clarity, emotional resonance |

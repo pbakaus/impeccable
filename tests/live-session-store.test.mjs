@@ -5,11 +5,16 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, appendFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createLiveSessionStore } from '../source/skills/impeccable/scripts/live-session-store.mjs';
+import {
+  getLegacyLiveSessionsDir,
+  getLiveAnnotationsDir,
+  getLiveSessionsDir,
+} from '../source/skills/impeccable/scripts/impeccable-paths.mjs';
 
 describe('live-session-store', () => {
   let tmp;
@@ -31,7 +36,7 @@ describe('live-session-store', () => {
       count: 3,
       pageUrl: 'http://localhost:4321/',
       element: { outerHTML: '<section class="hero">Hero</section>', tagName: 'section' },
-      screenshotPath: join(tmp, '.impeccable-live', 'annotations', 'session-a.png'),
+      screenshotPath: join(getLiveAnnotationsDir(tmp), 'session-a.png'),
     });
     store.appendEvent({ type: 'variants_ready', id: 'session-a', file: 'src/pages/index.astro', arrivedVariants: 3 });
     store.appendEvent({ type: 'accept_intent', id: 'session-a', variantId: 2, paramValues: { density: 'packed' } });
@@ -67,7 +72,7 @@ describe('live-session-store', () => {
       element: { outerHTML: '<div>Card</div>', tagName: 'div' },
     });
 
-    appendFileSync(join(tmp, '.impeccable-live', 'sessions', 'corrupt-session.jsonl'), '{not json}\n');
+    appendFileSync(join(getLiveSessionsDir(tmp), 'corrupt-session.jsonl'), '{not json}\n');
 
     const restarted = createLiveSessionStore({ cwd: tmp, sessionId: 'corrupt-session' });
     const snapshot = restarted.getSnapshot('corrupt-session');
@@ -199,7 +204,7 @@ describe('live-session-store', () => {
       element: { outerHTML: '<div>Palette</div>', tagName: 'div' },
     });
 
-    const snapshotPath = join(tmp, '.impeccable-live', 'sessions', 'cache-session.snapshot.json');
+    const snapshotPath = join(getLiveSessionsDir(tmp), 'cache-session.snapshot.json');
     const cached = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
     assert.equal(cached.phase, 'generate_requested');
 
@@ -211,5 +216,37 @@ describe('live-session-store', () => {
 
     assert.equal(repaired.phase, 'variants_ready');
     assert.equal(repaired.sourceFile, 'src/pages/index.astro');
+  });
+
+  it('recovers legacy journals from .impeccable-live/sessions', () => {
+    const legacyDir = getLegacyLiveSessionsDir(tmp);
+    mkdirSync(legacyDir, { recursive: true });
+    appendFileSync(join(legacyDir, 'legacy-session.jsonl'), JSON.stringify({
+      seq: 1,
+      id: 'legacy-session',
+      type: 'generate',
+      ts: new Date().toISOString(),
+      event: {
+        type: 'generate',
+        id: 'legacy-session',
+        action: 'polish',
+        count: 2,
+        element: { outerHTML: '<section>Legacy</section>', tagName: 'section' },
+      },
+    }) + '\n');
+
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'legacy-session' });
+    const snapshot = store.getSnapshot('legacy-session');
+
+    assert.equal(snapshot.phase, 'generate_requested');
+    assert.equal(snapshot.expectedVariants, 2);
+    assert.equal(store.listActiveSessions().some((s) => s.id === 'legacy-session'), true);
+
+    store.appendEvent({ type: 'agent_done', id: 'legacy-session', file: 'src/App.jsx' });
+    const restarted = createLiveSessionStore({ cwd: tmp, sessionId: 'legacy-session' });
+    const migratedSnapshot = restarted.getSnapshot('legacy-session');
+    assert.equal(migratedSnapshot.phase, 'variants_ready');
+    assert.equal(migratedSnapshot.expectedVariants, 2);
+    assert.equal(migratedSnapshot.sourceFile, 'src/App.jsx');
   });
 });

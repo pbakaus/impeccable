@@ -23,14 +23,19 @@ import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
 import { resolveContextDir } from './load-context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
+import {
+  getDesignSidecarPath,
+  getLiveAnnotationsDir,
+  readLiveServerInfo,
+  removeLiveServerInfo,
+  resolveDesignSidecarPath,
+  writeLiveServerInfo,
+} from './impeccable-paths.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// PID file in the project root so both the server and agent can find it
-// predictably (os.tmpdir() varies across platforms).
-const LIVE_PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
-// PRODUCT.md / DESIGN.md / DESIGN.json live wherever load-context.mjs resolves.
-// Keeps live-server in sync with the loader when users keep the docs in
-// .agents/context/, docs/, or a path set via IMPECCABLE_CONTEXT_DIR.
+// PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
+// DESIGN sidecar is project-local at .impeccable/design.json, with legacy
+// DESIGN.json fallback for existing projects.
 const CONTEXT_DIR = resolveContextDir(process.cwd());
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
@@ -411,13 +416,13 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     }
 
     // --- Design system (unified v2 response) + raw ---
-    //   /design-system.json    returns both parsed DESIGN.md and DESIGN.json
+    //   /design-system.json    returns both parsed DESIGN.md and .impeccable/design.json
     //                          sidecar when present. Panel merges them:
     //                            { present, parsed, sidecar, hasMd, hasSidecar,
     //                              mdNewerThanJson, parseError?, sidecarError? }
     //                          - parsed: output of parseDesignMd (frontmatter
     //                            + six canonical sections) when DESIGN.md exists.
-    //                          - sidecar: DESIGN.json contents when present.
+    //                          - sidecar: .impeccable/design.json contents when present.
     //                            Expected shape: schemaVersion 2, carrying
     //                            extensions + components + narrative.
     //   /design-system/raw     returns DESIGN.md markdown verbatim
@@ -426,7 +431,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
 
       const mdPath = path.join(CONTEXT_DIR, 'DESIGN.md');
-      const jsonPath = path.join(CONTEXT_DIR, 'DESIGN.json');
+      const jsonPath = resolveDesignSidecarPath(process.cwd(), CONTEXT_DIR) || getDesignSidecarPath(process.cwd());
       const mdStat = statOrNull(mdPath);
       const jsonStat = statOrNull(jsonPath);
 
@@ -462,7 +467,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         try {
           response.sidecar = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
         } catch (err) {
-          response.sidecarError = 'Failed to parse DESIGN.json: ' + err.message;
+          response.sidecarError = 'Failed to parse .impeccable/design.json: ' + err.message;
         }
       }
 
@@ -673,7 +678,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
-  try { fs.unlinkSync(LIVE_PID_FILE); } catch {}
+  removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
   state.leaseTimer = null;
   if (state.sessionDir) {
@@ -725,7 +730,7 @@ Endpoints:
 if (args.includes('stop')) {
   const keepInject = args.includes('--keep-inject');
   try {
-    const info = JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8'));
+    const { info } = readLiveServerInfo(process.cwd()) || {};
     const res = await fetch(`http://localhost:${info.port}/stop?token=${info.token}`);
     if (res.ok) console.log(`Stopped live server on port ${info.port}.`);
   } catch {
@@ -776,7 +781,7 @@ if (args.includes('--background')) {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     try {
-      const info = JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8'));
+      const { info } = readLiveServerInfo(process.cwd()) || {};
       if (info.pid !== process.pid) {
         // Output JSON so the agent can read port + token from stdout.
         console.log(JSON.stringify(info));
@@ -790,14 +795,18 @@ if (args.includes('--background')) {
 }
 
 // Check for existing session
-try {
-  const existing = JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8'));
-  try { process.kill(existing.pid, 0);
+const existingRecord = readLiveServerInfo(process.cwd());
+if (existingRecord?.info) {
+  const existing = existingRecord.info;
+  try {
+    process.kill(existing.pid, 0);
     console.error(`Live server already running on port ${existing.port} (pid ${existing.pid}).`);
     console.error('Stop it first with: node ' + path.basename(fileURLToPath(import.meta.url)) + ' stop');
     process.exit(1);
-  } catch { fs.unlinkSync(LIVE_PID_FILE); }
-} catch {}
+  } catch {
+    try { fs.unlinkSync(existingRecord.path); } catch {}
+  }
+}
 
 state.token = randomUUID();
 state.sessionStore = createLiveSessionStore({ cwd: process.cwd() });
@@ -807,7 +816,7 @@ state.port = portArg ? parseInt(portArg.split('=')[1], 10) : await findOpenPort(
 // Annotation screenshots live in the project root so the agent's Read tool
 // doesn't trip a per-file permission prompt. Sessioned by token so concurrent
 // projects (or quick restarts) don't collide.
-const annotRoot = path.join(process.cwd(), '.impeccable-live', 'annotations');
+const annotRoot = getLiveAnnotationsDir(process.cwd());
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
@@ -815,7 +824,7 @@ const { detectScript, sessionPath, livePath } = loadBrowserScripts();
 httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
-  fs.writeFileSync(LIVE_PID_FILE, JSON.stringify({ pid: process.pid, port: state.port, token: state.token }));
+  writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });
   const url = `http://localhost:${state.port}`;
   console.log(`\nImpeccable live server running on ${url}`);
   console.log(`Token: ${state.token}\n`);

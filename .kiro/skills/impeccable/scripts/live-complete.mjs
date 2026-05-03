@@ -4,10 +4,7 @@
  */
 
 import { createLiveSessionStore } from './live-session-store.mjs';
-import fs from 'node:fs';
-import path from 'node:path';
-
-const LIVE_PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
+import { readLiveServerInfo } from './impeccable-paths.mjs';
 
 function parseArgs(argv) {
   const out = { status: 'complete' };
@@ -50,8 +47,7 @@ export async function completeCli() {
 }
 
 function readServerInfo() {
-  try { return JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8')); }
-  catch { return null; }
+  return readLiveServerInfo(process.cwd())?.info || null;
 }
 
 async function completeThroughServer(info, args) {

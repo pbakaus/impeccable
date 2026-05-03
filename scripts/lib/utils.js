@@ -5,9 +5,8 @@ import path from 'path';
 // belong to the consuming project, not the distributable skill. The build
 // excludes them from dist, and the harness-sync step preserves them across
 // the rm+recopy so local state isn't destroyed on every rebuild.
-// - config.json: live-mode inject target list for the current project.
-//   Written by the agent at first /impeccable live; tied to the project's
-//   filesystem layout. Losing it resets the user's glob + exclusions.
+// - config.json: legacy live-mode inject target list for existing projects.
+//   New installs write project config at .impeccable/live/config.json instead.
 export const PER_PROJECT_SCRIPT_ARTIFACTS = new Set(['config.json']);
 
 // Walk the harness-dir skill tree and return any per-project script

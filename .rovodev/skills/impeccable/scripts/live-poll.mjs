@@ -9,11 +9,10 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { completionTypeForAcceptResult } from './live-completion.mjs';
+import { readLiveServerInfo } from './impeccable-paths.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -21,15 +20,13 @@ import { completionTypeForAcceptResult } from './live-completion.mjs';
 // depending on the standalone undici package.
 const PER_REQUEST_TIMEOUT_MS = 270_000;
 
-const LIVE_PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
-
 function readServerInfo() {
-  try {
-    return JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8'));
-  } catch {
+  const record = readLiveServerInfo(process.cwd());
+  if (!record) {
     console.error('No running live server found. Start one with: npx impeccable live');
     process.exit(1);
   }
+  return record.info;
 }
 
 export function buildPollReplyPayload(token, { id, type, message, file, data }) {

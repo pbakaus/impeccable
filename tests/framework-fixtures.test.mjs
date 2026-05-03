@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +43,8 @@ function stageFixture(name) {
   const tmp = mkdtempSync(join(tmpdir(), 'impeccable-fixture-'));
   cpSync(join(fixtureRoot, 'files'), tmp, { recursive: true });
   writeFileSync(join(tmp, '.gitignore'), gitignore);
-  writeFileSync(join(tmp, 'impeccable-live.config.json'), JSON.stringify(fixture.config));
+  mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
+  writeFileSync(join(tmp, '.impeccable', 'live', 'config.json'), JSON.stringify(fixture.config));
 
   execFileSync('git', ['init', '-q'], { cwd: tmp });
   execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmp });
@@ -109,11 +110,7 @@ for (const name of listFixtures()) {
     it('live-inject --port adds the script tag to every config file', () => {
       const { tmp } = stageFixture(name);
       try {
-        const configPath = join(tmp, 'impeccable-live.config.json');
-        const out = runScript('live-inject.mjs', ['--port', '9999'], {
-          cwd: tmp,
-          env: { IMPECCABLE_LIVE_CONFIG: configPath },
-        });
+        const out = runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'inject succeeded');
         for (const r of result.results) {
@@ -130,15 +127,8 @@ for (const name of listFixtures()) {
     it('live-inject --remove strips the script tag cleanly', () => {
       const { tmp } = stageFixture(name);
       try {
-        const configPath = join(tmp, 'impeccable-live.config.json');
-        runScript('live-inject.mjs', ['--port', '9999'], {
-          cwd: tmp,
-          env: { IMPECCABLE_LIVE_CONFIG: configPath },
-        });
-        const out = runScript('live-inject.mjs', ['--remove'], {
-          cwd: tmp,
-          env: { IMPECCABLE_LIVE_CONFIG: configPath },
-        });
+        runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
+        const out = runScript('live-inject.mjs', ['--remove'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'remove succeeded');
         for (const r of result.results) {

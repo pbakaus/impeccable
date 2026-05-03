@@ -1,30 +1,43 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getLegacyLiveSessionsDir, getLiveSessionsDir } from './impeccable-paths.mjs';
 
-const LIVE_DIR = '.impeccable-live';
-const SESSIONS_DIR = 'sessions';
 const COMPLETED_PHASES = new Set(['completed', 'discarded']);
 
 export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) {
-  const rootDir = path.join(cwd, LIVE_DIR, SESSIONS_DIR);
+  const rootDir = getLiveSessionsDir(cwd);
+  const legacyRootDir = getLegacyLiveSessionsDir(cwd);
   fs.mkdirSync(rootDir, { recursive: true });
   const snapshotCache = new Map();
 
   function loadCachedOrRebuild(id) {
     const cached = snapshotCache.get(id);
     if (cached) return cached;
-    const journalPath = getJournalPath(rootDir, id);
+    const journalPath = getReadableJournalPath(id);
     const rebuilt = rebuildSnapshotFromJournal(journalPath, id);
     snapshotCache.set(id, rebuilt);
     return rebuilt;
   }
 
+  function getReadableJournalPath(id) {
+    const primary = getJournalPath(rootDir, id);
+    if (fs.existsSync(primary)) return primary;
+    const legacy = getJournalPath(legacyRootDir, id);
+    if (fs.existsSync(legacy)) return legacy;
+    return primary;
+  }
+
   return {
     rootDir,
+    legacyRootDir,
     appendEvent(event) {
       const normalized = normalizeEvent(event, sessionId);
       const journalPath = getJournalPath(rootDir, normalized.id);
       const snapshotPath = getSnapshotPath(rootDir, normalized.id);
+      const legacyJournalPath = getJournalPath(legacyRootDir, normalized.id);
+      if (!fs.existsSync(journalPath) && fs.existsSync(legacyJournalPath)) {
+        fs.copyFileSync(legacyJournalPath, journalPath);
+      }
       const prior = loadCachedOrRebuild(normalized.id);
       const seq = prior.nextSeq;
       const entry = {
@@ -42,7 +55,7 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
     },
     getSnapshot(id = sessionId, opts = {}) {
       if (!id) throw new Error('session id required');
-      const journalPath = getJournalPath(rootDir, id);
+      const journalPath = getReadableJournalPath(id);
       const snapshotPath = getSnapshotPath(rootDir, id);
       const rebuilt = rebuildSnapshotFromJournal(journalPath, id);
       snapshotCache.set(id, rebuilt);
@@ -51,10 +64,15 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
       return rebuilt.snapshot;
     },
     listActiveSessions() {
-      if (!fs.existsSync(rootDir)) return [];
-      return fs.readdirSync(rootDir)
-        .filter((name) => name.endsWith('.jsonl'))
-        .map((name) => name.slice(0, -'.jsonl'.length))
+      const ids = new Set();
+      for (const dir of [legacyRootDir, rootDir]) {
+        if (!fs.existsSync(dir)) continue;
+        for (const name of fs.readdirSync(dir)) {
+          if (name.endsWith('.jsonl')) ids.add(name.slice(0, -'.jsonl'.length));
+        }
+      }
+      return [...ids]
+        .sort()
         .map((id) => this.getSnapshot(id))
         .filter(Boolean);
     },

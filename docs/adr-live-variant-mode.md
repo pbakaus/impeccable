@@ -82,7 +82,7 @@ For dev servers that don't support HMR (like Bun's static HTML import), the brow
  │  └── GET  /stop        — graceful shutdown                      │
  │                                                                 │
  │  State: session token, SSE client set, event queue, poll queue  │
- │  PID file: .impeccable-live.json (project root)                 │
+ │  Server file: .impeccable/live/server.json (project root)        │
  │                                                                 │
  └────────────┬──────────────────────────────────┬─────────────────┘
               │ GET /poll (long-poll)             │ POST /poll (reply)
@@ -228,7 +228,7 @@ This survives page reloads, browser close/reopen, HMR, and accidental refreshes.
 
 - **Session token**: `crypto.randomUUID()`, checked on all mutating endpoints and SSE connections.
 - **Localhost only**: server binds to `127.0.0.1`, not `0.0.0.0`.
-- **Token in PID file**: `.impeccable-live.json` in project root. Only the user's processes can read it.
+- **Token in server file**: `.impeccable/live/server.json` in project root. Only the user's processes can read it.
 - **Token injected into `/live.js`**: the server prepends `window.__IMPECCABLE_TOKEN__` at serve time.
 - **Path traversal guard**: `/source` endpoint validates the requested path is within `process.cwd()`.
 - **No eval/innerHTML**: all browser UI built with `createElement` and `textContent`.

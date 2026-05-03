@@ -3,15 +3,11 @@
  * Print durable recovery status for Impeccable live sessions.
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
 import { createLiveSessionStore } from './live-session-store.mjs';
-
-const LIVE_PID_FILE = path.join(process.cwd(), '.impeccable-live.json');
+import { readLiveServerInfo } from './impeccable-paths.mjs';
 
 function readServerInfo() {
-  try { return JSON.parse(fs.readFileSync(LIVE_PID_FILE, 'utf-8')); }
-  catch { return null; }
+  return readLiveServerInfo(process.cwd())?.info || null;
 }
 
 async function fetchServerStatus(info) {

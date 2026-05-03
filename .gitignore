@@ -37,12 +37,20 @@ Thumbs.db
 # Cloudflare
 .wrangler/
 
-# Live mode session file + annotation screenshots (cleaned up on server stop)
+# Impeccable-owned project files are split: generated sidecars/config may be
+# tracked, but runtime recovery state and local assets should stay local.
+.impeccable/live/server.json
+.impeccable/live/sessions/
+.impeccable/live/annotations/
+.impeccable/live/cache/
+.impeccable/history/
+
+# Legacy live mode session file + annotation screenshots
 .impeccable-live.json
 .impeccable-live/
 
-# Per-project live mode injection config (generated once per project by the
-# skill; wiped on skill update, regenerated on next live run)
+# Legacy per-project live mode injection config. New installs use
+# .impeccable/live/config.json in the project root instead.
 **/skills/impeccable/scripts/config.json
 
 # Extension build artifacts

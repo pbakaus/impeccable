@@ -2,23 +2,24 @@
  * CLI helper: insert/remove the live variant mode script tag in the project's
  * main HTML entry point.
  *
- * On first live run, the agent generates `config.json` in this script's
- * directory with the project's insertion target (framework-specific). On
+ * On first live run, the agent generates `.impeccable/live/config.json`
+ * with the project's insertion target (framework-specific). On
  * every subsequent run, this script handles insert/remove deterministically
  * with zero LLM involvement.
  *
  * Usage:
  *   node live-inject.mjs --port PORT   # Insert the live script tag
  *   node live-inject.mjs --remove      # Remove the live script tag
- *   node live-inject.mjs --check       # Check whether config.json exists
+ *   node live-inject.mjs --check       # Check whether live config exists
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveLiveConfigPath } from './impeccable-paths.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = process.env.IMPECCABLE_LIVE_CONFIG || path.join(__dirname, 'config.json');
+const CONFIG_PATH = resolveLiveConfigPath({ cwd: process.cwd(), scriptsDir: __dirname });
 const MARKER_OPEN_TEXT = 'impeccable-live-start';
 const MARKER_CLOSE_TEXT = 'impeccable-live-end';
 
@@ -39,12 +40,12 @@ export async function injectCli() {
     console.log(`Usage: node live-inject.mjs [options]
 
 Insert or remove the live mode script tag in the project's HTML entry point.
-Reads configuration from config.json (in this same directory).
+Reads configuration from .impeccable/live/config.json.
 
 Modes:
   --port PORT   Insert script tag pointing at http://localhost:PORT/live.js
   --remove      Remove the script tag (if present)
-  --check       Print whether config.json exists and its content
+  --check       Print whether .impeccable/live/config.json exists and its content
 
 Output (JSON):
   { ok, file, inserted|removed, config? }`);

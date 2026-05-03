@@ -9,6 +9,13 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
+import {
+  getDesignSidecarPath,
+  getLegacyLiveServerPath,
+  getLegacyLiveSessionsDir,
+  getLiveServerPath,
+  getLiveSessionsDir,
+} from '../source/skills/impeccable/scripts/impeccable-paths.mjs';
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-server.mjs');
@@ -30,7 +37,7 @@ function startServer(port = 8499, { cwd = REPO_ROOT } = {}) {
       if (output.includes('running on')) {
         // Read token from PID file
         try {
-          const info = JSON.parse(readFileSync(join(cwd, '.impeccable-live.json'), 'utf-8'));
+          const info = JSON.parse(readFileSync(getLiveServerPath(cwd), 'utf-8'));
           resolve({ proc, port: info.port, token: info.token, cwd });
         } catch {
           reject(new Error('Server started but PID file not readable'));
@@ -72,7 +79,10 @@ describe('live-server integration', () => {
   let server;
 
   before(async () => {
-    rmSync(join(REPO_ROOT, '.impeccable-live', 'sessions'), { recursive: true, force: true });
+    rmSync(getLiveSessionsDir(REPO_ROOT), { recursive: true, force: true });
+    rmSync(getLegacyLiveSessionsDir(REPO_ROOT), { recursive: true, force: true });
+    rmSync(getLiveServerPath(REPO_ROOT), { force: true });
+    rmSync(getLegacyLiveServerPath(REPO_ROOT), { force: true });
     server = await startServer(8499);
   });
 
@@ -137,6 +147,72 @@ describe('live-server integration', () => {
       sessionHelperIndex < browserInitIndex,
       'event=live_server.browser_helper_order actor=browser operation=load_live_js risk=session_helper_missing_before_browser_init expected=session helper before live init actual=' + sessionHelperIndex + ':' + browserInitIndex,
     );
+  });
+
+  it('/design-system.json reads DESIGN.md plus .impeccable/design.json', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-design-system-'));
+    let designServer;
+    try {
+      writeFileSync(join(tmp, 'DESIGN.md'), `---
+name: Temp System
+description: Temporary design context
+colors: {}
+---
+
+# Temp System
+`);
+      const sidecarPath = getDesignSidecarPath(tmp);
+      mkdirSync(join(tmp, '.impeccable'), { recursive: true });
+      writeFileSync(sidecarPath, JSON.stringify({ version: 2, source: 'new-sidecar' }));
+
+      designServer = await startServer(8520, { cwd: tmp });
+      const res = await fetch(`http://localhost:${designServer.port}/design-system.json?token=${designServer.token}`);
+      const data = await res.json();
+
+      assert.equal(res.status, 200);
+      assert.equal(data.hasMd, true);
+      assert.equal(data.hasSidecar, true);
+      assert.equal(data.parsed.frontmatter.name, 'Temp System');
+      assert.equal(data.sidecar.source, 'new-sidecar');
+    } finally {
+      if (designServer) {
+        await stopServer(designServer.port, designServer.token);
+        designServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/design-system.json falls back to legacy root DESIGN.json', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-design-system-legacy-'));
+    let designServer;
+    try {
+      writeFileSync(join(tmp, 'DESIGN.md'), `---
+name: Legacy System
+description: Legacy design context
+colors: {}
+---
+
+# Legacy System
+`);
+      writeFileSync(join(tmp, 'DESIGN.json'), JSON.stringify({ version: 2, source: 'legacy-sidecar' }));
+
+      designServer = await startServer(8521, { cwd: tmp });
+      const res = await fetch(`http://localhost:${designServer.port}/design-system.json?token=${designServer.token}`);
+      const data = await res.json();
+
+      assert.equal(res.status, 200);
+      assert.equal(data.hasMd, true);
+      assert.equal(data.hasSidecar, true);
+      assert.equal(data.parsed.frontmatter.name, 'Legacy System');
+      assert.equal(data.sidecar.source, 'legacy-sidecar');
+    } finally {
+      if (designServer) {
+        await stopServer(designServer.port, designServer.token);
+        designServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('/detect.js serves the detection overlay', async () => {
@@ -281,7 +357,7 @@ describe('live-server integration', () => {
 
   it('persists browser events to the durable session journal before poll delivery', async () => {
     await drainPolls(server);
-    const journalPath = join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d6.jsonl');
+    const journalPath = join(getLiveSessionsDir(REPO_ROOT), 'a1b2c3d6.jsonl');
     rmSync(journalPath, { force: true });
 
     const postRes = await fetch(`http://localhost:${server.port}/events`, {
@@ -340,7 +416,7 @@ describe('live-server integration', () => {
       'event=live_server.checkpoint_not_polled actor=browser operation=checkpoint risk=checkpoint_starves_agent_queue expected=timeout actual=' + polled.type + ' suggestion=journal checkpoint without enqueueing agent work',
     );
 
-    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d7.snapshot.json'), 'utf-8'));
+    const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(REPO_ROOT), 'a1b2c3d7.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.visibleVariant, 2);
     assert.deepEqual(snapshot.paramValues, { density: 'packed' });
   });
@@ -415,7 +491,7 @@ describe('live-server integration', () => {
       body: JSON.stringify({ token: server.token, id: 'a1b2c3d9', type: 'complete' }),
     });
     assert.equal(ack.status, 200);
-    const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, '.impeccable-live', 'sessions', 'a1b2c3d9.snapshot.json'), 'utf-8'));
+    const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(REPO_ROOT), 'a1b2c3d9.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.phase, 'completed');
   });
 

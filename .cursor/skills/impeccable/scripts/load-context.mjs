@@ -39,7 +39,7 @@ const LEGACY_NAMES = ['.impeccable.md'];
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
 
 /**
- * Resolve the directory that holds PRODUCT.md / DESIGN.md / DESIGN.json for
+ * Resolve the directory that holds PRODUCT.md / DESIGN.md for
  * this project. Exported so other scripts (e.g. live-server.mjs) can read the
  * design files from the same location the loader uses.
  */

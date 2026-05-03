@@ -14,7 +14,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,8 @@ export function stageFixture(name, fixture) {
   const tmp = mkdtempSync(join(tmpdir(), 'impeccable-e2e-'));
   cpSync(join(fixtureRoot, 'files'), tmp, { recursive: true });
   writeFileSync(join(tmp, '.gitignore'), gitignore);
-  writeFileSync(join(tmp, 'impeccable-live.config.json'), JSON.stringify(fixture.config));
+  mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
+  writeFileSync(join(tmp, '.impeccable', 'live', 'config.json'), JSON.stringify(fixture.config));
 
   execFileSync('git', ['init', '-q'], { cwd: tmp });
   execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmp });
@@ -90,7 +91,7 @@ export function runInject(tmp, port) {
     {
       cwd: tmp,
       encoding: 'utf-8',
-      env: { ...process.env, IMPECCABLE_LIVE_CONFIG: join(tmp, 'impeccable-live.config.json') },
+      env: { ...process.env },
     },
   );
   const last = out.trim().split('\n').filter(Boolean).pop();

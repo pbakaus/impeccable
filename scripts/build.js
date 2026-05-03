@@ -744,7 +744,7 @@ async function build() {
     const skillsDest = path.join(ROOT_DIR, configDir, 'skills');
 
     if (fs.existsSync(skillsSrc)) {
-      // Preserve per-project script artifacts (e.g. live-mode config.json)
+      // Preserve legacy per-project script artifacts (e.g. live-mode config.json)
       // across the rm + recopy. The build intentionally doesn't ship them,
       // so without this the sync destroys local state on every rebuild.
       const stashed = stashPerProjectArtifacts(skillsDest);

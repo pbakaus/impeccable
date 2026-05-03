@@ -18,7 +18,7 @@ Fixtures can also opt into a **runtime E2E** pass that actually installs depende
 ```json
 {
   "name": "human-readable label",
-  "config": { ...contents for live-inject.mjs config.json ... },
+  "config": { ...contents for .impeccable/live/config.json ... },
   "sourceFiles": ["paths that is-generated should classify as source (false)"],
   "generatedFiles": ["paths that is-generated should classify as generated (true)"],
   "wrapCases": [
