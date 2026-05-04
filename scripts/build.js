@@ -50,7 +50,7 @@ function generateCounts(rootDir, skills, buildDir) {
   }
 
   // Count detection rules from impeccable package
-  const detectPkgPath = path.join(rootDir, 'src/detect-antipatterns.mjs');
+  const detectPkgPath = path.join(rootDir, 'cli/engine/detect-antipatterns.mjs');
   const detectorSrc = fs.readFileSync(detectPkgPath, 'utf-8');
   const ruleIds = new Set();
   for (const match of detectorSrc.matchAll(/^\s+id: '([^']+)'/gm)) {

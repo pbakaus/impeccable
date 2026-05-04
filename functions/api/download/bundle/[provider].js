@@ -1,4 +1,4 @@
-import { BUNDLE_DOWNLOAD_PROVIDERS } from "../../../../lib/download-providers.js";
+import { BUNDLE_DOWNLOAD_PROVIDERS } from "../../../../cli/lib/download-providers.js";
 
 export async function onRequestGet(context) {
 	const { provider } = context.params;

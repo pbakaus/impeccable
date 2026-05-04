@@ -148,7 +148,7 @@ Adding a new fixture is a matter of cloning a directory under `tests/framework-f
 
 ## CLI
 
-The CLI lives in this repo under `bin/` and `src/`. Published to npm as `impeccable`.
+The CLI lives in this repo under `cli/`: `cli/bin/` (entry + sub-commands), `cli/engine/` (the detect-antipatterns rule engine + browser variant), `cli/lib/` (helpers shared by CLI and Cloudflare Pages Functions). Published to npm as `impeccable`.
 
 ```bash
 npx impeccable detect [file-or-dir-or-url...]   # detect anti-patterns
@@ -158,7 +158,7 @@ npx impeccable skills install                    # install skills
 npx impeccable --help                            # show help
 ```
 
-The browser detector (`src/detect-antipatterns-browser.js`) is generated from the main engine. After changing `src/detect-antipatterns.mjs`, rebuild it:
+The browser detector (`cli/engine/detect-antipatterns-browser.js`) is generated from the main engine. After changing `cli/engine/detect-antipatterns.mjs`, rebuild it:
 
 ```bash
 bun run build:browser
@@ -172,7 +172,7 @@ There are three independently versioned components. Only bump the one(s) that ac
 
 **CLI** (npm package):
 - `package.json` → `version`
-- Bump when: CLI code changes (`bin/`, `src/detect-antipatterns.mjs`, etc.)
+- Bump when: CLI code changes (`cli/bin/`, `cli/engine/detect-antipatterns.mjs`, etc.)
 
 **Skills** (Claude Code plugin / skill definitions):
 - `.claude-plugin/plugin.json` → `version`
@@ -250,12 +250,12 @@ Every command should have an editorial file eventually, but the build does not r
 
 ## Adding or modifying anti-pattern detection rules
 
-`src/detect-antipatterns.mjs` is the source of truth for the rule engine. It powers the CLI, the public-site overlay, the Chrome extension, and the homepage rule count. Five places stay in sync:
+`cli/engine/detect-antipatterns.mjs` is the source of truth for the rule engine. It powers the CLI, the public-site overlay, the Chrome extension, and the homepage rule count. Five places stay in sync:
 
 | Where | How it stays in sync |
 |---|---|
-| `src/detect-antipatterns.mjs` (`ANTIPATTERNS` array + `checkXxx` logic) | Hand-edited |
-| `src/detect-antipatterns-browser.js` | `bun run build:browser` |
+| `cli/engine/detect-antipatterns.mjs` (`ANTIPATTERNS` array + `checkXxx` logic) | Hand-edited |
+| `cli/engine/detect-antipatterns-browser.js` | `bun run build:browser` |
 | `extension/detector/detect.js` + `extension/detector/antipatterns.json` | `bun run build:extension` |
 | `site/public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
 | `skill/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
@@ -272,7 +272,7 @@ bun run build && bun run build:browser && bun run build:extension && bun run tes
 2. **Failing test** in `tests/detect-antipatterns-fixtures.test.mjs` using the snippet-substring pattern (regex `/"([^"]+)"/` against `SHOULD_FLAG` / `SHOULD_PASS` lists). Run it and watch it fail before implementing.
 3. **Rule entry** in the `ANTIPATTERNS` array: `id`, `category` (`slop` for AI tells, `quality` for real design or a11y issues), `name`, `description`, optional `skillSection` and `skillGuideline`.
 4. **Pure check function** `checkXxx(opts)` returning `[{ id, snippet }]`. No DOM access in the pure function.
-5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `src/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
+5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `cli/engine/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
 6. **Verify on a live page**: `http://localhost:3000/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
 
 ### Conventions and jsdom gotchas

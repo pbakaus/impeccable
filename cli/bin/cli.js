@@ -36,14 +36,14 @@ Run 'impeccable <command> --help' for command-specific options.`);
 }
 
 if (command === '--version' || command === '-v') {
-  const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8'));
   console.log(pkg.version);
   process.exit(0);
 }
 
 if (command === 'detect') {
   process.argv = [process.argv[0], process.argv[1], ...args.slice(1)];
-  const { detectCli } = await import('../src/detect-antipatterns.mjs');
+  const { detectCli } = await import('../engine/detect-antipatterns.mjs');
   await detectCli();
 } else if (command === 'skills') {
   const { run } = await import('./commands/skills.mjs');
@@ -51,6 +51,6 @@ if (command === 'detect') {
 } else {
   // Default: treat as detect arguments (allow `npx impeccable src/` shorthand)
   process.argv = [process.argv[0], process.argv[1], ...args];
-  const { detectCli } = await import('../src/detect-antipatterns.mjs');
+  const { detectCli } = await import('../engine/detect-antipatterns.mjs');
   await detectCli();
 }

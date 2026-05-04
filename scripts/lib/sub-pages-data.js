@@ -5,7 +5,7 @@
  * Single source of truth:
  * - skill/SKILL.md                       → skill frontmatter + body
  * - skill/reference/*.md                  → skill reference files
- * - src/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
+ * - cli/engine/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
  * - site/content/skills/{id}.md           → optional editorial wrapper
  * - site/content/tutorials/{slug}.md       → full tutorial content
  */
@@ -137,12 +137,12 @@ export const COMMAND_RELATIONSHIPS = {
 };
 
 /**
- * Parse the ANTIPATTERNS array out of src/detect-antipatterns.mjs.
+ * Parse the ANTIPATTERNS array out of cli/engine/detect-antipatterns.mjs.
  * Mirrors the trick in scripts/build.js validateAntipatternRules() so we
  * don't have to run the browser-only module.
  */
 export function readAntipatternRules(rootDir) {
-  const detectPath = path.join(rootDir, 'src/detect-antipatterns.mjs');
+  const detectPath = path.join(rootDir, 'cli/engine/detect-antipatterns.mjs');
   const src = fs.readFileSync(detectPath, 'utf-8');
   const match = src.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
   if (!match) {

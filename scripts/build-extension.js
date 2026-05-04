@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const EXT_DIR = path.join(ROOT, 'extension');
 
-const SOURCE = path.join(ROOT, 'src/detect-antipatterns.mjs');
+const SOURCE = path.join(ROOT, 'cli/engine/detect-antipatterns.mjs');
 const DETECTOR_OUTPUT = path.join(EXT_DIR, 'detector/detect.js');
 const AP_OUTPUT = path.join(EXT_DIR, 'detector/antipatterns.json');
 

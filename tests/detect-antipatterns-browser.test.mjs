@@ -20,7 +20,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectUrl } from '../src/detect-antipatterns.mjs';
+import { detectUrl } from '../cli/engine/detect-antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -46,7 +46,7 @@ before(async () => {
     if (req.url.startsWith('/fixtures/')) {
       filePath = path.join(ROOT, 'tests', req.url);
     } else if (req.url === '/js/detect-antipatterns-browser.js') {
-      filePath = path.join(ROOT, 'src/detect-antipatterns-browser.js');
+      filePath = path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js');
     } else {
       res.writeHead(404).end();
       return;

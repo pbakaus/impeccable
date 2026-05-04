@@ -1,7 +1,7 @@
 /**
  * Manual metadata for the /anti-patterns page.
  *
- * The detection rules themselves live in src/detect-antipatterns.mjs and
+ * The detection rules themselves live in cli/engine/detect-antipatterns.mjs and
  * are parsed at build time. This file adds three pieces of content that
  * can't be automated:
  *

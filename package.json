@@ -29,16 +29,15 @@
   "packageManager": "bun@1.3.11",
   "type": "module",
   "bin": {
-    "impeccable": "bin/cli.js"
+    "impeccable": "cli/bin/cli.js"
   },
-  "main": "./src/detect-antipatterns.mjs",
+  "main": "./cli/engine/detect-antipatterns.mjs",
   "exports": {
-    ".": "./src/detect-antipatterns.mjs",
-    "./browser": "./src/detect-antipatterns-browser.js"
+    ".": "./cli/engine/detect-antipatterns.mjs",
+    "./browser": "./cli/engine/detect-antipatterns-browser.js"
   },
   "files": [
-    "bin/",
-    "src/",
+    "cli/",
     "LICENSE"
   ],
   "scripts": {

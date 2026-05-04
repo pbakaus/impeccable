@@ -256,7 +256,7 @@ export function writeFile(filePath, content) {
  *   - Prose form:            `DO …`       /  `DO NOT …`
  *
  * Defaults to the main impeccable SKILL.md but accepts any relative path so
- * rules in `src/detect-antipatterns.mjs` can anchor to register-specific
+ * rules in `cli/engine/detect-antipatterns.mjs` can anchor to register-specific
  * reference files (e.g. `reference/editorial.md`) via an optional `skillFile`
  * field. Callers that don't pass `relativePath` get the legacy behavior.
  *

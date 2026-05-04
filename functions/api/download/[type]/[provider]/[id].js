@@ -1,7 +1,7 @@
 import {
 	FILE_DOWNLOAD_PROVIDERS,
 	FILE_DOWNLOAD_PROVIDER_CONFIG_DIRS
-} from "../../../../../lib/download-providers.js";
+} from "../../../../../cli/lib/download-providers.js";
 
 const VALID_ID = /^[a-zA-Z0-9_-]+$/;
 
