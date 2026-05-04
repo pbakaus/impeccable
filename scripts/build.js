@@ -145,7 +145,6 @@ function validateSkillFrontmatter(skills) {
  */
 function validateProse(rootDir) {
   const targets = [
-    'content/site',
     'site/components',
     'site/content',
     'site/layouts',
@@ -521,11 +520,11 @@ function generateApiData(buildDir, skills, patterns) {
   // /impeccable. Load them from command-metadata.json and include the root
   // impeccable skill itself so UI surfaces like the cheatsheet can list them.
   // Each entry also picks up a short `tagline` from its editorial file
-  // (content/site/skills/<id>.md) when one exists. Taglines are used by UI
+  // (site/content/skills/<id>.md) when one exists. Taglines are used by UI
   // surfaces that need a human-friendly one-liner, while `description` stays
   // optimized for auto-trigger keyword matching in the AI harness.
   const readTagline = (id) => {
-    const editorialPath = path.join(ROOT_DIR, 'content/site/skills', `${id}.md`);
+    const editorialPath = path.join(ROOT_DIR, 'site/content/skills', `${id}.md`);
     if (!fs.existsSync(editorialPath)) return null;
     const raw = fs.readFileSync(editorialPath, 'utf-8');
     const match = raw.match(/^---\n([\s\S]*?)\n---/);

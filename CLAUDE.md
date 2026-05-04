@@ -57,17 +57,16 @@ Editorial brief is at `STYLE.md` (root). Read it before editing the homepage, su
 
 The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a STYLE.md amendment.
 
-The validator scans `content/site/`, `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `source/skills/impeccable/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
+The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `source/skills/impeccable/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
 
 The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. STYLE.md lists them. Use them on every editorial pass.
 
-## Two content trees: keep them in sync
+## Editorial content lives under `site/content/`
 
-After the Astro migration, editorials and tutorials live in TWO places that are both real:
-- `content/site/skills/<id>.md` and `content/site/tutorials/<id>.md` — read by `scripts/build.js` for taglines and as source of truth for downstream tooling.
-- `site/content/skills/<id>.md` and `site/content/tutorials/<id>.md` — read by Astro's content collection; this is what actually renders on the site.
-
-There is no automated sync. **Edit both** when changing any editorial or tutorial body. `diff -rq content/site/ site/content/` should always be clean except for `anti-patterns-catalog.js`. Unifying these is on the cleanup list.
+Skill editorials and tutorials are read by `scripts/build.js` (for taglines and downstream tooling) and by Astro's content collection (for what actually renders on the site). One tree, one place to edit:
+- `site/content/skills/<id>.md` — optional editorial wrapper with frontmatter `tagline` plus body sections
+- `site/content/tutorials/<slug>.md` — full tutorial content
+- `site/data/anti-patterns-catalog.js` — detection-rule catalog (visual examples, gallery items, layer definitions)
 
 ## Development Server
 
@@ -76,7 +75,7 @@ bun run dev        # Bun dev server at http://localhost:3000
 bun run preview    # Build + Cloudflare Pages local preview
 ```
 
-The dev server (in `server/index.js`) runs `generateSubPages` at module load, so editing source files in `content/site/skills/`, `source/skills/impeccable/`, or the sub-page generator requires a **server restart** (not just a browser reload) to see the change. CSS hot-reloads fine without a restart.
+The dev server runs Astro (`astro dev`). Editing files in `site/content/skills/`, `source/skills/impeccable/`, or `scripts/lib/sub-pages-data.js` requires a **server restart** (not just a browser reload) to see the change. CSS, components, and pages hot-reload fine without a restart.
 
 **Legacy URL redirects** live in `server/index.js` and must stay in sync with `scripts/build.js` `_redirects` generation. Current redirects: `/skills` → `/docs`, `/skills/:id` → `/docs/:id`, `/cheatsheet` → `/docs`, `/gallery` → `/visual-mode#try-it-live`.
 
@@ -221,7 +220,7 @@ All commands live under `/impeccable`. To add a new one:
 8. Add its relationships (leadsTo / pairs / combinesWith) to `COMMAND_RELATIONSHIPS` in the same file
 9. Add the same category entry to `public/js/data.js` `commandCategories` and `commandProcessSteps` (for the homepage carousel)
 10. Add symbol + number to `commandSymbols` and `commandNumbers` in `public/js/components/framework-viz.js` (periodic table)
-11. Optional: write an editorial wrapper at `content/site/skills/<command>.md` with a short `tagline` and expanded body (When to use it / How it works / Try it / Pitfalls)
+11. Optional: write an editorial wrapper at `site/content/skills/<command>.md` with a short `tagline` and expanded body (When to use it / How it works / Try it / Pitfalls)
 
 The build system counts commands from the router table automatically. Update the command count in **all** of these locations when the total changes:
 
@@ -237,7 +236,7 @@ The build validator (`generateCounts` in `scripts/build.js`) checks these files 
 
 ## Adding editorial content for existing commands
 
-Editorial files live at `content/site/skills/<command>.md` and have a `tagline` frontmatter plus a body with the standard four sections:
+Editorial files live at `site/content/skills/<command>.md` and have a `tagline` frontmatter plus a body with the standard four sections:
 
 - **When to use it** — the specific scenarios this command owns
 - **How it works** — the internal process, phases, or approach
