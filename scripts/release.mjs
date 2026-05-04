@@ -149,11 +149,12 @@ if (remoteTags.split('\n').some((line) => line.endsWith(`refs/tags/${tag}`))) {
 ok('tag is free');
 
 step(`Extracting changelog entry for "${cfg.changelogLabel}${version}"`);
-const indexHtml = readFileSync(path.join(repoRoot, 'public/index.html'), 'utf8');
+const changelogSource = path.join(repoRoot, 'site/pages/index.astro');
+const indexHtml = readFileSync(changelogSource, 'utf8');
 const expectedHeader = `<span class="changelog-version">${cfg.changelogLabel}${version}</span>`;
 const headerIdx = indexHtml.indexOf(expectedHeader);
 if (headerIdx === -1) {
-  fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in public/index.html. Add one before releasing.`);
+  fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/index.astro. Add one before releasing.`);
 }
 const entryStart = indexHtml.lastIndexOf('<div class="changelog-entry"', headerIdx);
 const ulEnd = indexHtml.indexOf('</ul>', headerIdx);
