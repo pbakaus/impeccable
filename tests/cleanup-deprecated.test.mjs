@@ -167,6 +167,19 @@ describe('cleanup-deprecated', () => {
       assert.equal(deleted.length, 3);
     });
 
+    it('cleans GitHub Copilot and Qoder harness installs', () => {
+      // Regression: HARNESS_DIRS used to omit .github and .qoder, so users
+      // who installed via those harnesses kept stale skill directories
+      // forever. providers.js declares both as build targets, so they need
+      // to round-trip through cleanup as well.
+      writeSkill(tmp, '.github', 'arrange', 'Invoke /impeccable first.');
+      writeSkill(tmp, '.qoder', 'normalize', 'Run impeccable teach.');
+      const deleted = removeDeprecatedSkills(tmp);
+      assert.equal(deleted.length, 2);
+      assert.equal(existsSync(join(tmp, '.github', 'skills', 'arrange')), false);
+      assert.equal(existsSync(join(tmp, '.qoder', 'skills', 'normalize')), false);
+    });
+
     it('leaves non-deprecated skills alone', () => {
       writeSkill(tmp, '.claude', 'my-custom-skill', 'Invoke /impeccable first.');
       writeSkill(tmp, '.claude', 'arrange', 'Invoke /impeccable first.');

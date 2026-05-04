@@ -52,9 +52,11 @@ const DEPRECATED_NAMES = [
 ];
 
 // All known harness directories that may contain a skills/ subfolder.
+// Must stay in sync with configDir entries in scripts/lib/transformers/providers.js.
 const HARNESS_DIRS = [
   '.claude', '.cursor', '.gemini', '.codex', '.agents',
-  '.trae', '.trae-cn', '.pi', '.opencode', '.kiro', '.rovodev',
+  '.github', '.trae', '.trae-cn', '.pi', '.opencode',
+  '.kiro', '.qoder', '.rovodev',
 ];
 
 // Per-skill fingerprints for SKILL.md bodies that never mentioned
