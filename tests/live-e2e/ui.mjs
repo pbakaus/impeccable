@@ -6,7 +6,7 @@
  * for the global bar, per-element bar, action picker, and params panel. Buttons
  * inside the per-element bar are matched by visible text or unicode glyph
  * (`Go →`, `← / →`, `✓ Accept`, `✕`). All selectors below come from
- * source/skills/impeccable/scripts/live-browser.js — keep this file in sync if
+ * skill/scripts/live-browser.js — keep this file in sync if
  * the bar's text content changes.
  */
 

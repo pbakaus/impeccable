@@ -7,7 +7,7 @@ const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
   it('keeps live preview CSS guidance capability-mode driven', () => {
-    const liveMd = readFileSync(join(ROOT, 'source/skills/impeccable/reference/live.md'), 'utf-8');
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
     assert.match(
       liveMd,

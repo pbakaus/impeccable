@@ -3,11 +3,11 @@
  * generators.
  *
  * Single source of truth:
- * - source/skills/{id}/SKILL.md          → skill frontmatter + body
- * - source/skills/{id}/reference/*.md     → skill reference files
- * - src/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
- * - content/site/skills/{id}.md           → optional editorial wrapper
- * - content/site/tutorials/{slug}.md       → full tutorial content
+ * - skill/SKILL.md                       → skill frontmatter + body
+ * - skill/reference/*.md                  → skill reference files
+ * - cli/engine/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
+ * - site/content/skills/{id}.md           → optional editorial wrapper
+ * - site/content/tutorials/{slug}.md       → full tutorial content
  */
 
 import fs from 'node:fs';
@@ -19,13 +19,13 @@ import {
   VISUAL_EXAMPLES,
   LLM_ONLY_RULES,
   GALLERY_ITEMS,
-} from '../../content/site/anti-patterns-catalog.js';
+} from '../../site/data/anti-patterns-catalog.js';
 
 export {
   LAYER_LABELS,
   LAYER_DESCRIPTIONS,
   GALLERY_ITEMS,
-} from '../../content/site/anti-patterns-catalog.js';
+} from '../../site/data/anti-patterns-catalog.js';
 
 /**
  * Skills that should be excluded from the index and not get a detail page.
@@ -137,12 +137,12 @@ export const COMMAND_RELATIONSHIPS = {
 };
 
 /**
- * Parse the ANTIPATTERNS array out of src/detect-antipatterns.mjs.
+ * Parse the ANTIPATTERNS array out of cli/engine/detect-antipatterns.mjs.
  * Mirrors the trick in scripts/build.js validateAntipatternRules() so we
  * don't have to run the browser-only module.
  */
 export function readAntipatternRules(rootDir) {
-  const detectPath = path.join(rootDir, 'src/detect-antipatterns.mjs');
+  const detectPath = path.join(rootDir, 'cli/engine/detect-antipatterns.mjs');
   const src = fs.readFileSync(detectPath, 'utf-8');
   const match = src.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
   if (!match) {
@@ -170,7 +170,7 @@ export function readEditorialWrapper(contentDir, kind, slug) {
  * should treat a missing entry as "no demo".
  */
 export async function loadCommandDemos(rootDir) {
-  const demosDir = path.join(rootDir, 'public/js/demos/commands');
+  const demosDir = path.join(rootDir, 'site/public/js/demos/commands');
   if (!fs.existsSync(demosDir)) return {};
 
   const demos = {};
@@ -210,7 +210,7 @@ export async function loadCommandDemos(rootDir) {
  */
 export async function buildSubPageData(rootDir) {
   const { skills: rawSkills } = readSourceFiles(rootDir);
-  const contentDir = path.join(rootDir, 'content/site');
+  const contentDir = path.join(rootDir, 'site/content');
   const commandDemos = await loadCommandDemos(rootDir);
 
   // After the v3.0 consolidation there's only one source skill (impeccable).
@@ -218,7 +218,7 @@ export async function buildSubPageData(rootDir) {
   // We synthesize a virtual skill entry for each sub-command so the sub-page
   // generators can keep rendering per-command pages, index cards, etc.
   const impeccableSkill = rawSkills.find((s) => s.name === 'impeccable');
-  const metadataPath = path.join(rootDir, 'source/skills/impeccable/scripts/command-metadata.json');
+  const metadataPath = path.join(rootDir, 'skill/scripts/command-metadata.json');
   let commandMetadata = {};
   if (fs.existsSync(metadataPath)) {
     commandMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
@@ -310,7 +310,7 @@ export async function buildSubPageData(rootDir) {
   }));
   const rules = [...detectedRules, ...llmRules];
 
-  // Tutorials: each required file in content/site/tutorials/.
+  // Tutorials: each required file in site/content/tutorials/.
   const tutorialsDir = path.join(contentDir, 'tutorials');
   const tutorials = [];
   if (fs.existsSync(tutorialsDir)) {

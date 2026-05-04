@@ -8,10 +8,10 @@ import {
   walkDir, SCANNABLE_EXTENSIONS,
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
-} from '../src/detect-antipatterns.mjs';
+} from '../cli/engine/detect-antipatterns.mjs';
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
-const SCRIPT = path.join(import.meta.dir, '..', 'src', 'detect-antipatterns.mjs');
+const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
 
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectUrl } from '../src/detect-antipatterns.mjs';
+import { detectUrl } from '../cli/engine/detect-antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -39,14 +39,15 @@ const MIME = {
 let server;
 
 before(async () => {
-  // Static server: maps /fixtures/* to tests/fixtures/* and /js/* to public/js/*
-  // (mirrors the routes in server/index.js so fixtures can use absolute paths)
+  // Static server: maps /fixtures/* to tests/fixtures/* and
+  // /js/detect-antipatterns-browser.js to cli/engine/detect-antipatterns-browser.js
+  // (mirrors what Astro serves so fixtures can use absolute paths)
   server = http.createServer((req, res) => {
     let filePath;
     if (req.url.startsWith('/fixtures/')) {
       filePath = path.join(ROOT, 'tests', req.url);
     } else if (req.url === '/js/detect-antipatterns-browser.js') {
-      filePath = path.join(ROOT, 'src/detect-antipatterns-browser.js');
+      filePath = path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js');
     } else {
       res.writeHead(404).end();
       return;

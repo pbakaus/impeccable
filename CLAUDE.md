@@ -2,13 +2,13 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `source/`. The block is also regenerated from `source/skills/impeccable/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
+The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
 
 Same rule for AGENTS.md and every other harness-specific instruction file: treat post-update-cleanup as a no-op in this repo.
 
 ## Architecture (v3.0+)
 
-There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `source/skills/impeccable/`:
+There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `skill/`:
 
 - `SKILL.md` — frontmatter (with the auto-trigger-optimized description and the `allowed-tools` list), shared design laws, and the **Commands** router table.
 - `reference/` — one `<command>.md` per command (`audit.md`, `polish.md`, `critique.md`, etc.) plus the domain reference files (`typography.md`, `color-and-contrast.md`, etc.). When a sub-command is matched, the router loads its reference file.
@@ -34,15 +34,16 @@ Sub-command reference files add a short `## Register` section near the top *only
 
 ## CSS
 
-Plain hand-written CSS, no Tailwind, no build step. Bun's HTML loader resolves `<link rel="stylesheet">` and inlines `@import` chains automatically for both `bun run dev` and `bun run build`.
+Plain hand-written CSS, no Tailwind. Imported into Astro pages/layouts via frontmatter `import` statements; Vite resolves `@import` chains automatically.
 
-The CSS architecture:
-- `public/css/main.css` — Main entry point, imports the partials and defines tokens/reset
-- `public/css/workflow.css` — Commands section, glass terminal, magazine spread styles
-- `public/css/sub-pages.css` — `/docs`, `/anti-patterns`, `/tutorials`, detail pages
-- `public/css/tokens.css` — OKLCH color tokens (ink, charcoal, ash, mist, cream, accent)
+The CSS architecture (under `site/styles/`):
+- `main.css` — Main entry point, imports the partials and defines tokens/reset
+- `workflow.css` — Commands section, glass terminal, magazine spread styles
+- `sub-pages.css` — `/docs`, `/anti-patterns`, `/tutorials`, detail pages
+- `tokens.css` — OKLCH color tokens (ink, charcoal, ash, mist, cream, accent)
+- `footer.css` — shared across all pages, imported in `Base.astro`
 
-Edit any of these directly and reload. No rebuild needed for CSS changes.
+Edit any of these directly and the dev server hot-reloads. No rebuild needed for CSS changes.
 
 ## Color token rule
 
@@ -57,17 +58,16 @@ Editorial brief is at `STYLE.md` (root). Read it before editing the homepage, su
 
 The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a STYLE.md amendment.
 
-The validator scans `content/site/`, `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `source/skills/impeccable/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
+The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `skill/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
 
 The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. STYLE.md lists them. Use them on every editorial pass.
 
-## Two content trees: keep them in sync
+## Editorial content lives under `site/content/`
 
-After the Astro migration, editorials and tutorials live in TWO places that are both real:
-- `content/site/skills/<id>.md` and `content/site/tutorials/<id>.md` — read by `scripts/build.js` for taglines and as source of truth for downstream tooling.
-- `site/content/skills/<id>.md` and `site/content/tutorials/<id>.md` — read by Astro's content collection; this is what actually renders on the site.
-
-There is no automated sync. **Edit both** when changing any editorial or tutorial body. `diff -rq content/site/ site/content/` should always be clean except for `anti-patterns-catalog.js`. Unifying these is on the cleanup list.
+Skill editorials and tutorials are read by `scripts/build.js` (for taglines and downstream tooling) and by Astro's content collection (for what actually renders on the site). One tree, one place to edit:
+- `site/content/skills/<id>.md` — optional editorial wrapper with frontmatter `tagline` plus body sections
+- `site/content/tutorials/<slug>.md` — full tutorial content
+- `site/data/anti-patterns-catalog.js` — detection-rule catalog (visual examples, gallery items, layer definitions)
 
 ## Development Server
 
@@ -76,9 +76,9 @@ bun run dev        # Bun dev server at http://localhost:3000
 bun run preview    # Build + Cloudflare Pages local preview
 ```
 
-The dev server (in `server/index.js`) runs `generateSubPages` at module load, so editing source files in `content/site/skills/`, `source/skills/impeccable/`, or the sub-page generator requires a **server restart** (not just a browser reload) to see the change. CSS hot-reloads fine without a restart.
+The dev server runs Astro (`astro dev`). Editing files in `site/content/skills/`, `skill/`, or `scripts/lib/sub-pages-data.js` requires a **server restart** (not just a browser reload) to see the change. CSS, components, and pages hot-reload fine without a restart.
 
-**Legacy URL redirects** live in `server/index.js` and must stay in sync with `scripts/build.js` `_redirects` generation. Current redirects: `/skills` → `/docs`, `/skills/:id` → `/docs/:id`, `/cheatsheet` → `/docs`, `/gallery` → `/visual-mode#try-it-live`.
+**Legacy URL redirects** are emitted to `_redirects` by `scripts/build.js` (via `generateCFConfig`); the dynamic `/skills/:id → /docs/:id` redirect lives in `site/public/_redirects` (Cloudflare Pages reads both at deploy). Current redirects: `/skills` → `/docs`, `/skills/:id` → `/docs/:id`, `/cheatsheet` → `/docs`, `/gallery` → `/visual-mode#try-it-live`.
 
 ## Deployment
 
@@ -90,7 +90,7 @@ bun run deploy     # Build + deploy to Cloudflare Pages
 
 ## Build System
 
-The build system compiles the impeccable skill from `source/` to provider-specific formats in `dist/`:
+The build system compiles the impeccable skill from `skill/` to provider-specific formats in `dist/`:
 
 ```bash
 bun run build      # Build all providers
@@ -107,13 +107,13 @@ Source files use placeholders that get replaced per-provider:
 
 ### Harness output directories are tracked
 
-`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other 8 harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them. Run `bun run build` to refresh them after editing `source/skills/`.
+`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other 8 harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them. Run `bun run build` to refresh them after editing `skill/`.
 
 Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`) ARE gitignored.
 
 ### Generated sub-pages are gitignored
 
-`public/docs/`, `public/anti-patterns/`, `public/tutorials/`, `public/visual-mode/` are generated by `scripts/build-sub-pages.js` on dev server startup and during `bun run build`. They're gitignored because the production site (Cloudflare Pages) runs its own build and nobody consumes them directly from git.
+`site/public/docs/`, `site/public/anti-patterns/`, `site/public/tutorials/`, `site/public/visual-mode/`, `site/public/slop/` are gitignored as legacy generator output paths. Astro's content collections drive the live site under `site/pages/docs/`, `site/pages/tutorials/`, etc.; nothing reads from those gitignored dirs anymore.
 
 ## Testing
 
@@ -138,7 +138,7 @@ IMPECCABLE_E2E_DEBUG=1 bun run test:live-e2e                # dump page DOM + de
 
 **One-time setup**: `npx playwright install chromium` (the suite uses a specific Chromium build keyed to the bundled Playwright version).
 
-**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `source/skills/impeccable/scripts/live-*.{mjs,js}`.
+**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `skill/scripts/live-*.{mjs,js}`.
 
 The agent is pluggable via a one-method interface in `tests/live-e2e/agent.mjs`: `generateVariants(event, context) → { scopedCss, variants[] }`. The default fake agent emits canned variants that exercise all three param kinds (`range`, `steps`, `toggle`). The orchestrator (wrap, write, accept, carbonize) is agent-agnostic.
 
@@ -148,7 +148,7 @@ Adding a new fixture is a matter of cloning a directory under `tests/framework-f
 
 ## CLI
 
-The CLI lives in this repo under `bin/` and `src/`. Published to npm as `impeccable`.
+The CLI lives in this repo under `cli/`: `cli/bin/` (entry + sub-commands), `cli/engine/` (the detect-antipatterns rule engine + browser variant), `cli/lib/` (helpers shared by CLI and Cloudflare Pages Functions). Published to npm as `impeccable`.
 
 ```bash
 npx impeccable detect [file-or-dir-or-url...]   # detect anti-patterns
@@ -158,7 +158,7 @@ npx impeccable skills install                    # install skills
 npx impeccable --help                            # show help
 ```
 
-The browser detector (`src/detect-antipatterns-browser.js`) is generated from the main engine. After changing `src/detect-antipatterns.mjs`, rebuild it:
+The browser detector (`cli/engine/detect-antipatterns-browser.js`) is generated from the main engine. After changing `cli/engine/detect-antipatterns.mjs`, rebuild it:
 
 ```bash
 bun run build:browser
@@ -172,18 +172,18 @@ There are three independently versioned components. Only bump the one(s) that ac
 
 **CLI** (npm package):
 - `package.json` → `version`
-- Bump when: CLI code changes (`bin/`, `src/detect-antipatterns.mjs`, etc.)
+- Bump when: CLI code changes (`cli/bin/`, `cli/engine/detect-antipatterns.mjs`, etc.)
 
 **Skills** (Claude Code plugin / skill definitions):
 - `.claude-plugin/plugin.json` → `version`
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
-- Bump when: skill content changes (`source/skills/`, reference files, command metadata, etc.)
+- Bump when: skill content changes (`skill/`, reference files, command metadata, etc.)
 
 **Chrome extension**:
 - `extension/manifest.json` → `version`
 - Bump when: extension code changes (`extension/`)
 
-**Website changelog** (`public/index.html`):
+**Website changelog** (`site/pages/index.astro`):
 - Hero version link text + new changelog entry in the changelog section
 - Update for user-facing changes only, not internal build/tooling details
 - Use the most prominent version that changed (skills version is usually the right one)
@@ -197,7 +197,7 @@ GitHub releases are tagged per-component, not per-version, since the three compo
 Workflow for any component:
 
 1. Bump the manifest version (see Versioning above).
-2. Add a changelog entry to `public/index.html`. Skill entries use a bare `vX.Y.Z` label; CLI and extension entries use the prefixed forms `CLI vX.Y.Z` and `Extension vX.Y.Z`. The release script extracts notes by matching this label, so the prefix matters.
+2. Add a changelog entry to `site/pages/index.astro`. Skill entries use a bare `vX.Y.Z` label; CLI and extension entries use the prefixed forms `CLI vX.Y.Z` and `Extension vX.Y.Z`. The release script extracts notes by matching this label, so the prefix matters.
 3. Commit and push to `main`.
 4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`.
 
@@ -211,22 +211,22 @@ If you need to fix release notes after the fact (typo, missing thank-you, format
 
 All commands live under `/impeccable`. To add a new one:
 
-1. Create `source/skills/impeccable/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
-2. Add a row to the **Sub-command reference table** in `source/skills/impeccable/SKILL.md`
+1. Create `skill/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
+2. Add a row to the **Sub-command reference table** in `skill/SKILL.md`
 3. Add an entry to the **Command menu** section in the same file
 4. Add the command name to `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`
-5. Add it to `VALID_COMMANDS` in `source/skills/impeccable/scripts/pin.mjs`
-6. Add its metadata (description + argumentHint) to `source/skills/impeccable/scripts/command-metadata.json`
+5. Add it to `VALID_COMMANDS` in `skill/scripts/pin.mjs`
+6. Add its metadata (description + argumentHint) to `skill/scripts/command-metadata.json`
 7. Add its category to `SKILL_CATEGORIES` in `scripts/lib/sub-pages-data.js`
 8. Add its relationships (leadsTo / pairs / combinesWith) to `COMMAND_RELATIONSHIPS` in the same file
-9. Add the same category entry to `public/js/data.js` `commandCategories` and `commandProcessSteps` (for the homepage carousel)
-10. Add symbol + number to `commandSymbols` and `commandNumbers` in `public/js/components/framework-viz.js` (periodic table)
-11. Optional: write an editorial wrapper at `content/site/skills/<command>.md` with a short `tagline` and expanded body (When to use it / How it works / Try it / Pitfalls)
+9. Add the same category entry to `site/scripts/data.js` `commandCategories` and `commandProcessSteps` (for the homepage carousel)
+10. Add symbol + number to `commandSymbols` and `commandNumbers` in `site/scripts/components/framework-viz.js` (periodic table)
+11. Optional: write an editorial wrapper at `site/content/skills/<command>.md` with a short `tagline` and expanded body (When to use it / How it works / Try it / Pitfalls)
 
 The build system counts commands from the router table automatically. Update the command count in **all** of these locations when the total changes:
 
-- `public/index.html` — meta descriptions, hero box, section lead
-- `public/cheatsheet.html` does not exist anymore; `/cheatsheet` redirects to `/docs`
+- `site/pages/index.astro` — meta descriptions, hero box, section lead
+- `/cheatsheet` redirects to `/docs` (no standalone page)
 - `README.md` — intro, command count, commands table
 - `NOTICE.md` — command count
 - `AGENTS.md` — intro command count
@@ -237,7 +237,7 @@ The build validator (`generateCounts` in `scripts/build.js`) checks these files 
 
 ## Adding editorial content for existing commands
 
-Editorial files live at `content/site/skills/<command>.md` and have a `tagline` frontmatter plus a body with the standard four sections:
+Editorial files live at `site/content/skills/<command>.md` and have a `tagline` frontmatter plus a body with the standard four sections:
 
 - **When to use it** — the specific scenarios this command owns
 - **How it works** — the internal process, phases, or approach
@@ -250,15 +250,15 @@ Every command should have an editorial file eventually, but the build does not r
 
 ## Adding or modifying anti-pattern detection rules
 
-`src/detect-antipatterns.mjs` is the source of truth for the rule engine. It powers the CLI, the public-site overlay, the Chrome extension, and the homepage rule count. Five places stay in sync:
+`cli/engine/detect-antipatterns.mjs` is the source of truth for the rule engine. It powers the CLI, the public-site overlay, the Chrome extension, and the homepage rule count. Five places stay in sync:
 
 | Where | How it stays in sync |
 |---|---|
-| `src/detect-antipatterns.mjs` (`ANTIPATTERNS` array + `checkXxx` logic) | Hand-edited |
-| `src/detect-antipatterns-browser.js` | `bun run build:browser` |
+| `cli/engine/detect-antipatterns.mjs` (`ANTIPATTERNS` array + `checkXxx` logic) | Hand-edited |
+| `cli/engine/detect-antipatterns-browser.js` | `bun run build:browser` |
 | `extension/detector/detect.js` + `extension/detector/antipatterns.json` | `bun run build:extension` |
-| `public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
-| `source/skills/impeccable/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
+| `site/public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
+| `skill/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
 Always run all three builds and the test suite after a rule change:
 
@@ -272,7 +272,7 @@ bun run build && bun run build:browser && bun run build:extension && bun run tes
 2. **Failing test** in `tests/detect-antipatterns-fixtures.test.mjs` using the snippet-substring pattern (regex `/"([^"]+)"/` against `SHOULD_FLAG` / `SHOULD_PASS` lists). Run it and watch it fail before implementing.
 3. **Rule entry** in the `ANTIPATTERNS` array: `id`, `category` (`slop` for AI tells, `quality` for real design or a11y issues), `name`, `description`, optional `skillSection` and `skillGuideline`.
 4. **Pure check function** `checkXxx(opts)` returning `[{ id, snippet }]`. No DOM access in the pure function.
-5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `src/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
+5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `cli/engine/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
 6. **Verify on a live page**: `http://localhost:3000/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
 
 ### Conventions and jsdom gotchas
@@ -295,7 +295,7 @@ cd ~/code/impeccable-evals
 bun run serve            # dashboard on http://localhost:8723
 ```
 
-The eval runners read this repo's skill from `../impeccable/source/skills/impeccable/` and staged provider skills from `../impeccable/build/_data/dist/*`. Run `bun run build` in this repo before an eval sweep if you want the Claude/Gemini staged skills to reflect your latest edits.
+The eval runners read this repo's skill from `../impeccable/skill/` and staged provider skills from `../impeccable/build/_data/dist/*`. Run `bun run build` in this repo before an eval sweep if you want the Claude/Gemini staged skills to reflect your latest edits.
 
 ### After structural skill changes, update `inline-skill.ts` in the evals repo
 

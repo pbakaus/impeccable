@@ -9,12 +9,12 @@ import { mkdirSync, mkdtempSync, rmSync, appendFileSync, readFileSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { createLiveSessionStore } from '../source/skills/impeccable/scripts/live-session-store.mjs';
+import { createLiveSessionStore } from '../skill/scripts/live-session-store.mjs';
 import {
   getLegacyLiveSessionsDir,
   getLiveAnnotationsDir,
   getLiveSessionsDir,
-} from '../source/skills/impeccable/scripts/impeccable-paths.mjs';
+} from '../skill/scripts/impeccable-paths.mjs';
 
 describe('live-session-store', () => {
   let tmp;

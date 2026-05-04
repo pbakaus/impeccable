@@ -135,7 +135,7 @@ license: MIT
 
 This is a test skill body.`;
 
-    const skillDir = path.join(TEST_DIR, 'source/skills/test-skill');
+    const skillDir = path.join(TEST_DIR, 'skill');
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -172,7 +172,7 @@ argument-hint: "[TARGET=<value>]"
 
 Please audit {{target}} for technical quality. Ask {{model}} for help.`;
 
-    const skillDir = path.join(TEST_DIR, 'source/skills/audit');
+    const skillDir = path.join(TEST_DIR, 'skill');
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -211,33 +211,6 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     const codexContent = fs.readFileSync(path.join(DIST_DIR, 'codex/.codex/skills/audit/SKILL.md'), 'utf-8');
     expect(codexContent).toContain('{{target}}'); // No body transform, placeholder preserved
     expect(codexContent).toContain('GPT');
-  });
-
-  test('integration: multiple skills', () => {
-    const skill1Dir = path.join(TEST_DIR, 'source/skills/skill1');
-    fs.mkdirSync(skill1Dir, { recursive: true });
-    fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '---\nname: skill1\n---\nSkill1');
-
-    const skill2Dir = path.join(TEST_DIR, 'source/skills/skill2');
-    fs.mkdirSync(skill2Dir, { recursive: true });
-    fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '---\nname: skill2\n---\nSkill2');
-
-    const DIST_DIR = path.join(TEST_DIR, 'dist');
-    const { skills } = utils.readSourceFiles(TEST_DIR);
-    const patterns = utils.readPatterns(TEST_DIR);
-
-    expect(skills).toHaveLength(2);
-
-    transformers.transformCursor(skills, DIST_DIR, patterns);
-    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
-    transformers.transformGemini(skills, DIST_DIR, patterns);
-    transformers.transformCodex(skills, DIST_DIR, patterns);
-
-    // Verify all files exist
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/skill1/SKILL.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'cursor/.cursor/skills/skill2/SKILL.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/.claude/skills/skill1/SKILL.md'))).toBe(true);
-    expect(fs.existsSync(path.join(DIST_DIR, 'claude-code/.claude/skills/skill2/SKILL.md'))).toBe(true);
   });
 
   test('should call transformers in correct order', () => {

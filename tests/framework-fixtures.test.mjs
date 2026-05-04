@@ -17,11 +17,11 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isGeneratedFile } from '../source/skills/impeccable/scripts/is-generated.mjs';
-import { detectCsp } from '../source/skills/impeccable/scripts/detect-csp.mjs';
+import { isGeneratedFile } from '../skill/scripts/is-generated.mjs';
+import { detectCsp } from '../skill/scripts/detect-csp.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPTS_DIR = join(__dirname, '..', 'source', 'skills', 'impeccable', 'scripts');
+const SCRIPTS_DIR = join(__dirname, '..', 'skill', 'scripts');
 const FIXTURES_DIR = join(__dirname, 'framework-fixtures');
 
 function listFixtures() {

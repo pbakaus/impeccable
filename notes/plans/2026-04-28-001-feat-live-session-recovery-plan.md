@@ -58,18 +58,18 @@ The product expectation is stronger: if the user changes live-mode state in the 
 
 ### Relevant Code and Patterns
 
-- `source/skills/impeccable/scripts/live-server.mjs` owns `/events`, `/poll`, `/source`, `/health`, token validation, in-memory `pendingEvents`, and browser SSE clients.
-- `source/skills/impeccable/scripts/live-browser.js` owns picker state, variant cycling, parameter controls, `localStorage` session resume, handled-session sentinels, and accept/discard browser behavior.
-- `source/skills/impeccable/scripts/live-poll.mjs` is the agent-facing poll client and auto-runs `live-accept.mjs` for accept/discard events.
-- `source/skills/impeccable/scripts/live-accept.mjs` deterministically accepts/discards variant wrappers and can emit carbonize-required results.
-- `source/skills/impeccable/scripts/live-wrap.mjs` creates source markers and original/variant wrapper structure.
+- `skill/scripts/live-server.mjs` owns `/events`, `/poll`, `/source`, `/health`, token validation, in-memory `pendingEvents`, and browser SSE clients.
+- `skill/scripts/live-browser.js` owns picker state, variant cycling, parameter controls, `localStorage` session resume, handled-session sentinels, and accept/discard browser behavior.
+- `skill/scripts/live-poll.mjs` is the agent-facing poll client and auto-runs `live-accept.mjs` for accept/discard events.
+- `skill/scripts/live-accept.mjs` deterministically accepts/discards variant wrappers and can emit carbonize-required results.
+- `skill/scripts/live-wrap.mjs` creates source markers and original/variant wrapper structure.
 - `tests/live-server.test.mjs`, `tests/live-accept.test.mjs`, `tests/live-wrap.test.mjs`, and `tests/live-e2e.test.mjs` are the relevant verification surfaces.
 - `docs/adr-live-variant-mode.md` documents the current architecture and should be updated if the durable journal changes the lifecycle contract.
 
 ### Institutional Learnings
 
 - `docs/adr-live-variant-mode.md` explicitly values source modification over DOM patching, zero-dependency scripts, SSE plus fetch, long-poll for agent compatibility, and `display: contents` wrappers.
-- `source/skills/impeccable/reference/live.md` currently encodes the operational assumption that the agent continuously polls and performs carbonize cleanup before the next poll.
+- `skill/reference/live.md` currently encodes the operational assumption that the agent continuously polls and performs carbonize cleanup before the next poll.
 
 ### External References
 
@@ -107,7 +107,7 @@ The product expectation is stronger: if the user changes live-mode state in the 
 
 ## Output Structure
 
-    source/skills/impeccable/scripts/
+    skill/scripts/
       live-session-store.mjs
       live-status.mjs
       live-resume.mjs
@@ -187,9 +187,9 @@ sequenceDiagram
 **Dependencies:** None
 
 **Files:**
-- Create: `source/skills/impeccable/scripts/live-session-store.mjs`
+- Create: `skill/scripts/live-session-store.mjs`
 - Create: `tests/live-session-store.test.mjs`
-- Modify: `source/skills/impeccable/scripts/live-server.mjs`
+- Modify: `skill/scripts/live-server.mjs`
 - Modify: `package.json`
 
 **Approach:**
@@ -229,7 +229,7 @@ SessionSnapshot = {
 ```
 
 **Patterns to follow:**
-- `source/skills/impeccable/scripts/live-server.mjs` for project-root PID file handling.
+- `skill/scripts/live-server.mjs` for project-root PID file handling.
 - `tests/live-server.test.mjs` for temp-directory test isolation.
 
 **Test scenarios:**
@@ -256,7 +256,7 @@ SessionSnapshot = {
 **Dependencies:** U1
 
 **Files:**
-- Modify: `source/skills/impeccable/scripts/live-server.mjs`
+- Modify: `skill/scripts/live-server.mjs`
 - Modify: `tests/live-server.test.mjs`
 
 **Approach:**
@@ -268,7 +268,7 @@ SessionSnapshot = {
 - On server startup, rebuild pending work from the journal into the in-memory queue. `/poll` may consult the store when memory is empty, but the journal remains canonical.
 
 **Patterns to follow:**
-- Existing `validateEvent()` and `enqueueEvent()` in `source/skills/impeccable/scripts/live-server.mjs`.
+- Existing `validateEvent()` and `enqueueEvent()` in `skill/scripts/live-server.mjs`.
 - Existing `/events` and `/poll` tests in `tests/live-server.test.mjs`.
 
 **Test scenarios:**
@@ -294,7 +294,7 @@ SessionSnapshot = {
 **Dependencies:** U1, U2
 
 **Files:**
-- Modify: `source/skills/impeccable/scripts/live-browser.js`
+- Modify: `skill/scripts/live-browser.js`
 - Modify: `tests/live-e2e.test.mjs`
 - Create: `tests/live-browser-recovery.test.mjs`
 
@@ -307,8 +307,8 @@ SessionSnapshot = {
 - Capture current parameter values on every change, not only at accept time, so resume can reconstruct user tuning even before Accept.
 
 **Patterns to follow:**
-- Existing `saveSession()`, `resumeSession()`, `paramsCurrentValues`, and `handleAccept()` in `source/skills/impeccable/scripts/live-browser.js`.
-- Existing scroll restoration and MutationObserver recovery patterns in `source/skills/impeccable/scripts/live-browser.js`.
+- Existing `saveSession()`, `resumeSession()`, `paramsCurrentValues`, and `handleAccept()` in `skill/scripts/live-browser.js`.
+- Existing scroll restoration and MutationObserver recovery patterns in `skill/scripts/live-browser.js`.
 
 **Test scenarios:**
 - Happy path: moving a parameter slider sends a checkpoint with updated param values and does not reset the tune panel.
@@ -333,11 +333,11 @@ SessionSnapshot = {
 **Dependencies:** U1, U2
 
 **Files:**
-- Create: `source/skills/impeccable/scripts/live-status.mjs`
-- Create: `source/skills/impeccable/scripts/live-resume.mjs`
-- Create: `source/skills/impeccable/scripts/live-complete.mjs`
-- Modify: `source/skills/impeccable/scripts/live-server.mjs`
-- Modify: `source/skills/impeccable/reference/live.md`
+- Create: `skill/scripts/live-status.mjs`
+- Create: `skill/scripts/live-resume.mjs`
+- Create: `skill/scripts/live-complete.mjs`
+- Modify: `skill/scripts/live-server.mjs`
+- Modify: `skill/reference/live.md`
 - Modify: `tests/live-server.test.mjs`
 - Create: `tests/live-status.test.mjs`
 
@@ -367,8 +367,8 @@ no_active_session
 ```
 
 **Patterns to follow:**
-- `source/skills/impeccable/scripts/live-poll.mjs` for CLI JSON output style.
-- `source/skills/impeccable/scripts/live-accept.mjs` marker parsing helpers where reusable.
+- `skill/scripts/live-poll.mjs` for CLI JSON output style.
+- `skill/scripts/live-accept.mjs` marker parsing helpers where reusable.
 
 **Test scenarios:**
 - Happy path: status with a pending accept event returns `run_accept_cleanup` and includes variant id and param values.
@@ -394,9 +394,9 @@ no_active_session
 **Dependencies:** U1, U2, U4
 
 **Files:**
-- Modify: `source/skills/impeccable/scripts/live-poll.mjs`
-- Modify: `source/skills/impeccable/scripts/live-accept.mjs`
-- Modify: `source/skills/impeccable/scripts/live-server.mjs`
+- Modify: `skill/scripts/live-poll.mjs`
+- Modify: `skill/scripts/live-accept.mjs`
+- Modify: `skill/scripts/live-server.mjs`
 - Modify: `tests/live-accept.test.mjs`
 - Modify: `tests/live-server.test.mjs`
 - Create: `tests/live-poll.test.mjs`
@@ -411,8 +411,8 @@ no_active_session
 - Preserve the stderr warning as a human attention signal, but do not rely on warning text as the state machine.
 
 **Patterns to follow:**
-- Current `_acceptResult` attachment in `source/skills/impeccable/scripts/live-poll.mjs`.
-- Current carbonize marker output in `source/skills/impeccable/scripts/live-accept.mjs`.
+- Current `_acceptResult` attachment in `skill/scripts/live-poll.mjs`.
+- Current carbonize marker output in `skill/scripts/live-accept.mjs`.
 
 **Test scenarios:**
 - Happy path: accept event processed by `live-poll.mjs` updates durable session to `accepted_source_pending` when carbonize is required.
@@ -437,9 +437,9 @@ no_active_session
 **Dependencies:** U3, U4, U5
 
 **Files:**
-- Modify: `source/skills/impeccable/reference/live.md`
+- Modify: `skill/reference/live.md`
 - Modify: `docs/adr-live-variant-mode.md`
-- Modify: `source/skills/impeccable/scripts/live-browser.js`
+- Modify: `skill/scripts/live-browser.js`
 - Modify: `README.md` if live command usage is documented there
 
 **Approach:**
@@ -450,7 +450,7 @@ no_active_session
 
 **Patterns to follow:**
 - Existing `reference/live.md` contract sections for poll loop, accept, carbonize, and cleanup.
-- Existing toast and bar state patterns in `source/skills/impeccable/scripts/live-browser.js`.
+- Existing toast and bar state patterns in `skill/scripts/live-browser.js`.
 
 **Test scenarios:**
 - Test expectation: mostly documentation and UX copy. Behavioral coverage belongs to U3-U5; this unit should be verified through review plus any snapshot/E2E assertions added for visible pending states.
@@ -527,8 +527,8 @@ no_active_session
 ## Documentation / Operational Notes
 
 - Update `docs/adr-live-variant-mode.md` because durability changes the architecture from memory queue plus localStorage to journaled sessions.
-- Update `source/skills/impeccable/reference/live.md` so agents know to run status/resume after interruption or before assuming no pending work.
-- If generated provider skill outputs are tracked, implementation should regenerate them with the existing build process after changing `source/skills/impeccable/`.
+- Update `skill/reference/live.md` so agents know to run status/resume after interruption or before assuming no pending work.
+- If generated provider skill outputs are tracked, implementation should regenerate them with the existing build process after changing `skill/`.
 - Because the default test script enumerates test files, implementation must update `package.json` when adding new non-E2E test files.
 - Consider adding `.impeccable-live/` or the chosen session-store directory to gitignore if it is not already ignored.
 
@@ -537,11 +537,11 @@ no_active_session
 ## Sources & References
 
 - Related architecture: `docs/adr-live-variant-mode.md`
-- Live instructions: `source/skills/impeccable/reference/live.md`
-- Browser live implementation: `source/skills/impeccable/scripts/live-browser.js`
-- Server transport: `source/skills/impeccable/scripts/live-server.mjs`
-- Agent poll client: `source/skills/impeccable/scripts/live-poll.mjs`
-- Accept/discard source cleanup: `source/skills/impeccable/scripts/live-accept.mjs`
+- Live instructions: `skill/reference/live.md`
+- Browser live implementation: `skill/scripts/live-browser.js`
+- Server transport: `skill/scripts/live-server.mjs`
+- Agent poll client: `skill/scripts/live-poll.mjs`
+- Accept/discard source cleanup: `skill/scripts/live-accept.mjs`
 - Live-mode tests: `tests/live-server.test.mjs`, `tests/live-accept.test.mjs`, `tests/live-e2e.test.mjs`
 
 ---

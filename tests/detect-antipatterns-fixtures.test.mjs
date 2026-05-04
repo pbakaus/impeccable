@@ -10,7 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   detectHtml,
-} from '../src/detect-antipatterns.mjs';
+} from '../cli/engine/detect-antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(__dirname, 'fixtures', 'antipatterns');

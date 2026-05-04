@@ -28,7 +28,7 @@ Variants are written to the actual source file, not injected into the browser DO
 Server-Sent Events (server to browser) + fetch POST (browser to server) instead of WebSocket. This eliminates the `ws` npm dependency entirely. The server is zero-dependency pure Node.js (http, crypto, fs, net, os). This matters because the scripts ship inside the skill directory and run in the user's project without any package installation.
 
 **3. Self-contained skill scripts.**
-All live mode code lives in `source/skills/impeccable/scripts/`:
+All live mode code lives in `skill/scripts/`:
 - `live-server.mjs` — HTTP server (SSE, poll, source file reader)
 - `live-poll.mjs` — CLI client for the agent poll/reply loop
 - `live-wrap.mjs` — CLI helper that finds elements in source and creates variant wrappers
@@ -91,7 +91,7 @@ For dev servers that don't support HMR (like Bun's static HTML import), the brow
  ┌─────────────────────────────────────────────────────────────────┐
  │                         AGENT                                   │
  │                                                                 │
- │  Follows source/skills/impeccable/reference/live.md             │
+ │  Follows skill/reference/live.md             │
  │  1. Start server: node scripts_path/live-server.mjs &           │
  │  2. Inject <script> into source HTML (comment-marked)           │
  │  3. Poll loop:                                                  │

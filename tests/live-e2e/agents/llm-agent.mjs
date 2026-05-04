@@ -28,14 +28,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
-const LIVE_MD_PATH = path.join(
-  REPO_ROOT,
-  'source',
-  'skills',
-  'impeccable',
-  'reference',
-  'live.md',
-);
+const LIVE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live.md');
 
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 

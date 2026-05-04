@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SOURCE = readFileSync(join(process.cwd(), 'source/skills/impeccable/scripts/live-browser.js'), 'utf-8');
+const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
 
 describe('live-browser source contracts', () => {
   it('keeps sendEvent fire-and-forget by default while accept/discard opt into rejection', () => {

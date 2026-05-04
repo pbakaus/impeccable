@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import vm from 'node:vm';
 
 const REPO_ROOT = process.cwd();
-const SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-browser-session.js');
+const SCRIPT = join(REPO_ROOT, 'skill/scripts/live-browser-session.js');
 
 function createMemoryStorage() {
   const values = new Map();

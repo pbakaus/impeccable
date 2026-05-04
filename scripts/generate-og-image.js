@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
-const OUTPUT_PATH = path.join(ROOT_DIR, 'public', 'og-image.jpg');
+const OUTPUT_PATH = path.join(ROOT_DIR, 'site', 'public', 'og-image.jpg');
 const EXTENSION_IMAGE_PATH = path.join(
   ROOT_DIR,
   'public',
@@ -27,29 +27,15 @@ const EXTENSION_IMAGE_PATH = path.join(
   'extension-detection.png',
 );
 
-// Count user-invocable, non-deprecated skills from source/skills/
-// (In v2.0, commands and skills were unified — every command is a skill.)
+// Count sub-commands from skill/scripts/command-metadata.json (the post-v3.0
+// single source of truth). Commands and skills were unified in v2.0; v3.0
+// then collapsed to a single user-invocable skill (`impeccable`) with
+// sub-commands listed in command-metadata.json.
 function getCommandCount() {
-  const skillsDir = path.join(ROOT_DIR, 'source', 'skills');
-  if (!fs.existsSync(skillsDir)) return 0;
-
-  let count = 0;
-  for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
-    if (!fs.existsSync(skillFile)) continue;
-
-    const content = fs.readFileSync(skillFile, 'utf8');
-    const fm = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!fm) continue;
-
-    const frontmatter = fm[1];
-    const isUserInvocable = /^user-invocable:\s*true\s*$/m.test(frontmatter);
-    const isDeprecated = /^description:\s*["']?DEPRECATED/mi.test(frontmatter);
-
-    if (isUserInvocable && !isDeprecated) count++;
-  }
-  return count;
+  const metadataPath = path.join(ROOT_DIR, 'skill', 'scripts', 'command-metadata.json');
+  if (!fs.existsSync(metadataPath)) return 0;
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+  return Object.keys(metadata).length;
 }
 
 // Load extension screenshot as base64 data URL so setContent is self-contained

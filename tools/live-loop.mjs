@@ -10,7 +10,7 @@
  *   IMPECCABLE_E2E_LLM_MODEL=claude-sonnet-4-6  (default: claude-haiku-4-5)
  *
  * Stop with Ctrl-C; the live-server keeps running until you call
- * `node source/skills/impeccable/scripts/live-server.mjs stop`.
+ * `node skill/scripts/live-server.mjs stop`.
  */
 
 import fs from 'node:fs';
@@ -22,14 +22,14 @@ import { createLlmAgent } from '../tests/live-e2e/agents/llm-agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
-const SCRIPTS_DIR = path.join(REPO_ROOT, 'source', 'skills', 'impeccable', 'scripts');
+const SCRIPTS_DIR = path.join(REPO_ROOT, 'skill', 'scripts');
 const PID_FILE = path.join(REPO_ROOT, '.impeccable-live.json');
 
 if (!fs.existsSync(PID_FILE)) {
   console.error(
     `No live-server PID file at ${PID_FILE}. Start one first:\n` +
-      `  node source/skills/impeccable/scripts/live-server.mjs --background\n` +
-      `  node source/skills/impeccable/scripts/live-inject.mjs --port <PORT>`,
+      `  node skill/scripts/live-server.mjs --background\n` +
+      `  node skill/scripts/live-inject.mjs --port <PORT>`,
   );
   process.exit(1);
 }

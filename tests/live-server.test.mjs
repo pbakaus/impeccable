@@ -15,11 +15,11 @@ import {
   getLegacyLiveSessionsDir,
   getLiveServerPath,
   getLiveSessionsDir,
-} from '../source/skills/impeccable/scripts/impeccable-paths.mjs';
+} from '../skill/scripts/impeccable-paths.mjs';
 
 const REPO_ROOT = process.cwd();
-const SERVER_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-server.mjs');
-const COMPLETE_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-complete.mjs');
+const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
+const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
 // ---------------------------------------------------------------------------
 // Helper: start/stop server for integration tests
 // ---------------------------------------------------------------------------

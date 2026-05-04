@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   completionAckForAcceptResult,
   completionTypeForAcceptResult,
-} from '../source/skills/impeccable/scripts/live-completion.mjs';
+} from '../skill/scripts/live-completion.mjs';
 
 describe('live completion type classification', () => {
   it('treats generated-file fallback accept as normal agent handoff, not error', () => {

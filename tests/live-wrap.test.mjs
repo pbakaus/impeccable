@@ -15,7 +15,7 @@ import {
   findElement,
   findClosingLine,
   detectCommentSyntax,
-} from '../source/skills/impeccable/scripts/live-wrap.mjs';
+} from '../skill/scripts/live-wrap.mjs';
 
 // ---------------------------------------------------------------------------
 // Unit tests: pure functions
@@ -223,7 +223,7 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'index.html'), html);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id test123 --count 3 --classes "hero-section" --file "${join(tmp, 'index.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id test123 --count 3 --classes "hero-section" --file "${join(tmp, 'index.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -257,7 +257,7 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'App.jsx'), jsx);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id jsx123 --count 2 --classes "hero" --file "${join(tmp, 'App.jsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id jsx123 --count 2 --classes "hero" --file "${join(tmp, 'App.jsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -279,7 +279,7 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'page.html'), html);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id id123 --count 2 --element-id "pricing" --file "${join(tmp, 'page.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id id123 --count 2 --element-id "pricing" --file "${join(tmp, 'page.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -294,7 +294,7 @@ describe('wrapCli integration', () => {
 
     try {
       execSync(
-        `node source/skills/impeccable/scripts/live-wrap.mjs --id err123 --count 2 --classes "nonexistent" --file "${join(tmp, 'empty.html')}"`,
+        `node skill/scripts/live-wrap.mjs --id err123 --count 2 --classes "nonexistent" --file "${join(tmp, 'empty.html')}"`,
         { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' }
       );
       assert.fail('Should have exited with error');
@@ -313,7 +313,7 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'preserve.html'), html);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id pres123 --count 2 --classes "target" --file "${join(tmp, 'preserve.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id pres123 --count 2 --classes "target" --file "${join(tmp, 'preserve.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -330,7 +330,7 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'plain.html'), html);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id scopedCss --count 2 --classes "hero-shell" --tag "section" --file "${join(tmp, 'plain.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id scopedCss --count 2 --classes "hero-shell" --tag "section" --file "${join(tmp, 'plain.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -355,7 +355,7 @@ const title = 'Astro title';
     writeFileSync(join(tmp, 'Hero.astro'), astro);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id astroCss --count 3 --classes "hero-shell" --tag "section" --file "${join(tmp, 'Hero.astro')}"`,
+      `node skill/scripts/live-wrap.mjs --id astroCss --count 3 --classes "hero-shell" --tag "section" --file "${join(tmp, 'Hero.astro')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -415,7 +415,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'page.tsx'), tsx);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id wrapA --count 3 --classes "organic-sand-surface,py-20,lg:py-24" --tag "section" --file "${join(tmp, 'page.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id wrapA --count 3 --classes "organic-sand-surface,py-20,lg:py-24" --tag "section" --file "${join(tmp, 'page.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -451,7 +451,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id jsxStyle --count 3 --classes "target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id jsxStyle --count 3 --classes "target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -484,7 +484,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'Page.tsx'), tsx);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id classNameA --count 3 --classes "shared-class,target-marker" --tag "div" --file "${join(tmp, 'Page.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id classNameA --count 3 --classes "shared-class,target-marker" --tag "div" --file "${join(tmp, 'Page.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -517,7 +517,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id frag1 --count 3 --classes "frag-target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id frag1 --count 3 --classes "frag-target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -541,7 +541,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'page.html'), html);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id htmlFrag --count 3 --classes "html-frag" --tag "section" --file "${join(tmp, 'page.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id htmlFrag --count 3 --classes "html-frag" --tag "section" --file "${join(tmp, 'page.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -577,7 +577,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'Page.tsx'), tsx);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id repeat1 --count 3 --classes "card" --tag "aside" --text "Beta card Second in the list." --file "${join(tmp, 'Page.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id repeat1 --count 3 --classes "card" --tag "aside" --text "Beta card Second in the list." --file "${join(tmp, 'Page.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -620,7 +620,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     // Note: --text is the textContent the BROWSER produced — no space between
     // "Two" and "Second" because textContent has no inter-element whitespace.
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id concat1 --count 3 --classes "card" --tag "aside" --text "Hero TwoSecond card body copy." --file "${join(tmp, 'Page.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id concat1 --count 3 --classes "card" --tag "aside" --text "Hero TwoSecond card body copy." --file "${join(tmp, 'Page.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -655,7 +655,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     // makes wrap silently land on the first match (existing behavior
     // documented in filterByText's JSDoc).
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id short1 --count 3 --classes "card" --tag "aside" --text "Hi" --file "${join(tmp, 'Short.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id short1 --count 3 --classes "card" --tag "aside" --text "Hi" --file "${join(tmp, 'Short.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -682,7 +682,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'multi.html'), html);
 
     const result = JSON.parse(execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id ml1 --count 3 --classes "multiline-target" --tag "section" --file "${join(tmp, 'multi.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id ml1 --count 3 --classes "multiline-target" --tag "section" --file "${join(tmp, 'multi.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     ));
 
@@ -718,7 +718,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
 
     // Run with --text that won't show up in source verbatim.
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id dyn1 --count 3 --classes "card" --tag "aside" --text "Beta card body text" --file "${join(tmp, 'Cards.tsx')}"`,
+      `node skill/scripts/live-wrap.mjs --id dyn1 --count 3 --classes "card" --tag "aside" --text "Beta card body text" --file "${join(tmp, 'Cards.tsx')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 
@@ -748,7 +748,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     let errPayload;
     try {
       execSync(
-        `node source/skills/impeccable/scripts/live-wrap.mjs --id dup1 --count 3 --classes "card" --tag "aside" --text "Same headline Identical body copy." --file "${join(tmp, 'Dup.tsx')}"`,
+        `node skill/scripts/live-wrap.mjs --id dup1 --count 3 --classes "card" --tag "aside" --text "Same headline Identical body copy." --file "${join(tmp, 'Dup.tsx')}"`,
         { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' }
       );
       assert.fail('Should have exited with error');
@@ -773,7 +773,7 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'index.html'), html);
 
     execSync(
-      `node source/skills/impeccable/scripts/live-wrap.mjs --id tagFilter --count 3 --classes "ambiguous-name" --tag "section" --file "${join(tmp, 'index.html')}"`,
+      `node skill/scripts/live-wrap.mjs --id tagFilter --count 3 --classes "ambiguous-name" --tag "section" --file "${join(tmp, 'index.html')}"`,
       { cwd: process.cwd(), encoding: 'utf-8' }
     );
 

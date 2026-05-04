@@ -1,7 +1,7 @@
 /**
  * Static-source regression guards for live-browser.js.
  *
- * `source/skills/impeccable/scripts/live-browser.js` is a self-contained
+ * `skill/scripts/live-browser.js` is a self-contained
  * IIFE served directly to user pages by live-server.mjs (no bundle step,
  * no module exports). That makes its internal helpers untestable via
  * normal import — but a few behaviors have failed in real-world live
@@ -22,7 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LIVE_BROWSER = path.resolve(
   __dirname,
   '..',
-  'source/skills/impeccable/scripts/live-browser.js',
+  'skill/scripts/live-browser.js',
 );
 const SOURCE = fs.readFileSync(LIVE_BROWSER, 'utf-8');
 

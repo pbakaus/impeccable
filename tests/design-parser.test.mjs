@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDesignMd } from '../source/skills/impeccable/scripts/design-parser.mjs';
+import { parseDesignMd } from '../skill/scripts/design-parser.mjs';
 
 describe('parseDesignMd frontmatter branch', () => {
   it('returns null frontmatter when the file has no YAML header', () => {

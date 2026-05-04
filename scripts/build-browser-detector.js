@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Generates src/detect-antipatterns-browser.js
+ * Generates cli/engine/detect-antipatterns-browser.js
  * by stripping Node-specific sections from the universal source and wrapping in an IIFE.
  *
  * Run: node scripts/build-browser-detector.js
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-const SOURCE = path.join(ROOT, 'src/detect-antipatterns.mjs');
-const OUTPUT = path.join(ROOT, 'src/detect-antipatterns-browser.js');
+const SOURCE = path.join(ROOT, 'cli/engine/detect-antipatterns.mjs');
+const OUTPUT = path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js');
 
 let code = fs.readFileSync(SOURCE, 'utf-8');
 
