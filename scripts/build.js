@@ -22,7 +22,6 @@ import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProj
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
 // Sub-page generation is now handled by Astro content collections.
-// import { generateSubPages } from './build-sub-pages.js';
 
 /**
  * Generate authoritative counts from source data and write to site/public/js/generated/counts.js.

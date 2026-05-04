@@ -39,8 +39,9 @@ const MIME = {
 let server;
 
 before(async () => {
-  // Static server: maps /fixtures/* to tests/fixtures/* and /js/* to public/js/*
-  // (mirrors the routes in server/index.js so fixtures can use absolute paths)
+  // Static server: maps /fixtures/* to tests/fixtures/* and
+  // /js/detect-antipatterns-browser.js to cli/engine/detect-antipatterns-browser.js
+  // (mirrors what Astro serves so fixtures can use absolute paths)
   server = http.createServer((req, res) => {
     let filePath;
     if (req.url.startsWith('/fixtures/')) {
