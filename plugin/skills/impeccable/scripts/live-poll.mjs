@@ -11,7 +11,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { completionTypeForAcceptResult } from './live-completion.mjs';
+import { completionAckForAcceptResult, completionTypeForAcceptResult } from './live-completion.mjs';
 import { readLiveServerInfo } from './impeccable-paths.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
@@ -169,14 +169,16 @@ Options:
       } catch (err) {
         event._completionAck = { ok: false, error: err.message };
       }
-      if (!event._completionAck) event._completionAck = { ok: true, type: completionType };
+      if (!event._completionAck) {
+        event._completionAck = completionAckForAcceptResult(event.id, completionType, event._acceptResult);
+      }
     }
 
     // Second signal path: stderr banner in case the agent parses stdout
     // JSON but skips nested fields. One line is enough — the full checklist
     // is in reference/live.md.
     if (event._acceptResult?.carbonize === true) {
-      process.stderr.write('\n⚠ Carbonize cleanup REQUIRED before next poll. See reference/live.md "Required after accept".\n\n');
+      process.stderr.write('\n⚠ Carbonize cleanup REQUIRED before next poll. After cleanup, run live-complete.mjs --id ' + event.id + '. See reference/live.md "Required after accept".\n\n');
     }
 
     // Print the event as JSON — the agent reads this from stdout

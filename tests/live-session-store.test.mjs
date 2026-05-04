@@ -83,6 +83,36 @@ describe('live-session-store', () => {
     assert.match(snapshot.diagnostics[0].error, /journal_parse_failed/);
   });
 
+  it('does not duplicate parse diagnostics when valid entries follow a corrupted journal line', () => {
+    const dir = getLiveSessionsDir(tmp);
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'corrupt-then-valid.jsonl'), '{not json}\n');
+    appendFileSync(join(dir, 'corrupt-then-valid.jsonl'), JSON.stringify({
+      seq: 1,
+      id: 'corrupt-then-valid',
+      type: 'generate',
+      ts: new Date().toISOString(),
+      event: {
+        type: 'generate',
+        id: 'corrupt-then-valid',
+        action: 'polish',
+        count: 2,
+        element: { outerHTML: '<h1>Title</h1>', tagName: 'h1' },
+      },
+    }) + '\n');
+
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'corrupt-then-valid' });
+    const snapshot = store.getSnapshot('corrupt-then-valid');
+    const parseDiagnostics = snapshot.diagnostics.filter((d) => d.error === 'journal_parse_failed');
+
+    assert.equal(snapshot.phase, 'generate_requested');
+    assert.equal(
+      parseDiagnostics.length,
+      1,
+      'event=live_session_store.duplicate_parse_diagnostic actor=store operation=journal_replay risk=duplicate_status_noise expected=1 actual=' + parseDiagnostics.length,
+    );
+  });
+
   it('preserves zero-valued checkpoint revisions and empty explicit fields', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'zero-checkpoint' });
     store.appendEvent({
@@ -150,6 +180,11 @@ describe('live-session-store', () => {
     assert.equal(snapshot.sourceFile, 'src/App.jsx');
     assert.equal(snapshot.pendingEvent, null);
     assert.equal(store.listActiveSessions().some((s) => s.id === 'carbonize-session'), true);
+
+    store.appendEvent({ type: 'complete', id: 'carbonize-session' });
+    const completed = store.getSnapshot('carbonize-session', { includeCompleted: true });
+    assert.equal(completed.phase, 'completed');
+    assert.equal(store.listActiveSessions().some((s) => s.id === 'carbonize-session'), false);
   });
 
   it('clears pending events when an agent error is acknowledged', () => {

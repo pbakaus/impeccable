@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { completionTypeForAcceptResult } from '../source/skills/impeccable/scripts/live-completion.mjs';
+import {
+  completionAckForAcceptResult,
+  completionTypeForAcceptResult,
+} from '../source/skills/impeccable/scripts/live-completion.mjs';
 
 describe('live completion type classification', () => {
   it('treats generated-file fallback accept as normal agent handoff, not error', () => {
@@ -25,6 +28,28 @@ describe('live completion type classification', () => {
       completionTypeForAcceptResult('accept', { handled: true, carbonize: true }),
       'agent_done',
       'event=live_poll.carbonize_completion actor=agent operation=accept_with_carbonize risk=carbonize_session_marked_completed_before_cleanup expected=agent_done actual=complete',
+    );
+  });
+
+  it('marks carbonize acknowledgements as non-final and requiring explicit completion', () => {
+    assert.deepEqual(
+      completionAckForAcceptResult('carbonize-1', 'agent_done', { handled: true, carbonize: true }),
+      {
+        ok: true,
+        type: 'agent_done',
+        final: false,
+        requiresComplete: true,
+        nextCommand: 'live-complete.mjs --id carbonize-1',
+        message: 'Carbonize cleanup must be verified, then the session must be completed explicitly before polling again.',
+      },
+      'event=live_poll.carbonize_ack actor=agent operation=accept_with_carbonize risk=active_session_never_completed expected=explicit_complete_required actual=missing_requires_complete',
+    );
+  });
+
+  it('keeps normal handled accepts terminal', () => {
+    assert.deepEqual(
+      completionAckForAcceptResult('done-1', 'complete', { handled: true, carbonize: false }),
+      { ok: true, type: 'complete' },
     );
   });
 

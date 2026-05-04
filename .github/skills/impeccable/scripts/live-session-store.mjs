@@ -137,7 +137,7 @@ function rebuildSnapshotFromJournal(journalPath, id) {
       const entry = JSON.parse(line);
       if (!entry || typeof entry !== 'object') throw new Error('entry is not object');
       if (Number.isInteger(entry.seq)) nextSeq = Math.max(nextSeq, entry.seq + 1);
-      snapshot = applyEvent(snapshot, entry, diagnostics);
+      snapshot = applyEvent(snapshot, entry);
     } catch (err) {
       diagnostics.push({
         error: 'journal_parse_failed',
