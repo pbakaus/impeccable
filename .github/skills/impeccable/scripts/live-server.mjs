@@ -159,8 +159,8 @@ function loadBrowserScripts() {
   // to the npm package location (cli/engine/detect-antipatterns-browser.js).
   // This one IS cached — detect.js rarely changes during a session.
   const detectPaths = [
-    path.join(__dirname, '..', '..', '..', '..', 'src', 'detect-antipatterns-browser.js'),
-    path.join(process.cwd(), 'node_modules', 'impeccable', 'src', 'detect-antipatterns-browser.js'),
+    path.join(__dirname, '..', '..', '..', '..', 'cli', 'engine', 'detect-antipatterns-browser.js'),
+    path.join(process.cwd(), 'node_modules', 'impeccable', 'cli', 'engine', 'detect-antipatterns-browser.js'),
   ];
   let detectScript = '';
   for (const p of detectPaths) {

@@ -599,7 +599,7 @@ async function build() {
 
   // Copy browser detector to site/public/js/ so the antipattern examples can
   // reference it (Astro serves site/public/ as-is).
-  const detectorSrc = path.join(ROOT_DIR, 'src', 'detect-antipatterns-browser.js');
+  const detectorSrc = path.join(ROOT_DIR, 'cli', 'engine', 'detect-antipatterns-browser.js');
   if (fs.existsSync(detectorSrc)) {
     const jsDir = path.join(ROOT_DIR, 'site', 'public', 'js');
     fs.mkdirSync(jsDir, { recursive: true });
