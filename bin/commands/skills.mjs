@@ -19,8 +19,10 @@ import { tmpdir } from 'node:os';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
-// Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn'];
+// Provider folder names in project roots.
+// Must stay in sync with configDir entries in scripts/lib/transformers/providers.js
+// (.codex is intentionally excluded -- Codex CLI consumes .agents/skills/).
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.rovodev', '.trae', '.trae-cn'];
 
 function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
