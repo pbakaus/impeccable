@@ -15,8 +15,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
-const EXAMPLES_DIR = path.join(ROOT_DIR, 'public', 'antipattern-examples');
-const OUTPUT_DIR = path.join(ROOT_DIR, 'public', 'antipattern-images');
+const EXAMPLES_DIR = path.join(ROOT_DIR, 'site', 'public', 'antipattern-examples');
+const OUTPUT_DIR = path.join(ROOT_DIR, 'site', 'public', 'antipattern-images');
 
 async function screenshotAntipatterns() {
   // Ensure output directory exists

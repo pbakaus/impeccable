@@ -170,7 +170,7 @@ export function readEditorialWrapper(contentDir, kind, slug) {
  * should treat a missing entry as "no demo".
  */
 export async function loadCommandDemos(rootDir) {
-  const demosDir = path.join(rootDir, 'public/js/demos/commands');
+  const demosDir = path.join(rootDir, 'site/public/js/demos/commands');
   if (!fs.existsSync(demosDir)) return {};
 
   const demos = {};
