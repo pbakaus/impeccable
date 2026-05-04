@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPollReplyPayload } from '../source/skills/impeccable/scripts/live-poll.mjs';
+import { buildPollReplyPayload } from '../skill/scripts/live-poll.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {

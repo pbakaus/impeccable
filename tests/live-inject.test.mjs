@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const INJECT = resolve(__dirname, '..', 'source/skills/impeccable/scripts/live-inject.mjs');
+const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
 
 function runInject(cwd, configPath, args) {
   try {

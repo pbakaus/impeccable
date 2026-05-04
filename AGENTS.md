@@ -2,11 +2,11 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `source/skills/impeccable/SKILL.md` on every `bun run build`, so any deletion churns back. Skip it silently and proceed with the task.
+If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back. Skip it silently and proceed with the task.
 
 ## Project Structure & Module Organization
 
-`source/` is the source of truth. Author skills in `source/skills/impeccable/` and keep provider output in `dist/` generated, not hand-edited. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. Runtime detection code ships from `src/`. The website lives in `public/`, local API/dev serving lives in `server/`, and regression coverage lives in `tests/` with fixtures under `tests/fixtures/`.
+`source/` is the source of truth. Author skills in `skill/` and keep provider output in `dist/` generated, not hand-edited. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. Runtime detection code ships from `src/`. The website lives in `public/`, local API/dev serving lives in `server/`, and regression coverage lives in `tests/` with fixtures under `tests/fixtures/`.
 
 ## Build, Test, and Development Commands
 
@@ -37,7 +37,7 @@ Use ESM, semicolons, and the existing two-space indentation style in JS, HTML, a
 
 Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
 
-For changes to `source/skills/impeccable/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
+For changes to `skill/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for a Claude-backed one (`tests/live-e2e/agents/llm-agent.mjs`, default Haiku 4.5, override via `IMPECCABLE_E2E_LLM_MODEL`). Requires `ANTHROPIC_API_KEY`; tests skip cleanly when it's unset. This path hits the API — use it for verification, not CI.
 

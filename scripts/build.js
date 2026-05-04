@@ -137,7 +137,7 @@ function validateSkillFrontmatter(skills) {
  * The denylist is the editorial brief in STYLE.md, enforced. Each rule has a
  * rationale that prints with the failure so the next author understands why.
  *
- * Scope: every surface a reader sees. Not source/skills/impeccable/, where
+ * Scope: every surface a reader sees. Not skill/, where
  * LLM-facing reference instructions can use technical phrasings the marketing
  * copy can't.
  *
@@ -246,7 +246,7 @@ function validateProse(rootDir) {
  * Returns the number of occurrences found. Build fails if > 0.
  */
 function validateSkillProse(rootDir) {
-  const target = 'source/skills/impeccable';
+  const target = 'skill';
   const extensions = new Set(['.md']);
   const emDashPatterns = [/—/g, /&mdash;/gi, /&#8212;/gi, /&#x2014;/gi];
   // Tighter than validateProse: only the rules that have no technical reading.
@@ -313,9 +313,9 @@ function validateSkillProse(rootDir) {
   if (fs.existsSync(full)) scan(full, target);
 
   if (errors === 0) {
-    console.log(`✓ Skill prose validator: source/skills/impeccable/ is clean`);
+    console.log(`✓ Skill prose validator: skill/ is clean`);
   } else {
-    console.error(`\n❌ ${errors} prose issue(s) in source/skills/impeccable/. See STYLE.md.`);
+    console.error(`\n❌ ${errors} prose issue(s) in skill/. See STYLE.md.`);
   }
   return errors;
 }
@@ -533,13 +533,13 @@ function generateApiData(buildDir, skills, patterns) {
     return taglineMatch ? taglineMatch[1] : null;
   };
 
-  const metadataPath = path.join(ROOT_DIR, 'source/skills/impeccable/scripts/command-metadata.json');
+  const metadataPath = path.join(ROOT_DIR, 'skill/scripts/command-metadata.json');
   if (!fs.existsSync(metadataPath)) {
     throw new Error(`command-metadata.json is missing at ${metadataPath}. This file is required to generate the commands API.`);
   }
   const impeccable = skills.find(s => s.name === 'impeccable');
   if (!impeccable) {
-    throw new Error('impeccable skill not found in source/skills/. The build system expects a single impeccable skill.');
+    throw new Error('impeccable skill not found at skill/SKILL.md. The build system expects exactly one skill at that path.');
   }
 
   const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));

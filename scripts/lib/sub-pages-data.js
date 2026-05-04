@@ -3,8 +3,8 @@
  * generators.
  *
  * Single source of truth:
- * - source/skills/{id}/SKILL.md          → skill frontmatter + body
- * - source/skills/{id}/reference/*.md     → skill reference files
+ * - skill/SKILL.md                       → skill frontmatter + body
+ * - skill/reference/*.md                  → skill reference files
  * - src/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
  * - site/content/skills/{id}.md           → optional editorial wrapper
  * - site/content/tutorials/{slug}.md       → full tutorial content
@@ -218,7 +218,7 @@ export async function buildSubPageData(rootDir) {
   // We synthesize a virtual skill entry for each sub-command so the sub-page
   // generators can keep rendering per-command pages, index cards, etc.
   const impeccableSkill = rawSkills.find((s) => s.name === 'impeccable');
-  const metadataPath = path.join(rootDir, 'source/skills/impeccable/scripts/command-metadata.json');
+  const metadataPath = path.join(rootDir, 'skill/scripts/command-metadata.json');
   let commandMetadata = {};
   if (fs.existsSync(metadataPath)) {
     commandMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));

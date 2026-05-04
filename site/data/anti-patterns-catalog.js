@@ -15,7 +15,7 @@
  *     cream/paper/ink palette when possible, and sit naturally at
  *     ~100% width by ~120px height.
  *
- *  3. LLM_ONLY_RULES: DON'T lines from source/skills/impeccable/SKILL.md
+ *  3. LLM_ONLY_RULES: DON'T lines from skill/SKILL.md
  *     that do not map to any detection rule. These can only be caught by
  *     the /critique skill's LLM pass. They appear on the /anti-patterns
  *     page alongside detected rules with an 'llm' layer badge.

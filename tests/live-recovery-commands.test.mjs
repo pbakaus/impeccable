@@ -4,12 +4,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { createLiveSessionStore } from '../source/skills/impeccable/scripts/live-session-store.mjs';
+import { createLiveSessionStore } from '../skill/scripts/live-session-store.mjs';
 
 const REPO_ROOT = process.cwd();
-const STATUS_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-status.mjs');
-const RESUME_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-resume.mjs');
-const COMPLETE_SCRIPT = join(REPO_ROOT, 'source/skills/impeccable/scripts/live-complete.mjs');
+const STATUS_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-status.mjs');
+const RESUME_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-resume.mjs');
+const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
 
 function withTempProject(fn) {
   const cwd = mkdtempSync(join(tmpdir(), 'impeccable-live-recovery-'));

@@ -153,84 +153,71 @@ export function readFilesRecursive(dir, fileList = []) {
 }
 
 /**
- * Read and parse all source files (unified skills architecture)
- * All source lives in source/skills/{name}/SKILL.md
- * Returns { skills } where each skill has userInvocable flag
+ * Read and parse the impeccable skill source.
+ * After v3.0 the repo holds exactly one user-invocable skill, flat at skill/.
+ * Returns { skills: [oneEntry] } so downstream array-shaped consumers stay happy.
  */
 export function readSourceFiles(rootDir) {
-  const skillsDir = path.join(rootDir, 'source/skills');
-
+  const skillDir = path.join(rootDir, 'skill');
   const skills = [];
 
-  if (fs.existsSync(skillsDir)) {
-    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+  const skillMdPath = path.join(skillDir, 'SKILL.md');
+  if (!fs.existsSync(skillMdPath)) {
+    return { skills };
+  }
 
-    for (const entry of entries) {
-      const entryPath = path.join(skillsDir, entry.name);
+  const content = fs.readFileSync(skillMdPath, 'utf-8');
+  const { frontmatter, body } = parseFrontmatter(content);
 
-      if (entry.isDirectory()) {
-        // Directory-based skill with potential references
-        const skillMdPath = path.join(entryPath, 'SKILL.md');
-        if (fs.existsSync(skillMdPath)) {
-          const content = fs.readFileSync(skillMdPath, 'utf-8');
-          const { frontmatter, body } = parseFrontmatter(content);
-
-          // Read reference files if they exist
-          const references = [];
-          const referenceDir = path.join(entryPath, 'reference');
-          if (fs.existsSync(referenceDir)) {
-            const refFiles = fs.readdirSync(referenceDir).filter(f => f.endsWith('.md'));
-            for (const refFile of refFiles) {
-              const refPath = path.join(referenceDir, refFile);
-              const refContent = fs.readFileSync(refPath, 'utf-8');
-              references.push({
-                name: path.basename(refFile, '.md'),
-                content: refContent,
-                filePath: refPath
-              });
-            }
-          }
-
-          // Read script files if they exist. PER_PROJECT_SCRIPT_ARTIFACTS
-          // (defined at module top) are excluded from the distributable skill
-          // so the build never bundles one project's state into another's.
-          const scripts = [];
-          const scriptsDir = path.join(entryPath, 'scripts');
-          if (fs.existsSync(scriptsDir)) {
-            const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
-              if (PER_PROJECT_SCRIPT_ARTIFACTS.has(f)) return false;
-              return fs.statSync(path.join(scriptsDir, f)).isFile();
-            });
-            for (const scriptFile of scriptFiles) {
-              const scriptPath = path.join(scriptsDir, scriptFile);
-              const scriptContent = fs.readFileSync(scriptPath, 'utf-8');
-              scripts.push({
-                name: scriptFile,
-                content: scriptContent,
-                filePath: scriptPath
-              });
-            }
-          }
-
-          skills.push({
-            name: frontmatter.name || entry.name,
-            description: frontmatter.description || '',
-            license: frontmatter.license || '',
-            compatibility: frontmatter.compatibility || '',
-            metadata: frontmatter.metadata || null,
-            allowedTools: frontmatter['allowed-tools'] || '',
-            userInvocable: frontmatter['user-invocable'] === true || frontmatter['user-invocable'] === 'true',
-            argumentHint: frontmatter['argument-hint'] || '',
-            context: frontmatter.context || null,
-            body,
-            filePath: skillMdPath,
-            references,
-            scripts
-          });
-        }
-      }
+  const references = [];
+  const referenceDir = path.join(skillDir, 'reference');
+  if (fs.existsSync(referenceDir)) {
+    const refFiles = fs.readdirSync(referenceDir).filter(f => f.endsWith('.md'));
+    for (const refFile of refFiles) {
+      const refPath = path.join(referenceDir, refFile);
+      references.push({
+        name: path.basename(refFile, '.md'),
+        content: fs.readFileSync(refPath, 'utf-8'),
+        filePath: refPath
+      });
     }
   }
+
+  // PER_PROJECT_SCRIPT_ARTIFACTS (defined at module top) are excluded from
+  // the distributable skill so the build never bundles one project's state
+  // into another's.
+  const scripts = [];
+  const scriptsDir = path.join(skillDir, 'scripts');
+  if (fs.existsSync(scriptsDir)) {
+    const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
+      if (PER_PROJECT_SCRIPT_ARTIFACTS.has(f)) return false;
+      return fs.statSync(path.join(scriptsDir, f)).isFile();
+    });
+    for (const scriptFile of scriptFiles) {
+      const scriptPath = path.join(scriptsDir, scriptFile);
+      scripts.push({
+        name: scriptFile,
+        content: fs.readFileSync(scriptPath, 'utf-8'),
+        filePath: scriptPath
+      });
+    }
+  }
+
+  skills.push({
+    name: frontmatter.name || 'impeccable',
+    description: frontmatter.description || '',
+    license: frontmatter.license || '',
+    compatibility: frontmatter.compatibility || '',
+    metadata: frontmatter.metadata || null,
+    allowedTools: frontmatter['allowed-tools'] || '',
+    userInvocable: frontmatter['user-invocable'] === true || frontmatter['user-invocable'] === 'true',
+    argumentHint: frontmatter['argument-hint'] || '',
+    context: frontmatter.context || null,
+    body,
+    filePath: skillMdPath,
+    references,
+    scripts
+  });
 
   return { skills };
 }
@@ -369,7 +356,7 @@ export function readPatterns(_rootDir, _relativePath) {
 
 // Previous SKILL.md parser retained below but disabled; kept as a
 // reference for how prefix-style extraction used to work.
-function _legacyReadPatterns(rootDir, relativePath = 'source/skills/impeccable/SKILL.md') {
+function _legacyReadPatterns(rootDir, relativePath = 'skill/SKILL.md') {
   const skillPath = path.join(rootDir, relativePath);
 
   if (!fs.existsSync(skillPath)) {

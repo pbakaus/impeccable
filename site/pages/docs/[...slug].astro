@@ -8,7 +8,7 @@ import { SKILL_CATEGORIES } from '../../data/sub-pages-data';
 export async function getStaticPaths() {
   const entries = await getCollection('skills');
 
-  const metadataPath = path.join(process.cwd(), 'source/skills/impeccable/scripts/command-metadata.json');
+  const metadataPath = path.join(process.cwd(), 'skill/scripts/command-metadata.json');
   const commandMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
 
   const allCommands = entries.map(e => ({

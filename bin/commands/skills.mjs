@@ -364,7 +364,7 @@ async function install(flags) {
 
   // Clean up deprecated skills from previous versions
   try {
-    const { cleanup } = await import('../../source/skills/impeccable/scripts/cleanup-deprecated.mjs');
+    const { cleanup } = await import('../../skill/scripts/cleanup-deprecated.mjs');
     const result = cleanup(root);
     const total = result.deletedPaths.length + result.removedLockEntries.length;
     if (total > 0) {
@@ -513,7 +513,7 @@ async function update(flags = []) {
 
   // Clean up deprecated skills from previous versions.
   try {
-    const { cleanup } = await import('../../source/skills/impeccable/scripts/cleanup-deprecated.mjs');
+    const { cleanup } = await import('../../skill/scripts/cleanup-deprecated.mjs');
     const root = findProjectRoot();
     const result = cleanup(root);
     const total = result.deletedPaths.length + result.removedLockEntries.length;
@@ -598,7 +598,7 @@ async function update(flags = []) {
 
     // Run cleanup to remove deprecated stubs from the fresh download
     try {
-      const { cleanup: postCleanup } = await import('../../source/skills/impeccable/scripts/cleanup-deprecated.mjs');
+      const { cleanup: postCleanup } = await import('../../skill/scripts/cleanup-deprecated.mjs');
       postCleanup(root);
     } catch {
       // Not available -- skip

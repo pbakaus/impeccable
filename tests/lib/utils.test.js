@@ -375,7 +375,7 @@ describe('readSourceFiles', () => {
     }
   });
 
-  test('should read and parse skill files from directory-based structure', () => {
+  test('should read and parse SKILL.md from skill/', () => {
     const skillContent = `---
 name: test-skill
 description: A test skill
@@ -384,7 +384,7 @@ license: MIT
 
 Skill instructions here.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/test-skill');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -406,7 +406,7 @@ user-invocable: true
 
 Audit the code.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/audit');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -425,7 +425,7 @@ user-invocable: 'true'
 
 Audit the code.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/audit');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -443,7 +443,7 @@ description: Impeccable design skill
 
 Impeccable design instructions.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/impeccable');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -461,41 +461,19 @@ Impeccable design instructions.`;
     expect(refNames).toEqual(['color', 'typography']);
   });
 
-  test('should use filename as name if not in frontmatter', () => {
-    const skillDir = path.join(testRootDir, 'source/skills/my-skill');
+  test('should fall back to "impeccable" when frontmatter has no name', () => {
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), 'Just body, no frontmatter.');
 
     const { skills } = readSourceFiles(testRootDir);
 
     expect(skills).toHaveLength(1);
-    expect(skills[0].name).toBe('my-skill');
+    expect(skills[0].name).toBe('impeccable');
   });
 
-  test('should handle empty source directories', () => {
-    ensureDir(path.join(testRootDir, 'source/skills'));
-
-    const { skills } = readSourceFiles(testRootDir);
-
-    expect(skills).toEqual([]);
-  });
-
-  test('should read multiple skills', () => {
-    const skill1Dir = path.join(testRootDir, 'source/skills/skill1');
-    ensureDir(skill1Dir);
-    fs.writeFileSync(path.join(skill1Dir, 'SKILL.md'), '---\nname: skill1\n---\nSkill1');
-
-    const skill2Dir = path.join(testRootDir, 'source/skills/skill2');
-    ensureDir(skill2Dir);
-    fs.writeFileSync(path.join(skill2Dir, 'SKILL.md'), '---\nname: skill2\n---\nSkill2');
-
-    const { skills } = readSourceFiles(testRootDir);
-
-    expect(skills).toHaveLength(2);
-  });
-
-  test('should ignore non-md files in skill directories', () => {
-    const skillDir = path.join(testRootDir, 'source/skills/test-skill');
+  test('should ignore non-md files in skill/reference', () => {
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: test-skill\n---\nBody');
 
@@ -511,7 +489,7 @@ Impeccable design instructions.`;
     expect(skills[0].references[0].name).toBe('typography');
   });
 
-  test('should handle missing skills directory', () => {
+  test('should handle missing skill directory', () => {
     const { skills } = readSourceFiles(testRootDir);
     expect(skills).toEqual([]);
   });
@@ -528,7 +506,7 @@ allowed-tools: Bash,Edit
 
 Body content.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/test-skill');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -573,7 +551,7 @@ name: impeccable
 **DO**: Use consistent spacing scale.
 **DON'T**: Nest cards inside cards.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/impeccable');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -596,7 +574,7 @@ name: impeccable
 **DO**: Use OKLCH color space.
 **DON'T**: Use pure black.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/impeccable');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 
@@ -606,7 +584,7 @@ name: impeccable
   });
 
   test('should handle missing SKILL.md file', () => {
-    ensureDir(path.join(testRootDir, 'source/skills/impeccable'));
+    ensureDir(path.join(testRootDir, 'skill'));
 
     const { patterns, antipatterns } = readPatterns(testRootDir);
 
@@ -628,7 +606,7 @@ name: impeccable
 ### Color & Contrast
 **DO**: Use tinted neutrals.`;
 
-    const skillDir = path.join(testRootDir, 'source/skills/impeccable');
+    const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
 

@@ -14,7 +14,7 @@ import {
   cleanSkillsLock,
   cleanup,
   loadLock,
-} from '../source/skills/impeccable/scripts/cleanup-deprecated.mjs';
+} from '../skill/scripts/cleanup-deprecated.mjs';
 
 function makeTmpDir() {
   return mkdtempSync(join(tmpdir(), 'impeccable-cleanup-test-'));

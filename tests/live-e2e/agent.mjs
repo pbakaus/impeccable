@@ -8,7 +8,7 @@
  *    agents; only the variant-content production step differs.
  *
  * 2. `createFakeAgent()` — produces canned variants in the EXACT format
- *    `source/skills/impeccable/reference/live.md` describes: a colocated
+ *    `skill/reference/live.md` describes: a colocated
  *    `<style data-impeccable-css="ID">` block with `@scope ([data-impeccable-variant="N"])`
  *    rules, a `data-impeccable-params` JSON manifest covering range + steps + toggle
  *    kinds across the variant set, single top-level element per variant matching

@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir } from '../source/skills/impeccable/scripts/load-context.mjs';
+import { loadContext, resolveContextDir } from '../skill/scripts/load-context.mjs';
 
 let scratch;
 let savedEnv;

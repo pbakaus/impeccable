@@ -2,13 +2,13 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `source/`. The block is also regenerated from `source/skills/impeccable/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
+The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
 
 Same rule for AGENTS.md and every other harness-specific instruction file: treat post-update-cleanup as a no-op in this repo.
 
 ## Architecture (v3.0+)
 
-There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `source/skills/impeccable/`:
+There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `skill/`:
 
 - `SKILL.md` — frontmatter (with the auto-trigger-optimized description and the `allowed-tools` list), shared design laws, and the **Commands** router table.
 - `reference/` — one `<command>.md` per command (`audit.md`, `polish.md`, `critique.md`, etc.) plus the domain reference files (`typography.md`, `color-and-contrast.md`, etc.). When a sub-command is matched, the router loads its reference file.
@@ -57,7 +57,7 @@ Editorial brief is at `STYLE.md` (root). Read it before editing the homepage, su
 
 The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a STYLE.md amendment.
 
-The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `source/skills/impeccable/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
+The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `skill/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
 
 The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. STYLE.md lists them. Use them on every editorial pass.
 
@@ -75,7 +75,7 @@ bun run dev        # Bun dev server at http://localhost:3000
 bun run preview    # Build + Cloudflare Pages local preview
 ```
 
-The dev server runs Astro (`astro dev`). Editing files in `site/content/skills/`, `source/skills/impeccable/`, or `scripts/lib/sub-pages-data.js` requires a **server restart** (not just a browser reload) to see the change. CSS, components, and pages hot-reload fine without a restart.
+The dev server runs Astro (`astro dev`). Editing files in `site/content/skills/`, `skill/`, or `scripts/lib/sub-pages-data.js` requires a **server restart** (not just a browser reload) to see the change. CSS, components, and pages hot-reload fine without a restart.
 
 **Legacy URL redirects** live in `server/index.js` and must stay in sync with `scripts/build.js` `_redirects` generation. Current redirects: `/skills` → `/docs`, `/skills/:id` → `/docs/:id`, `/cheatsheet` → `/docs`, `/gallery` → `/visual-mode#try-it-live`.
 
@@ -89,7 +89,7 @@ bun run deploy     # Build + deploy to Cloudflare Pages
 
 ## Build System
 
-The build system compiles the impeccable skill from `source/` to provider-specific formats in `dist/`:
+The build system compiles the impeccable skill from `skill/` to provider-specific formats in `dist/`:
 
 ```bash
 bun run build      # Build all providers
@@ -106,7 +106,7 @@ Source files use placeholders that get replaced per-provider:
 
 ### Harness output directories are tracked
 
-`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other 8 harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them. Run `bun run build` to refresh them after editing `source/skills/`.
+`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other 8 harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them. Run `bun run build` to refresh them after editing `skill/`.
 
 Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`) ARE gitignored.
 
@@ -137,7 +137,7 @@ IMPECCABLE_E2E_DEBUG=1 bun run test:live-e2e                # dump page DOM + de
 
 **One-time setup**: `npx playwright install chromium` (the suite uses a specific Chromium build keyed to the bundled Playwright version).
 
-**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `source/skills/impeccable/scripts/live-*.{mjs,js}`.
+**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `skill/scripts/live-*.{mjs,js}`.
 
 The agent is pluggable via a one-method interface in `tests/live-e2e/agent.mjs`: `generateVariants(event, context) → { scopedCss, variants[] }`. The default fake agent emits canned variants that exercise all three param kinds (`range`, `steps`, `toggle`). The orchestrator (wrap, write, accept, carbonize) is agent-agnostic.
 
@@ -176,7 +176,7 @@ There are three independently versioned components. Only bump the one(s) that ac
 **Skills** (Claude Code plugin / skill definitions):
 - `.claude-plugin/plugin.json` → `version`
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
-- Bump when: skill content changes (`source/skills/`, reference files, command metadata, etc.)
+- Bump when: skill content changes (`skill/`, reference files, command metadata, etc.)
 
 **Chrome extension**:
 - `extension/manifest.json` → `version`
@@ -210,12 +210,12 @@ If you need to fix release notes after the fact (typo, missing thank-you, format
 
 All commands live under `/impeccable`. To add a new one:
 
-1. Create `source/skills/impeccable/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
-2. Add a row to the **Sub-command reference table** in `source/skills/impeccable/SKILL.md`
+1. Create `skill/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
+2. Add a row to the **Sub-command reference table** in `skill/SKILL.md`
 3. Add an entry to the **Command menu** section in the same file
 4. Add the command name to `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`
-5. Add it to `VALID_COMMANDS` in `source/skills/impeccable/scripts/pin.mjs`
-6. Add its metadata (description + argumentHint) to `source/skills/impeccable/scripts/command-metadata.json`
+5. Add it to `VALID_COMMANDS` in `skill/scripts/pin.mjs`
+6. Add its metadata (description + argumentHint) to `skill/scripts/command-metadata.json`
 7. Add its category to `SKILL_CATEGORIES` in `scripts/lib/sub-pages-data.js`
 8. Add its relationships (leadsTo / pairs / combinesWith) to `COMMAND_RELATIONSHIPS` in the same file
 9. Add the same category entry to `public/js/data.js` `commandCategories` and `commandProcessSteps` (for the homepage carousel)
@@ -257,7 +257,7 @@ Every command should have an editorial file eventually, but the build does not r
 | `src/detect-antipatterns-browser.js` | `bun run build:browser` |
 | `extension/detector/detect.js` + `extension/detector/antipatterns.json` | `bun run build:extension` |
 | `public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
-| `source/skills/impeccable/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
+| `skill/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
 Always run all three builds and the test suite after a rule change:
 
@@ -294,7 +294,7 @@ cd ~/code/impeccable-evals
 bun run serve            # dashboard on http://localhost:8723
 ```
 
-The eval runners read this repo's skill from `../impeccable/source/skills/impeccable/` and staged provider skills from `../impeccable/build/_data/dist/*`. Run `bun run build` in this repo before an eval sweep if you want the Claude/Gemini staged skills to reflect your latest edits.
+The eval runners read this repo's skill from `../impeccable/skill/` and staged provider skills from `../impeccable/build/_data/dist/*`. Run `bun run build` in this repo before an eval sweep if you want the Claude/Gemini staged skills to reflect your latest edits.
 
 ### After structural skill changes, update `inline-skill.ts` in the evals repo
 

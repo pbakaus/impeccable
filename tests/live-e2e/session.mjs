@@ -23,7 +23,7 @@ import { runAgentLoop } from './agent.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
-const SCRIPTS_DIR = join(REPO_ROOT, 'source', 'skills', 'impeccable', 'scripts');
+const SCRIPTS_DIR = join(REPO_ROOT, 'skill', 'scripts');
 const FIXTURES_DIR = join(REPO_ROOT, 'tests', 'framework-fixtures');
 
 export { SCRIPTS_DIR, FIXTURES_DIR, REPO_ROOT };
