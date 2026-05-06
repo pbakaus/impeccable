@@ -1,43 +1,20 @@
 # Craft Flow
 
-Build a feature with impeccable UX and UI quality through a structured process: shape the design, land the visual direction, build real production code, then inspect and improve in-browser until the result meets a high-end studio bar.
+Build a feature with impeccable UX and UI quality: shape the design, land the visual direction, build real production code, inspect and improve in-browser until it meets a high-end studio bar.
 
-## Build Gate
+Before writing code, you need: PRODUCT.md loaded, register identified and the matching reference loaded, and a confirmed design direction for this task (either from `shape` or supplied by the user). PRODUCT.md is project context, not a task-specific brief.
 
-Craft cannot build until all of these are true:
-
-1. PRODUCT context is valid and current.
-2. The shape design brief is explicitly confirmed by the user for this task, unless the user already provided a confirmed brief.
-3. Implementation references from the brief are loaded.
-4. The shape visual probe decision is recorded: generated, skipped with reason, or already resolved.
-5. The north-star mock decision is recorded: generated, skipped with reason, or not applicable.
-
-PRODUCT.md and `teach` answers do **not** satisfy the shape gate. They are project context only. A compact self-authored brief does not satisfy the shape gate either. `shape=pass` requires a separate user response approving the shape brief or an already-confirmed brief supplied by the user.
-
-Invalid image-skip reasons include: "the final implementation will be semantic HTML/CSS/SVG", "the diagram should stay editable", "a raster mock would not be used directly", or "the product is fictional." Generated probes and mocks are direction artifacts; they are not implementation assets.
-
-## Craft Contract
-
-Craft is not a first pass. It is a loop with these required artifacts:
-
-1. Confirmed design brief from `shape`.
-2. Approved visual direction, from generated probes / mocks when image generation is available.
-3. Mock fidelity inventory: the visible ingredients from the approved direction that must survive into code.
-4. Semantic, functional implementation using the project's real stack and conventions.
-5. Browser evidence across relevant viewports.
-6. At least one critique-and-fix pass after the first browser inspection, unless the first pass has no material defects.
-
-Do not let generated mockups replace interface structure, copy, accessibility, responsive behavior, or state design. But do treat the approved mock as a concrete visual contract for composition, hierarchy, density, atmosphere, signature motifs, image needs, and distinctive visual moves. "North star" means "preserve the important visible ingredients in semantic code," not "use it as loose mood."
+Treat any approved visual direction (generated mock or stated reference) as a concrete contract for composition, hierarchy, density, atmosphere, signature motifs, and distinctive visual moves. Don't let mocks replace structure, copy, accessibility, or state design. But if the live result lacks the approved direction's major ingredients, the implementation is wrong.
 
 ## Step 1: Shape the Design
 
-Run /impeccable shape, passing along whatever feature description the user provided.
+Run /impeccable shape, passing along whatever feature description the user provided. Shape is **required** for craft; it is what produces a confirmed direction.
 
-Wait for the design brief to be fully confirmed by the user before proceeding. The brief is your blueprint, and every implementation decision should trace back to it.
+**You must end your response after presenting the shape output and wait for the user.** Do not present a brief or direction statement and then continue to write code in the same response. The user gets to confirm, override, or course-correct. This is non-negotiable: a craft run that skips the user-confirmation pause is broken.
 
-If this craft run resumed after `teach` created PRODUCT.md, run shape now. Do not treat the teach interview, PRODUCT.md, or a summary of project context as a substitute for shape. Shape is task-specific and must cover scope, content/states, visual direction, constraints, anti-goals, probes when applicable, and explicit brief confirmation.
+If the user already supplied a confirmed brief or ran shape separately, use it and skip this step.
 
-If the user has already run /impeccable shape and has a confirmed design brief, skip this step and use the existing brief.
+When the original prompt + PRODUCT.md already answer scope, content, and visual direction with no real ambiguity, the shape output can be **compact** (3-5 bullets stating what you're building and the visual lane, ending with one or two specific questions or "confirm or override"). The full 10-section structured brief is reserved for genuinely ambiguous, multi-screen, or stakeholder-heavy tasks. Don't pad a clear brief into a long one to look thorough; equally, don't skip the pause to look efficient.
 
 ## Step 2: Load References
 
@@ -59,9 +36,9 @@ Before implementation, generate high-fidelity visual comps when all of these are
 
 - The work is **net-new** or visually open-ended enough that composition exploration will improve the build.
 - The brief's scope is **mid-fi, high-fi, or production-ready**.
-- The current harness has **built-in image generation capability** (for example, Codex with a native image tool). Do **not** ask the user to set up external APIs, shell scripts, or one-off tooling just to do this.
+- The current harness gives you native image generation (Codex's `image_gen`, an equivalent MCP tool, or similar). Don't ask the user to set up external APIs, shell scripts, or one-off tooling.
 
-When those conditions are met, this step is mandatory for **both brand and product work** in Codex and any harness with built-in image generation. Use native image generation; in Codex, use the built-in `image_gen` tool via the imagegen skill. If image generation is unavailable, do not ask the user to install APIs or tooling. State in one line that the image step is skipped because the harness lacks native image generation, then proceed.
+When those conditions are met, this step is mandatory for **both brand and product work**. If image generation isn't natively available, skip silently and proceed; don't announce the skip to the user.
 
 Do not skip this step because the eventual UI should be semantic, editable, code-native, responsive, or accessible. Those are implementation requirements, not reasons to avoid visual exploration.
 
@@ -111,27 +88,19 @@ Treat the mock as a **north star**, not a screenshot to trace. Do **not** raster
 
 ## Step 4: Asset Extraction (Need-Gated)
 
-If the chosen direction includes image-native visual ingredients that would materially improve the implementation, generate them as separate assets before building.
+If the approved direction needs raster assets, create them before building. Do not replace required imagery with generic cards, bullets, emoji, fake metrics, decorative CSS panels, or filler copy.
 
-Do not replace required visual content with generic cards, bullets, emoji, fake metrics, decorative CSS panels, or filler copy just because sourcing or generating assets would take another step.
+Use the native asset producer (`impeccable_asset_producer` in Codex, `impeccable-asset-producer` in Claude Code) to create clean assets from the hi-fi mock and crops. If you do not have explicit permission to use agents, stop and ask:
 
-Good candidates:
+```text
+Asset production will work better as a scoped subagent job. Should I spawn the Impeccable asset producer subagent for this step?
+```
 
-- stickers
-- badges
-- seals
-- tickets
-- graphic labels
-- textures
-- abstract objects
-- decorative marks
-- non-semantic scene elements
+Do not skip asset production or silently do it inline. Inline asset production is allowed only if the user declines subagents, the harness cannot spawn the authorized agent, or the user explicitly asks for single-thread mode.
 
-For travel, editorial, portfolio, venue, product showcase, entertainment, education, or any other image-led brand surface, visual assets are usually core content, not decoration. Do not ship abstract CSS panels where the approved mock or subject matter calls for real imagery, generated plates, illustrations, maps, product/object renders, or destination scenes.
+Pass the approved mock, crop/contact-sheet paths, output directory, dimensions/formats, transparency needs, constraints, and avoid list to the asset producer. Attach image generation capability to the spawned agent when the harness supports it; do not load image-generation reference material into the parent thread first.
 
-Do **not** export assets for core UI text, navigation, body copy, or any structure that should stay semantic and editable in code.
-
-Usually **1 to 5** extracted assets is enough. If the design can be built cleanly in HTML/CSS/SVG, prefer that over raster assets. If the mock contains major visual content that cannot be built credibly in code, asset extraction is not optional.
+Keep UI text, navigation, body copy, and structure semantic and editable. Prefer HTML/CSS/SVG/canvas when they can credibly reproduce an ingredient; use real/generated/stock imagery when the mock or subject matter calls for actual visual content.
 
 ## Step 5: Build to Production Quality
 
@@ -155,9 +124,7 @@ Implement the feature following the design brief. Build in passes so structure, 
 
 ## Step 6: Browser-Based Iteration
 
-**This step is critical.** Do not stop after the first implementation pass.
-
-Open the result in a browser. In Codex, use browser-use or equivalent browser automation when available; otherwise use Playwright or ask the user for screenshots. Inspect screenshots, not just DOM or terminal output.
+**This step is critical.** Open the result in a browser and look at it. In Codex, use browser-use or equivalent; otherwise use Playwright or ask the user for screenshots. Inspect screenshots, not just DOM or terminal output.
 
 Detector or QA output is defect evidence only. A clean detector, empty array, or script pass never means the design is strong. Do not cite clean automated checks as proof that the work is finished.
 
@@ -171,11 +138,15 @@ Check the experience at the viewports that matter for the brief. Default minimum
 
 For each viewport, capture or inspect the rendered state and look for visual defects: overlap, clipping, weak hierarchy, off-grid alignment, awkward whitespace, cramped controls, unreadable type, broken imagery, hover-only functionality, layout shift, and text overflow.
 
-For brand-register and long-form surfaces, inspect each major section individually, not only the full page. Full-page screenshots hide spacing, clipping, and cascade defects.
+For brand-register and long-form surfaces, inspect each major section individually, not only the full page. Full-page screenshots hide spacing, clipping, and cascade defects; when something looks off in a full-page thumbnail, take a targeted screenshot of that section to actually see the problem.
 
 ### Critique and fix loop
 
-After the first browser pass, write a short critique for yourself and patch the implementation. Repeat browser inspection after fixes. Continue until no material issues remain against this checklist:
+After the first browser pass, write an honest critique for yourself. If you find material defects, patch them and re-inspect. Continue until no material issues remain against the checklist below.
+
+If the first inspection genuinely finds nothing material (the screenshots match the brief, the checklist is clean), say so and ship. **Do not invent a defect to demonstrate iteration.** A fake fix ("found one issue: form labels could be better; verified labels are correct") is worse than a confident "first pass clean, shipping."
+
+Be ruthlessly honest. Most first passes have real defects; if yours doesn't, that's worth examining (am I looking carefully? did I take a useful screenshot, not just a full-page thumbnail?) but it's not a reason to fabricate work.
 
 1. **Does it match the brief?** Compare the live result against every section of the design brief. Fix discrepancies.
 2. **Does it match the approved mock?** Compare screenshots against the mock fidelity inventory: hero silhouette, major motifs, imagery, nav/CTA, section sequence, density, color/materials, and second-fold substance. Missing major ingredients are P0 defects.

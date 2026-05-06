@@ -16,14 +16,16 @@ This is a required interaction, not optional guidance. Ask these questions in co
 
 ### Interview cadence
 
-Discovery must include at least one user-answer round unless PRODUCT.md, DESIGN.md, or an already-confirmed brief directly answers the needed design inputs. With a sparse prompt, do **not** synthesize a complete brief for confirmation on the first response.
+Discovery includes at least one user-answer round unless PRODUCT.md, DESIGN.md, or an already-confirmed brief directly answers the needed inputs. With a sparse prompt, do **not** synthesize a complete brief for confirmation on the first response.
 
 - Use the harness's structured question tool when one exists. Otherwise, ask directly in chat and stop.
 - Ask **2-3 questions per round**, then wait for answers.
 - Treat PRODUCT.md and DESIGN.md as anchors; they reduce repeated questions but do **not** replace shape for craft. Shape is task-specific.
-- Round 1 should clarify purpose, audience/context, and success or emotional outcome.
-- Round 2 should clarify content/data/states and scope/fidelity.
-- Round 3 should clarify visual direction, constraints, and anti-goals when still unresolved.
+- One round is the default. Add a second only if the first answers leave material gaps. Don't run a second round just to feel thorough.
+- Round 1 should clarify purpose, audience/context, content/scope, and (for brand) visual direction.
+- Round 2, when needed, fills in whatever's still genuinely missing.
+
+**Assert-then-confirm, not menu-with-escape.** When PRODUCT.md and the user's prompt make one option obvious, name it and ask the user to confirm or override. Don't enumerate "Restrained / Committed / Or something else?" as a real choice; "This reads as Restrained, confirm?" beats a four-option menu when the answer is already clear.
 
 ### Purpose & Context
 - What is this feature for? What problem does it solve?
@@ -73,9 +75,9 @@ After the discovery interview, generate a small set of visual direction probes *
 
 - The work is **net-new** or directionally ambiguous enough that visual exploration will clarify the brief.
 - The requested fidelity is **mid-fi, high-fi, or production-ready**. Skip for sketch-only planning.
-- The current harness has **built-in image generation capability** (for example, Codex with a native image tool). Do **not** ask the user to set up external APIs, shell scripts, or one-off tooling just to do this.
+- The current harness gives you native image generation (Codex's `image_gen`, an equivalent MCP tool, or similar). Don't ask the user to install APIs or tooling.
 
-When those conditions are met, this step is mandatory for Codex and any harness with built-in image generation. Use native image generation; in Codex, use the built-in `image_gen` tool via the imagegen skill. If image generation is unavailable, do not ask the user to install APIs or tooling. State in one line that the image step is skipped because the harness lacks native image generation, then proceed.
+When those conditions are met, this step is mandatory. If image generation isn't natively available, skip silently and proceed; don't announce the skip.
 
 Use probes to explore visual lanes, not to replace the brief.
 
@@ -105,11 +107,20 @@ The probes should differ in primary visual direction (hierarchy, topology, densi
 - Do **not** treat generated imagery as final UX specification, final copy, or final accessibility behavior.
 - Do **not** use this step for minor refinements of existing work. It's for shaping a new surface or clarifying a big directional choice.
 
-If image generation is unavailable, or the task doesn't benefit from it, skip this phase only with a one-line reason and proceed directly to the design brief.
+If image generation isn't natively available, skip this phase silently and proceed.
 
 ## Phase 2: Design Brief
 
-After the interview and any required probes, synthesize everything into a structured design brief. Present it to the user for explicit confirmation before considering this command complete. Stop after asking for confirmation; do not proceed to craft or implementation in the same response unless the user has already approved the brief.
+After the interview and any required probes, present a brief and **end your response**. The user must confirm before any implementation runs. Do not present a brief and then continue to code in the same response, even if the brief feels obvious to you. The user's confirmation is the gate.
+
+**Choose the brief shape based on how clear the answers are:**
+
+- **Compact form (3-5 bullets)** when discovery was crisp and the original prompt + PRODUCT.md already pinned scope, content, and direction. State what you're building, the visual lane, and end with one or two specific questions or a clear "confirm or override?" prompt. This is the default for typical craft requests with a clear prompt.
+- **Full structured form (sections below)** when the task is genuinely ambiguous, multi-screen, or when the user asked for shape as a standalone step. Use this when the discipline of structure earns its weight.
+
+Don't pad a clear brief into a long one to look thorough. A 70-line brief restating answers the user just gave is noise, not rigor. Equally, don't skip the confirmation pause to look efficient: the pause is the point.
+
+If the user already said "approved" or "go" during discovery for the *exact direction you'd present*, that counts as confirmation; you may proceed without asking again. But if your brief adds anything the user hasn't seen and approved, you must stop and confirm.
 
 ### Brief Structure
 
@@ -143,10 +154,12 @@ What copy, labels, empty state messages, error messages, and microcopy are neede
 Based on the brief, list which impeccable reference files would be most valuable during implementation (e.g., spatial-design.md for complex layouts, motion-design.md for animated features, interaction-design.md for form-heavy features).
 
 **10. Open Questions**
-Anything unresolved that the implementer should resolve during build.
+Anything genuinely unresolved. Don't list "open questions" you've already recommended a default for; assert the default and move on. If you'd write `Recommend: X` next to a question, just decide X.
 
 ---
 
-STOP and call the AskUserQuestion tool to clarify. Ask for explicit confirmation of the brief before finishing. If the user disagrees with any part, revisit the relevant discovery questions. A shape run is incomplete until the brief is confirmed.
+STOP and call the AskUserQuestion tool to clarify.
+
+If the user disagrees with any part, revisit the relevant discovery questions. A shape run is incomplete until the user confirms direction (or the user already gave a clear go during discovery, which counts).
 
 Once confirmed, the brief is complete. The user can now hand it to /impeccable, or use it to guide any other implementation approach. (If the user wants the full discovery-then-build flow in one step, they should use /impeccable craft instead, which runs this command internally.)
