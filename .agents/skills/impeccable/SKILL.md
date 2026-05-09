@@ -165,6 +165,30 @@ Setup (context gathering, register) is already loaded by then; sub-commands don'
 
 If the first word is `craft`, setup still runs first, but [reference/craft.md](reference/craft.md) owns the rest of the flow. If setup invokes `teach` as a blocker, finish teach, refresh context, then resume the original command and target.
 
+## Examples
+
+Each example shows the user's invocation, what the skill loads, and the expected first move. Targets are optional; without one, the skill operates on whatever surface is in focus.
+
+```
+$impeccable audit blog
+```
+Loads [reference/audit.md](reference/audit.md) plus the brand or product register inferred from PRODUCT.md. First move: run accessibility, performance, and responsive checks on the blog hub and post pages, then list findings ranked by impact.
+
+```
+$impeccable polish settings
+```
+Loads [reference/polish.md](reference/polish.md). First move: walk the settings page top to bottom, flag spacing inconsistencies, weak hierarchy, and any patterns from the absolute bans list above. Apply fixes in place.
+
+```
+$impeccable craft pricing
+```
+Triggers the full shape-then-build flow. Setup runs first; if PRODUCT.md is missing the skill blocks on `teach`. Once setup passes, [reference/craft.md](reference/craft.md) owns the shape brief, image gate, and implementation steps.
+
+```
+$impeccable redo this hero section
+```
+No first-word command match, so the skill applies the shared design laws and the loaded register reference using the full string as context. First move: identify the surface, run the category-reflex check, propose a direction, then implement.
+
 ## Pin / Unpin
 
 **Pin** creates a standalone shortcut so `$<command>` invokes `$impeccable <command>` directly. **Unpin** removes it. The script writes to every harness directory present in the project.
