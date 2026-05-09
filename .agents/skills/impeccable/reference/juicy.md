@@ -674,7 +674,7 @@ export function KanbanCard({ card, isDragging, onDragStart }: Props) {
         bg-white rounded border p-3 mb-2
         cursor-grab active:cursor-grabbing
         select-none
-        transition-[transform,opacity,shadow] duration-150
+        transition-[transform,opacity,box-shadow] duration-150
         ${isDragging
           ? 'opacity-40 scale-95 rotate-1 shadow-lg'
           : 'opacity-100 scale-100 rotate-0 shadow-sm'
