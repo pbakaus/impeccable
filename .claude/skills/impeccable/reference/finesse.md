@@ -391,7 +391,7 @@ If you can't answer 1–3 without guessing, read the component context before ap
 2. **How fast must feedback be?**
    - Press feedback: ≤100ms (user perceives it as simultaneous with tap).
    - Toggle snap: 150ms (spring feel).
-   - Confirmation ripple: 600ms total (user sees result, confirmation appears then fades).
+   - Confirmation ripple: 600ms hold (enter + hold + exit ≈ 1s total).
 
 3. **Is this touch or mouse?**
    - Touch: hover states don't apply. Active states + haptic (where available) do.
@@ -433,7 +433,7 @@ If you can't answer 1–3 without guessing, read the component context before ap
 **Diff commentary**:
 - `transition-all` → `transition-[transform,background-color]` — prevents accidental capture of layout properties (margin, padding, border-radius).
 - `active:scale-[0.97]` — 3% reduction. More = theatrical; less = imperceptible.
-- `duration-100` — micro-interaction. Below 80ms threshold.
+- `duration-100` — micro-interaction. Near the 80ms threshold of perceived simultaneity.
 - `active:bg-blue-700` — color darkens on press, reinforcing press state visually.
 - Reduced-motion: no scale, instant color transition.
 
@@ -452,8 +452,7 @@ If you can't answer 1–3 without guessing, read the component context before ap
 **After** (CSS custom switch):
 ```css
 .switch-thumb {
-  transition: transform 150ms cubic-bezier(0.34, 1.2, 0.64, 1);
-  /* Slight spring overshoot (1.2 > 1.0) — controlled, not bouncy */
+  transition: transform 150ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .switch:checked .switch-thumb {
@@ -505,7 +504,7 @@ If you can't answer 1–3 without guessing, read the component context before ap
 
 **When not**: high-frequency actions (typing completion, filter changes), destructive actions that need a confirmation step.
 
-**Reasoning**: without a ripple, the user doesn't know the action registered. With a ripple, the success state announces itself and fades — 600ms total feels natural.
+**Reasoning**: without a ripple, the user doesn't know the action registered. With a ripple, the success state announces itself and fades — ~1s total (enter + confirm + exit) feels right: long enough to read, short enough not to linger.
 
 **After** (React with a temporary state):
 ```tsx
@@ -514,7 +513,7 @@ const [copied, setCopied] = useState(false);
 const handleCopy = () => {
   navigator.clipboard.writeText(value);
   setCopied(true);
-  setTimeout(() => setCopied(false), 1500);
+  setTimeout(() => setCopied(false), 600);
 };
 
 <button onClick={handleCopy} className="relative overflow-hidden">
@@ -744,15 +743,36 @@ function tweenNumber(from: number, to: number, el: HTMLElement, duration = 600) 
 
 **After**:
 ```tsx
-// Items exit with stagger, then empty state enters
+// import { AnimatePresence, motion } from 'framer-motion';
+// import type { CSSProperties } from 'react';
+
+// Items exit with stagger, then empty state enters.
+// ListItem and EmptyState must be motion.* components (or wrapped in motion.div)
+// with exit props so AnimatePresence can animate them out.
+// CSS-only alternative: apply the stagger pattern from Family 2 and v-if the empty state.
 const isEmpty = items.length === 0;
 
 <AnimatePresence>
   {items.map((item, i) => (
-    <ListItem key={item.id} style={{ '--i': i } as CSSProperties} />
+    <motion.li
+      key={item.id}
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0, transition: { delay: i * 0.03 } }}
+      exit={{ opacity: 0, y: -8 }}
+    >
+      <ListItem data={item} />
+    </motion.li>
   ))}
   {isEmpty && (
-    <EmptyState className="animate-fade-in motion-reduce:animate-none" />
+    <motion.div
+      key="empty"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="motion-reduce:transition-none"
+    >
+      <EmptyState />
+    </motion.div>
   )}
 </AnimatePresence>
 ```
@@ -862,6 +882,7 @@ P3: banner entrance is instant (appears with no enter)
 ### After finesse
 
 ```tsx
+// import { Transition } from '@headlessui/react'; // or use <Transition> from your framework
 // NotificationBanner.tsx — after finesse
 export function NotificationBanner({ message, type, isVisible, onClose }: Props) {
   return (

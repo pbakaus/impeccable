@@ -308,6 +308,7 @@ function animateReorder(listEl: HTMLElement) {
 
 **After**:
 ```tsx
+// import { useScroll, useTransform, motion } from 'framer-motion';
 const { scrollY } = useScroll();
 const headerHeight = useTransform(scrollY, [0, 80], ['5rem', '3rem']);
 const shadowOpacity = useTransform(scrollY, [0, 40], [0, 1]);
@@ -566,9 +567,9 @@ class SoundManager {
   private enabled: boolean;
 
   constructor() {
-    // Respect OS sound setting
-    this.enabled = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Note: no direct OS "mute" API — rely on app-level toggle
+    // prefers-reduced-motion ≠ mute. Sound and motion are independent preferences.
+    // Use an app-level flag; give users a dedicated sound toggle, not a motion toggle proxy.
+    this.enabled = localStorage.getItem('ui-sounds') !== 'disabled';
   }
 
   private getContext() {
@@ -578,7 +579,8 @@ class SoundManager {
     return this.context;
   }
 
-  play(buffer: AudioBuffer, volume = 0.15) {
+  // volume: linear gain — 0.08 ≈ -22 dBFS (within -18 to -24 dBFS target)
+  play(buffer: AudioBuffer, volume = 0.08) {
     if (!this.enabled) return;
     const ctx = this.getContext();
     const source = ctx.createBufferSource();
@@ -610,14 +612,15 @@ export const sounds = new SoundManager();
 **Volume target**: -18 to -24 dBFS. This is quiet — background noise level of a quiet room, not a notification.
 
 ```ts
-// Generate a micro-sound with Web Audio API (no file needed)
+// Buffer samples are normalized (peak ~1.0); volume is controlled by play()'s gain node.
+// Do NOT multiply by a gain factor here — that compounds with play()'s volume param.
 function createClick(ctx: AudioContext, freq = 800, dur = 0.015): AudioBuffer {
   const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
     const t = i / ctx.sampleRate;
     const env = Math.exp(-t * 300); // fast decay
-    data[i] = Math.sin(2 * Math.PI * freq * t) * env * 0.15;
+    data[i] = Math.sin(2 * Math.PI * freq * t) * env;
   }
   return buf;
 }
@@ -693,7 +696,10 @@ export function KanbanCard({ card, isDragging, onDragStart }: Props) {
 }
 
 // KanbanColumn.tsx — after juicy
-export function KanbanColumn({ cards, isDragOver, isInvalidTarget }: Props) {
+// isDragOver and isInvalidTarget must be wired to your DnD library's drag events.
+// dnd-kit: use useDroppable() + useDndMonitor(); react-dnd: use useDrop().
+// This example shows the visual logic; wire the boolean props to your library.
+export function KanbanColumn({ cards, activeCardId, isDragOver, isInvalidTarget }: Props) {
   return (
     <div
       className={`
@@ -705,12 +711,13 @@ export function KanbanColumn({ cards, isDragOver, isInvalidTarget }: Props) {
         motion-reduce:transition-none
       `}
     >
-      {cards.map((card, i) => (
+      {cards.map((card) => (
         <KanbanCard
           key={card.id}
           card={card}
           data-id={card.id}
-          isDragging={false}
+          isDragging={activeCardId === card.id} // wire to DnD library active item id
+          onDragStart={/* wire to library's drag-start handler */ undefined}
         />
       ))}
     </div>
