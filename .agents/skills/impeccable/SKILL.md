@@ -148,6 +148,8 @@ If someone could look at this interface and say "AI made that" without doubt, it
 | `layout [target]` | Enhance | Fix spacing, rhythm, and visual hierarchy | [reference/layout.md](reference/layout.md) |
 | `delight [target]` | Enhance | Add personality and memorable touches | [reference/delight.md](reference/delight.md) |
 | `overdrive [target]` | Enhance | Push past conventional limits | [reference/overdrive.md](reference/overdrive.md) |
+| `finesse [target]` | Enhance | Refine timing, easing, and choreography of existing interactions | [reference/finesse.md](reference/finesse.md) |
+| `juicy [target]` | Enhance | Add game-feel: cursor, drag, scroll, awareness, and optional sound | [reference/juicy.md](reference/juicy.md) |
 | `clarify [target]` | Fix | Improve UX copy, labels, and error messages | [reference/clarify.md](reference/clarify.md) |
 | `adapt [target]` | Fix | Adapt for different devices and screen sizes | [reference/adapt.md](reference/adapt.md) |
 | `optimize [target]` | Fix | Diagnose and fix UI performance | [reference/optimize.md](reference/optimize.md) |

@@ -90,5 +90,13 @@
   "typeset": {
     "description": "Improves typography by fixing font choices, hierarchy, sizing, weight, and readability so text feels intentional. Use when the user mentions fonts, type, readability, text hierarchy, sizing looks off, or wants more polished, intentional typography.",
     "argumentHint": "[target]"
+  },
+  "finesse": {
+    "description": "Refine the timing, easing, and choreography of existing interactions — not adding new motion, but correcting bad defaults, asymmetric enter/exit curves, missing press feedback, abrupt show/hide, and unguarded prefers-reduced-motion. Use when interactions feel functional but not intentional, or when you want the kodawari pass on a component or page.",
+    "argumentHint": "[target]"
+  },
+  "juicy": {
+    "description": "Add game-feel layers to interactions that already have correct finesse: cursor affordances (grab, resize, copy), drag choreography (custom ghost, drop zone feedback, FLIP reorder), scroll snap, theme crossfade, brand ::selection color, and optional micro-sounds for consumer SaaS contexts. Run finesse before juicy.",
+    "argumentHint": "[target]"
   }
 }

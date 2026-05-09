@@ -31,6 +31,7 @@ const VALID_COMMANDS = [
   'critique', 'audit',
   'polish', 'bolder', 'quieter', 'distill', 'harden', 'onboard', 'live',
   'animate', 'colorize', 'typeset', 'layout', 'delight', 'overdrive',
+  'finesse', 'juicy',
   'clarify', 'adapt', 'optimize',
 ];
 
