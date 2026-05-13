@@ -44,6 +44,11 @@ Thumbs.db
 .impeccable/live/annotations/
 .impeccable/live/cache/
 .impeccable/history/
+# Per-run critique snapshots are local artifacts. ignore.md (also under
+# this dir) carries deferrals the user may want to share, so it's
+# explicitly re-included below.
+.impeccable/critique/
+!.impeccable/critique/ignore.md
 
 # Legacy live mode session file + annotation screenshots
 .impeccable-live.json
