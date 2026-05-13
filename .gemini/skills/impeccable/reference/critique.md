@@ -1,5 +1,27 @@
 > **Additional context needed**: what the interface is trying to accomplish.
 
+### Setup: Resolve Target and Load Ignore List
+
+Before gathering assessments, do two small bookkeeping steps. They cost almost nothing and they're what makes critique iterative across runs.
+
+1. **Resolve the primary artifact.** The user's phrasing ("the homepage", "the pricing flow") is not stable enough to track across runs. Resolve it to a concrete file path or URL: the same one you'd already need to scan code or open in a browser. Examples:
+   - "the homepage" → `site/pages/index.astro` (or `http://localhost:3000/` if you're inspecting live)
+   - "the settings modal" → the primary component file (e.g., `src/components/Settings.tsx`)
+   - "this page" → the URL or the page's source file
+   Prefer the source file path over the dev-server URL when both exist; ports drift between runs (`bun dev` vs `bun preview`), file paths don't.
+
+2. **Compute the slug.** Run:
+   ```bash
+   node .gemini/skills/impeccable/scripts/critique-storage.mjs slug "<resolved-path-or-url>"
+   ```
+   Keep the printed slug. It identifies this target's stream across runs. If the command exits non-zero ("no stable slug for input"), skip persistence for this run and tell the user; the trend won't update but the critique still goes ahead.
+
+3. **Read the ignore list** at `.impeccable/critique/ignore.md` if it exists:
+   ```bash
+   node .gemini/skills/impeccable/scripts/critique-storage.mjs ignore
+   ```
+   Each non-empty, non-comment line is something the user has marked as "do not re-raise" (deferred tradeoffs, designer-intended deviations, detector false-positives the user accepts). When a finding's text matches a line here (case-insensitive substring against rule name or snippet), **drop it silently**. Do not mention it in the report. This is the ONLY input critique consumes from prior runs; anchoring on prior findings would defeat the point of independent assessment.
+
 ### Gather Assessments
 
 Launch two independent assessments. **Neither may see the other's output.** This isolation is what makes the combined score honest. Running both in one head silently anchors them to each other; do not shortcut it for cost, speed, or context-size reasons.
@@ -163,6 +185,36 @@ Provocative questions that might unlock better solutions:
 - Give concrete suggestions. Cut "consider exploring..." entirely.
 - Prioritize ruthlessly. If everything is important, nothing is.
 - Don't soften criticism. Developers need honest feedback to ship great design.
+
+### Persist the Snapshot
+
+Once the report above is finalized, write it to `.impeccable/critique/` so the user can refer back, and so `/impeccable polish` can pick up the priority issues without a copy-paste.
+
+Skip this step if the Setup slug was null (vague or root-level target).
+
+1. **Write the body to a temp file** so you can pipe it to the helper. Use the full report (heuristic table, anti-patterns verdict, priority issues, persona red flags) but stop before the "Ask the User" / "Recommended Actions" sections that come later.
+
+2. **Pass the structured metadata** through `IMPECCABLE_CRITIQUE_META` (JSON), then run the write command:
+   ```bash
+   IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"p0_count":<n>,"p1_count":<n>}' \
+     node .gemini/skills/impeccable/scripts/critique-storage.mjs write <slug> <body-file>
+   ```
+   The helper prints the absolute path it wrote.
+
+3. **Read the trend** for context:
+   ```bash
+   node .gemini/skills/impeccable/scripts/critique-storage.mjs trend <slug> 5
+   ```
+   This returns a JSON array of the last 5 frontmatter entries (including the one you just wrote).
+
+4. **Append a single line to the user-visible output**, after the report and before the questions:
+
+   > **Trend for `<slug>` (last 5 runs): 24 → 28 → 32 → 29 → 32**
+   > Wrote `.impeccable/critique/<filename>`.
+
+   If this is the first run for the slug, the trend is just one score; say so: "First run for this target, no trend yet."
+
+This is fire-and-forget. Do not show the user the helper's JSON output; only the human-readable trend line and the written path. Failures here should not block the rest of the flow; print the error and move on.
 
 ### Ask the User
 
