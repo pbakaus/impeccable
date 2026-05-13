@@ -3,6 +3,7 @@ import path from 'node:path';
 
 export const IMPECCABLE_DIR = '.impeccable';
 export const LIVE_DIR = 'live';
+export const CRITIQUE_DIR = 'critique';
 
 export function getImpeccableDir(cwd = process.cwd()) {
   return path.join(cwd, IMPECCABLE_DIR);
@@ -94,6 +95,14 @@ export function getLegacyLiveSessionsDir(cwd = process.cwd()) {
 
 export function getLiveAnnotationsDir(cwd = process.cwd()) {
   return path.join(getLiveDir(cwd), 'annotations');
+}
+
+export function getCritiqueDir(cwd = process.cwd()) {
+  return path.join(getImpeccableDir(cwd), CRITIQUE_DIR);
+}
+
+export function getCritiqueIgnorePath(cwd = process.cwd()) {
+  return path.join(getCritiqueDir(cwd), 'ignore.md');
 }
 
 export function getLegacyLiveAnnotationsDir(cwd = process.cwd()) {
