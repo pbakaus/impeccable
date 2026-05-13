@@ -77,7 +77,7 @@ After the discovery interview, generate a small set of visual direction probes *
 - The requested fidelity is **mid-fi, high-fi, or production-ready**. Skip for sketch-only planning.
 - The current harness gives you native image generation (Codex's `image_gen`, an equivalent MCP tool, or similar). Don't ask the user to install APIs or tooling.
 
-When those conditions are met, this step is mandatory. If image generation isn't natively available, skip silently and proceed; don't announce the skip.
+When those conditions are met, this step is mandatory. If image generation isn't natively available, do not ask the user to install APIs or tooling. State in one line that the image step is skipped because the harness lacks native image generation, then proceed. The one-line announcement is required, not optional; it forces a conscious decision instead of letting the step quietly evaporate.
 
 Use probes to explore visual lanes, not to replace the brief.
 
@@ -107,7 +107,7 @@ The probes should differ in primary visual direction (hierarchy, topology, densi
 - Do **not** treat generated imagery as final UX specification, final copy, or final accessibility behavior.
 - Do **not** use this step for minor refinements of existing work. It's for shaping a new surface or clarifying a big directional choice.
 
-If image generation isn't natively available, skip this phase silently and proceed.
+If image generation isn't natively available, announce the skip in one line and proceed to the design brief.
 
 ## Phase 2: Design Brief
 
@@ -120,7 +120,7 @@ After the interview and any required probes, present a brief and **end your resp
 
 Don't pad a clear brief into a long one to look thorough. A 70-line brief restating answers the user just gave is noise, not rigor. Equally, don't skip the confirmation pause to look efficient: the pause is the point.
 
-If the user already said "approved" or "go" during discovery for the *exact direction you'd present*, that counts as confirmation; you may proceed without asking again. But if your brief adds anything the user hasn't seen and approved, you must stop and confirm.
+Present the brief, then **stop and wait for explicit confirmation**. You are not the judge of whether the user already approved. Even when the brief feels obviously right, ask once and wait. The pause is what separates shape from premature implementation.
 
 ### Brief Structure
 
@@ -158,8 +158,8 @@ Anything genuinely unresolved. Don't list "open questions" you've already recomm
 
 ---
 
-STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer.
+STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer. Ask for explicit confirmation of the brief before finishing.
 
-If the user disagrees with any part, revisit the relevant discovery questions. A shape run is incomplete until the user confirms direction (or the user already gave a clear go during discovery, which counts).
+If the user disagrees with any part, revisit the relevant discovery questions. A shape run is incomplete until the user confirms direction.
 
 Once confirmed, the brief is complete. The user can now hand it to $impeccable, or use it to guide any other implementation approach. (If the user wants the full discovery-then-build flow in one step, they should use $impeccable craft instead, which runs this command internally.)
