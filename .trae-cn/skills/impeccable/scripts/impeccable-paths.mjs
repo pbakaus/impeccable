@@ -101,10 +101,6 @@ export function getCritiqueDir(cwd = process.cwd()) {
   return path.join(getImpeccableDir(cwd), CRITIQUE_DIR);
 }
 
-export function getCritiqueIgnorePath(cwd = process.cwd()) {
-  return path.join(getCritiqueDir(cwd), 'ignore.md');
-}
-
 export function getLegacyLiveAnnotationsDir(cwd = process.cwd()) {
   return path.join(cwd, '.impeccable-live', 'annotations');
 }

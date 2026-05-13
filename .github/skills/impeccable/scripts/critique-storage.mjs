@@ -18,12 +18,16 @@
  *   node critique-storage.mjs write <slug> <snapshot-body-file>
  *   node critique-storage.mjs latest <slug>
  *   node critique-storage.mjs trend <slug> [limit]
- *   node critique-storage.mjs ignore
+ *
+ * Note: there is intentionally no `ignore` subcommand. ignore.md is a plain
+ * markdown file; the model reads it directly with its file-read tool. This
+ * helper only exists for operations the model can't trivially do inline
+ * (normalizing paths, generating filenames, globbing + parsing frontmatter).
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { getCritiqueDir, getCritiqueIgnorePath } from './impeccable-paths.mjs';
+import { getCritiqueDir } from './impeccable-paths.mjs';
 
 const SLUG_MAX = 50;
 
@@ -169,21 +173,6 @@ export function readTrend(slug, { limit = 5, cwd = process.cwd() } = {}) {
   return slice.map((file) => parseFrontmatter(fs.readFileSync(file, 'utf-8')));
 }
 
-/**
- * Read .impeccable/critique/ignore.md, return non-empty non-comment lines.
- * Empty array when the file doesn't exist. This is the ONLY input critique
- * consumes from prior state — anchoring on prior findings is the whole
- * thing this design avoids.
- */
-export function readIgnoreList({ cwd = process.cwd() } = {}) {
-  const p = getCritiqueIgnorePath(cwd);
-  if (!fs.existsSync(p)) return [];
-  return fs.readFileSync(p, 'utf-8')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'));
-}
-
 // ---- CLI ---------------------------------------------------------------
 
 function main(argv) {
@@ -222,13 +211,8 @@ function main(argv) {
       process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
       return;
     }
-    case 'ignore': {
-      const lines = readIgnoreList();
-      process.stdout.write(lines.join('\n') + (lines.length ? '\n' : ''));
-      return;
-    }
     default:
-      process.stderr.write('usage: critique-storage.mjs <slug|write|latest|trend|ignore> [args]\n');
+      process.stderr.write('usage: critique-storage.mjs <slug|write|latest|trend> [args]\n');
       process.exit(1);
   }
 }

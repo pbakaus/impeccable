@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -14,7 +14,6 @@ import {
   writeSnapshot,
   readLatestSnapshot,
   readTrend,
-  readIgnoreList,
   nowFilenameStamp,
 } from '../skill/scripts/critique-storage.mjs';
 
@@ -151,19 +150,3 @@ describe('readTrend', () => {
   });
 });
 
-describe('readIgnoreList', () => {
-  it('returns [] when ignore.md does not exist', () => {
-    assert.deepEqual(readIgnoreList({ cwd }), []);
-  });
-
-  it('skips blank lines and # comments', () => {
-    const dir = join(cwd, '.impeccable/critique');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'ignore.md'),
-      '# header comment\n\nicon-tile-stack on features\n# another comment\nlow-contrast on hero CTA\n\n');
-    assert.deepEqual(readIgnoreList({ cwd }), [
-      'icon-tile-stack on features',
-      'low-contrast on hero CTA',
-    ]);
-  });
-});
