@@ -4,6 +4,28 @@ Perform a meticulous final pass to catch all the small details that separate goo
 
 Detector and automated QA output are defect evidence only. A clean script result is never proof that the design is strong; gather browser evidence and inspect the real interaction path.
 
+## Setup: Check for Prior Critique
+
+Polish is usually invoked after `/impeccable critique`. When it is, the critique's P0 and P1 findings are the right backlog; don't re-derive them.
+
+1. **Resolve the target** the same way critique did: a concrete file path or URL, not the user's phrasing. Prefer source paths over dev-server URLs (ports drift between runs).
+
+2. **Compute the slug** for that target:
+   ```bash
+   node .opencode/skills/impeccable/scripts/critique-storage.mjs slug "<resolved-path-or-url>"
+   ```
+
+3. **Read the latest matching snapshot:**
+   ```bash
+   node .opencode/skills/impeccable/scripts/critique-storage.mjs latest <slug>
+   ```
+   Exit code 0 with body = found. Exit code 2 = no snapshot for this slug.
+
+   - **Found**: parse out the P0 and P1 priority issues from the report. Those are your polish backlog. Treat them as the user's stated priorities; address them before sweeping the broader checklist below. Mention the snapshot path to the user so they know what you're working from.
+   - **Not found**: proceed without prior context. Polish from a clean slate using the dimensions below. Do not load critique snapshots for *other* targets; cross-target context is pollution, not signal.
+
+This is the only command that auto-reads prior critique. Atomic moves (`bolder`, `quieter`, `clarify`, `animate`, etc.) do not, because they act on a specific selection where the page-level critique would be noise.
+
 ## Design System Discovery
 
 Aligning the feature to the design system is **not optional**. Polish without alignment is decoration on top of drift, and it makes the next person's job harder. Discovery comes before any other polish work.
