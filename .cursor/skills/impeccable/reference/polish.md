@@ -4,28 +4,6 @@ Perform a meticulous final pass to catch all the small details that separate goo
 
 Detector and automated QA output are defect evidence only. A clean script result is never proof that the design is strong; gather browser evidence and inspect the real interaction path.
 
-## Setup: Check for Prior Critique
-
-Polish is usually invoked after `/impeccable critique`. When it is, the critique's P0 and P1 findings are the right backlog; don't re-derive them.
-
-1. **Resolve the target** the same way critique did: a concrete file path or URL, not the user's phrasing. Prefer source paths over dev-server URLs (ports drift between runs).
-
-2. **Compute the slug** for that target:
-   ```bash
-   node .cursor/skills/impeccable/scripts/critique-storage.mjs slug "<resolved-path-or-url>"
-   ```
-
-3. **Read the latest matching snapshot:**
-   ```bash
-   node .cursor/skills/impeccable/scripts/critique-storage.mjs latest <slug>
-   ```
-   Exit code 0 with body = found. Exit code 2 = no snapshot for this slug.
-
-   - **Found**: parse out the P0 and P1 priority issues from the report. Those are your polish backlog. Treat them as the user's stated priorities; address them before sweeping the broader checklist below. Mention the snapshot path to the user so they know what you're working from.
-   - **Not found**: proceed without prior context. Polish from a clean slate using the dimensions below. Do not load critique snapshots for *other* targets; cross-target context is pollution, not signal.
-
-This is the only command that auto-reads prior critique. Atomic moves (`bolder`, `quieter`, `clarify`, `animate`, etc.) do not, because they act on a specific selection where the page-level critique would be noise.
-
 ## Design System Discovery
 
 Aligning the feature to the design system is **not optional**. Polish without alignment is decoration on top of drift, and it makes the next person's job harder. Discovery comes before any other polish work.
@@ -57,7 +35,14 @@ Understand the current state and goals before touching anything:
    - Loading and transition smoothness
    - Information architecture and flow drift (does this feature reveal complexity the way neighboring features do?)
 
-4. **Triage cosmetic vs functional**: Classify each issue as **cosmetic** (looks off, doesn't impede the user) or **functional** (breaks, blocks, or confuses the experience). When polish time is tight, functional issues ship first; cosmetic ones can land in a follow-up. Quality should be consistent; never perfect one corner while leaving another rough.
+4. **Pull in any prior critique** (optional signal): If `/impeccable critique` has been run on the same target, its priority issues are a useful prior for what to address first. Resolve the target to a file path or URL, then:
+   ```bash
+   slug=$(node .cursor/skills/impeccable/scripts/critique-storage.mjs slug "<resolved>")
+   node .cursor/skills/impeccable/scripts/critique-storage.mjs latest "$slug"
+   ```
+   Exit 0 with body = found; fold the P0/P1 items into your polish list and mention the snapshot path so the user sees what you read. Exit 2 = no snapshot, continue without it. The critique is one input among many. Do your own pass either way.
+
+5. **Triage cosmetic vs functional**: Classify each issue as **cosmetic** (looks off, doesn't impede the user) or **functional** (breaks, blocks, or confuses the experience). When polish time is tight, functional issues ship first; cosmetic ones can land in a follow-up. Quality should be consistent; never perfect one corner while leaving another rough.
 
 **CRITICAL**: Polish is the last step, not the first. Don't polish work that's not functionally complete.
 
