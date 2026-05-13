@@ -1185,57 +1185,10 @@ function parseRadiusToPx(value, widthPx) {
   return num;
 }
 
-// jsdom from 29.0.2 onward returns "" for the `border-radius` shorthand
-// in computed style and "0" for longhand reads when the source rule used
-// the shorthand. The rule engine relied on parseFloat(style.borderRadius)
-// to identify circular avatars (border-radius >= width/2) and rounded
-// cards (border-radius > 0); both checks broke silently. This helper
-// recovers the radius via a chain of fallbacks. Browsers resolve the
-// shorthand correctly and exit on the first line.
 function resolveBorderRadiusPx(el, style, widthPx, win) {
   const fromComputed = parseRadiusToPx(style.borderRadius, widthPx);
   if (fromComputed !== null) return fromComputed;
-
-  if (IS_BROWSER || !win) return 0;
-
-  const fromLonghand = parseRadiusToPx(style.borderTopLeftRadius, widthPx);
-  if (fromLonghand !== null && fromLonghand > 0) return fromLonghand;
-
-  const fromInlineProp = parseRadiusToPx(el.style?.borderRadius, widthPx);
-  if (fromInlineProp !== null) return fromInlineProp;
-
-  const rawStyle = el.getAttribute?.('style') || '';
-  const inlineMatch = rawStyle.match(/border-radius\s*:\s*([^;]+)/i);
-  if (inlineMatch) {
-    const fromRaw = parseRadiusToPx(inlineMatch[1].trim(), widthPx);
-    if (fromRaw !== null) return fromRaw;
-  }
-
-  // Walk every stylesheet looking for matching rules. Take the maximum
-  // pixel value across all matches so a circle declaration overridden by
-  // a more specific rounded-square selector still registers as a circle
-  // for the exclusion check (better to under-flag than to false-positive
-  // on round avatars).
-  let max = 0;
-  const sheets = win.document?.styleSheets;
-  if (sheets) {
-    for (const sheet of sheets) {
-      let rules;
-      try { rules = sheet.cssRules || []; } catch { continue; }
-      for (const rule of rules) {
-        if (!rule.style || !rule.selectorText) continue;
-        let matches = false;
-        try { matches = el.matches(rule.selectorText); } catch { continue; }
-        if (!matches) continue;
-        const ruleValue = rule.style.borderRadius
-          || (rule.style.getPropertyValue && rule.style.getPropertyValue('border-radius'))
-          || rule.style.borderTopLeftRadius;
-        const px = parseRadiusToPx(ruleValue, widthPx);
-        if (px !== null && px > max) max = px;
-      }
-    }
-  }
-  return max;
+  return 0;
 }
 
 // ─── Section 5: Element Adapters ────────────────────────────────────────────

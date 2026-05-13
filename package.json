@@ -62,7 +62,7 @@
     "og-image": "bun run scripts/generate-og-image.js"
   },
   "dependencies": {
-    "jsdom": "29.0.0",
+    "jsdom": "29.1.1",
     "marked": "^16.4.2"
   },
   "optionalDependencies": {
