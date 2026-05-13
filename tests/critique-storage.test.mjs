@@ -115,6 +115,27 @@ describe('writeSnapshot + readLatestSnapshot', () => {
     assert.equal(readLatestSnapshot('index-astro', { cwd }), null);
   });
 
+  it('caller-supplied meta cannot override computed timestamp or slug', () => {
+    // Defends against a corrupt IMPECCABLE_CRITIQUE_META blob (parsed from
+    // an env var) silently rewriting fields that must agree with the
+    // filename. Otherwise readTrend would attribute scores to the wrong
+    // timestamps with no error.
+    const out = writeSnapshot({
+      slug: 'index-astro',
+      meta: { timestamp: 'NOT_A_REAL_STAMP', slug: 'somewhere-else', total_score: 50 },
+      body: 'b',
+      cwd,
+      now: new Date('2026-05-12T18:30:00Z'),
+    });
+    const latest = readLatestSnapshot('index-astro', { cwd });
+    assert.equal(latest.meta.slug, 'index-astro');
+    assert.equal(latest.meta.timestamp, '2026-05-12T18-30-00Z');
+    // The legit meta field still lands.
+    assert.equal(latest.meta.total_score, 50);
+    // The filename matches the computed slug.
+    assert.ok(out.endsWith('2026-05-12T18-30-00Z__index-astro.md'));
+  });
+
   it('quotes values containing : or # to keep parsing simple', () => {
     writeSnapshot({
       slug: 'x',

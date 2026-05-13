@@ -101,7 +101,11 @@ export function writeSnapshot({ slug, meta, body, cwd = process.cwd(), now = new
   fs.mkdirSync(dir, { recursive: true });
   const timestamp = nowFilenameStamp(now);
   const filePath = path.join(dir, `${timestamp}__${slug}.md`);
-  const front = serializeFrontmatter({ timestamp, slug, ...meta });
+  // Spread `meta` first so internally computed `timestamp` and `slug`
+  // always win. Otherwise a caller-supplied meta blob (parsed from the
+  // IMPECCABLE_CRITIQUE_META env var) could clobber them, leaving the
+  // filename in disagreement with its frontmatter and corrupting trends.
+  const front = serializeFrontmatter({ ...meta, timestamp, slug });
   fs.writeFileSync(filePath, `${front}\n${body.trim()}\n`, 'utf-8');
   return filePath;
 }
