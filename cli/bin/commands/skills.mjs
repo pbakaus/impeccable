@@ -336,7 +336,12 @@ async function install(flags) {
 
   console.log('Installing impeccable skills via npx skills...\n');
   try {
-    execSync(`npx skills add pbakaus/impeccable${yes ? ' -y' : ''}`, { stdio: 'inherit' });
+    // --copy forces npx skills to install each provider's variant separately
+    // instead of symlinking .claude/skills/ to .agents/skills/. The two
+    // directories have meaningfully different per-provider content (frontmatter,
+    // command prefix, paths), and the default symlink also fails silently when
+    // .claude/ doesn't exist yet or on Windows without elevated privileges (#140).
+    execSync(`npx skills add pbakaus/impeccable --copy${yes ? ' -y' : ''}`, { stdio: 'inherit' });
   } catch (e) {
     process.exit(e.status ?? 1);
   }
