@@ -17,6 +17,7 @@
  *   <script src="detect-antipatterns-browser.js"></script>
  *   Re-scan: window.impeccableScan()
  *   Re-scan with async visual contrast: window.impeccableScan({ visualContrast: true })
+ *   Include offscreen visual sampling: window.impeccableScan({ visualContrast: true, visualContrastScrollOffscreen: true })
  *
  * Exit codes: 0 = clean, 2 = findings
  */
@@ -3661,6 +3662,13 @@ if (IS_BROWSER) {
 
   function visualContrastOptions(options = {}) {
     const config = window.__IMPECCABLE_CONFIG__ || {};
+    const scrollOffscreen = typeof options.scrollOffscreen === 'boolean'
+      ? options.scrollOffscreen
+      : typeof options.visualContrastScrollOffscreen === 'boolean'
+        ? options.visualContrastScrollOffscreen
+        : typeof config.visualContrastScrollOffscreen === 'boolean'
+          ? config.visualContrastScrollOffscreen
+          : false;
     return {
       ...options,
       maxCandidates: Number.isFinite(options.visualContrastMaxCandidates)
@@ -3670,6 +3678,7 @@ if (IS_BROWSER) {
           : Number.isFinite(config.visualContrastMaxCandidates)
             ? config.visualContrastMaxCandidates
             : undefined,
+      scrollOffscreen,
     };
   }
 
@@ -5273,6 +5282,7 @@ async function runVisualContrastFallback(page, serializedGroups, options, profil
   const maxCandidates = Number.isFinite(options?.visualContrastMaxCandidates)
     ? options.visualContrastMaxCandidates
     : 12;
+  const scrollOffscreen = options?.visualContrastScrollOffscreen !== false;
   const existingLowContrastSelectors = new Set(
     serializedGroups
       .filter(group => group.findings?.some(f => f.type === 'low-contrast'))
@@ -5289,10 +5299,10 @@ async function runVisualContrastFallback(page, serializedGroups, options, profil
       ruleId: 'browser-fallback',
       target,
     }, async () => {
-      browserAnalyses = await page.evaluate(async ({ maxCandidates }) => {
+      browserAnalyses = await page.evaluate(async ({ maxCandidates, scrollOffscreen }) => {
         if (typeof window.impeccableAnalyzeVisualContrast !== 'function') return [];
-        return window.impeccableAnalyzeVisualContrast({ maxCandidates });
-      }, { maxCandidates });
+        return window.impeccableAnalyzeVisualContrast({ maxCandidates, scrollOffscreen });
+      }, { maxCandidates, scrollOffscreen });
       return browserAnalyses
         .filter(result => result.finding && !existingLowContrastSelectors.has(result.selector))
         .map(result => result.finding);

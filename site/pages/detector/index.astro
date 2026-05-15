@@ -689,7 +689,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         const visualAnalyses = useVisualPipeline && typeof win.impeccableGetLastVisualContrastAnalyses === 'function'
           ? win.impeccableGetLastVisualContrastAnalyses()
           : (typeof win.impeccableAnalyzeVisualContrast === 'function'
-              ? await win.impeccableAnalyzeVisualContrast({ maxCandidates: 99 })
+              ? await win.impeccableAnalyzeVisualContrast({ maxCandidates: 99, scrollOffscreen: false })
               : []);
         const visualElapsed = useVisualPipeline ? elapsed : performance.now() - visualStarted;
         const visualCandidates = visualAnalyses.length > 0

@@ -208,7 +208,7 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
-  it('browser API: visual contrast scan decorates through the regular overlay pipeline', async () => {
+  it('browser API: visual contrast scan decorates visible findings without scrolling by default', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({
       headless: true,
@@ -222,10 +222,17 @@ describe('detectUrl — browser-only fixtures', () => {
       await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
       await page.evaluate(browserScript);
       const result = await page.evaluate(async () => {
+        let scrollEvents = 0;
+        let maxScrollY = window.scrollY;
+        window.addEventListener('scroll', () => {
+          scrollEvents += 1;
+          maxScrollY = Math.max(maxScrollY, window.scrollY);
+        }, { passive: true });
         const groups = await window.impeccableScan({
           visualContrast: true,
           visualContrastMaxCandidates: 20,
         });
+        await new Promise(resolve => setTimeout(resolve, 50));
         return {
           groups: groups.map(group => ({
             text: group.el.textContent || '',
@@ -234,16 +241,52 @@ describe('detectUrl — browser-only fixtures', () => {
           overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
           labels: document.querySelectorAll('.impeccable-label').length,
           analyses: window.impeccableGetLastVisualContrastAnalyses().filter(item => item.status === 'fail').length,
+          scrollEvents,
+          maxScrollY,
+          finalScrollY: window.scrollY,
         };
       });
       const visualGroups = result.groups.filter(group =>
         group.types.includes('low-contrast') &&
         /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text)/i.test(group.text)
       );
-      assert.equal(result.analyses, 4);
-      assert.equal(visualGroups.length, 4, `expected 4 visual groups, got: ${JSON.stringify(result)}`);
-      assert.ok(result.overlays >= 4, `expected regular overlays for visual findings, got: ${JSON.stringify(result)}`);
-      assert.ok(result.labels >= 4, `expected regular labels for visual findings, got: ${JSON.stringify(result)}`);
+      assert.equal(result.analyses, 3, `expected 3 viewport visual failures, got: ${JSON.stringify(result)}`);
+      assert.equal(visualGroups.length, 3, `expected 3 viewport visual groups, got: ${JSON.stringify(result)}`);
+      assert.ok(result.overlays >= 3, `expected regular overlays for visible visual findings, got: ${JSON.stringify(result)}`);
+      assert.ok(result.labels >= 3, `expected regular labels for visible visual findings, got: ${JSON.stringify(result)}`);
+      assert.equal(result.maxScrollY, 0, `visual scan should not scroll the page by default: ${JSON.stringify(result)}`);
+      assert.equal(result.finalScrollY, 0, `visual scan should preserve scroll by default: ${JSON.stringify(result)}`);
+
+      const offscreenResult = await page.evaluate(async () => {
+        window.scrollTo(0, 0);
+        let maxScrollY = window.scrollY;
+        window.addEventListener('scroll', () => {
+          maxScrollY = Math.max(maxScrollY, window.scrollY);
+        }, { passive: true });
+        const groups = await window.impeccableScan({
+          visualContrast: true,
+          visualContrastMaxCandidates: 20,
+          visualContrastScrollOffscreen: true,
+        });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        return {
+          groups: groups.map(group => ({
+            text: group.el.textContent || '',
+            types: group.findings.map(finding => finding.type || finding.id),
+          })),
+          analyses: window.impeccableGetLastVisualContrastAnalyses().filter(item => item.status === 'fail').length,
+          maxScrollY,
+          finalScrollY: window.scrollY,
+        };
+      });
+      const offscreenVisualGroups = offscreenResult.groups.filter(group =>
+        group.types.includes('low-contrast') &&
+        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text)/i.test(group.text)
+      );
+      assert.equal(offscreenResult.analyses, 4, `expected 4 opt-in visual failures, got: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenVisualGroups.length, 4, `expected 4 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
+      assert.ok(offscreenResult.maxScrollY > 0, `offscreen opt-in should be allowed to scroll: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenResult.finalScrollY, 0, `offscreen opt-in should restore scroll: ${JSON.stringify(offscreenResult)}`);
     } finally {
       await browser.close().catch(() => {});
     }
