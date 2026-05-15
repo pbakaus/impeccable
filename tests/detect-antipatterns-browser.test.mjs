@@ -113,7 +113,7 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(edges.length, 3, `expected 3 body-text-viewport-edge findings, got ${edges.length}: ${JSON.stringify(edges.map(e => e.snippet))}`);
   });
 
-  it('visual contrast: pixel fallback catches low contrast on image backgrounds', async () => {
+  it('visual contrast: browser fallback catches low contrast on image backgrounds', async () => {
     const analyticOnly = await detectUrl(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, {
       waitUntil: 'load',
       visualContrast: false,
@@ -129,22 +129,22 @@ describe('detectUrl — browser-only fixtures', () => {
       visualContrast: true,
       visualContrastMaxCandidates: 20,
     });
-    const pixelFindings = f.filter(r =>
+    const visualFindings = f.filter(r =>
       r.antipattern === 'low-contrast' &&
-      /pixel contrast/i.test(r.snippet || '')
+      /(?:browser|pixel) contrast/i.test(r.snippet || '')
     );
     assert.equal(
-      pixelFindings.length,
+      visualFindings.length,
       4,
-      `expected 4 pixel contrast findings, got ${pixelFindings.length}: ${JSON.stringify(pixelFindings.map(r => r.snippet))}`,
+      `expected 4 visual contrast findings, got ${visualFindings.length}: ${JSON.stringify(visualFindings.map(r => r.snippet))}`,
     );
     assert.ok(
       f.some(r =>
         r.antipattern === 'low-contrast' &&
-        /pixel contrast/i.test(r.snippet || '') &&
+        /(?:browser|pixel) contrast/i.test(r.snippet || '') &&
         /White text on light image/i.test(r.snippet || '')
       ),
-      `expected pixel contrast finding for light image background, got: ${JSON.stringify(f.map(r => r.snippet))}`,
+      `expected visual contrast finding for light image background, got: ${JSON.stringify(f.map(r => r.snippet))}`,
     );
     assert.ok(
       f.some(r => r.antipattern === 'low-contrast' && /Dark text on dark image/i.test(r.snippet || '')),
@@ -168,6 +168,44 @@ describe('detectUrl — browser-only fixtures', () => {
       false,
       'light image with dark text should keep enough contrast',
     );
+  });
+
+  it('browser API: visual contrast fallback resolves readable image backgrounds without overlays', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        const before = document.querySelectorAll('.impeccable-overlay, .impeccable-label, .impeccable-banner').length;
+        const analyses = await window.impeccableAnalyzeVisualContrast({ maxCandidates: 20 });
+        const after = document.querySelectorAll('.impeccable-overlay, .impeccable-label, .impeccable-banner').length;
+        return {
+          before,
+          after,
+          failed: analyses.filter(item => item.status === 'fail').map(item => item.finding?.snippet || ''),
+          passed: analyses.filter(item => item.status === 'pass').map(item => item.text || ''),
+          unresolved: analyses.filter(item => item.status === 'unresolved').map(item => item.reason || ''),
+        };
+      });
+      assert.equal(result.before, 0);
+      assert.equal(result.after, 0);
+      assert.equal(result.failed.length, 4, `expected 4 browser visual failures, got: ${JSON.stringify(result)}`);
+      assert.ok(result.failed.some(snippet => /White text on light image/i.test(snippet)));
+      assert.ok(result.failed.some(snippet => /Dark text on dark image/i.test(snippet)));
+      assert.ok(result.failed.every(snippet => /browser contrast/i.test(snippet)));
+      assert.ok(result.passed.some(text => /White text on dark image/i.test(text)));
+      assert.ok(result.passed.some(text => /Dark text on light image/i.test(text)));
+    } finally {
+      await browser.close().catch(() => {});
+    }
   });
 
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {

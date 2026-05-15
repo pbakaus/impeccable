@@ -579,17 +579,38 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         const started = performance.now();
         const groups = win.impeccableDetect({ decorate: false, serialize: true });
         const elapsed = performance.now() - started;
-        const visualCandidates = typeof win.impeccableCollectVisualContrastCandidates === 'function'
-          ? win.impeccableCollectVisualContrastCandidates({ maxCandidates: 99 })
+        const visualStarted = performance.now();
+        const visualAnalyses = typeof win.impeccableAnalyzeVisualContrast === 'function'
+          ? await win.impeccableAnalyzeVisualContrast({ maxCandidates: 99 })
           : [];
-        const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0);
+        const visualElapsed = performance.now() - visualStarted;
+        const visualCandidates = visualAnalyses.length > 0
+          ? visualAnalyses
+          : (typeof win.impeccableCollectVisualContrastCandidates === 'function'
+              ? win.impeccableCollectVisualContrastCandidates({ maxCandidates: 99 })
+              : []);
+        const visualFailures = visualAnalyses.filter(result => result.status === 'fail').length;
+        const visualPasses = visualAnalyses.filter(result => result.status === 'pass').length;
+        const visualUnresolved = visualAnalyses.filter(result => result.status === 'unresolved').length;
+        const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0) + visualFailures;
         const ruleRows = countBrowserRules(groups);
+        if (visualUnresolved > 0) {
+          ruleRows.unshift({ ruleId: 'visual-contrast-unresolved', count: visualUnresolved });
+        }
+        if (visualPasses > 0) {
+          ruleRows.unshift({ ruleId: 'visual-contrast-pass', count: visualPasses });
+        }
+        if (visualFailures > 0) {
+          ruleRows.unshift({ ruleId: 'low-contrast:visual', count: visualFailures });
+        }
         if (visualCandidates.length > 0) {
           ruleRows.unshift({ ruleId: 'visual-contrast-candidate', count: visualCandidates.length });
         }
         browserMsEl.textContent = formatMs(elapsed);
         browserFindingsEl.textContent = String(count);
-        browserVisualCandidatesEl.textContent = String(visualCandidates.length);
+        browserVisualCandidatesEl.textContent = visualAnalyses.length > 0
+          ? `${visualCandidates.length} (${visualFailures} fail, ${visualPasses} pass, ${visualUnresolved} unresolved, ${formatMs(visualElapsed)})`
+          : String(visualCandidates.length);
         renderPills(browserRulesEl, ruleRows, 'No browser findings');
       } catch (err) {
         browserMsEl.textContent = 'unavailable';

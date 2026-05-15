@@ -3034,6 +3034,485 @@ if (IS_BROWSER) {
     return candidates;
   }
 
+  const visualContrastImageCache = new Map();
+  const visualContrastRasterCache = new WeakMap();
+
+  function clampByte(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+  }
+
+  function blendRgba(fg, bg) {
+    if (!fg) return bg || null;
+    if (!bg || fg.a == null || fg.a >= 0.999) {
+      return { r: clampByte(fg.r), g: clampByte(fg.g), b: clampByte(fg.b), a: fg.a == null ? 1 : fg.a };
+    }
+    const alpha = Math.max(0, Math.min(1, fg.a));
+    return {
+      r: clampByte(fg.r * alpha + bg.r * (1 - alpha)),
+      g: clampByte(fg.g * alpha + bg.g * (1 - alpha)),
+      b: clampByte(fg.b * alpha + bg.b * (1 - alpha)),
+      a: 1,
+    };
+  }
+
+  function pickWorstContrastColor(textColor, colors) {
+    const usable = (colors || []).filter(Boolean);
+    if (!usable.length) return null;
+    let worst = usable[0];
+    let worstRatio = contrastRatio(textColor, worst);
+    for (const color of usable.slice(1)) {
+      const ratio = contrastRatio(textColor, color);
+      if (ratio < worstRatio) {
+        worst = color;
+        worstRatio = ratio;
+      }
+    }
+    return worst;
+  }
+
+  function firstCssUrl(value) {
+    const match = String(value || '').match(/url\((?:"([^"]+)"|'([^']+)'|([^)]*))\)/i);
+    if (!match) return '';
+    return (match[1] || match[2] || match[3] || '').trim();
+  }
+
+  function getLayerValue(value, index = 0) {
+    return String(value || '').split(',')[index]?.trim() || '';
+  }
+
+  function parsePositionToken(token, container, painted) {
+    if (!token || token === 'center') return (container - painted) / 2;
+    if (token === 'left' || token === 'top') return 0;
+    if (token === 'right' || token === 'bottom') return container - painted;
+    if (/%$/.test(token)) {
+      const pct = parseFloat(token) / 100;
+      return (container - painted) * pct;
+    }
+    if (/px$/.test(token)) return parseFloat(token) || 0;
+    return (container - painted) / 2;
+  }
+
+  function resolvePaintedImageRect(containerRect, image, sizeValue, positionValue) {
+    const intrinsicWidth = image.naturalWidth || image.videoWidth || image.width || 1;
+    const intrinsicHeight = image.naturalHeight || image.videoHeight || image.height || 1;
+    let paintedWidth = intrinsicWidth;
+    let paintedHeight = intrinsicHeight;
+    const size = String(sizeValue || 'auto').trim();
+
+    if (size === 'cover' || size === 'contain') {
+      const scale = size === 'cover'
+        ? Math.max(containerRect.width / intrinsicWidth, containerRect.height / intrinsicHeight)
+        : Math.min(containerRect.width / intrinsicWidth, containerRect.height / intrinsicHeight);
+      paintedWidth = intrinsicWidth * scale;
+      paintedHeight = intrinsicHeight * scale;
+    } else if (size && size !== 'auto') {
+      const parts = size.split(/\s+/);
+      const widthToken = parts[0];
+      const heightToken = parts[1] || 'auto';
+      if (/%$/.test(widthToken)) paintedWidth = containerRect.width * (parseFloat(widthToken) / 100);
+      else if (/px$/.test(widthToken)) paintedWidth = parseFloat(widthToken) || paintedWidth;
+      if (heightToken === 'auto') paintedHeight = paintedWidth * (intrinsicHeight / intrinsicWidth);
+      else if (/%$/.test(heightToken)) paintedHeight = containerRect.height * (parseFloat(heightToken) / 100);
+      else if (/px$/.test(heightToken)) paintedHeight = parseFloat(heightToken) || paintedHeight;
+    }
+
+    const tokens = String(positionValue || '50% 50%').trim().split(/\s+/);
+    const positionX = parsePositionToken(tokens[0], containerRect.width, paintedWidth);
+    const positionY = parsePositionToken(tokens[1] || tokens[0], containerRect.height, paintedHeight);
+    return {
+      left: containerRect.left + positionX,
+      top: containerRect.top + positionY,
+      width: paintedWidth,
+      height: paintedHeight,
+      intrinsicWidth,
+      intrinsicHeight,
+    };
+  }
+
+  function parseObjectPosition(positionValue) {
+    const tokens = String(positionValue || '50% 50%').trim().split(/\s+/);
+    return [tokens[0] || '50%', tokens[1] || tokens[0] || '50%'];
+  }
+
+  function resolveObjectImageRect(containerRect, image, style) {
+    const intrinsicWidth = image.naturalWidth || image.videoWidth || image.width || 1;
+    const intrinsicHeight = image.naturalHeight || image.videoHeight || image.height || 1;
+    const fit = style.objectFit || 'fill';
+    let paintedWidth = containerRect.width;
+    let paintedHeight = containerRect.height;
+    if (fit === 'contain' || fit === 'cover') {
+      const scale = fit === 'cover'
+        ? Math.max(containerRect.width / intrinsicWidth, containerRect.height / intrinsicHeight)
+        : Math.min(containerRect.width / intrinsicWidth, containerRect.height / intrinsicHeight);
+      paintedWidth = intrinsicWidth * scale;
+      paintedHeight = intrinsicHeight * scale;
+    } else if (fit === 'none') {
+      paintedWidth = intrinsicWidth;
+      paintedHeight = intrinsicHeight;
+    } else if (fit === 'scale-down') {
+      const containScale = Math.min(containerRect.width / intrinsicWidth, containerRect.height / intrinsicHeight, 1);
+      paintedWidth = intrinsicWidth * containScale;
+      paintedHeight = intrinsicHeight * containScale;
+    }
+    const [xToken, yToken] = parseObjectPosition(style.objectPosition);
+    return {
+      left: containerRect.left + parsePositionToken(xToken, containerRect.width, paintedWidth),
+      top: containerRect.top + parsePositionToken(yToken, containerRect.height, paintedHeight),
+      width: paintedWidth,
+      height: paintedHeight,
+      intrinsicWidth,
+      intrinsicHeight,
+    };
+  }
+
+  function pointToImageSource(point, paintedRect) {
+    if (
+      point.x < paintedRect.left ||
+      point.y < paintedRect.top ||
+      point.x > paintedRect.left + paintedRect.width ||
+      point.y > paintedRect.top + paintedRect.height
+    ) {
+      return null;
+    }
+    return {
+      x: Math.max(0, Math.min(paintedRect.intrinsicWidth - 1, ((point.x - paintedRect.left) / paintedRect.width) * paintedRect.intrinsicWidth)),
+      y: Math.max(0, Math.min(paintedRect.intrinsicHeight - 1, ((point.y - paintedRect.top) / paintedRect.height) * paintedRect.intrinsicHeight)),
+    };
+  }
+
+  async function loadVisualContrastImage(src) {
+    if (!src) return null;
+    if (visualContrastImageCache.has(src)) return visualContrastImageCache.get(src);
+    const promise = new Promise(resolve => {
+      const img = new Image();
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), 800);
+      try {
+        const absolute = new URL(src, location.href);
+        if (absolute.origin !== location.origin && absolute.protocol !== 'data:' && absolute.protocol !== 'blob:') {
+          img.crossOrigin = 'anonymous';
+        }
+      } catch {
+        // Let the browser resolve unusual URLs itself.
+      }
+      img.onload = () => finish(img);
+      img.onerror = () => finish(null);
+      img.src = src;
+    });
+    visualContrastImageCache.set(src, promise);
+    return promise;
+  }
+
+  function sampleDrawablePixel(drawable, sourcePoint) {
+    if (visualContrastRasterCache.has(drawable)) {
+      const cached = visualContrastRasterCache.get(drawable);
+      if (!cached || !cached.ctx) return { status: 'unresolved', reason: cached?.reason || 'image sample failed' };
+      try {
+        const x = Math.max(0, Math.min(cached.width - 1, Math.floor(sourcePoint.x * cached.scaleX)));
+        const y = Math.max(0, Math.min(cached.height - 1, Math.floor(sourcePoint.y * cached.scaleY)));
+        const data = cached.ctx.getImageData(x, y, 1, 1).data;
+        return {
+          status: 'sampled',
+          color: { r: data[0], g: data[1], b: data[2], a: data[3] / 255 },
+        };
+      } catch (err) {
+        return {
+          status: 'unresolved',
+          reason: /taint|cross-origin|Security/i.test(err?.message || '') ? 'tainted image' : 'image sample failed',
+        };
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    const intrinsicWidth = drawable.naturalWidth || drawable.videoWidth || drawable.width || 1;
+    const intrinsicHeight = drawable.naturalHeight || drawable.videoHeight || drawable.height || 1;
+    const maxRasterSide = 640;
+    const scale = Math.min(1, maxRasterSide / Math.max(intrinsicWidth, intrinsicHeight));
+    canvas.width = Math.max(1, Math.round(intrinsicWidth * scale));
+    canvas.height = Math.max(1, Math.round(intrinsicHeight * scale));
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return { status: 'unresolved', reason: 'canvas unavailable' };
+    try {
+      ctx.drawImage(drawable, 0, 0, canvas.width, canvas.height);
+      const cached = {
+        ctx,
+        width: canvas.width,
+        height: canvas.height,
+        scaleX: canvas.width / intrinsicWidth,
+        scaleY: canvas.height / intrinsicHeight,
+      };
+      visualContrastRasterCache.set(drawable, cached);
+      const x = Math.max(0, Math.min(cached.width - 1, Math.floor(sourcePoint.x * cached.scaleX)));
+      const y = Math.max(0, Math.min(cached.height - 1, Math.floor(sourcePoint.y * cached.scaleY)));
+      const data = ctx.getImageData(x, y, 1, 1).data;
+      return {
+        status: 'sampled',
+        color: { r: data[0], g: data[1], b: data[2], a: data[3] / 255 },
+      };
+    } catch (err) {
+      const reason = /taint|cross-origin|Security/i.test(err?.message || '') ? 'tainted image' : 'image sample failed';
+      visualContrastRasterCache.set(drawable, { ctx: null, reason });
+      return {
+        status: 'unresolved',
+        reason,
+      };
+    }
+  }
+
+  async function sampleCssBackground(el, style, point, textColor) {
+    const rect = el.getBoundingClientRect();
+    const bgImage = style.backgroundImage || '';
+    if (bgImage && bgImage !== 'none') {
+      if (/gradient/i.test(bgImage)) {
+        const color = pickWorstContrastColor(textColor, parseGradientColors(bgImage));
+        if (color) return { status: 'sampled', color, method: 'analytic-gradient' };
+      }
+      if (/url\s*\(/i.test(bgImage)) {
+        const img = await loadVisualContrastImage(firstCssUrl(bgImage));
+        if (!img) return { status: 'unresolved', reason: 'image unavailable' };
+        const paintedRect = resolvePaintedImageRect(
+          rect,
+          img,
+          getLayerValue(style.backgroundSize) || 'auto',
+          getLayerValue(style.backgroundPosition) || '50% 50%',
+        );
+        const sourcePoint = pointToImageSource(point, paintedRect);
+        if (!sourcePoint) return { status: 'unresolved', reason: 'point outside background image' };
+        const sample = sampleDrawablePixel(img, sourcePoint);
+        if (sample.status === 'sampled') return { ...sample, method: 'canvas-background-image' };
+        return sample;
+      }
+    }
+    const bg = parseRgb(style.backgroundColor);
+    if (bg && bg.a > 0.05) return { status: 'sampled', color: bg, method: 'solid-background' };
+    return { status: 'unresolved', reason: 'no readable background' };
+  }
+
+  async function sampleImageElement(img, point) {
+    const rect = img.getBoundingClientRect();
+    const style = getComputedStyle(img);
+    const paintedRect = resolveObjectImageRect(rect, img, style);
+    const sourcePoint = pointToImageSource(point, paintedRect);
+    if (!sourcePoint) return { status: 'unresolved', reason: 'point outside image' };
+    const sample = sampleDrawablePixel(img, sourcePoint);
+    if (sample.status === 'sampled') return { ...sample, method: 'canvas-img-underlay' };
+
+    if (img.currentSrc || img.src) {
+      const loaded = await loadVisualContrastImage(img.currentSrc || img.src);
+      if (loaded) {
+        const loadedRect = { ...paintedRect, intrinsicWidth: loaded.naturalWidth || loaded.width || paintedRect.intrinsicWidth, intrinsicHeight: loaded.naturalHeight || loaded.height || paintedRect.intrinsicHeight };
+        const loadedPoint = pointToImageSource(point, loadedRect);
+        if (loadedPoint) {
+          const loadedSample = sampleDrawablePixel(loaded, loadedPoint);
+          if (loadedSample.status === 'sampled') return { ...loadedSample, method: 'canvas-img-underlay' };
+        }
+      }
+    }
+    return sample;
+  }
+
+  function textSamplePoints(rect) {
+    const insetX = Math.min(12, Math.max(1, rect.width * 0.12));
+    const insetY = Math.min(8, Math.max(1, rect.height * 0.22));
+    const xs = rect.width < 28
+      ? [rect.left + rect.width / 2]
+      : [rect.left + insetX, rect.left + rect.width / 2, rect.right - insetX];
+    const ys = rect.height < 22
+      ? [rect.top + rect.height / 2]
+      : [rect.top + insetY, rect.top + rect.height / 2, rect.bottom - insetY];
+    const points = [];
+    for (const y of ys) {
+      for (const x of xs) {
+        if (x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight) points.push({ x, y });
+      }
+    }
+    return points;
+  }
+
+  async function sampleVisualBackgroundAtPoint(el, point, textColor, depth = 0) {
+    if (depth > 8) {
+      return { status: 'unresolved', reason: 'background stack too deep' };
+    }
+    const stack = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(point.x, point.y)
+      : [];
+    const selfIndex = stack.findIndex(node => node === el || el.contains(node));
+    const nodes = selfIndex >= 0 ? stack.slice(selfIndex) : [el, ...stack];
+    const unresolved = [];
+
+    for (const node of nodes) {
+      if (!node || node.nodeType !== 1) continue;
+      if (node.closest?.('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip')) continue;
+      const tag = node.tagName?.toLowerCase();
+      if (tag === 'img') {
+        const sample = await sampleImageElement(node, point);
+        if (sample.status === 'sampled') return sample;
+        unresolved.push(sample.reason);
+        continue;
+      }
+      if (tag === 'canvas' || tag === 'video') {
+        const rect = node.getBoundingClientRect();
+        const sourcePoint = pointToImageSource(point, {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          intrinsicWidth: node.width || node.videoWidth || rect.width,
+          intrinsicHeight: node.height || node.videoHeight || rect.height,
+        });
+        if (sourcePoint) {
+          const sample = sampleDrawablePixel(node, sourcePoint);
+          if (sample.status === 'sampled') return { ...sample, method: `canvas-${tag}-underlay` };
+          unresolved.push(sample.reason);
+        }
+        continue;
+      }
+      const style = getComputedStyle(node);
+      const sample = await sampleCssBackground(node, style, point, textColor);
+      if (sample.status === 'sampled') {
+        if (!sample.color || sample.color.a == null || sample.color.a >= 0.95) return sample;
+        const under = await sampleVisualBackgroundAtPoint(node.parentElement || document.body, point, textColor, depth + 1);
+        if (under.status === 'sampled') {
+          return {
+            status: 'sampled',
+            color: blendRgba(sample.color, under.color),
+            method: `${sample.method}+alpha`,
+          };
+        }
+        return sample;
+      }
+      unresolved.push(sample.reason);
+    }
+
+    return {
+      status: 'unresolved',
+      reason: [...new Set(unresolved.filter(Boolean))].slice(0, 3).join(', ') || 'no readable visual background',
+    };
+  }
+
+  async function analyzeVisualContrastCandidate(candidate) {
+    let el;
+    try {
+      el = document.querySelector(candidate.selector);
+    } catch {
+      return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'stale selector' };
+    }
+    if (!el) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'missing element' };
+
+    const blockingReason = (candidate.reasons || []).find(reason =>
+      reason === 'background-clip text' ||
+      reason === 'blend mode' ||
+      reason === 'filter' ||
+      reason === 'backdrop filter' ||
+      reason === 'opacity stack' ||
+      reason === 'text shadow'
+    );
+    if (blockingReason) {
+      return { ...candidate, status: 'unresolved', confidence: 'none', reason: `${blockingReason} needs screenshot pixels` };
+    }
+
+    const style = getComputedStyle(el);
+    const textColor = parseRgb(style.color) || candidate.textColor;
+    if (!textColor) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'unreadable text color' };
+
+    const rect = getDirectTextRect(el) || el.getBoundingClientRect();
+    if (!rect || rect.width < 4 || rect.height < 4) {
+      return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'missing text rect' };
+    }
+
+    const points = textSamplePoints(rect);
+    if (points.length === 0) {
+      return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'text outside viewport' };
+    }
+
+    const ratios = [];
+    const methods = new Set();
+    const unresolved = [];
+    for (const point of points) {
+      const sample = await sampleVisualBackgroundAtPoint(el, point, textColor);
+      if (sample.status !== 'sampled' || !sample.color) {
+        unresolved.push(sample.reason);
+        continue;
+      }
+      const fg = blendRgba(textColor, sample.color);
+      ratios.push(contrastRatio(fg, sample.color));
+      if (sample.method) methods.add(sample.method);
+    }
+
+    if (ratios.length < Math.min(3, points.length)) {
+      return {
+        ...candidate,
+        status: 'unresolved',
+        confidence: 'none',
+        samples: ratios.length,
+        reason: [...new Set(unresolved.filter(Boolean))].slice(0, 3).join(', ') || 'not enough readable samples',
+      };
+    }
+
+    ratios.sort((a, b) => a - b);
+    const pick = pct => ratios[Math.min(ratios.length - 1, Math.max(0, Math.floor((pct / 100) * ratios.length)))];
+    const measuredRatio = pick(10);
+    const medianRatio = pick(50);
+    const status = measuredRatio < candidate.threshold ? 'fail' : 'pass';
+    const method = [...methods].sort().join(', ') || 'browser-visual';
+    const textLabel = candidate.text ? ` "${candidate.text}"` : '';
+    const detail = `browser contrast ${measuredRatio.toFixed(1)}:1 median ${medianRatio.toFixed(1)}:1 (need ${candidate.threshold}:1) via ${method}${textLabel}`;
+    return {
+      ...candidate,
+      status,
+      confidence: method.includes('canvas-') ? 'high' : 'medium',
+      method,
+      ratio: measuredRatio,
+      medianRatio,
+      samples: ratios.length,
+      finding: status === 'fail' ? { id: 'low-contrast', snippet: detail } : null,
+    };
+  }
+
+  function waitForVisualPaint() {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
+  async function analyzeVisualContrast(options = {}) {
+    const candidates = collectVisualContrastCandidates(options);
+    const results = [];
+    const shouldScrollOffscreen = options.scrollOffscreen !== false;
+    const restoreScroll = { x: window.scrollX, y: window.scrollY };
+    for (const candidate of candidates) {
+      if (shouldScrollOffscreen && (window.scrollX !== restoreScroll.x || window.scrollY !== restoreScroll.y)) {
+        window.scrollTo(restoreScroll.x, restoreScroll.y);
+        await waitForVisualPaint();
+      }
+      let result = await analyzeVisualContrastCandidate(candidate);
+      if (shouldScrollOffscreen && result.status === 'unresolved' && result.reason === 'text outside viewport') {
+        let el = null;
+        try {
+          el = document.querySelector(candidate.selector);
+        } catch {
+          el = null;
+        }
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+          await waitForVisualPaint();
+          result = await analyzeVisualContrastCandidate(candidate);
+        }
+      }
+      results.push(result);
+    }
+    if (shouldScrollOffscreen && (window.scrollX !== restoreScroll.x || window.scrollY !== restoreScroll.y)) {
+      window.scrollTo(restoreScroll.x, restoreScroll.y);
+    }
+    return results;
+  }
+
   function isElementHidden(el) {
     if (!el || el === document.body || el === document.documentElement) return false;
     if (typeof el.checkVisibility === 'function') return !el.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
@@ -3281,6 +3760,7 @@ if (IS_BROWSER) {
   window.impeccableDetect = detect;
   window.impeccableScan = scan;
   window.impeccableCollectVisualContrastCandidates = collectVisualContrastCandidates;
+  window.impeccableAnalyzeVisualContrast = analyzeVisualContrast;
 }
 
 // ─── Section 8: Node Engine ─────────────────────────────────────────────────
@@ -4705,19 +5185,52 @@ async function runVisualContrastFallback(page, serializedGroups, options, profil
       .map(group => group.selector)
       .filter(Boolean)
   );
-  const candidates = await profileStepAsync(profile, {
-    engine: 'browser',
-    phase: 'visual-contrast',
-    ruleId: 'collect-candidates',
-    target,
-  }, () => page.evaluate(({ maxCandidates }) => {
-    if (typeof window.impeccableCollectVisualContrastCandidates !== 'function') return [];
-    return window.impeccableCollectVisualContrastCandidates({ maxCandidates });
-  }, { maxCandidates }));
+
+  let browserAnalyses = [];
+  const findings = [];
+  if (options?.visualContrastBrowser !== false) {
+    const browserFindings = await profileFindingsAsync(profile, {
+      engine: 'browser',
+      phase: 'visual-contrast',
+      ruleId: 'browser-fallback',
+      target,
+    }, async () => {
+      browserAnalyses = await page.evaluate(async ({ maxCandidates }) => {
+        if (typeof window.impeccableAnalyzeVisualContrast !== 'function') return [];
+        return window.impeccableAnalyzeVisualContrast({ maxCandidates });
+      }, { maxCandidates });
+      return browserAnalyses
+        .filter(result => result.finding && !existingLowContrastSelectors.has(result.selector))
+        .map(result => result.finding);
+    });
+    findings.push(...browserFindings);
+  }
+
+  let candidates = browserAnalyses.length > 0 ? browserAnalyses : [];
+  if (candidates.length === 0) {
+    candidates = await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'visual-contrast',
+      ruleId: 'collect-candidates',
+      target,
+    }, () => page.evaluate(({ maxCandidates }) => {
+      if (typeof window.impeccableCollectVisualContrastCandidates !== 'function') return [];
+      return window.impeccableCollectVisualContrastCandidates({ maxCandidates });
+    }, { maxCandidates }));
+  }
 
   const viewport = options?.viewport || { width: 1280, height: 800 };
-  const filtered = candidates.filter(candidate => !existingLowContrastSelectors.has(candidate.selector));
-  const findings = [];
+  const browserResolvedSelectors = new Set(
+    browserAnalyses
+      .filter(result => result.status === 'fail' || result.status === 'pass')
+      .map(result => result.selector)
+      .filter(Boolean)
+  );
+  const filtered = candidates.filter(candidate =>
+    !existingLowContrastSelectors.has(candidate.selector) &&
+    !browserResolvedSelectors.has(candidate.selector)
+  );
+  if (options?.visualContrastPixel === false) return findings;
   for (const candidate of filtered) {
     const result = await profileFindingsAsync(profile, {
       engine: 'browser',
