@@ -4,12 +4,14 @@
 }
 
 .detector-main-shell {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
 }
 
 .detector-workbench {
   --detector-sidebar-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   background: var(--color-cream);
 }
 
@@ -191,25 +193,27 @@
 }
 
 .detector-workspace {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  height: 100vh;
+  min-height: 0;
   margin-left: var(--detector-sidebar-width);
-  min-height: 100vh;
+  overflow: hidden;
 }
 
 .detector-preview-head {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 8;
   display: flex;
+  flex-shrink: 0;
   justify-content: space-between;
   gap: var(--spacing-md);
   align-items: center;
-  min-height: 76px;
+  min-height: 72px;
   padding: 12px var(--spacing-md);
   border-bottom: 1px solid var(--color-mist);
-  background: color-mix(in oklch, var(--color-paper) 95%, transparent);
-  -webkit-backdrop-filter: saturate(1.2) blur(14px);
-  backdrop-filter: saturate(1.2) blur(14px);
+  background: var(--color-paper);
 }
 
 .detector-preview-head h2,
@@ -288,15 +292,21 @@
 .detector-frame-wrap iframe {
   display: block;
   width: 100%;
-  height: calc(100vh - 110px);
-  min-height: 620px;
+  height: max(360px, calc(100vh - 156px));
+  min-height: 0;
   border: 0;
   background: var(--color-paper);
 }
 
+.detector-workspace-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .detector-metrics {
   position: sticky;
-  top: 88px;
+  top: var(--spacing-sm);
   display: grid;
   gap: var(--spacing-sm);
   max-height: calc(100vh - 104px);
@@ -461,6 +471,14 @@
     overflow: auto;
   }
 
+  .detector-main-shell,
+  .detector-workbench,
+  .detector-workspace {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
   .detector-fixture-nav {
     position: static;
     width: auto;
@@ -474,6 +492,10 @@
 
   .detector-workspace {
     margin-left: 0;
+  }
+
+  .detector-workspace-scroll {
+    overflow: visible;
   }
 
   .detector-preview-head {
@@ -492,8 +514,7 @@
   }
 
   .detector-frame-wrap iframe {
-    height: 680px;
-    min-height: 520px;
+    height: 560px;
   }
 
   .detector-table-panel header {

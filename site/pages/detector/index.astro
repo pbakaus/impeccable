@@ -349,124 +349,126 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         </div>
       </header>
 
-      <div class="detector-content-grid">
-        <div class="detector-preview-column">
-          <div class="detector-frame-wrap">
-            <iframe
-              src={fixtureData[0].url}
-              title={`${fixtureData[0].title} detector fixture`}
-              data-fixture-frame
-            ></iframe>
+      <div class="detector-workspace-scroll">
+        <div class="detector-content-grid">
+          <div class="detector-preview-column">
+            <div class="detector-frame-wrap">
+              <iframe
+                src={fixtureData[0].url}
+                title={`${fixtureData[0].title} detector fixture`}
+                data-fixture-frame
+              ></iframe>
+            </div>
           </div>
+
+          <aside class="detector-metrics" aria-label="Detector timings">
+            <section class="detector-metric-panel" aria-labelledby="browser-timing-title">
+              <div class="detector-panel-head">
+                <p class="detector-panel-label">Live browser</p>
+                <h2 id="browser-timing-title">Current iframe scan</h2>
+              </div>
+              <dl class="detector-live-stats">
+                <div>
+                  <dt>Pure detect</dt>
+                  <dd data-browser-ms>waiting</dd>
+                </div>
+                <div>
+                  <dt>Findings</dt>
+                  <dd data-browser-findings>waiting</dd>
+                </div>
+                <div>
+                  <dt>Visual candidates</dt>
+                  <dd data-browser-visual-candidates>waiting</dd>
+                </div>
+              </dl>
+              <div class="detector-rule-pills" data-browser-rules aria-label="Browser findings by rule"></div>
+            </section>
+
+            <section class="detector-metric-panel" aria-labelledby="static-fixture-title">
+              <div class="detector-panel-head">
+                <p class="detector-panel-label">Static HTML/CSS</p>
+                <h2 id="static-fixture-title">Selected fixture</h2>
+              </div>
+              <dl class="detector-live-stats">
+                <div>
+                  <dt>Total</dt>
+                  <dd data-static-ms>{displayMs(fixtureData[0].staticTotalMs)}</dd>
+                </div>
+                <div>
+                  <dt>Findings</dt>
+                  <dd data-static-findings>{fixtureData[0].staticFindings}</dd>
+                </div>
+              </dl>
+              <div class="detector-rule-pills" data-static-rules aria-label="Static findings by rule"></div>
+            </section>
+          </aside>
         </div>
 
-        <aside class="detector-metrics" aria-label="Detector timings">
-          <section class="detector-metric-panel" aria-labelledby="browser-timing-title">
-            <div class="detector-panel-head">
-              <p class="detector-panel-label">Live browser</p>
-              <h2 id="browser-timing-title">Current iframe scan</h2>
-            </div>
-            <dl class="detector-live-stats">
+        <section class="detector-tables" aria-label="Detector timing tables">
+          <div class="detector-table-panel">
+            <header>
               <div>
-                <dt>Pure detect</dt>
-                <dd data-browser-ms>waiting</dd>
+                <p class="detector-panel-label">Per fixture</p>
+                <h2 data-selected-table-title>{fixtureData[0].title} timings</h2>
               </div>
-              <div>
-                <dt>Findings</dt>
-                <dd data-browser-findings>waiting</dd>
-              </div>
-              <div>
-                <dt>Visual candidates</dt>
-                <dd data-browser-visual-candidates>waiting</dd>
-              </div>
-            </dl>
-            <div class="detector-rule-pills" data-browser-rules aria-label="Browser findings by rule"></div>
-          </section>
-
-          <section class="detector-metric-panel" aria-labelledby="static-fixture-title">
-            <div class="detector-panel-head">
-              <p class="detector-panel-label">Static HTML/CSS</p>
-              <h2 id="static-fixture-title">Selected fixture</h2>
-            </div>
-            <dl class="detector-live-stats">
-              <div>
-                <dt>Total</dt>
-                <dd data-static-ms>{displayMs(fixtureData[0].staticTotalMs)}</dd>
-              </div>
-              <div>
-                <dt>Findings</dt>
-                <dd data-static-findings>{fixtureData[0].staticFindings}</dd>
-              </div>
-            </dl>
-            <div class="detector-rule-pills" data-static-rules aria-label="Static findings by rule"></div>
-          </section>
-        </aside>
-      </div>
-
-      <section class="detector-tables" aria-label="Detector timing tables">
-        <div class="detector-table-panel">
-          <header>
-            <div>
-              <p class="detector-panel-label">Per fixture</p>
-              <h2 data-selected-table-title>{fixtureData[0].title} timings</h2>
-            </div>
-            <p>Rows come directly from the profiling API.</p>
-          </header>
-          <div class="detector-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Phase</th>
-                  <th>Check</th>
-                  <th>Calls</th>
-                  <th>Total</th>
-                  <th>P95</th>
-                  <th>Findings</th>
-                </tr>
-              </thead>
-              <tbody data-selected-timings></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="detector-table-panel">
-          <header>
-            <div>
-              <p class="detector-panel-label">All fixtures</p>
-              <h2>Slowest checks</h2>
-            </div>
-            <p>Aggregated across every fixture in this lab.</p>
-          </header>
-          <div class="detector-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Engine</th>
-                  <th>Phase</th>
-                  <th>Check</th>
-                  <th>Calls</th>
-                  <th>Total</th>
-                  <th>P95</th>
-                  <th>Findings</th>
-                </tr>
-              </thead>
-              <tbody>
-                {globalProfile.slice(0, 24).map(row => (
+              <p>Rows come directly from the profiling API.</p>
+            </header>
+            <div class="detector-table-scroll">
+              <table>
+                <thead>
                   <tr>
-                    <td>{row.engine}</td>
-                    <td>{row.phase}</td>
-                    <td><code>{row.ruleId}</code></td>
-                    <td>{row.calls}</td>
-                    <td>{row.totalMs} ms</td>
-                    <td>{row.p95} ms</td>
-                    <td>{row.findings}</td>
+                    <th>Phase</th>
+                    <th>Check</th>
+                    <th>Calls</th>
+                    <th>Total</th>
+                    <th>P95</th>
+                    <th>Findings</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody data-selected-timings></tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      </section>
+
+          <div class="detector-table-panel">
+            <header>
+              <div>
+                <p class="detector-panel-label">All fixtures</p>
+                <h2>Slowest checks</h2>
+              </div>
+              <p>Aggregated across every fixture in this lab.</p>
+            </header>
+            <div class="detector-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Engine</th>
+                    <th>Phase</th>
+                    <th>Check</th>
+                    <th>Calls</th>
+                    <th>Total</th>
+                    <th>P95</th>
+                    <th>Findings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {globalProfile.slice(0, 24).map(row => (
+                    <tr>
+                      <td>{row.engine}</td>
+                      <td>{row.phase}</td>
+                      <td><code>{row.ruleId}</code></td>
+                      <td>{row.calls}</td>
+                      <td>{row.totalMs} ms</td>
+                      <td>{row.p95} ms</td>
+                      <td>{row.findings}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </section>
 
@@ -476,6 +478,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     const fixtures = data.fixtures;
     const byId = new Map(fixtures.map(item => [item.id, item]));
 
+    const workspaceScrollEl = document.querySelector('.detector-workspace-scroll');
     const frame = document.querySelector('[data-fixture-frame]');
     const titleEl = document.querySelector('[data-fixture-title]');
     const groupEl = document.querySelector('[data-fixture-group]');
@@ -668,6 +671,8 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       browserRulesEl.replaceChildren();
       try {
         const win = await waitForDetector(frame.contentWindow);
+        const restoreWorkspaceScroll = workspaceScrollEl?.scrollTop || 0;
+        const restoreFrameScroll = { x: win.scrollX, y: win.scrollY };
         clearLabOverlays(win);
         const started = performance.now();
         const groups = win.impeccableDetect({ decorate: false, serialize: true });
@@ -687,6 +692,8 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         const visualUnresolved = visualAnalyses.filter(result => result.status === 'unresolved').length;
         const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0) + visualFailures;
         const ruleRows = countBrowserRules(groups);
+        if (workspaceScrollEl) workspaceScrollEl.scrollTop = restoreWorkspaceScroll;
+        win.scrollTo(restoreFrameScroll.x, restoreFrameScroll.y);
         if (visualUnresolved > 0) {
           ruleRows.unshift({ ruleId: 'visual-contrast-unresolved', count: visualUnresolved });
         }
@@ -728,6 +735,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       selectedTableTitle.textContent = `${fixture.title} timings`;
       renderPills(staticRulesEl, fixture.findingsByRule, 'No static findings');
       renderTimingRows(fixture);
+      if (workspaceScrollEl) workspaceScrollEl.scrollTop = 0;
       browserMsEl.textContent = 'loading';
       browserFindingsEl.textContent = 'loading';
       browserVisualCandidatesEl.textContent = 'loading';
@@ -738,6 +746,11 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     }
 
     frame.addEventListener('load', () => {
+      try {
+        frame.contentWindow?.scrollTo(0, 0);
+      } catch {
+        // Ignore iframe scroll reset failures.
+      }
       setTimeout(runBrowserScan, 160);
     });
 
