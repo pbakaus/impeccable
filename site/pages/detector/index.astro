@@ -569,6 +569,98 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       });
     }
 
+    function clearLabOverlays(win) {
+      const doc = win?.document;
+      if (!doc) return;
+      for (const node of doc.querySelectorAll('[data-impeccable-lab-overlay]')) {
+        node.remove();
+      }
+    }
+
+    function ensureLabOverlayStyle(win) {
+      const doc = win?.document;
+      if (!doc || doc.getElementById('impeccable-detector-lab-overlay-style')) return;
+      const style = doc.createElement('style');
+      style.id = 'impeccable-detector-lab-overlay-style';
+      style.setAttribute('data-impeccable-lab-overlay', 'style');
+      style.textContent = `
+        [data-impeccable-lab-overlay="box"] {
+          position: absolute;
+          z-index: 2147483646;
+          box-sizing: border-box;
+          border: 2px solid oklch(65% 0.28 350);
+          border-radius: 6px;
+          background: color-mix(in oklch, oklch(65% 0.28 350), transparent 88%);
+          box-shadow: 0 0 0 1px rgb(255 255 255 / 0.92), 0 0 0 5px rgb(218 0 132 / 0.14);
+          pointer-events: none;
+        }
+        [data-impeccable-lab-overlay="label"] {
+          position: absolute;
+          z-index: 2147483647;
+          max-width: 260px;
+          padding: 4px 7px;
+          border-radius: 6px;
+          background: oklch(42% 0.24 350);
+          color: white;
+          font: 700 11px/1.25 system-ui, sans-serif;
+          letter-spacing: 0;
+          box-shadow: 0 8px 20px rgb(0 0 0 / 0.22);
+          pointer-events: none;
+        }
+      `;
+      doc.head.append(style);
+    }
+
+    function overlayLabelFor(row) {
+      if (row.kind === 'visual') return 'low-contrast visual';
+      const types = (row.findings || []).map(finding => finding.type).filter(Boolean);
+      return [...new Set(types)].slice(0, 2).join(', ') || 'finding';
+    }
+
+    function renderLabOverlays(win, groups, visualAnalyses) {
+      const doc = win?.document;
+      if (!doc?.body) return;
+      clearLabOverlays(win);
+      ensureLabOverlayStyle(win);
+      const rows = [];
+      for (const group of groups || []) {
+        if (!group.selector || !group.findings?.length) continue;
+        rows.push({ selector: group.selector, findings: group.findings, kind: 'detect' });
+      }
+      for (const result of visualAnalyses || []) {
+        if (result.status !== 'fail' || !result.selector) continue;
+        rows.push({ selector: result.selector, kind: 'visual' });
+      }
+
+      for (const row of rows) {
+        let el = null;
+        try {
+          el = doc.querySelector(row.selector);
+        } catch {
+          el = null;
+        }
+        if (!el || !el.getBoundingClientRect) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) continue;
+        const left = rect.left + win.scrollX;
+        const top = rect.top + win.scrollY;
+        const box = doc.createElement('div');
+        box.setAttribute('data-impeccable-lab-overlay', 'box');
+        box.style.left = `${Math.max(0, left - 3)}px`;
+        box.style.top = `${Math.max(0, top - 3)}px`;
+        box.style.width = `${Math.max(4, rect.width + 6)}px`;
+        box.style.height = `${Math.max(4, rect.height + 6)}px`;
+        doc.body.append(box);
+
+        const label = doc.createElement('div');
+        label.setAttribute('data-impeccable-lab-overlay', 'label');
+        label.textContent = overlayLabelFor(row);
+        label.style.left = `${Math.max(0, left - 3)}px`;
+        label.style.top = `${Math.max(0, top - 28)}px`;
+        doc.body.append(label);
+      }
+    }
+
     async function runBrowserScan() {
       browserMsEl.textContent = 'scanning';
       browserFindingsEl.textContent = 'scanning';
@@ -576,6 +668,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       browserRulesEl.replaceChildren();
       try {
         const win = await waitForDetector(frame.contentWindow);
+        clearLabOverlays(win);
         const started = performance.now();
         const groups = win.impeccableDetect({ decorate: false, serialize: true });
         const elapsed = performance.now() - started;
@@ -612,6 +705,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
           ? `${visualCandidates.length} (${visualFailures} fail, ${visualPasses} pass, ${visualUnresolved} unresolved, ${formatMs(visualElapsed)})`
           : String(visualCandidates.length);
         renderPills(browserRulesEl, ruleRows, 'No browser findings');
+        renderLabOverlays(win, groups, visualAnalyses);
       } catch (err) {
         browserMsEl.textContent = 'unavailable';
         browserFindingsEl.textContent = '0';
