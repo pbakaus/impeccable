@@ -28,6 +28,7 @@ if (typeof window === 'undefined') return;
  * Browser usage:
  *   <script src="detect-antipatterns-browser.js"></script>
  *   Re-scan: window.impeccableScan()
+ *   Re-scan with async visual contrast: window.impeccableScan({ visualContrast: true })
  *
  * Exit codes: 0 = clean, 2 = findings
  */
@@ -3571,6 +3572,10 @@ if (IS_BROWSER) {
     else groupMap.set(el, [...findings]);
   }
 
+  function browserFindingsFromMap(groupMap) {
+    return [...groupMap.entries()].map(([el, findings]) => ({ el, findings }));
+  }
+
   function collectBrowserFindings() {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
@@ -3648,19 +3653,78 @@ if (IS_BROWSER) {
     }
 
     return {
-      allFindings: [...groupMap.entries()].map(([el, findings]) => ({ el, findings })),
+      groupMap,
+      allFindings: browserFindingsFromMap(groupMap),
       pageLevelFindings,
     };
   }
 
-  let firstScanDone = false;
-  const scan = function() {
+  function shouldRunVisualContrast(options = {}) {
+    return options.visualContrast === true || window.__IMPECCABLE_CONFIG__?.visualContrast === true;
+  }
+
+  function visualContrastOptions(options = {}) {
+    const config = window.__IMPECCABLE_CONFIG__ || {};
+    return {
+      ...options,
+      maxCandidates: Number.isFinite(options.visualContrastMaxCandidates)
+        ? options.visualContrastMaxCandidates
+        : Number.isFinite(options.maxCandidates)
+          ? options.maxCandidates
+          : Number.isFinite(config.visualContrastMaxCandidates)
+            ? config.visualContrastMaxCandidates
+            : undefined,
+    };
+  }
+
+  let lastVisualContrastAnalyses = [];
+
+  async function addVisualContrastFindings(groupMap, options = {}) {
+    if (!shouldRunVisualContrast(options)) {
+      lastVisualContrastAnalyses = [];
+      return [];
+    }
+    const analyses = await analyzeVisualContrast(visualContrastOptions(options));
+    lastVisualContrastAnalyses = analyses;
+    for (const result of analyses) {
+      if (result.status !== 'fail' || !result.finding || !result.selector) continue;
+      let el = null;
+      try {
+        el = document.querySelector(result.selector);
+      } catch {
+        el = null;
+      }
+      if (!el) continue;
+      const findingType = result.finding.type || result.finding.id || 'low-contrast';
+      const existing = groupMap.get(el) || [];
+      if (existing.some(f => (f.type || f.id) === findingType)) continue;
+      addBrowserFindings(groupMap, el, [{
+        type: findingType,
+        detail: result.finding.detail || result.finding.snippet,
+      }]);
+    }
+    return analyses;
+  }
+
+  async function collectBrowserFindingsAsync(options = {}) {
+    const collected = collectBrowserFindings();
+    await addVisualContrastFindings(collected.groupMap, options);
+    return {
+      ...collected,
+      allFindings: browserFindingsFromMap(collected.groupMap),
+      visualContrastAnalyses: lastVisualContrastAnalyses,
+    };
+  }
+
+  function clearOverlays() {
     for (const o of overlays) o.remove();
     overlays.length = 0;
     visibilityObserver.disconnect();
     overlayIndex = 0;
+  }
 
-    const { allFindings, pageLevelFindings } = collectBrowserFindings();
+  function renderBrowserFindings(collected) {
+    const { allFindings, pageLevelFindings } = collected;
 
     for (const { el, findings } of allFindings) {
       if (el === document.body || el === document.documentElement) continue;
@@ -3686,12 +3750,27 @@ if (IS_BROWSER) {
     setTimeout(() => { firstScanDone = true; }, 1000);
 
     return allFindings;
+  }
+
+  let firstScanDone = false;
+  const scan = function(options = {}) {
+    clearOverlays();
+    if (shouldRunVisualContrast(options)) {
+      return collectBrowserFindingsAsync(options).then(renderBrowserFindings);
+    }
+    lastVisualContrastAnalyses = [];
+    return renderBrowserFindings(collectBrowserFindings());
   };
 
   const detect = function(options = {}) {
+    if (shouldRunVisualContrast(options)) {
+      return collectBrowserFindingsAsync(options).then(({ allFindings }) =>
+        options.serialize === false ? allFindings : serializeFindings(allFindings)
+      );
+    }
+    lastVisualContrastAnalyses = [];
     const { allFindings } = collectBrowserFindings();
-    if (options.serialize === false) return allFindings;
-    return serializeFindings(allFindings);
+    return options.serialize === false ? allFindings : serializeFindings(allFindings);
   };
 
   if (EXTENSION_MODE) {
@@ -3700,7 +3779,15 @@ if (IS_BROWSER) {
       if (e.source !== window || !e.data || e.data.source !== 'impeccable-command') return;
       if (e.data.action === 'scan') {
         if (e.data.config) window.__IMPECCABLE_CONFIG__ = e.data.config;
-        scan();
+        const result = scan(e.data.config || {});
+        if (result && typeof result.catch === 'function') {
+          result.catch(err => {
+            window.postMessage({
+              source: 'impeccable-error',
+              message: err?.message || String(err),
+            }, '*');
+          });
+        }
       }
       if (e.data.action === 'toggle-overlays') {
         const visible = !document.body.classList.contains('impeccable-hidden');
@@ -3753,10 +3840,16 @@ if (IS_BROWSER) {
     window.postMessage({ source: 'impeccable-ready' }, '*');
   } else {
     if (window.__IMPECCABLE_CONFIG__?.autoScan !== false) {
+      const runAutoScan = () => {
+        const result = scan();
+        if (result && typeof result.catch === 'function') {
+          result.catch(err => console.warn('[impeccable] scan failed', err));
+        }
+      };
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setTimeout(scan, 100));
+        document.addEventListener('DOMContentLoaded', () => setTimeout(runAutoScan, 100));
       } else {
-        setTimeout(scan, 100);
+        setTimeout(runAutoScan, 100);
       }
     }
   }
@@ -3765,6 +3858,7 @@ if (IS_BROWSER) {
   window.impeccableScan = scan;
   window.impeccableCollectVisualContrastCandidates = collectVisualContrastCandidates;
   window.impeccableAnalyzeVisualContrast = analyzeVisualContrast;
+  window.impeccableGetLastVisualContrastAnalyses = () => lastVisualContrastAnalyses.slice();
 }
 
 // ─── Section 8: Node Engine ─────────────────────────────────────────────────

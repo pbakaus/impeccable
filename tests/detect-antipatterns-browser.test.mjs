@@ -208,6 +208,47 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('browser API: visual contrast scan decorates through the regular overlay pipeline', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        const groups = await window.impeccableScan({
+          visualContrast: true,
+          visualContrastMaxCandidates: 20,
+        });
+        return {
+          groups: groups.map(group => ({
+            text: group.el.textContent || '',
+            types: group.findings.map(finding => finding.type || finding.id),
+          })),
+          overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
+          labels: document.querySelectorAll('.impeccable-label').length,
+          analyses: window.impeccableGetLastVisualContrastAnalyses().filter(item => item.status === 'fail').length,
+        };
+      });
+      const visualGroups = result.groups.filter(group =>
+        group.types.includes('low-contrast') &&
+        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text)/i.test(group.text)
+      );
+      assert.equal(result.analyses, 4);
+      assert.equal(visualGroups.length, 4, `expected 4 visual groups, got: ${JSON.stringify(result)}`);
+      assert.ok(result.overlays >= 4, `expected regular overlays for visual findings, got: ${JSON.stringify(result)}`);
+      assert.ok(result.labels >= 4, `expected regular labels for visual findings, got: ${JSON.stringify(result)}`);
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({

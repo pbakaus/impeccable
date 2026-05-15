@@ -679,14 +679,19 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         const restoreWorkspaceScroll = workspaceScrollEl?.scrollTop || 0;
         const restoreFrameScroll = { x: win.scrollX, y: win.scrollY };
         clearLabOverlays(win);
+        const useVisualPipeline = currentFixtureId === 'visual-contrast';
         const started = performance.now();
-        const groups = win.impeccableDetect({ decorate: false, serialize: true });
+        const groups = useVisualPipeline && typeof win.impeccableScan === 'function'
+          ? await win.impeccableScan({ visualContrast: true, visualContrastMaxCandidates: 99 })
+          : await win.impeccableDetect({ decorate: false, serialize: true });
         const elapsed = performance.now() - started;
         const visualStarted = performance.now();
-        const visualAnalyses = typeof win.impeccableAnalyzeVisualContrast === 'function'
-          ? await win.impeccableAnalyzeVisualContrast({ maxCandidates: 99 })
-          : [];
-        const visualElapsed = performance.now() - visualStarted;
+        const visualAnalyses = useVisualPipeline && typeof win.impeccableGetLastVisualContrastAnalyses === 'function'
+          ? win.impeccableGetLastVisualContrastAnalyses()
+          : (typeof win.impeccableAnalyzeVisualContrast === 'function'
+              ? await win.impeccableAnalyzeVisualContrast({ maxCandidates: 99 })
+              : []);
+        const visualElapsed = useVisualPipeline ? elapsed : performance.now() - visualStarted;
         const visualCandidates = visualAnalyses.length > 0
           ? visualAnalyses
           : (typeof win.impeccableCollectVisualContrastCandidates === 'function'
@@ -695,7 +700,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         const visualFailures = visualAnalyses.filter(result => result.status === 'fail').length;
         const visualPasses = visualAnalyses.filter(result => result.status === 'pass').length;
         const visualUnresolved = visualAnalyses.filter(result => result.status === 'unresolved').length;
-        const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0) + visualFailures;
+        const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0) + (useVisualPipeline ? 0 : visualFailures);
         const ruleRows = countBrowserRules(groups);
         if (workspaceScrollEl) workspaceScrollEl.scrollTop = restoreWorkspaceScroll;
         win.scrollTo(restoreFrameScroll.x, restoreFrameScroll.y);
