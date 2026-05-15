@@ -1,6 +1,6 @@
 /**
- * jsdom fixture tests for anti-pattern detection.
- * Run via Node's built-in test runner (not bun) to avoid jsdom resource limits.
+ * Static HTML/CSS fixture tests for anti-pattern detection.
+ * Run via Node's built-in test runner (not bun).
  *
  * Usage: node --test tests/detect-antipatterns-fixtures.test.mjs
  */
@@ -15,7 +15,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(__dirname, 'fixtures', 'antipatterns');
 
-describe('detectHtml — jsdom fixtures', () => {
+describe('detectHtml — static HTML/CSS fixtures', () => {
   it('should-flag: catches border anti-patterns', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'should-flag.html'));
     assert.ok(f.some(r => r.antipattern === 'side-tab'));
@@ -265,13 +265,13 @@ describe('detectHtml — icon-tile-stack', () => {
   });
 });
 
-describe('detectHtml — quality (jsdom-compatible rules)', () => {
-  // Six of the eight quality rules can run in jsdom because they only need
+describe('detectHtml — quality (static-compatible rules)', () => {
+  // Six of the eight quality rules can run in static HTML/CSS because they only need
   // computed CSS values (tight-leading, tiny-text, justified-text,
   // all-caps-body, wide-tracking) or pure DOM walks (skipped-heading).
   // The other two (line-length, cramped-padding) need real layout rects and
   // live in tests/detect-antipatterns-browser.test.mjs (Puppeteer-backed).
-  it('quality: flag column triggers all 6 jsdom-compatible quality rules', async () => {
+  it('quality: flag column triggers all 6 static-compatible quality rules', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'quality.html'));
     assert.equal(f.filter(r => r.antipattern === 'tight-leading').length, 1);
     assert.equal(f.filter(r => r.antipattern === 'tiny-text').length, 1);
@@ -288,8 +288,8 @@ describe('detectHtml — layout', () => {
     const nested = f.filter(r => r.antipattern === 'nested-cards');
     assert.ok(nested.length >= 4, `expected ≥4 nested-cards findings, got ${nested.length}`);
     // The page-level layout rules (monotonous-spacing, everything-centered)
-    // need Tailwind-via-CDN to render, which jsdom doesn't execute. They're
-    // effectively dormant in this test environment regardless of the fixture
+    // need Tailwind-via-CDN to render, which the static engine does not fetch.
+    // They're effectively dormant in this test environment regardless of the fixture
     // contents — so all we can verify is that the pass column doesn't push
     // them awake unexpectedly.
     assert.equal(f.filter(r => r.antipattern === 'monotonous-spacing').length, 0);
@@ -342,7 +342,7 @@ describe('detectHtml — hero-eyebrow-chip', () => {
     'Pill Chip Above Hero',
     'Already Uppercase Text',
     // The rule no longer gates on heading font size (modern hero h1s
-    // use clamp() / vw / var() that jsdom can't resolve), and the
+    // use clamp() / vw / var() that static HTML/CSS cannot resolve), and the
     // eyebrow text ceiling moved 30 → 60 chars. Both shapes now flag.
     'Body-Sized Heading Below Eyebrow',
     'Long Uppercase Sentence Above Hero',
@@ -410,19 +410,17 @@ describe('detectHtml — repeated-section-kickers', () => {
 });
 
 describe('detectHtml — motion', () => {
-  // jsdom doesn't fully apply class-based styles, so the absolute finding counts
-  // are lower than what a real browser would see. The hardcoded counts below are
-  // the calibrated jsdom baseline — if a future change pushes them up, that's a
-  // pass-column false positive; if down, the rule or fixture has regressed.
+  // The static CSS engine applies class-based fixture styles, so it catches all
+  // flag-column layout-transition cases without relying on browser layout.
   it('motion: flag column triggers both motion rules, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'motion.html'));
     assert.equal(f.filter(r => r.antipattern === 'bounce-easing').length, 2);
-    assert.equal(f.filter(r => r.antipattern === 'layout-transition').length, 2);
+    assert.equal(f.filter(r => r.antipattern === 'layout-transition').length, 8);
   });
 });
 
 describe('detectHtml — dark glow', () => {
-  // Calibrated jsdom baseline — see motion test note above.
+  // Calibrated static baseline — see motion test note above.
   it('glow: flag column triggers dark-glow, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'glow.html'));
     assert.equal(f.filter(r => r.antipattern === 'dark-glow').length, 1);

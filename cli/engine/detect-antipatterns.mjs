@@ -8,9 +8,9 @@
  * Universal file — auto-detects environment (browser vs Node) and adapts.
  *
  * Node usage:
- *   node detect-antipatterns.mjs [file-or-dir...]   # jsdom for HTML, regex for rest
+ *   node detect-antipatterns.mjs [file-or-dir...]   # static HTML/CSS for HTML, regex for rest
  *   node detect-antipatterns.mjs https://...         # Puppeteer (auto)
- *   node detect-antipatterns.mjs --fast [files...]   # regex-only (skip jsdom)
+ *   node detect-antipatterns.mjs --fast [files...]   # regex-only (skip static HTML/CSS)
  *   node detect-antipatterns.mjs --json              # JSON output
  *
  * Browser usage:
@@ -383,19 +383,19 @@ function isNeutralColor(color) {
   // oklch chroma is ~0–0.4 in sRGB gamut; >= 0.02 reads as tinted, not gray.
   // lch chroma is ~0–150; >= 3 reads as tinted. jsdom emits both formats
   // literally (it does NOT convert them to rgb).
-  const oklch = color.match(/oklch\(\s*[\d.%-]+\s+([\d.-]+)/i);
+  const oklch = color.match(/oklch\(\s*[\d.]+%?\s*([\d.-]+)/i);
   if (oklch) return parseFloat(oklch[1]) < 0.02;
-  const lch = color.match(/lch\(\s*[\d.%-]+\s+([\d.-]+)/i);
+  const lch = color.match(/lch\(\s*[\d.]+%?\s*([\d.-]+)/i);
   if (lch) return parseFloat(lch[1]) < 3;
 
   // oklab()/lab() — a and b are signed axes; chroma = sqrt(a² + b²).
   // oklab a/b are ~-0.4..0.4, threshold 0.02. lab a/b are ~-128..127, threshold 3.
-  const oklab = color.match(/oklab\(\s*[\d.%-]+\s+([\d.-]+)\s+([\d.-]+)/i);
+  const oklab = color.match(/oklab\(\s*[\d.]+%?\s*([\d.-]+)\s+([\d.-]+)/i);
   if (oklab) {
     const a = parseFloat(oklab[1]), b = parseFloat(oklab[2]);
     return Math.hypot(a, b) < 0.02;
   }
-  const lab = color.match(/lab\(\s*[\d.%-]+\s+([\d.-]+)\s+([\d.-]+)/i);
+  const lab = color.match(/lab\(\s*[\d.]+%?\s*([\d.-]+)\s+([\d.-]+)/i);
   if (lab) {
     const a = parseFloat(lab[1]), b = parseFloat(lab[2]);
     return Math.hypot(a, b) < 3;
@@ -2883,6 +2883,157 @@ if (IS_BROWSER) {
     return parts.join(' > ');
   }
 
+  function getDirectText(el) {
+    return [...el.childNodes]
+      .filter(n => n.nodeType === 3)
+      .map(n => n.textContent || '')
+      .join('');
+  }
+
+  function getDirectTextRect(el) {
+    const rects = [];
+    for (const node of el.childNodes) {
+      if (node.nodeType !== 3 || !(node.textContent || '').trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
+      }
+      range.detach?.();
+    }
+    if (rects.length === 0) return null;
+    const left = Math.min(...rects.map(r => r.left));
+    const top = Math.min(...rects.map(r => r.top));
+    const right = Math.max(...rects.map(r => r.right));
+    const bottom = Math.max(...rects.map(r => r.bottom));
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      x: left,
+      y: top,
+    };
+  }
+
+  function collectVisualContrastReasons(el, style) {
+    const reasons = new Set();
+    const bgClip = style.webkitBackgroundClip || style.backgroundClip || '';
+    const ownBgImage = style.backgroundImage || '';
+    if (bgClip === 'text' && ownBgImage && ownBgImage !== 'none') {
+      reasons.add('background-clip text');
+    }
+    if (style.textShadow && style.textShadow !== 'none') reasons.add('text shadow');
+
+    let current = el;
+    while (current && current.nodeType === 1) {
+      const tag = current.tagName?.toLowerCase();
+      const currentStyle = getComputedStyle(current);
+      const bgImage = currentStyle.backgroundImage || '';
+      const isDocumentSurface = tag === 'body' || tag === 'html';
+
+      if (!isDocumentSurface && bgImage && bgImage !== 'none') {
+        if (/url\s*\(/i.test(bgImage)) reasons.add('image background');
+        if (/gradient/i.test(bgImage)) reasons.add('gradient background');
+      }
+      if (parseFloat(currentStyle.opacity) < 0.99) reasons.add('opacity stack');
+      if (currentStyle.mixBlendMode && currentStyle.mixBlendMode !== 'normal') reasons.add('blend mode');
+      if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
+      if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
+
+      const solidBg = parseRgb(currentStyle.backgroundColor);
+      if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
+      current = current.parentElement;
+    }
+
+    const sampleRect = getDirectTextRect(el) || el.getBoundingClientRect();
+    if (sampleRect && document.elementsFromPoint) {
+      const points = [
+        [sampleRect.left + sampleRect.width / 2, sampleRect.top + sampleRect.height / 2],
+        [sampleRect.left + Math.min(sampleRect.width - 1, Math.max(1, sampleRect.width * 0.25)), sampleRect.top + sampleRect.height / 2],
+        [sampleRect.left + Math.min(sampleRect.width - 1, Math.max(1, sampleRect.width * 0.75)), sampleRect.top + sampleRect.height / 2],
+      ];
+      for (const [x, y] of points) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+        const stack = document.elementsFromPoint(x, y);
+        const selfIndex = stack.findIndex(node => node === el || el.contains(node) || node.contains?.(el));
+        if (selfIndex < 0) continue;
+        for (const node of stack.slice(selfIndex + 1)) {
+          const nodeTag = node.tagName?.toLowerCase();
+          if (nodeTag === 'img' || nodeTag === 'picture' || nodeTag === 'video' || nodeTag === 'canvas' || nodeTag === 'svg') {
+            reasons.add(`${nodeTag} underlay`);
+            break;
+          }
+        }
+      }
+    }
+
+    return [...reasons];
+  }
+
+  function collectVisualContrastCandidates(options = {}) {
+    const maxCandidates = Number.isFinite(options.maxCandidates) ? options.maxCandidates : 12;
+    const candidates = [];
+    for (const el of document.querySelectorAll('*')) {
+      if (candidates.length >= maxCandidates) break;
+      if (el.closest('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip')) continue;
+      if (el.closest('[id^="impeccable-live-"]')) continue;
+      if (el === document.body || el === document.documentElement) continue;
+
+      const tag = el.tagName.toLowerCase();
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      const directText = getDirectText(el);
+      const hasDirectText = directText.trim().length > 0;
+      if (!hasDirectText || isEmojiOnlyText(directText)) continue;
+
+      const bgColor = readOwnBackgroundColor(el, style);
+      const isStyledButton = (tag === 'a' || tag === 'button')
+        && bgColor && bgColor.a > 0.5;
+      if (SAFE_TAGS.has(tag) && !isStyledButton) continue;
+
+      const rect = getDirectTextRect(el) || el.getBoundingClientRect();
+      if (!rect || rect.width < 4 || rect.height < 4) continue;
+
+      const reasons = collectVisualContrastReasons(el, style);
+      if (reasons.length === 0) continue;
+
+      const textColor = parseRgb(style.color);
+      const fontSize = parseFloat(style.fontSize) || 16;
+      const fontWeight = parseInt(style.fontWeight) || 400;
+      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
+      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const threshold = isLargeText ? 3.0 : 4.5;
+      const clip = {
+        x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),
+        y: Math.max(0, Math.floor(rect.top + window.scrollY - 2)),
+        width: Math.max(1, Math.ceil(rect.width + 4)),
+        height: Math.max(1, Math.ceil(rect.height + 4)),
+      };
+
+      candidates.push({
+        selector: generateSelector(el),
+        tagName: tag,
+        text: directText.trim().replace(/\s+/g, ' ').slice(0, 80),
+        threshold,
+        reasons,
+        clip,
+        textColor,
+        preferRenderedForeground: !textColor || textColor.a < 0.99 || reasons.some(reason =>
+          reason === 'opacity stack' ||
+          reason === 'blend mode' ||
+          reason === 'filter' ||
+          reason === 'backdrop filter' ||
+          reason === 'background-clip text'
+        ),
+        backgroundClipText: reasons.includes('background-clip text'),
+      });
+    }
+    return candidates;
+  }
+
   function isElementHidden(el) {
     if (!el || el === document.body || el === document.documentElement) return false;
     if (typeof el.checkVisibility === 'function') return !el.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
@@ -2930,13 +3081,15 @@ if (IS_BROWSER) {
     console.groupEnd();
   };
 
-  let firstScanDone = false;
-  const scan = function() {
-    for (const o of overlays) o.remove();
-    overlays.length = 0;
-    visibilityObserver.disconnect();
-    overlayIndex = 0;
-    const allFindings = [];
+  function addBrowserFindings(groupMap, el, findings) {
+    if (!findings || findings.length === 0) return;
+    const existing = groupMap.get(el);
+    if (existing) existing.push(...findings);
+    else groupMap.set(el, [...findings]);
+  }
+
+  function collectBrowserFindings() {
+    const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
 
@@ -2964,10 +3117,7 @@ if (IS_BROWSER) {
         ...checkElementQualityDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
       ].filter(f => _ruleOk(f.type));
 
-      if (findings.length > 0) {
-        highlight(el, findings);
-        allFindings.push({ el, findings });
-      }
+      addBrowserFindings(groupMap, el, findings);
     }
 
     const pageLevelFindings = [];
@@ -2975,7 +3125,7 @@ if (IS_BROWSER) {
     const typoFindings = checkTypography().filter(f => _ruleOk(f.type));
     if (typoFindings.length > 0) {
       pageLevelFindings.push(...typoFindings);
-      allFindings.push({ el: document.body, findings: typoFindings });
+      addBrowserFindings(groupMap, document.body, typoFindings);
     }
 
     const sectionKickerFindings = checkRepeatedSectionKickersDOM()
@@ -2983,32 +3133,20 @@ if (IS_BROWSER) {
       .filter(f => _ruleOk(f.type));
     if (sectionKickerFindings.length > 0) {
       pageLevelFindings.push(...sectionKickerFindings);
-      allFindings.push({ el: document.body, findings: sectionKickerFindings });
+      addBrowserFindings(groupMap, document.body, sectionKickerFindings);
     }
 
     const layoutFindings = checkLayout().filter(f => _ruleOk(f.type));
     for (const f of layoutFindings) {
       const el = f.el || document.body;
-      delete f.el;
-      // Merge into existing overlay if this element already has one
-      const existing = el._impeccableOverlay;
-      if (existing) {
-        const nameRow = existing.querySelector('.impeccable-label-name');
-        const detailRow = existing.querySelector('.impeccable-label-detail');
-        const newType = TYPE_LABELS[f.type] || f.type;
-        if (nameRow) nameRow.textContent += ', ' + newType;
-        if (detailRow) detailRow.textContent += ' | ' + (f.detail || '');
-      } else {
-        highlight(el, [f]);
-      }
-      allFindings.push({ el, findings: [f] });
+      addBrowserFindings(groupMap, el, [{ type: f.type, detail: f.detail || f.snippet }]);
     }
 
     // Page-level quality checks (headings, etc.)
     const qualityFindings = checkPageQualityDOM().filter(f => _ruleOk(f.type));
     if (qualityFindings.length > 0) {
       pageLevelFindings.push(...qualityFindings);
-      allFindings.push({ el: document.body, findings: qualityFindings });
+      addBrowserFindings(groupMap, document.body, qualityFindings);
     }
 
     // Regex-on-HTML checks (shared with Node)
@@ -3023,7 +3161,27 @@ if (IS_BROWSER) {
     if (htmlPatternFindings.length > 0) {
       const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ruleOk(f.type));
       pageLevelFindings.push(...mapped);
-      allFindings.push({ el: document.body, findings: mapped });
+      addBrowserFindings(groupMap, document.body, mapped);
+    }
+
+    return {
+      allFindings: [...groupMap.entries()].map(([el, findings]) => ({ el, findings })),
+      pageLevelFindings,
+    };
+  }
+
+  let firstScanDone = false;
+  const scan = function() {
+    for (const o of overlays) o.remove();
+    overlays.length = 0;
+    visibilityObserver.disconnect();
+    overlayIndex = 0;
+
+    const { allFindings, pageLevelFindings } = collectBrowserFindings();
+
+    for (const { el, findings } of allFindings) {
+      if (el === document.body || el === document.documentElement) continue;
+      highlight(el, findings);
     }
 
     if (pageLevelFindings.length > 0) {
@@ -3045,6 +3203,12 @@ if (IS_BROWSER) {
     setTimeout(() => { firstScanDone = true; }, 1000);
 
     return allFindings;
+  };
+
+  const detect = function(options = {}) {
+    const { allFindings } = collectBrowserFindings();
+    if (options.serialize === false) return allFindings;
+    return serializeFindings(allFindings);
   };
 
   if (EXTENSION_MODE) {
@@ -3105,14 +3269,18 @@ if (IS_BROWSER) {
     });
     window.postMessage({ source: 'impeccable-ready' }, '*');
   } else {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => setTimeout(scan, 100));
-    } else {
-      setTimeout(scan, 100);
+    if (window.__IMPECCABLE_CONFIG__?.autoScan !== false) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(scan, 100));
+      } else {
+        setTimeout(scan, 100);
+      }
     }
   }
 
+  window.impeccableDetect = detect;
   window.impeccableScan = scan;
+  window.impeccableCollectVisualContrastCandidates = collectVisualContrastCandidates;
 }
 
 // ─── Section 8: Node Engine ─────────────────────────────────────────────────
@@ -3125,6 +3293,160 @@ function getAP(id) {
 function finding(id, filePath, snippet, line = 0) {
   const ap = getAP(id);
   return { antipattern: id, name: ap.name, description: ap.description, severity: ap.severity || 'warning', file: filePath, line, snippet };
+}
+
+function profileNow() {
+  return typeof performance !== 'undefined' && performance.now
+    ? performance.now()
+    : Date.now();
+}
+
+function createDetectorProfile() {
+  return { events: [] };
+}
+
+function recordProfileEvent(profile, event) {
+  if (!profile) return;
+  const normalized = {
+    engine: event.engine || 'unknown',
+    phase: event.phase || 'unknown',
+    ruleId: event.ruleId || 'unknown',
+    target: event.target || '',
+    ms: Number.isFinite(event.ms) ? event.ms : 0,
+    findings: Number.isFinite(event.findings) ? event.findings : 0,
+  };
+  if (event.detail) normalized.detail = event.detail;
+  if (Array.isArray(event.findingIds) && event.findingIds.length) {
+    normalized.findingIds = event.findingIds;
+  }
+  if (typeof profile === 'function') {
+    profile(normalized);
+  } else if (typeof profile.record === 'function') {
+    profile.record(normalized);
+  } else if (Array.isArray(profile.events)) {
+    profile.events.push(normalized);
+  } else if (Array.isArray(profile)) {
+    profile.push(normalized);
+  }
+}
+
+function extractFindingIds(findings) {
+  if (!Array.isArray(findings) || findings.length === 0) return [];
+  return [...new Set(findings.map(f => f?.id || f?.type || f?.antipattern).filter(Boolean))];
+}
+
+function profileFindings(profile, meta, callback) {
+  if (!profile) return callback();
+  const started = profileNow();
+  const findings = callback();
+  recordProfileEvent(profile, {
+    ...meta,
+    ms: profileNow() - started,
+    findings: Array.isArray(findings) ? findings.length : 0,
+    findingIds: extractFindingIds(findings),
+  });
+  return findings;
+}
+
+function profileStep(profile, meta, callback) {
+  if (!profile) return callback();
+  const started = profileNow();
+  try {
+    return callback();
+  } finally {
+    recordProfileEvent(profile, {
+      ...meta,
+      ms: profileNow() - started,
+      findings: 0,
+    });
+  }
+}
+
+async function profileFindingsAsync(profile, meta, callback) {
+  if (!profile) return callback();
+  const started = profileNow();
+  const findings = await callback();
+  recordProfileEvent(profile, {
+    ...meta,
+    ms: profileNow() - started,
+    findings: Array.isArray(findings) ? findings.length : 0,
+    findingIds: extractFindingIds(findings),
+  });
+  return findings;
+}
+
+async function profileStepAsync(profile, meta, callback) {
+  if (!profile) return callback();
+  const started = profileNow();
+  try {
+    return await callback();
+  } finally {
+    recordProfileEvent(profile, {
+      ...meta,
+      ms: profileNow() - started,
+      findings: 0,
+    });
+  }
+}
+
+function percentile(sortedValues, pct) {
+  if (!sortedValues.length) return 0;
+  const idx = Math.min(
+    sortedValues.length - 1,
+    Math.max(0, Math.ceil((pct / 100) * sortedValues.length) - 1),
+  );
+  return sortedValues[idx];
+}
+
+function summarizeDetectorProfile(profile) {
+  const events = Array.isArray(profile)
+    ? profile
+    : (Array.isArray(profile?.events) ? profile.events : []);
+  const groups = new Map();
+  for (const event of events) {
+    const key = [
+      event.engine || 'unknown',
+      event.phase || 'unknown',
+      event.ruleId || 'unknown',
+      event.target || '',
+    ].join('\u0000');
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        engine: event.engine || 'unknown',
+        phase: event.phase || 'unknown',
+        ruleId: event.ruleId || 'unknown',
+        target: event.target || '',
+        calls: 0,
+        totalMs: 0,
+        findings: 0,
+        samples: [],
+      };
+      groups.set(key, group);
+    }
+    const ms = Number.isFinite(event.ms) ? event.ms : 0;
+    group.calls += 1;
+    group.totalMs += ms;
+    group.findings += Number.isFinite(event.findings) ? event.findings : 0;
+    group.samples.push(ms);
+  }
+  return [...groups.values()]
+    .map(group => {
+      const samples = group.samples.sort((a, b) => a - b);
+      return {
+        engine: group.engine,
+        phase: group.phase,
+        ruleId: group.ruleId,
+        target: group.target,
+        calls: group.calls,
+        totalMs: Number(group.totalMs.toFixed(3)),
+        avgMs: Number((group.totalMs / group.calls).toFixed(3)),
+        p50: Number(percentile(samples, 50).toFixed(3)),
+        p95: Number(percentile(samples, 95).toFixed(3)),
+        findings: group.findings,
+      };
+    })
+    .sort((a, b) => b.totalMs - a.totalMs);
 }
 
 /** Check if content looks like a full page (not a component/partial) */
@@ -3348,148 +3670,1066 @@ function unwrapCssAtLayer(source) {
 }
 
 // ---------------------------------------------------------------------------
-// jsdom detection (default for HTML files)
+// Static HTML/CSS detection (default for local HTML files)
 // ---------------------------------------------------------------------------
 
-async function detectHtml(filePath) {
-  let JSDOM;
-  try {
-    ({ JSDOM } = await import('jsdom'));
-  } catch {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return detectText(content, filePath);
-  }
+const STATIC_INHERITED_PROPS = new Set([
+  'color', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight',
+  'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'hyphens',
+  'webkitHyphens',
+]);
 
-  const html = fs.readFileSync(filePath, 'utf-8');
-  const resolvedPath = path.resolve(filePath);
-  const fileDir = path.dirname(resolvedPath);
+const STATIC_DEFAULT_STYLE = {
+  color: 'rgb(0, 0, 0)',
+  backgroundColor: 'rgba(0, 0, 0, 0)',
+  backgroundImage: 'none',
+  borderTopWidth: '0px',
+  borderRightWidth: '0px',
+  borderBottomWidth: '0px',
+  borderLeftWidth: '0px',
+  borderTopColor: 'rgb(0, 0, 0)',
+  borderRightColor: 'rgb(0, 0, 0)',
+  borderBottomColor: 'rgb(0, 0, 0)',
+  borderLeftColor: 'rgb(0, 0, 0)',
+  borderRadius: '0px',
+  boxShadow: 'none',
+  fontFamily: '',
+  fontSize: '16px',
+  fontStyle: 'normal',
+  fontWeight: '400',
+  lineHeight: 'normal',
+  letterSpacing: 'normal',
+  textTransform: 'none',
+  textAlign: 'start',
+  hyphens: 'manual',
+  webkitHyphens: 'manual',
+  transitionProperty: '',
+  transitionTimingFunction: '',
+  animationName: '',
+  animationTimingFunction: '',
+  webkitBackgroundClip: '',
+  backgroundClip: '',
+  width: '',
+  height: '',
+  paddingTop: '0px',
+  paddingRight: '0px',
+  paddingBottom: '0px',
+  paddingLeft: '0px',
+  position: 'static',
+  display: '',
+};
 
-  // Inline linked local stylesheets so jsdom can see them
-  let processedHtml = html;
-  const linkRes = [
-    /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
-    /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi,
-  ];
-  for (const re of linkRes) {
-    let m;
-    while ((m = re.exec(html)) !== null) {
-      const href = m[1];
-      if (/^(https?:)?\/\//.test(href)) continue;
-      const cssPath = path.resolve(fileDir, href);
-      try {
-        const css = fs.readFileSync(cssPath, 'utf-8');
-        processedHtml = processedHtml.replace(m[0], `<style>/* ${href} */\n${css}\n</style>`);
-      } catch { /* skip unreadable */ }
+const STATIC_PROP_MAP = {
+  'background-color': 'backgroundColor',
+  'background-image': 'backgroundImage',
+  'background-clip': 'backgroundClip',
+  '-webkit-background-clip': 'webkitBackgroundClip',
+  'border-radius': 'borderRadius',
+  'border-top-width': 'borderTopWidth',
+  'border-right-width': 'borderRightWidth',
+  'border-bottom-width': 'borderBottomWidth',
+  'border-left-width': 'borderLeftWidth',
+  'border-top-color': 'borderTopColor',
+  'border-right-color': 'borderRightColor',
+  'border-bottom-color': 'borderBottomColor',
+  'border-left-color': 'borderLeftColor',
+  'box-shadow': 'boxShadow',
+  'font-family': 'fontFamily',
+  'font-size': 'fontSize',
+  'font-style': 'fontStyle',
+  'font-weight': 'fontWeight',
+  'line-height': 'lineHeight',
+  'letter-spacing': 'letterSpacing',
+  'text-transform': 'textTransform',
+  'text-align': 'textAlign',
+  'hyphens': 'hyphens',
+  '-webkit-hyphens': 'webkitHyphens',
+  'transition-property': 'transitionProperty',
+  'transition-timing-function': 'transitionTimingFunction',
+  'animation-name': 'animationName',
+  'animation-timing-function': 'animationTimingFunction',
+  'width': 'width',
+  'height': 'height',
+  'padding-top': 'paddingTop',
+  'padding-right': 'paddingRight',
+  'padding-bottom': 'paddingBottom',
+  'padding-left': 'paddingLeft',
+  'position': 'position',
+  'display': 'display',
+};
+
+const STATIC_NAMED_COLORS = {
+  black: { r: 0, g: 0, b: 0, a: 1 },
+  white: { r: 255, g: 255, b: 255, a: 1 },
+  transparent: { r: 0, g: 0, b: 0, a: 0 },
+  gray: { r: 128, g: 128, b: 128, a: 1 },
+  grey: { r: 128, g: 128, b: 128, a: 1 },
+  silver: { r: 192, g: 192, b: 192, a: 1 },
+  red: { r: 255, g: 0, b: 0, a: 1 },
+  green: { r: 0, g: 128, b: 0, a: 1 },
+  blue: { r: 0, g: 0, b: 255, a: 1 },
+};
+
+function splitCssList(value) {
+  const parts = [];
+  let depth = 0, quote = '', start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (quote) {
+      if (ch === quote && value[i - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; continue; }
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) {
+      parts.push(value.slice(start, i).trim());
+      start = i + 1;
     }
   }
+  const tail = value.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts;
+}
 
-  // jsdom does not implement CSS `@layer` rules — every utility class
-  // inside `@layer utilities { ... }` is silently ignored, so computed
-  // styles come back empty. Tailwind v4 wraps every utility class in
-  // an @layer, which means jsdom returns empty strings for fontSize /
-  // fontWeight / textTransform / letterSpacing on every Tailwind-styled
-  // element. Strip the @layer wrapper, keep the inner rules as flat
-  // CSS that jsdom can process. The cascade ordering @layer provides
-  // doesn't matter for our checks — we only read computed values.
-  processedHtml = unwrapCssAtLayer(processedHtml);
+function splitCssTokens(value) {
+  const tokens = [];
+  let depth = 0, quote = '', current = '';
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote && value[i - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; current += ch; continue; }
+    if (ch === '(') { depth++; current += ch; continue; }
+    if (ch === ')') { depth = Math.max(0, depth - 1); current += ch; continue; }
+    if (/\s/.test(ch) && depth === 0) {
+      if (current) { tokens.push(current); current = ''; }
+      continue;
+    }
+    current += ch;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
 
-  const dom = new JSDOM(processedHtml, {
-    url: `file://${resolvedPath}`,
-  });
-  const { window } = dom;
-  const { document } = window;
+function cssPropToCamel(prop) {
+  if (!prop) return prop;
+  const mapped = STATIC_PROP_MAP[prop];
+  if (mapped) return mapped;
+  return prop.replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
+}
 
-  const findings = [];
+function staticColorToCss(c) {
+  if (!c) return '';
+  if (c.a != null && c.a < 1) return `rgba(${c.r}, ${c.g}, ${c.b}, ${Number(c.a.toFixed(3))})`;
+  return `rgb(${c.r}, ${c.g}, ${c.b})`;
+}
 
-  // Pre-pass: recover border declarations that jsdom dropped because they
-  // contained a var() reference. The map is keyed by element and consulted
-  // by the border check adapter as a fallback.
-  const borderOverrides = buildBorderOverrideMap(document, window);
+function parseStaticColor(value) {
+  const parsed = parseAnyColor(value);
+  if (parsed) return parsed;
+  const named = STATIC_NAMED_COLORS[String(value || '').trim().toLowerCase()];
+  return named ? { ...named } : null;
+}
 
-  // Pre-pass: collect :root / :host / html CSS custom properties so the
-  // checks can resolve var(--X) refs that jsdom returns verbatim from
-  // getComputedStyle. Tailwind v4 wraps every utility-class value in a
-  // CSS var; without this, font-weight / font-size / letter-spacing /
-  // color all come back as literal "var(--X)" strings.
-  const customPropMap = buildCustomPropMap(document);
+function extractStaticColor(value) {
+  if (!value) return '';
+  const raw = String(value).trim();
+  if (/^var\(/i.test(raw)) return raw;
+  const colorLike = raw.match(/(?:rgba?\([^)]+\)|oklch\([^)]+\)|oklab\([^)]+\)|lch\([^)]+\)|lab\([^)]+\)|hsla?\([^)]+\)|hwb\([^)]+\)|#[0-9a-f]{3,8}\b|\b(?:black|white|gray|grey|silver|red|green|blue|transparent)\b)/i);
+  if (!colorLike) return '';
+  return colorLike[0];
+}
 
-  // Pre-pass: detect whether the page's CSS declares `a { color: inherit }`
-  // (Tailwind v4 preflight signature). When present, real browsers render
-  // anchors using the cascaded ancestor color, but jsdom's UA stylesheet
-  // applies `:link { color: blue }` at higher specificity, so anchors come
-  // back as `rgb(0, 0, 238)` regardless. checkElementColors uses this
-  // flag to walk for the cascaded color when it sees jsdom's blue default
-  // on an anchor — preventing a whole class of contrast false positives
-  // on Tailwind v4 pages.
-  let hasAnchorInheritRule = false;
-  const scanForAnchorInherit = (rules) => {
-    for (const rule of rules) {
-      if (rule.selectorText === 'a' && rule.style && rule.style.color === 'inherit') return true;
-      // Recurse into @layer / @media / @supports / etc.
-      if (rule.cssRules && scanForAnchorInherit(rule.cssRules)) return true;
+function normalizeStaticCssValue(prop, value, customProps, parentStyle, currentStyle = null) {
+  let resolved = resolveVarRefs(String(value || '').trim(), customProps);
+  if (resolved === 'inherit') return parentStyle?.[prop] || STATIC_DEFAULT_STYLE[prop] || '';
+  const isModernBorderColor = /^border[A-Z][a-z]+Color$/.test(prop) && /^(?:oklch|oklab|lch|lab|hsl|hwb)\(/i.test(resolved);
+  if (!isModernBorderColor && (/color$/i.test(prop) || prop === 'color' || prop === 'backgroundColor')) {
+    const parsed = parseStaticColor(resolved);
+    if (parsed) resolved = staticColorToCss(parsed);
+  }
+  if (prop === 'fontSize') {
+    const base = parseFloat(parentStyle?.fontSize) || 16;
+    const px = resolveLengthPx(resolved, base);
+    if (px != null) resolved = `${px}px`;
+  }
+  if (prop === 'letterSpacing') {
+    const base = parseFloat(currentStyle?.fontSize || parentStyle?.fontSize) || 16;
+    const px = resolveLengthPx(resolved, base);
+    if (px != null) resolved = `${px}px`;
+  }
+  if (prop === 'lineHeight' && resolved !== 'normal') {
+    const base = parseFloat(currentStyle?.fontSize || parentStyle?.fontSize) || 16;
+    const px = resolveLengthPx(resolved, base);
+    if (px != null) resolved = `${px}px`;
+  }
+  return resolved;
+}
+
+function expandStaticBoxValues(tokens) {
+  if (tokens.length === 0) return ['0px', '0px', '0px', '0px'];
+  if (tokens.length === 1) return [tokens[0], tokens[0], tokens[0], tokens[0]];
+  if (tokens.length === 2) return [tokens[0], tokens[1], tokens[0], tokens[1]];
+  if (tokens.length === 3) return [tokens[0], tokens[1], tokens[2], tokens[1]];
+  return [tokens[0], tokens[1], tokens[2], tokens[3]];
+}
+
+function parseStaticBorder(value) {
+  const tokens = splitCssTokens(value);
+  let width = '', color = '';
+  for (const token of tokens) {
+    if (!width && /^-?[\d.]+(?:px|rem|em|%)$/.test(token)) width = token;
+    if (!color) color = extractStaticColor(token);
+  }
+  return { width, color };
+}
+
+function parseStaticFont(value) {
+  const out = [];
+  const slashParts = value.match(/(?:^|\s)([\d.]+(?:px|rem|em|%))(?:\/([^\s]+))?/);
+  if (/\bitalic\b/i.test(value)) out.push(['fontStyle', 'italic']);
+  const weight = value.match(/\b([1-9]00|bold|normal|lighter|bolder)\b/i);
+  if (weight) out.push(['fontWeight', weight[1]]);
+  if (slashParts) {
+    out.push(['fontSize', slashParts[1]]);
+    if (slashParts[2]) out.push(['lineHeight', slashParts[2]]);
+    const familyStart = value.indexOf(slashParts[0]) + slashParts[0].length;
+    const family = value.slice(familyStart).trim();
+    if (family) out.push(['fontFamily', family]);
+  }
+  return out;
+}
+
+function parseStaticTransition(value) {
+  const props = [];
+  const timings = [];
+  for (const item of splitCssList(value)) {
+    const tokens = splitCssTokens(item);
+    const timing = tokens.find(token => /^(?:ease|linear|step-|cubic-bezier\()/i.test(token));
+    if (timing) timings.push(timing);
+    const prop = tokens.find(token => /^[a-z-]+$/i.test(token) && !/^(?:ease|linear|infinite|alternate|forwards|backwards|both|normal|none)$/.test(token) && !/s$/.test(token));
+    if (prop) props.push(prop);
+  }
+  return {
+    property: props.join(', '),
+    timing: timings.join(', '),
+  };
+}
+
+function parseStaticAnimation(value) {
+  const names = [];
+  const timings = [];
+  for (const item of splitCssList(value)) {
+    const tokens = splitCssTokens(item);
+    const timing = tokens.find(token => /^(?:ease|linear|step-|cubic-bezier\()/i.test(token));
+    if (timing) timings.push(timing);
+    const name = tokens.find(token =>
+      /^[a-z_-][\w-]*$/i.test(token) &&
+      !/^(?:ease|linear|infinite|alternate|forwards|backwards|both|normal|none|running|paused)$/.test(token)
+    );
+    if (name) names.push(name);
+  }
+  return {
+    name: names.join(', '),
+    timing: timings.join(', '),
+  };
+}
+
+function expandStaticDeclaration(prop, value) {
+  const p = prop.toLowerCase();
+  const v = String(value || '').trim();
+  if (!v) return [];
+  if (p.startsWith('--')) return [[p, v]];
+  if (p === 'background') {
+    const out = [];
+    const hasImage = /gradient|url\(/i.test(v);
+    if (hasImage) out.push(['backgroundImage', v]);
+    const beforeImage = hasImage ? v.split(/(?:repeating-)?(?:linear|radial|conic)-gradient\(|url\(/i)[0] : v;
+    const color = extractStaticColor(hasImage ? beforeImage : v);
+    if (color) out.push(['backgroundColor', color]);
+    return out;
+  }
+  if (p === 'border') {
+    const parsed = parseStaticBorder(v);
+    const out = [];
+    for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
+      if (parsed.width) out.push([`border${side}Width`, parsed.width]);
+      if (parsed.color) out.push([`border${side}Color`, parsed.color]);
+    }
+    return out;
+  }
+  const sideMatch = p.match(/^border-(top|right|bottom|left)$/);
+  if (sideMatch) {
+    const parsed = parseStaticBorder(v);
+    const side = sideMatch[1][0].toUpperCase() + sideMatch[1].slice(1);
+    return [
+      ...(parsed.width ? [[`border${side}Width`, parsed.width]] : []),
+      ...(parsed.color ? [[`border${side}Color`, parsed.color]] : []),
+    ];
+  }
+  if (p === 'border-width') {
+    const vals = expandStaticBoxValues(splitCssTokens(v));
+    return [
+      ['borderTopWidth', vals[0]],
+      ['borderRightWidth', vals[1]],
+      ['borderBottomWidth', vals[2]],
+      ['borderLeftWidth', vals[3]],
+    ];
+  }
+  if (p === 'border-color') {
+    const vals = expandStaticBoxValues(splitCssTokens(v));
+    return [
+      ['borderTopColor', vals[0]],
+      ['borderRightColor', vals[1]],
+      ['borderBottomColor', vals[2]],
+      ['borderLeftColor', vals[3]],
+    ];
+  }
+  if (p === 'padding') {
+    const vals = expandStaticBoxValues(splitCssTokens(v));
+    return [
+      ['paddingTop', vals[0]],
+      ['paddingRight', vals[1]],
+      ['paddingBottom', vals[2]],
+      ['paddingLeft', vals[3]],
+    ];
+  }
+  if (p === 'font') return parseStaticFont(v);
+  if (p === 'transition') {
+    const parsed = parseStaticTransition(v);
+    return [
+      ...(parsed.property ? [['transitionProperty', parsed.property]] : []),
+      ...(parsed.timing ? [['transitionTimingFunction', parsed.timing]] : []),
+    ];
+  }
+  if (p === 'animation') {
+    const parsed = parseStaticAnimation(v);
+    return [
+      ...(parsed.name ? [['animationName', parsed.name]] : []),
+      ...(parsed.timing ? [['animationTimingFunction', parsed.timing]] : []),
+    ];
+  }
+  const mapped = cssPropToCamel(p);
+  if (STATIC_DEFAULT_STYLE[mapped] != null || STATIC_INHERITED_PROPS.has(mapped)) {
+    return [[mapped, v]];
+  }
+  return [];
+}
+
+function compareStaticPriority(a, b) {
+  if (!a) return true;
+  if (!!b.important !== !!a.important) return !!b.important;
+  if (!!b.inline !== !!a.inline) return !!b.inline;
+  for (let i = 0; i < 3; i++) {
+    if ((b.specificity[i] || 0) !== (a.specificity[i] || 0)) {
+      return (b.specificity[i] || 0) > (a.specificity[i] || 0);
+    }
+  }
+  return b.order >= a.order;
+}
+
+function staticSpecificity(selector) {
+  const noWhere = selector.replace(/:where\([^)]*\)/g, '');
+  const ids = (noWhere.match(/#[\w-]+/g) || []).length;
+  const classes = (noWhere.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+(?:\([^)]*\))?/g) || []).length;
+  const stripped = noWhere
+    .replace(/#[\w-]+/g, ' ')
+    .replace(/\.[\w-]+|\[[^\]]+\]|:{1,2}[\w-]+(?:\([^)]*\))?/g, ' ')
+    .replace(/[*>+~(),]/g, ' ');
+  const types = (stripped.match(/\b[a-zA-Z][\w-]*\b/g) || []).length;
+  return [ids, classes, types];
+}
+
+function applyStaticDeclaration(specified, node, prop, value, meta) {
+  let map = specified.get(node);
+  if (!map) { map = new Map(); specified.set(node, map); }
+  for (const [expandedProp, expandedValue] of expandStaticDeclaration(prop, value)) {
+    const existing = map.get(expandedProp);
+    const next = { ...meta, prop: expandedProp, value: expandedValue };
+    if (compareStaticPriority(existing, next)) map.set(expandedProp, next);
+  }
+}
+
+function parseStaticStyleAttribute(styleText, orderBase = 0) {
+  const decls = [];
+  for (const part of String(styleText || '').split(';')) {
+    const idx = part.indexOf(':');
+    if (idx <= 0) continue;
+    const prop = part.slice(0, idx).trim();
+    let value = part.slice(idx + 1).trim();
+    const important = /!important\s*$/i.test(value);
+    value = value.replace(/\s*!important\s*$/i, '').trim();
+    decls.push({ prop, value, important, order: orderBase + decls.length });
+  }
+  return decls;
+}
+
+function collectStaticCssRules(cssText, csstree) {
+  const rules = [];
+  let ast;
+  try {
+    ast = csstree.parse(cssText, { positions: false, parseValue: true, parseCustomProperty: false });
+  } catch {
+    return rules;
+  }
+  let order = 0;
+  const walkList = (list, atRuleStack = []) => {
+    list?.forEach?.(node => {
+      if (node.type === 'Rule' && node.block) {
+        if (atRuleStack.some(name => /keyframes$/i.test(name))) return;
+        const selectorText = csstree.generate(node.prelude).trim();
+        const declarations = [];
+        node.block.children?.forEach?.(child => {
+          if (child.type !== 'Declaration') return;
+          declarations.push({
+            prop: child.property,
+            value: csstree.generate(child.value).trim(),
+            important: !!child.important,
+          });
+        });
+        for (const selector of splitCssList(selectorText)) {
+          if (selector) rules.push({ selector, declarations, specificity: staticSpecificity(selector), order: order++ });
+        }
+        return;
+      }
+      if (node.type === 'Atrule' && node.block) {
+        const name = String(node.name || '').toLowerCase();
+        if (name === 'media' || name === 'supports' || name === 'layer') {
+          walkList(node.block.children, [...atRuleStack, name]);
+        }
+      }
+    });
+  };
+  walkList(ast.children);
+  return rules;
+}
+
+class StaticElement {
+  constructor(node, doc) {
+    this.node = node;
+    this._doc = doc;
+    this.nodeType = 1;
+    this.tagName = String(node.name || '').toUpperCase();
+    this.nodeName = this.tagName;
+  }
+  get parentElement() {
+    let cur = this.node.parent;
+    while (cur && cur.type !== 'tag') cur = cur.parent;
+    return cur ? this._doc.wrap(cur) : null;
+  }
+  get previousElementSibling() {
+    let cur = this.node.prev;
+    while (cur && cur.type !== 'tag') cur = cur.prev;
+    return cur ? this._doc.wrap(cur) : null;
+  }
+  get children() {
+    return (this.node.children || []).filter(child => child.type === 'tag').map(child => this._doc.wrap(child));
+  }
+  get childNodes() {
+    return (this.node.children || []).map(child => {
+      if (child.type === 'text') return { nodeType: 3, textContent: child.data || '' };
+      if (child.type === 'tag') return this._doc.wrap(child);
+      return { nodeType: 8, textContent: child.data || '' };
+    });
+  }
+  get textContent() {
+    return this._doc.domutils.textContent(this.node);
+  }
+  get className() {
+    return this.getAttribute('class') || '';
+  }
+  get id() {
+    return this.getAttribute('id') || '';
+  }
+  getAttribute(name) {
+    return this.node.attribs?.[name] ?? null;
+  }
+  querySelector(selector) {
+    try {
+      const found = this._doc.selectOne(selector, this.node.children || []);
+      return found ? this._doc.wrap(found) : null;
+    } catch {
+      return null;
+    }
+  }
+  querySelectorAll(selector) {
+    try {
+      return this._doc.selectAll(selector, this.node.children || []).map(node => this._doc.wrap(node));
+    } catch {
+      return [];
+    }
+  }
+  closest(selector) {
+    let cur = this.node;
+    while (cur && cur.type === 'tag') {
+      try {
+        if (this._doc.is(cur, selector)) return this._doc.wrap(cur);
+      } catch {
+        return null;
+      }
+      cur = cur.parent;
+      while (cur && cur.type !== 'tag') cur = cur.parent;
+    }
+    return null;
+  }
+  contains(other) {
+    let cur = other?.node || null;
+    while (cur) {
+      if (cur === this.node) return true;
+      cur = cur.parent;
     }
     return false;
-  };
-  for (const sheet of document.styleSheets) {
+  }
+}
+
+class StaticDocument {
+  constructor(root, modules) {
+    this.root = root;
+    this.selectAll = modules.selectAll;
+    this.selectOne = modules.selectOne;
+    this.is = modules.is;
+    this.domutils = modules.domutils;
+    this._wrappers = new WeakMap();
+    this._styleMap = new WeakMap();
+  }
+  wrap(node) {
+    let wrapped = this._wrappers.get(node);
+    if (!wrapped) {
+      wrapped = new StaticElement(node, this);
+      this._wrappers.set(node, wrapped);
+    }
+    return wrapped;
+  }
+  querySelectorAll(selector) {
     try {
-      if (scanForAnchorInherit(sheet.cssRules || [])) {
-        hasAnchorInheritRule = true;
-        break;
+      return this.selectAll(selector, this.root.children || []).map(node => this.wrap(node));
+    } catch {
+      return [];
+    }
+  }
+  querySelector(selector) {
+    try {
+      const found = this.selectOne(selector, this.root.children || []);
+      return found ? this.wrap(found) : null;
+    } catch {
+      return null;
+    }
+  }
+  get documentElement() {
+    return this.querySelector('html');
+  }
+  get body() {
+    return this.querySelector('body');
+  }
+  setStyle(node, style) {
+    this._styleMap.set(node, style);
+  }
+  getStyle(el) {
+    return this._styleMap.get(el.node) || makeStaticStyle();
+  }
+}
+
+function makeStaticStyle(values = {}) {
+  const style = { ...STATIC_DEFAULT_STYLE, ...values };
+  style.getPropertyValue = (prop) => {
+    const key = cssPropToCamel(prop);
+    return style[key] || style[prop] || '';
+  };
+  return style;
+}
+
+function buildStaticWindow(staticDoc) {
+  return {
+    document: staticDoc,
+    getComputedStyle: (el) => staticDoc.getStyle(el),
+  };
+}
+
+function collectStaticCssText(root, fileDir, profile, filePath, modules) {
+  const styleTexts = [];
+  for (const styleEl of modules.selectAll('style', root.children || [])) {
+    styleTexts.push(modules.domutils.textContent(styleEl));
+  }
+  const links = modules.selectAll('link', root.children || []);
+  for (const link of links) {
+    const rel = link.attribs?.rel || '';
+    const href = link.attribs?.href || '';
+    if (!/\bstylesheet\b/i.test(rel) || !href || /^(https?:)?\/\//i.test(href)) continue;
+    const cssPath = path.resolve(fileDir, href);
+    try {
+      const css = profileStep(profile, {
+        engine: 'static-html',
+        phase: 'preprocess',
+        ruleId: 'inline-linked-stylesheet',
+        target: filePath,
+        detail: href,
+      }, () => fs.readFileSync(cssPath, 'utf-8'));
+      styleTexts.push(css);
+    } catch { /* skip unreadable */ }
+  }
+  return styleTexts.join('\n');
+}
+
+function buildStaticStyleMap(root, staticDoc, cssText, modules, profile, filePath) {
+  const specified = new Map();
+  const allNodes = modules.selectAll('*', root.children || []);
+  const rules = profileStep(profile, {
+    engine: 'static-html',
+    phase: 'parse-css',
+    ruleId: 'css-rules',
+    target: filePath,
+  }, () => collectStaticCssRules(cssText, modules.csstree));
+
+  profileStep(profile, {
+    engine: 'static-html',
+    phase: 'selector-match',
+    ruleId: 'css-selectors',
+    target: filePath,
+  }, () => {
+    for (const rule of rules) {
+      let matched;
+      try {
+        matched = modules.selectAll(rule.selector, root.children || []);
+      } catch {
+        recordProfileEvent(profile, {
+          engine: 'static-html',
+          phase: 'selector-match',
+          ruleId: 'unsupported-selector',
+          target: filePath,
+          ms: 0,
+          findings: 0,
+          detail: rule.selector,
+        });
+        continue;
       }
-    } catch (e) { /* cross-origin sheet, skip */ }
+      for (const node of matched) {
+        for (const decl of rule.declarations) {
+          applyStaticDeclaration(specified, node, decl.prop, decl.value, {
+            important: decl.important,
+            specificity: rule.specificity,
+            order: rule.order,
+            inline: false,
+          });
+        }
+      }
+    }
+
+    let inlineOrder = rules.length + 1;
+    for (const node of allNodes) {
+      const styleText = node.attribs?.style;
+      if (!styleText) continue;
+      for (const decl of parseStaticStyleAttribute(styleText, inlineOrder)) {
+        applyStaticDeclaration(specified, node, decl.prop, decl.value, {
+          important: decl.important,
+          specificity: [1, 0, 0],
+          order: decl.order,
+          inline: true,
+        });
+      }
+      inlineOrder += 1000;
+    }
+  });
+
+  const computeNode = (node, parentStyle = null, parentCustom = new Map()) => {
+    const specifiedMap = specified.get(node) || new Map();
+    const customProps = new Map(parentCustom);
+    for (const [prop, decl] of specifiedMap) {
+      if (prop.startsWith('--')) customProps.set(prop, resolveVarRefs(decl.value, customProps));
+    }
+    const values = {};
+    for (const prop of Object.keys(STATIC_DEFAULT_STYLE)) {
+      if (STATIC_INHERITED_PROPS.has(prop) && parentStyle?.[prop] != null) values[prop] = parentStyle[prop];
+      else values[prop] = STATIC_DEFAULT_STYLE[prop];
+    }
+    for (const [prop, decl] of specifiedMap) {
+      if (prop.startsWith('--')) continue;
+      values[prop] = normalizeStaticCssValue(prop, decl.value, customProps, parentStyle, values);
+    }
+    const style = makeStaticStyle(values);
+    staticDoc.setStyle(node, style);
+    for (const child of node.children || []) {
+      if (child.type === 'tag') computeNode(child, style, customProps);
+    }
+  };
+
+  profileStep(profile, {
+    engine: 'static-html',
+    phase: 'cascade',
+    ruleId: 'compute-styles',
+    target: filePath,
+  }, () => {
+    for (const child of root.children || []) {
+      if (child.type === 'tag') computeNode(child);
+    }
+  });
+}
+
+function checkStaticPageTypography(document, window) {
+  const findings = [];
+  const fonts = new Set();
+  const overusedFound = new Set();
+  for (const el of document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, td, th, dd, blockquote, figcaption, a, button, label, span, div')) {
+    const hasText = el.childNodes.some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
+    if (!hasText) continue;
+    const ff = window.getComputedStyle(el).fontFamily || '';
+    const stack = ff.split(',').map(f => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase());
+    const primary = stack.find(f => f && !GENERIC_FONTS.has(f));
+    if (!primary) continue;
+    fonts.add(primary);
+    if (OVERUSED_FONTS.has(primary)) overusedFound.add(primary);
+  }
+  for (const font of overusedFound) {
+    findings.push({ id: 'overused-font', snippet: `Primary font: ${font}` });
+  }
+  if (fonts.size === 1 && document.querySelectorAll('*').length >= 20) {
+    findings.push({ id: 'single-font', snippet: `only font used is ${[...fonts][0]}` });
+  }
+  const sizes = new Set();
+  for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, h6, p, span, a, li, td, th, label, button, div')) {
+    const fontSize = parseFloat(window.getComputedStyle(el).fontSize);
+    if (fontSize >= 8 && fontSize < 200) sizes.add(Math.round(fontSize * 10) / 10);
+  }
+  if (sizes.size >= 3) {
+    const sorted = [...sizes].sort((a, b) => a - b);
+    const ratio = sorted[sorted.length - 1] / sorted[0];
+    if (ratio < 2.0) {
+      findings.push({ id: 'flat-type-hierarchy', snippet: `Sizes: ${sorted.map(s => s + 'px').join(', ')} (ratio ${ratio.toFixed(1)}:1)` });
+    }
+  }
+  return findings;
+}
+
+const STATIC_ELEMENT_RULES = [
+  { id: 'border-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementBorders(tag, style, null, resolveBorderRadiusPx(el, style, parseFloat(style.width) || 0, window)) },
+  { id: 'color-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementColors(el, style, tag, window, customPropMap, false) },
+  { id: 'dark-glow', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementGlow(tag, style, resolveBackground(el.parentElement || el, window, customPropMap)) },
+  { id: 'motion-rules', selector: '*', run: (el, tag, style) => checkElementMotion(tag, style) },
+  { id: 'icon-tile-stack', selector: 'h1,h2,h3,h4,h5,h6', run: (el, tag, _style, window) => checkElementIconTile(el, tag, window) },
+  { id: 'italic-serif-display', selector: 'h1,h2', run: (el, tag, style) => checkElementItalicSerif(el, style, tag) },
+  { id: 'hero-eyebrow-chip', selector: 'h1', run: (el, tag, style, window, customPropMap) => checkElementHeroEyebrow(el, style, tag, window, customPropMap) },
+  { id: 'quality-rules', selector: '*', run: (el, tag, style, window) => checkElementQuality(el, style, tag, window) },
+];
+
+async function detectHtml(filePath, options = {}) {
+  const profile = options?.profile;
+  const html = profileStep(profile, {
+    engine: 'static-html',
+    phase: 'setup',
+    ruleId: 'read-html',
+    target: filePath,
+  }, () => fs.readFileSync(filePath, 'utf-8'));
+
+  let modules;
+  try {
+    modules = await profileStepAsync(profile, {
+      engine: 'static-html',
+      phase: 'setup',
+      ruleId: 'import-static-parser',
+      target: filePath,
+    }, async () => {
+      const [htmlparser2, cssSelect, csstree, domutils] = await Promise.all([
+        import('htmlparser2'),
+        import('css-select'),
+        import('css-tree'),
+        import('domutils'),
+      ]);
+      return {
+        parseDocument: htmlparser2.parseDocument,
+        selectAll: cssSelect.selectAll,
+        selectOne: cssSelect.selectOne,
+        is: cssSelect.is,
+        csstree,
+        domutils,
+      };
+    });
+  } catch {
+    return detectText(html, filePath, options);
   }
 
-  // Element-level checks (borders + colors + motion)
-  for (const el of document.querySelectorAll('*')) {
-    const tag = el.tagName.toLowerCase();
-    const style = window.getComputedStyle(el);
-    const resolvedRadius = resolveBorderRadiusPx(el, style, parseFloat(style.width) || 0, window);
-    for (const f of checkElementBorders(tag, style, borderOverrides.get(el), resolvedRadius)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementGlow(tag, style, resolveBackground(el.parentElement || el, window, customPropMap))) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementMotion(tag, style)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementIconTile(el, tag, window)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementItalicSerif(el, style, tag)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementHeroEyebrow(el, style, tag, window, customPropMap)) {
-      findings.push(finding(f.id, filePath, f.snippet));
-    }
-    for (const f of checkElementQuality(el, style, tag, window)) {
-      findings.push(finding(f.id, filePath, f.snippet));
+  const resolvedPath = path.resolve(filePath);
+  const fileDir = path.dirname(resolvedPath);
+  const root = profileStep(profile, {
+    engine: 'static-html',
+    phase: 'parse-html',
+    ruleId: 'parse-document',
+    target: filePath,
+  }, () => modules.parseDocument(html, { lowerCaseAttributeNames: false, lowerCaseTags: true }));
+
+  const cssText = collectStaticCssText(root, fileDir, profile, filePath, modules);
+  const document = new StaticDocument(root, modules);
+  buildStaticStyleMap(root, document, cssText, modules, profile, filePath);
+  const window = buildStaticWindow(document);
+
+  const customPropMap = null;
+
+  const findings = [];
+  const runElementCheck = (ruleId, callback) => profile
+    ? profileFindings(profile, { engine: 'static-html', phase: 'element', ruleId, target: filePath }, callback)
+    : callback();
+
+  const visitedByRule = new Map();
+  for (const rule of STATIC_ELEMENT_RULES) {
+    const elements = document.querySelectorAll(rule.selector);
+    visitedByRule.set(rule.id, elements.length);
+    for (const el of elements) {
+      const tag = el.tagName.toLowerCase();
+      const style = window.getComputedStyle(el);
+      for (const f of runElementCheck(rule.id, () => rule.run(el, tag, style, window, customPropMap))) {
+        findings.push(finding(f.id, filePath, f.snippet));
+      }
     }
   }
 
-  // Page-level checks (only for full pages, not partials)
   if (isFullPage(html)) {
-    for (const f of checkPageTypography(document, window)) {
+    const runPageCheck = (ruleId, callback) => profile
+      ? profileFindings(profile, { engine: 'static-html', phase: 'page', ruleId, target: filePath }, callback)
+      : callback();
+    for (const f of runPageCheck('typography-rules', () => checkStaticPageTypography(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
-    for (const f of checkRepeatedSectionKickersFromDoc(document, window)) {
+    for (const f of runPageCheck('repeated-section-kickers', () => checkRepeatedSectionKickersFromDoc(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
-    for (const f of checkPageLayout(document, window)) {
+    for (const f of runPageCheck('layout-rules', () => checkPageLayout(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
-    for (const f of checkPageQualityFromDoc(document)) {
+    for (const f of runPageCheck('skipped-heading', () => checkPageQualityFromDoc(document))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
-    for (const f of checkHtmlPatterns(html)) {
+    for (const f of runPageCheck('html-patterns', () => checkHtmlPatterns(html).filter(item =>
+      item.id !== 'bounce-easing' && item.id !== 'layout-transition'
+    ))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
   }
 
-  window.close();
+  return findings;
+}
+
+function sanitizeScreenshotClip(clip, viewport) {
+  if (!clip) return null;
+  const x = Math.max(0, Math.floor(clip.x || 0));
+  const y = Math.max(0, Math.floor(clip.y || 0));
+  const width = Math.min(
+    Math.max(1, Math.ceil(clip.width || 0)),
+    Math.max(1, viewport?.width || 1600),
+  );
+  const height = Math.min(
+    Math.max(1, Math.ceil(clip.height || 0)),
+    320,
+  );
+  if (width < 1 || height < 1) return null;
+  return { x, y, width, height };
+}
+
+async function compareScreenshotContrast(page, beforeBase64, afterBase64, candidate) {
+  return page.evaluate(async ({ beforeBase64, afterBase64, candidate }) => {
+    const loadImage = (base64) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Could not decode contrast screenshot'));
+      img.src = `data:image/png;base64,${base64}`;
+    });
+    const [before, after] = await Promise.all([loadImage(beforeBase64), loadImage(afterBase64)]);
+    const width = Math.min(before.width, after.width);
+    const height = Math.min(before.height, after.height);
+    if (width < 1 || height < 1) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.drawImage(before, 0, 0, width, height);
+    const beforePixels = ctx.getImageData(0, 0, width, height).data;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(after, 0, 0, width, height);
+    const afterPixels = ctx.getImageData(0, 0, width, height).data;
+
+    const luminance = ({ r, g, b }) => {
+      const convert = c => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * convert(r) + 0.7152 * convert(g) + 0.0722 * convert(b);
+    };
+    const ratio = (a, b) => {
+      const l1 = luminance(a);
+      const l2 = luminance(b);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    const cssTextColor = candidate.textColor && !candidate.preferRenderedForeground
+      ? {
+          r: candidate.textColor.r,
+          g: candidate.textColor.g,
+          b: candidate.textColor.b,
+        }
+      : null;
+    const ratios = [];
+    let glyphPixels = 0;
+    let strongestDelta = 0;
+    for (let i = 0; i < beforePixels.length; i += 4) {
+      const delta = Math.abs(beforePixels[i] - afterPixels[i])
+        + Math.abs(beforePixels[i + 1] - afterPixels[i + 1])
+        + Math.abs(beforePixels[i + 2] - afterPixels[i + 2])
+        + Math.abs(beforePixels[i + 3] - afterPixels[i + 3]);
+      strongestDelta = Math.max(strongestDelta, delta);
+      if (delta < 10) continue;
+      glyphPixels++;
+      const fg = cssTextColor || {
+        r: beforePixels[i],
+        g: beforePixels[i + 1],
+        b: beforePixels[i + 2],
+      };
+      const bg = {
+        r: afterPixels[i],
+        g: afterPixels[i + 1],
+        b: afterPixels[i + 2],
+      };
+      ratios.push(ratio(fg, bg));
+    }
+
+    if (ratios.length < 8) {
+      return {
+        glyphPixels,
+        strongestDelta,
+        worstRatio: null,
+        p10Ratio: null,
+        medianRatio: null,
+      };
+    }
+
+    ratios.sort((a, b) => a - b);
+    const pick = pct => ratios[Math.min(ratios.length - 1, Math.max(0, Math.floor((pct / 100) * ratios.length)))];
+    return {
+      glyphPixels,
+      strongestDelta,
+      worstRatio: ratios[0],
+      p10Ratio: pick(10),
+      medianRatio: pick(50),
+    };
+  }, { beforeBase64, afterBase64, candidate });
+}
+
+async function captureVisualContrastCandidate(page, candidate, viewport) {
+  const clip = sanitizeScreenshotClip(candidate.clip, viewport);
+  if (!clip) return null;
+
+  const beforeBase64 = await page.screenshot({
+    encoding: 'base64',
+    clip,
+    captureBeyondViewport: true,
+  });
+  const token = `impeccable-contrast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const applied = await page.evaluate(({ selector, token, backgroundClipText }) => {
+    let el;
+    try {
+      el = document.querySelector(selector);
+    } catch {
+      return false;
+    }
+    if (!el) return false;
+    let style = document.getElementById('impeccable-visual-contrast-hide-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'impeccable-visual-contrast-hide-style';
+      style.textContent = [
+        '[data-impeccable-visual-contrast-target] {',
+        '  color: transparent !important;',
+        '  -webkit-text-fill-color: transparent !important;',
+        '  text-shadow: none !important;',
+        '}',
+        '[data-impeccable-visual-contrast-target][data-impeccable-bgclip-text="true"] {',
+        '  background-image: none !important;',
+        '}',
+      ].join('\n');
+      document.head.appendChild(style);
+    }
+    el.setAttribute('data-impeccable-visual-contrast-target', token);
+    if (backgroundClipText) el.setAttribute('data-impeccable-bgclip-text', 'true');
+    return true;
+  }, {
+    selector: candidate.selector,
+    token,
+    backgroundClipText: candidate.backgroundClipText,
+  });
+  if (!applied) return null;
+
+  let afterBase64;
+  try {
+    afterBase64 = await page.screenshot({
+      encoding: 'base64',
+      clip,
+      captureBeyondViewport: true,
+    });
+  } finally {
+    await page.evaluate(({ selector }) => {
+      try {
+        const el = document.querySelector(selector);
+        if (el) {
+          el.removeAttribute('data-impeccable-visual-contrast-target');
+          el.removeAttribute('data-impeccable-bgclip-text');
+        }
+      } catch {
+        // Ignore invalid or stale selectors during cleanup.
+      }
+    }, { selector: candidate.selector }).catch(() => {});
+  }
+
+  const metrics = await compareScreenshotContrast(page, beforeBase64, afterBase64, candidate);
+  if (!metrics || !Number.isFinite(metrics.p10Ratio) || metrics.glyphPixels < 8) return null;
+  const measuredRatio = metrics.p10Ratio;
+  if (measuredRatio >= candidate.threshold) return null;
+  const textLabel = candidate.text ? ` "${candidate.text}"` : '';
+  const reasonLabel = (candidate.reasons || []).slice(0, 3).join(', ') || 'visual background';
+  return {
+    id: 'low-contrast',
+    snippet: `pixel contrast ${measuredRatio.toFixed(1)}:1 median ${metrics.medianRatio.toFixed(1)}:1 (need ${candidate.threshold}:1) on ${reasonLabel}${textLabel}`,
+  };
+}
+
+async function runVisualContrastFallback(page, serializedGroups, options, profile, target) {
+  if (options?.visualContrast === false) return [];
+  const maxCandidates = Number.isFinite(options?.visualContrastMaxCandidates)
+    ? options.visualContrastMaxCandidates
+    : 12;
+  const existingLowContrastSelectors = new Set(
+    serializedGroups
+      .filter(group => group.findings?.some(f => f.type === 'low-contrast'))
+      .map(group => group.selector)
+      .filter(Boolean)
+  );
+  const candidates = await profileStepAsync(profile, {
+    engine: 'browser',
+    phase: 'visual-contrast',
+    ruleId: 'collect-candidates',
+    target,
+  }, () => page.evaluate(({ maxCandidates }) => {
+    if (typeof window.impeccableCollectVisualContrastCandidates !== 'function') return [];
+    return window.impeccableCollectVisualContrastCandidates({ maxCandidates });
+  }, { maxCandidates }));
+
+  const viewport = options?.viewport || { width: 1280, height: 800 };
+  const filtered = candidates.filter(candidate => !existingLowContrastSelectors.has(candidate.selector));
+  const findings = [];
+  for (const candidate of filtered) {
+    const result = await profileFindingsAsync(profile, {
+      engine: 'browser',
+      phase: 'visual-contrast',
+      ruleId: 'pixel-diff',
+      target,
+    }, async () => {
+      const finding = await captureVisualContrastCandidate(page, candidate, viewport);
+      return finding ? [finding] : [];
+    });
+    findings.push(...result);
+  }
   return findings;
 }
 
@@ -3497,12 +4737,24 @@ async function detectHtml(filePath) {
 // Puppeteer detection (for URLs)
 // ---------------------------------------------------------------------------
 
-async function detectUrl(url) {
+async function detectUrl(url, options = {}) {
+  const profile = options?.profile;
+  const waitUntil = options?.waitUntil || 'networkidle0';
+  const settleMs = Number.isFinite(options?.settleMs) ? options.settleMs : 0;
+  const viewport = options?.viewport || { width: 1280, height: 800 };
+  const externalBrowser = options?.browser || null;
   let puppeteer;
-  try {
-    puppeteer = await import('puppeteer');
-  } catch {
-    throw new Error('puppeteer is required for URL scanning. Install: npm install puppeteer');
+  if (!externalBrowser) {
+    try {
+      puppeteer = await profileStepAsync(profile, {
+        engine: 'browser',
+        phase: 'setup',
+        ruleId: 'import-puppeteer',
+        target: url,
+      }, () => import('puppeteer'));
+    } catch {
+      throw new Error('puppeteer is required for URL scanning. Install: npm install puppeteer');
+    }
   }
 
   // Read the browser detection script — reuse it instead of reimplementing
@@ -3512,7 +4764,12 @@ async function detectUrl(url) {
   );
   let browserScript;
   try {
-    browserScript = fs.readFileSync(browserScriptPath, 'utf-8');
+    browserScript = profileStep(profile, {
+      engine: 'browser',
+      phase: 'setup',
+      ruleId: 'read-browser-script',
+      target: url,
+    }, () => fs.readFileSync(browserScriptPath, 'utf-8'));
   } catch {
     throw new Error(`Browser script not found at ${browserScriptPath}`);
   }
@@ -3521,23 +4778,126 @@ async function detectUrl(url) {
   // Chrome can't initialize its sandbox there. Disable the sandbox only when
   // running in CI; local users keep the default hardened launch.
   const launchArgs = process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [];
-  const browser = await puppeteer.default.launch({ headless: true, args: launchArgs });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 800 });
-  await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+  const browser = externalBrowser || await profileStepAsync(profile, {
+    engine: 'browser',
+    phase: 'load',
+    ruleId: 'launch-browser',
+    target: url,
+  }, () => puppeteer.default.launch({ headless: true, args: launchArgs }));
+  const page = await profileStepAsync(profile, {
+    engine: 'browser',
+    phase: 'load',
+    ruleId: 'new-page',
+    target: url,
+  }, () => browser.newPage());
+  let results = [];
+  try {
+    await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'load',
+      ruleId: 'set-viewport',
+      target: url,
+    }, () => page.setViewport(viewport));
+    await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'load',
+      ruleId: `goto:${waitUntil}`,
+      target: url,
+    }, () => page.goto(url, { waitUntil, timeout: 30000 }));
+    if (settleMs > 0) {
+      await profileStepAsync(profile, {
+        engine: 'browser',
+        phase: 'load',
+        ruleId: 'settle',
+        target: url,
+      }, () => new Promise(resolve => setTimeout(resolve, settleMs)));
+    }
 
-  // Inject the browser detection script and collect results
-  await page.evaluate(browserScript);
-  const results = await page.evaluate(() => {
-    if (!window.impeccableScan) return [];
-    const allFindings = window.impeccableScan();
-    return allFindings.flatMap(({ findings }) =>
-      findings.map(f => ({ id: f.type, snippet: f.detail }))
-    );
-  });
-
-  await browser.close();
+    // Inject the browser detection script and collect results
+    await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'scan',
+      ruleId: 'configure-pure-detect',
+      target: url,
+    }, () => page.evaluate(() => {
+      window.__IMPECCABLE_CONFIG__ = {
+        ...(window.__IMPECCABLE_CONFIG__ || {}),
+        autoScan: false,
+      };
+    }));
+    await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'scan',
+      ruleId: 'inject-browser-script',
+      target: url,
+    }, () => page.evaluate(browserScript));
+    let serializedGroups = [];
+    results = await profileFindingsAsync(profile, {
+      engine: 'browser',
+      phase: 'scan',
+      ruleId: 'browser-scan',
+      target: url,
+    }, async () => {
+      serializedGroups = await page.evaluate(() => {
+        if (!window.impeccableDetect) return [];
+        return window.impeccableDetect({ decorate: false, serialize: true });
+      });
+      return serializedGroups.flatMap(({ findings }) =>
+        findings.map(f => ({ id: f.type, snippet: f.detail }))
+      );
+    });
+    const visualFindings = await runVisualContrastFallback(page, serializedGroups, options, profile, url);
+    results.push(...visualFindings);
+  } finally {
+    await profileStepAsync(profile, {
+      engine: 'browser',
+      phase: 'load',
+      ruleId: 'close-page',
+      target: url,
+    }, () => page.close().catch(() => {}));
+    if (!externalBrowser) {
+      await profileStepAsync(profile, {
+        engine: 'browser',
+        phase: 'load',
+        ruleId: 'close-browser',
+        target: url,
+      }, () => browser.close());
+    }
+  }
   return results.map(f => finding(f.id, url, f.snippet));
+}
+
+async function createBrowserDetector(options = {}) {
+  let puppeteer;
+  try {
+    puppeteer = await import('puppeteer');
+  } catch {
+    throw new Error('puppeteer is required for URL scanning. Install: npm install puppeteer');
+  }
+  const launchArgs = options.launchArgs || (process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : []);
+  const browser = options.browser || await puppeteer.default.launch({
+    headless: options.headless ?? true,
+    args: launchArgs,
+  });
+  const ownsBrowser = !options.browser;
+  const defaults = {
+    waitUntil: options.waitUntil || 'load',
+    settleMs: Number.isFinite(options.settleMs) ? options.settleMs : 100,
+    viewport: options.viewport || { width: 1280, height: 800 },
+  };
+  return {
+    browser,
+    async detectUrl(url, scanOptions = {}) {
+      return detectUrl(url, {
+        ...defaults,
+        ...scanOptions,
+        browser,
+      });
+    },
+    async close() {
+      if (ownsBrowser) await browser.close().catch(() => {});
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3813,28 +5173,60 @@ function extractCSSinJS(content, ext) {
   return blocks;
 }
 
-function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null) {
+function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null, options = {}) {
+  const { profile, phase = 'regex-matchers' } = options || {};
   const findings = [];
-  for (const matcher of REGEX_MATCHERS) {
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      matcher.regex.lastIndex = 0;
-      let m;
-      while ((m = matcher.regex.exec(line)) !== null) {
-        // For extracted blocks, use nearby lines as context for multi-line CSS patterns
-        const context = blockContext
-          ? lines.slice(Math.max(0, i - 3), Math.min(lines.length, i + 4)).join(' ')
-          : line;
-        if (matcher.test(m, context)) {
-          findings.push(finding(matcher.id, filePath, matcher.fmt(m, context), i + 1 + lineOffset));
+  if (!profile) {
+    for (const matcher of REGEX_MATCHERS) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        matcher.regex.lastIndex = 0;
+        let m;
+        while ((m = matcher.regex.exec(line)) !== null) {
+          // For extracted blocks, use nearby lines as context for multi-line CSS patterns
+          const context = blockContext
+            ? lines.slice(Math.max(0, i - 3), Math.min(lines.length, i + 4)).join(' ')
+            : line;
+          if (matcher.test(m, context)) {
+            findings.push(finding(matcher.id, filePath, matcher.fmt(m, context), i + 1 + lineOffset));
+          }
         }
       }
     }
+    return findings;
+  }
+
+  for (const matcher of REGEX_MATCHERS) {
+    const matcherFindings = profileFindings(profile, {
+      engine: 'regex',
+      phase,
+      ruleId: matcher.id,
+      target: filePath,
+    }, () => {
+      const matches = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        matcher.regex.lastIndex = 0;
+        let m;
+        while ((m = matcher.regex.exec(line)) !== null) {
+          // For extracted blocks, use nearby lines as context for multi-line CSS patterns
+          const context = blockContext
+            ? lines.slice(Math.max(0, i - 3), Math.min(lines.length, i + 4)).join(' ')
+            : line;
+          if (matcher.test(m, context)) {
+            matches.push(finding(matcher.id, filePath, matcher.fmt(m, context), i + 1 + lineOffset));
+          }
+        }
+      }
+      return matches;
+    });
+    findings.push(...matcherFindings);
   }
   return findings;
 }
 
-function detectText(content, filePath) {
+function detectText(content, filePath, options = {}) {
+  const profile = options?.profile;
   const findings = [];
   const lines = content.split('\n');
   const ext = filePath ? (filePath.match(/\.\w+$/)?.[0] || '').toLowerCase() : '';
@@ -3842,20 +5234,43 @@ function detectText(content, filePath) {
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines
   const cssLike = new Set(['.css', '.scss', '.less']);
-  findings.push(...runRegexMatchers(lines, filePath, 0, cssLike.has(ext) || null));
+  findings.push(...runRegexMatchers(lines, filePath, 0, cssLike.has(ext) || null, {
+    profile,
+    phase: 'source',
+  }));
 
   // Extract and scan <style> blocks from Vue/Svelte SFCs
-  const styleBlocks = extractStyleBlocks(content, ext);
+  const styleBlocks = profile
+    ? profileStep(profile, {
+      engine: 'regex',
+      phase: 'extract',
+      ruleId: 'style-blocks',
+      target: filePath,
+    }, () => extractStyleBlocks(content, ext))
+    : extractStyleBlocks(content, ext);
   for (const block of styleBlocks) {
     const blockLines = block.content.split('\n');
-    findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true));
+    findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true, {
+      profile,
+      phase: 'style-block',
+    }));
   }
 
   // Extract and scan CSS-in-JS template literals
-  const cssJsBlocks = extractCSSinJS(content, ext);
+  const cssJsBlocks = profile
+    ? profileStep(profile, {
+      engine: 'regex',
+      phase: 'extract',
+      ruleId: 'css-in-js',
+      target: filePath,
+    }, () => extractCSSinJS(content, ext))
+    : extractCSSinJS(content, ext);
   for (const block of cssJsBlocks) {
     const blockLines = block.content.split('\n');
-    findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true));
+    findings.push(...runRegexMatchers(blockLines, filePath, block.startLine - 1, true, {
+      profile,
+      phase: 'css-in-js',
+    }));
   }
 
   // Deduplicate findings (same antipattern + similar snippet, within 2 lines)
@@ -3871,8 +5286,21 @@ function detectText(content, filePath) {
 
   // Page-level analyzers only run on full pages
   if (isFullPage(content)) {
-    for (const analyzer of REGEX_ANALYZERS) {
-      deduped.push(...analyzer(content, filePath));
+    const analyzerIds = [
+      'single-font',
+      'flat-type-hierarchy',
+      'monotonous-spacing',
+      'everything-centered',
+      'dark-glow',
+    ];
+    for (let i = 0; i < REGEX_ANALYZERS.length; i++) {
+      const analyzer = REGEX_ANALYZERS[i];
+      deduped.push(...profileFindings(profile, {
+        engine: 'regex',
+        phase: 'page-analyzer',
+        ruleId: analyzerIds[i] || `analyzer-${i + 1}`,
+        target: filePath,
+      }, () => analyzer(content, filePath)));
     }
   }
 
@@ -4128,12 +5556,12 @@ function printUsage() {
 Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
-  --fast    Regex-only mode (skip jsdom, faster but misses linked stylesheets)
+  --fast    Regex-only mode (skip static HTML/CSS analysis, faster but misses linked stylesheets)
   --json    Output results as JSON
   --help    Show this help message
 
 Detection modes:
-  HTML files     jsdom with computed styles (default, catches linked CSS)
+  HTML files     Static HTML/CSS analysis (default, catches linked CSS)
   Non-HTML files Regex pattern matching (CSS, JSX, TSX, etc.)
   URLs           Puppeteer full browser rendering (auto-detected)
   --fast         Forces regex for all files
@@ -4164,20 +5592,27 @@ async function main() {
     allFindings = await handleStdin();
   } else {
     const paths = targets.length > 0 ? targets : [process.cwd()];
+    const urlTargetCount = paths.filter(target => /^https?:\/\//i.test(target)).length;
+    const browserDetector = urlTargetCount > 1 ? await createBrowserDetector() : null;
 
-    for (const target of paths) {
-      if (/^https?:\/\//i.test(target)) {
-        try { allFindings.push(...await detectUrl(target)); }
-        catch (e) { process.stderr.write(`Error: ${e.message}\n`); }
-        continue;
-      }
+    try {
+      for (const target of paths) {
+        if (/^https?:\/\//i.test(target)) {
+          try {
+            const scanner = browserDetector
+              ? (url) => browserDetector.detectUrl(url)
+              : (url) => detectUrl(url);
+            allFindings.push(...await scanner(target));
+          } catch (e) { process.stderr.write(`Error: ${e.message}\n`); }
+          continue;
+        }
 
-      const resolved = path.resolve(target);
-      let stat;
-      try { stat = fs.statSync(resolved); }
-      catch { process.stderr.write(`Warning: cannot access ${target}\n`); continue; }
+        const resolved = path.resolve(target);
+        let stat;
+        try { stat = fs.statSync(resolved); }
+        catch { process.stderr.write(`Warning: cannot access ${target}\n`); continue; }
 
-      if (stat.isDirectory()) {
+        if (stat.isDirectory()) {
         // Check for framework dev server config (skip in JSON mode to avoid polluting output)
         if (!jsonMode) {
           const fwConfig = detectFrameworkConfig(resolved);
@@ -4207,12 +5642,12 @@ async function main() {
         const files = walkDir(resolved);
         const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 
-        // Warn and confirm if scanning many files (jsdom is slow per HTML file)
+        // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
         if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
           process.stderr.write(
             `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
-            `Scanning may take a while${htmlCount > 10 ? ' (jsdom processes each HTML file individually)' : ''}.\n` +
-            `Use --fast to skip jsdom, or target a specific subdirectory.\n`
+            `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
+            `Use --fast to skip static HTML/CSS analysis, or target a specific subdirectory.\n`
           );
           const ok = await confirm('Continue?');
           if (!ok) { process.stderr.write('Aborted.\n'); process.exit(0); }
@@ -4247,14 +5682,17 @@ async function main() {
           }
           allFindings.push(...fileFindings);
         }
-      } else if (stat.isFile()) {
-        const ext = path.extname(resolved).toLowerCase();
-        if (!fastMode && HTML_EXTENSIONS.has(ext)) {
-          allFindings.push(...await detectHtml(resolved));
-        } else {
-          allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved));
+        } else if (stat.isFile()) {
+          const ext = path.extname(resolved).toLowerCase();
+          if (!fastMode && HTML_EXTENSIONS.has(ext)) {
+            allFindings.push(...await detectHtml(resolved));
+          } else {
+            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved));
+          }
         }
       }
+    } finally {
+      if (browserDetector) await browserDetector.close();
     }
   }
 
@@ -4285,7 +5723,8 @@ if (!IS_BROWSER) {
 export {
   ANTIPATTERNS, SAFE_TAGS, OVERUSED_FONTS, GENERIC_FONTS,
   checkElementBorders, checkElementMotion, checkElementGlow, checkPageTypography, checkPageLayout, isNeutralColor, isFullPage,
-  detectHtml, detectUrl, detectText,
+  detectHtml, detectUrl, detectText, createBrowserDetector,
+  createDetectorProfile, summarizeDetectorProfile,
   walkDir, formatFindings, SCANNABLE_EXTENSIONS, SKIP_DIRS,
   extractStyleBlocks, extractCSSinJS,
   buildImportGraph, resolveImport,

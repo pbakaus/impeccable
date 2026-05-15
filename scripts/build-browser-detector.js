@@ -16,6 +16,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 const SOURCE = path.join(ROOT, 'cli/engine/detect-antipatterns.mjs');
 const OUTPUT = path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js');
+const SITE_OUTPUT = path.join(ROOT, 'site/public/js/detect-antipatterns-browser.js');
 
 let code = fs.readFileSync(SOURCE, 'utf-8');
 
@@ -44,4 +45,7 @@ ${code}
 `;
 
 fs.writeFileSync(OUTPUT, output);
+fs.mkdirSync(path.dirname(SITE_OUTPUT), { recursive: true });
+fs.writeFileSync(SITE_OUTPUT, output);
 console.log(`Generated ${path.relative(ROOT, OUTPUT)} (${(output.length / 1024).toFixed(1)} KB)`);
+console.log(`Generated ${path.relative(ROOT, SITE_OUTPUT)} (${(output.length / 1024).toFixed(1)} KB)`);

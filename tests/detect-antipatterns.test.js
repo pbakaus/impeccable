@@ -1,10 +1,11 @@
 import { describe, test, expect } from 'bun:test';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import {
   ANTIPATTERNS, checkElementBorders, checkElementMotion, checkElementGlow, isNeutralColor, isFullPage,
-  detectText, extractStyleBlocks, extractCSSinJS,
+  detectText, detectHtml, extractStyleBlocks, extractCSSinJS,
   walkDir, SCANNABLE_EXTENSIONS,
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
@@ -12,6 +13,30 @@ import {
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
+const BENCH_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'benchmark-detector.mjs');
+
+function writeStaticFixture(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-static-'));
+  for (const [name, contents] of Object.entries(files)) {
+    const fullPath = path.join(dir, name);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, contents);
+  }
+  return { dir, file: path.join(dir, 'index.html') };
+}
+
+async function withStaticFixture(files, callback) {
+  const fixture = writeStaticFixture(files);
+  try {
+    return await callback(fixture);
+  } finally {
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+}
+
+function findingIds(findings) {
+  return findings.map(f => f.antipattern);
+}
 
 
 // ---------------------------------------------------------------------------
@@ -170,7 +195,7 @@ describe('detectText — flat type hierarchy', () => {
   });
 });
 
-// jsdom fixture tests moved to detect-antipatterns-fixtures.test.mjs (run via node --test)
+// Static HTML/CSS fixture tests moved to detect-antipatterns-fixtures.test.mjs (run via node --test)
 
 // ---------------------------------------------------------------------------
 // Full page vs partial detection
@@ -508,6 +533,116 @@ describe('detectText — dark glow', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Static HTML/CSS engine
+// ---------------------------------------------------------------------------
+
+describe('detectHtml — static HTML/CSS engine', () => {
+  test('inlines local linked stylesheets', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'linked-stylesheet.html'));
+    expect(findingIds(f)).toContain('side-tab');
+  });
+
+  test('flattens @layer, resolves CSS variables and fallbacks, and skips unsupported selectors', async () => {
+    await withStaticFixture({
+      'index.html': `<!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              @layer components {
+                :root { --accent: #3b82f6; --fallback-accent: var(--missing-accent, #a855f7); }
+                .layer-side { border-left: 5px solid var(--accent); border-radius: 8px; }
+                .layer-top { border-top: 4px solid var(--fallback-accent); border-radius: 8px; }
+                .ignored:future-only(foo) { border-left: 20px solid #ef4444; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="layer-side">Layer variable side tab</div>
+            <div class="layer-top">Fallback variable top accent</div>
+          </body>
+        </html>`,
+    }, async ({ file }) => {
+      const profile = [];
+      const f = await detectHtml(file, { profile });
+      const ids = findingIds(f);
+      expect(ids).toContain('side-tab');
+      expect(ids).toContain('border-accent-on-rounded');
+      expect(profile.some(e => e.engine === 'static-html' && e.ruleId === 'unsupported-selector')).toBe(true);
+    });
+  });
+
+  test('honors specificity, source order, !important, and inline style precedence', async () => {
+    await withStaticFixture({
+      'index.html': `<!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              .specificity-pass { border-left: 5px solid #3b82f6; border-radius: 8px; }
+              div.specificity-pass { border-left-color: #d1d5db; }
+              .source-order-flag { border-left: 5px solid #d1d5db; border-radius: 8px; }
+              .source-order-flag { border-left-color: #ef4444; }
+              .important-pass { border-left: 5px solid #d1d5db !important; border-radius: 8px; }
+              .important-pass { border-left-color: #3b82f6; }
+            </style>
+          </head>
+          <body>
+            <div class="specificity-pass">Specificity neutral pass</div>
+            <div class="source-order-flag">Source order chromatic flag</div>
+            <div class="important-pass">Important neutral pass</div>
+            <div style="border-left: 5px solid #06b6d4; border-radius: 8px;">Inline chromatic flag</div>
+          </body>
+        </html>`,
+    }, async ({ file }) => {
+      const f = await detectHtml(file);
+      expect(findingIds(f).filter(id => id === 'side-tab')).toHaveLength(2);
+    });
+  });
+
+  test('expands background, border, font, transition, and animation shorthands', async () => {
+    await withStaticFixture({
+      'index.html': `<!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              .font-short {
+                font: italic 700 11px/1.05 Arial, sans-serif;
+              }
+              .background-short {
+                background: #000;
+                color: #111;
+                font-size: 16px;
+              }
+              .border-short {
+                border: 1px solid #d1d5db;
+                border-left: 5px solid #3b82f6;
+                border-radius: 8px;
+              }
+              .motion-short {
+                transition: width 250ms cubic-bezier(.68,-.55,.27,1.55);
+                animation: bounce 1s cubic-bezier(.68,-.55,.27,1.55) infinite;
+              }
+            </style>
+          </head>
+          <body>
+            <p class="font-short">This tiny paragraph is long enough to trigger both the static font shorthand size and line-height checks.</p>
+            <button class="background-short">Low contrast button text</button>
+            <div class="border-short">Border shorthand side tab</div>
+            <div class="motion-short">Motion shorthand easing</div>
+          </body>
+        </html>`,
+    }, async ({ file }) => {
+      const ids = findingIds(await detectHtml(file));
+      expect(ids).toContain('tiny-text');
+      expect(ids).toContain('tight-leading');
+      expect(ids).toContain('low-contrast');
+      expect(ids).toContain('side-tab');
+      expect(ids).toContain('bounce-easing');
+      expect(ids).toContain('layout-transition');
+    });
+  });
+});
+
 
 // ---------------------------------------------------------------------------
 // ANTIPATTERNS registry
@@ -598,7 +733,7 @@ describe('CLI', () => {
     expect(code).toBe(2);
   });
 
-  test('linked stylesheet detected (jsdom default)', () => {
+  test('linked stylesheet detected (static HTML/CSS default)', () => {
     const { code, stderr } = run(path.join(FIXTURES, 'linked-stylesheet.html'));
     expect(code).toBe(2);
     expect(stderr).toContain('side-tab');
@@ -607,6 +742,39 @@ describe('CLI', () => {
   test('warns on nonexistent path', () => {
     const { stderr } = run('/nonexistent/file/xyz.html');
     expect(stderr).toContain('Warning');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Detector benchmark smoke test
+// ---------------------------------------------------------------------------
+
+describe('benchmark-detector', () => {
+  test('--quick --json emits timing schema', () => {
+    const result = spawnSync('node', [BENCH_SCRIPT, '--quick', '--json'], {
+      encoding: 'utf-8',
+      timeout: 30000,
+    });
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    expect(parsed.version).toBe(1);
+    expect(parsed.quick).toBe(true);
+    expect(parsed.browser).toBe(false);
+    expect(parsed.cases).toBeArray();
+    expect(parsed.cases.length).toBeGreaterThan(0);
+    expect(parsed.summary).toBeArray();
+    expect(parsed.summary.length).toBeGreaterThan(0);
+
+    const okCase = parsed.cases.find(c => c.status === 'ok');
+    expect(okCase).toBeTruthy();
+    expect(okCase).toHaveProperty('totalMs');
+    expect(okCase).toHaveProperty('findings');
+    expect(okCase.profile).toBeArray();
+
+    const row = parsed.summary[0];
+    for (const key of ['engine', 'phase', 'ruleId', 'target', 'calls', 'totalMs', 'avgMs', 'p50', 'p95', 'findings']) {
+      expect(row).toHaveProperty(key);
+    }
   });
 });
 

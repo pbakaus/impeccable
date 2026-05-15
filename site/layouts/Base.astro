@@ -12,6 +12,8 @@ interface Props {
   noIndex?: boolean;
   mainId?: string;
   mainClass?: string;
+  hideHeader?: boolean;
+  hideFooter?: boolean;
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
@@ -28,6 +30,8 @@ const {
   noIndex = false,
   mainId = 'main',
   mainClass,
+  hideHeader = false,
+  hideFooter = false,
   ogTitle,
   ogDescription,
   ogImage,
@@ -81,12 +85,12 @@ const canonical = canonicalPath
 <body class={bodyClass}>
   <a href={`#${mainId}`} class="skip-link">Skip to content</a>
   <slot name="before-header" />
-  <Header activeNav={activeNav} />
+  {!hideHeader && <Header activeNav={activeNav} />}
   <slot name="after-header" />
   <main id={mainId} class={mainClass}>
     <slot />
   </main>
-  <Footer />
+  {!hideFooter && <Footer />}
   <slot name="scripts" />
 </body>
 </html>

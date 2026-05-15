@@ -20,9 +20,9 @@ if (typeof window === 'undefined') return;
  * Universal file — auto-detects environment (browser vs Node) and adapts.
  *
  * Node usage:
- *   node detect-antipatterns.mjs [file-or-dir...]   # jsdom for HTML, regex for rest
+ *   node detect-antipatterns.mjs [file-or-dir...]   # static HTML/CSS for HTML, regex for rest
  *   node detect-antipatterns.mjs https://...         # Puppeteer (auto)
- *   node detect-antipatterns.mjs --fast [files...]   # regex-only (skip jsdom)
+ *   node detect-antipatterns.mjs --fast [files...]   # regex-only (skip static HTML/CSS)
  *   node detect-antipatterns.mjs --json              # JSON output
  *
  * Browser usage:
@@ -387,19 +387,19 @@ function isNeutralColor(color) {
   // oklch chroma is ~0–0.4 in sRGB gamut; >= 0.02 reads as tinted, not gray.
   // lch chroma is ~0–150; >= 3 reads as tinted. jsdom emits both formats
   // literally (it does NOT convert them to rgb).
-  const oklch = color.match(/oklch\(\s*[\d.%-]+\s+([\d.-]+)/i);
+  const oklch = color.match(/oklch\(\s*[\d.]+%?\s*([\d.-]+)/i);
   if (oklch) return parseFloat(oklch[1]) < 0.02;
-  const lch = color.match(/lch\(\s*[\d.%-]+\s+([\d.-]+)/i);
+  const lch = color.match(/lch\(\s*[\d.]+%?\s*([\d.-]+)/i);
   if (lch) return parseFloat(lch[1]) < 3;
 
   // oklab()/lab() — a and b are signed axes; chroma = sqrt(a² + b²).
   // oklab a/b are ~-0.4..0.4, threshold 0.02. lab a/b are ~-128..127, threshold 3.
-  const oklab = color.match(/oklab\(\s*[\d.%-]+\s+([\d.-]+)\s+([\d.-]+)/i);
+  const oklab = color.match(/oklab\(\s*[\d.]+%?\s*([\d.-]+)\s+([\d.-]+)/i);
   if (oklab) {
     const a = parseFloat(oklab[1]), b = parseFloat(oklab[2]);
     return Math.hypot(a, b) < 0.02;
   }
-  const lab = color.match(/lab\(\s*[\d.%-]+\s+([\d.-]+)\s+([\d.-]+)/i);
+  const lab = color.match(/lab\(\s*[\d.]+%?\s*([\d.-]+)\s+([\d.-]+)/i);
   if (lab) {
     const a = parseFloat(lab[1]), b = parseFloat(lab[2]);
     return Math.hypot(a, b) < 3;
@@ -2887,6 +2887,157 @@ if (IS_BROWSER) {
     return parts.join(' > ');
   }
 
+  function getDirectText(el) {
+    return [...el.childNodes]
+      .filter(n => n.nodeType === 3)
+      .map(n => n.textContent || '')
+      .join('');
+  }
+
+  function getDirectTextRect(el) {
+    const rects = [];
+    for (const node of el.childNodes) {
+      if (node.nodeType !== 3 || !(node.textContent || '').trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
+      }
+      range.detach?.();
+    }
+    if (rects.length === 0) return null;
+    const left = Math.min(...rects.map(r => r.left));
+    const top = Math.min(...rects.map(r => r.top));
+    const right = Math.max(...rects.map(r => r.right));
+    const bottom = Math.max(...rects.map(r => r.bottom));
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      x: left,
+      y: top,
+    };
+  }
+
+  function collectVisualContrastReasons(el, style) {
+    const reasons = new Set();
+    const bgClip = style.webkitBackgroundClip || style.backgroundClip || '';
+    const ownBgImage = style.backgroundImage || '';
+    if (bgClip === 'text' && ownBgImage && ownBgImage !== 'none') {
+      reasons.add('background-clip text');
+    }
+    if (style.textShadow && style.textShadow !== 'none') reasons.add('text shadow');
+
+    let current = el;
+    while (current && current.nodeType === 1) {
+      const tag = current.tagName?.toLowerCase();
+      const currentStyle = getComputedStyle(current);
+      const bgImage = currentStyle.backgroundImage || '';
+      const isDocumentSurface = tag === 'body' || tag === 'html';
+
+      if (!isDocumentSurface && bgImage && bgImage !== 'none') {
+        if (/url\s*\(/i.test(bgImage)) reasons.add('image background');
+        if (/gradient/i.test(bgImage)) reasons.add('gradient background');
+      }
+      if (parseFloat(currentStyle.opacity) < 0.99) reasons.add('opacity stack');
+      if (currentStyle.mixBlendMode && currentStyle.mixBlendMode !== 'normal') reasons.add('blend mode');
+      if (currentStyle.filter && currentStyle.filter !== 'none') reasons.add('filter');
+      if (currentStyle.backdropFilter && currentStyle.backdropFilter !== 'none') reasons.add('backdrop filter');
+
+      const solidBg = parseRgb(currentStyle.backgroundColor);
+      if (solidBg && solidBg.a >= 0.95 && (!bgImage || bgImage === 'none')) break;
+      current = current.parentElement;
+    }
+
+    const sampleRect = getDirectTextRect(el) || el.getBoundingClientRect();
+    if (sampleRect && document.elementsFromPoint) {
+      const points = [
+        [sampleRect.left + sampleRect.width / 2, sampleRect.top + sampleRect.height / 2],
+        [sampleRect.left + Math.min(sampleRect.width - 1, Math.max(1, sampleRect.width * 0.25)), sampleRect.top + sampleRect.height / 2],
+        [sampleRect.left + Math.min(sampleRect.width - 1, Math.max(1, sampleRect.width * 0.75)), sampleRect.top + sampleRect.height / 2],
+      ];
+      for (const [x, y] of points) {
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+        const stack = document.elementsFromPoint(x, y);
+        const selfIndex = stack.findIndex(node => node === el || el.contains(node) || node.contains?.(el));
+        if (selfIndex < 0) continue;
+        for (const node of stack.slice(selfIndex + 1)) {
+          const nodeTag = node.tagName?.toLowerCase();
+          if (nodeTag === 'img' || nodeTag === 'picture' || nodeTag === 'video' || nodeTag === 'canvas' || nodeTag === 'svg') {
+            reasons.add(`${nodeTag} underlay`);
+            break;
+          }
+        }
+      }
+    }
+
+    return [...reasons];
+  }
+
+  function collectVisualContrastCandidates(options = {}) {
+    const maxCandidates = Number.isFinite(options.maxCandidates) ? options.maxCandidates : 12;
+    const candidates = [];
+    for (const el of document.querySelectorAll('*')) {
+      if (candidates.length >= maxCandidates) break;
+      if (el.closest('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip')) continue;
+      if (el.closest('[id^="impeccable-live-"]')) continue;
+      if (el === document.body || el === document.documentElement) continue;
+
+      const tag = el.tagName.toLowerCase();
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      const directText = getDirectText(el);
+      const hasDirectText = directText.trim().length > 0;
+      if (!hasDirectText || isEmojiOnlyText(directText)) continue;
+
+      const bgColor = readOwnBackgroundColor(el, style);
+      const isStyledButton = (tag === 'a' || tag === 'button')
+        && bgColor && bgColor.a > 0.5;
+      if (SAFE_TAGS.has(tag) && !isStyledButton) continue;
+
+      const rect = getDirectTextRect(el) || el.getBoundingClientRect();
+      if (!rect || rect.width < 4 || rect.height < 4) continue;
+
+      const reasons = collectVisualContrastReasons(el, style);
+      if (reasons.length === 0) continue;
+
+      const textColor = parseRgb(style.color);
+      const fontSize = parseFloat(style.fontSize) || 16;
+      const fontWeight = parseInt(style.fontWeight) || 400;
+      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
+      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const threshold = isLargeText ? 3.0 : 4.5;
+      const clip = {
+        x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),
+        y: Math.max(0, Math.floor(rect.top + window.scrollY - 2)),
+        width: Math.max(1, Math.ceil(rect.width + 4)),
+        height: Math.max(1, Math.ceil(rect.height + 4)),
+      };
+
+      candidates.push({
+        selector: generateSelector(el),
+        tagName: tag,
+        text: directText.trim().replace(/\s+/g, ' ').slice(0, 80),
+        threshold,
+        reasons,
+        clip,
+        textColor,
+        preferRenderedForeground: !textColor || textColor.a < 0.99 || reasons.some(reason =>
+          reason === 'opacity stack' ||
+          reason === 'blend mode' ||
+          reason === 'filter' ||
+          reason === 'backdrop filter' ||
+          reason === 'background-clip text'
+        ),
+        backgroundClipText: reasons.includes('background-clip text'),
+      });
+    }
+    return candidates;
+  }
+
   function isElementHidden(el) {
     if (!el || el === document.body || el === document.documentElement) return false;
     if (typeof el.checkVisibility === 'function') return !el.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
@@ -2934,13 +3085,15 @@ if (IS_BROWSER) {
     console.groupEnd();
   };
 
-  let firstScanDone = false;
-  const scan = function() {
-    for (const o of overlays) o.remove();
-    overlays.length = 0;
-    visibilityObserver.disconnect();
-    overlayIndex = 0;
-    const allFindings = [];
+  function addBrowserFindings(groupMap, el, findings) {
+    if (!findings || findings.length === 0) return;
+    const existing = groupMap.get(el);
+    if (existing) existing.push(...findings);
+    else groupMap.set(el, [...findings]);
+  }
+
+  function collectBrowserFindings() {
+    const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
 
@@ -2968,10 +3121,7 @@ if (IS_BROWSER) {
         ...checkElementQualityDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
       ].filter(f => _ruleOk(f.type));
 
-      if (findings.length > 0) {
-        highlight(el, findings);
-        allFindings.push({ el, findings });
-      }
+      addBrowserFindings(groupMap, el, findings);
     }
 
     const pageLevelFindings = [];
@@ -2979,7 +3129,7 @@ if (IS_BROWSER) {
     const typoFindings = checkTypography().filter(f => _ruleOk(f.type));
     if (typoFindings.length > 0) {
       pageLevelFindings.push(...typoFindings);
-      allFindings.push({ el: document.body, findings: typoFindings });
+      addBrowserFindings(groupMap, document.body, typoFindings);
     }
 
     const sectionKickerFindings = checkRepeatedSectionKickersDOM()
@@ -2987,32 +3137,20 @@ if (IS_BROWSER) {
       .filter(f => _ruleOk(f.type));
     if (sectionKickerFindings.length > 0) {
       pageLevelFindings.push(...sectionKickerFindings);
-      allFindings.push({ el: document.body, findings: sectionKickerFindings });
+      addBrowserFindings(groupMap, document.body, sectionKickerFindings);
     }
 
     const layoutFindings = checkLayout().filter(f => _ruleOk(f.type));
     for (const f of layoutFindings) {
       const el = f.el || document.body;
-      delete f.el;
-      // Merge into existing overlay if this element already has one
-      const existing = el._impeccableOverlay;
-      if (existing) {
-        const nameRow = existing.querySelector('.impeccable-label-name');
-        const detailRow = existing.querySelector('.impeccable-label-detail');
-        const newType = TYPE_LABELS[f.type] || f.type;
-        if (nameRow) nameRow.textContent += ', ' + newType;
-        if (detailRow) detailRow.textContent += ' | ' + (f.detail || '');
-      } else {
-        highlight(el, [f]);
-      }
-      allFindings.push({ el, findings: [f] });
+      addBrowserFindings(groupMap, el, [{ type: f.type, detail: f.detail || f.snippet }]);
     }
 
     // Page-level quality checks (headings, etc.)
     const qualityFindings = checkPageQualityDOM().filter(f => _ruleOk(f.type));
     if (qualityFindings.length > 0) {
       pageLevelFindings.push(...qualityFindings);
-      allFindings.push({ el: document.body, findings: qualityFindings });
+      addBrowserFindings(groupMap, document.body, qualityFindings);
     }
 
     // Regex-on-HTML checks (shared with Node)
@@ -3027,7 +3165,27 @@ if (IS_BROWSER) {
     if (htmlPatternFindings.length > 0) {
       const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ruleOk(f.type));
       pageLevelFindings.push(...mapped);
-      allFindings.push({ el: document.body, findings: mapped });
+      addBrowserFindings(groupMap, document.body, mapped);
+    }
+
+    return {
+      allFindings: [...groupMap.entries()].map(([el, findings]) => ({ el, findings })),
+      pageLevelFindings,
+    };
+  }
+
+  let firstScanDone = false;
+  const scan = function() {
+    for (const o of overlays) o.remove();
+    overlays.length = 0;
+    visibilityObserver.disconnect();
+    overlayIndex = 0;
+
+    const { allFindings, pageLevelFindings } = collectBrowserFindings();
+
+    for (const { el, findings } of allFindings) {
+      if (el === document.body || el === document.documentElement) continue;
+      highlight(el, findings);
     }
 
     if (pageLevelFindings.length > 0) {
@@ -3049,6 +3207,12 @@ if (IS_BROWSER) {
     setTimeout(() => { firstScanDone = true; }, 1000);
 
     return allFindings;
+  };
+
+  const detect = function(options = {}) {
+    const { allFindings } = collectBrowserFindings();
+    if (options.serialize === false) return allFindings;
+    return serializeFindings(allFindings);
   };
 
   if (EXTENSION_MODE) {
@@ -3109,14 +3273,18 @@ if (IS_BROWSER) {
     });
     window.postMessage({ source: 'impeccable-ready' }, '*');
   } else {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => setTimeout(scan, 100));
-    } else {
-      setTimeout(scan, 100);
+    if (window.__IMPECCABLE_CONFIG__?.autoScan !== false) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(scan, 100));
+      } else {
+        setTimeout(scan, 100);
+      }
     }
   }
 
+  window.impeccableDetect = detect;
   window.impeccableScan = scan;
+  window.impeccableCollectVisualContrastCandidates = collectVisualContrastCandidates;
 }
 
 // ─── Section 8: Node Engine ─────────────────────────────────────────────────

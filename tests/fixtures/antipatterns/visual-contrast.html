@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visual Contrast Fixture</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #f7f3ee;
+      color: #171717;
+      font-family: system-ui, sans-serif;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    .image-card {
+      min-height: 180px;
+      padding: 28px;
+      border-radius: 8px;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .image-card p {
+      max-width: 28ch;
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .light-image {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 220'%3E%3Crect width='400' height='220' fill='%23ece8df'/%3E%3Ccircle cx='300' cy='50' r='120' fill='%23faf7f0'/%3E%3C/svg%3E");
+    }
+
+    .dark-image {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 220'%3E%3Crect width='400' height='220' fill='%23191b20'/%3E%3Ccircle cx='310' cy='40' r='120' fill='%232d3440'/%3E%3C/svg%3E");
+    }
+  </style>
+</head>
+<body>
+  <main class="grid">
+    <section class="image-card light-image">
+      <p style="color: rgb(255, 255, 255);">White text on light image should be sampled by pixel contrast.</p>
+    </section>
+
+    <section class="image-card dark-image">
+      <p style="color: rgb(255, 255, 255);">White text on dark image should pass the pixel contrast fallback.</p>
+    </section>
+  </main>
+</body>
+</html>
