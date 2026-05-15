@@ -628,5 +628,14 @@ if (_running?.endsWith('live-wrap.mjs') || _running?.endsWith('live-wrap.mjs/'))
   wrapCli();
 }
 
-// Test exports (used by tests/live-wrap.test.mjs)
-export { buildSearchQueries, findElement, findClosingLine, detectCommentSyntax };
+// Test exports (used by tests/live-wrap.test.mjs) and reusable primitives
+// for sibling scripts (live-edit.mjs reuses the locator + file resolver).
+export {
+  buildSearchQueries,
+  findElement,
+  findAllElements,
+  filterByText,
+  findClosingLine,
+  findFileWithQuery,
+  detectCommentSyntax,
+};

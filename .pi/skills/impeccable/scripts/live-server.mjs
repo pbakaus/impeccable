@@ -171,15 +171,16 @@ function loadBrowserScripts() {
   // can re-read on every request. Editing the browser script during iteration
   // should land on the next tab reload, not require a server restart.
   const sessionPath = path.join(__dirname, 'live-browser-session.js');
+  const textRowsPath = path.join(__dirname, 'live-text-rows.js');
   const livePath = path.join(__dirname, 'live-browser.js');
-  for (const p of [sessionPath, livePath]) {
+  for (const p of [sessionPath, textRowsPath, livePath]) {
     if (!fs.existsSync(p)) {
       process.stderr.write('Error: live browser script not found at ' + p + '\n');
       process.exit(1);
     }
   }
 
-  return { detectScript, sessionPath, livePath };
+  return { detectScript, sessionPath, textRowsPath, livePath };
 }
 
 function hasProjectContext() {
@@ -252,6 +253,20 @@ function validateEvent(msg) {
     case 'prefetch':
       if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
       return null;
+    case 'manual_edits':
+      if (!isValidId(msg.id)) return 'manual_edits: missing or malformed id';
+      if (!msg.element || typeof msg.element !== 'object') return 'manual_edits: missing element';
+      if (!Array.isArray(msg.ops) || msg.ops.length === 0) return 'manual_edits: ops must be non-empty array';
+      if (msg.ops.length > 100) return 'manual_edits: too many ops (max 100)';
+      for (const op of msg.ops) {
+        if (typeof op.ref !== 'string') return 'manual_edits: op.ref required';
+        if (typeof op.tag !== 'string') return 'manual_edits: op.tag required';
+        if (typeof op.originalText !== 'string') return 'manual_edits: op.originalText required';
+        if (op.deleted !== true && typeof op.newText !== 'string') {
+          return 'manual_edits: text op requires newText';
+        }
+      }
+      return null;
     default:
       return 'Unknown event type: ' + msg.type;
   }
@@ -261,7 +276,7 @@ function validateEvent(msg) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, sessionPath, livePath }) {
+function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -278,9 +293,11 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       // sessions — during iteration, a cached old script silently breaks
       // every subsequent session.
       let sessionScript;
+      let textRowsScript;
       let liveScript;
       try {
         sessionScript = fs.readFileSync(sessionPath, 'utf-8');
+        textRowsScript = fs.readFileSync(textRowsPath, 'utf-8');
         liveScript = fs.readFileSync(livePath, 'utf-8');
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -291,6 +308,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
         sessionScript + '\n' +
+        textRowsScript + '\n' +
         liveScript;
       res.writeHead(200, {
         'Content-Type': 'application/javascript',
@@ -820,8 +838,8 @@ const annotRoot = getLiveAnnotationsDir(process.cwd());
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, sessionPath, livePath } = loadBrowserScripts();
-httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
+const { detectScript, sessionPath, textRowsPath, livePath } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });
