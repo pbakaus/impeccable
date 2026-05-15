@@ -906,6 +906,7 @@
     setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
+    closeTextPanel();
   }
 
   function updateBarContent(mode) {
@@ -1496,6 +1497,7 @@
     paramsPanelInner = paramsPanelEl; // compatibility alias for the rest of the code
   }
 
+
   function getVisibleVariantEl() {
     if (!currentSessionId) return null;
     const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
@@ -1663,6 +1665,348 @@
 
       paramsPanelBody.appendChild(row);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Manual text-edit panel — surfaces every text-bearing descendant of the
+  // selected element as a row [ref | textarea | delete]. Opens beneath the
+  // bar in CONFIGURING (before Go). Edits mutate the live DOM immediately; the
+  // footer's "Apply edits" button fires a manual_edits event so the server's
+  // live-edit.mjs writes the changes back to source.
+  // ---------------------------------------------------------------------------
+
+  let textPanelEl = null;
+  let textPanelBody = null;
+  let textPanelFooter = null;
+  let textPanelPalette = null;
+  let textPanelOpen = false;
+  let textPanelRows = [];        // [{el, ref, textNodes, text, rowEl}]
+  let textPanelSnapshot = null;  // {rows: [{ref, tag, classes, elementId, text}], outerHTML}
+  let textPanelDirty = false;
+  let textPanelInFlight = false;
+
+  function initTextPanel() {
+    textPanelPalette = barPaletteForTheme(detectPageTheme());
+    const P = textPanelPalette;
+    textPanelEl = document.createElement('div');
+    textPanelEl.id = PREFIX + '-text-panel';
+    Object.assign(textPanelEl.style, {
+      position: 'fixed', zIndex: String(Z.bar - 1),
+      background: P.surfaceDeep, color: P.text,
+      fontFamily: FONT,
+      padding: '14px 18px',
+      boxSizing: 'border-box',
+      borderRadius: '0 0 10px 10px',
+      pointerEvents: 'none',
+      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+      clipPath: 'inset(0 0 100% 0)',
+      transition: 'clip-path 0.44s ' + EASE,
+      top: '-9999px', left: '-9999px', width: '0',
+    });
+    textPanelBody = el('div', {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(72px, 96px) 1fr 24px',
+      gap: '8px 12px',
+      alignItems: 'start',
+      maxHeight: '60vh',
+      overflowY: 'auto',
+    });
+    textPanelFooter = el('div', {
+      display: 'none',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: '10px',
+      paddingTop: '10px',
+      borderTop: '1px solid ' + P.hairline,
+    });
+    textPanelEl.appendChild(textPanelBody);
+    textPanelEl.appendChild(textPanelFooter);
+    document.body.appendChild(textPanelEl);
+    defangOutsideHandlers(textPanelEl, { setPointerEvents: false });
+  }
+
+  function positionTextPanel() {
+    if (!textPanelEl || !barEl || barEl.style.display === 'none') return;
+    const br = barEl.getBoundingClientRect();
+    const direction = popoverDirection();
+    const prev = textPanelEl.dataset.textDirection;
+    textPanelEl.style.left = br.left + 'px';
+    textPanelEl.style.width = br.width + 'px';
+    if (direction === 'below') {
+      textPanelEl.style.top = (br.bottom - TUNE_OVERLAP) + 'px';
+      textPanelEl.style.borderRadius = '0 0 10px 10px';
+      textPanelEl.style.paddingTop = (14 + TUNE_OVERLAP) + 'px';
+      textPanelEl.style.paddingBottom = '14px';
+    } else {
+      const ih = textPanelEl.offsetHeight || 80;
+      textPanelEl.style.top = (br.top - ih + TUNE_OVERLAP) + 'px';
+      textPanelEl.style.borderRadius = '10px 10px 0 0';
+      textPanelEl.style.paddingTop = '14px';
+      textPanelEl.style.paddingBottom = (14 + TUNE_OVERLAP) + 'px';
+    }
+    textPanelEl.dataset.textDirection = direction;
+    if (!textPanelOpen && (!prev || prev !== direction)) {
+      const closed = closedClipPath(direction);
+      const savedTransition = textPanelEl.style.transition;
+      textPanelEl.style.transition = 'none';
+      textPanelEl.style.clipPath = closed;
+      requestAnimationFrame(() => {
+        void textPanelEl.offsetHeight;
+        textPanelEl.style.transition = savedTransition;
+      });
+    }
+  }
+
+  function snapshotTextRows(rows) {
+    return rows.map((r) => ({
+      ref: r.ref, tag: r.el.tagName.toLowerCase(),
+      classes: r.el.classList ? [...r.el.classList] : [],
+      elementId: r.el.id || null,
+      text: r.text,
+    }));
+  }
+
+  function openTextPanel(targetEl) {
+    if (!textPanelEl || !targetEl) return;
+    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
+    if (!collect) return;
+    const rows = collect(targetEl, { isOwn: own });
+    if (rows.length === 0) return;
+
+    textPanelBody.innerHTML = '';
+    textPanelRows = [];
+    textPanelDirty = false;
+    textPanelInFlight = false;
+    textPanelEl.dataset.edited = '';
+    textPanelEl.style.opacity = '1';
+    textPanelSnapshot = { rows: snapshotTextRows(rows), outerHTML: targetEl.outerHTML };
+    textPanelFooter.style.display = 'none';
+
+    for (const r of rows) renderTextRow(r);
+    buildTextFooter();
+
+    positionTextPanel();
+    textPanelEl.style.pointerEvents = 'auto';
+    textPanelOpen = true;
+    requestAnimationFrame(() => {
+      textPanelEl.style.clipPath = 'inset(0 0 0 0)';
+    });
+  }
+
+  function closeTextPanel() {
+    if (!textPanelEl || !textPanelOpen) return;
+    textPanelEl.style.pointerEvents = 'none';
+    const dir = textPanelEl.dataset.textDirection || 'below';
+    textPanelEl.style.clipPath = closedClipPath(dir);
+    textPanelOpen = false;
+    textPanelInFlight = false;
+  }
+
+  function renderTextRow(row) {
+    const P = textPanelPalette;
+    const refCell = el('div', {
+      fontFamily: MONO, fontSize: '10.5px', color: P.textDim,
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      paddingTop: '6px',
+    });
+    refCell.textContent = row.ref;
+    refCell.title = row.ref;
+
+    const textarea = document.createElement('textarea');
+    textarea.value = row.text;
+    Object.assign(textarea.style, {
+      width: '100%', minHeight: '28px', maxHeight: '200px',
+      background: 'transparent', color: P.text,
+      border: '1px solid ' + P.hairline, borderRadius: '5px',
+      padding: '4px 6px', fontFamily: FONT, fontSize: '12px',
+      resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+    });
+    textarea.addEventListener('input', (e) => {
+      e.stopPropagation();
+      if (!selectedElement || !selectedElement.isConnected) {
+        closeTextPanel(); state = 'PICKING'; return;
+      }
+      if (row.textNodes[0]) row.textNodes[0].nodeValue = textarea.value;
+      for (let i = 1; i < row.textNodes.length; i++) row.textNodes[i].nodeValue = '';
+      row.text = textarea.value;
+      markTextPanelDirty();
+      autoGrowTextarea(textarea);
+    });
+    textarea.addEventListener('keydown', (e) => { e.stopPropagation(); });
+    requestAnimationFrame(() => autoGrowTextarea(textarea));
+
+    const delBtn = el('button', {
+      width: '24px', height: '24px',
+      border: 'none', background: 'transparent',
+      color: P.textDim, cursor: 'pointer',
+      borderRadius: '4px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: FONT, fontSize: '16px', lineHeight: '1',
+    });
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete this element';
+    delBtn.addEventListener('mouseenter', () => { delBtn.style.background = P.hairline; });
+    delBtn.addEventListener('mouseleave', () => { delBtn.style.background = 'transparent'; });
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!row.el || !row.el.isConnected) return;
+      if (row.el === selectedElement) {
+        row.el.remove();
+        markTextPanelDirty();
+        closeTextPanel(); hideBar(); state = 'PICKING'; hideHighlight();
+        return;
+      }
+      row.el.remove();
+      markTextPanelDirty();
+      rebuildTextRowsForCurrent();
+    });
+
+    textPanelBody.appendChild(refCell);
+    textPanelBody.appendChild(textarea);
+    textPanelBody.appendChild(delBtn);
+    row.rowEl = { refCell, textarea, delBtn };
+    textPanelRows.push(row);
+  }
+
+  function rebuildTextRowsForCurrent() {
+    if (!selectedElement || !selectedElement.isConnected) {
+      closeTextPanel(); state = 'PICKING'; return;
+    }
+    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
+    if (!collect) return;
+    const rows = collect(selectedElement, { isOwn: own });
+    textPanelBody.innerHTML = '';
+    textPanelRows = [];
+    for (const r of rows) renderTextRow(r);
+    positionTextPanel();
+  }
+
+  function autoGrowTextarea(textarea) {
+    textarea.style.height = 'auto';
+    const h = Math.min(200, textarea.scrollHeight);
+    textarea.style.height = h + 'px';
+  }
+
+  function buildTextFooter() {
+    const P = textPanelPalette;
+    textPanelFooter.innerHTML = '';
+    const resetBtn = el('button', {
+      border: 'none', background: 'transparent',
+      color: P.textDim, fontFamily: FONT, fontSize: '11px',
+      cursor: 'pointer', padding: '4px 6px',
+    });
+    resetBtn.textContent = 'Reset';
+    resetBtn.addEventListener('click', (e) => { e.stopPropagation(); resetTextPanel(); });
+
+    const applyBtn = el('button', {
+      border: 'none', background: C.brand, color: 'oklch(98% 0 0)',
+      fontFamily: FONT, fontSize: '11px', fontWeight: '600',
+      cursor: 'pointer', padding: '6px 12px', borderRadius: '5px',
+    });
+    applyBtn.textContent = 'Apply edits';
+    applyBtn.addEventListener('click', (e) => { e.stopPropagation(); applyManualEdits(); });
+
+    textPanelFooter.appendChild(resetBtn);
+    textPanelFooter.appendChild(applyBtn);
+  }
+
+  function markTextPanelDirty() {
+    textPanelDirty = true;
+    textPanelEl.dataset.edited = '1';
+    if (textPanelFooter) textPanelFooter.style.display = 'flex';
+  }
+
+  function clearTextPanelDirty() {
+    textPanelDirty = false;
+    textPanelEl.dataset.edited = '';
+    if (textPanelFooter) textPanelFooter.style.display = 'none';
+  }
+
+  function resetTextPanel() {
+    if (!textPanelSnapshot || !selectedElement) return;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = textPanelSnapshot.outerHTML.trim();
+    const fresh = tpl.content.firstElementChild;
+    if (!fresh) return;
+    selectedElement.replaceWith(fresh);
+    selectedElement = fresh;
+    showHighlight(selectedElement);
+    rebuildTextRowsForCurrent();
+    // Re-snapshot after reset so further edits diff against the fresh tree.
+    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
+    if (collect) {
+      const rows = collect(selectedElement, { isOwn: own });
+      textPanelSnapshot = { rows: snapshotTextRows(rows), outerHTML: selectedElement.outerHTML };
+    }
+    clearTextPanelDirty();
+  }
+
+  function computeManualEditDeltas() {
+    if (!textPanelSnapshot) return [];
+    const ops = [];
+    const liveByRef = new Map(textPanelRows.map((r) => [r.ref, r]));
+    for (const snap of textPanelSnapshot.rows) {
+      const live = liveByRef.get(snap.ref);
+      if (!live) {
+        ops.push({
+          ref: snap.ref, tag: snap.tag, elementId: snap.elementId,
+          classes: snap.classes, originalText: snap.text, deleted: true,
+        });
+      } else if (live.text !== snap.text) {
+        ops.push({
+          ref: snap.ref, tag: snap.tag, elementId: snap.elementId,
+          classes: snap.classes, originalText: snap.text, newText: live.text,
+        });
+      }
+    }
+    return ops;
+  }
+
+  function setTextPanelDisabled(disabled) {
+    if (!textPanelEl) return;
+    textPanelEl.style.opacity = disabled ? '0.55' : '1';
+    textPanelEl.style.pointerEvents = disabled ? 'none' : 'auto';
+  }
+
+  function applyManualEdits(opts) {
+    const cb = opts || {};
+    if (textPanelInFlight) return Promise.resolve();
+    if (!textPanelDirty) { if (cb.then) cb.then(); return Promise.resolve(); }
+    const ops = computeManualEditDeltas();
+    if (ops.length === 0) {
+      clearTextPanelDirty();
+      if (cb.then) cb.then();
+      return Promise.resolve();
+    }
+    textPanelInFlight = true;
+    setTextPanelDisabled(true);
+    const payload = {
+      type: 'manual_edits',
+      id: id8(),
+      pageUrl: location.pathname,
+      element: extractContext(selectedElement),
+      ops,
+    };
+    return sendEvent(payload, { throwOnError: true })
+      .then(() => {
+        textPanelInFlight = false;
+        setTextPanelDisabled(false);
+        clearTextPanelDirty();
+        // Refresh snapshot so further edits diff against the just-applied state.
+        if (selectedElement && selectedElement.isConnected) {
+          textPanelSnapshot = {
+            rows: snapshotTextRows(textPanelRows),
+            outerHTML: selectedElement.outerHTML,
+          };
+        }
+        if (cb.then) cb.then();
+      })
+      .catch((err) => {
+        console.error('[impeccable] manual_edits failed:', err);
+        textPanelInFlight = false;
+        setTextPanelDisabled(false);
+        if (cb.catch) cb.catch(err);
+      });
   }
 
   // Decide which way the popover opens: away from the picked element. If the
@@ -1899,6 +2243,7 @@
         state = 'CYCLING';
         hideShaderOverlay();
         updateBarContent('cycling');
+        closeTextPanel();
         refreshParamsPanel();
         saveSession();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
@@ -2148,6 +2493,7 @@
         state = 'CYCLING';
         hideShaderOverlay();
         updateBarContent('cycling');
+        closeTextPanel();
         refreshParamsPanel();
       } else if (state === 'GENERATING') {
         updateBarContent('generating');
@@ -2217,6 +2563,7 @@
             if (state === 'GENERATING') {
               state = 'CYCLING';
               updateBarContent('cycling');
+              closeTextPanel();
               refreshParamsPanel();
             }
             break;
@@ -2351,8 +2698,14 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
-    // In CONFIGURING: click outside the bar and selected element returns to PICKING
-    if (state === 'CONFIGURING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+    // In CONFIGURING: click outside the bar and selected element returns to PICKING.
+    // The text-edit popover (when open) is its own pointer-events surface — clicks
+    // INSIDE it should not bounce us out of CONFIGURING.
+    if (
+      state === 'CONFIGURING' && !own(e.target) && selectedElement
+      && !selectedElement.contains(e.target)
+      && !(textPanelEl && textPanelEl.contains(e.target))
+    ) {
       hideBar();
       stopScrollTracking();
       hideAnnotOverlay();
@@ -2373,6 +2726,7 @@
     clearAnnotations();
     showAnnotOverlay(selectedElement);
     showBar('configure');
+    openTextPanel(selectedElement);
     startScrollTracking();
     maybePrefetchPage();
     maybeWarnConditionalAncestor(selectedElement);
@@ -2494,6 +2848,7 @@
         clearAnnotations();
         showAnnotOverlay(selectedElement);
         showBar('configure');
+        openTextPanel(selectedElement);
         startScrollTracking();
         return;
       }
@@ -2502,11 +2857,14 @@
         if (state === 'PICKING') {
           hoveredElement = next;
         } else {
-          // CONFIGURING: re-select the new element and refresh the bar
+          // CONFIGURING: re-select the new element and refresh the bar +
+          // rebuild the text panel from scratch for the new element.
           selectedElement = next;
           clearAnnotations();
           showAnnotOverlay(next);
           showBar('configure');
+          closeTextPanel();
+          openTextPanel(selectedElement);
           startScrollTracking();
         }
         showHighlight(next);
@@ -2524,6 +2882,19 @@
 
   function handleGo() {
     if (!selectedElement || state !== 'CONFIGURING') return;
+    // If the text-edit panel has pending edits, flush them to source BEFORE
+    // generating variants. Variants are written via live-wrap.mjs which reads
+    // SOURCE; an unflushed live-DOM edit would otherwise live only in the
+    // browser and disappear on Discard.
+    if (textPanelDirty) {
+      setTextPanelDisabled(true);
+      applyManualEdits({ then: runGenerate, catch: () => setTextPanelDisabled(false) });
+      return;
+    }
+    runGenerate();
+  }
+
+  function runGenerate() {
     const input = document.getElementById(PREFIX + '-input');
     const prompt = input ? input.value.trim() : '';
 
@@ -2562,6 +2933,7 @@
 
     state = 'GENERATING';
     showBar('generating');
+    setTextPanelDisabled(true);
     saveSession();
     sendCheckpoint('generate_started');
     writeScrollY(window.scrollY);
@@ -4825,6 +5197,7 @@ void main() {
     initBar();
     initActionPicker();
     initParamsPanel();
+    initTextPanel();
     initGlobalBar();
     initDesignPanel();
     document.addEventListener('mousemove', handleMouseMove, true);

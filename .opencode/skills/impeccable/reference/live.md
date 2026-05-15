@@ -43,12 +43,13 @@ LOOP:
   node .opencode/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
-  "generate"  → Handle Generate; reply done; LOOP
-  "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
-  "discard"   → Handle Discard; LOOP
-  "prefetch"  → Handle Prefetch; LOOP
-  "timeout"   → LOOP
-  "exit"      → break → Cleanup
+  "generate"      → Handle Generate; reply done; LOOP
+  "manual_edits"  → Handle Manual Edits; LOOP
+  "accept"        → Handle Accept; complete carbonize cleanup if required; LOOP
+  "discard"       → Handle Discard; LOOP
+  "prefetch"      → Handle Prefetch; LOOP
+  "timeout"       → LOOP
+  "exit"          → break → Cleanup
 ```
 
 ## Recovery commands
@@ -393,6 +394,20 @@ Then remove the temporary wrapper from the served file if it's still there.
 ### Step 4: On discard, clean up the served file
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
+
+## Handle `manual_edits`
+
+Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user typed directly into the Live-Bar text panel and clicked Apply edits (or Go with edits pending: chained). The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
+
+- If `_editResult.failed` is empty: nothing to do. Loop and poll again.
+- If `_editResult.failed` is non-empty: each entry is `{ref, op, reason, candidates?, file?}`. Common reasons:
+  - `text_not_in_source`: `op.originalText` doesn't appear verbatim (templated content, e.g. `<h2>{title}</h2>` reads from a data source). Find the data source (JSON, frontmatter, props) and update the entry that matches.
+  - `element_ambiguous`: multiple source matches; `candidates` lists line numbers. Read the file, pick the right element by surrounding context, apply the op via `Edit`.
+  - `element_not_found`: element wasn't located. Element may be runtime-injected or in a file not in standard search dirs. Search wider.
+  - `insufficient_locator`: `op.classes` and `op.elementId` were both absent. Skip; the panel should not have emitted this op without a locator.
+  - `unsafe_delete`: bracket matching couldn't safely scope the delete. Read the file, manually delete the element.
+- Do NOT regenerate variants. Do NOT call `live-wrap.mjs` or `live-accept.mjs`.
+- After handling failures, loop. The completion ack was already posted; do not `--reply`.
 
 ## Handle `accept`
 

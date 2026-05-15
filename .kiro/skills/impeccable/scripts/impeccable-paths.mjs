@@ -64,7 +64,16 @@ export function getLegacyLiveServerPath(cwd = process.cwd()) {
 export function readLiveServerInfo(cwd = process.cwd()) {
   for (const filePath of [getLiveServerPath(cwd), getLegacyLiveServerPath(cwd)]) {
     try {
-      return { info: JSON.parse(fs.readFileSync(filePath, 'utf-8')), path: filePath };
+      const info = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (info && typeof info.pid === 'number') {
+        try {
+          process.kill(info.pid, 0);
+        } catch {
+          try { fs.unlinkSync(filePath); } catch {}
+          continue;
+        }
+      }
+      return { info, path: filePath };
     } catch {
       /* try next */
     }
