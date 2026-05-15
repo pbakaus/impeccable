@@ -5,11 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Visual Contrast Fixture</title>
   <style>
+    :root {
+      --paper: #f7f3ee;
+      --ink: #171717;
+      --muted: #677184;
+    }
+
     body {
       margin: 0;
       padding: 32px;
-      background: #f7f3ee;
-      color: #171717;
+      background: var(--paper);
+      color: var(--ink);
       font-family: system-ui, sans-serif;
     }
 
@@ -21,15 +27,36 @@
       margin: 0 auto;
     }
 
+    .column {
+      display: grid;
+      gap: 14px;
+    }
+
+    .column > h2 {
+      margin: 0 0 2px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      line-height: 1.4;
+      text-transform: uppercase;
+    }
+
     .image-card {
+      position: relative;
+      display: grid;
+      align-content: end;
       min-height: 180px;
       padding: 28px;
       border-radius: 8px;
+      overflow: hidden;
       background-size: cover;
       background-position: center;
     }
 
     .image-card p {
+      position: relative;
+      z-index: 1;
       max-width: 28ch;
       margin: 0;
       font-size: 18px;
@@ -38,22 +65,91 @@
     }
 
     .light-image {
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 220'%3E%3Crect width='400' height='220' fill='%23ece8df'/%3E%3Ccircle cx='300' cy='50' r='120' fill='%23faf7f0'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23ece8df'/%3E%3Ccircle cx='308' cy='58' r='132' fill='%23faf7f0'/%3E%3Cpath d='M0 186c52-22 92-26 142-8s98 18 148-8 92-22 130 0v70H0z' fill='%23f5efe4'/%3E%3C/svg%3E");
+    }
+
+    .pale-pattern {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23edf2f7'/%3E%3Cg fill='%23f8fafc'%3E%3Ccircle cx='60' cy='64' r='42'/%3E%3Ccircle cx='182' cy='142' r='58'/%3E%3Ccircle cx='336' cy='84' r='74'/%3E%3C/g%3E%3Cg stroke='%23dbe4ef' stroke-width='14' opacity='.55'%3E%3Cpath d='M-20 220C74 112 150 94 232 164s138 46 214-62' fill='none'/%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    .mist-image {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23b9c4cf'/%3E%3Cpath d='M0 52c74-28 138-22 194 18s124 38 226-28v198H0z' fill='%23cbd3dc'/%3E%3Ccircle cx='82' cy='176' r='68' fill='%23aeb8c4'/%3E%3C/svg%3E");
     }
 
     .dark-image {
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 220'%3E%3Crect width='400' height='220' fill='%23191b20'/%3E%3Ccircle cx='310' cy='40' r='120' fill='%232d3440'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23191b20'/%3E%3Ccircle cx='316' cy='50' r='132' fill='%232d3440'/%3E%3Cpath d='M0 182c70-48 138-42 204-6s128 24 216-58v122H0z' fill='%23101318'/%3E%3C/svg%3E");
+    }
+
+    .underlay {
+      isolation: isolate;
+      background: #1a1d24;
+    }
+
+    .underlay.light-shell {
+      background: #f5f2ea;
+    }
+
+    .underlay img,
+    .underlay svg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .underlay svg {
+      display: block;
     }
   </style>
 </head>
 <body>
   <main class="grid">
-    <section class="image-card light-image">
-      <p style="color: rgb(255, 255, 255);">White text on light image should be sampled by pixel contrast.</p>
+    <section class="column" data-col="flag">
+      <h2>Should flag after pixel sampling</h2>
+
+      <article class="image-card light-image">
+        <p style="color: rgb(255, 255, 255);">White text on light image should be sampled by pixel contrast.</p>
+      </article>
+
+      <article class="image-card dark-image">
+        <p style="color: rgb(28, 30, 35);">Dark text on dark image should be sampled by pixel contrast.</p>
+      </article>
+
+      <article class="image-card pale-pattern">
+        <p style="color: rgba(255, 255, 255, 0.72);">Translucent white text on a pale pattern should use rendered pixels.</p>
+      </article>
+
+      <article class="image-card mist-image">
+        <p style="color: rgb(138, 146, 156);">Muted gray text on a misty image should be sampled by pixel contrast.</p>
+      </article>
     </section>
 
-    <section class="image-card dark-image">
-      <p style="color: rgb(255, 255, 255);">White text on dark image should pass the pixel contrast fallback.</p>
+    <section class="column" data-col="pass">
+      <h2>Should pass after pixel sampling</h2>
+
+      <article class="image-card dark-image">
+        <p style="color: rgb(250, 247, 239);">White text on dark image should pass the pixel contrast fallback.</p>
+      </article>
+
+      <article class="image-card light-image">
+        <p style="color: rgb(31, 35, 42);">Dark text on light image should pass the pixel contrast fallback.</p>
+      </article>
+
+      <article class="image-card underlay">
+        <img alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 240'%3E%3Crect width='420' height='240' fill='%23141920'/%3E%3Ccircle cx='318' cy='70' r='126' fill='%23293442'/%3E%3C/svg%3E">
+        <p style="color: rgb(246, 242, 232);">White text over a dark image underlay should pass.</p>
+      </article>
+
+      <article class="image-card underlay light-shell">
+        <svg viewBox="0 0 420 240" aria-hidden="true">
+          <rect width="420" height="240" fill="#f3eee4"></rect>
+          <circle cx="86" cy="70" r="68" fill="#fffaf2"></circle>
+          <path d="M0 176c72-24 132-22 190 6s128 30 230-34v92H0z" fill="#e5dccd"></path>
+        </svg>
+        <p style="color: rgb(35, 31, 27);">Dark text over a light SVG underlay should pass.</p>
+      </article>
     </section>
   </main>
 </body>

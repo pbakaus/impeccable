@@ -127,7 +127,17 @@ describe('detectUrl — browser-only fixtures', () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, {
       waitUntil: 'load',
       visualContrast: true,
+      visualContrastMaxCandidates: 20,
     });
+    const pixelFindings = f.filter(r =>
+      r.antipattern === 'low-contrast' &&
+      /pixel contrast/i.test(r.snippet || '')
+    );
+    assert.equal(
+      pixelFindings.length,
+      4,
+      `expected 4 pixel contrast findings, got ${pixelFindings.length}: ${JSON.stringify(pixelFindings.map(r => r.snippet))}`,
+    );
     assert.ok(
       f.some(r =>
         r.antipattern === 'low-contrast' &&
@@ -136,10 +146,27 @@ describe('detectUrl — browser-only fixtures', () => {
       ),
       `expected pixel contrast finding for light image background, got: ${JSON.stringify(f.map(r => r.snippet))}`,
     );
+    assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /Dark text on dark image/i.test(r.snippet || '')),
+      'expected pixel contrast finding for dark text on dark image',
+    );
+    assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /Translucent white text on a pale pattern/i.test(r.snippet || '')),
+      'expected pixel contrast finding for translucent text on pale pattern',
+    );
+    assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /Muted gray text on a misty image/i.test(r.snippet || '')),
+      'expected pixel contrast finding for muted gray text on misty image',
+    );
     assert.equal(
       f.some(r => r.antipattern === 'low-contrast' && /White text on dark image/i.test(r.snippet || '')),
       false,
       'dark image background should keep enough contrast',
+    );
+    assert.equal(
+      f.some(r => r.antipattern === 'low-contrast' && /Dark text on light image/i.test(r.snippet || '')),
+      false,
+      'light image with dark text should keep enough contrast',
     );
   });
 

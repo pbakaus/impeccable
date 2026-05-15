@@ -375,6 +375,10 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
                 <dt>Findings</dt>
                 <dd data-browser-findings>waiting</dd>
               </div>
+              <div>
+                <dt>Visual candidates</dt>
+                <dd data-browser-visual-candidates>waiting</dd>
+              </div>
             </dl>
             <div class="detector-rule-pills" data-browser-rules aria-label="Browser findings by rule"></div>
           </section>
@@ -482,6 +486,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     const staticRulesEl = document.querySelector('[data-static-rules]');
     const browserMsEl = document.querySelector('[data-browser-ms]');
     const browserFindingsEl = document.querySelector('[data-browser-findings]');
+    const browserVisualCandidatesEl = document.querySelector('[data-browser-visual-candidates]');
     const browserRulesEl = document.querySelector('[data-browser-rules]');
     const selectedTimingBody = document.querySelector('[data-selected-timings]');
     const selectedTableTitle = document.querySelector('[data-selected-table-title]');
@@ -567,19 +572,29 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     async function runBrowserScan() {
       browserMsEl.textContent = 'scanning';
       browserFindingsEl.textContent = 'scanning';
+      browserVisualCandidatesEl.textContent = 'scanning';
       browserRulesEl.replaceChildren();
       try {
         const win = await waitForDetector(frame.contentWindow);
         const started = performance.now();
         const groups = win.impeccableDetect({ decorate: false, serialize: true });
         const elapsed = performance.now() - started;
+        const visualCandidates = typeof win.impeccableCollectVisualContrastCandidates === 'function'
+          ? win.impeccableCollectVisualContrastCandidates({ maxCandidates: 99 })
+          : [];
         const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0);
+        const ruleRows = countBrowserRules(groups);
+        if (visualCandidates.length > 0) {
+          ruleRows.unshift({ ruleId: 'visual-contrast-candidate', count: visualCandidates.length });
+        }
         browserMsEl.textContent = formatMs(elapsed);
         browserFindingsEl.textContent = String(count);
-        renderPills(browserRulesEl, countBrowserRules(groups), 'No browser findings');
+        browserVisualCandidatesEl.textContent = String(visualCandidates.length);
+        renderPills(browserRulesEl, ruleRows, 'No browser findings');
       } catch (err) {
         browserMsEl.textContent = 'unavailable';
         browserFindingsEl.textContent = '0';
+        browserVisualCandidatesEl.textContent = '0';
         renderPills(browserRulesEl, [], err.message || 'No browser data');
       }
     }
@@ -600,6 +615,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       renderTimingRows(fixture);
       browserMsEl.textContent = 'loading';
       browserFindingsEl.textContent = 'loading';
+      browserVisualCandidatesEl.textContent = 'loading';
       browserRulesEl.replaceChildren();
       frame.title = `${fixture.title} detector fixture`;
       frame.src = fixture.url;
