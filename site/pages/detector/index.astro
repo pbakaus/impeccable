@@ -494,6 +494,8 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     const selectedTimingBody = document.querySelector('[data-selected-timings]');
     const selectedTableTitle = document.querySelector('[data-selected-table-title]');
     let currentFixtureId = fixtures[0]?.id || '';
+    let latestBrowserSummary = null;
+    let detachVisualResolutionListener = null;
 
     function formatMs(value) {
       if (!Number.isFinite(value)) return '0 ms';
@@ -531,6 +533,67 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       return [...counts.entries()]
         .map(([ruleId, count]) => ({ ruleId, count }))
         .sort((a, b) => b.count - a.count || a.ruleId.localeCompare(b.ruleId));
+    }
+
+    function countBrowserFindings(groups) {
+      return (groups || []).reduce((sum, group) => sum + (group.findings?.length || 0), 0);
+    }
+
+    function renderBrowserSummary(summary) {
+      const visualAnalyses = summary.visualAnalyses || [];
+      const visualCandidates = visualAnalyses.length > 0 ? visualAnalyses : (summary.visualCandidates || []);
+      const visualFailures = visualAnalyses.filter(result => result.status === 'fail').length;
+      const visualPasses = visualAnalyses.filter(result => result.status === 'pass').length;
+      const visualUnresolved = visualAnalyses.filter(result => result.status === 'unresolved').length;
+      const groupFindingCount = countBrowserFindings(summary.groups);
+      const count = summary.useVisualPipeline
+        ? (summary.nonVisualFindingCount + visualFailures)
+        : (groupFindingCount + visualFailures);
+      const ruleRows = countBrowserRules(summary.groups)
+        .filter(row => !(summary.useVisualPipeline && row.ruleId === 'low-contrast'));
+
+      if (visualUnresolved > 0) {
+        ruleRows.unshift({ ruleId: 'visual-contrast-unresolved', count: visualUnresolved });
+      }
+      if (visualPasses > 0) {
+        ruleRows.unshift({ ruleId: 'visual-contrast-pass', count: visualPasses });
+      }
+      if (visualFailures > 0) {
+        ruleRows.unshift({ ruleId: 'low-contrast:visual', count: visualFailures });
+      }
+      if (visualCandidates.length > 0) {
+        ruleRows.unshift({ ruleId: 'visual-contrast-candidate', count: visualCandidates.length });
+      }
+
+      browserMsEl.textContent = formatMs(summary.elapsed);
+      browserFindingsEl.textContent = String(count);
+      browserVisualCandidatesEl.textContent = visualAnalyses.length > 0
+        ? `${visualCandidates.length} (${visualFailures} fail, ${visualPasses} pass, ${visualUnresolved} unresolved, ${formatMs(summary.visualElapsed)})`
+        : String(visualCandidates.length);
+      renderPills(browserRulesEl, ruleRows, 'No browser findings');
+    }
+
+    function bindVisualResolutionUpdates(win) {
+      if (detachVisualResolutionListener) {
+        detachVisualResolutionListener();
+        detachVisualResolutionListener = null;
+      }
+      const updateSummary = () => {
+        if (!latestBrowserSummary || latestBrowserSummary.win !== win) return;
+        const visualAnalyses = typeof win.impeccableGetLastVisualContrastAnalyses === 'function'
+          ? win.impeccableGetLastVisualContrastAnalyses()
+          : latestBrowserSummary.visualAnalyses;
+        latestBrowserSummary = {
+          ...latestBrowserSummary,
+          visualAnalyses,
+          visualCandidates: visualAnalyses.length > 0 ? visualAnalyses : latestBrowserSummary.visualCandidates,
+        };
+        renderBrowserSummary(latestBrowserSummary);
+      };
+      win.addEventListener('impeccable-visual-contrast-resolved', updateSummary);
+      detachVisualResolutionListener = () => {
+        win.removeEventListener('impeccable-visual-contrast-resolved', updateSummary);
+      };
     }
 
     function renderTimingRows(fixture) {
@@ -698,30 +761,23 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
               ? win.impeccableCollectVisualContrastCandidates({ maxCandidates: 99 })
               : []);
         const visualFailures = visualAnalyses.filter(result => result.status === 'fail').length;
-        const visualPasses = visualAnalyses.filter(result => result.status === 'pass').length;
-        const visualUnresolved = visualAnalyses.filter(result => result.status === 'unresolved').length;
-        const count = groups.reduce((sum, group) => sum + (group.findings?.length || 0), 0) + (useVisualPipeline ? 0 : visualFailures);
-        const ruleRows = countBrowserRules(groups);
+        const nonVisualFindingCount = useVisualPipeline
+          ? Math.max(0, countBrowserFindings(groups) - visualFailures)
+          : countBrowserFindings(groups);
         if (workspaceScrollEl) workspaceScrollEl.scrollTop = restoreWorkspaceScroll;
         win.scrollTo(restoreFrameScroll.x, restoreFrameScroll.y);
-        if (visualUnresolved > 0) {
-          ruleRows.unshift({ ruleId: 'visual-contrast-unresolved', count: visualUnresolved });
-        }
-        if (visualPasses > 0) {
-          ruleRows.unshift({ ruleId: 'visual-contrast-pass', count: visualPasses });
-        }
-        if (visualFailures > 0) {
-          ruleRows.unshift({ ruleId: 'low-contrast:visual', count: visualFailures });
-        }
-        if (visualCandidates.length > 0) {
-          ruleRows.unshift({ ruleId: 'visual-contrast-candidate', count: visualCandidates.length });
-        }
-        browserMsEl.textContent = formatMs(elapsed);
-        browserFindingsEl.textContent = String(count);
-        browserVisualCandidatesEl.textContent = visualAnalyses.length > 0
-          ? `${visualCandidates.length} (${visualFailures} fail, ${visualPasses} pass, ${visualUnresolved} unresolved, ${formatMs(visualElapsed)})`
-          : String(visualCandidates.length);
-        renderPills(browserRulesEl, ruleRows, 'No browser findings');
+        latestBrowserSummary = {
+          win,
+          groups,
+          visualAnalyses,
+          visualCandidates,
+          elapsed,
+          visualElapsed,
+          useVisualPipeline,
+          nonVisualFindingCount,
+        };
+        bindVisualResolutionUpdates(win);
+        renderBrowserSummary(latestBrowserSummary);
         renderLabOverlays(win, groups, visualAnalyses, {
           showVisualOverlays: currentFixtureId === 'visual-contrast',
         });
@@ -753,6 +809,11 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       browserFindingsEl.textContent = 'loading';
       browserVisualCandidatesEl.textContent = 'loading';
       browserRulesEl.replaceChildren();
+      latestBrowserSummary = null;
+      if (detachVisualResolutionListener) {
+        detachVisualResolutionListener();
+        detachVisualResolutionListener = null;
+      }
       frame.title = `${fixture.title} detector fixture`;
       frame.src = fixture.url;
       if (updateHash) history.replaceState(null, '', `#${fixture.id}`);
