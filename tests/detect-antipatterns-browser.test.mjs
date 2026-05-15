@@ -228,7 +228,15 @@ describe('detectUrl — browser-only fixtures', () => {
           scrollEvents += 1;
           maxScrollY = Math.max(maxScrollY, window.scrollY);
         }, { passive: true });
-        const groups = await window.impeccableScan({
+        const syncScanResult = window.impeccableScan({
+          visualContrast: true,
+          visualContrastMaxCandidates: 20,
+        });
+        const syncDetectResult = window.impeccableDetect({
+          visualContrast: true,
+          serialize: true,
+        });
+        const groups = await window.impeccableScanAsync({
           visualContrast: true,
           visualContrastMaxCandidates: 20,
         });
@@ -244,6 +252,9 @@ describe('detectUrl — browser-only fixtures', () => {
           scrollEvents,
           maxScrollY,
           finalScrollY: window.scrollY,
+          syncScanIsArray: Array.isArray(syncScanResult),
+          syncDetectIsArray: Array.isArray(syncDetectResult),
+          hasAsyncApi: typeof window.impeccableScanAsync === 'function' && typeof window.impeccableDetectAsync === 'function',
         };
       });
       const visualGroups = result.groups.filter(group =>
@@ -256,6 +267,9 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.ok(result.labels >= 3, `expected regular labels for visible visual findings, got: ${JSON.stringify(result)}`);
       assert.equal(result.maxScrollY, 0, `visual scan should not scroll the page by default: ${JSON.stringify(result)}`);
       assert.equal(result.finalScrollY, 0, `visual scan should preserve scroll by default: ${JSON.stringify(result)}`);
+      assert.equal(result.syncScanIsArray, true, `impeccableScan should keep a synchronous Array return: ${JSON.stringify(result)}`);
+      assert.equal(result.syncDetectIsArray, true, `impeccableDetect should keep a synchronous Array return: ${JSON.stringify(result)}`);
+      assert.equal(result.hasAsyncApi, true, `visual contrast should expose explicit async APIs: ${JSON.stringify(result)}`);
 
       const lazyResult = await page.evaluate(async () => {
         const target = [...document.querySelectorAll('p')]
@@ -282,7 +296,7 @@ describe('detectUrl — browser-only fixtures', () => {
         window.addEventListener('scroll', () => {
           maxScrollY = Math.max(maxScrollY, window.scrollY);
         }, { passive: true });
-        const groups = await window.impeccableScan({
+        const groups = await window.impeccableScanAsync({
           visualContrast: true,
           visualContrastMaxCandidates: 20,
           visualContrastScrollOffscreen: true,

@@ -28,8 +28,8 @@ if (typeof window === 'undefined') return;
  * Browser usage:
  *   <script src="detect-antipatterns-browser.js"></script>
  *   Re-scan: window.impeccableScan()
- *   Re-scan with async visual contrast: window.impeccableScan({ visualContrast: true })
- *   Include offscreen visual sampling: window.impeccableScan({ visualContrast: true, visualContrastScrollOffscreen: true })
+ *   Await visual contrast: window.impeccableScanAsync({ visualContrast: true })
+ *   Include offscreen visual sampling: window.impeccableScanAsync({ visualContrast: true, visualContrastScrollOffscreen: true })
  *
  * Exit codes: 0 = clean, 2 = findings
  */
@@ -3098,6 +3098,16 @@ if (IS_BROWSER) {
     return (container - painted) / 2;
   }
 
+  function parsePositionPair(positionValue) {
+    const tokens = String(positionValue || '50% 50%').trim().split(/\s+/).filter(Boolean);
+    const first = tokens[0] || '50%';
+    if (tokens.length < 2) {
+      if (first === 'top' || first === 'bottom') return ['50%', first];
+      return [first, '50%'];
+    }
+    return [first, tokens[1] || '50%'];
+  }
+
   function resolvePaintedImageRect(containerRect, image, sizeValue, positionValue) {
     const intrinsicWidth = image.naturalWidth || image.videoWidth || image.width || 1;
     const intrinsicHeight = image.naturalHeight || image.videoHeight || image.height || 1;
@@ -3122,9 +3132,9 @@ if (IS_BROWSER) {
       else if (/px$/.test(heightToken)) paintedHeight = parseFloat(heightToken) || paintedHeight;
     }
 
-    const tokens = String(positionValue || '50% 50%').trim().split(/\s+/);
-    const positionX = parsePositionToken(tokens[0], containerRect.width, paintedWidth);
-    const positionY = parsePositionToken(tokens[1] || tokens[0], containerRect.height, paintedHeight);
+    const [xToken, yToken] = parsePositionPair(positionValue);
+    const positionX = parsePositionToken(xToken, containerRect.width, paintedWidth);
+    const positionY = parsePositionToken(yToken, containerRect.height, paintedHeight);
     return {
       left: containerRect.left + positionX,
       top: containerRect.top + positionY,
@@ -3136,8 +3146,7 @@ if (IS_BROWSER) {
   }
 
   function parseObjectPosition(positionValue) {
-    const tokens = String(positionValue || '50% 50%').trim().split(/\s+/);
-    return [tokens[0] || '50%', tokens[1] || tokens[0] || '50%'];
+    return parsePositionPair(positionValue);
   }
 
   function resolveObjectImageRect(containerRect, image, style) {
@@ -3690,6 +3699,7 @@ if (IS_BROWSER) {
   let lazyVisualContrastObserver = null;
   let lazyVisualContrastPending = new WeakMap();
   const lazyVisualContrastResolving = new WeakSet();
+  let scanGeneration = 0;
 
   function rememberVisualContrastAnalysis(result) {
     if (!result?.selector) {
@@ -3741,7 +3751,7 @@ if (IS_BROWSER) {
     }, '*');
   }
 
-  function scheduleLazyVisualContrast(groupMap, analyses, options = {}) {
+  function scheduleLazyVisualContrast(groupMap, analyses, options = {}, runtime = {}) {
     disconnectLazyVisualContrastObserver();
     if (options.visualContrastLazy === false || options.scrollOffscreen !== false) return;
     if (typeof IntersectionObserver === 'undefined') return;
@@ -3751,6 +3761,7 @@ if (IS_BROWSER) {
       result.selector
     );
     if (unresolved.length === 0) return;
+    const generation = runtime.generation || scanGeneration;
 
     lazyVisualContrastObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -3764,6 +3775,7 @@ if (IS_BROWSER) {
         waitForVisualPaint()
           .then(() => analyzeVisualContrastCandidate(candidate))
           .then(result => {
+            if (generation !== scanGeneration) return;
             rememberVisualContrastAnalysis(result);
             const added = addVisualContrastResult(groupMap, result, { decorate: true });
             if (added) {
@@ -3809,11 +3821,12 @@ if (IS_BROWSER) {
     }
     const resolvedOptions = visualContrastOptions(options);
     const analyses = await analyzeVisualContrast(resolvedOptions);
+    if (runtime.generation && runtime.generation !== scanGeneration) return analyses;
     lastVisualContrastAnalyses = analyses;
     for (const result of analyses) {
-      addVisualContrastResult(groupMap, result);
+      addVisualContrastResult(groupMap, result, { decorate: runtime.decorate });
     }
-    if (runtime.decorate) scheduleLazyVisualContrast(groupMap, analyses, resolvedOptions);
+    if (runtime.decorate || runtime.scheduleLazy) scheduleLazyVisualContrast(groupMap, analyses, resolvedOptions, runtime);
     return analyses;
   }
 
@@ -3828,6 +3841,7 @@ if (IS_BROWSER) {
   }
 
   function clearOverlays() {
+    scanGeneration += 1;
     disconnectLazyVisualContrastObserver();
     for (const o of overlays) o.remove();
     overlays.length = 0;
@@ -3867,14 +3881,44 @@ if (IS_BROWSER) {
   let firstScanDone = false;
   const scan = function(options = {}) {
     clearOverlays();
+    const generation = scanGeneration;
+    const collected = collectBrowserFindings();
+    const allFindings = renderBrowserFindings(collected);
     if (shouldRunVisualContrast(options)) {
-      return collectBrowserFindingsAsync(options, { decorate: true }).then(renderBrowserFindings);
+      addVisualContrastFindings(collected.groupMap, options, { decorate: true, generation })
+        .then(() => {
+          if (generation === scanGeneration) postSerializedFindings(collected.groupMap);
+        })
+        .catch(err => {
+          window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-error', {
+            detail: { message: err?.message || String(err) },
+          }));
+          if (!EXTENSION_MODE) console.warn('[impeccable] visual contrast scan failed', err);
+        });
+    }
+    return allFindings;
+  };
+
+  const scanAsync = function(options = {}) {
+    clearOverlays();
+    const generation = scanGeneration;
+    if (shouldRunVisualContrast(options)) {
+      return collectBrowserFindingsAsync(options, { generation, scheduleLazy: true }).then(collected => {
+        if (generation !== scanGeneration) return [];
+        return renderBrowserFindings(collected);
+      });
     }
     lastVisualContrastAnalyses = [];
-    return renderBrowserFindings(collectBrowserFindings());
+    return Promise.resolve(renderBrowserFindings(collectBrowserFindings()));
   };
 
   const detect = function(options = {}) {
+    lastVisualContrastAnalyses = [];
+    const { allFindings } = collectBrowserFindings();
+    return options.serialize === false ? allFindings : serializeFindings(allFindings);
+  };
+
+  const detectAsync = function(options = {}) {
     if (shouldRunVisualContrast(options)) {
       return collectBrowserFindingsAsync(options).then(({ allFindings }) =>
         options.serialize === false ? allFindings : serializeFindings(allFindings)
@@ -3882,7 +3926,7 @@ if (IS_BROWSER) {
     }
     lastVisualContrastAnalyses = [];
     const { allFindings } = collectBrowserFindings();
-    return options.serialize === false ? allFindings : serializeFindings(allFindings);
+    return Promise.resolve(options.serialize === false ? allFindings : serializeFindings(allFindings));
   };
 
   if (EXTENSION_MODE) {
@@ -3967,7 +4011,9 @@ if (IS_BROWSER) {
   }
 
   window.impeccableDetect = detect;
+  window.impeccableDetectAsync = detectAsync;
   window.impeccableScan = scan;
+  window.impeccableScanAsync = scanAsync;
   window.impeccableCollectVisualContrastCandidates = collectVisualContrastCandidates;
   window.impeccableAnalyzeVisualContrast = analyzeVisualContrast;
   window.impeccableGetLastVisualContrastAnalyses = () => lastVisualContrastAnalyses.slice();

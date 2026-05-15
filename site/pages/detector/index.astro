@@ -744,8 +744,8 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         clearLabOverlays(win);
         const useVisualPipeline = currentFixtureId === 'visual-contrast';
         const started = performance.now();
-        const groups = useVisualPipeline && typeof win.impeccableScan === 'function'
-          ? await win.impeccableScan({ visualContrast: true, visualContrastMaxCandidates: 99 })
+        const groups = useVisualPipeline && typeof win.impeccableScanAsync === 'function'
+          ? await win.impeccableScanAsync({ visualContrast: true, visualContrastMaxCandidates: 99 })
           : await win.impeccableDetect({ decorate: false, serialize: true });
         const elapsed = performance.now() - started;
         const visualStarted = performance.now();
