@@ -257,6 +257,25 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(result.maxScrollY, 0, `visual scan should not scroll the page by default: ${JSON.stringify(result)}`);
       assert.equal(result.finalScrollY, 0, `visual scan should preserve scroll by default: ${JSON.stringify(result)}`);
 
+      const lazyResult = await page.evaluate(async () => {
+        const target = [...document.querySelectorAll('p')]
+          .find(node => /Muted gray text on a misty image/i.test(node.textContent || ''));
+        target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        await new Promise(resolve => setTimeout(resolve, 250));
+        return {
+          overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
+          labels: document.querySelectorAll('.impeccable-label').length,
+          analyses: window.impeccableGetLastVisualContrastAnalyses().filter(item => item.status === 'fail').length,
+          targetHasOverlay: Boolean(target?._impeccableOverlay),
+          scrollY: window.scrollY,
+        };
+      });
+      assert.equal(lazyResult.analyses, 4, `expected lazy visual resolution after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.overlays >= 4, `expected lazy visual overlay after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.labels >= 4, `expected lazy visual label after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.equal(lazyResult.targetHasOverlay, true, `expected lazy visual target to get a regular overlay, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.scrollY > 0, `test should have naturally scrolled to the offscreen case: ${JSON.stringify(lazyResult)}`);
+
       const offscreenResult = await page.evaluate(async () => {
         window.scrollTo(0, 0);
         let maxScrollY = window.scrollY;

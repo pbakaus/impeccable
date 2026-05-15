@@ -3687,37 +3687,139 @@ if (IS_BROWSER) {
   }
 
   let lastVisualContrastAnalyses = [];
+  let lazyVisualContrastObserver = null;
+  let lazyVisualContrastPending = new WeakMap();
+  const lazyVisualContrastResolving = new WeakSet();
 
-  async function addVisualContrastFindings(groupMap, options = {}) {
-    if (!shouldRunVisualContrast(options)) {
-      lastVisualContrastAnalyses = [];
-      return [];
+  function rememberVisualContrastAnalysis(result) {
+    if (!result?.selector) {
+      lastVisualContrastAnalyses.push(result);
+      return;
     }
-    const analyses = await analyzeVisualContrast(visualContrastOptions(options));
-    lastVisualContrastAnalyses = analyses;
-    for (const result of analyses) {
-      if (result.status !== 'fail' || !result.finding || !result.selector) continue;
+    const idx = lastVisualContrastAnalyses.findIndex(item => item.selector === result.selector);
+    if (idx >= 0) lastVisualContrastAnalyses[idx] = result;
+    else lastVisualContrastAnalyses.push(result);
+  }
+
+  function disconnectLazyVisualContrastObserver() {
+    if (lazyVisualContrastObserver) {
+      lazyVisualContrastObserver.disconnect();
+      lazyVisualContrastObserver = null;
+    }
+    lazyVisualContrastPending = new WeakMap();
+  }
+
+  function addVisualContrastResult(groupMap, result, options = {}) {
+    if (result.status !== 'fail' || !result.finding || !result.selector) return false;
+    let el = null;
+    try {
+      el = document.querySelector(result.selector);
+    } catch {
+      el = null;
+    }
+    if (!el) return false;
+    const findingType = result.finding.type || result.finding.id || 'low-contrast';
+    const existing = groupMap.get(el) || [];
+    if (existing.some(f => (f.type || f.id) === findingType)) return false;
+    addBrowserFindings(groupMap, el, [{
+      type: findingType,
+      detail: result.finding.detail || result.finding.snippet,
+    }]);
+    if (options.decorate && el !== document.body && el !== document.documentElement && !el._impeccableOverlay) {
+      highlight(el, groupMap.get(el) || []);
+    }
+    return true;
+  }
+
+  function postSerializedFindings(groupMap) {
+    if (!EXTENSION_MODE) return;
+    const allFindings = browserFindingsFromMap(groupMap);
+    window.postMessage({
+      source: 'impeccable-results',
+      findings: serializeFindings(allFindings),
+      count: allFindings.length,
+    }, '*');
+  }
+
+  function scheduleLazyVisualContrast(groupMap, analyses, options = {}) {
+    disconnectLazyVisualContrastObserver();
+    if (options.visualContrastLazy === false || options.scrollOffscreen !== false) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const unresolved = (analyses || []).filter(result =>
+      result?.status === 'unresolved' &&
+      result.reason === 'text outside viewport' &&
+      result.selector
+    );
+    if (unresolved.length === 0) return;
+
+    lazyVisualContrastObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        const candidate = lazyVisualContrastPending.get(el);
+        if (!candidate || lazyVisualContrastResolving.has(el)) continue;
+        lazyVisualContrastObserver?.unobserve(el);
+        lazyVisualContrastPending.delete(el);
+        lazyVisualContrastResolving.add(el);
+        waitForVisualPaint()
+          .then(() => analyzeVisualContrastCandidate(candidate))
+          .then(result => {
+            rememberVisualContrastAnalysis(result);
+            const added = addVisualContrastResult(groupMap, result, { decorate: true });
+            if (added) {
+              postSerializedFindings(groupMap);
+              window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-resolved', {
+                detail: {
+                  selector: result.selector,
+                  status: result.status,
+                  finding: result.finding || null,
+                },
+              }));
+            }
+          })
+          .catch(err => {
+            window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-error', {
+              detail: { selector: candidate.selector, message: err?.message || String(err) },
+            }));
+          })
+          .finally(() => {
+            lazyVisualContrastResolving.delete(el);
+          });
+      }
+    }, { threshold: 0.5 });
+
+    for (const candidate of unresolved) {
       let el = null;
       try {
-        el = document.querySelector(result.selector);
+        el = document.querySelector(candidate.selector);
       } catch {
         el = null;
       }
       if (!el) continue;
-      const findingType = result.finding.type || result.finding.id || 'low-contrast';
-      const existing = groupMap.get(el) || [];
-      if (existing.some(f => (f.type || f.id) === findingType)) continue;
-      addBrowserFindings(groupMap, el, [{
-        type: findingType,
-        detail: result.finding.detail || result.finding.snippet,
-      }]);
+      lazyVisualContrastPending.set(el, candidate);
+      lazyVisualContrastObserver.observe(el);
     }
+  }
+
+  async function addVisualContrastFindings(groupMap, options = {}, runtime = {}) {
+    if (!shouldRunVisualContrast(options)) {
+      lastVisualContrastAnalyses = [];
+      disconnectLazyVisualContrastObserver();
+      return [];
+    }
+    const resolvedOptions = visualContrastOptions(options);
+    const analyses = await analyzeVisualContrast(resolvedOptions);
+    lastVisualContrastAnalyses = analyses;
+    for (const result of analyses) {
+      addVisualContrastResult(groupMap, result);
+    }
+    if (runtime.decorate) scheduleLazyVisualContrast(groupMap, analyses, resolvedOptions);
     return analyses;
   }
 
-  async function collectBrowserFindingsAsync(options = {}) {
+  async function collectBrowserFindingsAsync(options = {}, runtime = {}) {
     const collected = collectBrowserFindings();
-    await addVisualContrastFindings(collected.groupMap, options);
+    await addVisualContrastFindings(collected.groupMap, options, runtime);
     return {
       ...collected,
       allFindings: browserFindingsFromMap(collected.groupMap),
@@ -3726,6 +3828,7 @@ if (IS_BROWSER) {
   }
 
   function clearOverlays() {
+    disconnectLazyVisualContrastObserver();
     for (const o of overlays) o.remove();
     overlays.length = 0;
     visibilityObserver.disconnect();
@@ -3765,7 +3868,7 @@ if (IS_BROWSER) {
   const scan = function(options = {}) {
     clearOverlays();
     if (shouldRunVisualContrast(options)) {
-      return collectBrowserFindingsAsync(options).then(renderBrowserFindings);
+      return collectBrowserFindingsAsync(options, { decorate: true }).then(renderBrowserFindings);
     }
     lastVisualContrastAnalyses = [];
     return renderBrowserFindings(collectBrowserFindings());
