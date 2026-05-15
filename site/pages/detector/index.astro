@@ -493,6 +493,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     const browserRulesEl = document.querySelector('[data-browser-rules]');
     const selectedTimingBody = document.querySelector('[data-selected-timings]');
     const selectedTableTitle = document.querySelector('[data-selected-table-title]');
+    let currentFixtureId = fixtures[0]?.id || '';
 
     function formatMs(value) {
       if (!Number.isFinite(value)) return '0 ms';
@@ -620,18 +621,21 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
       return [...new Set(types)].slice(0, 2).join(', ') || 'finding';
     }
 
-    function renderLabOverlays(win, groups, visualAnalyses) {
+    function renderLabOverlays(win, groups, visualAnalyses, options = {}) {
       const doc = win?.document;
       if (!doc?.body) return;
       clearLabOverlays(win);
+      if (!options.showVisualOverlays) return;
       ensureLabOverlayStyle(win);
+      const existingFindingSelectors = new Set(
+        (groups || [])
+          .filter(group => group.selector && group.findings?.length)
+          .map(group => group.selector)
+      );
       const rows = [];
-      for (const group of groups || []) {
-        if (!group.selector || !group.findings?.length) continue;
-        rows.push({ selector: group.selector, findings: group.findings, kind: 'detect' });
-      }
       for (const result of visualAnalyses || []) {
         if (result.status !== 'fail' || !result.selector) continue;
+        if (existingFindingSelectors.has(result.selector)) continue;
         rows.push({ selector: result.selector, kind: 'visual' });
       }
 
@@ -642,6 +646,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
         } catch {
           el = null;
         }
+        if (el?._impeccableOverlay) continue;
         if (!el || !el.getBoundingClientRect) continue;
         const rect = el.getBoundingClientRect();
         if (rect.width < 2 || rect.height < 2) continue;
@@ -712,7 +717,9 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
           ? `${visualCandidates.length} (${visualFailures} fail, ${visualPasses} pass, ${visualUnresolved} unresolved, ${formatMs(visualElapsed)})`
           : String(visualCandidates.length);
         renderPills(browserRulesEl, ruleRows, 'No browser findings');
-        renderLabOverlays(win, groups, visualAnalyses);
+        renderLabOverlays(win, groups, visualAnalyses, {
+          showVisualOverlays: currentFixtureId === 'visual-contrast',
+        });
       } catch (err) {
         browserMsEl.textContent = 'unavailable';
         browserFindingsEl.textContent = '0';
@@ -723,6 +730,7 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
 
     function selectFixture(id, updateHash = true) {
       const fixture = byId.get(id) || fixtures[0];
+      currentFixtureId = fixture.id;
       for (const button of document.querySelectorAll('[data-fixture-id]')) {
         button.setAttribute('aria-pressed', button.dataset.fixtureId === fixture.id ? 'true' : 'false');
       }
@@ -758,6 +766,11 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
     for (const button of document.querySelectorAll('[data-fixture-id]')) {
       button.addEventListener('click', () => selectFixture(button.dataset.fixtureId));
     }
+
+    window.addEventListener('hashchange', () => {
+      const nextId = location.hash ? location.hash.slice(1) : fixtures[0].id;
+      selectFixture(byId.has(nextId) ? nextId : fixtures[0].id, false);
+    });
 
     const initialId = location.hash ? location.hash.slice(1) : fixtures[0].id;
     selectFixture(byId.has(initialId) ? initialId : fixtures[0].id, false);
