@@ -397,7 +397,7 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 ## Handle `manual_edits`
 
-Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user picked an element, clicked the "Edit content" badge at its top-right corner, edited text descendants directly on the page (inline contenteditable), then clicked Apply. This triggers a batched save: all edited text leaves are collected into one `manual_edits` event with multiple ops. The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
+Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user picked an element, clicked the "Edit" badge at its top-right corner, edited text descendants directly on the page (inline contenteditable), then clicked Save. This triggers a batched save: all edited text leaves are collected into one `manual_edits` event with multiple ops. The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
 
 - If `_editResult.failed` is empty: nothing to do. Loop and poll again.
 - If `_editResult.failed` is non-empty: each entry is `{ref, op, reason, candidates?, file?}`. Common reasons:
