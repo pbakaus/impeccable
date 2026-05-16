@@ -1684,9 +1684,12 @@
     inlineEditDrafts = new Map();
     for (const row of rows) {
       row.el.setAttribute('contenteditable', 'true');
+      row.el.dataset.impeccableEditable = 'true';
       row.el.dataset.impeccableOriginalText = row.text;
       row.el.style.userSelect = 'text';
       row.el.style.cursor = 'text';
+      row.el.style.outline = 'none';
+      row.el.style.webkitUserModify = 'read-write-plaintext-only';
       row.el.addEventListener('input', onInlineInput);
     }
   }
@@ -1695,9 +1698,12 @@
     for (const row of inlineEditRows) {
       if (document.activeElement === row.el) row.el.blur();
       row.el.removeAttribute('contenteditable');
+      delete row.el.dataset.impeccableEditable;
       delete row.el.dataset.impeccableOriginalText;
       row.el.style.userSelect = '';
       row.el.style.cursor = '';
+      row.el.style.outline = '';
+      row.el.style.webkitUserModify = '';
       row.el.removeEventListener('input', onInlineInput);
     }
     inlineEditRows = [];
@@ -1799,14 +1805,17 @@
     });
     document.body.appendChild(editBadgeEl);
 
-    // Remove focus rings on edit badge buttons
+    // Remove focus rings on edit badge buttons + contenteditable elements
     if (!document.getElementById(PREFIX + '-edit-badge-focus-style')) {
       const s = document.createElement('style');
       s.id = PREFIX + '-edit-badge-focus-style';
       s.textContent =
-        '#' + PREFIX + '-edit-badge button { outline: none; box-shadow: none; }' +
-        '#' + PREFIX + '-edit-badge button:focus { outline: none; box-shadow: none; }' +
-        '#' + PREFIX + '-edit-badge button:focus-visible { outline: none; box-shadow: none; }';
+        '#' + PREFIX + '-edit-badge button { outline: none !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important; }' +
+        '#' + PREFIX + '-edit-badge button:focus { outline: none !important; }' +
+        '#' + PREFIX + '-edit-badge button:focus-visible { outline: none !important; }' +
+        '[data-impeccable-editable="true"] { outline: none !important; box-shadow: none !important; }' +
+        '[data-impeccable-editable="true"]:focus { outline: none !important; box-shadow: none !important; }' +
+        '[data-impeccable-editable="true"]:focus-visible { outline: none !important; box-shadow: none !important; }';
       document.head.appendChild(s);
     }
   }
