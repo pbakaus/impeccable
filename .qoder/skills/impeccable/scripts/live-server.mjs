@@ -547,6 +547,50 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       return;
     }
 
+    // --- Manual edits: server-direct, never enqueued.
+    // Bypasses the agent/poll pipeline entirely. Runs live-edit.mjs synchronously
+    // and returns the result JSON. The agent never sees this request — no token
+    // cost, no poll-task exit. See plan: decouple manual edits from agent pipeline.
+    if (p === '/manual-edit' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        let msg;
+        try { msg = JSON.parse(body); } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+        if (msg.token !== state.token) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        // Re-use the manual_edits validation by setting type explicitly.
+        const error = validateEvent({ ...msg, type: 'manual_edits' });
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error }));
+          return;
+        }
+        const editScript = path.join(__dirname, 'live-edit.mjs');
+        let editResult;
+        try {
+          const out = execFileSync(
+            'node',
+            [editScript, '--id', msg.id, '--ops', JSON.stringify(msg.ops || [])],
+            { encoding: 'utf-8', cwd: process.cwd(), timeout: 30_000 }
+          );
+          editResult = JSON.parse(out.trim());
+        } catch (err) {
+          editResult = { ok: false, error: err.message, applied: [], failed: [] };
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(editResult));
+      });
+      return;
+    }
+
     // --- Browser→server events (replaces WebSocket messages) ---
     if (p === '/events' && req.method === 'POST') {
       let body = '';
@@ -561,6 +605,14 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         if (msg.token !== state.token) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        // Defense in depth: manual_edits must use /manual-edit, not /events.
+        // Reject loudly so stale browser code surfaces in dev rather than
+        // silently re-creating the agent loop.
+        if (msg.type === 'manual_edits') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'manual_edits must POST to /manual-edit, not /events' }));
           return;
         }
         const error = validateEvent(msg);

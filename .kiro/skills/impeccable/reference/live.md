@@ -44,7 +44,6 @@ LOOP:
   Read JSON; dispatch on "type"
 
   "generate"      → Handle Generate; reply done; LOOP
-  "manual_edits"  → Handle Manual Edits; LOOP
   "accept"        → Handle Accept; complete carbonize cleanup if required; LOOP
   "discard"       → Handle Discard; LOOP
   "prefetch"      → Handle Prefetch; LOOP
@@ -395,18 +394,9 @@ Then remove the temporary wrapper from the served file if it's still there.
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
 
-## Handle `manual_edits`
+## Manual edits: server-direct, never seen by the agent
 
-Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user picked an element, clicked the "Edit" badge at its top-right corner, edited text descendants directly on the page (inline contenteditable), then clicked Save. This triggers a batched save: all edited text leaves are collected into one `manual_edits` event with multiple ops. The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
-
-- If `_editResult.failed` is empty: nothing to do. Loop and poll again.
-- If `_editResult.failed` is non-empty: each entry is `{ref, op, reason, candidates?, file?}`. Common reasons:
-  - `text_not_in_source`: `op.originalText` doesn't appear verbatim (templated content, e.g. `<h2>{title}</h2>` reads from a data source). Find the data source (JSON, frontmatter, props) and update the entry that matches.
-  - `element_ambiguous`: multiple source matches; `candidates` lists line numbers. Read the file, pick the right element by surrounding context, apply the op via `Edit`.
-  - `element_not_found`: element wasn't located. Element may be runtime-injected or in a file not in standard search dirs. Search wider.
-  - `insufficient_locator`: `op.classes` and `op.elementId` were both absent. Skip; the inline edit should not have emitted this op without a locator.
-- Do NOT regenerate variants. Do NOT call `live-wrap.mjs` or `live-accept.mjs`.
-- After handling failures, loop. The completion ack was already posted; do not `--reply`.
+The browser POSTs manual text edits directly to the server's `/manual-edit` endpoint. The server runs `live-edit.mjs` synchronously and returns the result to the browser. The event is never enqueued, never appears in the poll loop, and never reaches the agent. There is nothing for you to handle here. Manual edits cost zero tokens and never wake the agent.
 
 ## Handle `accept`
 
