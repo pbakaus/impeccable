@@ -396,7 +396,7 @@ code {
   line-height: 1;
   letter-spacing: -0.02em;
   margin: 0;
-  color: var(--color-ink);
+  color: var(--color-accent);
 }
 
 .hero-tagline-combined {

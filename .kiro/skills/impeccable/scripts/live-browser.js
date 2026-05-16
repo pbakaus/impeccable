@@ -2055,14 +2055,22 @@
       cursor: 'pointer',
       transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
     });
-    if (mode === 'idle') {
+    if (mode === 'idle' || mode === 'idle-disabled') {
+      const disabled = mode === 'idle-disabled';
       editBadgeEl.innerHTML = '';
       const btn = document.createElement('button');
       btn.textContent = 'Edit';
-      Object.assign(btn.style, calloutStyle(ACCENT));
-      btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
-      btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
-      btn.onclick = enterEditingMode;
+      Object.assign(btn.style, calloutStyle(disabled ? ASH : ACCENT, disabled ? MIST : ACCENT));
+      if (disabled) {
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.55';
+        btn.disabled = true;
+        btn.title = 'Edit is disabled while variants are generating';
+      } else {
+        btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
+        btn.onclick = enterEditingMode;
+      }
       editBadgeEl.appendChild(btn);
     } else {
       // 'editing' — show Cancel + Save separated
@@ -3024,6 +3032,11 @@
     clearAnnotations();
 
     state = 'GENERATING';
+    // Disable the Edit badge: starting a manual text edit mid-generation would
+    // conflict with the variant wrap that's about to land in the same DOM
+    // region. Only swap if the badge was visible — picked elements with no
+    // text rows have it hidden already.
+    if (editBadgeEl && editBadgeEl.style.display !== 'none') renderEditBadge('idle-disabled');
     showBar('generating');
     saveSession();
     sendCheckpoint('generate_started');
