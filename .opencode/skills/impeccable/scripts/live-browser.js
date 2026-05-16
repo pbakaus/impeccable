@@ -1676,9 +1676,55 @@
   let inlineEditRows = [];
   let inlineEditDrafts = new Map();
 
+  // Mixed-content elements (e.g. <p>text<code>x</code>text</p>) skip the row
+  // walker's "all-children-are-text-nodes" rule. Wrap each non-whitespace direct
+  // text-node child in a marker span so the walker emits a row for it. The
+  // wrappers are inline display by default and inherit styles, so the page
+  // shouldn't visually shift. We unwrap in disableInlineEdit.
+  const MIXED_WRAP_SKIP = { script: 1, style: 1, template: 1, noscript: 1, svg: 1, code: 1, pre: 1 };
+  function wrapMixedContentTextNodes(rootEl) {
+    if (!rootEl || rootEl.nodeType !== 1) return;
+    const tag = rootEl.tagName.toLowerCase();
+    if (MIXED_WRAP_SKIP[tag]) return;
+    if (rootEl.hasAttribute('contenteditable')) return;
+    const children = Array.from(rootEl.childNodes);
+    const hasText = children.some((n) => n.nodeType === 3 && /\S/.test(n.nodeValue || ''));
+    const hasElement = children.some((n) => n.nodeType === 1);
+    if (hasText && hasElement) {
+      for (const node of children) {
+        if (node.nodeType === 3 && /\S/.test(node.nodeValue || '')) {
+          const wrap = document.createElement('span');
+          wrap.dataset.impeccableTextWrap = 'true';
+          wrap.textContent = node.nodeValue;
+          rootEl.insertBefore(wrap, node);
+          rootEl.removeChild(node);
+        }
+      }
+    }
+    for (const child of Array.from(rootEl.children)) {
+      if (!child.dataset || !child.dataset.impeccableTextWrap) {
+        wrapMixedContentTextNodes(child);
+      }
+    }
+  }
+  function unwrapMixedContentTextNodes(rootEl) {
+    if (!rootEl || rootEl.nodeType !== 1) return;
+    const wraps = rootEl.querySelectorAll('[data-impeccable-text-wrap="true"]');
+    for (const wrap of wraps) {
+      const parent = wrap.parentNode;
+      if (!parent) continue;
+      const textNode = document.createTextNode(wrap.textContent);
+      parent.replaceChild(textNode, wrap);
+      parent.normalize();
+    }
+  }
+  let inlineEditRoot = null;
+
   function enableInlineEdit(targetEl) {
     const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
     if (!collect || !targetEl) return;
+    inlineEditRoot = targetEl;
+    wrapMixedContentTextNodes(targetEl);
     const rows = collect(targetEl, { isOwn: own });
     inlineEditRows = rows;
     inlineEditDrafts = new Map();
@@ -1708,6 +1754,10 @@
     }
     inlineEditRows = [];
     inlineEditDrafts = new Map();
+    if (inlineEditRoot) {
+      unwrapMixedContentTextNodes(inlineEditRoot);
+      inlineEditRoot = null;
+    }
   }
 
   function onInlineInput(e) {
@@ -1715,9 +1765,25 @@
   }
 
   function hasTextRows(el) {
-    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
-    if (!collect || !el) return false;
-    return (collect(el, { isOwn: own }) ?? []).length > 0;
+    if (!el) return false;
+    // Lightweight: any descendant outside SKIP_SUBTREE_TAGS with at least one
+    // non-whitespace direct text-node child means we have something editable
+    // (mixed-content paragraphs included). Mirrors what the wrap+walk path
+    // will produce in enableInlineEdit.
+    function check(node) {
+      if (!node || node.nodeType !== 1) return false;
+      const tag = node.tagName.toLowerCase();
+      if (MIXED_WRAP_SKIP[tag]) return false;
+      if (node !== el && own(node)) return false;
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3 && /\S/.test(child.nodeValue || '')) return true;
+      }
+      for (const child of node.children) {
+        if (check(child)) return true;
+      }
+      return false;
+    }
+    return check(el);
   }
 
   function enterEditingMode() {
