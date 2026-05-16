@@ -103,3 +103,4 @@ site/public/js/generated/
 !.codex/agents/
 !.codex/agents/**
 .astro/
+.claude/settings.json

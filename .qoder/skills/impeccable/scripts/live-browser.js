@@ -170,6 +170,7 @@
   let pickerEl = null;
   let toastEl = null;
   let scrollRaf = null;
+  let editBadgeEl = null;
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -984,7 +985,7 @@
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
-      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; return; }
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); renderEditBadge('hidden'); state = 'PICKING'; return; }
       // Let arrow keys pass through to the element picker when the input is empty
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
@@ -1673,21 +1674,20 @@
   // ---------------------------------------------------------------------------
 
   let inlineEditRows = [];
-  let inlineSavePromise = null;
+  let inlineEditDrafts = new Map();
 
   function enableInlineEdit(targetEl) {
     const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
     if (!collect || !targetEl) return;
     const rows = collect(targetEl, { isOwn: own });
     inlineEditRows = rows;
-    // Hide annotation overlay so its click handler doesn't interfere with contenteditable.
-    hideAnnotOverlay();
+    inlineEditDrafts = new Map();
     for (const row of rows) {
       row.el.setAttribute('contenteditable', 'true');
       row.el.dataset.impeccableOriginalText = row.text;
       row.el.style.userSelect = 'text';
       row.el.style.cursor = 'text';
-      row.el.addEventListener('blur', onInlineBlur);
+      row.el.addEventListener('input', onInlineInput);
     }
   }
 
@@ -1698,61 +1698,159 @@
       delete row.el.dataset.impeccableOriginalText;
       row.el.style.userSelect = '';
       row.el.style.cursor = '';
-      row.el.removeEventListener('blur', onInlineBlur);
+      row.el.removeEventListener('input', onInlineInput);
     }
     inlineEditRows = [];
-    // Restore annotation overlay when exiting inline-edit mode.
-    if (selectedElement && state === 'CONFIGURING') {
+    inlineEditDrafts = new Map();
+  }
+
+  function onInlineInput(e) {
+    inlineEditDrafts.set(e.currentTarget, e.currentTarget.innerText);
+  }
+
+  function hasTextRows(el) {
+    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
+    if (!collect || !el) return false;
+    return (collect(el, { isOwn: own }) ?? []).length > 0;
+  }
+
+  function enterEditingMode() {
+    state = 'EDITING';
+    hideBar();
+    hideAnnotOverlay();
+    renderEditBadge('editing');
+    enableInlineEdit(selectedElement);
+  }
+
+  function cancelEditing() {
+    for (const row of inlineEditRows) {
+      if (inlineEditDrafts.has(row.el)) {
+        row.el.innerText = row.el.dataset.impeccableOriginalText;
+      }
+    }
+    disableInlineEdit();
+    state = 'CONFIGURING';
+    showBar('configure');
+    showAnnotOverlay(selectedElement);
+    renderEditBadge('idle');
+  }
+
+  async function applyEditing() {
+    const ops = [];
+    for (const row of inlineEditRows) {
+      const newText = inlineEditDrafts.get(row.el);
+      if (newText !== undefined && newText !== row.text) {
+        ops.push({
+          ref: row.ref,
+          tag: row.tag,
+          elementId: selectedElement.id || null,
+          classes: [...selectedElement.classList],
+          originalText: row.text,
+          newText,
+        });
+      }
+    }
+    if (ops.length === 0) { cancelEditing(); return; }
+    try {
+      await sendEvent({
+        type: 'manual_edits',
+        id: id8(),
+        pageUrl: location.pathname,
+        element: extractContext(selectedElement),
+        ops,
+      }, { throwOnError: true });
+      disableInlineEdit();
+      state = 'CONFIGURING';
+      showBar('configure');
       showAnnotOverlay(selectedElement);
+      renderEditBadge('idle');
+    } catch (err) {
+      console.error('[impeccable] manual_edits failed:', err);
+      showToast('Save failed — retry or cancel', 4000);
     }
   }
 
-  function onInlineBlur(e) {
-    const el = e.currentTarget;
-    const original = el.dataset.impeccableOriginalText;
-    const current = el.innerText;
-    if (original === undefined || current === original) return;
+  // ---------------------------------------------------------------------------
+  // Edit content badge — floating button at element top-right to enter EDITING mode
+  // ---------------------------------------------------------------------------
 
-    const row = inlineEditRows.find((r) => r.el === el);
-    if (!row || !selectedElement) return;
+  function initEditBadge() {
+    editBadgeEl = document.createElement('div');
+    editBadgeEl.id = PREFIX + '-edit-badge';
+    Object.assign(editBadgeEl.style, {
+      position: 'fixed',
+      zIndex: String(Z.highlight + 1),
+      background: C.ink,
+      color: C.white,
+      fontFamily: MONO,
+      fontSize: '10px',
+      fontWeight: '500',
+      padding: '3px 8px',
+      borderRadius: '999px',
+      cursor: 'default',
+      display: 'none',
+      whiteSpace: 'nowrap',
+      letterSpacing: '0.02em',
+      userSelect: 'none',
+      lineHeight: '1.6',
+    });
+    document.body.appendChild(editBadgeEl);
+  }
 
-    // Capture context synchronously before the async save.
-    const capturedEl = selectedElement;
-    const op = {
-      ref: row.ref,
-      tag: el.tagName.toLowerCase(),
-      elementId: capturedEl.id || null,
-      classes: [...capturedEl.classList],
-      originalText: original,
-      newText: current,
-    };
-    const fetchPromise = sendEvent({
-      type: 'manual_edits',
-      id: id8(),
-      pageUrl: location.pathname,
-      element: extractContext(capturedEl),
-      ops: [op],
-    }, { throwOnError: true });
+  function positionEditBadge() {
+    if (!selectedElement || !editBadgeEl || editBadgeEl.style.display === 'none') return;
+    const r = selectedElement.getBoundingClientRect();
+    const bw = editBadgeEl.offsetWidth;
+    editBadgeEl.style.top = Math.max(4, r.top - 26) + 'px';
+    editBadgeEl.style.left = Math.min(window.innerWidth - bw - 4, r.right - bw) + 'px';
+  }
 
-    inlineSavePromise = fetchPromise;
-
-    fetchPromise
-      .then(() => {
-        // If handleGo() nulled inlineSavePromise, it is handling the
-        // transition to GENERATING — skip the PICKING reset.
-        if (inlineSavePromise !== fetchPromise) return;
-        inlineSavePromise = null;
-        disableInlineEdit();
-        stopScrollTracking();
-        hideAnnotOverlay();
-        clearAnnotations();
-        state = 'PICKING';
-      })
-      .catch((err) => {
-        console.error('[impeccable] manual_edits failed:', err);
-        if (inlineSavePromise === fetchPromise) inlineSavePromise = null;
-        showToast('Save failed — edit again to retry', 4000);
+  function renderEditBadge(mode) {
+    if (mode === 'hidden' || !editBadgeEl) {
+      if (editBadgeEl) editBadgeEl.style.display = 'none';
+      return;
+    }
+    editBadgeEl.style.display = 'block';
+    if (mode === 'idle') {
+      editBadgeEl.innerHTML = 'Edit content';
+      editBadgeEl.style.cursor = 'pointer';
+      editBadgeEl.onclick = enterEditingMode;
+    } else {
+      // 'editing' — show Cancel + Apply
+      editBadgeEl.innerHTML = '';
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      Object.assign(cancel.style, {
+        background: 'none',
+        border: 'none',
+        color: C.white,
+        fontFamily: MONO,
+        fontSize: '10px',
+        cursor: 'pointer',
+        padding: '0 4px 0 0',
       });
+      cancel.onclick = cancelEditing;
+      const sep = document.createElement('span');
+      sep.textContent = ' · ';
+      sep.style.opacity = '0.4';
+      const apply = document.createElement('button');
+      apply.textContent = 'Apply';
+      Object.assign(apply.style, {
+        background: 'none',
+        border: 'none',
+        color: C.brand,
+        fontFamily: MONO,
+        fontSize: '10px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        padding: '0',
+      });
+      apply.onclick = applyEditing;
+      editBadgeEl.append(cancel, sep, apply);
+      editBadgeEl.style.cursor = 'default';
+      editBadgeEl.onclick = null;
+    }
+    positionEditBadge();
   }
 
   // Decide which way the popover opens: away from the picked element. If the
@@ -2261,8 +2359,13 @@
     function tick() {
       if (state === 'CONFIGURING' || state === 'GENERATING' || state === 'CYCLING') {
         positionBar();
+        positionEditBadge();
         showHighlight(selectedElement);
         if (tuneOpen) positionParamsPanel();
+      }
+      if (state === 'EDITING') {
+        positionEditBadge();
+        showHighlight(selectedElement);
       }
       if (annotActive) positionAnnotOverlay(selectedElement);
       // Shader overlay (via debug P toggle or generation) is repositioned
@@ -2334,6 +2437,7 @@
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
           hideBar();
+          renderEditBadge('hidden');
           state = 'PICKING';
           break;
       }
@@ -2444,6 +2548,11 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
+    // In EDITING: click outside returns to CONFIGURING (via cancelEditing), then check CONFIGURING exit
+    if (state === 'EDITING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+      cancelEditing();
+      // Fall through to check if we should also exit CONFIGURING
+    }
     // In CONFIGURING: click outside the bar and selected element returns to PICKING.
     if (
       state === 'CONFIGURING' && !own(e.target) && selectedElement
@@ -2453,6 +2562,7 @@
       stopScrollTracking();
       hideAnnotOverlay();
       clearAnnotations();
+      renderEditBadge('hidden');
       state = 'PICKING';
       hoveredElement = null;
       hideHighlight();
@@ -2469,7 +2579,7 @@
     clearAnnotations();
     showAnnotOverlay(selectedElement);
     showBar('configure');
-    enableInlineEdit(selectedElement);
+    renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
     startScrollTracking();
     maybePrefetchPage();
     maybeWarnConditionalAncestor(selectedElement);
@@ -2567,7 +2677,8 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
-      if (state === 'CONFIGURING') { disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; return; }
+      if (state === 'EDITING') { cancelEditing(); return; }
+      if (state === 'CONFIGURING') { disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); renderEditBadge('hidden'); state = 'PICKING'; return; }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
       if (state === 'PICKING') {
@@ -2603,7 +2714,7 @@
         clearAnnotations();
         showAnnotOverlay(selectedElement);
         showBar('configure');
-        enableInlineEdit(selectedElement);
+        renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
         startScrollTracking();
         return;
       }
@@ -2612,14 +2723,13 @@
         if (state === 'PICKING') {
           hoveredElement = next;
         } else {
-          // CONFIGURING: re-select the new element and activate inline edit
-          // on the new element's text descendants.
+          // CONFIGURING: re-select the new element
           selectedElement = next;
           clearAnnotations();
           showAnnotOverlay(next);
           showBar('configure');
           disableInlineEdit();
-          enableInlineEdit(selectedElement);
+          renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
           startScrollTracking();
         }
         showHighlight(next);
@@ -2637,15 +2747,6 @@
 
   function handleGo() {
     if (!selectedElement || state !== 'CONFIGURING') return;
-    // If a blur-triggered inline save is in flight, wait for it to complete
-    // before generating. Nulling inlineSavePromise signals onInlineBlur's
-    // .then to skip its own PICKING transition so runGenerate takes over.
-    if (inlineSavePromise) {
-      const p = inlineSavePromise;
-      inlineSavePromise = null;
-      p.then(runGenerate);
-      return;
-    }
     runGenerate();
   }
 
@@ -3161,6 +3262,7 @@ void main() {
       selectedElement = null;
       currentSessionId = null;
       selectedAction = 'impeccable';
+      renderEditBadge('hidden');
       state = 'PICKING';
     }, 1800);
 
@@ -3273,6 +3375,7 @@ void main() {
     selectedElement = null;
     currentSessionId = null;
     selectedAction = 'impeccable';
+    renderEditBadge('hidden');
     state = 'PICKING';
   }
 
@@ -4947,6 +5050,7 @@ void main() {
   function init() {
     try { history.scrollRestoration = 'manual'; } catch {}
     initHighlight();
+    initEditBadge();
     initAnnotOverlay();
     initBar();
     initActionPicker();
