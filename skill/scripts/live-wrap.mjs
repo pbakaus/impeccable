@@ -210,15 +210,27 @@ The agent should insert variant HTML at insertLine.`);
   // looking at (their edited DOM), not the raw source. Source itself stays
   // untouched here — only the wrap block's embedded "original" copy is
   // adjusted. The pending edits remain in the buffer until committed.
-  // Only apply pending edits scoped to the page we're wrapping for. Iterating
-  // every entry across every page would let a manual edit on /a leak into a
-  // wrap call on /b when the same originalText appears on both pages.
+  //
+  // Refuse-with-error rather than silently skipping when the buffer has
+  // entries and --page-url is missing. The silent-skip case let agents that
+  // forgot the flag author variants off un-edited source while the user was
+  // seeing edited DOM, producing a "why isn't my edit reflected?" mystery.
+  // Empty buffer = no risk = no requirement.
+  let pendingBuffer = { entries: [] };
+  try { pendingBuffer = readManualEditsBuffer(process.cwd()); } catch {}
+  if (pendingBuffer.entries.length > 0 && !pageUrl) {
+    console.error(JSON.stringify({
+      error: 'missing_page_url_with_pending_edits',
+      pendingEntries: pendingBuffer.entries.length,
+      hint: 'The manual-edit buffer has pending entries. Pass --page-url=$event.pageUrl so the wrap block\'s "original" content reflects the user\'s staged DOM, not the un-edited source. See reference/live.md, "Wrap the element".',
+    }));
+    process.exit(1);
+  }
   if (pageUrl) {
     try {
-      const buffer = readManualEditsBuffer(process.cwd());
       let originalBlock = originalLines.join('\n');
       let mutated = false;
-      for (const entry of buffer.entries) {
+      for (const entry of pendingBuffer.entries) {
         if (entry.pageUrl !== pageUrl) continue;
         for (const op of entry.ops) {
           if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {

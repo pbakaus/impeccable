@@ -102,7 +102,7 @@ Flag mapping. Keep them separate, don't collapse into `--query`:
 - `--classes` ← `event.element.classes` joined with commas
 - `--tag` ← `event.element.tagName`
 - `--text` ← first ~80 chars of `event.element.textContent` (trim, single-line). **Pass this every call.** When the picked element shares classes + tag with sibling components (a list of `<Card>`s, repeating sections), this is what disambiguates which branch in source to wrap. Without it, wrap silently lands on the first match and may rewrite the wrong element.
-- `--page-url` ← `event.pageUrl`. Scopes the buffer-aware "original" content step to pending manual edits made on this page. If omitted, the buffer-aware step is skipped (the wrap block falls back to raw source).
+- `--page-url` ← `event.pageUrl`. **Required when the manual-edit buffer has any pending entries** (`live-wrap.mjs` will exit with `missing_page_url_with_pending_edits` otherwise). Scopes the buffer-aware "original" content step to edits made on this page so the wrap block's `data-impeccable-variant="original"` reflects the user's staged DOM, not the un-edited source. Pass it every call: the buffer state can change between events, and forgetting it produces variants that look correct in source but ignore the user's pending changes.
 
 The helper searches ID first, then classes, then tag + class combo. If `event.pageUrl` implies the file (e.g. `/` is usually `index.html`), pass `--file PATH` to skip the search. `--query` is a fallback for raw text search only; do not use it for normal element lookups.
 

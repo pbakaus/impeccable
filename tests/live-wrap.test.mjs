@@ -204,10 +204,12 @@ describe('wrapCli integration', () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-test-'));
+    clearManualEditsBuffer();
   });
 
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
+    clearManualEditsBuffer();
   });
 
   it('wraps an HTML element by class name', () => {
@@ -384,10 +386,20 @@ const title = 'Astro title';
 // Regression tests from real-world failures (EAC report, 2026-04)
 // ---------------------------------------------------------------------------
 
+// Integration tests share cwd=process.cwd() with the repo, so a leftover
+// .impeccable/live/pending-manual-edits.json from local dev tripped the
+// fail-loud check in live-wrap. Clear the buffer around each test.
+function clearManualEditsBuffer() {
+  try {
+    const p = join(process.cwd(), '.impeccable/live/pending-manual-edits.json');
+    rmSync(p, { force: true });
+  } catch {}
+}
+
 describe('live-wrap — JSX / TSX correctness', () => {
   let tmp;
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-jsx-')); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-jsx-')); clearManualEditsBuffer(); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); clearManualEditsBuffer(); });
 
   it('wraps the correct <section> when a class collides with a multi-line tag elsewhere', () => {
     // Decoy section: multi-line JSX with `organic-sand-surface` inside className

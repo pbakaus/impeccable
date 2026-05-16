@@ -42,6 +42,17 @@ function runWrap(extraArgs) {
   return JSON.parse(stdout.trim());
 }
 
+function runWrapExpectFailure(extraArgs) {
+  const args = [SCRIPT, '--id', 'aaaaaaaa', '--count', '3', ...extraArgs];
+  try {
+    execFileSync('node', args, { encoding: 'utf-8', cwd: tmpDir, stdio: ['ignore', 'pipe', 'pipe'] });
+    throw new Error('expected wrap to fail');
+  } catch (err) {
+    if (err.status === undefined) throw err;
+    return { status: err.status, stderr: err.stderr.toString() };
+  }
+}
+
 describe('live-wrap.mjs buffer-aware "original" content', () => {
   it('with matching --page-url, rewrites the wrap block to reflect the buffered edit', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
@@ -74,7 +85,7 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.doesNotMatch(after, /LEAK/);
   });
 
-  it('without --page-url, skips the buffer-aware step entirely', () => {
+  it('with pending entries in the buffer, refuses without --page-url (fail-loud)', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
 
@@ -82,10 +93,21 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
       entry({ pageUrl: '/', ops: [{ ref: 'div>h1.1', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'SHOULD_NOT_APPEAR' }] }),
     ]);
 
-    runWrap(['--classes', 'hero', '--tag', 'h1']);
+    const result = runWrapExpectFailure(['--classes', 'hero', '--tag', 'h1']);
+    assert.equal(result.status, 1);
+    const errPayload = JSON.parse(result.stderr.split('\n').filter((l) => l.trim().startsWith('{')).pop());
+    assert.equal(errPayload.error, 'missing_page_url_with_pending_edits');
+    assert.equal(errPayload.pendingEntries, 1);
+    // Source untouched — wrap exited before writing.
+    assert.equal(fs.readFileSync(file, 'utf-8'), '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
+  });
 
-    const after = fs.readFileSync(file, 'utf-8');
-    assert.match(after, /Welcome/);
-    assert.doesNotMatch(after, /SHOULD_NOT_APPEAR/);
+  it('with empty buffer, --page-url is optional', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
+    // No seedBuffer call — empty buffer.
+
+    const result = runWrap(['--classes', 'hero', '--tag', 'h1']);
+    assert.ok(result.file, 'wrap should succeed and emit file path');
   });
 });
