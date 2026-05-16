@@ -1827,25 +1827,32 @@
     editBadgeEl.style.display = 'flex';
     editBadgeEl.style.alignItems = 'center';
     editBadgeEl.style.cursor = 'default';
+    const ACCENT = 'oklch(60% 0.25 350)';
+    const PAPER = 'oklch(98% 0 0)';
+    const ASH = 'oklch(55% 0 0)';
+    const calloutStyle = (color) => ({
+      fontFamily: FONT,
+      fontSize: '0.625rem',
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      color: color,
+      background: PAPER,
+      padding: '4px 8px',
+      border: '1px solid ' + color,
+      borderRadius: '6px',
+      whiteSpace: 'nowrap',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      cursor: 'pointer',
+      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+    });
     if (mode === 'idle') {
       editBadgeEl.innerHTML = '';
       const btn = document.createElement('button');
       btn.textContent = 'Edit';
-      Object.assign(btn.style, {
-        padding: '5px 12px',
-        borderRadius: '6px',
-        border: 'none',
-        background: 'oklch(10% 0 0)',
-        color: 'oklch(98% 0 0)',
-        fontFamily: FONT,
-        fontSize: '12px',
-        fontWeight: '500',
-        cursor: 'pointer',
-        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        whiteSpace: 'nowrap',
-      });
-      btn.addEventListener('mouseenter', () => btn.style.background = 'oklch(60% 0.25 350)');
-      btn.addEventListener('mouseleave', () => btn.style.background = 'oklch(10% 0 0)');
+      Object.assign(btn.style, calloutStyle(ACCENT));
+      btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
       btn.onclick = enterEditingMode;
       editBadgeEl.appendChild(btn);
     } else {
@@ -1854,39 +1861,15 @@
       editBadgeEl.style.gap = '8px';
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
-      Object.assign(cancel.style, {
-        padding: '5px 12px',
-        borderRadius: '6px',
-        border: 'none',
-        background: 'oklch(55% 0 0)',
-        color: 'oklch(98% 0 0)',
-        fontFamily: FONT,
-        fontSize: '12px',
-        fontWeight: '500',
-        cursor: 'pointer',
-        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        whiteSpace: 'nowrap',
-      });
-      cancel.addEventListener('mouseenter', () => cancel.style.background = 'oklch(65% 0 0)');
-      cancel.addEventListener('mouseleave', () => cancel.style.background = 'oklch(55% 0 0)');
+      Object.assign(cancel.style, calloutStyle(ASH));
+      cancel.addEventListener('mouseenter', () => { cancel.style.background = ASH; cancel.style.color = PAPER; });
+      cancel.addEventListener('mouseleave', () => { cancel.style.background = PAPER; cancel.style.color = ASH; });
       cancel.onclick = cancelEditing;
       const save = document.createElement('button');
       save.textContent = 'Save';
-      Object.assign(save.style, {
-        padding: '5px 12px',
-        borderRadius: '6px',
-        border: 'none',
-        background: 'oklch(10% 0 0)',
-        color: 'oklch(98% 0 0)',
-        fontFamily: FONT,
-        fontSize: '12px',
-        fontWeight: '500',
-        cursor: 'pointer',
-        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        whiteSpace: 'nowrap',
-      });
-      save.addEventListener('mouseenter', () => save.style.background = 'oklch(60% 0.25 350)');
-      save.addEventListener('mouseleave', () => save.style.background = 'oklch(10% 0 0)');
+      Object.assign(save.style, calloutStyle(ACCENT));
+      save.addEventListener('mouseenter', () => { save.style.background = ACCENT; save.style.color = PAPER; });
+      save.addEventListener('mouseleave', () => { save.style.background = PAPER; save.style.color = ACCENT; });
       save.onclick = applyEditing;
       editBadgeEl.append(cancel, save);
     }
