@@ -1770,9 +1770,10 @@
       }
     }
     if (ops.length === 0) { cancelEditing(); return; }
-    // Server-direct: POST to /manual-edit, never enqueued, agent never sees it.
+    // Stash to server buffer. No source write, no HMR. The user later asks the
+    // AI to commit, which runs live-commit-manual-edits.mjs.
     try {
-      const res = await fetch('http://localhost:' + PORT + '/manual-edit', {
+      const res = await fetch('http://localhost:' + PORT + '/manual-edit-stash', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1787,19 +1788,71 @@
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || ('HTTP ' + res.status));
       }
-      const editResult = await res.json();
-      if (editResult.failed && editResult.failed.length > 0) {
-        console.warn('[impeccable] manual edit failures:', editResult.failed);
-        showToast('Some edits failed — see console', 4000);
-      }
+      const stashResult = await res.json();
+      updatePendingCounter(stashResult.pendingCount || 0);
+      maybeShowFirstSaveToast();
       disableInlineEdit();
       state = 'CONFIGURING';
       showBar('configure');
       showAnnotOverlay(selectedElement);
       renderEditBadge('idle');
     } catch (err) {
-      console.error('[impeccable] manual_edits failed:', err);
+      console.error('[impeccable] manual edit stash failed:', err);
       showToast('Save failed — retry or cancel', 4000);
+    }
+  }
+
+  // Pending-edits pill + trash icon — updated on Save, resumeSession, and discard.
+  function updatePendingCounter(currentPageCount) {
+    if (!pendingPillEl || !pendingTrashBtn) return;
+    if (!currentPageCount || currentPageCount <= 0) {
+      pendingPillEl.style.display = 'none';
+      pendingTrashBtn.style.display = 'none';
+      pendingPillEl.dataset.count = '0';
+      return;
+    }
+    pendingPillEl.textContent = '• ' + currentPageCount + ' staged';
+    pendingPillEl.style.display = 'inline-flex';
+    pendingTrashBtn.style.display = 'inline-flex';
+    pendingPillEl.dataset.count = String(currentPageCount);
+  }
+
+  function maybeShowFirstSaveToast() {
+    if (!firstSaveOfSession) return;
+    firstSaveOfSession = false;
+    showToast('Saved. Tell the AI to commit when ready.', 4000);
+  }
+
+  async function fetchPendingCount() {
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-stash?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      updatePendingCounter(data.count || 0);
+    } catch (err) {
+      // Non-fatal; the counter stays hidden.
+      console.warn('[impeccable] failed to fetch pending count:', err);
+    }
+  }
+
+  async function onPendingTrashClick() {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
+    if (count <= 0) return;
+    const ok = confirm('Discard ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' on this page?');
+    if (!ok) return;
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-discard?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+        { method: 'POST' },
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      updatePendingCounter(0);
+      showToast('Discarded ' + count + ' staged edit' + (count === 1 ? '' : 's'), 2500);
+    } catch (err) {
+      console.error('[impeccable] discard failed:', err);
+      showToast('Discard failed — see console', 4000);
     }
   }
 
@@ -3553,6 +3606,9 @@ void main() {
   let pickActive = true;
   let detectCount = 0;
   let detectScriptLoaded = false;
+  let pendingPillEl = null;
+  let pendingTrashBtn = null;
+  let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's
   // ambient background and invert — dark bar on light pages, light bar on
@@ -3784,6 +3840,45 @@ void main() {
       onClick: () => toggleDesignPanel(),
     });
     inner.appendChild(designBtn);
+
+    // Pending manual edits pill + trash icon. Shown when current-page count > 0.
+    // Sits next to Exit so it lives in the lifecycle/affordance cluster.
+    pendingPillEl = el('span', {
+      display: 'none',
+      alignItems: 'center',
+      gap: '4px',
+      fontFamily: FONT,
+      fontSize: '0.625rem',
+      fontWeight: '600',
+      letterSpacing: '0.06em',
+      color: 'oklch(60% 0.25 350)',
+      background: 'oklch(98% 0 0)',
+      padding: '2px 8px',
+      border: '1px solid oklch(60% 0.25 350)',
+      borderRadius: '999px',
+      whiteSpace: 'nowrap',
+      cursor: 'default',
+    });
+    pendingPillEl.title = 'Ask the AI to commit these edits';
+    inner.appendChild(pendingPillEl);
+
+    pendingTrashBtn = el('button', {
+      display: 'none',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '20px', height: '20px', borderRadius: '6px',
+      border: 'none', background: 'transparent',
+      color: 'oklch(55% 0 0)',
+      cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    pendingTrashBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h8"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M4 4l.5 7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L10 4"/></svg>';
+    pendingTrashBtn.title = 'Discard pending edits on this page';
+    pendingTrashBtn.addEventListener('mouseenter', () => { pendingTrashBtn.style.color = 'oklch(60% 0.25 350)'; pendingTrashBtn.style.background = P.exitHover; });
+    pendingTrashBtn.addEventListener('mouseleave', () => { pendingTrashBtn.style.color = 'oklch(55% 0 0)'; pendingTrashBtn.style.background = 'transparent'; });
+    pendingTrashBtn.addEventListener('click', onPendingTrashClick);
+    inner.appendChild(pendingTrashBtn);
 
     // Thin divider before the exit button
     const divider = el('span', {
@@ -5107,6 +5202,9 @@ void main() {
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
     connectSSE();
+
+    // Restore pending-edit counter for this page (survives HMR reload + dev restart).
+    fetchPendingCount();
 
     // Check for an active session to resume (variant wrapper already in DOM after HMR)
     if (!resumeSession()) {

@@ -31,6 +31,13 @@ import {
   resolveDesignSidecarPath,
   writeLiveServerInfo,
 } from './impeccable-paths.mjs';
+import {
+  countByPage as countPendingByPage,
+  readBuffer as readManualEditsBuffer,
+  removeEntries as removeManualEditEntries,
+  stageEntry as stageManualEditEntry,
+  truncateBuffer as truncateManualEditsBuffer,
+} from './live-manual-edits-buffer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
@@ -547,11 +554,11 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       return;
     }
 
-    // --- Manual edits: server-direct, never enqueued.
-    // Bypasses the agent/poll pipeline entirely. Runs live-edit.mjs synchronously
-    // and returns the result JSON. The agent never sees this request — no token
-    // cost, no poll-task exit. See plan: decouple manual edits from agent pipeline.
-    if (p === '/manual-edit' && req.method === 'POST') {
+    // --- Manual edits: stash to disk buffer, no source write, no HMR.
+    // Browser POSTs here on Save. The agent never sees these events. To commit
+    // the buffer to source, the user explicitly asks the AI to run
+    // live-commit-manual-edits.mjs. See reference/live.md for the full contract.
+    if (p === '/manual-edit-stash' && req.method === 'POST') {
       let body = '';
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
@@ -566,28 +573,77 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
           res.end(JSON.stringify({ error: 'Unauthorized' }));
           return;
         }
-        // Re-use the manual_edits validation by setting type explicitly.
         const error = validateEvent({ ...msg, type: 'manual_edits' });
         if (error) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error }));
           return;
         }
-        const editScript = path.join(__dirname, 'live-edit.mjs');
-        let editResult;
         try {
-          const out = execFileSync(
-            'node',
-            [editScript, '--id', msg.id, '--ops', JSON.stringify(msg.ops || [])],
-            { encoding: 'utf-8', cwd: process.cwd(), timeout: 30_000 }
-          );
-          editResult = JSON.parse(out.trim());
+          stageManualEditEntry(process.cwd(), {
+            id: msg.id,
+            pageUrl: msg.pageUrl,
+            element: msg.element,
+            ops: msg.ops,
+          });
         } catch (err) {
-          editResult = { ok: false, error: err.message, applied: [], failed: [] };
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'stash_write_failed', message: err.message }));
+          return;
         }
+        const { totalCount, perPage } = countPendingByPage(process.cwd());
+        const pendingCount = perPage[msg.pageUrl] || 0;
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(editResult));
+        res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
       });
+      return;
+    }
+
+    // GET /manual-edit-stash?pageUrl=<url>  →  { count, totalCount, perPage, entries }
+    if (p === '/manual-edit-stash' && req.method === 'GET') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl') || '';
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      const buffer = readManualEditsBuffer(process.cwd());
+      const entriesForPage = pageUrl ? buffer.entries.filter((e) => e.pageUrl === pageUrl) : buffer.entries;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        count: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+        totalCount,
+        perPage,
+        entries: entriesForPage,
+      }));
+      return;
+    }
+
+    // POST /manual-edit-discard?pageUrl=<url>  →  drops entries (all if no pageUrl)
+    if (p === '/manual-edit-discard' && req.method === 'POST') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl');
+      let discarded;
+      try {
+        if (pageUrl) {
+          discarded = removeManualEditEntries(process.cwd(), (entry) => entry.pageUrl === pageUrl);
+        } else {
+          discarded = truncateManualEditsBuffer(process.cwd());
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'discard_failed', message: err.message }));
+        return;
+      }
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ discarded, totalCount, perPage }));
+      return;
+    }
+
+    // Defense in depth: redirect any stragglers from the old /manual-edit endpoint.
+    if (p === '/manual-edit' && req.method === 'POST') {
+      res.writeHead(410, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '/manual-edit is removed; POST to /manual-edit-stash. Then ask the AI to commit.' }));
       return;
     }
 

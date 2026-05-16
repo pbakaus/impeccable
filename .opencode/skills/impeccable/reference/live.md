@@ -394,9 +394,52 @@ Then remove the temporary wrapper from the served file if it's still there.
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
 
-## Manual edits: server-direct, never seen by the agent
+## Manual edits: stashed server-side; commit on user request
 
-The browser POSTs manual text edits directly to the server's `/manual-edit` endpoint. The server runs `live-edit.mjs` synchronously and returns the result to the browser. The event is never enqueued, never appears in the poll loop, and never reaches the agent. There is nothing for you to handle here. Manual edits cost zero tokens and never wake the agent.
+When the user clicks Save in the live overlay, the browser POSTs to `/manual-edit-stash`. The server appends to `.impeccable/live/pending-manual-edits.json`. **No source file is touched. No HMR refresh.** The event is never enqueued and never reaches the poll loop. You do not see manual-edit traffic until the user explicitly asks you to commit.
+
+The user's edited DOM state becomes the "current truth" for downstream operations. `live-wrap.mjs` is buffer-aware: when it wraps an element that has a pending manual edit, the wrap block's `data-impeccable-variant="original"` content reflects the edited text, not the raw source. `live-accept.mjs` scrubs matching buffer entries after a successful accept (the accept embodies the manual edit, so the pending op is consumed, not lost). Variant **discard** does NOT touch the buffer; the manual edit is preserved.
+
+### When to commit
+
+Run `live-commit-manual-edits.mjs` ONLY when the user clearly asks to commit, apply, or flush pending manual edits. Examples:
+
+- "commit my edits"
+- "apply the manual edits"
+- "flush pending"
+- "save those changes" (when context makes it about the manual edits, not unrelated files)
+
+Do NOT trigger on generic "save" mentions about unrelated files or work.
+
+```
+node .opencode/skills/impeccable/scripts/live-commit-manual-edits.mjs
+```
+
+Optional `--page-url=<url>` to scope.
+
+Output JSON: `{ applied, failed, files, cleared, reason? }`.
+
+- `cleared: true`: all ops succeeded. Acknowledge in one short line: "Committed N edits across M files."
+- `cleared: false, reason: "no_pending_edits"`: buffer was empty. Say "Nothing to commit."
+- `cleared: false` with failed entries: surface the failures and reasons (`text_not_in_source`, `element_ambiguous`, `element_not_found`). Failed ops stay in the buffer; user can fix source manually and retry, or discard.
+
+### When to discard
+
+Run `live-discard-manual-edits.mjs` when the user asks to discard, throw away, or clear pending manual edits. Examples:
+
+- "discard the pending edits"
+- "throw away my unsaved manual edits"
+- "clear the staging buffer"
+
+```
+node .opencode/skills/impeccable/scripts/live-discard-manual-edits.mjs
+```
+
+Optional `--page-url=<url>` to scope. Output: `{ discarded, totalCount }`.
+
+### Do NOT auto-commit
+
+Do not run commit on session start, on idle, or as a side effect of any other event. Only on explicit user request. The buffer can hold edits across sessions indefinitely; that is intended.
 
 ## Handle `accept`
 

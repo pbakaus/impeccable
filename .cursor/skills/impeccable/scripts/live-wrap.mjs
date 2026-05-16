@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
+import { readBuffer as readManualEditsBuffer } from './live-manual-edits-buffer.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -196,7 +197,31 @@ The agent should insert variant HTML at insertLine.`);
   // the inner element at its parent's depth instead of nested inside it.
   // Strip only the COMMON minimum leading whitespace across the picked lines;
   // `deindentContent` on the accept side already mirrors this convention.
-  const originalLines = lines.slice(startLine, endLine + 1);
+  let originalLines = lines.slice(startLine, endLine + 1);
+
+  // Buffer-aware "original" content: if the user has pending manual edits for
+  // this page whose originalText appears in the picked source range, apply
+  // them so the wrap block's "original" variant reflects what the user was
+  // looking at (their edited DOM), not the raw source. Source itself stays
+  // untouched here — only the wrap block's embedded "original" copy is
+  // adjusted. The pending edits remain in the buffer until committed.
+  try {
+    const buffer = readManualEditsBuffer(process.cwd());
+    let originalBlock = originalLines.join('\n');
+    let mutated = false;
+    for (const entry of buffer.entries) {
+      for (const op of entry.ops) {
+        if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {
+          originalBlock = originalBlock.replace(op.originalText, op.newText);
+          mutated = true;
+        }
+      }
+    }
+    if (mutated) originalLines = originalBlock.split('\n');
+  } catch {
+    // Buffer read failures are non-fatal; fall back to source-as-is.
+  }
+
   const originalBaseIndent = minLeadingSpaces(originalLines);
   const reindentOriginal = (extra) => originalLines
     .map((l) => (l.trim() === '' ? '' : indent + extra + l.slice(originalBaseIndent)))
