@@ -1754,16 +1754,46 @@
     renderEditBadge('idle');
   }
 
+  // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
+  // climb to the nearest ancestor with one. The CLI uses tag+class together,
+  // so tag must come from the same node as the locator.
+  function buildLocatorForLeaf(leafEl, fallbackEl) {
+    if (leafEl && (leafEl.id || leafEl.classList.length > 0)) {
+      return {
+        tag: leafEl.tagName.toLowerCase(),
+        elementId: leafEl.id || null,
+        classes: [...leafEl.classList],
+      };
+    }
+    let cur = leafEl?.parentElement;
+    while (cur && cur !== document.body) {
+      if (cur.id || cur.classList.length > 0) {
+        return {
+          tag: cur.tagName.toLowerCase(),
+          elementId: cur.id || null,
+          classes: [...cur.classList],
+        };
+      }
+      cur = cur.parentElement;
+    }
+    return {
+      tag: (fallbackEl || leafEl).tagName.toLowerCase(),
+      elementId: (fallbackEl || leafEl).id || null,
+      classes: [...((fallbackEl || leafEl).classList || [])],
+    };
+  }
+
   async function applyEditing() {
     const ops = [];
     for (const row of inlineEditRows) {
       const newText = inlineEditDrafts.get(row.el);
       if (newText !== undefined && newText !== row.text) {
+        const locator = buildLocatorForLeaf(row.el, selectedElement);
         ops.push({
           ref: row.ref,
-          tag: row.el.tagName.toLowerCase(),
-          elementId: row.el.id || null,
-          classes: [...row.el.classList],
+          tag: locator.tag,
+          elementId: locator.elementId,
+          classes: locator.classes,
           originalText: row.text,
           newText,
         });
