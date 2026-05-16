@@ -1770,14 +1770,28 @@
       }
     }
     if (ops.length === 0) { cancelEditing(); return; }
+    // Server-direct: POST to /manual-edit, never enqueued, agent never sees it.
     try {
-      await sendEvent({
-        type: 'manual_edits',
-        id: id8(),
-        pageUrl: location.pathname,
-        element: extractContext(selectedElement),
-        ops,
-      }, { throwOnError: true });
+      const res = await fetch('http://localhost:' + PORT + '/manual-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: TOKEN,
+          id: id8(),
+          pageUrl: location.pathname,
+          element: extractContext(selectedElement),
+          ops,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || ('HTTP ' + res.status));
+      }
+      const editResult = await res.json();
+      if (editResult.failed && editResult.failed.length > 0) {
+        console.warn('[impeccable] manual edit failures:', editResult.failed);
+        showToast('Some edits failed — see console', 4000);
+      }
       disableInlineEdit();
       state = 'CONFIGURING';
       showBar('configure');

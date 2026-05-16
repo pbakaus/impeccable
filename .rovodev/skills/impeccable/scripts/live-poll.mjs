@@ -136,37 +136,8 @@ Options:
       break;
     }
 
-    // Auto-handle manual_edits via deterministic script. Same shape as the
-    // accept branch below: shell out, attach result, post completion ack so
-    // the agent does not need to reply done. If some ops failed, the event
-    // JSON carries `_editResult.failed` and the agent must Edit those manually
-    // before polling again.
-    if (event.type === 'manual_edits') {
-      const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      const editScript = path.join(__dirname, 'live-edit.mjs');
-      try {
-        const out = execFileSync(
-          'node',
-          [editScript, '--id', event.id, '--ops', JSON.stringify(event.ops || [])],
-          { encoding: 'utf-8', cwd: process.cwd(), timeout: 30_000 }
-        );
-        event._editResult = JSON.parse(out.trim());
-      } catch (err) {
-        event._editResult = { ok: false, error: err.message, applied: [], failed: [] };
-      }
-      const failedCount = event._editResult?.failed?.length || 0;
-      const completionType = failedCount > 0 ? 'manual_edits_partial' : 'manual_edits_handled';
-      try {
-        await postReply(base, info.token, {
-          id: event.id,
-          type: completionType,
-          file: event._editResult?.files?.[0],
-        });
-        event._completionAck = { ok: true, type: completionType };
-      } catch (err) {
-        event._completionAck = { ok: false, error: err.message };
-      }
-    }
+    // manual_edits flow through the /manual-edit endpoint server-side; the agent
+    // never sees them. No handler needed here.
 
     // Auto-handle accept/discard via deterministic script
     if (event.type === 'accept' || event.type === 'discard') {
