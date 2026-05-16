@@ -1720,6 +1720,10 @@
     hideAnnotOverlay();
     renderEditBadge('editing');
     enableInlineEdit(selectedElement);
+    // Focus first editable element for immediate typing
+    if (inlineEditRows.length > 0) {
+      setTimeout(() => inlineEditRows[0].el.focus(), 50);
+    }
   }
 
   function cancelEditing() {
@@ -1780,21 +1784,22 @@
     Object.assign(editBadgeEl.style, {
       position: 'fixed',
       zIndex: String(Z.highlight + 1),
-      background: C.ink,
-      color: C.white,
-      fontFamily: MONO,
-      fontSize: '10px',
-      fontWeight: '500',
-      padding: '3px 8px',
-      borderRadius: '999px',
       cursor: 'default',
       display: 'none',
-      whiteSpace: 'nowrap',
-      letterSpacing: '0.02em',
       userSelect: 'none',
-      lineHeight: '1.6',
     });
     document.body.appendChild(editBadgeEl);
+
+    // Remove focus rings on edit badge buttons
+    if (!document.getElementById(PREFIX + '-edit-badge-focus-style')) {
+      const s = document.createElement('style');
+      s.id = PREFIX + '-edit-badge-focus-style';
+      s.textContent =
+        '#' + PREFIX + '-edit-badge button { outline: none; box-shadow: none; }' +
+        '#' + PREFIX + '-edit-badge button:focus { outline: none; box-shadow: none; }' +
+        '#' + PREFIX + '-edit-badge button:focus-visible { outline: none; box-shadow: none; }';
+      document.head.appendChild(s);
+    }
   }
 
   function positionEditBadge() {
@@ -1810,45 +1815,77 @@
       if (editBadgeEl) editBadgeEl.style.display = 'none';
       return;
     }
-    editBadgeEl.style.display = 'block';
+    editBadgeEl.style.display = 'flex';
+    editBadgeEl.style.alignItems = 'center';
+    editBadgeEl.style.cursor = 'default';
     if (mode === 'idle') {
-      editBadgeEl.innerHTML = 'Edit content';
-      editBadgeEl.style.cursor = 'pointer';
-      editBadgeEl.onclick = enterEditingMode;
-    } else {
-      // 'editing' — show Cancel + Apply
       editBadgeEl.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.textContent = 'Edit content';
+      Object.assign(btn.style, {
+        padding: '5px 12px',
+        borderRadius: '6px',
+        border: 'none',
+        background: BP.accent,
+        color: BP.mark,
+        fontFamily: FONT,
+        fontSize: '12px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'filter 0.12s ease, transform 0.1s ease',
+        whiteSpace: 'nowrap',
+      });
+      btn.addEventListener('mouseenter', () => btn.style.filter = 'brightness(1.1)');
+      btn.addEventListener('mouseleave', () => btn.style.filter = 'none');
+      btn.addEventListener('mousedown', () => btn.style.transform = 'scale(0.97)');
+      btn.addEventListener('mouseup', () => btn.style.transform = 'scale(1)');
+      btn.onclick = enterEditingMode;
+      editBadgeEl.appendChild(btn);
+    } else {
+      // 'editing' — show Cancel + Apply separated
+      editBadgeEl.innerHTML = '';
+      editBadgeEl.style.gap = '8px';
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
       Object.assign(cancel.style, {
-        background: 'none',
+        padding: '5px 12px',
+        borderRadius: '6px',
         border: 'none',
-        color: C.white,
-        fontFamily: MONO,
-        fontSize: '10px',
+        background: BP.hairline,
+        color: BP.textDim,
+        fontFamily: FONT,
+        fontSize: '12px',
+        fontWeight: '500',
         cursor: 'pointer',
-        padding: '0 4px 0 0',
+        transition: 'filter 0.12s ease, transform 0.1s ease',
+        whiteSpace: 'nowrap',
       });
+      cancel.addEventListener('mouseenter', () => cancel.style.filter = 'brightness(1.15)');
+      cancel.addEventListener('mouseleave', () => cancel.style.filter = 'none');
+      cancel.addEventListener('mousedown', () => cancel.style.transform = 'scale(0.97)');
+      cancel.addEventListener('mouseup', () => cancel.style.transform = 'scale(1)');
       cancel.onclick = cancelEditing;
-      const sep = document.createElement('span');
-      sep.textContent = ' · ';
-      sep.style.opacity = '0.4';
       const apply = document.createElement('button');
       apply.textContent = 'Apply';
       Object.assign(apply.style, {
-        background: 'none',
+        padding: '5px 12px',
+        borderRadius: '6px',
         border: 'none',
-        color: C.brand,
-        fontFamily: MONO,
-        fontSize: '10px',
+        background: BP.accent,
+        color: BP.mark,
+        fontFamily: FONT,
+        fontSize: '12px',
         fontWeight: '600',
         cursor: 'pointer',
-        padding: '0',
+        transition: 'filter 0.12s ease, transform 0.1s ease',
+        whiteSpace: 'nowrap',
       });
+      apply.addEventListener('mouseenter', () => apply.style.filter = 'brightness(1.1)');
+      apply.addEventListener('mouseleave', () => apply.style.filter = 'none');
+      apply.addEventListener('mousedown', () => apply.style.transform = 'scale(0.97)');
+      apply.addEventListener('mouseup', () => apply.style.transform = 'scale(1)');
       apply.onclick = applyEditing;
-      editBadgeEl.append(cancel, sep, apply);
-      editBadgeEl.style.cursor = 'default';
-      editBadgeEl.onclick = null;
+      editBadgeEl.append(cancel, apply);
     }
     positionEditBadge();
   }
