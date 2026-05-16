@@ -397,15 +397,14 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 ## Handle `manual_edits`
 
-Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user typed directly into the Live-Bar text panel and clicked Apply edits (or Go with edits pending: chained). The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
+Event: `{id, pageUrl, element, ops, _editResult, _completionAck}`. The user clicked into a text descendant of the picked element (which became `contenteditable` when the element was picked), edited it directly on the page, then blurred; this triggers a single-op save per edited text leaf. The poll script already ran `live-edit.mjs` to apply each op to source deterministically, then acknowledged event delivery. Your job is *only* to resolve any ops the script couldn't apply.
 
 - If `_editResult.failed` is empty: nothing to do. Loop and poll again.
 - If `_editResult.failed` is non-empty: each entry is `{ref, op, reason, candidates?, file?}`. Common reasons:
   - `text_not_in_source`: `op.originalText` doesn't appear verbatim (templated content, e.g. `<h2>{title}</h2>` reads from a data source). Find the data source (JSON, frontmatter, props) and update the entry that matches.
   - `element_ambiguous`: multiple source matches; `candidates` lists line numbers. Read the file, pick the right element by surrounding context, apply the op via `Edit`.
   - `element_not_found`: element wasn't located. Element may be runtime-injected or in a file not in standard search dirs. Search wider.
-  - `insufficient_locator`: `op.classes` and `op.elementId` were both absent. Skip; the panel should not have emitted this op without a locator.
-  - `unsafe_delete`: bracket matching couldn't safely scope the delete. Read the file, manually delete the element.
+  - `insufficient_locator`: `op.classes` and `op.elementId` were both absent. Skip; the inline edit should not have emitted this op without a locator.
 - Do NOT regenerate variants. Do NOT call `live-wrap.mjs` or `live-accept.mjs`.
 - After handling failures, loop. The completion ack was already posted; do not `--reply`.
 

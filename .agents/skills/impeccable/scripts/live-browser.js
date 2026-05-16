@@ -1680,6 +1680,8 @@
     if (!collect || !targetEl) return;
     const rows = collect(targetEl, { isOwn: own });
     inlineEditRows = rows;
+    // Hide annotation overlay so its click handler doesn't interfere with contenteditable.
+    hideAnnotOverlay();
     for (const row of rows) {
       row.el.setAttribute('contenteditable', 'true');
       row.el.dataset.impeccableOriginalText = row.text;
@@ -1699,6 +1701,10 @@
       row.el.removeEventListener('blur', onInlineBlur);
     }
     inlineEditRows = [];
+    // Restore annotation overlay when exiting inline-edit mode.
+    if (selectedElement && state === 'CONFIGURING') {
+      showAnnotOverlay(selectedElement);
+    }
   }
 
   function onInlineBlur(e) {
