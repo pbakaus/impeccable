@@ -1830,7 +1830,8 @@
     const ACCENT = 'oklch(60% 0.25 350)';
     const PAPER = 'oklch(98% 0 0)';
     const ASH = 'oklch(55% 0 0)';
-    const calloutStyle = (color) => ({
+    const MIST = 'oklch(92% 0 0)';
+    const calloutStyle = (color, borderColor) => ({
       fontFamily: FONT,
       fontSize: '0.625rem',
       fontWeight: '600',
@@ -1838,12 +1839,12 @@
       color: color,
       background: PAPER,
       padding: '2px 8px',
-      border: '1px solid ' + color,
+      border: '1px solid ' + (borderColor || color),
       borderRadius: '999px',
       whiteSpace: 'nowrap',
       boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
       cursor: 'pointer',
-      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
     });
     if (mode === 'idle') {
       editBadgeEl.innerHTML = '';
@@ -1860,9 +1861,9 @@
       editBadgeEl.style.gap = '8px';
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
-      Object.assign(cancel.style, calloutStyle(ASH));
-      cancel.addEventListener('mouseenter', () => { cancel.style.background = ASH; cancel.style.color = PAPER; });
-      cancel.addEventListener('mouseleave', () => { cancel.style.background = PAPER; cancel.style.color = ASH; });
+      Object.assign(cancel.style, calloutStyle(ASH, MIST));
+      cancel.addEventListener('mouseenter', () => { cancel.style.background = ASH; cancel.style.color = PAPER; cancel.style.borderColor = ASH; });
+      cancel.addEventListener('mouseleave', () => { cancel.style.background = PAPER; cancel.style.color = ASH; cancel.style.borderColor = MIST; });
       cancel.onclick = cancelEditing;
       const save = document.createElement('button');
       save.textContent = 'Save';
