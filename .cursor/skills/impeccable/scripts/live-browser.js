@@ -1742,7 +1742,7 @@
       if (newText !== undefined && newText !== row.text) {
         ops.push({
           ref: row.ref,
-          tag: row.tag,
+          tag: row.el.tagName.toLowerCase(),
           elementId: selectedElement.id || null,
           classes: [...selectedElement.classList],
           originalText: row.text,
