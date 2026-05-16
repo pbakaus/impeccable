@@ -1894,7 +1894,14 @@
       renderEditBadge('idle');
     } catch (err) {
       console.error('[impeccable] manual edit stash failed:', err);
-      showToast('Save failed — retry or cancel', 4000);
+      // Surface the specific server reason (e.g. forbidden chars in newText)
+      // so the user knows to rephrase rather than retrying the same content.
+      const detail = String(err?.message || '');
+      if (detail.includes('newText cannot contain')) {
+        showToast('Save rejected: ' + detail.replace(/^manual_edits:\s*/, ''), 5500);
+      } else {
+        showToast('Save failed — retry or cancel', 4000);
+      }
     }
   }
 

@@ -95,7 +95,10 @@ export async function editCli() {
         ? applyDelete(content, lines, op, adjusted)
         : applyTextReplace(content, lines, op, adjusted);
       if (!result.ok) {
-        failed.push({ ref: op.ref, op, reason: result.reason, file });
+        const failEntry = { ref: op.ref, op, reason: result.reason, file };
+        if (result.forbidden) failEntry.forbidden = result.forbidden;
+        if (result.occurrences) failEntry.occurrences = result.occurrences;
+        failed.push(failEntry);
         continue;
       }
       content = result.content;
@@ -183,10 +186,17 @@ function adjustMatch(lines, op, match) {
 
 function applyTextReplace(content, lines, op, match) {
   if (typeof op.newText !== 'string') return { ok: false, reason: 'missing_newText' };
+  const charErr = validateNewTextChars(op.newText);
+  if (charErr) return { ok: false, reason: 'invalid_chars_in_newText', forbidden: charErr };
   const { startLine, endLine } = match;
   const sub = lines.slice(startLine, endLine + 1).join('\n');
   const idx = sub.indexOf(op.originalText);
   if (idx === -1) return { ok: false, reason: 'text_not_in_source' };
+  // Same text appearing twice in the matched block means we can't tell which
+  // leaf the user edited. Refusing is safer than guessing — they can rephrase
+  // one occurrence to make it distinct, then retry.
+  const occurrences = sub.split(op.originalText).length - 1;
+  if (occurrences > 1) return { ok: false, reason: 'text_ambiguous_in_block', occurrences };
   const newSub = sub.slice(0, idx) + op.newText + sub.slice(idx + op.originalText.length);
   const before = lines.slice(0, startLine).join('\n');
   const after = lines.slice(endLine + 1).join('\n');
@@ -219,6 +229,16 @@ function argVal(args, flag) {
 function fatal(msg) {
   console.error(JSON.stringify({ ok: false, error: msg }));
   process.exit(1);
+}
+
+// Reject characters that would land in source as markup, template delimiters,
+// or template-string punctuation. The manual-edit flow is plain-text only; to
+// insert markup the user asks the AI. Server and CLI share this check.
+const FORBIDDEN_NEWTEXT_CHARS = ['<', '>', '{', '}', '`'];
+export function validateNewTextChars(newText) {
+  if (typeof newText !== 'string') return null;
+  const hits = FORBIDDEN_NEWTEXT_CHARS.filter((c) => newText.includes(c));
+  return hits.length > 0 ? hits : null;
 }
 
 const _running = process.argv[1];
