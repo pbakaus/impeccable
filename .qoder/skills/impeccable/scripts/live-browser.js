@@ -1762,8 +1762,8 @@
         ops.push({
           ref: row.ref,
           tag: row.el.tagName.toLowerCase(),
-          elementId: selectedElement.id || null,
-          classes: [...selectedElement.classList],
+          elementId: row.el.id || null,
+          classes: [...row.el.classList],
           originalText: row.text,
           newText,
         });
