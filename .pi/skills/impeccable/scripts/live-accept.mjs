@@ -117,8 +117,8 @@ Output (JSON):
  * relate to other elements the user manually edited but didn't put through the
  * variants pipeline.
  */
-function scrubManualEditsAgainstFile(targetFile) {
-  const buffer = readManualEditsBuffer(process.cwd());
+function scrubManualEditsAgainstFile(targetFile, cwd = process.cwd()) {
+  const buffer = readManualEditsBuffer(cwd);
   if (buffer.entries.length === 0) return;
   const fileContent = fs.readFileSync(targetFile, 'utf-8');
   let mutated = false;
@@ -131,7 +131,7 @@ function scrubManualEditsAgainstFile(targetFile) {
     if (entry.ops.length !== before) mutated = true;
   }
   buffer.entries = buffer.entries.filter((entry) => entry.ops.length > 0);
-  if (mutated) writeManualEditsBuffer(process.cwd(), buffer);
+  if (mutated) writeManualEditsBuffer(cwd, buffer);
 }
 
 // ---------------------------------------------------------------------------
@@ -630,4 +630,4 @@ if (_running?.endsWith('live-accept.mjs') || _running?.endsWith('live-accept.mjs
   acceptCli();
 }
 
-export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax };
+export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile };

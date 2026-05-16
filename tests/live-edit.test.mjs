@@ -147,6 +147,41 @@ describe('live-edit.mjs', () => {
     assert.match(after, /Build faster than your competition/);
   });
 
+  it('refuses with text_ambiguous_in_block when originalText appears more than once (A3)', () => {
+    const file = path.join(tmpDir, 'src', 'list.html');
+    fs.writeFileSync(file,
+      '<ul class="items">\n' +
+      '  <li>Item</li>\n' +
+      '  <li>Item</li>\n' +
+      '</ul>\n'
+    );
+
+    const result = runEdit(tmpDir, [
+      { ref: 'ul>li.2', tag: 'ul', classes: ['items'], originalText: 'Item', newText: 'Renamed' },
+    ]);
+
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'text_ambiguous_in_block');
+    assert.equal(result.applied.length, 0);
+    // Source is untouched — refuse-on-ambiguity.
+    const after = fs.readFileSync(file, 'utf-8');
+    assert.doesNotMatch(after, /Renamed/);
+  });
+
+  it('rejects newText containing forbidden chars (A4)', () => {
+    const file = path.join(tmpDir, 'src', 'card.html');
+    fs.writeFileSync(file, '<div class="card">\n  <p class="lede">Hello</p>\n</div>\n');
+
+    for (const bad of ['<', '>', '{', '}', '`']) {
+      const result = runEdit(tmpDir, [
+        { ref: 'div>p.1', tag: 'p', classes: ['lede'], originalText: 'Hello', newText: 'safe ' + bad + ' rest' },
+      ]);
+      assert.equal(result.failed.length, 1, 'failed for ' + bad);
+      assert.equal(result.failed[0].reason, 'invalid_chars_in_newText');
+      assert.ok(result.failed[0].forbidden.includes(bad));
+    }
+  });
+
   it('handles ops resolving to different files independently', () => {
     const a = path.join(tmpDir, 'src', 'a.html');
     const b = path.join(tmpDir, 'src', 'b.html');

@@ -422,7 +422,11 @@ Output JSON: `{ applied, failed, files, cleared, reason? }`.
 
 - `cleared: true`: all ops succeeded. Acknowledge in one short line: "Committed N edits across M files."
 - `cleared: false, reason: "no_pending_edits"`: buffer was empty. Say "Nothing to commit."
-- `cleared: false` with failed entries: surface the failures and reasons (`text_not_in_source`, `element_ambiguous`, `element_not_found`). Failed ops stay in the buffer; user can fix source manually and retry, or discard.
+- `cleared: false` with failed entries: surface the failures and reasons. Failed ops stay in the buffer; user can fix source manually and retry, or discard. Common reasons:
+  - `text_not_in_source`: `originalText` not found in the matched element's source range.
+  - `text_ambiguous_in_block`: `originalText` appears more than once in the matched element block; the locator can't tell which leaf to update. Ask the user to rephrase one of the duplicates, then retry.
+  - `element_ambiguous` / `element_not_found`: locator failed.
+  - `invalid_chars_in_newText`: `newText` contained `<`, `>`, `{`, `}`, or a backtick. The manual-edit flow is plain-text only. If the user wants to insert markup, do it yourself with the Edit tool against the source file.
 
 ### When to discard
 

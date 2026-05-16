@@ -38,6 +38,7 @@ import {
   stageEntry as stageManualEditEntry,
   truncateBuffer as truncateManualEditsBuffer,
 } from './live-manual-edits-buffer.mjs';
+import { validateNewTextChars } from './live-edit.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
@@ -271,6 +272,12 @@ function validateEvent(msg) {
         if (typeof op.originalText !== 'string') return 'manual_edits: op.originalText required';
         if (op.deleted !== true && typeof op.newText !== 'string') {
           return 'manual_edits: text op requires newText';
+        }
+        if (typeof op.newText === 'string') {
+          const forbidden = validateNewTextChars(op.newText);
+          if (forbidden) {
+            return 'manual_edits: newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)';
+          }
         }
       }
       return null;
