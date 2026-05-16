@@ -2896,7 +2896,11 @@
       e.stopPropagation();
       const original = e.target.dataset.impeccableOriginalText;
       if (original !== undefined) e.target.innerText = original;
-      e.target.blur(); // blur sees no change → onInlineBlur no-ops
+      // Programmatic innerText doesn't fire the 'input' event, so the draft
+      // map would otherwise hold the pre-revert value and Apply would commit
+      // changes the user explicitly undid.
+      inlineEditDrafts.delete(e.target);
+      e.target.blur();
       return;
     }
     if (e.key === 'Escape') {

@@ -90,17 +90,24 @@ export function stageEntry(cwd, newEntry) {
 }
 
 /**
- * Remove entries matching a predicate. Returns count of removed entries.
- * Empty entries (no ops left) are also pruned.
+ * Remove entries matching a predicate. Returns count of removed *ops* (not
+ * entries) so callers report a unit consistent with truncateBuffer and the
+ * pill's per-page op count. Empty entries (no ops left) are also pruned.
  */
 export function removeEntries(cwd, predicate) {
   const buf = readBuffer(cwd);
-  const before = buf.entries.length;
-  buf.entries = buf.entries.filter((entry) => !predicate(entry));
-  // Prune entries with no remaining ops (defensive).
-  buf.entries = buf.entries.filter((entry) => entry.ops && entry.ops.length > 0);
+  let removedOps = 0;
+  const kept = [];
+  for (const entry of buf.entries) {
+    if (predicate(entry)) {
+      removedOps += entry.ops?.length || 0;
+    } else if (entry.ops && entry.ops.length > 0) {
+      kept.push(entry);
+    }
+  }
+  buf.entries = kept;
   writeBuffer(cwd, buf);
-  return before - buf.entries.length;
+  return removedOps;
 }
 
 /**

@@ -42,6 +42,10 @@ Optional:
                      classes/tag match multiple sibling elements (e.g. a list
                      of <Card>s with the same className). Pass the first ~80
                      chars of event.element.textContent.
+  --page-url URL     Current page URL. Required for the buffer-aware "original"
+                     content step: pending manual edits are filtered to this
+                     page so an edit on /a doesn't bleed into a wrap on /b. If
+                     omitted, the buffer-aware step is skipped.
   --help             Show this help message
 
 Output (JSON):
@@ -59,6 +63,7 @@ The agent should insert variant HTML at insertLine.`);
   const query = argVal(args, '--query');
   const filePath = argVal(args, '--file');
   const text = argVal(args, '--text');
+  const pageUrl = argVal(args, '--page-url');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!elementId && !classes && !query) {
@@ -205,21 +210,27 @@ The agent should insert variant HTML at insertLine.`);
   // looking at (their edited DOM), not the raw source. Source itself stays
   // untouched here — only the wrap block's embedded "original" copy is
   // adjusted. The pending edits remain in the buffer until committed.
-  try {
-    const buffer = readManualEditsBuffer(process.cwd());
-    let originalBlock = originalLines.join('\n');
-    let mutated = false;
-    for (const entry of buffer.entries) {
-      for (const op of entry.ops) {
-        if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {
-          originalBlock = originalBlock.replace(op.originalText, op.newText);
-          mutated = true;
+  // Only apply pending edits scoped to the page we're wrapping for. Iterating
+  // every entry across every page would let a manual edit on /a leak into a
+  // wrap call on /b when the same originalText appears on both pages.
+  if (pageUrl) {
+    try {
+      const buffer = readManualEditsBuffer(process.cwd());
+      let originalBlock = originalLines.join('\n');
+      let mutated = false;
+      for (const entry of buffer.entries) {
+        if (entry.pageUrl !== pageUrl) continue;
+        for (const op of entry.ops) {
+          if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {
+            originalBlock = originalBlock.replace(op.originalText, op.newText);
+            mutated = true;
+          }
         }
       }
+      if (mutated) originalLines = originalBlock.split('\n');
+    } catch {
+      // Buffer read failures are non-fatal; fall back to source-as-is.
     }
-    if (mutated) originalLines = originalBlock.split('\n');
-  } catch {
-    // Buffer read failures are non-fatal; fall back to source-as-is.
   }
 
   const originalBaseIndent = minLeadingSpaces(originalLines);

@@ -190,10 +190,13 @@ function applyTextReplace(content, lines, op, match) {
   const newSub = sub.slice(0, idx) + op.newText + sub.slice(idx + op.originalText.length);
   const before = lines.slice(0, startLine).join('\n');
   const after = lines.slice(endLine + 1).join('\n');
+  // Use index checks, not string truthiness, so a leading empty line (file
+  // starts with '\n') or a trailing empty line is preserved instead of
+  // silently dropped during reconstruction.
   const joined =
-    (before ? before + '\n' : '') +
+    (startLine > 0 ? before + '\n' : '') +
     newSub +
-    (after || endLine + 1 < lines.length ? '\n' + after : '');
+    (endLine + 1 < lines.length ? '\n' + after : '');
   return { ok: true, content: joined };
 }
 

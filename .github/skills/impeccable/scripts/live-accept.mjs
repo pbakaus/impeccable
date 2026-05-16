@@ -96,7 +96,7 @@ Output (JSON):
     // Scrub stash entries whose originalText was inside the just-replaced
     // wrap block. The accept embodies those manual edits (wrap was buffer-
     // aware), so the pending ops are now redundant. Bounded to one file read.
-    if (!result.handled || result.handled !== false) {
+    if (result.handled !== false) {
       try {
         scrubManualEditsAgainstFile(targetFile);
       } catch {
