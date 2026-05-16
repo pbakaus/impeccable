@@ -1811,7 +1811,7 @@
       pendingPillEl.dataset.count = '0';
       return;
     }
-    pendingPillEl.textContent = '• ' + currentPageCount + ' staged';
+    pendingPillEl.textContent = 'Apply ' + currentPageCount + ' staged';
     pendingPillEl.style.display = 'inline-flex';
     pendingTrashBtn.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
