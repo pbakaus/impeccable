@@ -617,6 +617,33 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       return;
     }
 
+    // POST /manual-edit-commit?pageUrl=<url>  →  shells out to live-commit-manual-edits.mjs
+    // Same effect as the AI running the script, but triggered from the overlay pill.
+    if (p === '/manual-edit-commit' && req.method === 'POST') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl');
+      const commitScript = path.join(__dirname, 'live-commit-manual-edits.mjs');
+      const scriptArgs = pageUrl ? ['--page-url=' + pageUrl] : [];
+      let result;
+      try {
+        const out = execFileSync(
+          'node',
+          [commitScript, ...scriptArgs],
+          { encoding: 'utf-8', cwd: process.cwd(), timeout: 60_000 }
+        );
+        result = JSON.parse(out.trim());
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'commit_failed', message: err.message }));
+        return;
+      }
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ...result, totalCount, perPage }));
+      return;
+    }
+
     // POST /manual-edit-discard?pageUrl=<url>  →  drops entries (all if no pageUrl)
     if (p === '/manual-edit-discard' && req.method === 'POST') {
       const token = url.searchParams.get('token');

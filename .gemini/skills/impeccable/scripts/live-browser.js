@@ -1820,7 +1820,7 @@
   function maybeShowFirstSaveToast() {
     if (!firstSaveOfSession) return;
     firstSaveOfSession = false;
-    showToast('Saved. Tell the AI to commit when ready.', 4000);
+    showToast('Saved. Click the "staged" badge to apply, or ask the AI.', 4500);
   }
 
   async function fetchPendingCount() {
@@ -1834,6 +1834,36 @@
     } catch (err) {
       // Non-fatal; the counter stays hidden.
       console.warn('[impeccable] failed to fetch pending count:', err);
+    }
+  }
+
+  async function onPendingPillClick() {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
+    if (count <= 0) return;
+    const ok = confirm('Apply ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
+    if (!ok) return;
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || ('HTTP ' + res.status));
+      }
+      const result = await res.json();
+      const remaining = (result.perPage && result.perPage[location.pathname]) || 0;
+      updatePendingCounter(remaining);
+      if (result.failed && result.failed.length > 0) {
+        console.warn('[impeccable] some staged edits failed:', result.failed);
+        showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed — see console', 5000);
+      } else {
+        const n = result.applied?.length || count;
+        showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
+      }
+    } catch (err) {
+      console.error('[impeccable] commit failed:', err);
+      showToast('Apply failed — see console', 4000);
     }
   }
 
@@ -3843,7 +3873,7 @@ void main() {
 
     // Pending manual edits pill + trash icon. Shown when current-page count > 0.
     // Sits next to Exit so it lives in the lifecycle/affordance cluster.
-    pendingPillEl = el('span', {
+    pendingPillEl = el('button', {
       display: 'none',
       alignItems: 'center',
       gap: '4px',
@@ -3857,9 +3887,13 @@ void main() {
       border: '1px solid oklch(60% 0.25 350)',
       borderRadius: '999px',
       whiteSpace: 'nowrap',
-      cursor: 'default',
+      cursor: 'pointer',
+      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
     });
-    pendingPillEl.title = 'Ask the AI to commit these edits';
+    pendingPillEl.title = 'Click to apply staged edits to source';
+    pendingPillEl.addEventListener('mouseenter', () => { pendingPillEl.style.background = 'oklch(60% 0.25 350)'; pendingPillEl.style.color = 'oklch(98% 0 0)'; });
+    pendingPillEl.addEventListener('mouseleave', () => { pendingPillEl.style.background = 'oklch(98% 0 0)'; pendingPillEl.style.color = 'oklch(60% 0.25 350)'; });
+    pendingPillEl.addEventListener('click', onPendingPillClick);
     inner.appendChild(pendingPillEl);
 
     pendingTrashBtn = el('button', {
