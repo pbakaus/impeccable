@@ -1832,21 +1832,20 @@
       const btn = document.createElement('button');
       btn.textContent = 'Edit';
       Object.assign(btn.style, {
-        padding: '0.625rem 1.5rem',
-        borderRadius: '0',
+        padding: '5px 12px',
+        borderRadius: '6px',
         border: 'none',
-        background: BP.text,
-        color: BP.surface,
+        background: 'oklch(10% 0 0)',
+        color: 'oklch(98% 0 0)',
         fontFamily: FONT,
-        fontSize: '0.8125rem',
+        fontSize: '12px',
         fontWeight: '500',
-        letterSpacing: '0.03em',
         cursor: 'pointer',
-        transition: 'background 150ms ease',
+        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         whiteSpace: 'nowrap',
       });
-      btn.addEventListener('mouseenter', () => btn.style.background = BP.accent);
-      btn.addEventListener('mouseleave', () => btn.style.background = BP.text);
+      btn.addEventListener('mouseenter', () => btn.style.background = 'oklch(60% 0.25 350)');
+      btn.addEventListener('mouseleave', () => btn.style.background = 'oklch(10% 0 0)');
       btn.onclick = enterEditingMode;
       editBadgeEl.appendChild(btn);
     } else {
@@ -1856,40 +1855,38 @@
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
       Object.assign(cancel.style, {
-        padding: '0.625rem 1.5rem',
-        borderRadius: '0',
+        padding: '5px 12px',
+        borderRadius: '6px',
         border: 'none',
-        background: BP.hairline,
-        color: BP.textDim,
+        background: 'oklch(55% 0 0)',
+        color: 'oklch(98% 0 0)',
         fontFamily: FONT,
-        fontSize: '0.8125rem',
+        fontSize: '12px',
         fontWeight: '500',
-        letterSpacing: '0.03em',
         cursor: 'pointer',
-        transition: 'background 150ms ease',
+        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         whiteSpace: 'nowrap',
       });
-      cancel.addEventListener('mouseenter', () => cancel.style.background = BP.hairline + 'cc');
-      cancel.addEventListener('mouseleave', () => cancel.style.background = BP.hairline);
+      cancel.addEventListener('mouseenter', () => cancel.style.background = 'oklch(65% 0 0)');
+      cancel.addEventListener('mouseleave', () => cancel.style.background = 'oklch(55% 0 0)');
       cancel.onclick = cancelEditing;
       const save = document.createElement('button');
       save.textContent = 'Save';
       Object.assign(save.style, {
-        padding: '0.625rem 1.5rem',
-        borderRadius: '0',
+        padding: '5px 12px',
+        borderRadius: '6px',
         border: 'none',
-        background: BP.text,
-        color: BP.surface,
+        background: 'oklch(10% 0 0)',
+        color: 'oklch(98% 0 0)',
         fontFamily: FONT,
-        fontSize: '0.8125rem',
+        fontSize: '12px',
         fontWeight: '500',
-        letterSpacing: '0.03em',
         cursor: 'pointer',
-        transition: 'background 150ms ease',
+        transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         whiteSpace: 'nowrap',
       });
-      save.addEventListener('mouseenter', () => save.style.background = BP.accent);
-      save.addEventListener('mouseleave', () => save.style.background = BP.text);
+      save.addEventListener('mouseenter', () => save.style.background = 'oklch(60% 0.25 350)');
+      save.addEventListener('mouseleave', () => save.style.background = 'oklch(10% 0 0)');
       save.onclick = applyEditing;
       editBadgeEl.append(cancel, save);
     }
