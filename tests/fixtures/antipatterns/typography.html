@@ -72,6 +72,28 @@
       font-size: 13px;
     }
 
+    .flag-type .tight-leading-demo {
+      line-height: 1.05;
+    }
+
+    .flag-type .tiny-body-demo {
+      color: #374151;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .flag-type .caps-body-demo {
+      text-transform: uppercase;
+    }
+
+    .flag-type .tracked-body-demo {
+      letter-spacing: 0.08em;
+    }
+
+    .flag-type .justified-body-demo {
+      text-align: justify;
+    }
+
     .pass-type {
       background: #fdfdfd;
       padding: 22px;
@@ -127,20 +149,22 @@
       <h2 class="col-label">Should flag</h2>
       <article class="flag-type">
         <h1>Typography Anti-Patterns</h1>
-        <p>This side mirrors the isolated flag page: Inter everywhere, one typographic voice, and a nearly flat type scale.</p>
+        <p>This side uses element-level typography failures that can be highlighted directly in the detector lab.</p>
 
-        <h2>Overused Font</h2>
-        <p>Inter is loaded and used as the primary family for the whole specimen.</p>
+        <h2>Tight Leading</h2>
+        <p class="tight-leading-demo">This paragraph has a line-height that is too tight for body copy. The lines press into each other and make scanning harder, especially once the text wraps across multiple lines in a production layout.</p>
 
-        <h2>Single Font</h2>
-        <p>There is no contrasting display or supporting text face inside the specimen.</p>
+        <h2>Tiny Body Text</h2>
+        <p class="tiny-body-demo">This body text is set at 10px, which is too small for real reading content and should be reserved for neither primary copy nor explanatory product text.</p>
 
-        <h2>Flat Type Hierarchy</h2>
-        <p>The sizes are 13px, 14px, 15px, 16px, and 18px, with no useful structural jump.</p>
-        <p class="caption">Caption text barely separates from body copy.</p>
+        <h2>All-Caps Body</h2>
+        <p class="caps-body-demo">This entire paragraph is transformed to uppercase, which removes useful word shapes and makes longer body copy feel like a shout instead of a readable passage.</p>
 
-        <h3>A Subheading</h3>
-        <p>It is technically a heading, but visually it is just another line of text.</p>
+        <h2>Wide Tracking</h2>
+        <p class="tracked-body-demo">This paragraph spreads every letter apart, a treatment that belongs on short labels at most, not on body copy that people need to read comfortably.</p>
+
+        <h2>Justified Text</h2>
+        <p class="justified-body-demo">This paragraph uses justified alignment without automatic hyphenation. In narrow columns it creates uneven word spacing and distracting rivers through the text block.</p>
       </article>
     </section>
 
@@ -148,7 +172,7 @@
       <h2 class="col-label">Should pass</h2>
       <article class="pass-type">
         <h1>Good Typography</h1>
-        <p>This side mirrors the isolated pass page: a real font pairing, clear scale, and visible hierarchy.</p>
+        <p>This side keeps readable body defaults, a real font pairing, clear scale, and visible hierarchy.</p>
 
         <h2>Two Font Families</h2>
         <p>Newsreader carries display text, while Karla handles reading surfaces and supporting labels.</p>

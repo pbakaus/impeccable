@@ -103,6 +103,37 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(f.filter(r => r.antipattern === 'line-length').length, 1);
   });
 
+  it('typography side-by-side: element-level flag cases get regular overlays', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/typography.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(() => {
+        const groups = window.impeccableScan();
+        const types = groups.flatMap(group => group.findings.map(finding => finding.type || finding.id));
+        return {
+          types,
+          overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
+        };
+      });
+      for (const id of ['tight-leading', 'tiny-text', 'all-caps-body', 'wide-tracking', 'justified-text']) {
+        assert.ok(result.types.includes(id), `expected browser typography scan to include ${id}: ${JSON.stringify(result)}`);
+      }
+      assert.ok(result.overlays >= 5, `expected visible typography overlays, got: ${JSON.stringify(result)}`);
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('body-text-viewport-edge: 3 flag paragraphs/list-items, 0 pass cases', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/body-text-viewport-edge.html`);
     const edges = f.filter(r => r.antipattern === 'body-text-viewport-edge');

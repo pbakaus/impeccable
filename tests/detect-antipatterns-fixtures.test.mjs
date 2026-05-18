@@ -249,6 +249,14 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     );
   });
 
+  it('typography: side-by-side page has visible element-level flag cases', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'typography.html'));
+    const ids = new Set(f.map(r => r.antipattern));
+    for (const id of ['tight-leading', 'tiny-text', 'all-caps-body', 'wide-tracking', 'justified-text']) {
+      assert.ok(ids.has(id), `expected typography side-by-side fixture to include ${id}`);
+    }
+  });
+
   it('typography-should-pass: zero findings', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
     assert.equal(f.length, 0);
