@@ -77,6 +77,11 @@ const GENERIC_FONTS = new Set([
   'inherit', 'initial', 'unset', 'revert',
 ]);
 
+// WCAG large text thresholds are defined in points: 18pt normal text and
+// 14pt bold text. Browsers expose font-size in CSS pixels at 96px per inch.
+const WCAG_LARGE_TEXT_PX = 18 * (96 / 72);
+const WCAG_LARGE_BOLD_TEXT_PX = 14 * (96 / 72);
+
 // Serif faces that show up in italic-display heroes. The rule also fires when
 // the primary face is unknown but the stack ends in the generic `serif` token,
 // which catches custom/private faces with a serif fallback.
@@ -347,25 +352,6 @@ const ANTIPATTERNS = [
   },
 ];
 
-const RULE_ENGINE_SUPPORT = {
-  regex: new Set(['source', 'page-analyzer']),
-  'static-html': new Set(['element', 'page']),
-  browser: new Set(['element', 'page', 'layout']),
-  visual: new Set(['visual-contrast']),
-};
-
-function getAntipattern(id) {
-  return ANTIPATTERNS.find(rule => rule.id === id);
-}
-
-function getRulesForCategory(category) {
-  return ANTIPATTERNS.filter(rule => rule.category === category);
-}
-
-function getRuleEngineSupport(engine) {
-  return RULE_ENGINE_SUPPORT[engine] || new Set();
-}
-
 // --- cli/engine/shared/color.mjs ---
 // ─── Section 2: Color Utilities ─────────────────────────────────────────────
 
@@ -564,8 +550,7 @@ function checkColors(opts) {
       let worstIdx = 0;
       for (let i = 1; i < ratios.length; i++) if (ratios[i] < ratios[worstIdx]) worstIdx = i;
       const ratio = ratios[worstIdx];
-      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
-      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const threshold = isLargeText ? 3.0 : 4.5;
       if (ratio < threshold) {
         // Skip the false-positive class where text has alpha < 1 AND we
@@ -2420,9 +2405,6 @@ if (IS_BROWSER) {
     .impeccable-hidden .impeccable-overlay${EXTENSION_MODE ? '' : ':not(.impeccable-banner)'} {
       display: none !important;
     }
-    .impeccable-hidden .impeccable-overlay${EXTENSION_MODE ? '' : ':not(.impeccable-banner)'} {
-      display: none !important;
-    }
   `;
   (document.head || document.documentElement).appendChild(styleEl);
 
@@ -3008,8 +2990,7 @@ if (IS_BROWSER) {
       const textColor = parseRgb(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
-      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
-      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const threshold = isLargeText ? 3.0 : 4.5;
       const clip = {
         x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),

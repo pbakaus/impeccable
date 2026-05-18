@@ -63,6 +63,11 @@ const GENERIC_FONTS = new Set([
   'inherit', 'initial', 'unset', 'revert',
 ]);
 
+// WCAG large text thresholds are defined in points: 18pt normal text and
+// 14pt bold text. Browsers expose font-size in CSS pixels at 96px per inch.
+const WCAG_LARGE_TEXT_PX = 18 * (96 / 72);
+const WCAG_LARGE_BOLD_TEXT_PX = 14 * (96 / 72);
+
 // Serif faces that show up in italic-display heroes. The rule also fires when
 // the primary face is unknown but the stack ends in the generic `serif` token,
 // which catches custom/private faces with a serif fallback.
@@ -90,5 +95,7 @@ export {
   BRAND_FONT_DOMAINS,
   isBrandFontOnOwnDomain,
   GENERIC_FONTS,
+  WCAG_LARGE_TEXT_PX,
+  WCAG_LARGE_BOLD_TEXT_PX,
   KNOWN_SERIF_FONTS,
 };

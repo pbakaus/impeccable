@@ -26,6 +26,11 @@ const SITE_OUTPUT = path.join(ROOT, 'site/public/js/detect-antipatterns-browser.
 
 function browserSafeModule(relPath) {
   let code = fs.readFileSync(path.join(ROOT, relPath), 'utf-8');
+  if (relPath === 'cli/engine/registry/antipatterns.mjs') {
+    const match = code.match(/const ANTIPATTERNS = \[[\s\S]*?\n\];/);
+    if (!match) throw new Error('Could not extract browser antipattern registry');
+    code = match[0];
+  }
   code = code.replace(/^import[\s\S]*?;\n/gm, '');
   code = code.replace(/^export\s+\{[\s\S]*?^};\n?/gm, '');
   return `// --- ${relPath} ---\n${code.trim()}\n`;

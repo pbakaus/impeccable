@@ -136,75 +136,75 @@ async function detectCli() {
         catch { process.stderr.write(`Warning: cannot access ${target}\n`); continue; }
 
         if (stat.isDirectory()) {
-        // Check for framework dev server config (skip in JSON mode to avoid polluting output)
-        if (!jsonMode) {
-          const fwConfig = detectFrameworkConfig(resolved);
-          if (fwConfig) {
-            const probe = await isPortListening(fwConfig.port, fwConfig.fingerprint);
-            if (probe.listening && probe.matched) {
-              process.stderr.write(
-                `\n${fwConfig.name} dev server detected on localhost:${fwConfig.port}.\n` +
-                `For more accurate results, scan the running site:\n` +
-                `  npx impeccable detect http://localhost:${fwConfig.port}\n\n`
-              );
-            } else if (probe.listening && !probe.matched) {
-              process.stderr.write(
-                `\n${fwConfig.name} project detected (${path.basename(fwConfig.configPath)}).\n` +
-                `Port ${fwConfig.port} is in use by another service. Start the ${fwConfig.name} dev server and scan via URL for best results.\n\n`
-              );
+          // Check for framework dev server config (skip in JSON mode to avoid polluting output)
+          if (!jsonMode) {
+            const fwConfig = detectFrameworkConfig(resolved);
+            if (fwConfig) {
+              const probe = await isPortListening(fwConfig.port, fwConfig.fingerprint);
+              if (probe.listening && probe.matched) {
+                process.stderr.write(
+                  `\n${fwConfig.name} dev server detected on localhost:${fwConfig.port}.\n` +
+                  `For more accurate results, scan the running site:\n` +
+                  `  npx impeccable detect http://localhost:${fwConfig.port}\n\n`
+                );
+              } else if (probe.listening && !probe.matched) {
+                process.stderr.write(
+                  `\n${fwConfig.name} project detected (${path.basename(fwConfig.configPath)}).\n` +
+                  `Port ${fwConfig.port} is in use by another service. Start the ${fwConfig.name} dev server and scan via URL for best results.\n\n`
+                );
+              } else {
+                process.stderr.write(
+                  `\n${fwConfig.name} project detected (${path.basename(fwConfig.configPath)}).\n` +
+                  `Start the dev server and scan via URL for best results:\n` +
+                  `  npx impeccable detect http://localhost:${fwConfig.port}\n\n`
+                );
+              }
+            }
+          }
+
+          const files = walkDir(resolved);
+          const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
+
+          // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
+          if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
+            process.stderr.write(
+              `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
+              `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
+              `Use --fast to skip static HTML/CSS analysis, or target a specific subdirectory.\n`
+            );
+            const ok = await confirm('Continue?');
+            if (!ok) { process.stderr.write('Aborted.\n'); process.exit(0); }
+          }
+
+          // Build import graph for multi-file awareness
+          const graph = buildImportGraph(files);
+          // Build reverse map: file -> set of files that import it
+          const importedByMap = new Map();
+          for (const [importer, imports] of graph) {
+            for (const imported of imports) {
+              if (!importedByMap.has(imported)) importedByMap.set(imported, new Set());
+              importedByMap.get(imported).add(importer);
+            }
+          }
+
+          for (const file of files) {
+            const ext = path.extname(file).toLowerCase();
+            let fileFindings;
+            if (!fastMode && HTML_EXTENSIONS.has(ext)) {
+              fileFindings = await detectHtml(file);
             } else {
-              process.stderr.write(
-                `\n${fwConfig.name} project detected (${path.basename(fwConfig.configPath)}).\n` +
-                `Start the dev server and scan via URL for best results:\n` +
-                `  npx impeccable detect http://localhost:${fwConfig.port}\n\n`
-              );
+              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file);
             }
-          }
-        }
-
-        const files = walkDir(resolved);
-        const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
-
-        // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
-        if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
-          process.stderr.write(
-            `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
-            `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
-            `Use --fast to skip static HTML/CSS analysis, or target a specific subdirectory.\n`
-          );
-          const ok = await confirm('Continue?');
-          if (!ok) { process.stderr.write('Aborted.\n'); process.exit(0); }
-        }
-
-        // Build import graph for multi-file awareness
-        const graph = buildImportGraph(files);
-        // Build reverse map: file -> set of files that import it
-        const importedByMap = new Map();
-        for (const [importer, imports] of graph) {
-          for (const imported of imports) {
-            if (!importedByMap.has(imported)) importedByMap.set(imported, new Set());
-            importedByMap.get(imported).add(importer);
-          }
-        }
-
-        for (const file of files) {
-          const ext = path.extname(file).toLowerCase();
-          let fileFindings;
-          if (!fastMode && HTML_EXTENSIONS.has(ext)) {
-            fileFindings = await detectHtml(file);
-          } else {
-            fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file);
-          }
-          // Annotate findings with import context
-          const importers = importedByMap.get(file);
-          if (importers && importers.size > 0) {
-            const importerNames = [...importers].map(f => path.basename(f));
-            for (const f of fileFindings) {
-              f.importedBy = importerNames;
+            // Annotate findings with import context
+            const importers = importedByMap.get(file);
+            if (importers && importers.size > 0) {
+              const importerNames = [...importers].map(f => path.basename(f));
+              for (const f of fileFindings) {
+                f.importedBy = importerNames;
+              }
             }
+            allFindings.push(...fileFindings);
           }
-          allFindings.push(...fileFindings);
-        }
         } else if (stat.isFile()) {
           const ext = path.extname(resolved).toLowerCase();
           if (!fastMode && HTML_EXTENSIONS.has(ext)) {

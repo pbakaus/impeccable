@@ -65,9 +65,6 @@ if (IS_BROWSER) {
     .impeccable-hidden .impeccable-overlay${EXTENSION_MODE ? '' : ':not(.impeccable-banner)'} {
       display: none !important;
     }
-    .impeccable-hidden .impeccable-overlay${EXTENSION_MODE ? '' : ':not(.impeccable-banner)'} {
-      display: none !important;
-    }
   `;
   (document.head || document.documentElement).appendChild(styleEl);
 
@@ -653,8 +650,7 @@ if (IS_BROWSER) {
       const textColor = parseRgb(style.color);
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
-      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
-      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const threshold = isLargeText ? 3.0 : 4.5;
       const clip = {
         x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),

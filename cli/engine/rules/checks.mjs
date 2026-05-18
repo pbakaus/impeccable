@@ -4,6 +4,8 @@ import {
   KNOWN_SERIF_FONTS,
   OVERUSED_FONTS,
   SAFE_TAGS,
+  WCAG_LARGE_BOLD_TEXT_PX,
+  WCAG_LARGE_TEXT_PX,
   isBrandFontOnOwnDomain,
 } from '../shared/constants.mjs';
 import {
@@ -99,8 +101,7 @@ function checkColors(opts) {
       let worstIdx = 0;
       for (let i = 1; i < ratios.length; i++) if (ratios[i] < ratios[worstIdx]) worstIdx = i;
       const ratio = ratios[worstIdx];
-      const isHeading = ['h1', 'h2', 'h3'].includes(tag);
-      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700) || isHeading;
+      const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const threshold = isLargeText ? 3.0 : 4.5;
       if (ratio < threshold) {
         // Skip the false-positive class where text has alpha < 1 AND we
