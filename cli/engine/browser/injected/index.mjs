@@ -1575,17 +1575,16 @@ if (IS_BROWSER) {
     return allFindings;
   };
 
-  const scanAsync = function(options = {}) {
+  const scanAsync = async function(options = {}) {
     clearOverlays();
     const generation = scanGeneration;
     if (shouldRunVisualContrast(options)) {
-      return collectBrowserFindingsAsync(options, { generation, scheduleLazy: true }).then(collected => {
-        if (generation !== scanGeneration) return [];
-        return renderBrowserFindings(collected);
-      });
+      const collected = await collectBrowserFindingsAsync(options, { generation, scheduleLazy: true });
+      if (generation !== scanGeneration) return [];
+      return renderBrowserFindings(collected);
     }
     lastVisualContrastAnalyses = [];
-    return Promise.resolve(renderBrowserFindings(collectBrowserFindings()));
+    return renderBrowserFindings(collectBrowserFindings());
   };
 
   const detect = function(options = {}) {
@@ -1594,15 +1593,14 @@ if (IS_BROWSER) {
     return options.serialize === false ? allFindings : serializeFindings(allFindings);
   };
 
-  const detectAsync = function(options = {}) {
+  const detectAsync = async function(options = {}) {
     if (shouldRunVisualContrast(options)) {
-      return collectBrowserFindingsAsync(options).then(({ allFindings }) =>
-        options.serialize === false ? allFindings : serializeFindings(allFindings)
-      );
+      const { allFindings } = await collectBrowserFindingsAsync(options);
+      return options.serialize === false ? allFindings : serializeFindings(allFindings);
     }
     lastVisualContrastAnalyses = [];
     const { allFindings } = collectBrowserFindings();
-    return Promise.resolve(options.serialize === false ? allFindings : serializeFindings(allFindings));
+    return options.serialize === false ? allFindings : serializeFindings(allFindings);
   };
 
   if (EXTENSION_MODE) {

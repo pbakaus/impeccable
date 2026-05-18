@@ -592,6 +592,46 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('browser API: async scan and detect reject instead of throwing synchronously', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/quality.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        const originalQuerySelectorAll = Document.prototype.querySelectorAll;
+        Document.prototype.querySelectorAll = function querySelectorAll() {
+          throw new Error('forced query failure');
+        };
+        try {
+          const scan = await window.impeccableScanAsync().then(
+            () => ({ state: 'resolved' }),
+            error => ({ state: 'rejected', message: error?.message || String(error) }),
+          );
+          const detect = await window.impeccableDetectAsync().then(
+            () => ({ state: 'resolved' }),
+            error => ({ state: 'rejected', message: error?.message || String(error) }),
+          );
+          return { scan, detect };
+        } finally {
+          Document.prototype.querySelectorAll = originalQuerySelectorAll;
+        }
+      });
+      assert.deepEqual(result.scan, { state: 'rejected', message: 'forced query failure' });
+      assert.deepEqual(result.detect, { state: 'rejected', message: 'forced query failure' });
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('createBrowserDetector reuses a browser and honors waitUntil overrides', async () => {
     const detector = await createBrowserDetector({ waitUntil: 'load', settleMs: 0 });
     try {
