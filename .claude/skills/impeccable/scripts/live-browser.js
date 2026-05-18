@@ -170,6 +170,7 @@
   let pickerEl = null;
   let toastEl = null;
   let scrollRaf = null;
+  let editBadgeEl = null;
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -906,6 +907,7 @@
     setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
+    disableInlineEdit();
   }
 
   function updateBarContent(mode) {
@@ -983,7 +985,7 @@
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
-      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; return; }
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); renderEditBadge('hidden'); state = 'PICKING'; return; }
       // Let arrow keys pass through to the element picker when the input is empty
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
@@ -1496,6 +1498,7 @@
     paramsPanelInner = paramsPanelEl; // compatibility alias for the rest of the code
   }
 
+
   function getVisibleVariantEl() {
     if (!currentSessionId) return null;
     const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
@@ -1663,6 +1666,431 @@
 
       paramsPanelBody.appendChild(row);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inline text editing — makes pure-text descendants of the picked element
+  // directly contenteditable. Saves to source on blur of each text leaf.
+  // ---------------------------------------------------------------------------
+
+  let inlineEditRows = [];
+  let inlineEditDrafts = new Map();
+
+  // Mixed-content elements (e.g. <p>text<code>x</code>text</p>) skip the row
+  // walker's "all-children-are-text-nodes" rule. Wrap each non-whitespace direct
+  // text-node child in a marker span so the walker emits a row for it. The
+  // wrappers are inline display by default and inherit styles, so the page
+  // shouldn't visually shift. We unwrap in disableInlineEdit.
+  const MIXED_WRAP_SKIP = { script: 1, style: 1, template: 1, noscript: 1, svg: 1, code: 1, pre: 1 };
+  function wrapMixedContentTextNodes(rootEl) {
+    if (!rootEl || rootEl.nodeType !== 1) return;
+    const tag = rootEl.tagName.toLowerCase();
+    if (MIXED_WRAP_SKIP[tag]) return;
+    if (rootEl.hasAttribute('contenteditable')) return;
+    const children = Array.from(rootEl.childNodes);
+    const hasText = children.some((n) => n.nodeType === 3 && /\S/.test(n.nodeValue || ''));
+    const hasElement = children.some((n) => n.nodeType === 1);
+    if (hasText && hasElement) {
+      for (const node of children) {
+        if (node.nodeType === 3 && /\S/.test(node.nodeValue || '')) {
+          const wrap = document.createElement('span');
+          wrap.dataset.impeccableTextWrap = 'true';
+          wrap.textContent = node.nodeValue;
+          rootEl.insertBefore(wrap, node);
+          rootEl.removeChild(node);
+        }
+      }
+    }
+    for (const child of Array.from(rootEl.children)) {
+      if (!child.dataset || !child.dataset.impeccableTextWrap) {
+        wrapMixedContentTextNodes(child);
+      }
+    }
+  }
+  function unwrapMixedContentTextNodes(rootEl) {
+    if (!rootEl || rootEl.nodeType !== 1) return;
+    const wraps = rootEl.querySelectorAll('[data-impeccable-text-wrap="true"]');
+    for (const wrap of wraps) {
+      const parent = wrap.parentNode;
+      if (!parent) continue;
+      const textNode = document.createTextNode(wrap.textContent);
+      parent.replaceChild(textNode, wrap);
+      parent.normalize();
+    }
+  }
+  let inlineEditRoot = null;
+
+  function enableInlineEdit(targetEl) {
+    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
+    if (!collect || !targetEl) return;
+    inlineEditRoot = targetEl;
+    wrapMixedContentTextNodes(targetEl);
+    const rows = collect(targetEl, { isOwn: own });
+    inlineEditRows = rows;
+    inlineEditDrafts = new Map();
+    for (const row of rows) {
+      row.el.setAttribute('contenteditable', 'true');
+      row.el.dataset.impeccableEditable = 'true';
+      row.el.dataset.impeccableOriginalText = row.text;
+      row.el.style.userSelect = 'text';
+      row.el.style.cursor = 'text';
+      row.el.style.outline = 'none';
+      row.el.style.webkitUserModify = 'read-write-plaintext-only';
+      row.el.addEventListener('input', onInlineInput);
+    }
+  }
+
+  function disableInlineEdit() {
+    for (const row of inlineEditRows) {
+      if (document.activeElement === row.el) row.el.blur();
+      row.el.removeAttribute('contenteditable');
+      delete row.el.dataset.impeccableEditable;
+      delete row.el.dataset.impeccableOriginalText;
+      row.el.style.userSelect = '';
+      row.el.style.cursor = '';
+      row.el.style.outline = '';
+      row.el.style.webkitUserModify = '';
+      row.el.removeEventListener('input', onInlineInput);
+    }
+    inlineEditRows = [];
+    inlineEditDrafts = new Map();
+    if (inlineEditRoot) {
+      unwrapMixedContentTextNodes(inlineEditRoot);
+      inlineEditRoot = null;
+    }
+  }
+
+  function onInlineInput(e) {
+    inlineEditDrafts.set(e.currentTarget, e.currentTarget.innerText);
+  }
+
+  function hasTextRows(el) {
+    if (!el) return false;
+    // Lightweight: any descendant outside SKIP_SUBTREE_TAGS with at least one
+    // non-whitespace direct text-node child means we have something editable
+    // (mixed-content paragraphs included). Mirrors what the wrap+walk path
+    // will produce in enableInlineEdit.
+    function check(node) {
+      if (!node || node.nodeType !== 1) return false;
+      const tag = node.tagName.toLowerCase();
+      if (MIXED_WRAP_SKIP[tag]) return false;
+      if (node !== el && own(node)) return false;
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3 && /\S/.test(child.nodeValue || '')) return true;
+      }
+      for (const child of node.children) {
+        if (check(child)) return true;
+      }
+      return false;
+    }
+    return check(el);
+  }
+
+  function enterEditingMode() {
+    state = 'EDITING';
+    hideBar();
+    hideAnnotOverlay();
+    renderEditBadge('editing');
+    enableInlineEdit(selectedElement);
+    // Focus first editable element and position cursor at end
+    if (inlineEditRows.length > 0) {
+      setTimeout(() => {
+        const el = inlineEditRows[0].el;
+        el.focus();
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }, 50);
+    }
+  }
+
+  function cancelEditing() {
+    for (const row of inlineEditRows) {
+      if (inlineEditDrafts.has(row.el)) {
+        row.el.innerText = row.el.dataset.impeccableOriginalText;
+      }
+    }
+    disableInlineEdit();
+    state = 'CONFIGURING';
+    showBar('configure');
+    showAnnotOverlay(selectedElement);
+    renderEditBadge('idle');
+  }
+
+  // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
+  // climb to the nearest ancestor with one. The CLI uses tag+class together,
+  // so tag must come from the same node as the locator.
+  function buildLocatorForLeaf(leafEl, fallbackEl) {
+    if (leafEl && (leafEl.id || leafEl.classList.length > 0)) {
+      return {
+        tag: leafEl.tagName.toLowerCase(),
+        elementId: leafEl.id || null,
+        classes: [...leafEl.classList],
+      };
+    }
+    let cur = leafEl?.parentElement;
+    while (cur && cur !== document.body) {
+      if (cur.id || cur.classList.length > 0) {
+        return {
+          tag: cur.tagName.toLowerCase(),
+          elementId: cur.id || null,
+          classes: [...cur.classList],
+        };
+      }
+      cur = cur.parentElement;
+    }
+    return {
+      tag: (fallbackEl || leafEl).tagName.toLowerCase(),
+      elementId: (fallbackEl || leafEl).id || null,
+      classes: [...((fallbackEl || leafEl).classList || [])],
+    };
+  }
+
+  async function applyEditing() {
+    const ops = [];
+    for (const row of inlineEditRows) {
+      const newText = inlineEditDrafts.get(row.el);
+      if (newText !== undefined && newText !== row.text) {
+        const locator = buildLocatorForLeaf(row.el, selectedElement);
+        ops.push({
+          ref: row.ref,
+          tag: locator.tag,
+          elementId: locator.elementId,
+          classes: locator.classes,
+          originalText: row.text,
+          newText,
+        });
+      }
+    }
+    if (ops.length === 0) { cancelEditing(); return; }
+    // Stash to server buffer. No source write, no HMR. The user later asks the
+    // AI to commit, which runs live-commit-manual-edits.mjs.
+    try {
+      const res = await fetch('http://localhost:' + PORT + '/manual-edit-stash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: TOKEN,
+          id: id8(),
+          pageUrl: location.pathname,
+          element: extractContext(selectedElement),
+          ops,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || ('HTTP ' + res.status));
+      }
+      const stashResult = await res.json();
+      updatePendingCounter(stashResult.pendingCount || 0);
+      maybeShowFirstSaveToast();
+      disableInlineEdit();
+      state = 'CONFIGURING';
+      showBar('configure');
+      showAnnotOverlay(selectedElement);
+      renderEditBadge('idle');
+    } catch (err) {
+      console.error('[impeccable] manual edit stash failed:', err);
+      // Surface the specific server reason (e.g. forbidden chars in newText)
+      // so the user knows to rephrase rather than retrying the same content.
+      const detail = String(err?.message || '');
+      if (detail.includes('newText cannot contain')) {
+        showToast('Save rejected: ' + detail.replace(/^manual_edits:\s*/, ''), 5500);
+      } else {
+        showToast('Save failed — retry or cancel', 4000);
+      }
+    }
+  }
+
+  // Pending-edits pill + trash icon — updated on Save, resumeSession, and discard.
+  function updatePendingCounter(currentPageCount) {
+    if (!pendingPillEl || !pendingTrashBtn) return;
+    if (!currentPageCount || currentPageCount <= 0) {
+      pendingPillEl.style.display = 'none';
+      pendingTrashBtn.style.display = 'none';
+      pendingPillEl.dataset.count = '0';
+      return;
+    }
+    pendingPillEl.textContent = 'Apply ' + currentPageCount + ' staged';
+    pendingPillEl.style.display = 'inline-flex';
+    pendingTrashBtn.style.display = 'inline-flex';
+    pendingPillEl.dataset.count = String(currentPageCount);
+  }
+
+  function maybeShowFirstSaveToast() {
+    if (!firstSaveOfSession) return;
+    firstSaveOfSession = false;
+    showToast('Saved. Click the "staged" badge to apply, or ask the AI.', 4500);
+  }
+
+  async function fetchPendingCount() {
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-stash?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      updatePendingCounter(data.count || 0);
+    } catch (err) {
+      // Non-fatal; the counter stays hidden.
+      console.warn('[impeccable] failed to fetch pending count:', err);
+    }
+  }
+
+  async function onPendingPillClick() {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
+    if (count <= 0) return;
+    const ok = confirm('Apply ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
+    if (!ok) return;
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || ('HTTP ' + res.status));
+      }
+      const result = await res.json();
+      const remaining = (result.perPage && result.perPage[location.pathname]) || 0;
+      updatePendingCounter(remaining);
+      if (result.failed && result.failed.length > 0) {
+        console.warn('[impeccable] some staged edits failed:', result.failed);
+        showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed — see console', 5000);
+      } else {
+        const n = result.applied?.length || count;
+        showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
+      }
+    } catch (err) {
+      console.error('[impeccable] commit failed:', err);
+      showToast('Apply failed — see console', 4000);
+    }
+  }
+
+  async function onPendingTrashClick() {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
+    if (count <= 0) return;
+    const ok = confirm('Discard ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' on this page?');
+    if (!ok) return;
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-discard?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+        { method: 'POST' },
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      updatePendingCounter(0);
+      showToast('Discarded ' + count + ' staged edit' + (count === 1 ? '' : 's'), 2500);
+    } catch (err) {
+      console.error('[impeccable] discard failed:', err);
+      showToast('Discard failed — see console', 4000);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edit content badge — floating button at element top-right to enter EDITING mode
+  // ---------------------------------------------------------------------------
+
+  function initEditBadge() {
+    editBadgeEl = document.createElement('div');
+    editBadgeEl.id = PREFIX + '-edit-badge';
+    Object.assign(editBadgeEl.style, {
+      position: 'fixed',
+      zIndex: String(Z.highlight + 1),
+      cursor: 'default',
+      display: 'none',
+      userSelect: 'none',
+    });
+    document.body.appendChild(editBadgeEl);
+
+    // Remove focus rings on edit badge buttons + contenteditable elements
+    if (!document.getElementById(PREFIX + '-edit-badge-focus-style')) {
+      const s = document.createElement('style');
+      s.id = PREFIX + '-edit-badge-focus-style';
+      s.textContent =
+        '#' + PREFIX + '-edit-badge button { outline: none !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important; }' +
+        '#' + PREFIX + '-edit-badge button:focus { outline: none !important; }' +
+        '#' + PREFIX + '-edit-badge button:focus-visible { outline: none !important; }' +
+        '[data-impeccable-editable="true"] { outline: none !important; box-shadow: none !important; }' +
+        '[data-impeccable-editable="true"]:focus { outline: none !important; box-shadow: none !important; }' +
+        '[data-impeccable-editable="true"]:focus-visible { outline: none !important; box-shadow: none !important; }';
+      document.head.appendChild(s);
+    }
+  }
+
+  function positionEditBadge() {
+    if (!selectedElement || !editBadgeEl || editBadgeEl.style.display === 'none') return;
+    const r = selectedElement.getBoundingClientRect();
+    const bw = editBadgeEl.offsetWidth;
+    editBadgeEl.style.top = Math.max(4, r.top - 26) + 'px';
+    editBadgeEl.style.left = Math.min(window.innerWidth - bw - 4, r.right - bw) + 'px';
+  }
+
+  function renderEditBadge(mode) {
+    if (mode === 'hidden' || !editBadgeEl) {
+      if (editBadgeEl) editBadgeEl.style.display = 'none';
+      return;
+    }
+    editBadgeEl.style.display = 'flex';
+    editBadgeEl.style.alignItems = 'center';
+    editBadgeEl.style.cursor = 'default';
+    const ACCENT = 'oklch(60% 0.25 350)';
+    const PAPER = 'oklch(98% 0 0)';
+    const ASH = 'oklch(55% 0 0)';
+    const MIST = 'oklch(92% 0 0)';
+    const calloutStyle = (color, borderColor) => ({
+      fontFamily: FONT,
+      fontSize: '0.625rem',
+      fontWeight: '600',
+      letterSpacing: '0.06em',
+      color: color,
+      background: PAPER,
+      padding: '2px 8px',
+      border: '1px solid ' + (borderColor || color),
+      borderRadius: '999px',
+      whiteSpace: 'nowrap',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      cursor: 'pointer',
+      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+    });
+    if (mode === 'idle' || mode === 'idle-disabled') {
+      const disabled = mode === 'idle-disabled';
+      editBadgeEl.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.textContent = 'Edit';
+      Object.assign(btn.style, calloutStyle(disabled ? ASH : ACCENT, disabled ? MIST : ACCENT));
+      if (disabled) {
+        btn.style.cursor = 'not-allowed';
+        btn.style.opacity = '0.55';
+        btn.disabled = true;
+        btn.title = 'Edit is disabled while variants are generating';
+      } else {
+        btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
+        btn.onclick = enterEditingMode;
+      }
+      editBadgeEl.appendChild(btn);
+    } else {
+      // 'editing' — show Cancel + Save separated
+      editBadgeEl.innerHTML = '';
+      editBadgeEl.style.gap = '8px';
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      Object.assign(cancel.style, calloutStyle(ASH, MIST));
+      cancel.addEventListener('mouseenter', () => { cancel.style.background = ASH; cancel.style.color = PAPER; cancel.style.borderColor = ASH; });
+      cancel.addEventListener('mouseleave', () => { cancel.style.background = PAPER; cancel.style.color = ASH; cancel.style.borderColor = MIST; });
+      cancel.onclick = cancelEditing;
+      const save = document.createElement('button');
+      save.textContent = 'Save';
+      Object.assign(save.style, calloutStyle(ACCENT));
+      save.addEventListener('mouseenter', () => { save.style.background = ACCENT; save.style.color = PAPER; });
+      save.addEventListener('mouseleave', () => { save.style.background = PAPER; save.style.color = ACCENT; });
+      save.onclick = applyEditing;
+      editBadgeEl.append(cancel, save);
+    }
+    positionEditBadge();
   }
 
   // Decide which way the popover opens: away from the picked element. If the
@@ -1899,6 +2327,7 @@
         state = 'CYCLING';
         hideShaderOverlay();
         updateBarContent('cycling');
+        disableInlineEdit();
         refreshParamsPanel();
         saveSession();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
@@ -2148,6 +2577,7 @@
         state = 'CYCLING';
         hideShaderOverlay();
         updateBarContent('cycling');
+        disableInlineEdit();
         refreshParamsPanel();
       } else if (state === 'GENERATING') {
         updateBarContent('generating');
@@ -2169,8 +2599,13 @@
     function tick() {
       if (state === 'CONFIGURING' || state === 'GENERATING' || state === 'CYCLING') {
         positionBar();
+        positionEditBadge();
         showHighlight(selectedElement);
         if (tuneOpen) positionParamsPanel();
+      }
+      if (state === 'EDITING') {
+        positionEditBadge();
+        showHighlight(selectedElement);
       }
       if (annotActive) positionAnnotOverlay(selectedElement);
       // Shader overlay (via debug P toggle or generation) is repositioned
@@ -2217,6 +2652,7 @@
             if (state === 'GENERATING') {
               state = 'CYCLING';
               updateBarContent('cycling');
+              disableInlineEdit();
               refreshParamsPanel();
             }
             break;
@@ -2241,6 +2677,7 @@
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
           hideBar();
+          renderEditBadge('hidden');
           state = 'PICKING';
           break;
       }
@@ -2351,12 +2788,21 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
-    // In CONFIGURING: click outside the bar and selected element returns to PICKING
-    if (state === 'CONFIGURING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+    // In EDITING: click outside returns to CONFIGURING (via cancelEditing), then check CONFIGURING exit
+    if (state === 'EDITING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+      cancelEditing();
+      // Fall through to check if we should also exit CONFIGURING
+    }
+    // In CONFIGURING: click outside the bar and selected element returns to PICKING.
+    if (
+      state === 'CONFIGURING' && !own(e.target) && selectedElement
+      && !selectedElement.contains(e.target)
+    ) {
       hideBar();
       stopScrollTracking();
       hideAnnotOverlay();
       clearAnnotations();
+      renderEditBadge('hidden');
       state = 'PICKING';
       hoveredElement = null;
       hideHighlight();
@@ -2373,6 +2819,7 @@
     clearAnnotations();
     showAnnotOverlay(selectedElement);
     showBar('configure');
+    renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
     startScrollTracking();
     maybePrefetchPage();
     maybeWarnConditionalAncestor(selectedElement);
@@ -2455,10 +2902,27 @@
   function handleKeyDown(e) {
     // When the annotation input is focused, let it handle its own keys.
     if (annotEditing && annotEditing.input && e.target === annotEditing.input) return;
+    // While a contenteditable text-leaf is focused, let the browser handle
+    // all keys except Escape. Escape cancels the current edit (restores
+    // original text) and blurs without saving, staying in CONFIGURING.
+    if (e.target.isContentEditable && inlineEditRows.some((r) => r.el === e.target)) {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const original = e.target.dataset.impeccableOriginalText;
+      if (original !== undefined) e.target.innerText = original;
+      // Programmatic innerText doesn't fire the 'input' event, so the draft
+      // map would otherwise hold the pre-revert value and Apply would commit
+      // changes the user explicitly undid.
+      inlineEditDrafts.delete(e.target);
+      e.target.blur();
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
-      if (state === 'CONFIGURING') { hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; return; }
+      if (state === 'EDITING') { cancelEditing(); return; }
+      if (state === 'CONFIGURING') { disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); renderEditBadge('hidden'); state = 'PICKING'; return; }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
       if (state === 'PICKING') {
@@ -2494,6 +2958,7 @@
         clearAnnotations();
         showAnnotOverlay(selectedElement);
         showBar('configure');
+        renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
         startScrollTracking();
         return;
       }
@@ -2502,11 +2967,13 @@
         if (state === 'PICKING') {
           hoveredElement = next;
         } else {
-          // CONFIGURING: re-select the new element and refresh the bar
+          // CONFIGURING: re-select the new element
           selectedElement = next;
           clearAnnotations();
           showAnnotOverlay(next);
           showBar('configure');
+          disableInlineEdit();
+          renderEditBadge(hasTextRows(selectedElement) ? 'idle' : 'hidden');
           startScrollTracking();
         }
         showHighlight(next);
@@ -2524,6 +2991,10 @@
 
   function handleGo() {
     if (!selectedElement || state !== 'CONFIGURING') return;
+    runGenerate();
+  }
+
+  function runGenerate() {
     const input = document.getElementById(PREFIX + '-input');
     const prompt = input ? input.value.trim() : '';
 
@@ -2561,6 +3032,11 @@
     clearAnnotations();
 
     state = 'GENERATING';
+    // Disable the Edit badge: starting a manual text edit mid-generation would
+    // conflict with the variant wrap that's about to land in the same DOM
+    // region. Only swap if the badge was visible — picked elements with no
+    // text rows have it hidden already.
+    if (editBadgeEl && editBadgeEl.style.display !== 'none') renderEditBadge('idle-disabled');
     showBar('generating');
     saveSession();
     sendCheckpoint('generate_started');
@@ -3035,6 +3511,7 @@ void main() {
       selectedElement = null;
       currentSessionId = null;
       selectedAction = 'impeccable';
+      renderEditBadge('hidden');
       state = 'PICKING';
     }, 1800);
 
@@ -3147,6 +3624,7 @@ void main() {
     selectedElement = null;
     currentSessionId = null;
     selectedAction = 'impeccable';
+    renderEditBadge('hidden');
     state = 'PICKING';
   }
 
@@ -3278,6 +3756,9 @@ void main() {
   let pickActive = true;
   let detectCount = 0;
   let detectScriptLoaded = false;
+  let pendingPillEl = null;
+  let pendingTrashBtn = null;
+  let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's
   // ambient background and invert — dark bar on light pages, light bar on
@@ -3509,6 +3990,49 @@ void main() {
       onClick: () => toggleDesignPanel(),
     });
     inner.appendChild(designBtn);
+
+    // Pending manual edits pill + trash icon. Shown when current-page count > 0.
+    // Sits next to Exit so it lives in the lifecycle/affordance cluster.
+    pendingPillEl = el('button', {
+      display: 'none',
+      alignItems: 'center',
+      gap: '4px',
+      fontFamily: FONT,
+      fontSize: '0.625rem',
+      fontWeight: '600',
+      letterSpacing: '0.06em',
+      color: 'oklch(60% 0.25 350)',
+      background: 'oklch(98% 0 0)',
+      padding: '2px 8px',
+      border: '1px solid oklch(60% 0.25 350)',
+      borderRadius: '999px',
+      whiteSpace: 'nowrap',
+      cursor: 'pointer',
+      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+    });
+    pendingPillEl.title = 'Click to apply staged edits to source';
+    pendingPillEl.addEventListener('mouseenter', () => { pendingPillEl.style.background = 'oklch(60% 0.25 350)'; pendingPillEl.style.color = 'oklch(98% 0 0)'; });
+    pendingPillEl.addEventListener('mouseleave', () => { pendingPillEl.style.background = 'oklch(98% 0 0)'; pendingPillEl.style.color = 'oklch(60% 0.25 350)'; });
+    pendingPillEl.addEventListener('click', onPendingPillClick);
+    inner.appendChild(pendingPillEl);
+
+    pendingTrashBtn = el('button', {
+      display: 'none',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '20px', height: '20px', borderRadius: '6px',
+      border: 'none', background: 'transparent',
+      color: 'oklch(55% 0 0)',
+      cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    pendingTrashBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h8"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M4 4l.5 7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L10 4"/></svg>';
+    pendingTrashBtn.title = 'Discard pending edits on this page';
+    pendingTrashBtn.addEventListener('mouseenter', () => { pendingTrashBtn.style.color = 'oklch(60% 0.25 350)'; pendingTrashBtn.style.background = P.exitHover; });
+    pendingTrashBtn.addEventListener('mouseleave', () => { pendingTrashBtn.style.color = 'oklch(55% 0 0)'; pendingTrashBtn.style.background = 'transparent'; });
+    pendingTrashBtn.addEventListener('click', onPendingTrashClick);
+    inner.appendChild(pendingTrashBtn);
 
     // Thin divider before the exit button
     const divider = el('span', {
@@ -4821,6 +5345,7 @@ void main() {
   function init() {
     try { history.scrollRestoration = 'manual'; } catch {}
     initHighlight();
+    initEditBadge();
     initAnnotOverlay();
     initBar();
     initActionPicker();
@@ -4831,6 +5356,9 @@ void main() {
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
     connectSSE();
+
+    // Restore pending-edit counter for this page (survives HMR reload + dev restart).
+    fetchPendingCount();
 
     // Check for an active session to resume (variant wrapper already in DOM after HMR)
     if (!resumeSession()) {

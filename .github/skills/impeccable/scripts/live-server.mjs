@@ -31,6 +31,14 @@ import {
   resolveDesignSidecarPath,
   writeLiveServerInfo,
 } from './impeccable-paths.mjs';
+import {
+  countByPage as countPendingByPage,
+  readBuffer as readManualEditsBuffer,
+  removeEntries as removeManualEditEntries,
+  stageEntry as stageManualEditEntry,
+  truncateBuffer as truncateManualEditsBuffer,
+} from './live-manual-edits-buffer.mjs';
+import { validateNewTextChars } from './live-edit.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
@@ -171,15 +179,16 @@ function loadBrowserScripts() {
   // can re-read on every request. Editing the browser script during iteration
   // should land on the next tab reload, not require a server restart.
   const sessionPath = path.join(__dirname, 'live-browser-session.js');
+  const textRowsPath = path.join(__dirname, 'live-text-rows.js');
   const livePath = path.join(__dirname, 'live-browser.js');
-  for (const p of [sessionPath, livePath]) {
+  for (const p of [sessionPath, textRowsPath, livePath]) {
     if (!fs.existsSync(p)) {
       process.stderr.write('Error: live browser script not found at ' + p + '\n');
       process.exit(1);
     }
   }
 
-  return { detectScript, sessionPath, livePath };
+  return { detectScript, sessionPath, textRowsPath, livePath };
 }
 
 function hasProjectContext() {
@@ -252,6 +261,26 @@ function validateEvent(msg) {
     case 'prefetch':
       if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
       return null;
+    case 'manual_edits':
+      if (!isValidId(msg.id)) return 'manual_edits: missing or malformed id';
+      if (!msg.element || typeof msg.element !== 'object') return 'manual_edits: missing element';
+      if (!Array.isArray(msg.ops) || msg.ops.length === 0) return 'manual_edits: ops must be non-empty array';
+      if (msg.ops.length > 100) return 'manual_edits: too many ops (max 100)';
+      for (const op of msg.ops) {
+        if (typeof op.ref !== 'string') return 'manual_edits: op.ref required';
+        if (typeof op.tag !== 'string') return 'manual_edits: op.tag required';
+        if (typeof op.originalText !== 'string') return 'manual_edits: op.originalText required';
+        if (op.deleted !== true && typeof op.newText !== 'string') {
+          return 'manual_edits: text op requires newText';
+        }
+        if (typeof op.newText === 'string') {
+          const forbidden = validateNewTextChars(op.newText);
+          if (forbidden) {
+            return 'manual_edits: newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)';
+          }
+        }
+      }
+      return null;
     default:
       return 'Unknown event type: ' + msg.type;
   }
@@ -261,7 +290,7 @@ function validateEvent(msg) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, sessionPath, livePath }) {
+function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -278,9 +307,11 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       // sessions — during iteration, a cached old script silently breaks
       // every subsequent session.
       let sessionScript;
+      let textRowsScript;
       let liveScript;
       try {
         sessionScript = fs.readFileSync(sessionPath, 'utf-8');
+        textRowsScript = fs.readFileSync(textRowsPath, 'utf-8');
         liveScript = fs.readFileSync(livePath, 'utf-8');
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -291,6 +322,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
         sessionScript + '\n' +
+        textRowsScript + '\n' +
         liveScript;
       res.writeHead(200, {
         'Content-Type': 'application/javascript',
@@ -527,6 +559,126 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       return;
     }
 
+    // --- Manual edits: stash to disk buffer, no source write, no HMR.
+    // Browser POSTs here on Save. The agent never sees these events. To commit
+    // the buffer to source, the user explicitly asks the AI to run
+    // live-commit-manual-edits.mjs. See reference/live.md for the full contract.
+    if (p === '/manual-edit-stash' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        let msg;
+        try { msg = JSON.parse(body); } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+        if (msg.token !== state.token) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        const error = validateEvent({ ...msg, type: 'manual_edits' });
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error }));
+          return;
+        }
+        try {
+          stageManualEditEntry(process.cwd(), {
+            id: msg.id,
+            pageUrl: msg.pageUrl,
+            element: msg.element,
+            ops: msg.ops,
+          });
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'stash_write_failed', message: err.message }));
+          return;
+        }
+        const { totalCount, perPage } = countPendingByPage(process.cwd());
+        const pendingCount = perPage[msg.pageUrl] || 0;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
+      });
+      return;
+    }
+
+    // GET /manual-edit-stash?pageUrl=<url>  →  { count, totalCount, perPage, entries }
+    if (p === '/manual-edit-stash' && req.method === 'GET') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl') || '';
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      const buffer = readManualEditsBuffer(process.cwd());
+      const entriesForPage = pageUrl ? buffer.entries.filter((e) => e.pageUrl === pageUrl) : buffer.entries;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        count: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+        totalCount,
+        perPage,
+        entries: entriesForPage,
+      }));
+      return;
+    }
+
+    // POST /manual-edit-commit?pageUrl=<url>  →  shells out to live-commit-manual-edits.mjs
+    // Same effect as the AI running the script, but triggered from the overlay pill.
+    if (p === '/manual-edit-commit' && req.method === 'POST') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl');
+      const commitScript = path.join(__dirname, 'live-commit-manual-edits.mjs');
+      const scriptArgs = pageUrl ? ['--page-url=' + pageUrl] : [];
+      let result;
+      try {
+        const out = execFileSync(
+          'node',
+          [commitScript, ...scriptArgs],
+          { encoding: 'utf-8', cwd: process.cwd(), timeout: 60_000 }
+        );
+        result = JSON.parse(out.trim());
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'commit_failed', message: err.message }));
+        return;
+      }
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ...result, totalCount, perPage }));
+      return;
+    }
+
+    // POST /manual-edit-discard?pageUrl=<url>  →  drops entries (all if no pageUrl)
+    if (p === '/manual-edit-discard' && req.method === 'POST') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const pageUrl = url.searchParams.get('pageUrl');
+      let discarded;
+      try {
+        if (pageUrl) {
+          discarded = removeManualEditEntries(process.cwd(), (entry) => entry.pageUrl === pageUrl);
+        } else {
+          discarded = truncateManualEditsBuffer(process.cwd());
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'discard_failed', message: err.message }));
+        return;
+      }
+      const { totalCount, perPage } = countPendingByPage(process.cwd());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ discarded, totalCount, perPage }));
+      return;
+    }
+
+    // Defense in depth: redirect any stragglers from the old /manual-edit endpoint.
+    if (p === '/manual-edit' && req.method === 'POST') {
+      res.writeHead(410, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '/manual-edit is removed; POST to /manual-edit-stash. Then ask the AI to commit.' }));
+      return;
+    }
+
     // --- Browser→server events (replaces WebSocket messages) ---
     if (p === '/events' && req.method === 'POST') {
       let body = '';
@@ -541,6 +693,14 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         if (msg.token !== state.token) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        // Defense in depth: manual_edits must use /manual-edit, not /events.
+        // Reject loudly so stale browser code surfaces in dev rather than
+        // silently re-creating the agent loop.
+        if (msg.type === 'manual_edits') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'manual_edits must POST to /manual-edit, not /events' }));
           return;
         }
         const error = validateEvent(msg);
@@ -820,8 +980,8 @@ const annotRoot = getLiveAnnotationsDir(process.cwd());
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, sessionPath, livePath } = loadBrowserScripts();
-httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
+const { detectScript, sessionPath, textRowsPath, livePath } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });

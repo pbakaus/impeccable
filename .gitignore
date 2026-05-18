@@ -43,6 +43,7 @@ Thumbs.db
 .impeccable/live/sessions/
 .impeccable/live/annotations/
 .impeccable/live/cache/
+.impeccable/live/pending-manual-edits.json
 .impeccable/history/
 # Per-run critique snapshots are local artifacts. ignore.md (also under
 # this dir) carries deferrals the user may want to share, so it's
@@ -103,3 +104,4 @@ site/public/js/generated/
 !.codex/agents/
 !.codex/agents/**
 .astro/
+.claude/settings.json

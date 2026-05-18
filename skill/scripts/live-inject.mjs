@@ -116,7 +116,7 @@ Output (JSON):
     if (!fs.existsSync(absFile)) return { file: relFile, error: 'file_not_found' };
     const content = fs.readFileSync(absFile, 'utf-8');
     const withoutOld = revertCspMeta(removeTag(content, config.commentSyntax));
-    const withTag = insertTag(withoutOld, config, port);
+    const withTag = insertTag(withoutOld, config, port, relFile);
     if (withTag === withoutOld) {
       return { file: relFile, error: 'insertion_point_not_found', anchor: config.insertBefore || config.insertAfter };
     }
@@ -256,18 +256,22 @@ function validateConfig(cfg) {
 function commentOpen(syntax) { return syntax === 'jsx' ? '{/*' : '<!--'; }
 function commentClose(syntax) { return syntax === 'jsx' ? '*/}' : '-->'; }
 
-function buildTagBlock(syntax, port) {
+function buildTagBlock(syntax, port, filePath) {
   const open = commentOpen(syntax);
   const close = commentClose(syntax);
+  // Astro processes <script> tags by default and rewrites src to its own
+  // bundled URL. is:inline opts out so the literal external src survives.
+  const isAstro = typeof filePath === 'string' && filePath.endsWith('.astro');
+  const scriptAttrs = isAstro ? 'is:inline ' : '';
   return (
     open + ' ' + MARKER_OPEN_TEXT + ' ' + close + '\n' +
-    '<script src="http://localhost:' + port + '/live.js"></script>\n' +
+    '<script ' + scriptAttrs + 'src="http://localhost:' + port + '/live.js"></script>\n' +
     open + ' ' + MARKER_CLOSE_TEXT + ' ' + close + '\n'
   );
 }
 
-function insertTag(content, config, port) {
-  const block = buildTagBlock(config.commentSyntax, port);
+function insertTag(content, config, port, filePath) {
+  const block = buildTagBlock(config.commentSyntax, port, filePath);
   // insertBefore: match the LAST occurrence. Anchors like `</body>` naturally
   // belong at the end, and the same literal can appear earlier in code blocks
   // within rendered documentation pages.

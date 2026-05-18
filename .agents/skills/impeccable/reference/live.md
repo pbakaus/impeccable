@@ -43,12 +43,12 @@ LOOP:
   node .agents/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
-  "generate"  → Handle Generate; reply done; LOOP
-  "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
-  "discard"   → Handle Discard; LOOP
-  "prefetch"  → Handle Prefetch; LOOP
-  "timeout"   → LOOP
-  "exit"      → break → Cleanup
+  "generate"      → Handle Generate; reply done; LOOP
+  "accept"        → Handle Accept; complete carbonize cleanup if required; LOOP
+  "discard"       → Handle Discard; LOOP
+  "prefetch"      → Handle Prefetch; LOOP
+  "timeout"       → LOOP
+  "exit"          → break → Cleanup
 ```
 
 ## Recovery commands
@@ -93,7 +93,7 @@ Reading annotations precisely:
 ### 2. Wrap the element
 
 ```bash
-node .agents/skills/impeccable/scripts/live-wrap.mjs --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div" --text "TEXT_SNIPPET"
+node .agents/skills/impeccable/scripts/live-wrap.mjs --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div" --text "TEXT_SNIPPET" --page-url "/path"
 ```
 
 Flag mapping. Keep them separate, don't collapse into `--query`:
@@ -102,6 +102,7 @@ Flag mapping. Keep them separate, don't collapse into `--query`:
 - `--classes` ← `event.element.classes` joined with commas
 - `--tag` ← `event.element.tagName`
 - `--text` ← first ~80 chars of `event.element.textContent` (trim, single-line). **Pass this every call.** When the picked element shares classes + tag with sibling components (a list of `<Card>`s, repeating sections), this is what disambiguates which branch in source to wrap. Without it, wrap silently lands on the first match and may rewrite the wrong element.
+- `--page-url` ← `event.pageUrl`. **Required when the manual-edit buffer has any pending entries** (`live-wrap.mjs` will exit with `missing_page_url_with_pending_edits` otherwise). Scopes the buffer-aware "original" content step to edits made on this page so the wrap block's `data-impeccable-variant="original"` reflects the user's staged DOM, not the un-edited source. Pass it every call: the buffer state can change between events, and forgetting it produces variants that look correct in source but ignore the user's pending changes.
 
 The helper searches ID first, then classes, then tag + class combo. If `event.pageUrl` implies the file (e.g. `/` is usually `index.html`), pass `--file PATH` to skip the search. `--query` is a fallback for raw text search only; do not use it for normal element lookups.
 
@@ -393,6 +394,57 @@ Then remove the temporary wrapper from the served file if it's still there.
 ### Step 4: On discard, clean up the served file
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
+
+## Manual edits: stashed server-side; commit on user request
+
+When the user clicks Save in the live overlay, the browser POSTs to `/manual-edit-stash`. The server appends to `.impeccable/live/pending-manual-edits.json`. **No source file is touched. No HMR refresh.** The event is never enqueued and never reaches the poll loop. You do not see manual-edit traffic until the user explicitly asks you to commit.
+
+The user's edited DOM state becomes the "current truth" for downstream operations. `live-wrap.mjs` is buffer-aware: when it wraps an element that has a pending manual edit, the wrap block's `data-impeccable-variant="original"` content reflects the edited text, not the raw source. `live-accept.mjs` scrubs matching buffer entries after a successful accept (the accept embodies the manual edit, so the pending op is consumed, not lost). Variant **discard** does NOT touch the buffer; the manual edit is preserved.
+
+### When to commit
+
+Run `live-commit-manual-edits.mjs` ONLY when the user clearly asks to commit, apply, or flush pending manual edits. Examples:
+
+- "commit my edits"
+- "apply the manual edits"
+- "flush pending"
+- "save those changes" (when context makes it about the manual edits, not unrelated files)
+
+Do NOT trigger on generic "save" mentions about unrelated files or work.
+
+```
+node .agents/skills/impeccable/scripts/live-commit-manual-edits.mjs
+```
+
+Optional `--page-url=<url>` to scope.
+
+Output JSON: `{ applied, failed, files, cleared, reason? }`.
+
+- `cleared: true`: all ops succeeded. Acknowledge in one short line: "Committed N edits across M files."
+- `cleared: false, reason: "no_pending_edits"`: buffer was empty. Say "Nothing to commit."
+- `cleared: false` with failed entries: surface the failures and reasons. Failed ops stay in the buffer; user can fix source manually and retry, or discard. Common reasons:
+  - `text_not_in_source`: `originalText` not found in the matched element's source range.
+  - `text_ambiguous_in_block`: `originalText` appears more than once in the matched element block; the locator can't tell which leaf to update. Ask the user to rephrase one of the duplicates, then retry.
+  - `element_ambiguous` / `element_not_found`: locator failed.
+  - `invalid_chars_in_newText`: `newText` contained `<`, `>`, `{`, `}`, or a backtick. The manual-edit flow is plain-text only. If the user wants to insert markup, do it yourself with the Edit tool against the source file.
+
+### When to discard
+
+Run `live-discard-manual-edits.mjs` when the user asks to discard, throw away, or clear pending manual edits. Examples:
+
+- "discard the pending edits"
+- "throw away my unsaved manual edits"
+- "clear the staging buffer"
+
+```
+node .agents/skills/impeccable/scripts/live-discard-manual-edits.mjs
+```
+
+Optional `--page-url=<url>` to scope. Output: `{ discarded, totalCount }`.
+
+### Do NOT auto-commit
+
+Do not run commit on session start, on idle, or as a side effect of any other event. Only on explicit user request. The buffer can hold edits across sessions indefinitely; that is intended.
 
 ## Handle `accept`
 

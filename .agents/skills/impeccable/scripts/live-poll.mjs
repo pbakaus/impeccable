@@ -136,6 +136,9 @@ Options:
       break;
     }
 
+    // manual_edits flow through the /manual-edit endpoint server-side; the agent
+    // never sees them. No handler needed here.
+
     // Auto-handle accept/discard via deterministic script
     if (event.type === 'accept' || event.type === 'discard') {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
+import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live-manual-edits-buffer.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -92,8 +93,45 @@ Output (JSON):
     if (result.carbonize) {
       result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + relFile + '. See reference/live.md "Required after accept".';
     }
+    // Scrub stash entries whose originalText was inside the just-replaced
+    // wrap block. The accept embodies those manual edits (wrap was buffer-
+    // aware), so the pending ops are now redundant. Bounded to one file read.
+    if (result.handled !== false) {
+      try {
+        scrubManualEditsAgainstFile(targetFile);
+      } catch {
+        // Non-fatal; the buffer stays as-is and the user can discard later.
+      }
+    }
     console.log(JSON.stringify({ handled: true, file: relFile, ...result }));
   }
+}
+
+/**
+ * After a variant accept rewrites a portion of targetFile, drop buffer ops
+ * whose originalText no longer appears in that file. Those ops were almost
+ * certainly inside the replaced wrap block (which previously contained the
+ * manual-edited text via buffer-aware wrap), and the accept now embodies them.
+ *
+ * Ops whose originalText still appears in targetFile are left alone — they
+ * relate to other elements the user manually edited but didn't put through the
+ * variants pipeline.
+ */
+function scrubManualEditsAgainstFile(targetFile, cwd = process.cwd()) {
+  const buffer = readManualEditsBuffer(cwd);
+  if (buffer.entries.length === 0) return;
+  const fileContent = fs.readFileSync(targetFile, 'utf-8');
+  let mutated = false;
+  for (const entry of buffer.entries) {
+    const before = entry.ops.length;
+    entry.ops = entry.ops.filter((op) => {
+      if (!op.originalText) return true;
+      return fileContent.includes(op.originalText);
+    });
+    if (entry.ops.length !== before) mutated = true;
+  }
+  buffer.entries = buffer.entries.filter((entry) => entry.ops.length > 0);
+  if (mutated) writeManualEditsBuffer(cwd, buffer);
 }
 
 // ---------------------------------------------------------------------------
@@ -592,4 +630,4 @@ if (_running?.endsWith('live-accept.mjs') || _running?.endsWith('live-accept.mjs
   acceptCli();
 }
 
-export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax };
+export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile };
