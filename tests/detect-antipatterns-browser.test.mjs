@@ -313,6 +313,44 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(result.syncDetectIsArray, true, `impeccableDetect should keep a synchronous Array return: ${JSON.stringify(result)}`);
       assert.equal(result.hasAsyncApi, true, `visual contrast should expose explicit async APIs: ${JSON.stringify(result)}`);
 
+      const refreshedOverlayResult = await page.evaluate(async () => {
+        window.scrollTo(0, 0);
+        const target = [...document.querySelectorAll('p')]
+          .find(node => /White text on light image should be sampled/i.test(node.textContent || ''));
+        target.style.fontSize = '10px';
+        const initialGroups = window.impeccableScan({
+          visualContrast: true,
+          visualContrastMaxCandidates: 20,
+        });
+        const initialTargetGroup = initialGroups.find(group => group.el === target);
+        const deadline = Date.now() + 1000;
+        while (
+          Date.now() < deadline &&
+          !/low contrast/i.test(target?._impeccableOverlay?.textContent || '')
+        ) {
+          const nextButton = target?._impeccableOverlay?.querySelector('button:last-of-type');
+          if (nextButton) nextButton.click();
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const labelVariants = [];
+        const overlay = target?._impeccableOverlay;
+        for (let i = 0; i < 3; i++) {
+          labelVariants.push(overlay?.textContent || '');
+          overlay?.querySelector('button:last-of-type')?.click();
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        return {
+          initialTypes: initialTargetGroup?.findings.map(finding => finding.type || finding.id) || [],
+          labelText: target?._impeccableOverlay?.textContent || '',
+          labelVariants,
+          overlayConnected: Boolean(target?._impeccableOverlay?.isConnected),
+        };
+      });
+      assert.ok(refreshedOverlayResult.initialTypes.includes('tiny-text'), `test setup should create an initial sync overlay on the target: ${JSON.stringify(refreshedOverlayResult)}`);
+      assert.ok(refreshedOverlayResult.labelVariants.some(text => /tiny body text/i.test(text)), `expected refreshed overlay to keep the sync finding label: ${JSON.stringify(refreshedOverlayResult)}`);
+      assert.ok(refreshedOverlayResult.labelVariants.some(text => /low contrast/i.test(text)), `expected visual contrast to refresh the existing overlay label: ${JSON.stringify(refreshedOverlayResult)}`);
+      assert.equal(refreshedOverlayResult.overlayConnected, true, `expected refreshed overlay to stay connected: ${JSON.stringify(refreshedOverlayResult)}`);
+
       const lazyResult = await page.evaluate(async () => {
         const target = [...document.querySelectorAll('p')]
           .find(node => /Muted gray text on a misty image/i.test(node.textContent || ''));
@@ -386,6 +424,69 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(offscreenVisualGroups.length, 4, `expected 4 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
       assert.ok(offscreenResult.maxScrollY > 0, `offscreen opt-in should be allowed to scroll: ${JSON.stringify(offscreenResult)}`);
       assert.equal(offscreenResult.finalScrollY, 0, `offscreen opt-in should restore scroll: ${JSON.stringify(offscreenResult)}`);
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
+  it('extension mode remove cancels pending lazy visual contrast work', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        window.postMessage({
+          source: 'impeccable-command',
+          action: 'scan',
+          config: {
+            visualContrast: true,
+            visualContrastMaxCandidates: 20,
+          },
+        }, '*');
+        const scanDeadline = Date.now() + 1000;
+        while (
+          Date.now() < scanDeadline &&
+          !window.impeccableGetLastVisualContrastAnalyses()
+            .some(item => item.status === 'unresolved' && item.reason === 'text outside viewport')
+        ) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const unresolvedBeforeRemove = window.impeccableGetLastVisualContrastAnalyses()
+          .filter(item => item.status === 'unresolved' && item.reason === 'text outside viewport').length;
+        window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const target = [...document.querySelectorAll('p')]
+          .find(node => /Muted gray text on a misty image/i.test(node.textContent || ''));
+        target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const resultsAfterRemove = window.__impeccableMessages
+          .filter(message => message.source === 'impeccable-results').length;
+        return {
+          unresolvedBeforeRemove,
+          overlayCount: document.querySelectorAll('.impeccable-overlay').length,
+          targetHasOverlay: Boolean(target?._impeccableOverlay),
+          resultsAfterRemove,
+        };
+      });
+      assert.ok(result.unresolvedBeforeRemove > 0, `test setup should leave lazy visual candidates pending: ${JSON.stringify(result)}`);
+      assert.equal(result.overlayCount, 0, `remove should not allow lazy visual overlays to reappear: ${JSON.stringify(result)}`);
+      assert.equal(result.targetHasOverlay, false, `remove should clear stale target overlay refs: ${JSON.stringify(result)}`);
+      await page.close();
     } finally {
       await browser.close().catch(() => {});
     }

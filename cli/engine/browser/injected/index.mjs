@@ -220,6 +220,20 @@ if (IS_BROWSER) {
     }
   }, { rootMargin: '99999px' });
 
+  function detachOverlay(overlay) {
+    if (!overlay) return;
+    if (typeof overlay._cleanup === 'function') {
+      try { overlay._cleanup(); } catch { /* best effort overlay teardown */ }
+    }
+    if (overlay._targetEl && overlay._targetEl._impeccableOverlay === overlay) {
+      visibilityObserver.unobserve(overlay._targetEl);
+      delete overlay._targetEl._impeccableOverlay;
+    }
+    const idx = overlays.indexOf(overlay);
+    if (idx >= 0) overlays.splice(idx, 1);
+    overlay.remove();
+  }
+
   // Reposition overlays after CSS transitions end (e.g. reveal animations).
   // Listens at document level so it catches transitions on ancestor elements
   // (the transform may be on a parent, not the flagged element itself).
@@ -234,6 +248,7 @@ if (IS_BROWSER) {
   });
 
   const highlight = function(el, findings) {
+    if (el._impeccableOverlay) detachOverlay(el._impeccableOverlay);
     const hasSlop = findings.some(f => RULE_CATEGORY[f.type || f.id] === 'slop');
 
     const fixed = isInFixedContext(el);
@@ -346,7 +361,7 @@ if (IS_BROWSER) {
     };
 
     // Hover: show detail text, darken
-    el.addEventListener('mouseenter', () => {
+    const onMouseEnter = () => {
       isHovered = true;
       outline.classList.add('impeccable-hover');
       outline.style.outlineColor = BRAND_COLOR_HOVER;
@@ -356,8 +371,8 @@ if (IS_BROWSER) {
       } else {
         textSpan.textContent = entries.map(e => e.detail).join(' | ');
       }
-    });
-    el.addEventListener('mouseleave', () => {
+    };
+    const onMouseLeave = () => {
       isHovered = false;
       outline.classList.remove('impeccable-hover');
       outline.style.outlineColor = '';
@@ -367,7 +382,13 @@ if (IS_BROWSER) {
       } else {
         textSpan.textContent = allText;
       }
-    });
+    };
+    el.addEventListener('mouseenter', onMouseEnter);
+    el.addEventListener('mouseleave', onMouseLeave);
+    outline._cleanup = () => {
+      el.removeEventListener('mouseenter', onMouseEnter);
+      el.removeEventListener('mouseleave', onMouseLeave);
+    };
 
     document.body.appendChild(outline);
     overlays.push(outline);
@@ -1375,7 +1396,7 @@ if (IS_BROWSER) {
       type: findingType,
       detail: result.finding.detail || result.finding.snippet,
     }]);
-    if (options.decorate && el !== document.body && el !== document.documentElement && !el._impeccableOverlay) {
+    if (options.decorate && el !== document.body && el !== document.documentElement) {
       highlight(el, groupMap.get(el) || []);
     }
     return true;
@@ -1503,13 +1524,7 @@ if (IS_BROWSER) {
   function clearOverlays() {
     scanGeneration += 1;
     disconnectLazyVisualContrastObserver();
-    for (const o of overlays) {
-      if (o._targetEl && o._targetEl._impeccableOverlay === o) {
-        visibilityObserver.unobserve(o._targetEl);
-        delete o._targetEl._impeccableOverlay;
-      }
-      o.remove();
-    }
+    for (const o of [...overlays]) detachOverlay(o);
     overlays.length = 0;
     visibilityObserver.disconnect();
     overlayIndex = 0;
@@ -1610,9 +1625,7 @@ if (IS_BROWSER) {
         window.postMessage({ source: 'impeccable-overlays-toggled', visible: !visible }, '*');
       }
       if (e.data.action === 'remove') {
-        for (const o of overlays) o.remove();
-        overlays.length = 0;
-        visibilityObserver.disconnect();
+        clearOverlays();
         styleEl.remove();
         if (spotlightBackdrop) { spotlightBackdrop.remove(); spotlightBackdrop = null; }
         document.body.classList.remove('impeccable-hidden');
