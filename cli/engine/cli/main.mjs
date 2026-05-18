@@ -97,11 +97,12 @@ Examples:
 }
 
 async function detectCli() {
-  const args = process.argv.slice(2).map(arg => {
+  let args = process.argv.slice(2).map(arg => {
     if (arg === '-json') return '--json';
     if (arg === '-fast') return '--fast';
     return arg;
   });
+  if (args[0] === 'detect') args = args.slice(1);
   const jsonMode = args.includes('--json');
   const helpMode = args.includes('--help');
   const fastMode = args.includes('--fast');

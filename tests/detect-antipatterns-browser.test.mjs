@@ -185,7 +185,7 @@ describe('detectUrl — browser-only fixtures', () => {
       await page.evaluate(browserScript);
       const result = await page.evaluate(async () => {
         const before = document.querySelectorAll('.impeccable-overlay, .impeccable-label, .impeccable-banner').length;
-        const analyses = await window.impeccableAnalyzeVisualContrast({ maxCandidates: 20 });
+        const analyses = await window.impeccableAnalyzeVisualContrast({ maxCandidates: 20, scrollOffscreen: true });
         const after = document.querySelectorAll('.impeccable-overlay, .impeccable-label, .impeccable-banner').length;
         return {
           before,

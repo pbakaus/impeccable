@@ -1139,7 +1139,7 @@ if (IS_BROWSER) {
   async function analyzeVisualContrast(options = {}) {
     const candidates = collectVisualContrastCandidates(options);
     const results = [];
-    const shouldScrollOffscreen = options.scrollOffscreen !== false;
+    const shouldScrollOffscreen = options.scrollOffscreen === true;
     const restoreScroll = { x: window.scrollX, y: window.scrollY };
     for (const candidate of candidates) {
       if (shouldScrollOffscreen && (window.scrollX !== restoreScroll.x || window.scrollY !== restoreScroll.y)) {

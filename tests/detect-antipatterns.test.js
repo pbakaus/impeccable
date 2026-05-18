@@ -694,6 +694,12 @@ describe('CLI', () => {
     expect(stdout).toContain('Usage:');
   });
 
+  test('detect subcommand is not treated as a scan target', () => {
+    const { stderr, code } = run('detect', '--json', path.join(FIXTURES, 'should-pass.html'));
+    expect(code).toBe(0);
+    expect(stderr).not.toContain('cannot access detect');
+  });
+
   test('should-pass exits 0', () => {
     const { code } = run(path.join(FIXTURES, 'should-pass.html'));
     expect(code).toBe(0);
