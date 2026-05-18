@@ -1503,7 +1503,13 @@ if (IS_BROWSER) {
   function clearOverlays() {
     scanGeneration += 1;
     disconnectLazyVisualContrastObserver();
-    for (const o of overlays) o.remove();
+    for (const o of overlays) {
+      if (o._targetEl && o._targetEl._impeccableOverlay === o) {
+        visibilityObserver.unobserve(o._targetEl);
+        delete o._targetEl._impeccableOverlay;
+      }
+      o.remove();
+    }
     overlays.length = 0;
     visibilityObserver.disconnect();
     overlayIndex = 0;

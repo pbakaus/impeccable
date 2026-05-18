@@ -295,6 +295,30 @@ describe('detectUrl — browser-only fixtures', () => {
       assert.equal(lazyResult.targetHasOverlay, true, `expected lazy visual target to get a regular overlay, got: ${JSON.stringify(lazyResult)}`);
       assert.ok(lazyResult.scrollY > 0, `test should have naturally scrolled to the offscreen case: ${JSON.stringify(lazyResult)}`);
 
+      const staleOverlayResult = await page.evaluate(async () => {
+        const target = [...document.querySelectorAll('p')]
+          .find(node => /Muted gray text on a misty image/i.test(node.textContent || ''));
+        window.scrollTo(0, 0);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        await window.impeccableScanAsync({
+          visualContrast: true,
+          visualContrastMaxCandidates: 20,
+        });
+        const staleCleared = !target?._impeccableOverlay;
+        target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        await new Promise(resolve => setTimeout(resolve, 250));
+        return {
+          staleCleared,
+          targetHasOverlay: Boolean(target?._impeccableOverlay),
+          targetOverlayConnected: Boolean(target?._impeccableOverlay?.isConnected),
+          overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
+          analyses: window.impeccableGetLastVisualContrastAnalyses().filter(item => item.status === 'fail').length,
+        };
+      });
+      assert.equal(staleOverlayResult.staleCleared, true, `expected clearOverlays to remove stale target overlay refs, got: ${JSON.stringify(staleOverlayResult)}`);
+      assert.equal(staleOverlayResult.targetHasOverlay, true, `expected lazy visual target to be highlightable after a rescan, got: ${JSON.stringify(staleOverlayResult)}`);
+      assert.equal(staleOverlayResult.targetOverlayConnected, true, `expected lazy visual overlay after rescan to be connected, got: ${JSON.stringify(staleOverlayResult)}`);
+
       const offscreenResult = await page.evaluate(async () => {
         window.scrollTo(0, 0);
         let maxScrollY = window.scrollY;
