@@ -1,6 +1,23 @@
 Space is the most underused design tool. Find the layout's actual problem (monotone spacing, weak hierarchy, identical card grids, the centered-stack default) and fix the structure, not the surface.
 
 ---
+## Mechanical Pre-Scan (required before visual review)
+
+Run these greps on the target files before any visual analysis. Surface every hit in your response so the user can decide which to fix vs. accept as a scoped exception.
+
+
+# Arbitrary spacing values outside the scale (Tailwind arbitrary syntax)
+grep -rn '\(p\|m\|gap\|space\)-\[[0-9]*\.?[0-9]*\(px\|rem\|em\)\]' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+
+# Orphan opacity values
+grep -rn 'opacity-\[' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+
+# Hard-coded pixel spacing in raw CSS
+grep -rn '\(padding\|margin\|gap\):\s*[0-9]*\.?[0-9]*px' --include="*.css" --include="*.scss" .
+
+# Arbitrary z-index values (999, 9999, etc.)
+grep -rn 'z-\[9\{2,\}\]' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+\
 
 ## Register
 
