@@ -162,7 +162,7 @@ function slug(file: string) {
 }
 
 function routeFor(file: string) {
-  return `/detector/fixtures/antipatterns/${slug(file)}`;
+  return `/detector/fixtures/antipatterns/${file}`;
 }
 
 function countByRule(findings: Array<{ antipattern: string }>) {
