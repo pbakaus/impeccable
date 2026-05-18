@@ -3747,6 +3747,28 @@ if (IS_BROWSER) {
     }, '*');
   }
 
+  function postExtensionError(err) {
+    if (!EXTENSION_MODE) return;
+    window.postMessage({
+      source: 'impeccable-error',
+      message: err?.message || String(err),
+    }, '*');
+  }
+
+  function reportVisualContrastError(err, detail = {}) {
+    window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-error', {
+      detail: {
+        ...detail,
+        message: err?.message || String(err),
+      },
+    }));
+    if (EXTENSION_MODE) {
+      postExtensionError(err);
+    } else {
+      console.warn('[impeccable] visual contrast scan failed', err);
+    }
+  }
+
   function scheduleLazyVisualContrast(groupMap, analyses, options = {}, runtime = {}) {
     disconnectLazyVisualContrastObserver();
     if (options.visualContrastLazy === false || options.scrollOffscreen !== false) return;
@@ -3786,9 +3808,7 @@ if (IS_BROWSER) {
             }
           })
           .catch(err => {
-            window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-error', {
-              detail: { selector: candidate.selector, message: err?.message || String(err) },
-            }));
+            reportVisualContrastError(err, { selector: candidate.selector });
           })
           .finally(() => {
             lazyVisualContrastResolving.delete(el);
@@ -3886,10 +3906,7 @@ if (IS_BROWSER) {
           if (generation === scanGeneration) postSerializedFindings(collected.groupMap);
         })
         .catch(err => {
-          window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-error', {
-            detail: { message: err?.message || String(err) },
-          }));
-          if (!EXTENSION_MODE) console.warn('[impeccable] visual contrast scan failed', err);
+          reportVisualContrastError(err);
         });
     }
     return allFindings;
@@ -3931,14 +3948,10 @@ if (IS_BROWSER) {
       if (e.source !== window || !e.data || e.data.source !== 'impeccable-command') return;
       if (e.data.action === 'scan') {
         if (e.data.config) window.__IMPECCABLE_CONFIG__ = e.data.config;
-        const result = scan(e.data.config || {});
-        if (result && typeof result.catch === 'function') {
-          result.catch(err => {
-            window.postMessage({
-              source: 'impeccable-error',
-              message: err?.message || String(err),
-            }, '*');
-          });
+        try {
+          scan(e.data.config || {});
+        } catch (err) {
+          postExtensionError(err);
         }
       }
       if (e.data.action === 'toggle-overlays') {
@@ -3993,9 +4006,10 @@ if (IS_BROWSER) {
   } else {
     if (window.__IMPECCABLE_CONFIG__?.autoScan !== false) {
       const runAutoScan = () => {
-        const result = scan();
-        if (result && typeof result.catch === 'function') {
-          result.catch(err => console.warn('[impeccable] scan failed', err));
+        try {
+          scan();
+        } catch (err) {
+          console.warn('[impeccable] scan failed', err);
         }
       };
       if (document.readyState === 'loading') {

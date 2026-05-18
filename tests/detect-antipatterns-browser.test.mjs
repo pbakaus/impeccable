@@ -325,6 +325,70 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('extension mode reports async visual contrast errors to the panel', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function getContext() {
+          throw new Error('forced visual contrast canvas failure');
+        };
+        try {
+          window.postMessage({
+            source: 'impeccable-command',
+            action: 'scan',
+            config: {
+              visualContrast: true,
+              visualContrastMaxCandidates: 20,
+            },
+          }, '*');
+          const deadline = Date.now() + 1000;
+          while (
+            Date.now() < deadline &&
+            !window.__impeccableMessages.some(message => message.source === 'impeccable-error')
+          ) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          return {
+            ready: window.__impeccableMessages.some(message => message.source === 'impeccable-ready'),
+            results: window.__impeccableMessages.some(message => message.source === 'impeccable-results'),
+            errors: window.__impeccableMessages
+              .filter(message => message.source === 'impeccable-error')
+              .map(message => message.message || ''),
+          };
+        } finally {
+          HTMLCanvasElement.prototype.getContext = originalGetContext;
+        }
+      });
+      assert.equal(result.ready, true, `expected extension ready message, got: ${JSON.stringify(result)}`);
+      assert.equal(result.results, true, `expected initial sync results before async visual error, got: ${JSON.stringify(result)}`);
+      assert.ok(
+        result.errors.some(message => /forced visual contrast canvas failure/.test(message)),
+        `expected extension visual contrast error message, got: ${JSON.stringify(result)}`,
+      );
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({
