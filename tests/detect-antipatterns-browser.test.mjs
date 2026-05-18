@@ -168,6 +168,11 @@ describe('detectUrl — browser-only fixtures', () => {
       false,
       'light image with dark text should keep enough contrast',
     );
+    assert.equal(
+      f.some(r => r.antipattern === 'low-contrast' && /Should (?:flag|pass) after pixel sampling/i.test(r.snippet || '')),
+      false,
+      'fixture column headings should not be low-contrast findings',
+    );
   });
 
   it('browser API: visual contrast fallback resolves readable image backgrounds without overlays', async () => {
