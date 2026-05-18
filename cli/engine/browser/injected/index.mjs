@@ -71,7 +71,6 @@ if (IS_BROWSER) {
   // Spotlight backdrop element (created lazily on first use)
   let spotlightBackdrop = null;
   let spotlightTarget = null;
-  let spotlightTimer = null;
 
   function getSpotlightBackdrop() {
     if (!spotlightBackdrop) {
@@ -114,7 +113,6 @@ if (IS_BROWSER) {
 
   function hideSpotlight() {
     spotlightTarget = null;
-    if (spotlightTimer) { clearTimeout(spotlightTimer); spotlightTimer = null; }
     if (spotlightBackdrop) spotlightBackdrop.classList.remove('impeccable-visible');
   }
 
@@ -1631,7 +1629,6 @@ if (IS_BROWSER) {
         document.body.classList.remove('impeccable-hidden');
       }
       if (e.data.action === 'highlight') {
-        if (spotlightTimer) { clearTimeout(spotlightTimer); spotlightTimer = null; }
         try {
           const target = e.data.selector ? document.querySelector(e.data.selector) : null;
           if (target) {
