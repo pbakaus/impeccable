@@ -255,6 +255,7 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     for (const id of ['tight-leading', 'tiny-text', 'all-caps-body', 'wide-tracking', 'justified-text']) {
       assert.ok(ids.has(id), `expected typography side-by-side fixture to include ${id}`);
     }
+    assert.ok(ids.has('overused-font'), 'expected typography side-by-side fixture to include a page-level overused-font finding');
   });
 
   it('typography-should-pass: zero findings', async () => {

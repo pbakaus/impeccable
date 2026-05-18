@@ -121,12 +121,18 @@ describe('detectUrl — browser-only fixtures', () => {
         const types = groups.flatMap(group => group.findings.map(finding => finding.type || finding.id));
         return {
           types,
+          pageTypes: groups
+            .filter(group => group.el === document.body || group.el === document.documentElement)
+            .flatMap(group => group.findings.map(finding => finding.type || finding.id)),
+          hasBanner: Boolean(document.querySelector('.impeccable-banner')),
           overlays: document.querySelectorAll('.impeccable-overlay:not(.impeccable-banner)').length,
         };
       });
       for (const id of ['tight-leading', 'tiny-text', 'all-caps-body', 'wide-tracking', 'justified-text']) {
         assert.ok(result.types.includes(id), `expected browser typography scan to include ${id}: ${JSON.stringify(result)}`);
       }
+      assert.ok(result.pageTypes.includes('overused-font'), `expected browser typography scan to include page-level overused-font: ${JSON.stringify(result)}`);
+      assert.equal(result.hasBanner, true, `expected page-level typography banner: ${JSON.stringify(result)}`);
       assert.ok(result.overlays >= 5, `expected visible typography overlays, got: ${JSON.stringify(result)}`);
       await page.close();
     } finally {
