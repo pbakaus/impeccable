@@ -193,6 +193,19 @@ cp -r dist/qoder/.qoder your-project/
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
 
+### Troubleshooting global installs
+
+If you used `npx skills add pbakaus/impeccable` with a global install and Claude Code does not see the impeccable commands, check whether the skill landed in `~/.agents/skills/impeccable/` instead of `~/.claude/skills/impeccable/`. The upstream `npx skills` package can route Claude Code installs to the canonical `.agents/skills/` location without creating the expected `~/.claude/skills/` symlink (vercel-labs/skills#851).
+
+Run the diagnostic to detect and repair the mismatch:
+
+```bash
+npx impeccable skills doctor          # report only
+npx impeccable skills doctor --fix    # symlink ~/.claude/skills/impeccable -> ~/.agents/skills/impeccable
+```
+
+`impeccable skills install` runs the same check after install and offers to repair on the spot.
+
 ## Usage
 
 Once installed, use commands in your AI harness:

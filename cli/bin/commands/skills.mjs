@@ -14,7 +14,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -44,6 +44,7 @@ async function showHelp() {
   console.log('\n  Impeccable Skills & Commands\n');
   console.log('  Install:  npx impeccable skills install');
   console.log('  Update:   npx impeccable skills update');
+  console.log('  Doctor:   npx impeccable skills doctor [--fix]');
   console.log('  Docs:     https://impeccable.style/cheatsheet\n');
   console.log(`  ${pad('Command', 22)} Description`);
   console.log(`  ${'-'.repeat(22)} ${'-'.repeat(52)}`);
@@ -379,6 +380,11 @@ async function install(flags) {
     // Cleanup script not available -- skip
   }
 
+  // Detect and offer to repair the upstream `npx skills` routing bug where
+  // global installs land in ~/.agents/skills/ but Claude Code reads from
+  // ~/.claude/skills/. See vercel-labs/skills#851.
+  await verifyGlobalRoutingAfterInstall({ yes });
+
   console.log(`\nDone! Run /${prefix}impeccable teach in your AI harness to set up design context.\n`);
 }
 
@@ -632,6 +638,202 @@ function copyDirSync(src, dest) {
   }
 }
 
+// ─── skills doctor ───────────────────────────────────────────────────────────
+
+/**
+ * The upstream `npx skills` package routes "Universal" agents (Cursor, Codex,
+ * Cline, Copilot, ...) to ~/.agents/skills/, while Claude Code reads from
+ * ~/.claude/skills/. When the interactive prompt installs only universal
+ * agents (vercel-labs/skills#851), the impeccable skill ends up in
+ * ~/.agents/skills/impeccable/ and Claude Code never sees it. Doctor detects
+ * that mismatch and offers to symlink ~/.claude/skills/<name> back to the
+ * canonical copy.
+ */
+
+function isImpeccableSkillName(name) {
+  return (
+    name === 'impeccable' ||
+    name === 'teach-impeccable' ||
+    name.endsWith('-impeccable') ||
+    name.endsWith('-teach-impeccable')
+  );
+}
+
+function findGlobalImpeccableInstalls(home = homedir()) {
+  const found = [];
+  for (const provider of PROVIDER_DIRS) {
+    const skillsDir = join(home, provider, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    let entries;
+    try {
+      entries = readdirSync(skillsDir);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (!isImpeccableSkillName(name)) continue;
+      const path = join(skillsDir, name);
+      let isLink = false;
+      let target = null;
+      try {
+        const ls = lstatSync(path);
+        isLink = ls.isSymbolicLink();
+        if (isLink) target = readlinkSync(path);
+      } catch {}
+      found.push({ provider, name, path, isSymlink: isLink, target });
+    }
+  }
+  return found;
+}
+
+/**
+ * Detect routing issues for global installs. Currently checks for the
+ * canonical bug: `<name>` exists under ~/.agents/skills but not under
+ * ~/.claude/skills, which makes Claude Code blind to it.
+ *
+ * Returns { issues: Array<{ severity, message, source, target }> }.
+ */
+function diagnoseGlobalRouting(installs, home = homedir()) {
+  const issues = [];
+  const byName = new Map();
+  for (const inst of installs) {
+    if (!byName.has(inst.name)) byName.set(inst.name, []);
+    byName.get(inst.name).push(inst);
+  }
+  for (const [name, list] of byName) {
+    const inAgents = list.find((i) => i.provider === '.agents');
+    const inClaude = list.find((i) => i.provider === '.claude');
+    if (inAgents && !inClaude) {
+      issues.push({
+        severity: 'critical',
+        name,
+        message: `${join('~', '.agents', 'skills', name)} exists, but ${join('~', '.claude', 'skills', name)} is missing — Claude Code reads from ~/.claude/skills/, so it cannot see this skill.`,
+        source: inAgents.path,
+        target: join(home, '.claude', 'skills', name),
+      });
+    }
+  }
+  return { issues };
+}
+
+function applyRepairs(issues) {
+  const results = [];
+  for (const issue of issues) {
+    try {
+      mkdirSync(dirname(issue.target), { recursive: true });
+      // If target already exists (rare race), leave it alone.
+      if (existsSync(issue.target)) {
+        results.push({ issue, ok: true, skipped: true });
+        continue;
+      }
+      symlinkSync(issue.source, issue.target);
+      results.push({ issue, ok: true });
+    } catch (e) {
+      results.push({ issue, ok: false, error: e.message });
+    }
+  }
+  return results;
+}
+
+async function doctor(flags) {
+  const fix = flags.includes('--fix');
+  const yes = flags.includes('-y') || flags.includes('--yes');
+  const home = homedir();
+
+  const installs = findGlobalImpeccableInstalls(home);
+  if (installs.length === 0) {
+    console.log('No global impeccable installs found in ~/. Nothing to check.');
+    return;
+  }
+
+  console.log('Global impeccable installs:');
+  for (const inst of installs) {
+    const kind = inst.isSymlink ? `symlink → ${inst.target}` : 'real dir';
+    console.log(`  ${inst.path}  (${kind})`);
+  }
+
+  const { issues } = diagnoseGlobalRouting(installs, home);
+  if (issues.length === 0) {
+    console.log('\nAll routing looks good.');
+    return;
+  }
+
+  console.log(`\nFound ${issues.length} routing issue(s):`);
+  for (const issue of issues) {
+    console.log(`  [${issue.severity}] ${issue.message}`);
+    console.log(`    suggested: symlink ${issue.target} -> ${issue.source}`);
+  }
+
+  if (!fix) {
+    console.log('\nRun `impeccable skills doctor --fix` to apply repairs.');
+    return;
+  }
+
+  // In non-interactive environments (CI, scripts, tests) treat --fix as
+  // explicit consent. Only prompt when we have a real TTY and the user
+  // didn't pass -y.
+  const interactive = !!process.stdin.isTTY;
+  let proceed = yes || !interactive;
+  if (!proceed) {
+    const ans = await ask('\nApply repairs? (Y/n) ');
+    proceed = ans !== 'n' && ans !== 'no';
+  }
+  if (!proceed) return;
+
+  const results = applyRepairs(issues);
+  for (const r of results) {
+    if (r.ok && r.skipped) {
+      console.log(`  Skipped (already present): ${r.issue.target}`);
+    } else if (r.ok) {
+      console.log(`  Linked: ${r.issue.target} -> ${r.issue.source}`);
+    } else {
+      console.error(`  Failed: ${r.issue.target}: ${r.error}`);
+    }
+  }
+}
+
+/**
+ * Best-effort post-install check. Called from install() after the upstream
+ * `npx skills add` finishes. If we detect the bug, warn or auto-repair
+ * depending on -y mode. Errors here never break the install flow.
+ */
+async function verifyGlobalRoutingAfterInstall({ yes }) {
+  try {
+    const home = homedir();
+    const installs = findGlobalImpeccableInstalls(home);
+    if (installs.length === 0) return;
+    const { issues } = diagnoseGlobalRouting(installs, home);
+    if (issues.length === 0) return;
+
+    console.log('\nWarning: detected a known routing issue from `npx skills` (vercel-labs/skills#851):');
+    for (const issue of issues) {
+      console.log(`  ${issue.message}`);
+    }
+
+    const interactive = !!process.stdin.isTTY;
+    let proceed = yes || !interactive;
+    if (!proceed) {
+      const ans = await ask('Symlink ~/.claude/skills/<name> to the canonical copy? (Y/n) ');
+      proceed = ans !== 'n' && ans !== 'no';
+    }
+    if (!proceed) {
+      console.log('Skipped. Run `npx impeccable skills doctor --fix` later if Claude Code does not see the skill.');
+      return;
+    }
+
+    const results = applyRepairs(issues);
+    for (const r of results) {
+      if (r.ok && !r.skipped) {
+        console.log(`  Linked: ${r.issue.target} -> ${r.issue.source}`);
+      } else if (!r.ok) {
+        console.error(`  Failed: ${r.issue.target}: ${r.error}`);
+      }
+    }
+  } catch {
+    // Diagnostic step — never fail the install on its account.
+  }
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export async function run(args) {
@@ -645,6 +847,8 @@ export async function run(args) {
     await update(args.slice(1));
   } else if (sub === 'check') {
     await check();
+  } else if (sub === 'doctor') {
+    await doctor(args.slice(1));
   } else {
     console.error(`Unknown skills command: ${sub}`);
     console.error(`Run 'impeccable skills --help' for available commands.`);

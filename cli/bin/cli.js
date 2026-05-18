@@ -26,6 +26,7 @@ Commands:
   skills install                   Install impeccable skills into your project
   skills update                    Update skills to the latest version
   skills check                     Check if skill updates are available
+  skills doctor [--fix]            Diagnose & repair misrouted global installs
 
 Options:
   --help       Show this help message
