@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Typography Anti-Patterns — Side by Side</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f9fafb;
+      color: #111827;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 32px;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .col {
+      min-width: 0;
+    }
+
+    .col-label {
+      margin: 0 0 14px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .flag-type {
+      font-family: 'Inter', sans-serif;
+      background: #fdfdfd;
+      padding: 22px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .flag-type h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .flag-type h2 {
+      margin: 24px 0 8px;
+      color: #4b5563;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .flag-type h3 {
+      margin: 18px 0 4px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .flag-type p {
+      margin: 0 0 10px;
+      color: #4b5563;
+      font-size: 14px;
+    }
+
+    .flag-type .caption {
+      color: #6b7280;
+      font-size: 13px;
+    }
+
+    .pass-type {
+      background: #fdfdfd;
+      padding: 22px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .pass-type h1,
+    .pass-type h2 {
+      font-family: 'Newsreader', Georgia, serif;
+    }
+
+    .pass-type h1 {
+      margin: 0 0 10px;
+      font-size: 48px;
+      line-height: 0.98;
+      font-weight: 700;
+    }
+
+    .pass-type h2 {
+      margin: 32px 0 10px;
+      font-size: 30px;
+      line-height: 1.08;
+      font-weight: 700;
+    }
+
+    .pass-type h3,
+    .pass-type p,
+    .pass-type .caption {
+      font-family: 'Karla', system-ui, sans-serif;
+    }
+
+    .pass-type h3 {
+      margin: 22px 0 6px;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+
+    .pass-type p {
+      margin: 0 0 12px;
+      color: #374151;
+      font-size: 16px;
+    }
+
+    .pass-type .caption {
+      color: #4b5563;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <section class="col" data-col="flag">
+      <h2 class="col-label">Should flag</h2>
+      <article class="flag-type">
+        <h1>Typography Anti-Patterns</h1>
+        <p>This side mirrors the isolated flag page: Inter everywhere, one typographic voice, and a nearly flat type scale.</p>
+
+        <h2>Overused Font</h2>
+        <p>Inter is loaded and used as the primary family for the whole specimen.</p>
+
+        <h2>Single Font</h2>
+        <p>There is no contrasting display or supporting text face inside the specimen.</p>
+
+        <h2>Flat Type Hierarchy</h2>
+        <p>The sizes are 13px, 14px, 15px, 16px, and 18px, with no useful structural jump.</p>
+        <p class="caption">Caption text barely separates from body copy.</p>
+
+        <h3>A Subheading</h3>
+        <p>It is technically a heading, but visually it is just another line of text.</p>
+      </article>
+    </section>
+
+    <section class="col" data-col="pass">
+      <h2 class="col-label">Should pass</h2>
+      <article class="pass-type">
+        <h1>Good Typography</h1>
+        <p>This side mirrors the isolated pass page: a real font pairing, clear scale, and visible hierarchy.</p>
+
+        <h2>Two Font Families</h2>
+        <p>Newsreader carries display text, while Karla handles reading surfaces and supporting labels.</p>
+
+        <h3>Strong Size Hierarchy</h3>
+        <p>Sizes range from 12px to 48px with distinct roles for heading, subheading, body, and caption.</p>
+        <p class="caption">Caption text is intentionally smaller but still readable.</p>
+      </article>
+    </section>
+  </div>
+
+  <script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

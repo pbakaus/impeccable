@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Border Anti-Patterns — Should Flag vs Should Pass</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #111827;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+
+    h1 {
+      max-width: 1180px;
+      margin: 0 auto 8px;
+      font-size: 34px;
+      line-height: 1.05;
+      font-weight: 720;
+    }
+
+    .intro {
+      max-width: 1180px;
+      margin: 0 auto 24px;
+      color: #4b5563;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 32px;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .col h2 {
+      margin: 0 0 14px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .case {
+      margin: 0 0 14px;
+      padding: 16px;
+      background: #fdfdfd;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    .case h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .case p {
+      margin: 0;
+      color: #475569;
+    }
+
+    .flag-left {
+      border-left: 4px solid #2563eb;
+      border-radius: 10px;
+    }
+
+    .flag-right {
+      border-right: 5px solid #dc2626;
+      border-radius: 10px;
+    }
+
+    .flag-left-plain {
+      border-left: 4px solid #0f766e;
+    }
+
+    .flag-top {
+      border-top: 4px solid #7c3aed;
+      border-radius: 10px;
+    }
+
+    .flag-bottom {
+      border-bottom: 3px solid #ea580c;
+      border-radius: 10px;
+    }
+
+    .flag-dark {
+      background: #141820;
+      color: #f4f7fb;
+      border-left: 4px solid #38bdf8;
+      border-radius: 10px;
+    }
+
+    .flag-dark p {
+      color: #cbd5e1;
+    }
+
+    .pass-full-border {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+    }
+
+    .pass-neutral-side {
+      border-left: 4px solid #d1d5db;
+      border-radius: 10px;
+    }
+
+    .pass-thin-side {
+      border-left: 1px solid #2563eb;
+      border-radius: 10px;
+    }
+
+    .pass-square-top {
+      border-top: 4px solid #7c3aed;
+      border-radius: 0;
+    }
+
+    .pass-square-bottom {
+      border-bottom: 3px solid #ea580c;
+      border-radius: 0;
+    }
+
+    .pass-dark-uniform {
+      background: #161a22;
+      color: #f4f7fb;
+      border: 1px solid #334155;
+      border-radius: 10px;
+    }
+
+    .pass-dark-uniform p {
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <h1>Border side-tab detector cases</h1>
+  <p class="intro">A paired fixture for colored side borders and rounded accent borders. The left column should produce border findings; the right column should stay clean.</p>
+
+  <div class="grid">
+    <section class="col" data-col="flag">
+      <h2>Should flag</h2>
+
+      <div class="case flag-left">
+        <h3>Rounded card with colored left border</h3>
+        <p>Classic side tab: border-left is thick, colored, and paired with rounded corners.</p>
+      </div>
+
+      <div class="case flag-right">
+        <h3>Rounded card with colored right border</h3>
+        <p>The right-side version is the same visual trope mirrored.</p>
+      </div>
+
+      <div class="case flag-left-plain">
+        <h3>Thick colored side border without radius</h3>
+        <p>A thick chromatic side stripe still reads as a tab even without rounded corners.</p>
+      </div>
+
+      <div class="case flag-top">
+        <h3>Rounded card with top accent border</h3>
+        <p>A heavy top accent on a rounded card is the horizontal variant of the same pattern.</p>
+      </div>
+
+      <div class="case flag-bottom">
+        <h3>Rounded card with bottom accent border</h3>
+        <p>The bottom accent is also a decorative stripe on a card surface.</p>
+      </div>
+
+      <div class="case flag-dark">
+        <h3>Dark card with bright side stripe</h3>
+        <p>Dark surfaces can hide the cliche, but the thick colored side stripe remains.</p>
+      </div>
+    </section>
+
+    <section class="col" data-col="pass">
+      <h2>Should pass</h2>
+
+      <div class="case pass-full-border">
+        <h3>Uniform full border</h3>
+        <p>A quiet all-around border frames the card instead of creating a side tab.</p>
+      </div>
+
+      <div class="case pass-neutral-side">
+        <h3>Neutral structural side rule</h3>
+        <p>A gray structural rule can be a legitimate divider when it is not chromatic emphasis.</p>
+      </div>
+
+      <div class="case pass-thin-side">
+        <h3>Thin colored side rule</h3>
+        <p>A 1px colored rule is below the decorative side-tab threshold.</p>
+      </div>
+
+      <div class="case pass-square-top">
+        <h3>Square top border</h3>
+        <p>A top rule without rounded card corners is treated as a structural divider.</p>
+      </div>
+
+      <div class="case pass-square-bottom">
+        <h3>Square bottom border</h3>
+        <p>A bottom rule without rounded card corners is also allowed.</p>
+      </div>
+
+      <div class="case pass-dark-uniform">
+        <h3>Dark card with uniform border</h3>
+        <p>The dark surface has a full neutral outline, not a chromatic side stripe.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

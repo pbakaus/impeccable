@@ -31,3 +31,21 @@
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
+
+/* Neutral side rule — should NOT flag */
+.external-neutral-side {
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  border-left: 4px solid #d1d5db;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Top rule without rounded card corners — should NOT flag */
+.external-square-top {
+  background: white;
+  padding: 1rem;
+  border-radius: 0;
+  border-top: 4px solid #8b5cf6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}

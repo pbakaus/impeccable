@@ -7,8 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: system-ui, sans-serif; background: #f9fafb; padding: 2rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-    h2 { font-size: 1.125rem; margin: 2.5rem 0 0.75rem; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 0.875rem; margin: 2.5rem 0 0.75rem; color: #4b5563; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.08em; }
     p.intro { color: #6b7280; margin-bottom: 2rem; max-width: 36rem; }
     .cards { display: grid; gap: 1rem; max-width: 28rem; }
     .card { background: white; padding: 1rem; border-radius: 0.375rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -20,9 +20,6 @@
     .card-shorthand-right { border-right: 5px solid #8b5cf6; }
     .card-longhand-left { border-left-width: 3px; border-left-style: solid; border-left-color: #10b981; }
     .card-longhand-right { border-right-width: 6px; border-right-style: solid; border-right-color: #ef4444; }
-    .card-logical-start { border-inline-start: 4px solid #f59e0b; }
-    .card-logical-end { border-inline-end: 3px solid #ec4899; }
-    .card-logical-start-width { border-inline-start-width: 5px; border-inline-start-style: solid; border-inline-start-color: #06b6d4; }
 
     /* CSS top/bottom + border-radius */
     .card-css-top { border-radius: 12px; border-top: 4px solid #3b82f6; }
@@ -40,17 +37,9 @@
       <h3>border-l-4 + rounded-r</h3>
       <p>The classic AI tell.</p>
     </div>
-    <div class="border-l-2 border-emerald-500 bg-white p-4 rounded-r shadow-sm">
-      <h3>border-l-2 + rounded-r</h3>
-      <p>Thin but still recognizable with rounded corners.</p>
-    </div>
     <div class="border-r-4 border-purple-500 bg-white p-4 rounded-l shadow-sm">
       <h3>border-r-4 + rounded-l</h3>
       <p>Right side variant.</p>
-    </div>
-    <div class="border-s-3 border-amber-500 bg-white p-4 rounded-r shadow-sm">
-      <h3>border-s-3 + rounded-r</h3>
-      <p>Logical inline-start.</p>
     </div>
     <div class="border-e-8 border-red-500 bg-white p-4 rounded-l shadow-sm">
       <h3>border-e-8 + rounded-l</h3>
@@ -76,18 +65,6 @@
     <div class="card card-longhand-right">
       <h3>border-right-width: 6px</h3>
       <p>CSS longhand right.</p>
-    </div>
-    <div class="card card-logical-start">
-      <h3>border-inline-start: 4px solid</h3>
-      <p>CSS logical start.</p>
-    </div>
-    <div class="card card-logical-end">
-      <h3>border-inline-end: 3px solid</h3>
-      <p>CSS logical end.</p>
-    </div>
-    <div class="card card-logical-start-width">
-      <h3>border-inline-start-width: 5px</h3>
-      <p>CSS logical longhand.</p>
     </div>
   </div>
 

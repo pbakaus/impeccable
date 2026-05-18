@@ -15,16 +15,10 @@ const FIXTURES_DIR = path.join(ROOT, 'tests', 'fixtures', 'antipatterns');
 
 const FIXTURES = [
   {
-    file: 'should-flag.html',
-    group: 'Baseline',
-    title: 'Should flag',
-    summary: 'The compact positive sanity check for core deterministic rules.',
-  },
-  {
-    file: 'should-pass.html',
-    group: 'Baseline',
-    title: 'Should pass',
-    summary: 'A clean baseline for obvious false positives.',
+    file: 'border-baseline.html',
+    group: 'Borders',
+    title: 'Border side tabs',
+    summary: 'Side-by-side positive and negative cases for colored side borders and rounded accent borders.',
   },
   {
     file: 'partial-component.html',
@@ -40,7 +34,7 @@ const FIXTURES = [
   },
   {
     file: 'modern-color-borders.html',
-    group: 'Static CSS',
+    group: 'Borders',
     title: 'Modern color borders',
     summary: 'OKLCH, LAB, LCH, HSL, HWB, and custom-property border cases.',
   },
@@ -58,15 +52,21 @@ const FIXTURES = [
   },
   {
     file: 'legitimate-borders.html',
-    group: 'Color',
+    group: 'Borders',
     title: 'Legitimate borders',
     summary: 'Border patterns that should pass despite being visually close to side tabs.',
+  },
+  {
+    file: 'typography.html',
+    group: 'Typography',
+    title: 'Typography side by side',
+    summary: 'Human-readable flag/pass comparison for page-level typography signals.',
   },
   {
     file: 'typography-should-flag.html',
     group: 'Typography',
     title: 'Typography flags',
-    summary: 'Overused fonts, single-font pages, and flat type hierarchy.',
+    summary: 'Isolated page-level fixture for overused fonts, single-font pages, and flat type hierarchy.',
   },
   {
     file: 'typography-should-pass.html',

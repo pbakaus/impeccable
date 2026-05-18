@@ -17,14 +17,16 @@
     .container-good { max-width: 720px; margin: 0 auto; padding: 16px 32px; }
     .container-tight { padding: 16px 32px; }
     .full-bleed-section { background: #fef3c7; padding: 24px 16px; }
-    nav.site-nav { padding: 12px 0; background: #f5f5f5; }
-    header.banner { padding: 12px 0; background: #e5e7eb; }
+    nav.site-nav { padding: 12px 24px; background: #f5f5f5; }
+    header.banner { padding: 12px 24px; background: #e5e7eb; }
 
     /* Override the grid container's own padding so we can demonstrate
        a paragraph that genuinely bleeds to the viewport edge inside
        the flag column — the col itself shouldn't reset its padding. */
     .flag-fullwidth-p { /* no container; placed directly in body via .escape */ }
     .escape { position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; width: 100vw; padding: 0; }
+    .edge-list { margin: 0; padding: 0; list-style-position: inside; }
+    .edge-list li { margin: 0; }
   </style>
 </head>
 <body>
@@ -41,7 +43,7 @@
     <p>This second flush-to-edge paragraph confirms the rule fires on every body paragraph that touches the viewport, not just one. The rendered width should be the full viewport, with text starting essentially at x=0.</p>
   </div>
   <div class="escape">
-    <ul>
+    <ul class="edge-list">
       <li>This is a list item whose text content is substantially long enough to qualify as body content. It also runs flush against the viewport edge with no left padding.</li>
     </ul>
   </div>

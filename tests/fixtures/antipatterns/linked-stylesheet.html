@@ -6,11 +6,58 @@
   <title>Anti-Patterns From Linked Stylesheet</title>
   <link rel="stylesheet" href="external-styles.css">
   <style>
-    body { font-family: system-ui, sans-serif; background: #f9fafb; padding: 2rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-    h2 { font-size: 1.125rem; margin: 2rem 0 0.75rem; color: #6b7280; }
-    p.intro { color: #6b7280; margin-bottom: 2rem; max-width: 36rem; }
-    .cards { display: grid; gap: 1rem; max-width: 28rem; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f9fafb;
+      color: #111827;
+      font: 14px/1.5 system-ui, sans-serif;
+    }
+
+    h1 {
+      max-width: 1080px;
+      margin: 0 auto 8px;
+      font-size: 34px;
+      line-height: 1.05;
+    }
+
+    p.intro {
+      max-width: 1080px;
+      margin: 0 auto 24px;
+      color: #4b5563;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 32px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    .col h2 {
+      margin: 0 0 14px;
+      color: #475569;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .cards {
+      display: grid;
+      gap: 14px;
+    }
+
+    h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .cards p {
+      margin: 0;
+      color: #4b5563;
+    }
   </style>
 </head>
 <body>
@@ -20,28 +67,41 @@
     Regex-only scanning misses these — only computed style analysis catches them.
   </p>
 
-  <h2>Side-Tab (from external CSS)</h2>
-  <div class="cards">
-    <div class="external-side-tab">
-      <h3 style="font-weight: 600;">External side-tab class</h3>
-      <p style="font-size: 0.875rem; color: #6b7280;">border-left + border-radius from linked stylesheet.</p>
-    </div>
-  </div>
+  <div class="grid">
+    <section class="col" data-col="flag">
+      <h2>Should flag</h2>
+      <div class="cards">
+        <div class="external-side-tab">
+          <h3>External side-tab class</h3>
+          <p>border-left plus border-radius from a linked stylesheet.</p>
+        </div>
 
-  <h2>Top Accent + Rounded (from external CSS)</h2>
-  <div class="cards">
-    <div class="external-top-accent">
-      <h3 style="font-weight: 600;">External top accent class</h3>
-      <p style="font-size: 0.875rem; color: #6b7280;">border-top + border-radius from linked stylesheet.</p>
-    </div>
-  </div>
+        <div class="external-top-accent">
+          <h3>External top accent class</h3>
+          <p>border-top plus border-radius from a linked stylesheet.</p>
+        </div>
+      </div>
+    </section>
 
-  <h2>Clean Card (from external CSS)</h2>
-  <div class="cards">
-    <div class="external-clean">
-      <h3 style="font-weight: 600;">External clean card</h3>
-      <p style="font-size: 0.875rem; color: #6b7280;">Uniform 1px border — should NOT flag.</p>
-    </div>
+    <section class="col" data-col="pass">
+      <h2>Should pass</h2>
+      <div class="cards">
+        <div class="external-clean">
+          <h3>External clean card</h3>
+          <p>Uniform 1px border from the linked stylesheet.</p>
+        </div>
+
+        <div class="external-neutral-side">
+          <h3>External neutral side rule</h3>
+          <p>Thick side border, but the color is structural gray.</p>
+        </div>
+
+        <div class="external-square-top">
+          <h3>External square top rule</h3>
+          <p>Heavy top border with no rounded card corners.</p>
+        </div>
+      </div>
+    </section>
   </div>
 <script src="/js/detect-antipatterns-browser.js"></script>
 </body>

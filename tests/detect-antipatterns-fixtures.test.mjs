@@ -27,11 +27,32 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(f.filter(r => r.antipattern === 'side-tab' || r.antipattern === 'border-accent-on-rounded').length, 0);
   });
 
+  it('border-baseline: paired side-tab fixture flags only the positive column', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'border-baseline.html'));
+    const sideTabs = f.filter(r => r.antipattern === 'side-tab');
+    const accents = f.filter(r => r.antipattern === 'border-accent-on-rounded');
+    assert.equal(
+      sideTabs.length,
+      4,
+      `expected 4 side-tab findings, got ${sideTabs.length}: ${sideTabs.map(r => r.snippet).join('; ')}`
+    );
+    assert.equal(
+      accents.length,
+      2,
+      `expected 2 rounded accent findings, got ${accents.length}: ${accents.map(r => r.snippet).join('; ')}`
+    );
+  });
+
   it('linked-stylesheet: catches borders, no false positives', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'linked-stylesheet.html'));
     assert.ok(f.some(r => r.antipattern === 'side-tab'));
     assert.ok(f.some(r => r.antipattern === 'border-accent-on-rounded'));
     assert.equal(f.filter(r => r.snippet?.includes('clean')).length, 0);
+    assert.equal(
+      f.filter(r => r.antipattern !== 'side-tab' && r.antipattern !== 'border-accent-on-rounded').length,
+      0,
+      `expected only border findings, got: ${f.map(r => `${r.antipattern}:${r.snippet}`).join('; ')}`
+    );
   });
 
   it('partial-component: flags borders, skips page-level', async () => {
@@ -48,6 +69,11 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.ok(f.some(r => r.antipattern === 'low-contrast'), 'expected low-contrast');
     assert.ok(f.some(r => r.antipattern === 'gradient-text'), 'expected gradient-text');
     assert.ok(f.some(r => r.antipattern === 'ai-color-palette'), 'expected ai-color-palette');
+    assert.equal(
+      f.some(r => r.antipattern === 'pure-black-white' && /#ffffff|#fff/i.test(r.snippet || '')),
+      false,
+      'pure white surfaces with dark text should remain allowed',
+    );
     // Gradient-bg + gray text case (added with the gradient-fix patch)
     assert.ok(
       f.some(r => r.antipattern === 'low-contrast' && /#808080|#3b82f6|#8b5cf6/i.test(r.snippet || '')),
@@ -163,10 +189,9 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     );
   });
 
-  it('legitimate-borders: minimal false positives', async () => {
+  it('legitimate-borders: zero findings', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'legitimate-borders.html'));
-    const borderFindings = f.filter(r => r.antipattern === 'side-tab' || r.antipattern === 'border-accent-on-rounded');
-    assert.ok(borderFindings.length <= 1);
+    assert.equal(f.length, 0, `expected no findings, got: ${f.map(r => `${r.antipattern}:${r.snippet}`).join('; ')}`);
   });
 
   it('modern-color-borders: oklch/oklab/lch/lab side-tabs are flagged, neutrals pass', async () => {
@@ -217,6 +242,11 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.ok(f.some(r => r.antipattern === 'overused-font'));
     assert.ok(f.some(r => r.antipattern === 'single-font'));
     assert.ok(f.some(r => r.antipattern === 'flat-type-hierarchy'));
+    assert.equal(
+      f.some(r => r.antipattern === 'low-contrast'),
+      false,
+      `typography fixture should not contain incidental contrast findings: ${f.map(r => `${r.antipattern}:${r.snippet}`).join('; ')}`
+    );
   });
 
   it('typography-should-pass: zero findings', async () => {
