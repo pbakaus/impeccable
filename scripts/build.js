@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
+import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
 /**
@@ -48,14 +49,8 @@ function generateCounts(rootDir, skills, buildDir) {
     commandCount = activeCommands.length;
   }
 
-  // Count detection rules from impeccable package
-  const detectPkgPath = path.join(rootDir, 'cli/engine/detect-antipatterns.mjs');
-  const detectorSrc = fs.readFileSync(detectPkgPath, 'utf-8');
-  const ruleIds = new Set();
-  for (const match of detectorSrc.matchAll(/^\s+id: '([^']+)'/gm)) {
-    ruleIds.add(match[1]);
-  }
-  const detectionCount = ruleIds.size;
+  // Count detection rules from the detector registry.
+  const detectionCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
 
   // Write generated counts module
   const genDir = path.join(rootDir, 'site/public/js/generated');

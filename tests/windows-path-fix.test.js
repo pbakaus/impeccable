@@ -51,10 +51,10 @@ describe('Windows path doubling fix (#95)', () => {
     expect(thisFile).toContain('windows-path-fix.test');
   });
 
-  test('source file no longer uses raw .pathname for path construction', () => {
+  test('URL detector source no longer uses raw .pathname for path construction', () => {
     const fs = require('fs');
     const src = fs.readFileSync(
-      path.join(__dirname, '..', 'cli', 'engine', 'detect-antipatterns.mjs'),
+      path.join(__dirname, '..', 'cli', 'engine', 'engines', 'browser', 'detect-url.mjs'),
       'utf-8'
     );
 

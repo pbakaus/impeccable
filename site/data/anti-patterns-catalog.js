@@ -1,8 +1,8 @@
 /**
  * Manual metadata for the /anti-patterns page.
  *
- * The detection rules themselves live in cli/engine/detect-antipatterns.mjs and
- * are parsed at build time. This file adds three pieces of content that
+ * The detection rules themselves live in cli/engine/registry/antipatterns.mjs.
+ * This file adds three pieces of content that
  * can't be automated:
  *
  *  1. DETECTION_LAYERS: which layer (cli, browser, or llm) catches the

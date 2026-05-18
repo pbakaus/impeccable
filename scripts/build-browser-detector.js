@@ -2,7 +2,7 @@
 
 /**
  * Generates cli/engine/detect-antipatterns-browser.js
- * by stripping Node-specific sections from the universal source and wrapping in an IIFE.
+ * by concatenating the browser-safe detector modules and wrapping them in an IIFE.
  *
  * Run: node scripts/build-browser-detector.js
  */
@@ -14,25 +14,31 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-const SOURCE = path.join(ROOT, 'cli/engine/detect-antipatterns.mjs');
+const MODULES = [
+  'cli/engine/shared/constants.mjs',
+  'cli/engine/registry/antipatterns.mjs',
+  'cli/engine/shared/color.mjs',
+  'cli/engine/rules/checks.mjs',
+  'cli/engine/browser/injected/index.mjs',
+];
 const OUTPUT = path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js');
 const SITE_OUTPUT = path.join(ROOT, 'site/public/js/detect-antipatterns-browser.js');
 
-let code = fs.readFileSync(SOURCE, 'utf-8');
+function browserSafeModule(relPath) {
+  let code = fs.readFileSync(path.join(ROOT, relPath), 'utf-8');
+  code = code.replace(/^import[\s\S]*?;\n/gm, '');
+  code = code.replace(/^export\s+\{[\s\S]*?^};\n?/gm, '');
+  return `// --- ${relPath} ---\n${code.trim()}\n`;
+}
 
-// Strip shebang
-code = code.replace(/^#!.*\n/, '');
-// Strip sections between @browser-strip-start / @browser-strip-end markers
-code = code.replace(/^\/\/ @browser-strip-start\n[\s\S]*?^\/\/ @browser-strip-end\n?/gm, '');
-// Set IS_BROWSER = true (dead-code eliminates Node paths)
-code = code.replace(/^const IS_BROWSER = .*$/m, 'const IS_BROWSER = true;');
+const code = MODULES.map(browserSafeModule).join('\n');
 
 const output = `/**
  * Anti-Pattern Browser Detector for Impeccable
  * Copyright (c) 2026 Paul Bakaus
  * SPDX-License-Identifier: Apache-2.0
  *
- * GENERATED -- do not edit. Source: detect-antipatterns.mjs
+ * GENERATED -- do not edit. Source: cli/engine/browser/injected/index.mjs
  * Rebuild: node scripts/build-browser-detector.js
  *
  * Usage: <script src="detect-antipatterns-browser.js"></script>

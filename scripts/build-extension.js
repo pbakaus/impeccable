@@ -13,32 +13,39 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const EXT_DIR = path.join(ROOT, 'extension');
 
-const SOURCE = path.join(ROOT, 'cli/engine/detect-antipatterns.mjs');
+const BROWSER_MODULES = [
+  'cli/engine/shared/constants.mjs',
+  'cli/engine/registry/antipatterns.mjs',
+  'cli/engine/shared/color.mjs',
+  'cli/engine/rules/checks.mjs',
+  'cli/engine/browser/injected/index.mjs',
+];
 const DETECTOR_OUTPUT = path.join(EXT_DIR, 'detector/detect.js');
 const AP_OUTPUT = path.join(EXT_DIR, 'detector/antipatterns.json');
 
-let code = fs.readFileSync(SOURCE, 'utf-8');
+function browserSafeModule(relPath) {
+  let code = fs.readFileSync(path.join(ROOT, relPath), 'utf-8');
+  code = code.replace(/^import[\s\S]*?;\n/gm, '');
+  code = code.replace(/^export\s+\{[\s\S]*?^};\n?/gm, '');
+  return `// --- ${relPath} ---\n${code.trim()}\n`;
+}
+
+const code = BROWSER_MODULES.map(browserSafeModule).join('\n');
 
 // --- 1. Build detector ---
-
-// Strip shebang
-code = code.replace(/^#!.*\n/, '');
-// Strip sections between @browser-strip-start / @browser-strip-end markers
-code = code.replace(/^\/\/ @browser-strip-start\n[\s\S]*?^\/\/ @browser-strip-end\n?/gm, '');
-// Set IS_BROWSER = true (dead-code eliminates Node paths)
-code = code.replace(/^const IS_BROWSER = .*$/m, 'const IS_BROWSER = true;');
 
 const output = `/**
  * Anti-Pattern Browser Detector for Impeccable (Extension Variant)
  * Copyright (c) 2026 Paul Bakaus
  * SPDX-License-Identifier: Apache-2.0
  *
- * GENERATED -- do not edit. Source: detect-antipatterns.mjs
+ * GENERATED -- do not edit. Source: cli/engine/browser/injected/index.mjs
  * Rebuild: node scripts/build-extension.js
  */
 (function () {
@@ -53,22 +60,16 @@ console.log(`Generated ${path.relative(ROOT, DETECTOR_OUTPUT)} (${(output.length
 
 // --- 2. Extract antipatterns.json ---
 
-const rawSource = fs.readFileSync(SOURCE, 'utf-8');
-const apMatch = rawSource.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
-if (apMatch) {
-  // Convert JS object literals to JSON. Include description so the
-  // devtools panel can show the full rule explanation in tooltips —
-  // previously this dropped description and the panel had nothing to display.
-  const antipatterns = new Function(`return [${apMatch[1]}]`)();
-  const apJson = antipatterns.map(({ id, name, category, description }) => ({
-    id,
-    name,
-    category: category || 'quality',
-    description: description || '',
-  }));
-  fs.writeFileSync(AP_OUTPUT, JSON.stringify(apJson, null, 2) + '\n');
-  console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${antipatterns.length} rules)`);
-}
+// Include description so the devtools panel can show the full rule explanation
+// in tooltips.
+const apJson = ANTIPATTERNS.map(({ id, name, category, description }) => ({
+  id,
+  name,
+  category: category || 'quality',
+  description: description || '',
+}));
+fs.writeFileSync(AP_OUTPUT, JSON.stringify(apJson, null, 2) + '\n');
+console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${ANTIPATTERNS.length} rules)`);
 
 // --- 3. Zip packaging ---
 

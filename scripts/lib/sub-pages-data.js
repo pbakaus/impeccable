@@ -5,7 +5,7 @@
  * Single source of truth:
  * - skill/SKILL.md                       → skill frontmatter + body
  * - skill/reference/*.md                  → skill reference files
- * - cli/engine/detect-antipatterns.mjs           → ANTIPATTERNS array (parsed)
+ * - cli/engine/registry/antipatterns.mjs         → ANTIPATTERNS registry
  * - site/content/skills/{id}.md           → optional editorial wrapper
  * - site/content/tutorials/{slug}.md       → full tutorial content
  */
@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readSourceFiles, parseFrontmatter, replacePlaceholders } from './utils.js';
+import { ANTIPATTERNS } from '../../cli/engine/registry/antipatterns.mjs';
 import {
   DETECTION_LAYERS,
   VISUAL_EXAMPLES,
@@ -137,19 +138,11 @@ export const COMMAND_RELATIONSHIPS = {
 };
 
 /**
- * Parse the ANTIPATTERNS array out of cli/engine/detect-antipatterns.mjs.
- * Mirrors the trick in scripts/build.js validateAntipatternRules() so we
- * don't have to run the browser-only module.
+ * Read the detector rule registry.
  */
 export function readAntipatternRules(rootDir) {
-  const detectPath = path.join(rootDir, 'cli/engine/detect-antipatterns.mjs');
-  const src = fs.readFileSync(detectPath, 'utf-8');
-  const match = src.match(/const ANTIPATTERNS = \[([\s\S]*?)\n\];/);
-  if (!match) {
-    throw new Error(`Could not extract ANTIPATTERNS from ${detectPath}`);
-  }
-  // eslint-disable-next-line no-new-func
-  return new Function(`return [${match[1]}]`)();
+  void rootDir;
+  return ANTIPATTERNS.slice();
 }
 
 /**

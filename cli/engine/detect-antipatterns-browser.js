@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Paul Bakaus
  * SPDX-License-Identifier: Apache-2.0
  *
- * GENERATED -- do not edit. Source: detect-antipatterns.mjs
+ * GENERATED -- do not edit. Source: cli/engine/browser/injected/index.mjs
  * Rebuild: node scripts/build-browser-detector.js
  *
  * Usage: <script src="detect-antipatterns-browser.js"></script>
@@ -11,35 +11,7 @@
  */
 (function () {
 if (typeof window === 'undefined') return;
-
-/**
- * Anti-Pattern Detector for Impeccable
- * Copyright (c) 2026 Paul Bakaus
- * SPDX-License-Identifier: Apache-2.0
- *
- * Universal file — auto-detects environment (browser vs Node) and adapts.
- *
- * Node usage:
- *   node detect-antipatterns.mjs [file-or-dir...]   # static HTML/CSS for HTML, regex for rest
- *   node detect-antipatterns.mjs https://...         # Puppeteer (auto)
- *   node detect-antipatterns.mjs --fast [files...]   # regex-only (skip static HTML/CSS)
- *   node detect-antipatterns.mjs --json              # JSON output
- *
- * Browser usage:
- *   <script src="detect-antipatterns-browser.js"></script>
- *   Re-scan: window.impeccableScan()
- *   Await visual contrast: window.impeccableScanAsync({ visualContrast: true })
- *   Include offscreen visual sampling: window.impeccableScanAsync({ visualContrast: true, visualContrastScrollOffscreen: true })
- *
- * Exit codes: 0 = clean, 2 = findings
- */
-
-// ─── Environment ────────────────────────────────────────────────────────────
-
-const IS_BROWSER = true;
-const IS_NODE = !IS_BROWSER;
-
-
+// --- cli/engine/shared/constants.mjs ---
 // ─── Section 1: Constants ───────────────────────────────────────────────────
 
 const SAFE_TAGS = new Set([
@@ -122,6 +94,7 @@ const KNOWN_SERIF_FONTS = new Set([
   'freight display', 'freight text',
 ]);
 
+// --- cli/engine/registry/antipatterns.mjs ---
 const ANTIPATTERNS = [
   // ── AI slop: tells that something was AI-generated ──
   {
@@ -374,6 +347,26 @@ const ANTIPATTERNS = [
   },
 ];
 
+const RULE_ENGINE_SUPPORT = {
+  regex: new Set(['source', 'page-analyzer']),
+  'static-html': new Set(['element', 'page']),
+  browser: new Set(['element', 'page', 'layout']),
+  visual: new Set(['visual-contrast']),
+};
+
+function getAntipattern(id) {
+  return ANTIPATTERNS.find(rule => rule.id === id);
+}
+
+function getRulesForCategory(category) {
+  return ANTIPATTERNS.filter(rule => rule.category === category);
+}
+
+function getRuleEngineSupport(engine) {
+  return RULE_ENGINE_SUPPORT[engine] || new Set();
+}
+
+// --- cli/engine/shared/color.mjs ---
 // ─── Section 2: Color Utilities ─────────────────────────────────────────────
 
 function isNeutralColor(color) {
@@ -488,6 +481,9 @@ function colorToHex(c) {
   return '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
+// --- cli/engine/rules/checks.mjs ---
+const DETECTOR_IS_BROWSER = typeof window !== 'undefined';
+
 // ─── Section 3: Pure Detection ──────────────────────────────────────────────
 
 function checkBorders(tag, widths, colors, radius) {
@@ -582,7 +578,7 @@ function checkColors(opts) {
         // local bg. Real low-contrast bugs use alpha=1 and have a
         // resolvable opaque ancestor; semi-transparent Tailwind tokens
         // like `text-paper/60` on `bg-ink` sections are the FP pattern.
-        const isAlphaFallbackFP = !IS_BROWSER && !effectiveBg && (textColor.a != null && textColor.a < 1);
+        const isAlphaFallbackFP = !DETECTOR_IS_BROWSER && !effectiveBg && (textColor.a != null && textColor.a < 1);
         if (!isAlphaFallbackFP) {
           findings.push({ id: 'low-contrast', snippet: `${ratio.toFixed(1)}:1 (need ${threshold}:1) — text ${colorToHex(textColor)} on ${colorToHex(bgs[worstIdx])}` });
         }
@@ -1060,7 +1056,7 @@ function checkHtmlPatterns(html) {
 // a no-op there.
 function readOwnBackgroundColor(el, computedStyle) {
   const bg = parseRgb(computedStyle.backgroundColor);
-  if (IS_BROWSER || (bg && bg.a >= 0.1)) return bg;
+  if (DETECTOR_IS_BROWSER || (bg && bg.a >= 0.1)) return bg;
   const rawStyle = el.getAttribute?.('style') || '';
   const bgMatch = rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i);
   const inlineBg = bgMatch ? bgMatch[1].trim() : '';
@@ -1082,7 +1078,7 @@ function readOwnBackgroundColor(el, computedStyle) {
 function resolveBackground(el, win, customPropMap) {
   let current = el;
   while (current && current.nodeType === 1) {
-    const style = IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
+    const style = DETECTOR_IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
     const bgImage = style.backgroundImage || '';
     const hasGradientOrUrl = bgImage && bgImage !== 'none' && (/gradient/i.test(bgImage) || /url\s*\(/i.test(bgImage));
 
@@ -1094,7 +1090,7 @@ function resolveBackground(el, win, customPropMap) {
     // caused massive false-positive contrast findings on grain-textured
     // body backgrounds.
     let bg = parseRgb(style.backgroundColor);
-    if (!IS_BROWSER && (!bg || bg.a < 0.1)) {
+    if (!DETECTOR_IS_BROWSER && (!bg || bg.a < 0.1)) {
       // jsdom returns literal "var(--X)" / "oklch(...)" strings. Resolve
       // through customPropMap so Tailwind v4 color tokens become RGB.
       if (customPropMap) {
@@ -1113,7 +1109,7 @@ function resolveBackground(el, win, customPropMap) {
     }
 
     if (bg && bg.a > 0.1) {
-      if (IS_BROWSER || bg.a >= 0.5) return bg;
+      if (DETECTOR_IS_BROWSER || bg.a >= 0.5) return bg;
     }
     // No solid bg-color at this level. If THIS level has a gradient/url
     // with no underlying solid color we can read:
@@ -1144,13 +1140,13 @@ function resolveBackground(el, win, customPropMap) {
 function resolveGradientStops(el, win) {
   let current = el;
   while (current && current.nodeType === 1) {
-    const style = IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
+    const style = DETECTOR_IS_BROWSER ? getComputedStyle(current) : win.getComputedStyle(current);
     const bgImage = style.backgroundImage || '';
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
       const stops = parseGradientColors(bgImage);
       if (stops.length > 0) return stops;
     }
-    if (!IS_BROWSER) {
+    if (!DETECTOR_IS_BROWSER) {
       // jsdom doesn't decompose `background:` shorthand — peek at the raw inline style
       const rawStyle = current.getAttribute?.('style') || '';
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
@@ -2355,6 +2351,9 @@ function checkPageLayout(doc, win) {
 
   return findings;
 }
+
+// --- cli/engine/browser/injected/index.mjs ---
+const IS_BROWSER = typeof window !== 'undefined';
 
 // ─── Section 7: Browser UI (IS_BROWSER only) ────────────────────────────────
 
@@ -4032,9 +4031,5 @@ if (IS_BROWSER) {
   window.impeccableAnalyzeVisualContrast = analyzeVisualContrast;
   window.impeccableGetLastVisualContrastAnalyses = () => lastVisualContrastAnalyses.slice();
 }
-
-// ─── Section 8: Node Engine ─────────────────────────────────────────────────
-
-// ─── Section 9: Exports ─────────────────────────────────────────────────────
 
 })();
