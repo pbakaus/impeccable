@@ -1972,25 +1972,70 @@
     }
   }
 
-  // Pending-edits pill + trash icon — updated on Save, resumeSession, and discard.
+  function schedulePendingDockPosition() {
+    if (!pendingDockEl || !globalBarEl) return;
+    requestAnimationFrame(positionPendingDock);
+  }
+
+  function positionPendingDock() {
+    if (!pendingDockEl || !globalBarEl) return;
+    const rect = globalBarEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pendingDockEl.style.left = Math.round(rect.left - 8) + 'px';
+    pendingDockEl.style.top = Math.round(rect.top + rect.height / 2) + 'px';
+  }
+
+  function playPendingIntroAnimation() {
+    if (!pendingPillEl || !pendingPillEl.animate || (matchMedia?.('(prefers-reduced-motion: reduce)').matches)) return;
+    if (pendingIntroAnimation) pendingIntroAnimation.cancel();
+    pendingIntroAnimation = pendingPillEl.animate([
+      {
+        opacity: 0,
+        transform: 'scale(0.82)',
+        filter: 'brightness(1.2)',
+        boxShadow: '0 0 0 0 oklch(60% 0.25 350 / 0.55), 0 8px 24px oklch(0% 0 0 / 0.16)',
+      },
+      {
+        opacity: 1,
+        transform: 'scale(1.08)',
+        filter: 'brightness(1.15)',
+        boxShadow: '0 0 0 12px oklch(60% 0.25 350 / 0), 0 12px 34px oklch(0% 0 0 / 0.22)',
+        offset: 0.55,
+      },
+      {
+        opacity: 1,
+        transform: 'scale(1)',
+        filter: 'none',
+        boxShadow: '0 4px 16px oklch(0% 0 0 / 0.16), 0 1px 3px oklch(0% 0 0 / 0.1)',
+      },
+    ], { duration: 620, easing: EASE });
+    pendingIntroAnimation.addEventListener('finish', () => { pendingIntroAnimation = null; }, { once: true });
+  }
+
+  // Pending-edits apply pill + trash icon — updated on Save, resumeSession, and discard.
   function updatePendingCounter(currentPageCount) {
-    if (!pendingPillEl || !pendingTrashBtn) return;
+    if (!pendingDockEl || !pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
+    const previousCount = parseInt(pendingPillEl.dataset.count || '0', 10);
     if (!currentPageCount || currentPageCount <= 0) {
-      pendingPillEl.style.display = 'none';
-      pendingTrashBtn.style.display = 'none';
+      pendingDockEl.style.display = 'none';
       pendingPillEl.dataset.count = '0';
       return;
     }
-    pendingPillEl.textContent = 'Apply ' + currentPageCount + ' staged';
+    pendingPillLabelEl.textContent = currentPageCount === 1 ? 'Apply copy edit' : 'Apply copy edits';
+    pendingPillCountEl.textContent = String(currentPageCount);
+    pendingPillEl.setAttribute('aria-label', 'Apply ' + currentPageCount + ' copy edit' + (currentPageCount === 1 ? '' : 's') + ' to source');
     pendingPillEl.style.display = 'inline-flex';
     pendingTrashBtn.style.display = 'inline-flex';
+    pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
+    schedulePendingDockPosition();
+    if (previousCount <= 0) playPendingIntroAnimation();
   }
 
   function maybeShowFirstSaveToast() {
     if (!firstSaveOfSession) return;
     firstSaveOfSession = false;
-    showToast('Saved. Click the "staged" badge to apply, or ask the AI.', 4500);
+    showToast('Saved. Click "Apply copy edits" to write changes, or ask the AI.', 4500);
   }
 
   async function fetchPendingCount() {
@@ -2010,7 +2055,7 @@
   async function onPendingPillClick() {
     const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
     if (count <= 0) return;
-    const ok = confirm('Apply ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
+    const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
     if (!ok) return;
     try {
       const res = await fetch(
@@ -2025,7 +2070,7 @@
       const remaining = (result.perPage && result.perPage[location.pathname]) || 0;
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
-        console.warn('[impeccable] some staged edits failed:', result.failed);
+        console.warn('[impeccable] some copy edits failed:', result.failed);
         showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed — see console', 5000);
       } else {
         const n = result.applied?.length || count;
@@ -2040,7 +2085,7 @@
   async function onPendingTrashClick() {
     const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
     if (count <= 0) return;
-    const ok = confirm('Discard ' + count + ' staged edit' + (count === 1 ? '' : 's') + ' on this page?');
+    const ok = confirm('Discard ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' on this page?');
     if (!ok) return;
     try {
       const res = await fetch(
@@ -2049,7 +2094,7 @@
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
       updatePendingCounter(0);
-      showToast('Discarded ' + count + ' staged edit' + (count === 1 ? '' : 's'), 2500);
+      showToast('Discarded ' + count + ' copy edit' + (count === 1 ? '' : 's'), 2500);
     } catch (err) {
       console.error('[impeccable] discard failed:', err);
       showToast('Discard failed — see console', 4000);
@@ -3823,8 +3868,13 @@ void main() {
   let pickActive = true;
   let detectCount = 0;
   let detectScriptLoaded = false;
+  let pendingDockEl = null;
   let pendingPillEl = null;
+  let pendingPillLabelEl = null;
+  let pendingPillCountEl = null;
   let pendingTrashBtn = null;
+  let pendingDockResizeObserver = null;
+  let pendingIntroAnimation = null;
   let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's
@@ -3920,7 +3970,12 @@ void main() {
       s.id = PREFIX + '-bar-focus-style';
       s.textContent =
         '#' + PREFIX + '-global-bar button:focus { outline: none; }' +
+        '#' + PREFIX + '-pending-dock button:focus { outline: none; }' +
         '#' + PREFIX + '-global-bar button:focus-visible {' +
+        '  outline: none;' +
+        '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
+        '}' +
+        '#' + PREFIX + '-pending-dock button:focus-visible {' +
         '  outline: none;' +
         '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
         '}';
@@ -4058,48 +4113,132 @@ void main() {
     });
     inner.appendChild(designBtn);
 
-    // Pending manual edits pill + trash icon. Shown when current-page count > 0.
-    // Sits next to Exit so it lives in the lifecycle/affordance cluster.
+    // Pending manual edits live outside the bar so applying staged copy edits
+    // reads as a distinct next step instead of another chrome toggle.
+    pendingDockEl = el('div', {
+      position: 'fixed',
+      left: '0',
+      top: '0',
+      transform: 'translate(-100%, -50%)',
+      zIndex: String(Z.bar + 6),
+      display: 'none',
+      alignItems: 'center',
+      gap: '6px',
+      fontFamily: FONT,
+      pointerEvents: 'auto',
+    });
+    pendingDockEl.id = PREFIX + '-pending-dock';
+
     pendingPillEl = el('button', {
       display: 'none',
       alignItems: 'center',
-      gap: '4px',
+      gap: '8px',
       fontFamily: FONT,
-      fontSize: '0.625rem',
+      fontSize: '12px',
       fontWeight: '600',
-      letterSpacing: '0.06em',
-      color: 'oklch(60% 0.25 350)',
-      background: 'oklch(98% 0 0)',
-      padding: '2px 8px',
-      border: '1px solid oklch(60% 0.25 350)',
+      letterSpacing: '0',
+      color: P.mark,
+      background: P.accent,
+      padding: '7px 12px 7px 14px',
+      border: 'none',
       borderRadius: '999px',
       whiteSpace: 'nowrap',
       cursor: 'pointer',
-      transition: 'background 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+      boxShadow: '0 4px 16px oklch(0% 0 0 / 0.16), 0 1px 3px oklch(0% 0 0 / 0.1)',
+      transition: 'filter 0.12s ease, transform 0.1s ease, box-shadow 0.18s ease',
     });
-    pendingPillEl.title = 'Click to apply staged edits to source';
-    pendingPillEl.addEventListener('mouseenter', () => { pendingPillEl.style.background = 'oklch(60% 0.25 350)'; pendingPillEl.style.color = 'oklch(98% 0 0)'; });
-    pendingPillEl.addEventListener('mouseleave', () => { pendingPillEl.style.background = 'oklch(98% 0 0)'; pendingPillEl.style.color = 'oklch(60% 0.25 350)'; });
+    pendingPillEl.title = 'Apply copy edits to source';
+    pendingPillLabelEl = el('span', { lineHeight: '1', whiteSpace: 'nowrap' });
+    pendingPillLabelEl.textContent = 'Apply copy edits';
+    pendingPillCountEl = el('span', {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: '17px',
+      height: '17px',
+      padding: '0 5px',
+      borderRadius: '999px',
+      background: theme === 'light' ? 'oklch(100% 0 0 / 0.28)' : 'oklch(0% 0 0 / 0.18)',
+      color: P.mark,
+      fontFamily: MONO,
+      fontSize: '10px',
+      fontWeight: '700',
+      lineHeight: '1',
+    });
+    pendingPillEl.appendChild(pendingPillLabelEl);
+    pendingPillEl.appendChild(pendingPillCountEl);
+    pendingPillEl.addEventListener('mouseenter', () => {
+      pendingPillEl.style.filter = 'brightness(1.1)';
+      pendingPillEl.style.boxShadow = '0 7px 22px oklch(0% 0 0 / 0.18), 0 2px 5px oklch(0% 0 0 / 0.12)';
+    });
+    pendingPillEl.addEventListener('mouseleave', () => {
+      pendingPillEl.style.filter = 'none';
+      pendingPillEl.style.transform = 'scale(1)';
+      pendingPillEl.style.boxShadow = '0 4px 16px oklch(0% 0 0 / 0.16), 0 1px 3px oklch(0% 0 0 / 0.1)';
+    });
+    pendingPillEl.addEventListener('mousedown', () => { pendingPillEl.style.transform = 'scale(0.97)'; });
+    pendingPillEl.addEventListener('mouseup', () => { pendingPillEl.style.transform = 'scale(1)'; });
     pendingPillEl.addEventListener('click', onPendingPillClick);
-    inner.appendChild(pendingPillEl);
 
     pendingTrashBtn = el('button', {
+      position: 'relative',
       display: 'none',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '0', boxSizing: 'border-box',
-      width: '20px', height: '20px', borderRadius: '6px',
-      border: 'none', background: 'transparent',
-      color: 'oklch(55% 0 0)',
+      width: '30px', height: '30px', borderRadius: '999px',
+      border: '1px solid ' + P.hairline,
+      background: P.surface,
+      color: P.textDim,
+      overflow: 'visible',
+      boxShadow: '0 4px 16px oklch(0% 0 0 / 0.12), 0 1px 3px oklch(0% 0 0 / 0.08)',
       cursor: 'pointer',
-      transition: 'color 0.12s ease, background 0.12s ease',
+      transition: 'color 0.12s ease, background 0.12s ease, box-shadow 0.18s ease',
     });
-    pendingTrashBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h8"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M4 4l.5 7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L10 4"/></svg>';
-    pendingTrashBtn.title = 'Discard pending edits on this page';
-    pendingTrashBtn.addEventListener('mouseenter', () => { pendingTrashBtn.style.color = 'oklch(60% 0.25 350)'; pendingTrashBtn.style.background = P.exitHover; });
-    pendingTrashBtn.addEventListener('mouseleave', () => { pendingTrashBtn.style.color = 'oklch(55% 0 0)'; pendingTrashBtn.style.background = 'transparent'; });
+    pendingTrashBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M3 4h8"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M4 4l.5 7a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1L10 4"/></svg>';
+    const pendingTrashTooltipEl = el('span', {
+      position: 'absolute',
+      bottom: 'calc(100% + 8px)',
+      left: '50%',
+      transform: 'translateX(-50%) translateY(4px)',
+      opacity: '0',
+      pointerEvents: 'none',
+      padding: '8px 16px',
+      borderRadius: '8px',
+      background: C.ink,
+      color: C.white,
+      fontFamily: FONT,
+      fontSize: '12px',
+      fontWeight: '400',
+      lineHeight: '1',
+      whiteSpace: 'nowrap',
+      textAlign: 'center',
+      transition: 'opacity 0.16s ease, transform 0.18s ' + EASE,
+    });
+    pendingTrashTooltipEl.textContent = 'Discard copy edits';
+    pendingTrashTooltipEl.setAttribute('role', 'tooltip');
+    pendingTrashBtn.appendChild(pendingTrashTooltipEl);
+    pendingTrashBtn.setAttribute('aria-label', 'Discard copy edits on this page');
+    const showTrashTooltip = () => {
+      pendingTrashBtn.style.color = P.accent;
+      pendingTrashBtn.style.boxShadow = '0 7px 22px oklch(0% 0 0 / 0.16), 0 2px 5px oklch(0% 0 0 / 0.1)';
+      pendingTrashTooltipEl.style.opacity = '1';
+      pendingTrashTooltipEl.style.transform = 'translateX(-50%) translateY(0)';
+    };
+    const hideTrashTooltip = () => {
+      pendingTrashBtn.style.color = P.textDim;
+      pendingTrashBtn.style.background = P.surface;
+      pendingTrashBtn.style.boxShadow = '0 4px 16px oklch(0% 0 0 / 0.12), 0 1px 3px oklch(0% 0 0 / 0.08)';
+      pendingTrashTooltipEl.style.opacity = '0';
+      pendingTrashTooltipEl.style.transform = 'translateX(-50%) translateY(4px)';
+    };
+    pendingTrashBtn.addEventListener('mouseenter', showTrashTooltip);
+    pendingTrashBtn.addEventListener('mouseleave', hideTrashTooltip);
+    pendingTrashBtn.addEventListener('focus', showTrashTooltip);
+    pendingTrashBtn.addEventListener('blur', hideTrashTooltip);
     pendingTrashBtn.addEventListener('click', onPendingTrashClick);
-    inner.appendChild(pendingTrashBtn);
+    pendingDockEl.appendChild(pendingPillEl);
+    pendingDockEl.appendChild(pendingTrashBtn);
 
     // Thin divider before the exit button
     const divider = el('span', {
@@ -4138,18 +4277,32 @@ void main() {
     const toggles = [pickBtn, detectBtn, designBtn];
     globalBarEl.addEventListener('mouseenter', () => {
       toggles.forEach((t) => t._expandLabel && t._expandLabel());
+      schedulePendingDockPosition();
+      setTimeout(schedulePendingDockPosition, 260);
     });
     globalBarEl.addEventListener('mouseleave', () => {
       toggles.forEach((t) => t._collapseLabel && t._collapseLabel());
+      schedulePendingDockPosition();
+      setTimeout(schedulePendingDockPosition, 260);
     });
 
+    document.body.appendChild(pendingDockEl);
     document.body.appendChild(globalBarEl);
+    defangOutsideHandlers(pendingDockEl);
     defangOutsideHandlers(globalBarEl);
+
+    if (window.ResizeObserver) {
+      pendingDockResizeObserver = new ResizeObserver(schedulePendingDockPosition);
+      pendingDockResizeObserver.observe(globalBarEl);
+    }
+    window.addEventListener('resize', positionPendingDock);
 
     requestAnimationFrame(() => {
       globalBarEl.style.opacity = '1';
       globalBarEl.style.transform = 'translateX(-50%) translateY(0)';
+      schedulePendingDockPosition();
     });
+    setTimeout(schedulePendingDockPosition, 320);
 
     // Listen for detection results AND ready signal
     window.addEventListener('message', onDetectMessage);
@@ -4192,6 +4345,7 @@ void main() {
     document.querySelectorAll('.impeccable-overlay').forEach(o => {
       o.style.pointerEvents = pickActive ? 'none' : '';
     });
+    schedulePendingDockPosition();
   }
 
   let detectReady = false; // true once detect script posts 'impeccable-ready'
@@ -4265,6 +4419,17 @@ void main() {
   function teardown() {
     cleanup();
     hideBar();
+    if (pendingDockResizeObserver) { pendingDockResizeObserver.disconnect(); pendingDockResizeObserver = null; }
+    window.removeEventListener('resize', positionPendingDock);
+    if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
+    if (pendingDockEl) {
+      pendingDockEl.remove();
+      pendingDockEl = null;
+      pendingPillEl = null;
+      pendingPillLabelEl = null;
+      pendingPillCountEl = null;
+      pendingTrashBtn = null;
+    }
     if (globalBarEl) {
       globalBarEl.style.transform = 'translateY(100%)';
       setTimeout(() => { if (globalBarEl) globalBarEl.remove(); globalBarEl = null; }, 300);
