@@ -2126,13 +2126,13 @@
       const disabled = mode === 'idle-disabled';
       editBadgeEl.innerHTML = '';
       const btn = document.createElement('button');
-      btn.textContent = 'Edit Copy';
+      btn.textContent = 'Edit copy';
       Object.assign(btn.style, calloutStyle(disabled ? ASH : ACCENT, disabled ? MIST : ACCENT));
       if (disabled) {
         btn.style.cursor = 'not-allowed';
         btn.style.opacity = '0.55';
         btn.disabled = true;
-        btn.title = 'Edit Copy is disabled while variants are generating';
+        btn.title = 'Edit copy is disabled while variants are generating';
       } else {
         btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
         btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
