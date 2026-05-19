@@ -819,6 +819,72 @@
     };
   }
 
+  const MANUAL_CONTEXT_SKIP = { script: 1, style: 1, template: 1, noscript: 1, svg: 1, code: 1, pre: 1 };
+
+  function contextElementForManualEdit(selectedEl, rows, ops) {
+    if (!selectedEl) return selectedEl;
+    const leafOnly =
+      rows && rows.length === 1 && rows[0] && rows[0].el === selectedEl;
+    if (!leafOnly) return selectedEl;
+
+    const editedTexts = new Set();
+    for (const row of rows || []) addManualContextText(editedTexts, row.text);
+    for (const op of ops || []) {
+      addManualContextText(editedTexts, op.originalText);
+      addManualContextText(editedTexts, op.newText);
+    }
+
+    let cur = selectedEl.parentElement;
+    let depth = 0;
+    while (cur && cur !== document.body && cur !== document.documentElement && depth < 4) {
+      if (own(cur)) break;
+      if (isUsefulManualEditContext(cur, selectedEl, editedTexts)) return cur;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return selectedEl;
+  }
+
+  function isUsefulManualEditContext(candidate, leafEl, editedTexts) {
+    if (!candidate || !candidate.contains(leafEl)) return false;
+    if (!candidate.id && candidate.classList.length === 0 && candidate.children.length < 2) return false;
+    return collectManualContextPieces(candidate, editedTexts).length > 0;
+  }
+
+  function collectManualContextPieces(rootEl, editedTexts) {
+    const pieces = [];
+    function walk(node) {
+      if (!node) return;
+      if (node.nodeType === 3) {
+        const text = normalizeManualContextText(node.nodeValue);
+        if (isMeaningfulManualContextPiece(text, editedTexts)) pieces.push(text);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const tag = node.tagName.toLowerCase();
+      if (MANUAL_CONTEXT_SKIP[tag]) return;
+      if (node !== rootEl && own(node)) return;
+      for (const child of node.childNodes) walk(child);
+    }
+    walk(rootEl);
+    return pieces.slice(0, 12);
+  }
+
+  function addManualContextText(set, value) {
+    const text = normalizeManualContextText(value);
+    if (text) set.add(text);
+  }
+
+  function isMeaningfulManualContextPiece(text, editedTexts) {
+    if (!text || text.length < 3 || text.length > 160) return false;
+    if (/^[\d.,+\-%\s]+$/.test(text)) return false;
+    return !editedTexts.has(text);
+  }
+
+  function normalizeManualContextText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
   // ---------------------------------------------------------------------------
   // The Bar — one floating element, three modes
   // ---------------------------------------------------------------------------
@@ -1866,6 +1932,7 @@
       }
     }
     if (ops.length === 0) { cancelEditing(); return; }
+    const contextElement = contextElementForManualEdit(selectedElement, inlineEditRows, ops);
     // Stash to server buffer. No source write, no HMR. The user later asks the
     // AI to commit, which runs live-commit-manual-edits.mjs.
     try {
@@ -1876,7 +1943,7 @@
           token: TOKEN,
           id: id8(),
           pageUrl: location.pathname,
-          element: extractContext(selectedElement),
+          element: extractContext(contextElement),
           ops,
         }),
       });

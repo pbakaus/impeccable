@@ -35,16 +35,30 @@ describe('collectEditableTextRows', () => {
     const root = setBody(dom, '<div>Hello</div>');
     const rows = collect(root);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].ref, 'div');
+    assert.equal(rows[0].ref, 'body>div:nth-of-type(1)');
     assert.equal(rows[0].text, 'Hello');
     assert.equal(rows[0].textNodes.length, 1);
+  });
+
+  it('selected text leaf uses a document path instead of bare tag', () => {
+    const { dom, collect } = loadCollector();
+    setBody(dom, '<div><span>Label</span><span>Count</span></div>');
+    const root = dom.window.document.querySelector('span');
+    const rows = collect(root);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].ref, 'body>div:nth-of-type(1)>span:nth-of-type(1)');
+    assert.equal(rows[0].text, 'Label');
   });
 
   it('two siblings of same tag get 1-indexed refs', () => {
     const { dom, collect } = loadCollector();
     const root = setBody(dom, '<div><p>A</p><p>B</p><h2>C</h2></div>');
     const rows = collect(root);
-    assert.deepEqual(rows.map((r) => r.ref), ['div>p.1', 'div>p.2', 'div>h2.1']);
+    assert.deepEqual(rows.map((r) => r.ref), [
+      'body>div:nth-of-type(1)>p:nth-of-type(1)',
+      'body>div:nth-of-type(1)>p:nth-of-type(2)',
+      'body>div:nth-of-type(1)>h2:nth-of-type(1)',
+    ]);
     assert.deepEqual(rows.map((r) => r.text), ['A', 'B', 'C']);
   });
 
@@ -53,7 +67,7 @@ describe('collectEditableTextRows', () => {
     const root = setBody(dom, '<p>Hello <em>world</em></p>');
     const rows = collect(root);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].ref, 'p>em.1');
+    assert.equal(rows[0].ref, 'body>p:nth-of-type(1)>em:nth-of-type(1)');
     assert.equal(rows[0].text, 'world');
   });
 
@@ -62,7 +76,7 @@ describe('collectEditableTextRows', () => {
     const root = setBody(dom, '<button><span>Save</span></button>');
     const rows = collect(root);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].ref, 'button>span.1');
+    assert.equal(rows[0].ref, 'body>button:nth-of-type(1)>span:nth-of-type(1)');
     assert.equal(rows[0].text, 'Save');
   });
 
@@ -85,17 +99,30 @@ describe('collectEditableTextRows', () => {
     const root = setBody(dom, '<div><p contenteditable="true">edit me</p><p>plain</p></div>');
     const rows = collect(root);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].ref, 'div>p.2');
+    assert.equal(rows[0].ref, 'body>div:nth-of-type(1)>p:nth-of-type(2)');
     assert.equal(rows[0].text, 'plain');
   });
 
-  it('deeply nested pure-text descendant emits with parent>tag.N', () => {
+  it('deeply nested pure-text descendant emits with a document path', () => {
     const { dom, collect } = loadCollector();
     const root = setBody(dom, '<section><article><p>copy</p></article></section>');
     const rows = collect(root);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].ref, 'article>p.1');
+    assert.equal(rows[0].ref, 'body>section:nth-of-type(1)>article:nth-of-type(1)>p:nth-of-type(1)');
     assert.equal(rows[0].text, 'copy');
+  });
+
+  it('repeated card leaves produce distinct document paths', () => {
+    const { dom, collect } = loadCollector();
+    const root = setBody(
+      dom,
+      '<main><div class="grid"><div class="card"><span class="label">A</span></div><div class="card"><span class="label">B</span></div></div></main>'
+    );
+    const rows = collect(root);
+    assert.deepEqual(rows.map((r) => r.ref), [
+      'body>main:nth-of-type(1)>div.grid:nth-of-type(1)>div.card:nth-of-type(1)>span.label:nth-of-type(1)',
+      'body>main:nth-of-type(1)>div.grid:nth-of-type(1)>div.card:nth-of-type(2)>span.label:nth-of-type(1)',
+    ]);
   });
 
   it('isOwn hook skips Impeccable chrome inside the subtree', () => {

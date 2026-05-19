@@ -44,7 +44,7 @@
       if (allText && hasNonWs) {
         rows.push({
           el: el,
-          ref: (el === rootEl) ? tag : refForDescendant(el),
+          ref: refForElement(el, rootEl),
           text: textNodes.map(function (n) { return n.nodeValue; }).join(''),
           textNodes: textNodes,
         });
@@ -56,19 +56,65 @@
       }
     }
 
-    function refForDescendant(el) {
-      var parent = el.parentElement;
+    function refForElement(el, rootEl) {
+      return documentRefPath(el) || el.tagName.toLowerCase();
+    }
+
+    function documentRefPath(el) {
+      var parts = [];
+      var cur = el;
+      while (cur && cur.nodeType === 1) {
+        var tag = cur.tagName.toLowerCase();
+        if (tag === 'html') break;
+        if (tag === 'body') {
+          parts.unshift('body');
+          break;
+        }
+        parts.unshift(refSegment(cur));
+        cur = cur.parentElement;
+      }
+      return parts.join('>');
+    }
+
+    function refSegment(el) {
       var tag = el.tagName.toLowerCase();
-      if (!parent) return tag;
+      return tag + stableIdSuffix(el) + stableClassSuffix(el) + ':nth-of-type(' + indexAmongSameTag(el) + ')';
+    }
+
+    function stableIdSuffix(el) {
+      if (!el.id) return '';
+      return '#' + normalizeRefToken(el.id);
+    }
+
+    function stableClassSuffix(el) {
+      if (!el.classList || el.classList.length === 0) return '';
+      var classes = [];
+      for (var i = 0; i < el.classList.length; i++) {
+        var cls = el.classList[i];
+        if (!cls || cls.indexOf('impeccable-') === 0) continue;
+        classes.push(normalizeRefToken(cls));
+        if (classes.length === 2) break;
+      }
+      return classes.length ? '.' + classes.join('.') : '';
+    }
+
+    function normalizeRefToken(value) {
+      return String(value || '').replace(/[>\s]+/g, '_');
+    }
+
+    function indexAmongSameTag(el) {
+      var parent = el.parentElement;
+      if (!parent) return 1;
+      var tag = el.tagName.toLowerCase();
       var n = 0;
       var sibs = parent.children;
       for (var i = 0; i < sibs.length; i++) {
         if (sibs[i].tagName.toLowerCase() === tag) {
           n++;
-          if (sibs[i] === el) break;
+          if (sibs[i] === el) return n;
         }
       }
-      return parent.tagName.toLowerCase() + '>' + tag + '.' + n;
+      return 1;
     }
 
     visit(rootEl);

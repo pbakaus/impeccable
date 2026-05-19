@@ -68,9 +68,13 @@ const committedEntryIds = new Set();
 for (const entry of entries) {
   let result;
   try {
+    const opsWithContext = entry.ops.map((op) => ({
+      ...op,
+      contextHints: buildContextHints(entry, op),
+    }));
     const out = execFileSync(
       'node',
-      [EDIT_SCRIPT, '--id', entry.id, '--ops', JSON.stringify(entry.ops)],
+      [EDIT_SCRIPT, '--id', entry.id, '--ops', JSON.stringify(opsWithContext)],
       { encoding: 'utf-8', cwd, timeout: 30_000 }
     );
     result = JSON.parse(out.trim());
@@ -113,3 +117,42 @@ console.log(JSON.stringify({
   failed,
   files: [...filesTouched],
 }));
+
+function buildContextHints(entry, op) {
+  const hints = new Set();
+  const element = entry?.element || {};
+  const originalText = typeof op?.originalText === 'string' ? normalizeText(op.originalText) : '';
+  const newText = typeof op?.newText === 'string' ? normalizeText(op.newText) : '';
+
+  const add = (value) => {
+    const text = normalizeText(decodeBasicHtml(String(value || '')));
+    if (text.length < 3 || text.length > 160) return;
+    if (text === originalText || text === newText) return;
+    hints.add(text);
+  };
+
+  const outer = typeof element.outerHTML === 'string' ? element.outerHTML : '';
+  for (const match of outer.matchAll(/data-impeccable-original-text="([^"]*)"/g)) {
+    add(match[1]);
+  }
+
+  if (typeof element.textContent === 'string') {
+    for (const chunk of element.textContent.split(/\s{2,}|\n|\t/)) add(chunk);
+  }
+
+  return [...hints].slice(0, 12);
+}
+
+function normalizeText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function decodeBasicHtml(value) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}

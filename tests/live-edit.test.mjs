@@ -107,6 +107,163 @@ describe('live-edit.mjs', () => {
     assert.equal(result.failed[0].reason, 'insufficient_locator');
   });
 
+  it('uses unique literal fallback for leaf-only data edits with a locator signal', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
+    const file = path.join(tmpDir, 'site/scripts/data.js');
+    fs.writeFileSync(file,
+      "export const skillFocusAreas = {\n" +
+      "  impeccable: [\n" +
+      "    { area: 'Spatial GGGGG', detail: 'Layout, spacing, composition' },\n" +
+      "  ],\n" +
+      "};\n" +
+      "export const dimensionGuidelineCounts = {\n" +
+      "  'Spatial Design': 27,\n" +
+      "};\n"
+    );
+
+    const result = runEdit(tmpDir, [
+      {
+        ref: 'span',
+        tag: 'span',
+        classes: ['foundation-card-label'],
+        originalText: 'Spatial GGGGG',
+        newText: 'Spatial',
+      },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.applied.length, 1);
+    const after = fs.readFileSync(file, 'utf-8');
+    assert.match(after, /area: 'Spatial'/);
+    assert.match(after, /'Spatial Design': 27/);
+  });
+
+  it('cascades identity value edits to matching JS object keys', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts/components'), { recursive: true });
+    const dataFile = path.join(tmpDir, 'site/scripts/data.js');
+    const animationFile = path.join(tmpDir, 'site/scripts/components/foundation-animations.js');
+    fs.writeFileSync(dataFile,
+      "export const skillFocusAreas = {\n" +
+      "  impeccable: [\n" +
+      "    { area: 'Spatial Design', detail: 'Layout, spacing, composition' },\n" +
+      "  ],\n" +
+      "};\n" +
+      "export const dimensionGuidelineCounts = {\n" +
+      "  'Spatial Design': 27,\n" +
+      "};\n"
+    );
+    fs.writeFileSync(animationFile,
+      "export const foundationAnimations = {\n" +
+      "  'Spatial Design': '<svg></svg>',\n" +
+      "};\n"
+    );
+
+    const result = runEdit(tmpDir, [
+      {
+        ref: 'body>main:nth-of-type(1)>span:nth-of-type(1)',
+        tag: 'span',
+        classes: ['foundation-card-label'],
+        originalText: 'Spatial Design',
+        newText: 'Spatial',
+        contextHints: ['Layout, spacing, composition'],
+      },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.failed.length, 0);
+    assert.deepEqual(new Set(result.files), new Set([
+      'site/scripts/data.js',
+      'site/scripts/components/foundation-animations.js',
+    ]));
+    assert.match(fs.readFileSync(dataFile, 'utf-8'), /area: 'Spatial'/);
+    assert.match(fs.readFileSync(dataFile, 'utf-8'), /'Spatial': 27/);
+    assert.doesNotMatch(fs.readFileSync(dataFile, 'utf-8'), /Spatial Design/);
+    assert.match(fs.readFileSync(animationFile, 'utf-8'), /'Spatial': '<svg><\/svg>'/);
+  });
+
+  it('refuses identity key cascade when the new key already exists', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
+    const file = path.join(tmpDir, 'site/scripts/data.js');
+    fs.writeFileSync(file,
+      "export const skillFocusAreas = {\n" +
+      "  impeccable: [\n" +
+      "    { area: 'Spatial Design', detail: 'Layout, spacing, composition' },\n" +
+      "  ],\n" +
+      "};\n" +
+      "export const dimensionGuidelineCounts = {\n" +
+      "  'Spatial Design': 27,\n" +
+      "  'Spatial': 99,\n" +
+      "};\n"
+    );
+
+    const result = runEdit(tmpDir, [
+      {
+        ref: 'body>main:nth-of-type(1)>span:nth-of-type(1)',
+        tag: 'span',
+        classes: ['foundation-card-label'],
+        originalText: 'Spatial Design',
+        newText: 'Spatial',
+        contextHints: ['Layout, spacing, composition'],
+      },
+    ]);
+
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'reference_integrity_risk');
+    const after = fs.readFileSync(file, 'utf-8');
+    assert.match(after, /area: 'Spatial Design'/);
+    assert.match(after, /'Spatial Design': 27/);
+    assert.match(after, /'Spatial': 99/);
+  });
+
+  it('keeps JS valid when visible numeric text has a leading zero', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
+    const file = path.join(tmpDir, 'site/scripts/data.js');
+    fs.writeFileSync(file,
+      "export const dimensionGuidelineCounts = {\n" +
+      "  'UX Writing': 32,\n" +
+      "};\n"
+    );
+
+    const result = runEdit(tmpDir, [
+      {
+        ref: 'body>main:nth-of-type(1)>span:nth-of-type(2)',
+        tag: 'span',
+        classes: ['foundation-card-count'],
+        originalText: '32',
+        newText: '00',
+        contextHints: ['UX Writing'],
+      },
+    ]);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.failed.length, 0);
+    const after = fs.readFileSync(file, 'utf-8');
+    assert.match(after, /'UX Writing': '00'/);
+    execFileSync(process.execPath, ['--check', file]);
+  });
+
+  it('does not use no-context fallback for unstructured text occurrences', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
+    const file = path.join(tmpDir, 'site/scripts/data.js');
+    fs.writeFileSync(file, '// Spatial GGGGG is mentioned in a comment only\n');
+
+    const result = runEdit(tmpDir, [
+      {
+        ref: 'span',
+        tag: 'span',
+        classes: ['foundation-card-label'],
+        originalText: 'Spatial GGGGG',
+        newText: 'Spatial',
+      },
+    ]);
+
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'element_not_found');
+    assert.match(fs.readFileSync(file, 'utf-8'), /Spatial GGGGG is mentioned/);
+  });
+
   it('locates by id when classes are absent', () => {
     const file = path.join(tmpDir, 'src', 'card.html');
     fs.writeFileSync(file, '<div id="main">\n  <p id="lede">Hello</p>\n</div>\n');
