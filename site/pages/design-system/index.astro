@@ -1,0 +1,467 @@
+---
+import Base from '../../layouts/Base.astro';
+import '../../styles/design-system.css';
+---
+
+<Base
+  title="Impeccable Design System"
+  description="Neo kinpaku design system for Impeccable: components, tokens, states, and page patterns."
+  canonicalPath="/design-system"
+  bodyClass="kinpaku-system-page"
+  mainId="design-system-main"
+  mainClass="kinpaku-system"
+  hideHeader={true}
+  hideFooter={true}
+  noIndex={true}
+>
+  <section class="ks-hero" aria-labelledby="system-title">
+    <header class="ks-topbar" aria-label="Design system navigation">
+      <a class="ks-brand" href="/" aria-label="Impeccable home">
+        <span class="ks-mark" aria-hidden="true">/</span>
+        <span class="ks-wordmark">IMPECCABLE</span>
+      </a>
+      <nav class="ks-nav" aria-label="Design system sections">
+        <a href="#foundations" aria-current="page">Foundations</a>
+        <a href="#actions">Actions</a>
+        <a href="#proof">Proof</a>
+        <a href="#content">Content</a>
+        <a href="#utilities">Utilities</a>
+      </nav>
+      <a class="ks-nav-cta" href="#implementation">Build plan</a>
+    </header>
+
+    <div class="ks-hero-grid">
+      <div class="ks-hero-copy">
+        <p class="ks-kicker">Neo kinpaku system</p>
+        <h1 id="system-title">IMPECCABLE</h1>
+        <p class="ks-hero-line">Kinpaku gold carries the brand. Verdigris patina carries signal, status, and precision.</p>
+        <div class="ks-hero-actions" aria-label="Primary actions">
+          <a class="ks-button ks-button-primary" href="#actions">Start audit <span aria-hidden="true">-></span></a>
+          <a class="ks-button ks-button-secondary" href="#content">See rules</a>
+        </div>
+        <aside class="ks-note" aria-label="System principle">
+          <span class="ks-note-pin" aria-hidden="true"></span>
+          <p>AI builds fast. Impeccable keeps it intentional.</p>
+        </aside>
+      </div>
+
+      <div class="ks-hero-art" aria-hidden="true">
+        <svg class="ks-circuit-field" viewBox="0 0 920 560" preserveAspectRatio="xMidYMid meet">
+          <g class="ks-circuit-lines">
+            <path d="M472 94 H706 L748 136 H884" />
+            <path d="M432 156 H604 L654 206 H872" />
+            <path d="M512 224 H640 L684 180 H830" />
+            <path d="M368 312 H560 L614 366 H850" />
+            <path d="M478 418 H672 L724 470 H904" />
+            <path d="M710 78 V198 L744 232 V356" />
+            <path d="M804 122 V252 L760 296 V482" />
+            <path d="M620 258 V428 L652 460" />
+            <path d="M540 114 L590 164 V254 L624 288" />
+          </g>
+          <g class="ks-circuit-nodes">
+            <circle cx="472" cy="94" r="5" />
+            <circle cx="706" cy="94" r="4" />
+            <circle cx="884" cy="136" r="5" />
+            <circle cx="432" cy="156" r="5" />
+            <circle cx="654" cy="206" r="4" />
+            <circle cx="830" cy="180" r="5" />
+            <circle cx="368" cy="312" r="5" />
+            <circle cx="614" cy="366" r="4" />
+            <circle cx="850" cy="366" r="5" />
+            <circle cx="478" cy="418" r="4" />
+            <circle cx="904" cy="470" r="5" />
+            <circle cx="710" cy="198" r="4" />
+            <circle cx="760" cy="296" r="5" />
+            <circle cx="652" cy="460" r="4" />
+            <circle cx="624" cy="288" r="5" />
+          </g>
+        </svg>
+        <div class="ks-foil-seam"></div>
+        <div class="ks-calibration ks-calibration-one"></div>
+        <div class="ks-calibration ks-calibration-two"></div>
+        <div class="ks-patina-dot ks-patina-dot-one"></div>
+        <div class="ks-patina-dot ks-patina-dot-two"></div>
+      </div>
+    </div>
+
+    <nav class="ks-category-rail" aria-label="Audit categories">
+      <a href="#layout"><span class="ks-rail-icon ks-rail-layout" aria-hidden="true"></span>Layout</a>
+      <a href="#type"><span class="ks-rail-icon ks-rail-type" aria-hidden="true">T</span>Type</a>
+      <a href="#color"><span class="ks-rail-icon ks-rail-color" aria-hidden="true"></span>Color</a>
+      <a href="#motion"><span class="ks-rail-icon ks-rail-motion" aria-hidden="true"></span>Motion</a>
+      <a href="#access"><span class="ks-rail-icon ks-rail-access" aria-hidden="true"></span>Access</a>
+    </nav>
+  </section>
+
+  <section class="ks-section ks-foundations" id="foundations" aria-labelledby="foundations-title">
+    <div class="ks-section-head">
+      <p>Foundations</p>
+      <h2 id="foundations-title">Material tokens with restraint.</h2>
+    </div>
+
+    <div class="ks-token-layout">
+      <article class="ks-token-panel">
+        <h3>Color Roles</h3>
+        <div class="ks-swatch-grid" aria-label="Color tokens">
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-lacquer"></span><strong>Lacquer</strong><small>oklch(7% 0.006 95)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-graphite"></span><strong>Graphite</strong><small>oklch(16% 0.006 95)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-kinpaku"></span><strong>Kinpaku</strong><small>oklch(78% 0.12 82)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-brass"></span><strong>Brass</strong><small>oklch(62% 0.08 78)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-champagne"></span><strong>Champagne</strong><small>oklch(85% 0.035 82)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-patina"></span><strong>Verdigris</strong><small>oklch(69% 0.105 190)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-teal"></span><strong>Oxide</strong><small>oklch(48% 0.08 188)</small></div>
+          <div class="ks-swatch"><span class="ks-swatch-chip ks-swatch-vermilion"></span><strong>Vermilion</strong><small>oklch(63% 0.16 35)</small></div>
+        </div>
+      </article>
+
+      <article class="ks-token-panel ks-type-panel">
+        <h3>Type Scale</h3>
+        <div class="ks-type-spec">
+          <span>Wordmark</span>
+          <strong>IMPECCABLE</strong>
+          <p>A restrained geometric display treatment using the site sans stack while we evaluate a custom wordmark.</p>
+        </div>
+        <div class="ks-type-spec">
+          <span>Headline</span>
+          <strong>Detect visual debt before it ships.</strong>
+        </div>
+        <div class="ks-type-spec">
+          <span>Body</span>
+          <p>Specific audit evidence, clear command language, no decorative hedging.</p>
+        </div>
+        <div class="ks-type-spec">
+          <span>Micro</span>
+          <p>LAYOUT · TYPE · COLOR · MOTION · ACCESS</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="ks-accent-library" aria-label="Accent elements">
+      <article class="ks-accent-card">
+        <span>Pin / calibration</span>
+        <div class="ks-pin-field" aria-hidden="true">
+          <i></i><i></i><i></i>
+        </div>
+      </article>
+      <article class="ks-accent-card ks-accent-rule">
+        <span>Gold dust rule</span>
+        <div class="ks-dust-field" aria-hidden="true"></div>
+      </article>
+      <article class="ks-accent-card ks-accent-circuit">
+        <span>Circuit trace</span>
+        <svg class="ks-circuit-specimen" viewBox="0 0 360 120" aria-hidden="true">
+          <path d="M8 22 H96 L124 50 H232 L258 24 H352" />
+          <path d="M44 74 H170 L202 98 H330" />
+          <path d="M150 14 V48 L184 82 V112" />
+          <path d="M278 34 V72 H348" />
+          <circle cx="8" cy="22" r="5" />
+          <circle cx="96" cy="22" r="4" />
+          <circle cx="232" cy="50" r="4" />
+          <circle cx="352" cy="24" r="5" />
+          <circle cx="44" cy="74" r="5" />
+          <circle cx="330" cy="98" r="5" />
+          <circle cx="150" cy="14" r="4" />
+          <circle cx="184" cy="82" r="4" />
+          <circle cx="348" cy="72" r="4" />
+        </svg>
+      </article>
+      <article class="ks-accent-card ks-accent-oxidation">
+        <span>Kinpaku / verdigris edge</span>
+        <div class="ks-oxidation-field" aria-hidden="true"></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="ks-section" id="navigation" aria-labelledby="navigation-title">
+    <div class="ks-section-head">
+      <p>Navigation</p>
+      <h2 id="navigation-title">A quiet header with one active cut.</h2>
+    </div>
+
+    <div class="ks-component-strip">
+      <div class="ks-header-sample">
+        <a class="ks-brand ks-brand-small" href="/" aria-label="Impeccable home sample">
+          <span class="ks-mark" aria-hidden="true">/</span>
+          <span class="ks-wordmark">IMPECCABLE</span>
+        </a>
+        <nav class="ks-nav ks-nav-sample" aria-label="Sample navigation">
+          <a href="#navigation" aria-current="page">Product</a>
+          <a href="#proof">How it works</a>
+          <a href="#content">Examples</a>
+          <a href="#content">Docs</a>
+          <a href="#content">Pricing</a>
+        </nav>
+        <button class="ks-menu-button" type="button" aria-label="Open menu"><span></span><span></span></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="ks-section" id="actions" aria-labelledby="actions-title">
+    <div class="ks-section-head">
+      <p>Actions</p>
+      <h2 id="actions-title">Gold is commitment. Patina is state.</h2>
+    </div>
+
+    <div class="ks-action-grid">
+      <article class="ks-component-group">
+        <h3>Buttons</h3>
+        <div class="ks-button-row">
+          <a class="ks-button ks-button-primary" href="#proof">Start audit <span aria-hidden="true">-></span></a>
+          <a class="ks-button ks-button-secondary" href="#content">See rules</a>
+          <button class="ks-button ks-button-ghost" type="button">Docs</button>
+          <button class="ks-button ks-button-disabled" type="button" disabled>Loading</button>
+        </div>
+      </article>
+
+      <article class="ks-component-group">
+        <h3>Inputs</h3>
+        <form class="ks-form-sample">
+          <label>
+            <span>Rule search</span>
+            <input type="search" value="gradient" aria-label="Search rules">
+          </label>
+          <label class="ks-toggle">
+            <input type="checkbox" checked>
+            <span>Live audit</span>
+          </label>
+        </form>
+      </article>
+
+      <article class="ks-component-group">
+        <h3>Tabs</h3>
+        <div class="ks-tabs" data-ks-tabs>
+          <div class="ks-tab-list" role="tablist" aria-label="Command filters">
+            <button type="button" role="tab" aria-selected="true" aria-controls="tab-audit" id="tab-audit-control">Audit</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-rules" id="tab-rules-control">Rules</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-fixes" id="tab-fixes-control">Fixes</button>
+          </div>
+          <div class="ks-tab-panel" id="tab-audit" role="tabpanel" aria-labelledby="tab-audit-control">Run checks, preserve evidence.</div>
+          <div class="ks-tab-panel" id="tab-rules" role="tabpanel" aria-labelledby="tab-rules-control" hidden>Browse anti-patterns by category.</div>
+          <div class="ks-tab-panel" id="tab-fixes" role="tabpanel" aria-labelledby="tab-fixes-control" hidden>Apply commands with design direction.</div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="ks-section" id="proof" aria-labelledby="proof-title">
+    <div class="ks-section-head">
+      <p>Product Proof</p>
+      <h2 id="proof-title">Before and after, kept in the hero language.</h2>
+    </div>
+
+    <div class="ks-proof-layout">
+      <article class="ks-before-after" aria-labelledby="comparison-title">
+        <div class="ks-comparison-head">
+          <h3 id="comparison-title">Design audit comparison</h3>
+          <span>Drag</span>
+        </div>
+        <div class="ks-comparison-stage" data-ks-comparison>
+          <div class="ks-comparison-side ks-comparison-before">
+            <span class="ks-badge ks-badge-warning">Before</span>
+            <div class="ks-mini-ui ks-mini-ui-before">
+              <div class="ks-mini-toolbar" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="ks-slop-card">
+                <span class="ks-ui-orb"></span>
+                <strong>Welcome to Dashboard</strong>
+                <p>The best solution for your needs.</p>
+                <button type="button">Get Started</button>
+              </div>
+              <div class="ks-mini-tile-row" aria-hidden="true">
+                <span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+            <span class="ks-callout ks-callout-warning">Gradient</span>
+            <span class="ks-callout ks-callout-warning ks-callout-low">Cards on cards</span>
+          </div>
+          <div class="ks-comparison-side ks-comparison-after">
+            <span class="ks-badge ks-badge-success">After</span>
+            <div class="ks-mini-ui ks-mini-ui-after">
+              <div class="ks-mini-toolbar ks-mini-toolbar-after" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="ks-after-layout">
+                <div class="ks-after-visual" aria-hidden="true"></div>
+                <div class="ks-after-copy">
+                  <span class="ks-ui-rule"></span>
+                  <strong>Operational overview</strong>
+                  <p>Hierarchy, spacing, contrast, and motion are intentional.</p>
+                </div>
+              </div>
+              <div class="ks-after-metrics" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <span class="ks-callout ks-callout-success">Hierarchy</span>
+          </div>
+          <div class="ks-comparison-divider" aria-hidden="true"></div>
+          <input class="ks-comparison-range" type="range" min="18" max="82" value="42" aria-label="Before and after split">
+        </div>
+      </article>
+
+      <div class="ks-audit-stack">
+        <article class="ks-audit-row">
+          <span class="ks-severity ks-severity-high">High</span>
+          <div>
+            <strong>Purple gradient</strong>
+            <p>Decorative color carries no product meaning.</p>
+          </div>
+          <span class="ks-status">Detected</span>
+        </article>
+        <article class="ks-audit-row">
+          <span class="ks-severity ks-severity-medium">Medium</span>
+          <div>
+            <strong>Flat hierarchy</strong>
+            <p>Actions, titles, and data share one visual weight.</p>
+          </div>
+          <span class="ks-status ks-status-ready">Improved</span>
+        </article>
+        <article class="ks-audit-row">
+          <span class="ks-severity ks-severity-low">Low</span>
+          <div>
+            <strong>Spacing drift</strong>
+            <p>Repeated gaps read as template rhythm.</p>
+          </div>
+          <span class="ks-status ks-status-fixed">Ready</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="ks-section" id="content" aria-labelledby="content-title">
+    <div class="ks-section-head">
+      <p>Content</p>
+      <h2 id="content-title">Cards, rules, docs, and pricing without SaaS sludge.</h2>
+    </div>
+
+    <div class="ks-card-grid">
+      <article class="ks-rule-card" id="layout">
+        <span class="ks-rule-icon ks-rail-layout" aria-hidden="true"></span>
+        <p>Layout</p>
+        <h3>Structure before decoration.</h3>
+        <a href="#proof">View rule</a>
+      </article>
+      <article class="ks-rule-card" id="type">
+        <span class="ks-rule-icon ks-rail-type" aria-hidden="true">T</span>
+        <p>Type</p>
+        <h3>Hierarchy through weight and scale.</h3>
+        <a href="#proof">View rule</a>
+      </article>
+      <article class="ks-rule-card" id="color">
+        <span class="ks-rule-icon ks-rail-color" aria-hidden="true"></span>
+        <p>Color</p>
+        <h3>Accent only when it carries meaning.</h3>
+        <a href="#proof">View rule</a>
+      </article>
+      <article class="ks-rule-card" id="motion">
+        <span class="ks-rule-icon ks-rail-motion" aria-hidden="true"></span>
+        <p>Motion</p>
+        <h3>State, feedback, orientation.</h3>
+        <a href="#proof">View rule</a>
+      </article>
+      <article class="ks-rule-card" id="access">
+        <span class="ks-rule-icon ks-rail-access" aria-hidden="true"></span>
+        <p>Access</p>
+        <h3>Keyboard, contrast, semantics.</h3>
+        <a href="#proof">View rule</a>
+      </article>
+    </div>
+
+    <div class="ks-content-modules">
+      <article class="ks-doc-module">
+        <span>Docs</span>
+        <h3>Install the skill</h3>
+        <pre><code>codex skills install impeccable</code></pre>
+        <p>Each command reads project context before changing code.</p>
+      </article>
+
+      <article class="ks-pricing-module">
+        <span>Skill</span>
+        <h3>Open source</h3>
+        <p>Agent skill, CLI, detector rules, and Chrome extension.</p>
+        <a class="ks-button ks-button-secondary" href="https://github.com/pbakaus/impeccable">View GitHub</a>
+      </article>
+
+      <article class="ks-changelog-module">
+        <span>Changelog</span>
+        <h3>v3.1.0</h3>
+        <p>Codex asset producer agent, critique persistence, palette-first image flow.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="ks-section" id="utilities" aria-labelledby="utilities-title">
+    <div class="ks-section-head">
+      <p>Utilities</p>
+      <h2 id="utilities-title">Feedback is quiet until it matters.</h2>
+    </div>
+
+    <div class="ks-utility-grid">
+      <div class="ks-toast ks-toast-success" role="status">
+        <strong>Audit complete</strong>
+        <span>12 issues detected, 8 ready to fix.</span>
+      </div>
+      <div class="ks-toast ks-toast-warning" role="status">
+        <strong>Audit failed</strong>
+        <span>Reconnect the live page and run again.</span>
+      </div>
+      <div class="ks-tooltip-sample">
+        <button class="ks-icon-button" type="button" aria-describedby="tooltip-copy">?</button>
+        <span class="ks-tooltip" role="tooltip" id="tooltip-copy">Evidence stays attached to the exact component.</span>
+      </div>
+      <div class="ks-skeleton" aria-label="Loading audit rows">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="ks-section ks-implementation" id="implementation" aria-labelledby="implementation-title">
+    <div class="ks-section-head">
+      <p>Implementation</p>
+      <h2 id="implementation-title">Systematic build order.</h2>
+    </div>
+
+    <ol class="ks-build-plan">
+      <li><span><strong>Route lab:</strong> stabilize `/design-system` as the source of truth for tokens, components, and states.</span></li>
+      <li><span><strong>Asset pass:</strong> regenerate kinpaku seams, lacquer grain, and verdigris patina as high-resolution image edits from approved references. Do not crop concept boards into production assets.</span></li>
+      <li><span><strong>Homepage:</strong> replace the current hero with the sparse kinpaku layout and the compact before/after inspection panel.</span></li>
+      <li><span><strong>Core pages:</strong> migrate Docs, Designing, Slop, and Live one surface at a time with shared components.</span></li>
+      <li><span><strong>Detector UI:</strong> map audit severities, rule cards, and overlay evidence to the gold/patina vocabulary.</span></li>
+      <li><span><strong>Verification:</strong> run visual checks, responsive passes, contrast checks, and the existing build/test suite after each surface lands.</span></li>
+    </ol>
+  </section>
+
+  <Fragment slot="scripts">
+    <script>
+      const comparison = document.querySelector('[data-ks-comparison]');
+      if (comparison) {
+        const range = comparison.querySelector('.ks-comparison-range');
+        const divider = comparison.querySelector('.ks-comparison-divider');
+        const after = comparison.querySelector('.ks-comparison-after');
+        const updateComparison = () => {
+          const value = `${range.value}%`;
+          divider.style.left = value;
+          after.style.clipPath = `inset(0 0 0 ${value})`;
+        };
+        range.addEventListener('input', updateComparison);
+        updateComparison();
+      }
+
+      document.querySelectorAll('[data-ks-tabs]').forEach((tabs) => {
+        const controls = Array.from(tabs.querySelectorAll('[role="tab"]'));
+        const panels = Array.from(tabs.querySelectorAll('[role="tabpanel"]'));
+        controls.forEach((control) => {
+          control.addEventListener('click', () => {
+            controls.forEach((item) => item.setAttribute('aria-selected', String(item === control)));
+            panels.forEach((panel) => {
+              panel.hidden = panel.id !== control.getAttribute('aria-controls');
+            });
+          });
+        });
+      });
+    </script>
+  </Fragment>
+</Base>
