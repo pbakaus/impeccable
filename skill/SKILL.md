@@ -60,7 +60,8 @@ Apply to every design, both registers. Match implementation complexity to the ae
 ### Color
 
 - Use OKLCH. Reduce chroma as lightness approaches 0 or 100; high chroma at extremes looks garish.
-- Never use `#000` or `#fff`. Tint every neutral toward the brand hue (chroma 0.005–0.01 is enough).
+- Never use `#000` or `#fff`. When you use a neutral, tint it slightly toward the brand hue (chroma 0.005–0.01 is enough).
+- **The cream / sand / beige body bg is the saturated AI default of 2026.** Warm-tinted neutrals at ~95–97% lightness with hue 60–95 are the "safe warm" reflex; they aren't safe, they're the tell. The bg comes from the brand, not from a default palette — and the default-warm-tint is now the AI giveaway across providers.
 - Pick a **color strategy** before picking colors. Four steps on the commitment axis:
   - **Restrained**: tinted neutrals + one accent ≤10%. Product default; brand minimalism.
   - **Committed**: one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
@@ -81,9 +82,12 @@ Before choosing, write one sentence of physical scene: who uses this, where, und
 - Cap body line length at 65–75ch.
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
+- Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch — cramped, not "designed".
 
 <codex>
-The hero ceiling is hard. Stop at 6rem max. 8–11rem (128–176px) clamp maxes read as comically loud, not bold.
+Two hard typographic ceilings you currently miss:
+- Hero clamp() max ≤ 6rem. 8–11rem (128–176px) reads as comically loud, not bold.
+- Display letter-spacing ≥ -0.04em. Your default of -0.05 to -0.085em on display H1s makes the letters touch and reads as cramped. -0.02 to -0.03em is plenty for tight grotesque display; -0.04em is the floor.
 </codex>
 
 ### Layout
@@ -97,6 +101,10 @@ The hero ceiling is hard. Stop at 6rem max. 8–11rem (128–176px) clamp maxes 
 - Don't animate CSS layout properties.
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 
+<gemini>
+**Gemini-specific defect.** Adding superfluous `:hover` transforms to images (`transform: scale(1.02-1.05)` or `rotate(N deg)` on `<img>` elements) is your most common motion tell. Hover effects on images add no real information; the image isn't an action target. Don't add image-hover transforms by reflex. If a card containing an image needs hover feedback, animate the card chrome (subtle elevation, border treatment), not the image inside it.
+</gemini>
+
 ### Absolute bans
 
 Match-and-refuse. If you're about to write any of these, rewrite the element with different structure.
@@ -107,6 +115,19 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 - **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
 - **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
 - **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
+- **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading) is now the saturated AI scaffold — it appears on 55-95% of generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
+- **Numbered section markers (01 / 02 / 03).** Section labels as numbered display digits is the same trope, one tier deeper. If you find yourself reaching for them, you're scaffolding by reflex.
+- **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design.
+
+<codex>
+**Codex-specific defects** (your most-frequent giveaways — refuse-and-rewrite):
+
+- **`border: 1px solid X` + `box-shadow: 0 Npx Mpx ...` with M ≥ 16px** on the same element. The "ghost-card" pattern — 1px border plus soft wide drop shadow on buttons and cards. Don't pair them. Pick one (a single solid border at the brand color, OR a defined shadow at no more than 8px blur), never both as decoration.
+- **`border-radius: 32px+` on cards / sections / inputs.** You over-round. Cards top out at 12–16px; full-pill is fine for tags/buttons. Picking 24/28/32/40px on a card is the codex tell — no brand wants "insanely rounded".
+- **Hand-drawn / sketchy SVG illustrations.** Class names like `loose-sketch`, `*-sketch`, `doodle`, `wavy`; `feTurbulence` / `feDisplacementMap` "paper grain" filters; 5-to-30 path crude scenes meant to depict a tangible subject (an otter, a table-and-fork, an album cover). All of these read as amateurish, not whimsical. If you can't render the scene with real assets, ship no illustration. Don't attempt sketchy SVG as a fallback.
+- **`repeating-linear-gradient(...)` stripe backgrounds.** Diagonal stripes in `body:before` or section backgrounds are pure codex decoration. Don't.
+- **"X theater" / "actually X" / "not just X, it's Y" copy.** "Productivity theater", "engagement theater", "growth theater": instant AI slop. Choose a specific noun, not a meta-criticism phrase.
+</codex>
 
 ### Copy
 

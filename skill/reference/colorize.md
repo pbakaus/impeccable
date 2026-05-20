@@ -68,10 +68,10 @@ Add color systematically across these dimensions:
 - **Hover states**: Introduce color on interaction
 
 ### Background & Surfaces
-- **Tinted backgrounds**: Replace pure gray (`#f5f5f5`) with warm neutrals (`oklch(97% 0.01 60)`) or cool tints (`oklch(97% 0.01 250)`)
+- **Tinted backgrounds**: If you replace pure gray, tint toward the brand hue, not toward a generic-warm-or-cool pair. The default-warm-tint (`oklch(97% 0.01 60)` and its neighbors) is now the AI cream/sand giveaway. Be specific to the brand or stay neutral.
 - **Colored sections**: Use subtle background colors to separate areas
 - **Gradient backgrounds**: Add depth with subtle, intentional gradients (not generic purple-blue)
-- **Cards & surfaces**: Tint cards or surfaces slightly for warmth
+- **Cards & surfaces**: Tint cards or surfaces toward the brand, not "for warmth" by reflex
 
 **Use OKLCH for color**: It's perceptually uniform, meaning equal steps in lightness *look* equal. Great for generating harmonious scales.
 
