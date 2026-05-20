@@ -167,16 +167,6 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
       });
       continue;
     }
-    const hintedOldText = sourceHintWindowFailure(cwd, op);
-    if (hintedOldText) {
-      failures.push({
-        ref: op.ref,
-        reason: 'source_verification_failed',
-        detail: hintedOldText.reason,
-        candidates: [hintedOldText, ...candidatesForEntry(batch, entry.id)].slice(0, 12),
-      });
-      continue;
-    }
     const files = candidateFilesForOp(batch, op, reportedFiles, cwd);
     const found = files.some((relativeFile) => {
       try {
@@ -185,14 +175,25 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
         return false;
       }
     });
-    if (!found) {
+    if (found) continue;
+
+    const hintedOldText = sourceHintWindowFailure(cwd, op);
+    if (hintedOldText) {
       failures.push({
         ref: op.ref,
         reason: 'source_verification_failed',
-        detail: 'newText_not_found_in_plausible_source_file',
-        candidates: files.map((file) => ({ file })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
+        detail: hintedOldText.reason,
+        candidates: [hintedOldText, ...files.map((file) => ({ file })), ...candidatesForEntry(batch, entry.id)].slice(0, 12),
       });
+      continue;
     }
+
+    failures.push({
+      ref: op.ref,
+      reason: 'source_verification_failed',
+      detail: 'newText_not_found_in_plausible_source_file',
+      candidates: files.map((file) => ({ file })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
+    });
   }
   return failures;
 }

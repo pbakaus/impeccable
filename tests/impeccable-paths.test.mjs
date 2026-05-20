@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -96,5 +96,44 @@ describe('impeccable project paths', () => {
     const record = readLiveServerInfo(tmp);
     assert.equal(record.path, getLegacyLiveServerPath(tmp));
     assert.equal(record.info.token, 'legacy');
+  });
+
+  it('keeps live server state when pid probing returns EPERM', () => {
+    mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(getLiveServerPath(tmp), JSON.stringify({ port: 8401, token: 'new', pid: 12345 }));
+    const originalKill = process.kill;
+    process.kill = () => {
+      const err = new Error('permission denied');
+      err.code = 'EPERM';
+      throw err;
+    };
+
+    try {
+      const record = readLiveServerInfo(tmp);
+      assert.equal(record.path, getLiveServerPath(tmp));
+      assert.equal(record.info.token, 'new');
+      assert.equal(existsSync(getLiveServerPath(tmp)), true);
+    } finally {
+      process.kill = originalKill;
+    }
+  });
+
+  it('removes stale live server state when pid probing returns ESRCH', () => {
+    mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(getLiveServerPath(tmp), JSON.stringify({ port: 8401, token: 'new', pid: 12345 }));
+    const originalKill = process.kill;
+    process.kill = () => {
+      const err = new Error('no such process');
+      err.code = 'ESRCH';
+      throw err;
+    };
+
+    try {
+      const record = readLiveServerInfo(tmp);
+      assert.equal(record, null);
+      assert.equal(existsSync(getLiveServerPath(tmp)), false);
+    } finally {
+      process.kill = originalKill;
+    }
   });
 });

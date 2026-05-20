@@ -69,7 +69,7 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.doesNotMatch(after, /<h1 class="hero">Welcome<\/h1>/);
   });
 
-  it('updates repeated matching text inside the selected original block', () => {
+  it('updates only the staged leaf when matching text repeats inside the selected original block', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<section class="hero">\n  <h1>Welcome</h1>\n  <p>Welcome</p>\n</section>\n');
 
@@ -81,8 +81,9 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
 
     const after = fs.readFileSync(file, 'utf-8');
     const originalWrapper = after.match(/data-impeccable-variant="original"[\s\S]*?<\/div>/)?.[0] || '';
-    assert.equal((originalWrapper.match(/Hello/g) || []).length, 2);
-    assert.doesNotMatch(originalWrapper, /Welcome/);
+    assert.equal((originalWrapper.match(/Hello/g) || []).length, 1);
+    assert.match(originalWrapper, /<h1>Hello<\/h1>/);
+    assert.match(originalWrapper, /<p>Welcome<\/p>/);
   });
 
   it('with mismatched --page-url, does NOT leak the edit (CB-4 regression)', () => {

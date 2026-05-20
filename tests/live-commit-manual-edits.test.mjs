@@ -146,6 +146,40 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('verifies against reported files before failing a stale source hint window', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/pages'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'site/pages/index.astro'), '<h1 class="hero">Welcome</h1>\n');
+    fs.writeFileSync(path.join(tmpDir, 'src/page.html'), '<h1 class="hero">Hello</h1>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'site/pages/index.astro', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.failed.length, 0);
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
   it('fails source verification for legacy empty newText entries instead of treating them as applied', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1 class="hero">Welcome</h1>\n');
     writeBuffer(tmpDir, {

@@ -65,13 +65,9 @@ export function readLiveServerInfo(cwd = process.cwd()) {
   for (const filePath of [getLiveServerPath(cwd), getLegacyLiveServerPath(cwd)]) {
     try {
       const info = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      if (info && typeof info.pid === 'number') {
-        try {
-          process.kill(info.pid, 0);
-        } catch {
-          try { fs.unlinkSync(filePath); } catch {}
-          continue;
-        }
+      if (info && typeof info.pid === 'number' && !isLiveServerPidReachable(info.pid)) {
+        try { fs.unlinkSync(filePath); } catch {}
+        continue;
       }
       return { info, path: filePath };
     } catch {
@@ -79,6 +75,17 @@ export function readLiveServerInfo(cwd = process.cwd()) {
     }
   }
   return null;
+}
+
+export function isLiveServerPidReachable(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // ESRCH means "no such process". EPERM means the process exists but this
+    // user cannot signal it, so the live server info is still valid.
+    return err?.code !== 'ESRCH';
+  }
 }
 
 export function writeLiveServerInfo(cwd = process.cwd(), info) {

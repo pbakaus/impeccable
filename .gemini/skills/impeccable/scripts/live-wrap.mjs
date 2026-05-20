@@ -228,18 +228,16 @@ The agent should insert variant HTML at insertLine.`);
   }
   if (pageUrl) {
     try {
-      let originalBlock = originalLines.join('\n');
       let mutated = false;
       for (const entry of pendingBuffer.entries) {
         if (entry.pageUrl !== pageUrl) continue;
         for (const op of entry.ops) {
-          if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {
-            originalBlock = originalBlock.split(op.originalText).join(op.newText);
-            mutated = true;
-          }
+          const result = applyBufferedManualEditToLines(originalLines, startLine, op);
+          if (!result.changed) continue;
+          originalLines = result.lines;
+          mutated = true;
         }
       }
-      if (mutated) originalLines = originalBlock.split('\n');
     } catch {
       // Buffer read failures are non-fatal; fall back to source-as-is.
     }
@@ -333,6 +331,93 @@ The agent should insert variant HTML at insertLine.`);
 function argVal(args, flag) {
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
+}
+
+function applyBufferedManualEditToLines(originalLines, selectionStartLine, op) {
+  if (
+    !op
+    || typeof op.originalText !== 'string'
+    || op.originalText.length === 0
+    || typeof op.newText !== 'string'
+  ) {
+    return { lines: originalLines, changed: false };
+  }
+
+  const replaceLine = (lineIndex) => ({
+    lines: originalLines.map((line, index) => (
+      index === lineIndex ? replaceOnce(line, op.originalText, op.newText) : line
+    )),
+    changed: true,
+  });
+
+  const hintedLine = Number(op.sourceHint?.line);
+  if (Number.isFinite(hintedLine)) {
+    const hintedIndex = hintedLine - 1 - selectionStartLine;
+    if (hintedIndex >= 0 && hintedIndex < originalLines.length && originalLines[hintedIndex].includes(op.originalText)) {
+      return replaceLine(hintedIndex);
+    }
+  }
+
+  const locatorMatches = [];
+  for (let index = 0; index < originalLines.length; index += 1) {
+    const line = originalLines[index];
+    if (!line.includes(op.originalText)) continue;
+    if (!lineMatchesManualEditLocator(line, op)) continue;
+    locatorMatches.push(index);
+  }
+  if (locatorMatches.length === 1) return replaceLine(locatorMatches[0]);
+
+  const originalBlock = originalLines.join('\n');
+  if (countOccurrences(originalBlock, op.originalText) === 1) {
+    return {
+      lines: replaceOnce(originalBlock, op.originalText, op.newText).split('\n'),
+      changed: true,
+    };
+  }
+
+  return { lines: originalLines, changed: false };
+}
+
+function lineMatchesManualEditLocator(line, op) {
+  if (op.tag) {
+    const tagRe = new RegExp('<\\s*' + escapeRegExp(op.tag) + '(?=[\\s>/]|$)', 'i');
+    if (!tagRe.test(line)) return false;
+  }
+
+  if (op.elementId) {
+    const id = escapeRegExp(op.elementId);
+    const idRe = new RegExp('\\bid\\s*=\\s*["\']' + id + '["\']');
+    if (!idRe.test(line)) return false;
+  }
+
+  const classes = Array.isArray(op.classes) ? op.classes.filter(Boolean) : [];
+  for (const className of classes) {
+    if (!line.includes(className)) return false;
+  }
+
+  return true;
+}
+
+function replaceOnce(value, needle, replacement) {
+  const index = value.indexOf(needle);
+  if (index === -1) return value;
+  return value.slice(0, index) + replacement + value.slice(index + needle.length);
+}
+
+function countOccurrences(value, needle) {
+  if (!needle) return 0;
+  let count = 0;
+  let index = 0;
+  while (true) {
+    index = value.indexOf(needle, index);
+    if (index === -1) return count;
+    count += 1;
+    index += needle.length;
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
