@@ -9,13 +9,7 @@ Every other impeccable command reads these files before doing any work.
 
 ## Step 1: Load current state
 
-Run the shared loader first so you know what already exists:
-
-```bash
-node {{scripts_path}}/load-context.mjs
-```
-
-The output tells you whether PRODUCT.md and/or DESIGN.md already exist. If `migrated: true`, legacy `.impeccable.md` was auto-renamed to `PRODUCT.md`. Mention this once to the user.
+Check what already exists. PRODUCT.md and DESIGN.md live at the project root, or under `.agents/context/` or `docs/` (case-insensitive). Read whichever are present with your native file tool.
 
 Decision tree:
 - **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md), then decide on DESIGN.md based on whether there's code to analyze.
@@ -26,7 +20,7 @@ Decision tree:
 
 Never silently overwrite an existing file. Always confirm first.
 
-If teach was invoked as a setup blocker by another command, such as `{{command_prefix}}impeccable craft landing page`, pause that command here. Complete teach, re-run the loader, then resume the original command with the freshly loaded context. For craft, resume into shape next; teach creates project context, but it is not a substitute for the task-specific shape interview and confirmed design brief.
+If teach was invoked as a setup blocker by another command, such as `{{command_prefix}}impeccable craft landing page`, pause that command here. Complete teach, then resume the original command. Your own writes are the freshest source; no reload needed. For craft, resume into shape next; teach creates project context, but it is not a substitute for the task-specific shape interview and confirmed design brief.
 
 ## Step 2: Explore the codebase
 
@@ -148,8 +142,6 @@ Summarize:
 - The 3-5 strategic principles from PRODUCT.md that will guide future work
 - If DESIGN.md is pending, remind the user how to generate it later
 
-**Critical: re-run the loader to refresh session context.** After writing PRODUCT.md, run `node {{scripts_path}}/load-context.mjs` one final time and let its full JSON output land in conversation. This ensures subsequent commands in this session use the freshly-written PRODUCT.md, not a stale earlier version.
-
-If teach was invoked as a blocker by another impeccable command (e.g. the user ran `/impeccable polish` with no PRODUCT.md), resume that original task now with the fresh context.
+If teach was invoked as a blocker by another impeccable command (e.g. the user ran `/impeccable polish` with no PRODUCT.md), resume that original task now. Your own writes are the freshest source; no reload needed.
 
 Optionally {{ask_instruction}} Ask whether they'd like a brief summary of PRODUCT.md appended to {{config_file}} for easier agent reference. If yes, append a short **Design Context** pointer section there.

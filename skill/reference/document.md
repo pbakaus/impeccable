@@ -328,12 +328,13 @@ Pull directly from the DESIGN.md you just wrote:
 
 Do not reword. The panel shows these as secondary collapsible context; the same voice that's in the Markdown carries through.
 
-### Step 5: Confirm, refine, and refresh session cache
+### Step 5: Confirm and refine
 
 1. Show the user the full DESIGN.md you wrote. Briefly highlight the non-obvious creative choices (descriptive color names, atmosphere language, named rules).
 2. Mention that `.impeccable/design.json` was also written alongside; the live panel will now render this project's actual button/input/nav primitives instead of generic approximations.
 3. Offer to refine any section: "Want me to revise a section, add component patterns I missed, or adjust the atmosphere language?"
-4. **Refresh the session cache.** Run `node {{scripts_path}}/load-context.mjs` one final time so the newly-written DESIGN.md lands in conversation. Subsequent commands in this session will use the fresh version automatically without re-reading.
+
+Your own write is the freshest source; subsequent commands in this session don't need a reload.
 
 ## Seed mode
 
@@ -394,11 +395,12 @@ Per-section guidance in seed mode:
 
 Seed mode writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet. Real tokens land on the next Scan-mode run. Skip the `.impeccable/design.json` sidecar in seed mode for the same reason: nothing to render.
 
-### Step 4: Confirm and refresh session cache
+### Step 4: Confirm
 
 1. Show the seed DESIGN.md. Call out that it is a seed (the marker is the literal commitment).
 2. Tell the user: "Re-run `/impeccable document` once you have some code. That pass will extract real tokens and generate the sidecar."
-3. Run `node {{scripts_path}}/load-context.mjs` once so the seed lands in conversation for the rest of the session.
+
+Your own write is the freshest source; no reload needed.
 
 ## Style guidelines
 

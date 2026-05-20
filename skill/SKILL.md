@@ -5,53 +5,19 @@ argument-hint: "[{{command_hint}}] [target]"
 user-invocable: true
 allowed-tools:
   - Bash(npx impeccable *)
-license: Apache 2.0. Based on Anthropic's frontend-design skill. See NOTICE.md for attribution.
+license: Apache 2.0
 ---
 
 Designs and iterates production-grade frontend interfaces. Real working code, committed design choices, exceptional craft.
 
 ## Setup
 
-Before any design work or file edits:
+You MUST do these steps before proceeding:
 
-1. Load context (PRODUCT.md / DESIGN.md) via the loader script.
-2. Identify the register and load the matching register reference (brand.md or product.md).
-3. **If the user invoked a sub-command (e.g. `craft`, `shape`, `audit`), load its reference file too.** This is non-negotiable: `craft` without `craft.md` loaded means you'll skip the shape-and-confirm step the user expects.
-
-Skipping these produces generic output that ignores the project.
-
-### 1. Context gathering
-
-Two files, case-insensitive. The loader looks at the project root by default and falls back to `.agents/context/` and `docs/` if the root is clean. Override with `IMPECCABLE_CONTEXT_DIR=path/to/dir` (absolute or relative to cwd).
-
-- **PRODUCT.md**: required. Users, brand, tone, anti-references, strategic principles.
-- **DESIGN.md**: optional, strongly recommended. Colors, typography, elevation, components.
-
-Load both in one call:
-
-```bash
-node {{scripts_path}}/load-context.mjs
-```
-
-Consume the full JSON output. Never pipe through `head`, `tail`, `grep`, or `jq`. The output's `contextDir` field tells you where the files were resolved from.
-
-If the output is already in this session's conversation history, don't re-run. Exceptions requiring a fresh load: you just ran `{{command_prefix}}impeccable teach` or `{{command_prefix}}impeccable document` (they rewrite the files), or the user manually edited one.
-
-`{{command_prefix}}impeccable live` already warms context via `live.mjs`. If you've run `live.mjs`, don't also run `load-context.mjs` this session.
-
-If PRODUCT.md is missing, empty, or placeholder (`[TODO]` markers, <200 chars): run `{{command_prefix}}impeccable teach`, then resume the user's original task with the fresh context. If the original task was `{{command_prefix}}impeccable craft`, resume into `{{command_prefix}}impeccable shape` before any implementation work.
-
-If DESIGN.md is missing: nudge once per session (*"Run `{{command_prefix}}impeccable document` for more on-brand output"*), then proceed.
-
-### 2. Register
-
-Every design task is **brand** (marketing, landing, campaign, long-form content, portfolio: design IS the product) or **product** (app UI, admin, dashboard, tool: design SERVES the product).
-
-Identify before designing. Priority: (1) cue in the task itself ("landing page" vs "dashboard"); (2) the surface in focus (the page, file, or route being worked on); (3) `register` field in PRODUCT.md. First match wins.
-
-If PRODUCT.md lacks the `register` field (legacy), infer it once from its "Users" and "Product Purpose" sections, then cache the inferred value for the session. Suggest the user run `{{command_prefix}}impeccable teach` to add the field explicitly.
-
-Load the matching reference: [reference/brand.md](reference/brand.md) or [reference/product.md](reference/product.md). The shared design laws below apply to both.
+1. Run `node {{scripts_path}}/context.mjs` once per session. If you've already seen its output in this conversation, do not re-run it. The script either prints the project's PRODUCT.md (and DESIGN.md when present) as a markdown block, or tells you it's missing. Follow whatever it prints. **If it reports `NO_PRODUCT_MD`, stop and follow `reference/teach.md` before doing anything else.**
+2. Familiarize yourself with any existing design system, conventions, and components in the code. Don't reinvent the wheel; use what's there when it works, branch out when the UX wins.
+3. Read the matching register reference. **This is non-optional; skipping it produces generic output.** If the project is marketing, a landing page, a campaign, long-form content, or a portfolio (design IS the product), read `reference/brand.md`. If it is app UI, admin, a dashboard, or a tool (design SERVES the product), read `reference/product.md`. Pick by first match: (1) task cue ("landing page" vs "dashboard"); (2) surface in focus (the page, file, or route being worked on); (3) `register` field in PRODUCT.md.
+4. If the user invoked a sub-command (`craft`, `shape`, `audit`, ...), load its reference too.
 
 ## Shared design laws
 
@@ -60,14 +26,14 @@ Apply to every design, both registers. Match implementation complexity to the ae
 ### Color
 
 - Use OKLCH. Reduce chroma as lightness approaches 0 or 100; high chroma at extremes looks garish.
-- **The cream / sand / beige body bg is the saturated AI default of 2026.** The whole warm-neutral band — OKLCH L 0.84-0.97, C < 0.06, hue 40-100 — reads as cream/sand/paper/parchment regardless of what you call it. Token names like `--paper`, `--cream`, `--sand`, `--bone`, `--flour`, `--linen`, `--parchment`, `--wheat`, `--biscuit`, `--ivory` are tells in themselves. If the brief is "warm, traditional, family-coastal-Italian" or "magazine-warm" or "editorial-restraint", DO NOT translate that into a near-white warm-tinted bg — that's the AI move. Pick: (a) a saturated brand color as the body (terracotta, oxblood, deep ochre, near-black), (b) a true off-white at chroma 0 (or chroma toward the brand's own hue, not toward warmth-by-default), or (c) a darker mid-tone tinted neutral that's clearly the brand's own. "Warmth" in the brand is carried by accent + typography + imagery, not by body bg.
+- **The cream / sand / beige body bg is the saturated AI default of 2026.** The whole warm-neutral band (OKLCH L 0.84-0.97, C < 0.06, hue 40-100) reads as cream/sand/paper/parchment regardless of what you call it. Token names like `--paper`, `--cream`, `--sand`, `--bone`, `--flour`, `--linen`, `--parchment`, `--wheat`, `--biscuit`, `--ivory` are tells in themselves. If the brief is "warm, traditional, family-coastal-Italian" or "magazine-warm" or "editorial-restraint", DO NOT translate that into a near-white warm-tinted bg; that's the AI move. Pick: (a) a saturated brand color as the body (terracotta, oxblood, deep ochre, near-black), (b) a true off-white at chroma 0 (or chroma toward the brand's own hue, not toward warmth-by-default), or (c) a darker mid-tone tinted neutral that's clearly the brand's own. "Warmth" in the brand is carried by accent + typography + imagery, not by body bg.
 - Pick a **color strategy** before picking colors. Four steps on the commitment axis:
   - **Restrained**: tinted neutrals + one accent ≤10%. Product default; brand minimalism.
   - **Committed**: one saturated color carries 30–60% of the surface. Brand default for identity-driven pages.
   - **Full palette**: 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
   - **Drenched**: the surface IS the color. Brand heroes, campaign pages.
 - The "one accent ≤10%" rule is Restrained only. Committed / Full palette / Drenched exceed it on purpose. Don't collapse every design to Restrained by reflex.
-- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp — light gray "for elegance" is the single biggest reason AI designs feel hard to read.
+- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp; light gray "for elegance" is the single biggest reason AI designs feel hard to read.
 
 ### Theme
 
@@ -84,7 +50,7 @@ Before choosing, write one sentence of physical scene: who uses this, where, und
 - Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces.
 - No all-caps body copy. Reserve uppercase for short labels (≤4 words), section eyebrows (used sparingly per the Absolute bans), and badges. Sentences in ALL CAPS are unreadable at body sizes.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
-- Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch — cramped, not "designed".
+- Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed".
 
 <codex>
 Two hard typographic ceilings you currently miss:
@@ -104,7 +70,7 @@ Two hard typographic ceilings you currently miss:
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 
 <gemini>
-**Gemini-specific defect — hard ban.** Never animate `<img>` elements on hover. This includes any `transform` on `:hover` of an image, AND `.group:hover .group-hover\:scale` / `.group:hover .group-hover\:rotate` / `.group:hover .group-hover\:translate` patterns from Tailwind that animate a child image via a parent hover. This is your single most common motion tell — it adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow. Never the image, never via the image's parent.
+**Gemini-specific defect: hard ban.** Never animate `<img>` elements on hover. This includes any `transform` on `:hover` of an image, AND `.group:hover .group-hover\:scale` / `.group:hover .group-hover\:rotate` / `.group:hover .group-hover\:translate` patterns from Tailwind that animate a child image via a parent hover. This is your single most common motion tell; it adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow. Never the image, never via the image's parent.
 </gemini>
 
 ### Absolute bans
@@ -117,15 +83,15 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 - **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
 - **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
 - **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
-- **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading) is now the saturated AI scaffold — it appears on 55-95% of generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
+- **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading) is now the saturated AI scaffold; it appears on 55-95% of generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
 - **Numbered section markers (01 / 02 / 03).** Section labels as numbered display digits is the same trope, one tier deeper. If you find yourself reaching for them, you're scaffolding by reflex.
 - **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design.
 
 <codex>
-**Codex-specific defects** (your most-frequent giveaways — refuse-and-rewrite):
+**Codex-specific defects** (your most-frequent giveaways; refuse-and-rewrite):
 
-- **`border: 1px solid X` + `box-shadow: 0 Npx Mpx ...` with M ≥ 16px** on the same element. The "ghost-card" pattern — 1px border plus soft wide drop shadow on buttons and cards. Don't pair them. Pick one (a single solid border at the brand color, OR a defined shadow at no more than 8px blur), never both as decoration.
-- **`border-radius: 32px+` on cards / sections / inputs.** You over-round. Cards top out at 12–16px; full-pill is fine for tags/buttons. Picking 24/28/32/40px on a card is the codex tell — no brand wants "insanely rounded".
+- **`border: 1px solid X` + `box-shadow: 0 Npx Mpx ...` with M ≥ 16px** on the same element. The "ghost-card" pattern: 1px border plus soft wide drop shadow on buttons and cards. Don't pair them. Pick one (a single solid border at the brand color, OR a defined shadow at no more than 8px blur), never both as decoration.
+- **`border-radius: 32px+` on cards / sections / inputs.** You over-round. Cards top out at 12–16px; full-pill is fine for tags/buttons. Picking 24/28/32/40px on a card is the codex tell; no brand wants "insanely rounded".
 - **Hand-drawn / sketchy SVG illustrations.** Class names like `loose-sketch`, `*-sketch`, `doodle`, `wavy`; `feTurbulence` / `feDisplacementMap` "paper grain" filters; 5-to-30 path crude scenes meant to depict a tangible subject (an otter, a table-and-fork, an album cover). All of these read as amateurish, not whimsical. If you can't render the scene with real assets, ship no illustration. Don't attempt sketchy SVG as a fallback.
 - **`repeating-linear-gradient(...)` stripe backgrounds.** Diagonal stripes in `body:before` or section backgrounds are pure codex decoration. Don't.
 - **"X theater" / "actually X" / "not just X, it's Y" copy.** "Productivity theater", "engagement theater", "growth theater": instant AI slop. Choose a specific noun, not a meta-criticism phrase.

@@ -1,0 +1,254 @@
+/**
+ * Skill-behavior scenarios — verify how the agent loads PRODUCT.md / DESIGN.md
+ * across a controlled matrix of starting states.
+ *
+ * Refactors that touch the Setup section of SKILL.md should keep these
+ * assertions green. If you change Setup intentionally and the assertions
+ * flip, that's the test catching the regression you wanted to catch.
+ *
+ * Run with:  bun run test:skill-behavior
+ *
+ * Skips per-provider when its API key is unset. The default model lineup is
+ * the cheapest tier of each major provider so a full sweep costs a few cents.
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  prepareWorkspace,
+  cleanupWorkspace,
+  runTurn,
+  bashCommandsMatching,
+  readsMatching,
+  fileLoaded,
+  summarizeTrace,
+} from './harness.mjs';
+import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
+import { PRODUCT_MD_SAMPLE, PRODUCT_MD_SAMPLE_NO_REGISTER, DESIGN_MD_SAMPLE } from './fixtures.mjs';
+
+const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
+const PRIMER_PROMPT =
+  'Take a quick look at the project. What register is this? Run the impeccable context loader once if you need to.';
+
+const VERBOSE = process.env.IMPECCABLE_SKILL_BEHAVIOR_VERBOSE === '1';
+
+function logTrace(label, scenario, model, trace, extras = {}) {
+  if (!VERBOSE) return;
+  const summary = summarizeTrace(trace);
+  console.error(
+    `\n[${label}] ${scenario} (${model})\n${JSON.stringify({ ...summary, ...extras }, null, 2)}\n`,
+  );
+}
+
+for (const modelId of resolveModelList()) {
+  const provider = detectProvider(modelId);
+  const keyPresent = hasKey(provider);
+
+  describe(`skill behavior :: ${modelId}`, () => {
+    if (!keyPresent) {
+      it(`skipped — ${PROVIDERS[provider].envKey} is unset`, { skip: true }, () => {});
+      return;
+    }
+    const model = getModel(modelId);
+
+    it('scenario 1: no PRODUCT.md / DESIGN.md', async () => {
+      const workspace = prepareWorkspace({ files: {} });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: CRAFT_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S1', 'no-context', modelId, trace, { textSample: text.slice(0, 400) });
+        // Agent runs context.mjs, sees NO_PRODUCT_MD directive, loads
+        // teach.md and follows it. Accept either Read or bash `cat` for
+        // the teach.md load — different models pick different tools.
+        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        assert.ok(
+          loadCalls.length >= 1,
+          `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        const teachLoaded =
+          readsMatching(trace, 'teach.md').length > 0 ||
+          bashCommandsMatching(trace, 'teach.md').length > 0;
+        assert.ok(
+          teachLoaded,
+          `expected agent to load teach.md (via Read or bash cat) after context.mjs reported NO_PRODUCT_MD.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        // We do NOT want it to silently barrel into design work.
+        const wroteHtml = trace.writePaths.some((p) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(p));
+        assert.equal(
+          wroteHtml,
+          false,
+          `agent should not write implementation files before resolving missing PRODUCT.md.\n` +
+            `wrote: ${trace.writePaths.join(', ')}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 2: PRODUCT.md only', async () => {
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: CRAFT_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S2', 'product-only', modelId, trace, { textSample: text.slice(0, 400) });
+        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        assert.ok(
+          loadCalls.length >= 1 && loadCalls.length <= 3,
+          `expected 1-3 context.mjs invocations; got ${loadCalls.length}.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        // Fixture sets `register: brand`. Step 3 of Setup says load the
+        // matching register reference. Accept Read or bash cat.
+        assert.ok(
+          fileLoaded(trace, 'brand.md'),
+          `agent should load brand.md (PRODUCT.md register is brand).\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 3: PRODUCT.md + DESIGN.md', async () => {
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: CRAFT_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S3', 'product-and-design', modelId, trace, { textSample: text.slice(0, 400) });
+        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        assert.ok(
+          loadCalls.length >= 1 && loadCalls.length <= 3,
+          `expected 1-3 context.mjs invocations; got ${loadCalls.length}.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        // Register reference: PRODUCT.md fixture is brand, so brand.md
+        // should be loaded per Setup step 3.
+        assert.ok(
+          fileLoaded(trace, 'brand.md'),
+          `agent should load brand.md (PRODUCT.md register is brand).\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        // The skill tells the agent to also familiarize with the existing
+        // design system. DESIGN.md is bundled in context.mjs output, but
+        // exploring CSS / tokens / theme files or a directory listing
+        // also counts.
+        const designSignal =
+          readsMatching(trace, 'design.md').length > 0 ||
+          trace.readPaths.some((p) => /\.(css|scss|less|ts|tsx|js|jsx|json|svelte|astro)$/i.test(p)) ||
+          trace.listPaths.length > 0;
+        assert.ok(
+          designSignal,
+          `agent should consult the design system (DESIGN.md, CSS/tokens, or list project files).\n` +
+            `readPaths: ${JSON.stringify(trace.readPaths)}, listPaths: ${JSON.stringify(trace.listPaths)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 4: context already loaded in prior turn', async () => {
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE },
+      });
+      try {
+        // Turn 1: prime the conversation so context.mjs gets run and its
+        // output enters the message history.
+        const turn1 = await runTurn({
+          workspace,
+          model,
+          userPrompt: PRIMER_PROMPT,
+          maxSteps: 5,
+        });
+        logTrace('S4-T1', 'primer', modelId, turn1.trace, { textSample: turn1.text.slice(0, 200) });
+        const turn1Loads = bashCommandsMatching(turn1.trace, 'context.mjs');
+        assert.ok(
+          turn1Loads.length >= 1,
+          `primer turn should have run context.mjs. bash: ${JSON.stringify(turn1.trace.bashCommands, null, 2)}`,
+        );
+
+        // Turn 2: the real ask. The skill says "skip if you've already
+        // loaded it". Verify the agent honors that.
+        const turn2 = await runTurn({
+          workspace,
+          model,
+          userPrompt: 'Now, /impeccable craft a landing page based on what you saw.',
+          priorMessages: turn1.responseMessages,
+          maxSteps: 5,
+        });
+        logTrace('S4-T2', 'follow-up', modelId, turn2.trace, { textSample: turn2.text.slice(0, 400) });
+        const turn2Loads = bashCommandsMatching(turn2.trace, 'context.mjs');
+        assert.equal(
+          turn2Loads.length,
+          0,
+          `agent re-ran context.mjs on turn 2 despite it being in prior conversation. ` +
+            `bashCommands: ${JSON.stringify(turn2.trace.bashCommands, null, 2)}`,
+        );
+        // Register reference must land somewhere across the two turns —
+        // craft work without brand.md (for a brand-register project) means
+        // Setup step 3 was skipped.
+        const brandLoadedAcrossTurns =
+          fileLoaded(turn1.trace, 'brand.md') || fileLoaded(turn2.trace, 'brand.md');
+        assert.ok(
+          brandLoadedAcrossTurns,
+          `agent should load brand.md across turn 1 or turn 2 (project is brand register).\n` +
+            `turn 1 readPaths: ${JSON.stringify(turn1.trace.readPaths)}, bash: ${JSON.stringify(turn1.trace.bashCommands)}\n` +
+            `turn 2 readPaths: ${JSON.stringify(turn2.trace.readPaths)}, bash: ${JSON.stringify(turn2.trace.bashCommands)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 5: PRODUCT.md WITHOUT register field (cascade via task cue)', async () => {
+      // PRODUCT.md has no `## Register` section, so context.mjs cannot
+      // detect the register and emits a generic "pick by cascade"
+      // directive. The agent must infer brand from the user's task cue
+      // ("landing page") per SKILL.md's priority list (1) task cue,
+      // (2) surface in focus, (3) register field.
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: CRAFT_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S5', 'no-register-field', modelId, trace, { textSample: text.slice(0, 400) });
+        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        assert.ok(
+          loadCalls.length >= 1,
+          `expected context.mjs invocation; got ${loadCalls.length}.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        // Task cue is "landing page" → brand register → brand.md should load.
+        assert.ok(
+          fileLoaded(trace, 'brand.md'),
+          `agent should load brand.md via task-cue cascade (no register field, "landing page" cue).\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+  });
+}

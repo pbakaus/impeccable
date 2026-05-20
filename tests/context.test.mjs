@@ -2,10 +2,11 @@
  * Tests for the shared context loader (PRODUCT.md / DESIGN.md resolver).
  * Run with: node --test tests/load-context.test.mjs
  *
- * Covers the resolution order added for issue #119:
- *   1. IMPECCABLE_CONTEXT_DIR env var (absolute or relative)
- *   2. cwd, when canonical or legacy files are at the root (back-compat)
- *   3. Auto-fallback to .agents/context/ then docs/
+ * Covers the resolution order:
+ *   1. cwd, when canonical files are at the root
+ *   2. Auto-fallback to .agents/context/ then docs/
+ *   3. IMPECCABLE_CONTEXT_DIR env var as a power-user escape hatch (only
+ *      consulted when the default paths come up empty)
  *   4. Default to cwd when nothing is found
  *
  * Each test runs in its own scratch dir under os.tmpdir() so the suite stays
@@ -18,7 +19,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir } from '../skill/scripts/load-context.mjs';
+import { loadContext, resolveContextDir } from '../skill/scripts/context.mjs';
+
+import { fileURLToPath } from 'node:url';
+const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
 
 let scratch;
 let savedEnv;
@@ -53,11 +57,6 @@ describe('resolveContextDir', () => {
     assert.equal(resolveContextDir(scratch), scratch);
   });
 
-  it('returns cwd when only legacy .impeccable.md is at the root', () => {
-    write('.impeccable.md');
-    assert.equal(resolveContextDir(scratch), scratch);
-  });
-
   it('falls back to .agents/context/ when root is clean', () => {
     write('.agents/context/PRODUCT.md');
     assert.equal(resolveContextDir(scratch), path.join(scratch, '.agents', 'context'));
@@ -80,13 +79,13 @@ describe('resolveContextDir', () => {
     assert.equal(resolveContextDir(scratch), scratch);
   });
 
-  it('honors IMPECCABLE_CONTEXT_DIR with a relative path', () => {
+  it('uses IMPECCABLE_CONTEXT_DIR as a fallback when defaults are empty (relative path)', () => {
     write('design/PRODUCT.md');
     process.env.IMPECCABLE_CONTEXT_DIR = 'design';
     assert.equal(resolveContextDir(scratch), path.join(scratch, 'design'));
   });
 
-  it('honors IMPECCABLE_CONTEXT_DIR with an absolute path', () => {
+  it('uses IMPECCABLE_CONTEXT_DIR as a fallback when defaults are empty (absolute path)', () => {
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-elsewhere-'));
     try {
       process.env.IMPECCABLE_CONTEXT_DIR = elsewhere;
@@ -96,11 +95,11 @@ describe('resolveContextDir', () => {
     }
   });
 
-  it('IMPECCABLE_CONTEXT_DIR wins even when files exist at the root', () => {
+  it('default paths win over IMPECCABLE_CONTEXT_DIR (lazy escape hatch)', () => {
     write('PRODUCT.md', 'root');
     write('design/PRODUCT.md', 'overridden');
     process.env.IMPECCABLE_CONTEXT_DIR = 'design';
-    assert.equal(resolveContextDir(scratch), path.join(scratch, 'design'));
+    assert.equal(resolveContextDir(scratch), scratch);
   });
 
   it('ignores empty IMPECCABLE_CONTEXT_DIR', () => {
@@ -114,8 +113,8 @@ describe('resolveContextDir', () => {
   });
 });
 
-describe('loadContext (backward compatibility)', () => {
-  it('reads PRODUCT.md and DESIGN.md from the root the same way as before', () => {
+describe('loadContext', () => {
+  it('reads PRODUCT.md and DESIGN.md from the root', () => {
     write('PRODUCT.md', '# product content\n');
     write('DESIGN.md', '# design content\n');
     const ctx = loadContext(scratch);
@@ -128,18 +127,6 @@ describe('loadContext (backward compatibility)', () => {
     assert.equal(ctx.contextDir, scratch);
   });
 
-  it('migrates legacy .impeccable.md -> PRODUCT.md at root', () => {
-    write('.impeccable.md', '# legacy body\n');
-    const ctx = loadContext(scratch);
-    assert.equal(ctx.migrated, true);
-    assert.equal(ctx.hasProduct, true);
-    assert.match(ctx.product, /legacy body/);
-    assert.ok(fs.existsSync(path.join(scratch, 'PRODUCT.md')));
-    assert.ok(!fs.existsSync(path.join(scratch, '.impeccable.md')));
-  });
-});
-
-describe('loadContext (fallback dirs)', () => {
   it('reads from .agents/context/ when the root is clean', () => {
     write('.agents/context/PRODUCT.md', '# product in agents\n');
     write('.agents/context/DESIGN.md', '# design in agents\n');
@@ -151,7 +138,6 @@ describe('loadContext (fallback dirs)', () => {
     // productPath/designPath are relative to cwd, not contextDir
     assert.equal(ctx.productPath, path.join('.agents', 'context', 'PRODUCT.md'));
     assert.equal(ctx.designPath, path.join('.agents', 'context', 'DESIGN.md'));
-    assert.equal(ctx.migrated, false);
   });
 
   it('reads from docs/ when .agents/context/ is empty', () => {
@@ -161,20 +147,10 @@ describe('loadContext (fallback dirs)', () => {
     assert.equal(ctx.contextDir, path.join(scratch, 'docs'));
     assert.equal(ctx.productPath, path.join('docs', 'PRODUCT.md'));
   });
-
-  it('does not auto-migrate .impeccable.md inside fallback dirs', () => {
-    write('docs/.impeccable.md', '# legacy in docs\n');
-    const ctx = loadContext(scratch);
-    // .impeccable.md inside a fallback dir doesn't pull the lookup there,
-    // and we never auto-rename outside the cwd root.
-    assert.equal(ctx.hasProduct, false);
-    assert.equal(ctx.migrated, false);
-    assert.ok(fs.existsSync(path.join(scratch, 'docs', '.impeccable.md')));
-  });
 });
 
-describe('loadContext (IMPECCABLE_CONTEXT_DIR override)', () => {
-  it('reads from the override path when set', () => {
+describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
+  it('reads from the override path when defaults are empty', () => {
     write('design/PRODUCT.md', '# overridden product\n');
     write('design/DESIGN.md', '# overridden design\n');
     process.env.IMPECCABLE_CONTEXT_DIR = 'design';
@@ -185,6 +161,15 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR override)', () => {
     assert.equal(ctx.contextDir, path.join(scratch, 'design'));
   });
 
+  it('does not override defaults when both exist (lazy escape hatch)', () => {
+    write('PRODUCT.md', '# root product\n');
+    write('design/PRODUCT.md', '# overridden product\n');
+    process.env.IMPECCABLE_CONTEXT_DIR = 'design';
+    const ctx = loadContext(scratch);
+    assert.match(ctx.product, /root product/);
+    assert.equal(ctx.contextDir, scratch);
+  });
+
   it('reports a missing override directory as no-context, not as a crash', () => {
     process.env.IMPECCABLE_CONTEXT_DIR = 'no/such/dir';
     const ctx = loadContext(scratch);
@@ -193,5 +178,66 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR override)', () => {
     assert.equal(ctx.product, null);
     assert.equal(ctx.design, null);
     assert.equal(ctx.contextDir, path.resolve(scratch, 'no/such/dir'));
+  });
+});
+
+describe('context.mjs CLI', () => {
+  it('emits NO_PRODUCT_MD directive when no PRODUCT.md is found', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^NO_PRODUCT_MD:/);
+    assert.match(res.stdout, /reference\/teach\.md/);
+  });
+
+  it('prints a PRODUCT.md markdown block when only PRODUCT.md exists', async () => {
+    write('PRODUCT.md', '# Acme\n\nbody\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^# PRODUCT\.md/);
+    assert.match(res.stdout, /# Acme/);
+    assert.equal(res.stdout.includes('# DESIGN.md'), false);
+    // The NEXT STEP directive is always appended after `---`.
+    assert.match(res.stdout, /\n---\n\nNEXT STEP:/);
+  });
+
+  it('concatenates PRODUCT.md and DESIGN.md with a --- separator', async () => {
+    write('PRODUCT.md', '# Acme product\n');
+    write('DESIGN.md', '# Acme design\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^# PRODUCT\.md/);
+    assert.match(res.stdout, /\n---\n/);
+    assert.match(res.stdout, /# DESIGN\.md\n\n# Acme design/);
+    assert.match(res.stdout, /NEXT STEP:/);
+  });
+
+  it('reads from a fallback dir when cwd is clean', async () => {
+    write('.agents/context/PRODUCT.md', '# fallback product\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^# PRODUCT\.md/);
+    assert.match(res.stdout, /# fallback product/);
+  });
+
+  it('names the register-specific reference when PRODUCT.md declares one', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nbrand\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /NEXT STEP: This project's register is `brand`\./);
+    assert.match(res.stdout, /read `reference\/brand\.md`/);
+  });
+
+  it('falls back to a generic register directive when no register field is present', async () => {
+    write('PRODUCT.md', '# Acme\n\n(no register field)\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /NEXT STEP: You MUST now read the matching register reference/);
+    assert.match(res.stdout, /reference\/brand\.md.*reference\/product\.md/);
   });
 });

@@ -43,7 +43,7 @@ The reflex-reject lists apply to **new design choices**. When the existing brand
 
 ### Pairing and voice
 
-Distinctive + refined is the goal. The specific shape depends on the brand, not on the brand's category. A category — "restaurant", "dev tool", "magazine", "fintech" — is not a recipe; treating it as one is the first-order reflex SKILL.md warns against.
+Distinctive + refined is the goal. The specific shape depends on the brand, not on the brand's category. A category ("restaurant", "dev tool", "magazine", "fintech") is not a recipe; treating it as one is the first-order reflex SKILL.md warns against.
 
 Two families minimum is the rule *only* when the voice needs it. A single well-chosen family with committed weight/size contrast is stronger than a timid display+body pair.
 
