@@ -20,7 +20,7 @@ export const alphaCommands = [
 // Consolidated impeccable skill with reference domains
 export const skillFocusAreas = {
   'impeccable': [
-    { area: 'Typography', detail: 'Scale, rhythm, hierarchy, expression' },
+    { area: 'Typo GGG', detail: 'Scale, rhythm, hierarchy, expression' },
     { area: 'Color & Contrast', detail: 'Accessibility, systems, theming' },
     { area: 'Spatial Design', detail: 'Layout, spacing, composition' },
     { area: 'Responsive', detail: 'Fluid layouts, touch targets' },
@@ -32,7 +32,7 @@ export const skillFocusAreas = {
 
 // Guideline counts per dimension (verified from reference files)
 export const dimensionGuidelineCounts = {
-  'Typography': 33,
+  'Typo GGG': 33,
   'Color & Contrast': 29,
   'Spatial Design': 27,
   'Motion': 32,

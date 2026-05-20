@@ -136,8 +136,8 @@ Options:
       break;
     }
 
-    // manual_edits flow through the /manual-edit endpoint server-side; the agent
-    // never sees them. No handler needed here.
+    // Legacy/manual_edit_apply events, if replayed from an old queue, fall
+    // through to stdout. New copy edits use the staged apply endpoints.
 
     // Auto-handle accept/discard via deterministic script
     if (event.type === 'accept' || event.type === 'discard') {

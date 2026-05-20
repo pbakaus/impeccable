@@ -1,158 +1,386 @@
 #!/usr/bin/env node
 /**
- * CLI helper: commit pending manual edits from the buffer to source.
+ * CLI helper: apply pending live copy edits as one AI-owned batch.
  *
- * Reads .impeccable/live/pending-manual-edits.json, then for each entry shells
- * out to live-edit.mjs (which handles the actual source-file rewrite). On a
- * successful entry, drops it from the buffer. Failed entries stay in the
- * buffer so the user can fix the underlying source mismatch and retry.
- *
- * Trigger: only when the user explicitly asks the AI to commit manual edits.
- * Never run as a side effect of other operations.
+ * The browser Save path stages copy edits in .impeccable/live. This script is
+ * called by /manual-edit-commit when the user clicks Apply copy edits. It gives
+ * the local AI runner the full staged batch plus evidence, validates the files
+ * the runner reports touching, and clears only entries reported as applied.
  *
  * Usage:
- *   node live-commit-manual-edits.mjs              # commit all pages
- *   node live-commit-manual-edits.mjs --page-url=/ # commit only entries for "/"
+ *   node live-commit-manual-edits.mjs
+ *   node live-commit-manual-edits.mjs --page-url=/
  *
  * Output JSON:
- *   { applied: [...], failed: [...], files: [...], cleared: bool, reason?: 'no_pending_edits' }
+ *   { applied, failed, files, cleared, count, pageUrl }
  */
 
+import { buildManualEditEvidence } from './live-manual-edit-handoff.mjs';
+import { readBuffer, writeBuffer, countByPage } from './live-manual-edits-buffer.mjs';
+import { isGeneratedFile } from './is-generated.mjs';
+import {
+  runCopyEditBatchAgent,
+  runCopyEditPostApplyChecks,
+} from './live-copy-edit-agent.mjs';
+import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
-import { readBuffer, writeBuffer } from './live-manual-edits-buffer.mjs';
 
 function argVal(args, name) {
   const prefix = name + '=';
-  for (const a of args) {
-    if (a === name) return true;
-    if (a.startsWith(prefix)) return a.slice(prefix.length);
+  for (const arg of args) {
+    if (arg === name) return true;
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
   }
   return null;
 }
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EDIT_SCRIPT = path.join(__dirname, 'live-edit.mjs');
-
-const args = process.argv.slice(2);
-if (args.includes('--help') || args.includes('-h')) {
-  console.log('Usage: node live-commit-manual-edits.mjs [--page-url=<url>]');
-  process.exit(0);
+function countOps(entries) {
+  let count = 0;
+  for (const entry of entries || []) count += Array.isArray(entry.ops) ? entry.ops.length : 0;
+  return count;
 }
 
-const pageUrlFilter = argVal(args, '--page-url');
-const cwd = process.cwd();
+function summarizeAppliedEntries(entries, appliedEntryIds) {
+  const ids = new Set(appliedEntryIds);
+  const out = [];
+  for (const entry of entries || []) {
+    if (!ids.has(entry.id)) continue;
+    for (const op of entry.ops || []) {
+      out.push({
+        id: entry.id,
+        ref: op.ref,
+        originalText: op.originalText,
+        newText: op.newText,
+      });
+    }
+  }
+  return out;
+}
 
-const buffer = readBuffer(cwd);
-const entries = pageUrlFilter
-  ? buffer.entries.filter((e) => e.pageUrl === pageUrlFilter)
-  : buffer.entries;
+function normalizeFailedEntries(batch, result, fallbackReason) {
+  const failed = [];
+  const failedByEntryId = new Map();
+  for (const item of result?.failed || []) {
+    const entryId = item.entryId || item.id || null;
+    if (!entryId) continue;
+    failedByEntryId.set(entryId, item);
+  }
 
-if (entries.length === 0) {
-  console.log(JSON.stringify({
-    cleared: false,
-    reason: 'no_pending_edits',
-    applied: [],
-    failed: [],
-    files: [],
+  for (const entry of batch.entries || []) {
+    const item = failedByEntryId.get(entry.id);
+    if (!item) continue;
+    failed.push({
+      id: entry.id,
+      reason: item.reason || item.message || fallbackReason || 'failed',
+      candidates: Array.isArray(item.candidates) && item.candidates.length > 0
+        ? item.candidates
+        : candidatesForEntry(batch, entry.id),
+    });
+  }
+  return failed;
+}
+
+function candidatesForEntry(batch, entryId) {
+  return (batch.candidates || [])
+    .filter((candidate) => candidate.entryId === entryId)
+    .flatMap((candidate) => [
+      ...(candidate.sourceHint ? [candidate.sourceHint] : []),
+      ...(candidate.textMatches || []),
+      ...(candidate.objectKeyMatches || []),
+      ...(candidate.locatorMatches || []),
+      ...(candidate.contextTextMatches || []),
+    ])
+    .slice(0, 12);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()))];
+}
+
+function normalizeRelativeFile(cwd, file) {
+  if (!file || typeof file !== 'string') return null;
+  const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
+  const relative = path.relative(cwd, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  if (!fs.existsSync(absolute)) return null;
+  if (isGeneratedFile(absolute, { cwd })) return null;
+  return relative;
+}
+
+function sourceHintWindowFailure(cwd, op) {
+  const hint = op?.sourceHint;
+  if (!hint?.file || !hint.line) return null;
+  const relative = normalizeRelativeFile(cwd, hint.file);
+  if (!relative) return null;
+  const absolute = path.resolve(cwd, relative);
+  let content;
+  try { content = fs.readFileSync(absolute, 'utf-8'); } catch { return null; }
+  const lines = content.split('\n');
+  const line = Math.max(1, Number(hint.line) || 1);
+  const start = Math.max(0, line - 4);
+  const end = Math.min(lines.length, line + 3);
+  const windowText = lines.slice(start, end).join('\n');
+  if (
+    typeof op.originalText === 'string'
+    && op.originalText
+    && typeof op.newText === 'string'
+    && !windowText.includes(op.newText)
+    && windowText.includes(op.originalText)
+  ) {
+    return {
+      file: relative,
+      line,
+      reason: 'source_hint_still_contains_original_text',
+    };
+  }
+  return null;
+}
+
+function candidateFilesForOp(batch, op, reportedFiles, cwd) {
+  const candidate = (batch.candidates || []).find((item) => item.entryId === op.entryId && item.ref === op.ref);
+  const files = [
+    ...reportedFiles,
+    op.sourceHint?.file,
+    candidate?.sourceHint?.relativeFile,
+    candidate?.sourceHint?.file,
+    ...(candidate?.textMatches || []).map((item) => item.file),
+    ...(candidate?.objectKeyMatches || []).map((item) => item.file),
+    ...(candidate?.locatorMatches || []).map((item) => item.file),
+    ...(candidate?.contextTextMatches || []).map((item) => item.file),
+  ];
+  return uniqueStrings(files)
+    .map((file) => normalizeRelativeFile(cwd, file))
+    .filter(Boolean);
+}
+
+function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
+  const failures = [];
+  for (const rawOp of entry.ops || []) {
+    const op = { ...rawOp, entryId: entry.id };
+    if (op.deleted === true) continue;
+    const hintedOldText = sourceHintWindowFailure(cwd, op);
+    if (hintedOldText) {
+      failures.push({
+        ref: op.ref,
+        reason: 'source_verification_failed',
+        detail: hintedOldText.reason,
+        candidates: [hintedOldText, ...candidatesForEntry(batch, entry.id)].slice(0, 12),
+      });
+      continue;
+    }
+    const files = candidateFilesForOp(batch, op, reportedFiles, cwd);
+    const found = files.some((relativeFile) => {
+      try {
+        return fs.readFileSync(path.resolve(cwd, relativeFile), 'utf-8').includes(op.newText);
+      } catch {
+        return false;
+      }
+    });
+    if (!found) {
+      failures.push({
+        ref: op.ref,
+        reason: 'source_verification_failed',
+        detail: 'newText_not_found_in_plausible_source_file',
+        candidates: files.map((file) => ({ file })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
+      });
+    }
+  }
+  return failures;
+}
+
+function verificationFailuresForEntries(batch, entries, reason, extra = {}) {
+  return entries.map((entry) => ({
+    id: entry.id,
+    reason,
+    candidates: candidatesForEntry(batch, entry.id),
+    ...extra,
   }));
-  process.exit(0);
 }
 
-const applied = [];
-const failed = [];
-const filesTouched = new Set();
-const committedEntryIds = new Set();
+function clearAppliedEntries(cwd, appliedEntryIds) {
+  const ids = new Set(appliedEntryIds);
+  if (ids.size === 0) return 0;
+  const buffer = readBuffer(cwd);
+  let cleared = 0;
+  const kept = [];
+  for (const entry of buffer.entries || []) {
+    if (ids.has(entry.id)) {
+      cleared += Array.isArray(entry.ops) ? entry.ops.length : 0;
+    } else {
+      kept.push(entry);
+    }
+  }
+  writeBuffer(cwd, { version: buffer.version || 1, entries: kept });
+  return cleared;
+}
 
-for (const entry of entries) {
+export async function commitManualEdits({
+  cwd = process.cwd(),
+  pageUrl = null,
+  provider = undefined,
+  env = process.env,
+  timeoutMs = undefined,
+} = {}) {
+  const batch = buildManualEditEvidence({ cwd, pageUrl });
+  const count = countOps(batch.entries);
+  if (count === 0) {
+    return {
+      applied: [],
+      failed: [],
+      files: [],
+      cleared: 0,
+      count: 0,
+      pageUrl,
+      reason: 'no_pending_edits',
+      ...countByPage(cwd),
+    };
+  }
+
   let result;
   try {
-    const opsWithContext = entry.ops.map((op) => ({
-      ...op,
-      contextHints: buildContextHints(entry, op),
-    }));
-    const out = execFileSync(
-      'node',
-      [EDIT_SCRIPT, '--id', entry.id, '--ops', JSON.stringify(opsWithContext)],
-      { encoding: 'utf-8', cwd, timeout: 30_000 }
-    );
-    result = JSON.parse(out.trim());
+    result = await runCopyEditBatchAgent(batch, { cwd, provider, env, timeoutMs });
   } catch (err) {
-    failed.push({ id: entry.id, pageUrl: entry.pageUrl, reason: 'edit_script_error', message: err.message });
-    continue;
+    return {
+      applied: [],
+      failed: batch.entries.map((entry) => ({
+        id: entry.id,
+        reason: err.message || String(err),
+        candidates: candidatesForEntry(batch, entry.id),
+      })),
+      files: [],
+      cleared: 0,
+      count,
+      pageUrl,
+      ...countByPage(cwd),
+    };
   }
-  if (Array.isArray(result.files)) for (const f of result.files) filesTouched.add(f);
-  if (Array.isArray(result.applied)) for (const a of result.applied) applied.push({ ...a, pageUrl: entry.pageUrl });
-  if (Array.isArray(result.failed) && result.failed.length > 0) {
-    for (const f of result.failed) failed.push({ ...f, id: entry.id, pageUrl: entry.pageUrl });
-    // Entry has some failures: keep the failed ops in the buffer, drop the
-    // applied ones. We re-walk: keep ops whose ref shows up in result.failed.
-    const failedRefs = new Set(result.failed.map((f) => f.op?.ref).filter(Boolean));
-    entry.ops = entry.ops.filter((op) => failedRefs.has(op.ref));
-    if (entry.ops.length === 0) committedEntryIds.add(entry.id);
-  } else {
-    committedEntryIds.add(entry.id);
+
+  if (result.status === 'error') {
+    return {
+      applied: [],
+      failed: normalizeFailedEntries(batch, result, result.message || 'AI copy edit failed'),
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
   }
-}
 
-// Rewrite the buffer: drop fully-committed entries; keep entries with
-// remaining (failed) ops.
-const remainingEntries = [];
-for (const entry of buffer.entries) {
-  if (pageUrlFilter && entry.pageUrl !== pageUrlFilter) {
-    remainingEntries.push(entry);
-    continue;
+  const reportedAppliedIds = uniqueStrings(result.appliedEntryIds || []);
+  const reportedFiles = uniqueStrings(result.files || [])
+    .map((file) => normalizeRelativeFile(cwd, file))
+    .filter(Boolean);
+  const aiFailed = normalizeFailedEntries(batch, result, 'AI copy edit failed');
+
+  if (result.status === 'done' && reportedAppliedIds.length === 0) {
+    return {
+      applied: [],
+      failed: verificationFailuresForEntries(batch, batch.entries, 'missing_applied_entry_ids'),
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
   }
-  if (committedEntryIds.has(entry.id)) continue;
-  // Find the (possibly mutated) entry from above to preserve failed-only ops.
-  const updated = entries.find((e) => e.id === entry.id) || entry;
-  if (updated.ops.length > 0) remainingEntries.push(updated);
-}
-writeBuffer(cwd, { entries: remainingEntries });
 
-console.log(JSON.stringify({
-  cleared: failed.length === 0,
-  applied,
-  failed,
-  files: [...filesTouched],
-}));
+  const reportedAppliedEntries = batch.entries.filter((entry) => reportedAppliedIds.includes(entry.id));
+  if (reportedAppliedIds.length > 0 && reportedFiles.length === 0) {
+    return {
+      applied: [],
+      failed: [
+        ...verificationFailuresForEntries(batch, reportedAppliedEntries, 'missing_touched_files'),
+        ...aiFailed,
+      ],
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
+  }
 
-function buildContextHints(entry, op) {
-  const hints = new Set();
-  const element = entry?.element || {};
-  const originalText = typeof op?.originalText === 'string' ? normalizeText(op.originalText) : '';
-  const newText = typeof op?.newText === 'string' ? normalizeText(op.newText) : '';
+  const postChecks = runCopyEditPostApplyChecks({ cwd, files: result.files || [] });
+  if (!postChecks.ok) {
+    return {
+      applied: [],
+      failed: batch.entries.map((entry) => ({
+        id: entry.id,
+        reason: 'post_apply_validation_failed',
+        checks: postChecks.failures,
+        candidates: candidatesForEntry(batch, entry.id),
+      })),
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      warnings: postChecks.warnings,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
+  }
 
-  const add = (value) => {
-    const text = normalizeText(decodeBasicHtml(String(value || '')));
-    if (text.length < 3 || text.length > 160) return;
-    if (text === originalText || text === newText) return;
-    hints.add(text);
+  const verifiedAppliedIds = [];
+  const verificationFailed = [];
+  for (const entry of reportedAppliedEntries) {
+    const failures = verifyAppliedEntry({ batch, entry, reportedFiles, cwd });
+    if (failures.length === 0) {
+      verifiedAppliedIds.push(entry.id);
+    } else {
+      verificationFailed.push({
+        id: entry.id,
+        reason: 'source_verification_failed',
+        failures,
+        candidates: candidatesForEntry(batch, entry.id),
+      });
+    }
+  }
+  const unreportedEntries = result.status === 'done'
+    ? batch.entries.filter((entry) => !reportedAppliedIds.includes(entry.id) && !aiFailed.some((item) => item.id === entry.id))
+    : [];
+  const failed = [
+    ...verificationFailed,
+    ...verificationFailuresForEntries(batch, unreportedEntries, 'not_reported_applied'),
+    ...aiFailed,
+  ];
+
+  const cleared = clearAppliedEntries(cwd, verifiedAppliedIds);
+  const counts = countByPage(cwd);
+  return {
+    applied: summarizeAppliedEntries(batch.entries, verifiedAppliedIds),
+    failed,
+    files: result.files || [],
+    cleared,
+    count,
+    pageUrl,
+    warnings: postChecks.warnings,
+    notes: result.notes || [],
+    ...counts,
   };
-
-  const outer = typeof element.outerHTML === 'string' ? element.outerHTML : '';
-  for (const match of outer.matchAll(/data-impeccable-original-text="([^"]*)"/g)) {
-    add(match[1]);
-  }
-
-  if (typeof element.textContent === 'string') {
-    for (const chunk of element.textContent.split(/\s{2,}|\n|\t/)) add(chunk);
-  }
-
-  return [...hints].slice(0, 12);
 }
 
-function normalizeText(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+async function main() {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log('Usage: node live-commit-manual-edits.mjs [--page-url=<url>] [--provider=auto|codex|claude|mock]');
+    process.exit(0);
+  }
+
+  const result = await commitManualEdits({
+    cwd: process.cwd(),
+    pageUrl: argVal(args, '--page-url'),
+    provider: argVal(args, '--provider') || undefined,
+  });
+  console.log(JSON.stringify(result));
 }
 
-function decodeBasicHtml(value) {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+if (process.argv[1]?.endsWith('live-commit-manual-edits.mjs')) {
+  main().catch((err) => {
+    console.error(JSON.stringify({ error: 'commit_failed', message: err.message || String(err) }));
+    process.exit(1);
+  });
 }

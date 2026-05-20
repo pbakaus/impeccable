@@ -174,6 +174,23 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       next.pendingEvent = toPendingEvent(event);
       if (event.screenshotPath) upsertArtifact(next.annotationArtifacts, { type: 'screenshot', path: event.screenshotPath });
       break;
+    case 'manual_edit_apply':
+      next.phase = 'manual_edit_requested';
+      next.pageUrl = event.pageUrl ?? next.pageUrl;
+      next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
+      next.pendingEvent = toPendingEvent(event);
+      break;
+    case 'manual_edit_applied':
+      next.phase = 'completed';
+      next.sourceFile = event.file ?? next.sourceFile;
+      next.pendingEventSeq = null;
+      next.pendingEvent = null;
+      break;
+    case 'manual_edit_superseded':
+      next.phase = 'completed';
+      next.pendingEventSeq = null;
+      next.pendingEvent = null;
+      break;
     case 'variants_ready':
     case 'agent_done':
       next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';

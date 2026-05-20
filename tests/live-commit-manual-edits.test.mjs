@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -15,244 +15,304 @@ let tmpDir;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-test-'));
-  fs.mkdirSync(path.join(tmpDir, 'src'));
+  fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
 });
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function entry({ id, pageUrl, ops }) {
+function entry({ id, pageUrl = '/', element = { tagName: 'h1' }, ops }) {
   return {
     id,
     pageUrl,
-    element: { tagName: 'h1' },
+    element,
     ops,
-    stagedAt: new Date().toISOString(),
+    stagedAt: '2026-05-19T19:00:23.395Z',
   };
 }
 
-function runCommit(extraArgs = []) {
-  const args = [SCRIPT, ...extraArgs];
-  const stdout = execFileSync('node', args, { encoding: 'utf-8', cwd: tmpDir });
+function runCommit(extraArgs = [], env = {}) {
+  const stdout = execFileSync('node', [SCRIPT, ...extraArgs], {
+    encoding: 'utf-8',
+    cwd: tmpDir,
+    env: {
+      ...process.env,
+      IMPECCABLE_LIVE_COPY_AGENT: 'mock',
+      ...env,
+    },
+  });
   return JSON.parse(stdout.trim());
 }
 
-describe('live-commit-manual-edits.mjs', () => {
-  it('applies a single op and clears the entry from the buffer', () => {
-    const file = path.join(tmpDir, 'src', 'page.html');
-    fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
+describe('live-commit-manual-edits.mjs batched AI apply', () => {
+  it('batches staged edits and clears successful entries only after AI success', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1 class="hero">Hello</h1>\n');
     writeBuffer(tmpDir, {
       entries: [
         entry({
           id: 'e1',
-          pageUrl: '/',
           ops: [{ ref: 'div>h1.1', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
         }),
       ],
     });
 
-    const result = runCommit();
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
 
-    assert.equal(result.cleared, true);
-    assert.equal(result.applied.length, 1);
+    assert.equal(result.count, 1);
+    assert.equal(result.cleared, 1);
     assert.equal(result.failed.length, 0);
-    assert.match(fs.readFileSync(file, 'utf-8'), /Hello/);
+    assert.deepEqual(result.files, ['src/page.html']);
     assert.equal(readBuffer(tmpDir).entries.length, 0);
+    assert.match(fs.readFileSync(path.join(tmpDir, 'src', 'page.html'), 'utf-8'), /Hello/);
   });
 
-  it('preserves only the failed op when an entry has mixed outcomes', () => {
-    const file = path.join(tmpDir, 'src', 'page.html');
-    fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n  <p class="lede">Body copy</p>\n</div>\n');
+  it('keeps failed entries staged when the AI reports partial success', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'a.html'), '<h1>A new</h1>\n');
     writeBuffer(tmpDir, {
       entries: [
-        entry({
-          id: 'mixed',
-          pageUrl: '/',
-          ops: [
-            // good op
-            { ref: 'div>h1.1', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' },
-            // bad op — originalText not in source
-            { ref: 'div>p.1', tag: 'p', classes: ['lede'], originalText: 'Nope', newText: 'X' },
-          ],
-        }),
+        entry({ id: 'a', pageUrl: '/a', ops: [{ ref: 'a', tag: 'h1', originalText: 'A original', newText: 'A new' }] }),
+        entry({ id: 'b', pageUrl: '/a', ops: [{ ref: 'b', tag: 'h1', originalText: 'B original', newText: 'B new' }] }),
       ],
     });
 
-    const result = runCommit();
+    const result = runCommit(['--page-url=/a'], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'partial',
+        appliedEntryIds: ['a'],
+        failed: [{ entryId: 'b', reason: 'ambiguous duplicate card text' }],
+        files: ['src/a.html'],
+      }),
+    });
 
-    assert.equal(result.cleared, false);
+    assert.equal(result.cleared, 1);
     assert.equal(result.applied.length, 1);
     assert.equal(result.failed.length, 1);
-    assert.equal(result.failed[0].reason, 'text_not_in_source');
-
-    const buf = readBuffer(tmpDir);
-    assert.equal(buf.entries.length, 1, 'failed op stays in buffer');
-    assert.equal(buf.entries[0].ops.length, 1);
-    assert.equal(buf.entries[0].ops[0].ref, 'div>p.1');
+    assert.equal(result.failed[0].id, 'b');
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'b');
   });
 
-  it('--page-url scopes commit; entries for other pages survive untouched', () => {
-    const a = path.join(tmpDir, 'src', 'a.html');
-    const b = path.join(tmpDir, 'src', 'b.html');
-    fs.writeFileSync(a, '<div>\n  <h1 class="aa">A original</h1>\n</div>\n');
-    fs.writeFileSync(b, '<div>\n  <h1 class="bb">B original</h1>\n</div>\n');
-
+  it('treats done without explicit appliedEntryIds as failed and keeps staged entries', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1>Hello</h1>\n');
     writeBuffer(tmpDir, {
       entries: [
-        entry({ id: 'a', pageUrl: '/a', ops: [{ ref: 'div>h1.1', tag: 'h1', classes: ['aa'], originalText: 'A original', newText: 'A new' }] }),
-        entry({ id: 'b', pageUrl: '/b', ops: [{ ref: 'div>h1.1', tag: 'h1', classes: ['bb'], originalText: 'B original', newText: 'B new' }] }),
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', originalText: 'Welcome', newText: 'Hello' }] }),
       ],
     });
 
-    const result = runCommit(['--page-url=/a']);
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        files: ['src/page.html'],
+      }),
+    });
 
-    assert.equal(result.cleared, true);
-    assert.match(fs.readFileSync(a, 'utf-8'), /A new/);
-    assert.match(fs.readFileSync(b, 'utf-8'), /B original/, 'page /b is untouched');
-
-    const buf = readBuffer(tmpDir);
-    assert.equal(buf.entries.length, 1);
-    assert.equal(buf.entries[0].pageUrl, '/b');
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'missing_applied_entry_ids');
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('applies JS-rendered data edits using the picked element context', () => {
-    fs.mkdirSync(path.join(tmpDir, 'site/scripts/components'), { recursive: true });
+  it('fails source verification when applied IDs are reported but newText is absent', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1 class="hero">Welcome</h1>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'source_verification_failed');
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('verifies current hero edits against Astro source hints before clearing', () => {
     fs.mkdirSync(path.join(tmpDir, 'site/pages'), { recursive: true });
-    const dataFile = path.join(tmpDir, 'site/scripts/data.js');
-    fs.writeFileSync(dataFile,
-      "export const skillFocusAreas = {\n" +
-      "  'impeccable': [\n" +
-      "    { area: 'Responsive', detail: 'Fluid layouts, touch targets' },\n" +
-      "    { area: 'Spatial Design', detail: 'Layout, spacing, composition' },\n" +
-      "  ],\n" +
-      "};\n" +
-      "export const dimensionGuidelineCounts = {\n" +
-      "  'Responsive': 23,\n" +
-      "  'Spatial Design': 27,\n" +
-      "};\n"
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, 'site/scripts/components/foundation-grid.js'),
-      "container.innerHTML = dimensions.map((dim) => `<span class=\"foundation-card-count\">${dimensionGuidelineCounts[dim.area]}</span><p class=\"foundation-card-detail\">${dim.detail}</p>`).join('');\n"
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, 'site/pages/index.astro'),
-      '<p>23 commands for design fluency.</p>\n'
-    );
+    const astroPath = path.join(tmpDir, 'site/pages/index.astro');
+    const originalHook = "Great design prompts require design vocabulary. Most people don't have it. Impeccable teaches your AI deep design knowledge and gives you 23 commands to steer the result.";
+    const writeAstro = ({ title, hook }) => {
+      const lines = Array.from({ length: 82 }, () => '');
+      lines[67] = `      <h1 class="hero-title-combined">${title}</h1>`;
+      lines[70] = `      <p class="hero-hook-text hero-hook-text--full">${hook}</p>`;
+      fs.writeFileSync(astroPath, lines.join('\n'));
+    };
 
+    writeAstro({ title: 'Impeccable', hook: originalHook });
     writeBuffer(tmpDir, {
       entries: [
         entry({
-          id: 'ctxdata',
-          pageUrl: '/',
-          ops: [
-            { ref: 'div>span.2', tag: 'span', classes: ['foundation-card-count'], originalText: '23', newText: '28883' },
-            { ref: 'div>p.1', tag: 'p', classes: ['foundation-card-detail'], originalText: 'Fluid layouts, touch targets', newText: 'sds dsds Fluid layouts, touch targets' },
-          ],
+          id: 'hero-title',
+          ops: [{
+            ref: 'body>section#hero>h1',
+            tag: 'h1',
+            classes: ['hero-title-combined'],
+            originalText: 'Impeccable',
+            newText: 'Impeccable Wow',
+            sourceHint: { file: 'site/pages/index.astro', line: 68, column: 39 },
+          }],
         }),
         entry({
-          id: 'ctxlabel',
-          pageUrl: '/',
-          ops: [
-            { ref: 'div>span.1', tag: 'span', classes: ['foundation-card-label'], originalText: 'Spatial Design', newText: 'Spatial GGGGG' },
-          ],
+          id: 'hero-hook',
+          ops: [{
+            ref: 'body>section#hero>p:nth-of-type(2)',
+            tag: 'p',
+            classes: ['hero-hook-text', 'hero-hook-text--full'],
+            originalText: originalHook,
+            newText: 'YESSSSS',
+            sourceHint: { file: 'site/pages/index.astro', line: 71, column: 54 },
+          }],
         }),
       ],
     });
-    const buf = readBuffer(tmpDir);
-    buf.entries[0].element = {
-      tagName: 'div',
-      classes: ['foundation-card'],
-      textContent: 'Responsive 28883 sds dsds Fluid layouts, touch targets',
-      outerHTML:
-        '<div class="foundation-card">' +
-        '<span class="foundation-card-label" data-impeccable-original-text="Responsive">Responsive</span>' +
-        '<span class="foundation-card-count" data-impeccable-original-text="23">28883</span>' +
-        '<p class="foundation-card-detail" data-impeccable-original-text="Fluid layouts, touch targets">sds dsds Fluid layouts, touch targets</p>' +
-        '</div>',
-    };
-    buf.entries[1].element = {
-      tagName: 'div',
-      classes: ['foundation-card'],
-      textContent: 'Spatial GGGGG 27 Layout, spacing, composition',
-      outerHTML:
-        '<div class="foundation-card">' +
-        '<span class="foundation-card-label" data-impeccable-original-text="Spatial Design">Spatial GGGGG</span>' +
-        '<span class="foundation-card-count" data-impeccable-original-text="27">27</span>' +
-        '<p class="foundation-card-detail" data-impeccable-original-text="Layout, spacing, composition">Layout, spacing, composition</p>' +
-        '</div>',
-    };
-    writeBuffer(tmpDir, buf);
 
-    const result = runCommit(['--page-url=/']);
+    const failed = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['hero-title', 'hero-hook'],
+        files: ['site/pages/index.astro'],
+      }),
+    });
 
-    assert.equal(result.cleared, true);
-    assert.equal(result.failed.length, 0);
-    assert.equal(result.applied.length, 3);
-    const after = fs.readFileSync(dataFile, 'utf-8');
-    assert.match(after, /detail: 'sds dsds Fluid layouts, touch targets'/);
-    assert.match(after, /'Responsive': 28883/);
-    assert.match(after, /area: 'Spatial GGGGG'/);
-    assert.match(after, /'Spatial GGGGG': 27/);
-    assert.match(fs.readFileSync(path.join(tmpDir, 'site/pages/index.astro'), 'utf-8'), /23 commands/);
+    assert.equal(failed.cleared, 0);
+    assert.equal(failed.applied.length, 0);
+    assert.equal(failed.failed.every((item) => item.reason === 'source_verification_failed'), true);
+    assert.equal(readBuffer(tmpDir).entries.length, 2);
+
+    writeAstro({ title: 'Impeccable Wow', hook: 'YESSSSS' });
+    const applied = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['hero-title', 'hero-hook'],
+        files: ['site/pages/index.astro'],
+      }),
+    });
+
+    assert.equal(applied.cleared, 2);
+    assert.equal(applied.applied.length, 2);
+    assert.equal(applied.failed.length, 0);
     assert.equal(readBuffer(tmpDir).entries.length, 0);
   });
 
-  it('recovers a leaf-only staged data edit when the original literal is unique', () => {
-    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
-    const dataFile = path.join(tmpDir, 'site/scripts/data.js');
-    fs.writeFileSync(dataFile,
-      "export const skillFocusAreas = {\n" +
-      "  'impeccable': [\n" +
-      "    { area: 'Spatial GGGGG', detail: 'Layout, spacing, composition' },\n" +
-      "  ],\n" +
-      "};\n" +
-      "export const dimensionGuidelineCounts = {\n" +
-      "  'Spatial Design': 27,\n" +
-      "};\n"
-    );
-
+  it('keeps all entries staged when the AI runner fails', () => {
     writeBuffer(tmpDir, {
       entries: [
-        {
-          id: 'leafctx',
-          pageUrl: '/',
-          element: {
-            tagName: 'span',
-            classes: ['foundation-card-label'],
-            textContent: 'Spatial',
-            outerHTML: '<span class="foundation-card-label" data-impeccable-original-text="Spatial GGGGG">Spatial</span>',
-            parentContext: '<div class="foundation-card-header">',
-          },
-          ops: [
-            {
-              ref: 'span',
-              tag: 'span',
-              classes: ['foundation-card-label'],
-              originalText: 'Spatial GGGGG',
-              newText: 'Spatial',
-            },
-          ],
-          stagedAt: new Date().toISOString(),
-        },
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', originalText: 'A', newText: 'B' }] }),
       ],
     });
 
-    const result = runCommit(['--page-url=/']);
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT: 'off',
+    });
 
-    assert.equal(result.cleared, true);
-    assert.equal(result.failed.length, 0);
-    assert.equal(result.applied.length, 1);
-    const after = fs.readFileSync(dataFile, 'utf-8');
-    assert.match(after, /area: 'Spatial'/);
-    assert.match(after, /'Spatial Design': 27/);
-    assert.equal(readBuffer(tmpDir).entries.length, 0);
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed.length, 1);
+    assert.match(result.failed[0].reason, /No live copy-edit AI runner found/);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
   it('reports no_pending_edits when buffer is empty', () => {
     const result = runCommit();
+
     assert.equal(result.reason, 'no_pending_edits');
-    assert.equal(result.applied.length, 0);
+    assert.equal(result.count, 0);
+    assert.equal(result.cleared, 0);
+  });
+
+  it('passes repeated card and dynamic data evidence to the batch prompt path', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts/components'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'site/scripts/data.js'),
+      "export const skillFocusAreas = [{ area: 'Color & Contrast', detail: 'Accessibility, systems, theming' }, { area: 'Interaction', detail: 'States' }];\n" +
+      "export const dimensionGuidelineCounts = { 'Color & Contrast': 29, 'Interaction': 36 };\n"
+    );
+    fs.writeFileSync(path.join(tmpDir, 'site/scripts/components/foundation-animations.js'),
+      "export const foundationAnimations = { 'Color & Contrast': '<svg>color</svg>', 'Interaction': '<svg>interaction</svg>' };\n"
+    );
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'cards',
+          element: {
+            tagName: 'div',
+            classes: ['foundation-card'],
+            textContent: 'Color & Contrast 29 Accessibility, systems, theming',
+          },
+          ops: [
+            {
+              ref: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(2)>span.foundation-card-label:nth-of-type(1)',
+              contextRef: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(2)',
+              tag: 'span',
+              classes: ['foundation-card-label'],
+              originalText: 'Color & Contrast',
+              newText: 'Color!!!',
+              sourceHint: { file: 'site/pages/index.astro', loc: '2:3', line: 2, column: 3 },
+              nearbyEditableTexts: [{ text: '29' }, { text: 'Accessibility, systems, theming' }],
+            },
+            {
+              ref: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(3)>span.foundation-card-label:nth-of-type(1)',
+              contextRef: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(3)',
+              tag: 'span',
+              classes: ['foundation-card-label'],
+              originalText: 'Interaction',
+              newText: 'Inter !!!',
+              nearbyEditableTexts: [{ text: '36' }, { text: 'States' }],
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'partial',
+        appliedEntryIds: [],
+        failed: [{ entryId: 'cards', reason: 'ambiguous reference check' }],
+        files: [],
+      }),
+    });
+
+    assert.equal(result.failed.length, 1);
+    const candidates = result.failed[0].candidates;
+    assert.equal(candidates.some((item) => item.file === 'site/scripts/data.js'), true);
+    assert.equal(candidates.some((item) => item.file === 'site/scripts/components/foundation-animations.js'), true);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('fails validation and keeps staged entries when touched JS is invalid or markers remain', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), 'const answer = ;\n// impeccable-carbonize-start\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'bad', ops: [{ ref: 'a', tag: 'span', originalText: '29', newText: 'XX29' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['bad'],
+        files: ['src/broken.js'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 });

@@ -1272,13 +1272,7 @@
     label.textContent = 'Applying variant...';
     row.appendChild(label);
 
-    // Inject the keyframes if not already present
-    if (!document.getElementById(PREFIX + '-keyframes')) {
-      const style = document.createElement('style');
-      style.id = PREFIX + '-keyframes';
-      style.textContent = '@keyframes impeccable-spin { to { transform: rotate(360deg); } }';
-      document.head.appendChild(style);
-    }
+    ensureSpinKeyframes();
     return row;
   }
 
@@ -1736,7 +1730,8 @@
 
   // ---------------------------------------------------------------------------
   // Inline text editing — makes pure-text descendants of the picked element
-  // directly contenteditable. Saves to source on blur of each text leaf.
+  // directly contenteditable. Save stages copy edits in the live buffer; the
+  // Apply copy edits dock later asks the AI to apply the staged batch.
   // ---------------------------------------------------------------------------
 
   let inlineEditRows = [];
@@ -1806,7 +1801,7 @@
     }
   }
 
-  function disableInlineEdit() {
+  function disableInlineEdit(opts = {}) {
     for (const row of inlineEditRows) {
       if (document.activeElement === row.el) row.el.blur();
       row.el.removeAttribute('contenteditable');
@@ -1820,7 +1815,7 @@
     }
     inlineEditRows = [];
     inlineEditDrafts = new Map();
-    if (inlineEditRoot) {
+    if (inlineEditRoot && !opts.preserveMixedWraps) {
       unwrapMixedContentTextNodes(inlineEditRoot);
       inlineEditRoot = null;
     }
@@ -1915,26 +1910,171 @@
     };
   }
 
+  function sourceHintForElement(el) {
+    if (!el || !el.getAttribute) return null;
+    const file = el.getAttribute('data-astro-source-file');
+    const loc = el.getAttribute('data-astro-source-loc');
+    if (file || loc) {
+      const parsed = parseSourceLoc(loc);
+      return {
+        file: file || '',
+        loc: loc || '',
+        line: parsed.line,
+        column: parsed.column,
+      };
+    }
+    return null;
+  }
+
+  function parseSourceLoc(loc) {
+    const match = String(loc || '').match(/^(\d+)(?::(\d+))?/);
+    return {
+      line: match ? Number(match[1]) : null,
+      column: match && match[2] ? Number(match[2]) : null,
+    };
+  }
+
+  function documentRefForElement(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const parts = [];
+    let cur = el;
+    while (cur && cur.nodeType === 1) {
+      const tag = cur.tagName.toLowerCase();
+      if (tag === 'html') break;
+      if (tag === 'body') {
+        parts.unshift('body');
+        break;
+      }
+      parts.unshift(documentRefSegment(cur));
+      cur = cur.parentElement;
+    }
+    return parts.join('>') || null;
+  }
+
+  function documentRefSegment(el) {
+    const tag = el.tagName.toLowerCase();
+    return tag + documentRefIdSuffix(el) + documentRefClassSuffix(el) + ':nth-of-type(' + indexAmongSameTag(el) + ')';
+  }
+
+  function documentRefIdSuffix(el) {
+    return el.id ? '#' + normalizeDocumentRefToken(el.id) : '';
+  }
+
+  function documentRefClassSuffix(el) {
+    if (!el.classList || el.classList.length === 0) return '';
+    const classes = [];
+    for (const cls of el.classList) {
+      if (!cls || cls.indexOf('impeccable-') === 0) continue;
+      classes.push(normalizeDocumentRefToken(cls));
+      if (classes.length === 2) break;
+    }
+    return classes.length ? '.' + classes.join('.') : '';
+  }
+
+  function normalizeDocumentRefToken(value) {
+    return String(value || '').replace(/[>\s]+/g, '_');
+  }
+
+  function indexAmongSameTag(el) {
+    const parent = el.parentElement;
+    if (!parent) return 1;
+    const tag = el.tagName.toLowerCase();
+    let n = 0;
+    for (const sib of parent.children) {
+      if (sib.tagName.toLowerCase() === tag) {
+        n++;
+        if (sib === el) return n;
+      }
+    }
+    return 1;
+  }
+
+  function copyEditLeafContext(el, originalText, newText) {
+    if (!el) return null;
+    return {
+      ref: documentRefForElement(el),
+      tagName: el.tagName ? el.tagName.toLowerCase() : null,
+      id: el.id || null,
+      classes: el.classList ? [...el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
+      originalText,
+      newText,
+      textContent: (el.textContent || '').slice(0, 500),
+      outerHTML: el.outerHTML ? el.outerHTML.slice(0, 3000) : null,
+    };
+  }
+
+  function nearbyEditableTextsForManualEdit(rows, activeEl, originalText, newText) {
+    const out = [];
+    const seen = new Set();
+    const skip = new Set([normalizeManualContextText(originalText), normalizeManualContextText(newText)]);
+    for (const row of rows || []) {
+      if (!row || row.el === activeEl) continue;
+      const text = normalizeManualContextText(row.text);
+      if (!text || text.length < 2 || seen.has(text) || skip.has(text)) continue;
+      seen.add(text);
+      out.push({
+        ref: documentRefForElement(row.el),
+        tag: row.el?.tagName ? row.el.tagName.toLowerCase() : null,
+        classes: row.el?.classList ? [...row.el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
+        text,
+      });
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+
+  function copyEditContainerContext(el) {
+    if (!el) return null;
+    return {
+      ref: documentRefForElement(el),
+      tagName: el.tagName ? el.tagName.toLowerCase() : null,
+      id: el.id || null,
+      classes: el.classList ? [...el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
+      textContent: (el.textContent || '').slice(0, 1000),
+      outerHTML: el.outerHTML ? el.outerHTML.slice(0, 10000) : null,
+    };
+  }
+
+  function forbiddenManualTextChars(text) {
+    const out = [];
+    for (const ch of ['<', '>', '{', '}', '`']) {
+      if (String(text || '').includes(ch)) out.push(ch);
+    }
+    return out;
+  }
+
   async function applyEditing() {
     const ops = [];
     for (const row of inlineEditRows) {
       const newText = inlineEditDrafts.get(row.el);
       if (newText !== undefined && newText !== row.text) {
+        const forbidden = forbiddenManualTextChars(newText);
+        if (forbidden.length > 0) {
+          showToast('Save rejected: newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)', 5500);
+          return;
+        }
         const locator = buildLocatorForLeaf(row.el, selectedElement);
-        ops.push({
+        const op = {
           ref: row.ref,
           tag: locator.tag,
           elementId: locator.elementId,
           classes: locator.classes,
           originalText: row.text,
           newText,
-        });
+        };
+        op.leaf = copyEditLeafContext(row.el, row.text, newText);
+        op.nearbyEditableTexts = nearbyEditableTextsForManualEdit(inlineEditRows, row.el, row.text, newText);
+        const sourceHint = sourceHintForElement(row.el);
+        if (sourceHint) op.sourceHint = sourceHint;
+        ops.push(op);
       }
     }
     if (ops.length === 0) { cancelEditing(); return; }
     const contextElement = contextElementForManualEdit(selectedElement, inlineEditRows, ops);
-    // Stash to server buffer. No source write, no HMR. The user later asks the
-    // AI to commit, which runs live-commit-manual-edits.mjs.
+    const contextRef = documentRefForElement(contextElement);
+    if (contextRef) for (const op of ops) op.contextRef = contextRef;
+    const container = copyEditContainerContext(contextElement);
+    if (container) for (const op of ops) op.container = container;
     try {
       const res = await fetch('http://localhost:' + PORT + '/manual-edit-stash', {
         method: 'POST',
@@ -1961,8 +2101,6 @@
       renderEditBadge('idle');
     } catch (err) {
       console.error('[impeccable] manual edit stash failed:', err);
-      // Surface the specific server reason (e.g. forbidden chars in newText)
-      // so the user knows to rephrase rather than retrying the same content.
       const detail = String(err?.message || '');
       if (detail.includes('newText cannot contain')) {
         showToast('Save rejected: ' + detail.replace(/^manual_edits:\s*/, ''), 5500);
@@ -1979,10 +2117,12 @@
 
   function positionPendingDock() {
     if (!pendingDockEl || !globalBarEl) return;
-    const rect = globalBarEl.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    pendingDockEl.style.left = Math.round(rect.left - 8) + 'px';
-    pendingDockEl.style.top = Math.round(rect.top + rect.height / 2) + 'px';
+    const width = globalBarEl.offsetWidth;
+    const height = globalBarEl.offsetHeight;
+    if (!width || !height) return;
+    pendingDockEl.style.left = Math.round((window.innerWidth / 2) - (width / 2) - 8) + 'px';
+    pendingDockEl.style.top = 'auto';
+    pendingDockEl.style.bottom = Math.round(14 + (height / 2)) + 'px';
   }
 
   function playPendingIntroAnimation() {
@@ -2012,22 +2152,55 @@
     pendingIntroAnimation.addEventListener('finish', () => { pendingIntroAnimation = null; }, { once: true });
   }
 
-  // Pending-edits apply pill + trash icon — updated on Save, resumeSession, and discard.
+  function ensureSpinKeyframes() {
+    if (document.getElementById(PREFIX + '-keyframes')) return;
+    const style = document.createElement('style');
+    style.id = PREFIX + '-keyframes';
+    style.textContent = '@keyframes impeccable-spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(style);
+  }
+
+  function pendingApplyLabel(count) {
+    return count === 1 ? 'Apply copy edit' : 'Apply copy edits';
+  }
+
+  function setPendingApplyLoading(loading, count) {
+    if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
+    pendingApplyInFlight = loading === true;
+    const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
+    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
+    pendingPillLabelEl.textContent = pendingApplyInFlight
+      ? 'Applying ' + currentCount + ' copy edit' + (currentCount === 1 ? '' : 's')
+      : pendingApplyLabel(currentCount);
+    pendingPillCountEl.style.display = pendingApplyInFlight ? 'none' : 'inline-flex';
+    pendingPillEl.disabled = pendingApplyInFlight;
+    pendingPillEl.setAttribute('aria-busy', pendingApplyInFlight ? 'true' : 'false');
+    pendingPillEl.style.cursor = pendingApplyInFlight ? 'wait' : 'pointer';
+    pendingPillEl.style.filter = pendingApplyInFlight ? 'brightness(0.98)' : 'none';
+    pendingPillEl.style.transform = 'scale(1)';
+    pendingTrashBtn.disabled = pendingApplyInFlight;
+    pendingTrashBtn.style.cursor = pendingApplyInFlight ? 'not-allowed' : 'pointer';
+    pendingTrashBtn.style.opacity = pendingApplyInFlight ? '0.58' : '1';
+    schedulePendingDockPosition();
+  }
+
   function updatePendingCounter(currentPageCount) {
     if (!pendingDockEl || !pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     const previousCount = parseInt(pendingPillEl.dataset.count || '0', 10);
     if (!currentPageCount || currentPageCount <= 0) {
       pendingDockEl.style.display = 'none';
       pendingPillEl.dataset.count = '0';
+      setPendingApplyLoading(false, 0);
       return;
     }
-    pendingPillLabelEl.textContent = currentPageCount === 1 ? 'Apply copy edit' : 'Apply copy edits';
+    pendingPillLabelEl.textContent = pendingApplyLabel(currentPageCount);
     pendingPillCountEl.textContent = String(currentPageCount);
     pendingPillEl.setAttribute('aria-label', 'Apply ' + currentPageCount + ' copy edit' + (currentPageCount === 1 ? '' : 's') + ' to source');
     pendingPillEl.style.display = 'inline-flex';
     pendingTrashBtn.style.display = 'inline-flex';
     pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
+    if (pendingApplyInFlight) setPendingApplyLoading(true, currentPageCount);
     schedulePendingDockPosition();
     if (previousCount <= 0) playPendingIntroAnimation();
   }
@@ -2047,16 +2220,16 @@
       const data = await res.json();
       updatePendingCounter(data.count || 0);
     } catch (err) {
-      // Non-fatal; the counter stays hidden.
       console.warn('[impeccable] failed to fetch pending count:', err);
     }
   }
 
   async function onPendingPillClick() {
     const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
-    if (count <= 0) return;
+    if (count <= 0 || pendingApplyInFlight) return;
     const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
     if (!ok) return;
+    setPendingApplyLoading(true, count);
     try {
       const res = await fetch(
         'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
@@ -2073,18 +2246,25 @@
         console.warn('[impeccable] some copy edits failed:', result.failed);
         showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed — see console', 5000);
       } else {
-        const n = result.applied?.length || count;
-        showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
+        const n = Array.isArray(result.applied) ? result.applied.length : (result.cleared || 0);
+        if (n > 0) {
+          showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
+        } else {
+          console.warn('[impeccable] apply returned no verified edits:', result);
+          showToast('No edits applied — see console', 4000);
+        }
       }
     } catch (err) {
       console.error('[impeccable] commit failed:', err);
       showToast('Apply failed — see console', 4000);
+    } finally {
+      setPendingApplyLoading(false);
     }
   }
 
   async function onPendingTrashClick() {
     const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
-    if (count <= 0) return;
+    if (count <= 0 || pendingApplyInFlight) return;
     const ok = confirm('Discard ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' on this page?');
     if (!ok) return;
     try {
@@ -2177,7 +2357,7 @@
         btn.style.cursor = 'not-allowed';
         btn.style.opacity = '0.55';
         btn.disabled = true;
-        btn.title = 'Edit copy is disabled while variants are generating';
+        btn.title = 'Edit copy is disabled while the current copy edit is applying';
       } else {
         btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PAPER; });
         btn.addEventListener('mouseleave', () => { btn.style.background = PAPER; btn.style.color = ACCENT; });
@@ -2843,9 +3023,10 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(msg),
-    }).then(res => {
+    }).then(async res => {
       if (res.ok) return res;
-      return handleFailure(new Error('HTTP ' + res.status + ' ' + res.statusText));
+      const body = await res.json().catch(() => ({}));
+      return handleFailure(new Error(body.error || ('HTTP ' + res.status + ' ' + res.statusText)));
     }).catch(handleFailure);
   }
 
@@ -3870,11 +4051,13 @@ void main() {
   let detectScriptLoaded = false;
   let pendingDockEl = null;
   let pendingPillEl = null;
+  let pendingPillSpinnerEl = null;
   let pendingPillLabelEl = null;
   let pendingPillCountEl = null;
   let pendingTrashBtn = null;
   let pendingDockResizeObserver = null;
   let pendingIntroAnimation = null;
+  let pendingApplyInFlight = false;
   let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's
@@ -3970,12 +4153,7 @@ void main() {
       s.id = PREFIX + '-bar-focus-style';
       s.textContent =
         '#' + PREFIX + '-global-bar button:focus { outline: none; }' +
-        '#' + PREFIX + '-pending-dock button:focus { outline: none; }' +
         '#' + PREFIX + '-global-bar button:focus-visible {' +
-        '  outline: none;' +
-        '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
-        '}' +
-        '#' + PREFIX + '-pending-dock button:focus-visible {' +
         '  outline: none;' +
         '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
         '}';
@@ -4118,8 +4296,8 @@ void main() {
     pendingDockEl = el('div', {
       position: 'fixed',
       left: '0',
-      top: '0',
-      transform: 'translate(-100%, -50%)',
+      bottom: '0',
+      transform: 'translate(-100%, 50%)',
       zIndex: String(Z.bar + 6),
       display: 'none',
       alignItems: 'center',
@@ -4148,6 +4326,19 @@ void main() {
       transition: 'filter 0.12s ease, transform 0.1s ease, box-shadow 0.18s ease',
     });
     pendingPillEl.title = 'Apply copy edits to source';
+    pendingPillSpinnerEl = el('span', {
+      display: 'none',
+      width: '12px',
+      height: '12px',
+      borderRadius: '50%',
+      border: '2px solid currentColor',
+      borderTopColor: 'transparent',
+      color: P.mark,
+      opacity: '0.9',
+      animation: 'impeccable-spin 0.6s linear infinite',
+      flex: '0 0 auto',
+      boxSizing: 'border-box',
+    });
     pendingPillLabelEl = el('span', { lineHeight: '1', whiteSpace: 'nowrap' });
     pendingPillLabelEl.textContent = 'Apply copy edits';
     pendingPillCountEl = el('span', {
@@ -4165,18 +4356,22 @@ void main() {
       fontWeight: '700',
       lineHeight: '1',
     });
+    ensureSpinKeyframes();
+    pendingPillEl.appendChild(pendingPillSpinnerEl);
     pendingPillEl.appendChild(pendingPillLabelEl);
     pendingPillEl.appendChild(pendingPillCountEl);
     pendingPillEl.addEventListener('mouseenter', () => {
+      if (pendingApplyInFlight) return;
       pendingPillEl.style.filter = 'brightness(1.1)';
       pendingPillEl.style.boxShadow = '0 7px 22px oklch(0% 0 0 / 0.18), 0 2px 5px oklch(0% 0 0 / 0.12)';
     });
     pendingPillEl.addEventListener('mouseleave', () => {
+      if (pendingApplyInFlight) return;
       pendingPillEl.style.filter = 'none';
       pendingPillEl.style.transform = 'scale(1)';
       pendingPillEl.style.boxShadow = '0 4px 16px oklch(0% 0 0 / 0.16), 0 1px 3px oklch(0% 0 0 / 0.1)';
     });
-    pendingPillEl.addEventListener('mousedown', () => { pendingPillEl.style.transform = 'scale(0.97)'; });
+    pendingPillEl.addEventListener('mousedown', () => { if (!pendingApplyInFlight) pendingPillEl.style.transform = 'scale(0.97)'; });
     pendingPillEl.addEventListener('mouseup', () => { pendingPillEl.style.transform = 'scale(1)'; });
     pendingPillEl.addEventListener('click', onPendingPillClick);
 
@@ -4300,9 +4495,7 @@ void main() {
     requestAnimationFrame(() => {
       globalBarEl.style.opacity = '1';
       globalBarEl.style.transform = 'translateX(-50%) translateY(0)';
-      schedulePendingDockPosition();
     });
-    setTimeout(schedulePendingDockPosition, 320);
 
     // Listen for detection results AND ready signal
     window.addEventListener('message', onDetectMessage);
@@ -4345,7 +4538,6 @@ void main() {
     document.querySelectorAll('.impeccable-overlay').forEach(o => {
       o.style.pointerEvents = pickActive ? 'none' : '';
     });
-    schedulePendingDockPosition();
   }
 
   let detectReady = false; // true once detect script posts 'impeccable-ready'
@@ -4426,9 +4618,11 @@ void main() {
       pendingDockEl.remove();
       pendingDockEl = null;
       pendingPillEl = null;
+      pendingPillSpinnerEl = null;
       pendingPillLabelEl = null;
       pendingPillCountEl = null;
       pendingTrashBtn = null;
+      pendingApplyInFlight = false;
     }
     if (globalBarEl) {
       globalBarEl.style.transform = 'translateY(100%)';
@@ -5584,13 +5778,11 @@ void main() {
     initParamsPanel();
     initGlobalBar();
     initDesignPanel();
+    fetchPendingCount();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
     connectSSE();
-
-    // Restore pending-edit counter for this page (survives HMR reload + dev restart).
-    fetchPendingCount();
 
     // Check for an active session to resume (variant wrapper already in DOM after HMR)
     if (!resumeSession()) {

@@ -22,12 +22,12 @@ const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
 // Helper: start/stop server for integration tests
 // ---------------------------------------------------------------------------
 
-function startServer(port = 8499, { cwd = REPO_ROOT } = {}) {
+function startServer(port = 8499, { cwd = REPO_ROOT, env = {} } = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [SERVER_SCRIPT, '--port=' + port], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT: 'off', ...env },
     });
     let output = '';
     proc.stdout.on('data', (d) => {
@@ -224,6 +224,77 @@ colors: {}
     const res = await fetch(`http://localhost:${server.port}/detect.js`);
     // May 404 if detect-antipatterns-browser.js hasn't been built
     assert.ok(res.status === 200 || res.status === 404);
+  });
+
+  it('/manual-edit-commit runs the batched AI apply path and clears successful entries', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-server-'));
+    let commitServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      commitServer = await startServer(8522, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'mock',
+          IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+            status: 'done',
+            appliedEntryIds: ['abcdef12'],
+            files: ['src/page.html'],
+          }),
+        },
+      });
+      const stash = await fetch(`http://localhost:${commitServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: commitServer.token,
+          id: 'abcdef12',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Hello</h1>', textContent: 'Hello' },
+          ops: [{ ref: 'body>h1.hero:nth-of-type(1)', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+      writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
+
+      const commit = await fetch(`http://localhost:${commitServer.port}/manual-edit-commit?token=${commitServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+
+      assert.equal(result.count, 1);
+      assert.equal(result.cleared, 1);
+      assert.equal(result.perPage['/'] || 0, 0);
+      assert.equal(result.applied.length, 1);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+    } finally {
+      if (commitServer) {
+        await stopServer(commitServer.port, commitServer.token);
+        commitServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/events rejects direct manual_edit_apply because copy edits use staged apply', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'manual_edit_apply',
+        id: 'abcdef14',
+        pageUrl: '/',
+        element: { tagName: 'p' },
+        ops: [{ ref: 'body>p:nth-of-type(1)', tag: 'p', originalText: 'A', newText: 'B' }],
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /manual_edit_apply is disabled/);
   });
 
   it('/poll returns timeout when no events queued', async () => {

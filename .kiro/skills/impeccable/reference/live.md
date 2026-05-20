@@ -395,56 +395,57 @@ Then remove the temporary wrapper from the served file if it's still there.
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
 
-## Manual edits: stashed server-side; commit on user request
+## Manual copy edits: Save stages, Apply runs AI batch
 
-When the user clicks Save in the live overlay, the browser POSTs to `/manual-edit-stash`. The server appends to `.impeccable/live/pending-manual-edits.json`. **No source file is touched. No HMR refresh.** The event is never enqueued and never reaches the poll loop. You do not see manual-edit traffic until the user explicitly asks you to commit.
+When the user clicks Save in the live overlay, the browser posts the edited text leaves to `/manual-edit-stash`. The page updates immediately and the bottom dock shows **Apply copy edits** plus a discard button. Nothing writes to source until the user clicks Apply.
 
-The user's edited DOM state becomes the "current truth" for downstream operations. `live-wrap.mjs` is buffer-aware: when it wraps an element that has a pending manual edit, the wrap block's `data-impeccable-variant="original"` content reflects the edited text, not the raw source. `live-accept.mjs` scrubs matching buffer entries after a successful accept (the accept embodies the manual edit, so the pending op is consumed, not lost). Variant **discard** does NOT touch the buffer; the manual edit is preserved.
+On Apply, `/manual-edit-commit` runs `live-commit-manual-edits.mjs`. That script gathers all staged edits for the current page, adds source hints and candidate evidence, and asks the local AI runner (`codex` first, `claude` fallback; `IMPECCABLE_LIVE_COPY_AGENT=mock` in tests) to apply the whole batch. Successful entries are cleared from `.impeccable/live/pending-manual-edits.json`; failed entries remain staged.
 
-### When to commit
+The AI batch must also check related references. If a visible string is clearly coupled to object keys, animation keys, counts, or data references, update those references too. If the relationship is ambiguous or broad, report the entry as failed with candidate files/lines instead of guessing.
 
-Run `live-commit-manual-edits.mjs` ONLY when the user clearly asks to commit, apply, or flush pending manual edits. Examples:
+Staged op shape:
 
-- "commit my edits"
-- "apply the manual edits"
-- "flush pending"
-- "save those changes" (when context makes it about the manual edits, not unrelated files)
-
-Do NOT trigger on generic "save" mentions about unrelated files or work.
-
-```
-node .kiro/skills/impeccable/scripts/live-commit-manual-edits.mjs
-```
-
-Optional `--page-url=<url>` to scope.
-
-Output JSON: `{ applied, failed, files, cleared, reason? }`.
-
-- `cleared: true`: all ops succeeded. Acknowledge in one short line: "Committed N edits across M files."
-- `cleared: false, reason: "no_pending_edits"`: buffer was empty. Say "Nothing to commit."
-- `cleared: false` with failed entries: surface the failures and reasons. Failed ops stay in the buffer; user can fix source manually and retry, or discard. Common reasons:
-  - `text_not_in_source`: `originalText` not found in the matched element's source range.
-  - `text_ambiguous_in_block`: `originalText` appears more than once in the matched element block; the locator can't tell which leaf to update. Ask the user to rephrase one of the duplicates, then retry.
-  - `element_ambiguous` / `element_not_found`: locator failed.
-  - `invalid_chars_in_newText`: `newText` contained `<`, `>`, `{`, `}`, or a backtick. The manual-edit flow is plain-text only. If the user wants to insert markup, do it yourself with the Edit tool against the source file.
-
-### When to discard
-
-Run `live-discard-manual-edits.mjs` when the user asks to discard, throw away, or clear pending manual edits. Examples:
-
-- "discard the pending edits"
-- "throw away my unsaved manual edits"
-- "clear the staging buffer"
-
-```
-node .kiro/skills/impeccable/scripts/live-discard-manual-edits.mjs
+```json
+{
+  "id": "8hexid",
+  "pageUrl": "/",
+  "element": { "...": "selected/container context" },
+  "ops": [
+    {
+      "ref": "full DOM path for the edited leaf",
+      "contextRef": "full DOM path for the selected/container element",
+      "tag": "span",
+      "elementId": null,
+      "classes": [],
+      "originalText": "Before",
+      "newText": "After",
+      "sourceHint": null,
+      "leaf": {},
+      "nearbyEditableTexts": [],
+      "container": {}
+    }
+  ]
+}
 ```
 
-Optional `--page-url=<url>` to scope. Output: `{ discarded, totalCount }`.
+The commit result stays UI-compatible:
 
-### Do NOT auto-commit
+```json
+{
+  "applied": [],
+  "failed": [],
+  "files": [],
+  "cleared": 0,
+  "perPage": { "/": 0 }
+}
+```
 
-Do not run commit on session start, on idle, or as a side effect of any other event. Only on explicit user request. The buffer can hold edits across sessions indefinitely; that is intended.
+Common validation failure:
+- `newText cannot contain < > { } or a backtick`: the manual copy flow is plain text only. If the user wants markup, edit the source directly and explain that it cannot be saved from inline copy mode.
+
+Post-apply cleanup checks mirror the carbonize principle: touched files must not contain leftover `impeccable-carbonize-*` comments, `data-impeccable-variant` wrappers, or invalid JS syntax. Generated provider files should still be rebuilt from `skill/` with `bun run build`; do not hand-edit them.
+
+Compatibility note: direct `manual_edit_apply` events are disabled in the browser flow. Use `/manual-edit-stash`, `/manual-edit-commit`, and `/manual-edit-discard` for copy edits.
 
 ## Handle `accept`
 
