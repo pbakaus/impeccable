@@ -43,12 +43,12 @@ LOOP:
   node .cursor/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
-  "generate"      → Handle Generate; reply done; LOOP
-  "accept"        → Handle Accept; complete carbonize cleanup if required; LOOP
-  "discard"       → Handle Discard; LOOP
-  "prefetch"      → Handle Prefetch; LOOP
-  "timeout"       → LOOP
-  "exit"          → break → Cleanup
+  "generate"  → Handle Generate; reply done; LOOP
+  "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
+  "discard"   → Handle Discard; LOOP
+  "prefetch"  → Handle Prefetch; LOOP
+  "timeout"   → LOOP
+  "exit"      → break → Cleanup
 ```
 
 ## Recovery commands

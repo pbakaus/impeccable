@@ -2208,7 +2208,7 @@
   function maybeShowFirstSaveToast() {
     if (!firstSaveOfSession) return;
     firstSaveOfSession = false;
-    showToast('Saved. Click "Apply copy edits" to write changes, or ask the AI.', 4500);
+    showToast('Saved. Click "Apply copy edits" to write changes.', 4500);
   }
 
   async function fetchPendingCount() {
