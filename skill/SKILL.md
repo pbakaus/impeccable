@@ -104,7 +104,7 @@ Two hard typographic ceilings you currently miss:
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 
 <gemini>
-**Gemini-specific defect.** Adding superfluous `:hover` transforms to images (`transform: scale(1.02-1.05)` or `rotate(N deg)` on `<img>` elements) is your most common motion tell. Hover effects on images add no real information; the image isn't an action target. Don't add image-hover transforms by reflex. If a card containing an image needs hover feedback, animate the card chrome (subtle elevation, border treatment), not the image inside it.
+**Gemini-specific defect — hard ban.** Never animate `<img>` elements on hover. This includes any `transform` on `:hover` of an image, AND `.group:hover .group-hover\:scale` / `.group:hover .group-hover\:rotate` / `.group:hover .group-hover\:translate` patterns from Tailwind that animate a child image via a parent hover. This is your single most common motion tell — it adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow. Never the image, never via the image's parent.
 </gemini>
 
 ### Absolute bans
@@ -135,8 +135,8 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 
 - Every word earns its place. No restated headings, no intros that repeat the title.
 - **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
-- **No aphoristic-cadence body copy as a default voice.** "Not a feature. A different architecture." / "X. No Y." / "X. Just Y." used as a recurring rhetorical pattern is the Stripe-Press / Klim cadence — once is voice, three or more times on a page is the AI-tell. If every section copy lands on a 2-3-word rebuttal sentence, rewrite. Specific, not aphoristic.
-- **No SaaS buzzword strings.** "Streamline / empower / supercharge / unleash", "trusted by leading", "best-in-class / world-class / enterprise-grade / next-generation / cutting-edge", "leverage the power", "drive engagement/growth/results", "transform your business", "future-proof", "seamless experience", "game-changer", "mission-critical". Pick a specific noun and a verb that describes what the product literally does.
+- **No aphoristic-cadence body copy as a default voice.** Don't fall into the rhythm of "serious statement, then punchy short negation" as the page's recurring voice. If three or more section copy blocks on the page land on a short rebuttal-shaped sentence, rewrite. Specific, not aphoristic.
+- **No marketing buzzwords.** The streamline / empower / supercharge / leverage / unleash / transform / seamless / world-class / enterprise-grade / next-generation / cutting-edge / game-changer / mission-critical family of phrases. Pick a specific noun and a verb that describes what the product literally does.
 
 ### The AI slop test
 
