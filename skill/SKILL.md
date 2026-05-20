@@ -68,6 +68,7 @@ Apply to every design, both registers. Match implementation complexity to the ae
   - **Full palette**: 3–4 named roles, each used deliberately. Brand campaigns; product data viz.
   - **Drenched**: the surface IS the color. Brand heroes, campaign pages.
 - The "one accent ≤10%" rule is Restrained only. Committed / Full palette / Drenched exceed it on purpose. Don't collapse every design to Restrained by reflex.
+- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp — light gray "for elegance" is the single biggest reason AI designs feel hard to read.
 
 ### Theme
 
@@ -81,6 +82,8 @@ Before choosing, write one sentence of physical scene: who uses this, where, und
 
 - Cap body line length at 65–75ch.
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
+- Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces.
+- No all-caps body copy. Reserve uppercase for short labels (≤4 words), section eyebrows (used sparingly per the Absolute bans), and badges. Sentences in ALL CAPS are unreadable at body sizes.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
 - Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch — cramped, not "designed".
 
@@ -133,6 +136,8 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 
 - Every word earns its place. No restated headings, no intros that repeat the title.
 - **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
+- **No aphoristic-cadence body copy as a default voice.** "Not a feature. A different architecture." / "X. No Y." / "X. Just Y." used as a recurring rhetorical pattern is the Stripe-Press / Klim cadence — once is voice, three or more times on a page is the AI-tell. If every section copy lands on a 2-3-word rebuttal sentence, rewrite. Specific, not aphoristic.
+- **No SaaS buzzword strings.** "Streamline / empower / supercharge / unleash", "trusted by leading", "best-in-class / world-class / enterprise-grade / next-generation / cutting-edge", "leverage the power", "drive engagement/growth/results", "transform your business", "future-proof", "seamless experience", "game-changer", "mission-critical". Pick a specific noun and a verb that describes what the product literally does.
 
 ### The AI slop test
 
