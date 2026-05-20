@@ -179,6 +179,45 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('rolls back source writes when source verification fails', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = '<h1 class="hero">Welcome</h1>\n<p>Elsewhere</p>\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">Welcome</h1>\n<p>Hello</p>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'source_verification_failed');
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
   it('verifies against reported files before failing a stale source hint window', () => {
     fs.mkdirSync(path.join(tmpDir, 'site/pages'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'site/pages/index.astro'), '<h1 class="hero">Welcome</h1>\n');
@@ -322,6 +361,63 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('rolls back source writes when the AI runner throws after writing', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = '<h1>Old</h1>\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', originalText: 'Old', newText: 'New' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1>New</h1>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: '{not json',
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.match(result.failed[0].reason, /Invalid IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT JSON/);
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('rolls back source writes when the AI reports an error', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = '<h1>Old</h1>\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', originalText: 'Old', newText: 'New' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1>New</h1>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'error',
+        message: 'could not apply safely',
+        failed: [{ entryId: 'e1', reason: 'ambiguous' }],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'ambiguous');
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
   it('reports no_pending_edits when buffer is empty', () => {
     const result = runCommit();
 
@@ -390,7 +486,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
   });
 
   it('fails validation and keeps staged entries when touched JS is invalid or markers remain', () => {
-    fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), 'const answer = ;\n// impeccable-carbonize-start\n');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), "const label = 'XX29';\nconst answer = ;\n// impeccable-carbonize-start\n");
     writeBuffer(tmpDir, {
       entries: [
         entry({ id: 'bad', ops: [{ ref: 'a', tag: 'span', originalText: '29', newText: 'XX29' }] }),
@@ -463,6 +559,39 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.deepEqual(result.rolledBackFiles, ['src/broken.js']);
     assert.deepEqual(result.rollbackFailures, []);
     assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('rolls back newly created files when post-apply validation fails', () => {
+    const pageFile = path.join(tmpDir, 'src', 'page.html');
+    const newFile = path.join(tmpDir, 'src', 'new-broken.js');
+    const before = '<h1 class="hero">Old</h1>\n';
+    fs.writeFileSync(pageFile, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', classes: ['hero'], originalText: 'Old', newText: 'New' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">New</h1>\n',
+        'src/new-broken.js': 'const answer = ;\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html', 'src/new-broken.js'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.deepEqual(new Set(result.rolledBackFiles), new Set(['src/page.html', 'src/new-broken.js']));
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), before);
+    assert.equal(fs.existsSync(newFile), false);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 });
