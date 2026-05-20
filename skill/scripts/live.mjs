@@ -17,7 +17,7 @@
  *   node live.mjs --help
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -204,13 +204,12 @@ function globToRegex(pattern) {
 
 function runScript(name, args) {
   const scriptPath = path.join(__dirname, name);
-  const cmd = `node "${scriptPath}" ${args.map(a => `"${a}"`).join(' ')}`;
-  try {
-    return execSync(cmd, { encoding: 'utf-8', cwd: process.cwd(), timeout: 15_000 });
-  } catch (err) {
-    // execSync throws on non-zero exit; return stdout if any
-    return err.stdout || err.message || '';
-  }
+  const result = spawnSync(process.execPath, [scriptPath, ...args], {
+    encoding: 'utf-8',
+    cwd: process.cwd(),
+    timeout: 15_000,
+  });
+  return result.stdout || result.stderr || '';
 }
 
 function safeParse(out) {

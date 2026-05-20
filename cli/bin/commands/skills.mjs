@@ -7,7 +7,7 @@
  *   impeccable skills update    Update skills to latest version
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, symlinkSync, readlinkSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -99,7 +99,8 @@ async function downloadAndExtractBundle() {
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
-  execSync(`unzip -qo "${tmpZip}" -d "${tmpDir}"`, { encoding: 'utf8' });
+  const _unzipResult = spawnSync('unzip', ['-qo', tmpZip, '-d', tmpDir], { encoding: 'utf8' });
+  if (_unzipResult.status !== 0) throw new Error(`unzip failed: ${tmpDir}\n${tmpZip}`);
   rmSync(tmpZip, { force: true });
   return tmpDir;
 }
