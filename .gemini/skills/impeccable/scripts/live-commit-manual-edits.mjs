@@ -348,7 +348,7 @@ export async function commitManualEdits({
       });
     }
   }
-  const unreportedEntries = result.status === 'done'
+  const unreportedEntries = result.status === 'done' || result.status === 'partial'
     ? batch.entries.filter((entry) => !reportedAppliedIds.includes(entry.id) && !aiFailed.some((item) => item.id === entry.id))
     : [];
   const failed = [

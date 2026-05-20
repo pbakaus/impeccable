@@ -342,6 +342,42 @@ ${extraAttrs}
     assert.ok(after.includes('<div className="next-card">After</div>'));
   });
 
+  it('expandReplaceRange ignores unrelated prior end markers while finding the current JSX wrapper', () => {
+    const tsx = `export default function App() {
+  return (
+    <main>
+      <div data-impeccable-variants="ACTIVE" data-impeccable-variant-count="2" style={{ display: 'contents' }}>
+        <div className="historical-marker-note">
+          {/* impeccable-variants-end OLD */}
+        </div>
+        {/* impeccable-variants-start ACTIVE */}
+        {/* Original */}
+        <div data-impeccable-variant="original">
+          <aside className="card">
+            <h1>Original</h1>
+          </aside>
+        </div>
+        {/* Variants: insert below this line */}
+        <div data-impeccable-variant="1"><aside className="card"><h1>Variant</h1></aside></div>
+        {/* impeccable-variants-end ACTIVE */}
+      </div>
+      <div className="next-card">After</div>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'ACTIVE', '--discard']);
+    assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
+    assert.doesNotMatch(after, /data-impeccable-variants/);
+    assert.doesNotMatch(after, /impeccable-variants-start ACTIVE/);
+    assert.doesNotMatch(after, /impeccable-variants-end OLD/);
+    assert.match(after, /<aside className="card">\s*<h1>Original<\/h1>\s*<\/aside>/m);
+    assert.ok(after.includes('<div className="next-card">After</div>'));
+  });
+
   it('accept (no carbonize, raw HTML) restores at the original indent on JSX', () => {
     // Manually craft a wrapped file in the JSX-marker-inside layout — this
     // mirrors what wrap produces, but lets us exercise accept's indent

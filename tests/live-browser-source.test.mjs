@@ -109,6 +109,11 @@ describe('live-browser source contracts', () => {
       /if \(container\) for \(const op of ops\) op\.container = container;/,
       'manual copy edits should attach selected/container context to each op',
     );
+    assert.match(
+      SOURCE,
+      /const acceptPayload = \{[\s\S]{0,160}?pageUrl: location\.pathname,/,
+      'accept events should carry pageUrl so post-accept staged-edit cleanup is page-scoped',
+    );
     const sourceHintStart = SOURCE.indexOf('function sourceHintForElement');
     const sourceHintEnd = SOURCE.indexOf('function parseSourceLoc', sourceHintStart);
     const sourceHintFn = SOURCE.slice(sourceHintStart, sourceHintEnd);

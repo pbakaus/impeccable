@@ -143,6 +143,9 @@ Options:
       const scriptArgs = event.type === 'discard'
         ? ['--id', event.id, '--discard']
         : ['--id', event.id, '--variant', event.variantId];
+      if (event.pageUrl) {
+        scriptArgs.push('--page-url', event.pageUrl);
+      }
       if (event.type === 'accept' && event.paramValues && Object.keys(event.paramValues).length > 0) {
         scriptArgs.push('--param-values', JSON.stringify(event.paramValues));
       }

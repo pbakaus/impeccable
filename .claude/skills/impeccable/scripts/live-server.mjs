@@ -275,6 +275,7 @@ function validateEvent(msg) {
     case 'accept':
       if (!isValidId(msg.id)) return 'accept: missing or malformed id';
       if (!isValidVariantId(msg.variantId)) return 'accept: missing or malformed variantId';
+      if (msg.pageUrl !== undefined && typeof msg.pageUrl !== 'string') return 'accept: pageUrl must be string';
       if (msg.paramValues !== undefined) {
         if (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues)) {
           return 'accept: paramValues must be an object';

@@ -39,6 +39,9 @@ Modes:
 Required:
   --id SESSION_ID    Session ID of the variant wrapper
 
+Options:
+  --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
+
 Output (JSON):
   { handled, file, carbonize }`);
     process.exit(0);
@@ -47,6 +50,7 @@ Output (JSON):
   const id = argVal(args, '--id');
   const variantNum = argVal(args, '--variant');
   const paramValuesRaw = argVal(args, '--param-values');
+  const pageUrl = argVal(args, '--page-url');
   const isDiscard = args.includes('--discard');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
@@ -100,7 +104,7 @@ Output (JSON):
     // buffer-aware), so only those scoped ops are redundant.
     if (result.handled !== false) {
       try {
-        scrubManualEditsAgainstOriginalBlock(acceptedOriginalText);
+        scrubManualEditsAgainstOriginalBlock(acceptedOriginalText, process.cwd(), pageUrl);
       } catch {
         // Non-fatal; the buffer stays as-is and the user can discard later.
       }
@@ -118,13 +122,15 @@ Output (JSON):
  * Match both originalText and newText because live-wrap rewrites the original
  * preview block to reflect pending manual edits before variants are generated.
  */
-function scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd = process.cwd()) {
+function scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd = process.cwd(), pageUrl = null) {
   const originalBlock = String(originalBlockText || '');
   if (!originalBlock) return;
+  if (!pageUrl) return;
   const buffer = readManualEditsBuffer(cwd);
   if (buffer.entries.length === 0) return;
   let mutated = false;
   for (const entry of buffer.entries) {
+    if (entry.pageUrl !== pageUrl) continue;
     const before = entry.ops.length;
     entry.ops = entry.ops.filter((op) => {
       return !manualEditOpAppearsInBlock(op, originalBlock);
@@ -143,8 +149,8 @@ function manualEditOpAppearsInBlock(op, originalBlock) {
 
 // Compatibility export for older tests/callers. The unsafe file-wide scrub was
 // removed; callers must pass accepted original-block text for scoped cleanup.
-function scrubManualEditsAgainstFile(_targetFile, cwd = process.cwd(), originalBlockText = '') {
-  return scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd);
+function scrubManualEditsAgainstFile(_targetFile, cwd = process.cwd(), originalBlockText = '', pageUrl = null) {
+  return scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd, pageUrl);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +284,7 @@ function findMarkerBlock(id, lines) {
     if (lines[i].includes(endPattern)) { end = i; break; }
   }
 
-  return (start !== -1 && end !== -1) ? { start, end } : null;
+  return (start !== -1 && end !== -1) ? { start, end, id } : null;
 }
 
 /**
@@ -306,10 +312,10 @@ function expandReplaceRange(block, lines, isJsx) {
   // The attr may sit on a continuation line of a multi-line opening tag, so
   // also walk to the line that actually contains `<div`.
   for (let i = start - 1; i >= 0; i--) {
-    if (/impeccable-variants-end\s+/.test(lines[i])) break;
-    if (/data-impeccable-variants=/.test(lines[i])) {
+    if (isVariantEndMarkerLine(lines[i], block.id)) break;
+    if (hasVariantWrapperAttr(lines[i], block.id)) {
       let opener = i;
-      while (opener > 0 && !/<div\b/.test(lines[opener]) && !/impeccable-variants-end\s+/.test(lines[opener])) {
+      while (opener > 0 && !/<div\b/.test(lines[opener]) && !isVariantEndMarkerLine(lines[opener], block.id)) {
         opener--;
       }
       if (/<div\b/.test(lines[opener])) start = opener;
@@ -348,6 +354,19 @@ function expandReplaceRange(block, lines, isJsx) {
   }
 
   return { start, end };
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isVariantEndMarkerLine(line, id) {
+  return new RegExp('impeccable-variants-end\\s+' + escapeRegExp(id) + '(?:\\s|--|\\*/|$)').test(line);
+}
+
+function hasVariantWrapperAttr(line, id) {
+  const escaped = escapeRegExp(id);
+  return new RegExp(`data-impeccable-variants\\s*=\\s*(?:"${escaped}"|'${escaped}'|\\{["']${escaped}["']\\})`).test(line);
 }
 
 /**

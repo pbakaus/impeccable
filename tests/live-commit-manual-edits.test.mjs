@@ -79,6 +79,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
       entries: [
         entry({ id: 'a', pageUrl: '/a', ops: [{ ref: 'a', tag: 'h1', originalText: 'A original', newText: 'A new' }] }),
         entry({ id: 'b', pageUrl: '/a', ops: [{ ref: 'b', tag: 'h1', originalText: 'B original', newText: 'B new' }] }),
+        entry({ id: 'c', pageUrl: '/a', ops: [{ ref: 'c', tag: 'h1', originalText: 'C original', newText: 'C new' }] }),
       ],
     });
 
@@ -93,9 +94,12 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 1);
     assert.equal(result.applied.length, 1);
-    assert.equal(result.failed.length, 1);
-    assert.equal(result.failed[0].id, 'b');
-    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'b');
+    assert.equal(result.failed.length, 2);
+    assert.deepEqual(result.failed.map((item) => [item.id, item.reason]), [
+      ['c', 'not_reported_applied'],
+      ['b', 'ambiguous duplicate card text'],
+    ]);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'b,c');
   });
 
   it('treats done without explicit appliedEntryIds as failed and keeps staged entries', () => {

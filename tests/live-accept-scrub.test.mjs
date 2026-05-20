@@ -38,7 +38,7 @@ describe('scrubManualEditsAgainstOriginalBlock', () => {
       ],
     });
 
-    scrubManualEditsAgainstOriginalBlock('<section><p>Accepted edited</p><p>Accepted second</p></section>', tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<section><p>Accepted edited</p><p>Accepted second</p></section>', tmpDir, '/');
 
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);
@@ -60,7 +60,7 @@ describe('scrubManualEditsAgainstOriginalBlock', () => {
       ],
     });
 
-    scrubManualEditsAgainstOriginalBlock('<h1>Hero title edited</h1>', tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<h1>Hero title edited</h1>', tmpDir, '/');
 
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);
@@ -76,7 +76,7 @@ describe('scrubManualEditsAgainstOriginalBlock', () => {
       ],
     });
 
-    scrubManualEditsAgainstOriginalBlock('<div><p>New A</p><p>Gone B</p></div>', tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<div><p>New A</p><p>Gone B</p></div>', tmpDir, '/');
 
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);
@@ -84,7 +84,49 @@ describe('scrubManualEditsAgainstOriginalBlock', () => {
   });
 
   it('is a no-op when the buffer is empty', () => {
-    scrubManualEditsAgainstOriginalBlock('<div></div>', tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<div></div>', tmpDir, '/');
     assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
+  it('only scrubs the accepted page and preserves matching text on other pages', () => {
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'home',
+          pageUrl: '/',
+          ops: [op({ ref: 'home-title', originalText: 'Shared label', newText: 'Shared edited' })],
+        }),
+        entry({
+          id: 'docs',
+          pageUrl: '/docs',
+          ops: [op({ ref: 'docs-title', originalText: 'Shared label', newText: 'Shared edited' })],
+        }),
+      ],
+    });
+
+    scrubManualEditsAgainstOriginalBlock('<h1>Shared edited</h1>', tmpDir, '/');
+
+    const buf = readBuffer(tmpDir);
+    assert.equal(buf.entries.length, 1);
+    assert.equal(buf.entries[0].id, 'docs');
+    assert.equal(buf.entries[0].pageUrl, '/docs');
+  });
+
+  it('does not scrub anything without a page URL', () => {
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'home',
+          pageUrl: '/',
+          ops: [op({ ref: 'home-title', originalText: 'Accepted original', newText: 'Accepted edited' })],
+        }),
+      ],
+    });
+
+    scrubManualEditsAgainstOriginalBlock('<h1>Accepted edited</h1>', tmpDir);
+
+    const buf = readBuffer(tmpDir);
+    assert.equal(buf.entries.length, 1);
+    assert.equal(buf.entries[0].ops.length, 1);
   });
 });

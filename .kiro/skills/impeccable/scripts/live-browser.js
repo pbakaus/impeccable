@@ -3763,7 +3763,12 @@ void main() {
     if (!currentSessionId || arrivedVariants === 0) return;
     const domVisibleVariant = readVisibleVariantFromDOM(currentSessionId);
     if (domVisibleVariant > 0) visibleVariant = domVisibleVariant;
-    const acceptPayload = { type: 'accept', id: currentSessionId, variantId: String(visibleVariant) };
+    const acceptPayload = {
+      type: 'accept',
+      id: currentSessionId,
+      variantId: String(visibleVariant),
+      pageUrl: location.pathname,
+    };
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
     }
