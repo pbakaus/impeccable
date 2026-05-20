@@ -63,16 +63,16 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
 
   it('color: flag column triggers all color rules, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'color.html'));
-    // All five color rules must fire from the flag column
-    assert.ok(f.some(r => r.antipattern === 'pure-black-white'), 'expected pure-black-white');
+    // pure-black-white was removed from the skill in v3.2; only the remaining rules
+    // are expected to fire from the flag column.
     assert.ok(f.some(r => r.antipattern === 'gray-on-color'), 'expected gray-on-color');
     assert.ok(f.some(r => r.antipattern === 'low-contrast'), 'expected low-contrast');
     assert.ok(f.some(r => r.antipattern === 'gradient-text'), 'expected gradient-text');
     assert.ok(f.some(r => r.antipattern === 'ai-color-palette'), 'expected ai-color-palette');
     assert.equal(
-      f.some(r => r.antipattern === 'pure-black-white' && /#ffffff|#fff/i.test(r.snippet || '')),
+      f.some(r => r.antipattern === 'pure-black-white'),
       false,
-      'pure white surfaces with dark text should remain allowed',
+      'pure-black-white detector was removed in v3.2',
     );
     // Gradient-bg + gray text case (added with the gradient-fix patch)
     assert.ok(
@@ -97,26 +97,6 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(
       falsePositive.length, 0,
       `expected no low-contrast from bg-image ancestor, got: ${falsePositive.map(r => r.snippet).join('; ')}`
-    );
-  });
-
-  it('color: Tailwind bg-black/N opacity modifiers are not flagged as pure-black-white', async () => {
-    const f = await detectHtml(path.join(FIXTURES, 'color.html'));
-    // The pass column has bg-black/3, hover:bg-black/5, bg-black/50 — none are pure black.
-    // Only the flag column's literal bg-black class should trigger pure-black-white.
-    const pureBlackFindings = f.filter(r => r.antipattern === 'pure-black-white');
-    const opacityFalsePositives = pureBlackFindings.filter(r =>
-      (r.snippet || '').includes('bg-black') &&
-      f.some(() => true) // check that bg-black/N class triggers are absent
-    );
-    // There should be exactly the flag-column hits (bg-black class + #000000 inline)
-    // and zero from the pass-column opacity variants.
-    // The pass-column elements have data-test attributes starting with "bg-black-"
-    // The Tailwind class check produces snippet "bg-black" — count those.
-    const twSnippets = pureBlackFindings.filter(r => (r.snippet || '') === 'bg-black');
-    assert.equal(
-      twSnippets.length, 1,
-      `expected exactly 1 Tailwind bg-black finding (flag column only), got ${twSnippets.length}: ${twSnippets.map(r => r.snippet).join('; ')}`
     );
   });
 

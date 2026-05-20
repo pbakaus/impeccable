@@ -63,10 +63,6 @@ const REGEX_MATCHERS = [
   { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Mona\+Sans|Geist)\b/gi,
     test: () => true,
     fmt: (m) => `Google Fonts: ${m[1].replace(/\+/g, ' ')}` },
-  // --- Pure black background ---
-  { id: 'pure-black-white', regex: /background(?:-color)?\s*:\s*(#000000|#000|rgb\(0,\s*0,\s*0\))\b/gi,
-    test: () => true,
-    fmt: (m) => m[0] },
   // --- Gradient text ---
   { id: 'gradient-text', regex: /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/gi,
     test: (m, line) => /gradient/i.test(line),
@@ -75,10 +71,6 @@ const REGEX_MATCHERS = [
   { id: 'gradient-text', regex: /\bbg-clip-text\b/g,
     test: (m, line) => /\bbg-gradient-to-/i.test(line),
     fmt: () => 'bg-clip-text + bg-gradient' },
-  // --- Tailwind pure black background ---
-  { id: 'pure-black-white', regex: /\bbg-black\b/g,
-    test: () => true,
-    fmt: (m) => m[0] },
   // --- Tailwind gray on colored bg ---
   { id: 'gray-on-color', regex: /\btext-(?:gray|slate|zinc|neutral|stone)-(\d+)\b/g,
     test: (m, line) => /\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/.test(line),

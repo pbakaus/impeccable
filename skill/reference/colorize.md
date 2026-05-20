@@ -124,8 +124,6 @@ Ensure color addition improves rather than overwhelms:
 - Use every color in the rainbow (choose 2-4 colors beyond neutrals)
 - Apply color randomly without semantic meaning
 - Put gray text on colored backgrounds. It looks washed out; use a darker shade of the background color or transparency instead
-- Use pure gray for neutrals. Add subtle color tint (warm or cool) for depth
-- Use pure black (`#000`) or pure white (`#fff`) for large areas
 - Violate WCAG contrast requirements
 - Use color as the only indicator (accessibility issue)
 - Make everything colorful (defeats the purpose)

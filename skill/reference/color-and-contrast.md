@@ -65,10 +65,6 @@ These commonly fail contrast or cause readability issues:
 - Yellow text on white (almost always fails)
 - Thin light text on images (unpredictable contrast)
 
-### Never Use Pure Gray or Pure Black
-
-Pure gray (`oklch(50% 0 0)`) and pure black (`#000`) don't exist in nature; real shadows and surfaces always have a color cast. Even a chroma of 0.005-0.01 is enough to feel natural without being obviously tinted. (See tinted neutrals example above.)
-
 ### Testing
 
 Don't trust your eyes. Use tools:
@@ -88,7 +84,7 @@ You can't just swap colors. Dark mode requires different design decisions:
 | Shadows for depth | Lighter surfaces for depth (no shadows) |
 | Dark text on light | Light text on dark (reduce font weight) |
 | Vibrant accents | Desaturate accents slightly |
-| White backgrounds | Never pure black; use dark gray (oklch 12-18%) |
+| White backgrounds | Either pure black or a deep surface that fits the brand (a brand-tinted near-black at oklch 12-18% works too) |
 
 In dark mode, depth comes from surface lightness, not shadow. Build a 3-step surface scale where higher elevations are lighter (e.g. 15% / 20% / 25% lightness). Use the SAME hue and chroma as your brand color (whatever it is for THIS project; do not reach for blue) and only vary the lightness. Reduce body text weight slightly (e.g. 350 instead of 400) because light text on dark reads as heavier than dark text on light.
 
@@ -102,4 +98,4 @@ Heavy use of transparency (rgba, hsla) usually means an incomplete palette. Alph
 
 ---
 
-**Avoid**: Relying on color alone to convey information. Creating palettes without clear roles for each color. Using pure black (#000) for large areas. Skipping color blindness testing (8% of men affected).
+**Avoid**: Relying on color alone to convey information. Creating palettes without clear roles for each color. Skipping color blindness testing (8% of men affected).

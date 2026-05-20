@@ -979,12 +979,6 @@ describe('detectText -- CSS-in-JS', () => {
     expect(f.some(r => r.antipattern === 'gradient-text')).toBe(true);
   });
 
-  test('detects pure-black-white in styled-components', () => {
-    const tsx = "const Dark = styled.section`\n  background-color: #000000;\n`;";
-    const f = detectText(tsx, 'Dark.tsx');
-    expect(f.some(r => r.antipattern === 'pure-black-white')).toBe(true);
-  });
-
   test('does not false-positive on clean CSS-in-JS', () => {
     const tsx = "const Card = styled.div`\n  border-radius: 12px;\n  padding: 24px;\n`;";
     const f = detectText(tsx, 'Card.tsx');
@@ -1064,7 +1058,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
     const result = run(dir);
     stderr = result.stderr;
     expect(result.code).toBe(2);
-    for (const ap of ['side-tab', 'gradient-text', 'ai-color-palette', 'overused-font', 'bounce-easing', 'pure-black-white']) {
+    for (const ap of ['side-tab', 'gradient-text', 'ai-color-palette', 'overused-font', 'bounce-easing']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1079,10 +1073,8 @@ describe('CLI -- Next.js + Tailwind project', () => {
     expect(stderr).toContain('animate-bounce');
   });
 
-  test('PricingCard: pure-black-white + gradient-text + ai-color-palette', () => {
+  test('PricingCard: gradient-text + ai-color-palette', () => {
     const { stderr } = run(path.join(dir, 'components', 'PricingCard.tsx'));
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('bg-black');
     expect(stderr).toContain('gradient-text');
     expect(stderr).toContain('bg-clip-text');
     expect(stderr).toContain('ai-color-palette');
@@ -1125,7 +1117,7 @@ describe('CLI -- Next.js + CSS Modules project', () => {
   test('finds all expected anti-pattern types', () => {
     const { code, stderr } = run(dir);
     expect(code).toBe(2);
-    for (const ap of ['side-tab', 'overused-font', 'pure-black-white', 'layout-transition', 'gradient-text']) {
+    for (const ap of ['side-tab', 'overused-font', 'layout-transition', 'gradient-text']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1146,12 +1138,10 @@ describe('CLI -- Next.js + CSS Modules project', () => {
     expect(stderr).toContain('border-right: 3px solid');
   });
 
-  test('globals.css: overused Roboto + pure-black-white', () => {
+  test('globals.css: overused Roboto', () => {
     const { stderr } = run(path.join(dir, 'app', 'globals.css'));
     expect(stderr).toContain('overused-font');
     expect(stderr).toContain('Roboto');
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('#000000');
   });
 
   test('page.module.css: gradient-text across lines', () => {
@@ -1179,7 +1169,7 @@ describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
   test('finds all expected anti-pattern types', () => {
     const { code, stderr } = run(dir);
     expect(code).toBe(2);
-    for (const ap of ['side-tab', 'gradient-text', 'overused-font', 'bounce-easing', 'pure-black-white', 'layout-transition']) {
+    for (const ap of ['side-tab', 'gradient-text', 'overused-font', 'bounce-easing', 'layout-transition']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1202,12 +1192,10 @@ describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
     expect(stderr).toContain('Montserrat');
   });
 
-  test('GlobalStyle.tsx: overused Inter + pure-black-white', () => {
+  test('GlobalStyle.tsx: overused Inter', () => {
     const { stderr } = run(path.join(dir, 'components', 'GlobalStyle.tsx'));
     expect(stderr).toContain('overused-font');
     expect(stderr).toContain('Inter');
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('#000000');
   });
 
   test('Testimonials.tsx: side-tab + gradient-text in styled blockquote', () => {
