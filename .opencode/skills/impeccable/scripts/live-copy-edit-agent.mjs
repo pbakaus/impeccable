@@ -4,8 +4,7 @@
  *
  * The browser Save path stages edits. Apply copy edits calls
  * live-commit-manual-edits.mjs, which builds a page-scoped batch and uses this
- * helper to ask Codex/Claude to edit true source files. The older event CLI at
- * the bottom is kept only for compatibility with stale queued events.
+ * helper to ask Codex/Claude to edit true source files.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -204,35 +203,6 @@ function mockBatchResult(batch, env) {
   };
 }
 
-export function buildCopyEditAgentPrompt(event, { cwd = process.cwd() } = {}) {
-  return [
-    'You are the Impeccable live copy-edit applier.',
-    '',
-    'Apply the requested inline copy edit to the real source files in this repository.',
-    '',
-    'Rules:',
-    '- Make the smallest source change that causes the edited browser text to match newText.',
-    '- Prefer a valid sourceHint, but verify it before editing.',
-    '- If the source text already changed because a newer save raced this one, preserve the user-visible newest intent and do not undo it.',
-    '- If the visible string is used as a data key or reference, update related references carefully.',
-    '- Do not change unrelated styling, layout, generated files, or demo copy.',
-    '- Do not run a broad build unless needed; for plain Astro/JS copy edits, syntax-check or inspect the touched file.',
-    '- Never call live-poll.mjs yourself. This worker will acknowledge the browser after you finish.',
-    '',
-    'Final response contract:',
-    'Return ONLY JSON, with no markdown fence and no prose:',
-    '{"status":"done","files":["relative/path.ext"]}',
-    'or:',
-    '{"status":"error","message":"why it could not be applied safely"}',
-    '',
-    'Repository root:',
-    cwd,
-    '',
-    'Copy edit event:',
-    JSON.stringify(compactEventForPrompt(event), null, 2),
-  ].join('\n');
-}
-
 export function parseCopyEditAgentResult(text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
@@ -263,81 +233,6 @@ export function chooseCopyEditAgent({ env = process.env } = {}) {
   if (commandExists('codex')) return 'codex';
   if (commandExists('claude')) return 'claude';
   return null;
-}
-
-export async function runCopyEditAgent(event, opts = {}) {
-  const cwd = opts.cwd || process.cwd();
-  const env = opts.env || process.env;
-  const provider = opts.provider || chooseCopyEditAgent({ env });
-  if (!provider) {
-    throw new Error('No live copy-edit AI runner found. Install/authenticate Codex or Claude, or set IMPECCABLE_LIVE_COPY_AGENT=off.');
-  }
-
-  const prompt = buildCopyEditAgentPrompt(event, { cwd });
-  const outDir = opts.outDir || fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-copy-agent-'));
-  fs.mkdirSync(outDir, { recursive: true });
-  const resultPath = path.join(outDir, 'result.json');
-  const logPath = path.join(outDir, 'agent.log');
-
-  if (provider === 'codex') {
-    await runCodex(prompt, { cwd, env, resultPath, logPath, timeoutMs: opts.timeoutMs });
-  } else if (provider === 'claude') {
-    await runClaude(prompt, { cwd, env, resultPath, logPath, timeoutMs: opts.timeoutMs });
-  } else {
-    throw new Error(`Unsupported live copy-edit AI runner: ${provider}`);
-  }
-
-  const output = fs.existsSync(resultPath) ? fs.readFileSync(resultPath, 'utf-8') : '';
-  const parsed = parseCopyEditAgentResult(output);
-  if (parsed?.status === 'error') throw new Error(parsed.message || 'AI copy edit failed');
-  if (parsed?.status === 'done') return normalizeDoneResult(parsed, event, cwd);
-
-  if (eventLikelyApplied(event, cwd)) {
-    return { status: 'done', files: likelyTouchedFiles(event, cwd) };
-  }
-
-  const tail = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf-8').slice(-1200) : output.slice(-1200);
-  throw new Error('AI copy edit did not return a valid completion payload. ' + tail.trim());
-}
-
-function compactEventForPrompt(event) {
-  return {
-    id: event?.id,
-    pageUrl: event?.pageUrl,
-    element: {
-      tagName: event?.element?.tagName,
-      id: event?.element?.id,
-      classes: event?.element?.classes,
-      textContent: truncate(event?.element?.textContent, 900),
-      outerHTML: truncate(event?.element?.outerHTML, 1600),
-    },
-    ops: (event?.ops || []).map((op) => ({
-      ref: op.ref,
-      contextRef: op.contextRef,
-      tag: op.tag,
-      elementId: op.elementId,
-      classes: op.classes,
-      originalText: op.originalText,
-      newText: op.newText,
-      deleted: op.deleted === true || undefined,
-      sourceHint: op.sourceHint,
-      leaf: op.leaf ? {
-        ref: op.leaf.ref,
-        tagName: op.leaf.tagName,
-        classes: op.leaf.classes,
-        textContent: truncate(op.leaf.textContent, 500),
-        outerHTML: truncate(op.leaf.outerHTML, 1000),
-      } : undefined,
-      nearbyEditableTexts: Array.isArray(op.nearbyEditableTexts) ? op.nearbyEditableTexts.slice(0, 6) : [],
-      container: op.container ? {
-        ref: op.container.ref,
-        tagName: op.container.tagName,
-        classes: op.container.classes,
-        textContent: truncate(op.container.textContent, 900),
-        outerHTML: truncate(op.container.outerHTML, 1600),
-      } : undefined,
-    })),
-  };
 }
 
 function runCodex(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_TIMEOUT_MS }) {
@@ -424,42 +319,6 @@ function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, m
   });
 }
 
-function normalizeDoneResult(result, event, cwd) {
-  const files = Array.isArray(result.files) && result.files.length
-    ? result.files.filter((file) => typeof file === 'string')
-    : likelyTouchedFiles(event, cwd);
-  return { status: 'done', files };
-}
-
-function eventLikelyApplied(event, cwd) {
-  return (event?.ops || []).every((op) => {
-    if (op.deleted === true) return true;
-    if (typeof op.newText !== 'string') return false;
-    const file = resolveSourceHintFile(op.sourceHint, cwd);
-    if (!file) return false;
-    try {
-      return fs.readFileSync(file, 'utf-8').includes(op.newText);
-    } catch {
-      return false;
-    }
-  });
-}
-
-function likelyTouchedFiles(event, cwd) {
-  return [...new Set((event?.ops || [])
-    .map((op) => resolveSourceHintFile(op.sourceHint, cwd))
-    .filter(Boolean)
-    .map((file) => path.relative(cwd, file) || file))];
-}
-
-function resolveSourceHintFile(sourceHint, cwd) {
-  if (!sourceHint?.file || typeof sourceHint.file !== 'string') return null;
-  const file = path.isAbsolute(sourceHint.file) ? sourceHint.file : path.resolve(cwd, sourceHint.file);
-  const relative = path.relative(cwd, file);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
-  return file;
-}
-
 function isPathInsideOrEqual(cwd, file) {
   const relative = path.relative(path.resolve(cwd), path.resolve(file));
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -478,64 +337,4 @@ function truncate(value, max) {
 function commandExists(command) {
   const result = spawnSync(command, ['--version'], { stdio: 'ignore' });
   return !result.error && result.status === 0;
-}
-
-async function postReply({ port, token, id, type, message, file }) {
-  const res = await fetch(`http://localhost:${port}/poll`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, id, type, message, file }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `reply failed: ${res.status}`);
-  }
-}
-
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--event-file') out.eventFile = argv[++i];
-    else if (arg.startsWith('--event-file=')) out.eventFile = arg.slice('--event-file='.length);
-    else if (arg === '--port') out.port = Number(argv[++i]);
-    else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
-    else if (arg === '--token') out.token = argv[++i];
-    else if (arg.startsWith('--token=')) out.token = arg.slice('--token='.length);
-    else if (arg === '--provider') out.provider = argv[++i];
-    else if (arg.startsWith('--provider=')) out.provider = arg.slice('--provider='.length);
-  }
-  return out;
-}
-
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.eventFile || !args.port || !args.token) {
-    console.error('Usage: node live-copy-edit-agent.mjs --event-file <json> --port <port> --token <token> [--provider auto|codex|claude]');
-    process.exit(1);
-  }
-  const event = JSON.parse(fs.readFileSync(args.eventFile, 'utf-8'));
-  try {
-    const result = await runCopyEditAgent(event, { provider: args.provider === 'auto' ? undefined : args.provider });
-    await postReply({
-      port: args.port,
-      token: args.token,
-      id: event.id,
-      type: 'done',
-      file: result.files?.[0],
-    });
-  } catch (err) {
-    await postReply({
-      port: args.port,
-      token: args.token,
-      id: event.id,
-      type: 'error',
-      message: err.message || String(err),
-    }).catch(() => {});
-    process.exit(1);
-  }
-}
-
-if (process.argv[1]?.endsWith('live-copy-edit-agent.mjs')) {
-  main();
 }

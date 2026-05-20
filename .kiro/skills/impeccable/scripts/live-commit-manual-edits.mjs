@@ -15,7 +15,7 @@
  *   { applied, failed, files, cleared, count, pageUrl }
  */
 
-import { buildManualEditEvidence } from './live-manual-edit-handoff.mjs';
+import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
 import { readBuffer, writeBuffer, countByPage } from './live-manual-edits-buffer.mjs';
 import { isGeneratedFile } from './is-generated.mjs';
 import {

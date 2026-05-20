@@ -1,5 +1,5 @@
 export const foundationAnimations = {
-	'Typo GGG': `
+	'Typography': `
 		<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="foundation-svg">
 			<path d="M10 30L20 10L30 30" stroke="var(--color-mist)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
 			<path d="M10 30L20 10L30 30" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="anim-draw"/>

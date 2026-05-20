@@ -26,7 +26,6 @@ import { createLiveSessionStore } from './live-session-store.mjs';
 import {
   getDesignSidecarPath,
   getLiveAnnotationsDir,
-  getLiveDir,
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
@@ -79,19 +78,14 @@ const state = {
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
   leaseTimer: null,
-  manualEditAgents: new Map(),
 };
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
 const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
-const MANUAL_POLL_TEXT_LIMIT = 1200;
-const MANUAL_POLL_HTML_LIMIT = 2400;
-const MANUAL_POLL_NEARBY_LIMIT = 8;
 
 function enqueueEvent(event) {
   if (!event || (event.id && state.pendingEvents.some((entry) => entry.event?.id === event.id && entry.event?.type === event.type))) return;
-  if (event.type === 'manual_edit_apply') removeSupersededManualEditEvents(event);
   state.pendingEvents.push({ event, leaseUntil: 0, seq: state.nextEventSeq++ });
   flushPendingPolls();
 }
@@ -103,35 +97,22 @@ function restorePendingEventsFromStore() {
   }
 }
 
-function pendingEventPriority(event) {
-  return event?.type === 'manual_edit_apply' ? 0 : 1;
-}
-
 function findAvailablePendingEvent(now = Date.now()) {
-  let best = null;
   for (const entry of state.pendingEvents) {
     if (entry.leaseUntil && entry.leaseUntil > now) continue;
-    if (!best) {
-      best = entry;
-      continue;
-    }
-    const priority = pendingEventPriority(entry.event);
-    const bestPriority = pendingEventPriority(best.event);
-    if (priority < bestPriority || (priority === bestPriority && (entry.seq || 0) < (best.seq || 0))) {
-      best = entry;
-    }
+    return entry;
   }
-  return best;
+  return null;
 }
 
 function leaseEvent(entry, leaseMs) {
   if (!entry.event?.id) {
     const idx = state.pendingEvents.indexOf(entry);
     if (idx !== -1) state.pendingEvents.splice(idx, 1);
-    return prepareEventForPoll(entry.event);
+    return entry.event;
   }
   entry.leaseUntil = Date.now() + leaseMs;
-  return prepareEventForPoll(entry.event);
+  return entry.event;
 }
 
 function acknowledgePendingEvent(id) {
@@ -173,151 +154,6 @@ function flushPendingPolls() {
     poll.resolve(leaseEvent(entry, poll.leaseMs));
   }
   scheduleLeaseFlush();
-}
-
-function classSignature(classes) {
-  return Array.isArray(classes) ? classes.filter(Boolean).sort().join('.') : '';
-}
-
-function manualEditTargetKeys(event) {
-  const keys = new Set();
-  const pageUrl = event?.pageUrl || '';
-  for (const op of event?.ops || []) {
-    if (!op || typeof op !== 'object') continue;
-    if (op.ref) keys.add(pageUrl + '\0ref\0' + op.ref);
-    if (op.contextRef) keys.add(pageUrl + '\0context\0' + op.contextRef + '\0' + (op.tag || '') + '\0' + classSignature(op.classes));
-    if (op.sourceHint?.file && op.sourceHint?.line) {
-      keys.add(pageUrl + '\0source\0' + op.sourceHint.file + ':' + op.sourceHint.line + ':' + (op.sourceHint.column || ''));
-    }
-  }
-  return keys;
-}
-
-function shouldSupersedeManualEdit(existingEvent, nextEvent) {
-  if (existingEvent?.type !== 'manual_edit_apply' || nextEvent?.type !== 'manual_edit_apply') return false;
-  const existingKeys = manualEditTargetKeys(existingEvent);
-  if (existingKeys.size === 0) return false;
-  for (const key of manualEditTargetKeys(nextEvent)) {
-    if (existingKeys.has(key)) return true;
-  }
-  return false;
-}
-
-function markManualEditSuperseded(event, supersededBy) {
-  if (!state.sessionStore || !event?.id) return;
-  try {
-    state.sessionStore.appendEvent({
-      type: 'manual_edit_superseded',
-      id: event.id,
-      supersededBy: supersededBy?.id,
-      message: 'Superseded by a newer copy edit before delivery to the agent.',
-    });
-  } catch { /* session recovery is best-effort; queue priority should still hold */ }
-}
-
-function removeSupersededManualEditEvents(nextEvent) {
-  for (let i = state.pendingEvents.length - 1; i >= 0; i--) {
-    const entry = state.pendingEvents[i];
-    if (!shouldSupersedeManualEdit(entry.event, nextEvent)) continue;
-    const [removed] = state.pendingEvents.splice(i, 1);
-    stopManualEditAgent(removed.event?.id);
-    markManualEditSuperseded(removed.event, nextEvent);
-  }
-}
-
-function manualEditAgentMode() {
-  return (process.env.IMPECCABLE_LIVE_COPY_AGENT || 'auto').trim().toLowerCase();
-}
-
-function manualEditAgentEnabled() {
-  const mode = manualEditAgentMode();
-  return !(mode === '0' || mode === 'false' || mode === 'off' || mode === 'none');
-}
-
-function stopManualEditAgent(id) {
-  if (!id) return;
-  const child = state.manualEditAgents.get(id);
-  if (!child) return;
-  state.manualEditAgents.delete(id);
-  try { child.kill('SIGTERM'); } catch {}
-}
-
-function launchManualEditAgent(event) {
-  if (!event?.id || event.type !== 'manual_edit_apply' || !manualEditAgentEnabled()) return;
-  if (state.manualEditAgents.has(event.id)) return;
-  const eventDir = path.join(getLiveDir(process.cwd()), 'copy-edit-events');
-  fs.mkdirSync(eventDir, { recursive: true });
-  const eventPath = path.join(eventDir, `${event.id}.json`);
-  fs.writeFileSync(eventPath, JSON.stringify(event, null, 2));
-  const scriptPath = path.join(__dirname, 'live-copy-edit-agent.mjs');
-  const child = spawn(process.execPath, [
-    scriptPath,
-    '--event-file', eventPath,
-    '--port', String(state.port),
-    '--token', state.token,
-    '--provider', manualEditAgentMode() === 'auto' ? 'auto' : manualEditAgentMode(),
-  ], {
-    cwd: process.cwd(),
-    env: process.env,
-    stdio: 'ignore',
-  });
-  state.manualEditAgents.set(event.id, child);
-  child.on('exit', () => {
-    if (state.manualEditAgents.get(event.id) === child) {
-      state.manualEditAgents.delete(event.id);
-    }
-  });
-  child.on('error', () => {
-    if (state.manualEditAgents.get(event.id) === child) {
-      state.manualEditAgents.delete(event.id);
-    }
-  });
-  child.unref();
-}
-
-function truncateForManualPoll(value, limit) {
-  if (typeof value !== 'string' || value.length <= limit) return value;
-  return value.slice(0, limit) + `... [truncated ${value.length - limit} chars]`;
-}
-
-function compactContextObject(value, { includeSource = false } = {}) {
-  if (!value || typeof value !== 'object') return value;
-  const out = {};
-  for (const key of ['ref', 'contextRef', 'tag', 'tagName', 'id', 'elementId', 'classes', 'originalText', 'newText']) {
-    if (value[key] !== undefined) out[key] = value[key];
-  }
-  if (typeof value.textContent === 'string') out.textContent = truncateForManualPoll(value.textContent, MANUAL_POLL_TEXT_LIMIT);
-  if (typeof value.outerHTML === 'string') out.outerHTML = truncateForManualPoll(value.outerHTML, MANUAL_POLL_HTML_LIMIT);
-  if (includeSource && value.sourceHint) out.sourceHint = value.sourceHint;
-  return out;
-}
-
-function compactManualEditOp(op) {
-  const out = {};
-  for (const key of ['ref', 'contextRef', 'tag', 'elementId', 'classes', 'originalText', 'newText', 'deleted']) {
-    if (op[key] !== undefined) out[key] = op[key];
-  }
-  if (op.sourceHint) out.sourceHint = op.sourceHint;
-  if (op.leaf) out.leaf = compactContextObject(op.leaf, { includeSource: true });
-  if (op.container) out.container = compactContextObject(op.container, { includeSource: true });
-  if (Array.isArray(op.nearbyEditableTexts)) {
-    out.nearbyEditableTexts = op.nearbyEditableTexts
-      .slice(0, MANUAL_POLL_NEARBY_LIMIT)
-      .map((item) => compactContextObject(item));
-  }
-  return out;
-}
-
-function prepareEventForPoll(event) {
-  if (event?.type !== 'manual_edit_apply') return event;
-  return {
-    type: event.type,
-    id: event.id,
-    pageUrl: event.pageUrl,
-    element: compactContextObject(event.element),
-    ops: (event.ops || []).map(compactManualEditOp),
-    agentInstructions: 'Apply these copy edits in source using the evidence provided. Prefer sourceHint when it is valid, verify related references, validate touched files, then reply done/error.',
-  };
 }
 
 /** Push a message to all connected SSE clients. */
@@ -456,8 +292,6 @@ function validateEvent(msg) {
     case 'prefetch':
       if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
       return null;
-    case 'manual_edit_apply':
-      return validateManualEditEvent(msg, 'manual_edit_apply');
     case 'manual_edits':
       return validateManualEditEvent(msg, 'manual_edits');
     default:
@@ -605,10 +439,6 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         status: 'ok',
         port: state.port,
         connectedClients: state.sseClients.size,
-        copyEditAgent: {
-          mode: manualEditAgentMode(),
-          running: state.manualEditAgents.size,
-        },
         pendingEvents: state.pendingEvents.map((entry) => ({
           id: entry.event?.id,
           type: entry.event?.type,
@@ -997,7 +827,6 @@ function handlePollPost(req, res) {
       return;
     }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);
-    stopManualEditAgent(msg.id);
     let skipJournalReply = false;
     if (!acknowledgedEvent && state.sessionStore && msg.id) {
       try {
@@ -1013,9 +842,7 @@ function handlePollPost(req, res) {
             ? 'complete'
             : msg.type === 'error'
               ? 'agent_error'
-              : acknowledgedEvent?.type === 'manual_edit_apply'
-                ? 'manual_edit_applied'
-                : 'agent_done';
+              : 'agent_done';
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,
@@ -1051,7 +878,6 @@ function shutdown() {
   state.sseClients.clear();
   for (const poll of state.pendingPolls) poll.resolve({ type: 'exit' });
   state.pendingPolls.length = 0;
-  for (const id of [...state.manualEditAgents.keys()]) stopManualEditAgent(id);
   if (httpServer) httpServer.close();
   process.exit(0);
 }

@@ -2,10 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCopyEditBatchPrompt,
-  buildCopyEditAgentPrompt,
   chooseCopyEditAgent,
   parseCopyEditBatchResult,
-  parseCopyEditAgentResult,
   runCopyEditPostApplyChecks,
 } from '../skill/scripts/live-copy-edit-agent.mjs';
 import fs from 'node:fs';
@@ -13,47 +11,6 @@ import os from 'node:os';
 import path from 'node:path';
 
 describe('live-copy-edit-agent', () => {
-  it('builds a focused prompt for source copy edits', () => {
-    const prompt = buildCopyEditAgentPrompt({
-      id: 'abc12345',
-      pageUrl: '/',
-      element: {
-        tagName: 'div',
-        classes: ['hero'],
-        textContent: 'Hero text',
-        outerHTML: '<div class="hero"><h1>After</h1></div>',
-      },
-      ops: [{
-        ref: 'body>div.hero:nth-of-type(1)>h1:nth-of-type(1)',
-        contextRef: 'body>div.hero:nth-of-type(1)',
-        tag: 'h1',
-        classes: ['title'],
-        originalText: 'Before',
-        newText: 'After',
-        sourceHint: { file: '/tmp/project/src/page.astro', line: 12, column: 8 },
-      }],
-    }, { cwd: '/tmp/project' });
-
-    assert.match(prompt, /Impeccable live copy-edit applier/);
-    assert.match(prompt, /Make the smallest source change/);
-    assert.match(prompt, /"originalText": "Before"/);
-    assert.match(prompt, /"newText": "After"/);
-    assert.match(prompt, /"line": 12/);
-    assert.match(prompt, /Return ONLY JSON/);
-  });
-
-  it('parses direct and wrapped agent completion JSON', () => {
-    assert.deepEqual(
-      parseCopyEditAgentResult('{"status":"done","files":["src/page.astro"]}'),
-      { status: 'done', files: ['src/page.astro'] },
-    );
-    assert.deepEqual(
-      parseCopyEditAgentResult(JSON.stringify({ result: '{"status":"error","message":"ambiguous"}' })),
-      { status: 'error', message: 'ambiguous' },
-    );
-    assert.equal(parseCopyEditAgentResult('not json'), null);
-  });
-
   it('builds a batch prompt with duplicate-card context and candidate evidence', () => {
     const prompt = buildCopyEditBatchPrompt({
       pageUrl: '/',

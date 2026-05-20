@@ -113,29 +113,6 @@ describe('live-session-store', () => {
     );
   });
 
-  it('persists manual copy-edit apply events for restart replay and completes them on agent ack', () => {
-    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'copy-edit-session' });
-    store.appendEvent({
-      type: 'manual_edit_apply',
-      id: 'copy-edit-session',
-      pageUrl: '/',
-      element: { outerHTML: '<h1>Hello</h1>', tagName: 'h1' },
-      ops: [{ ref: 'body>h1:nth-of-type(1)', tag: 'h1', originalText: 'Hello', newText: 'Hi' }],
-    });
-
-    const snapshot = store.getSnapshot('copy-edit-session');
-    assert.equal(snapshot.phase, 'manual_edit_requested');
-    assert.equal(snapshot.pendingEvent.type, 'manual_edit_apply');
-    assert.equal(snapshot.pendingEvent.ops[0].newText, 'Hi');
-
-    store.appendEvent({ type: 'manual_edit_applied', id: 'copy-edit-session', file: 'src/page.html' });
-    const completed = store.getSnapshot('copy-edit-session', { includeCompleted: true });
-    assert.equal(completed.phase, 'completed');
-    assert.equal(completed.sourceFile, 'src/page.html');
-    assert.equal(completed.pendingEvent, null);
-    assert.equal(store.listActiveSessions().some((s) => s.id === 'copy-edit-session'), false);
-  });
-
   it('preserves zero-valued checkpoint revisions and empty explicit fields', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'zero-checkpoint' });
     store.appendEvent({

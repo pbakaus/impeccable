@@ -1,24 +1,19 @@
 #!/usr/bin/env node
 /**
- * Build an AI handoff packet for pending live copy edits.
+ * Collect evidence for pending live copy edits.
  *
- * This script intentionally does not edit source files. It gathers the staged
- * browser edits, nearby rendered context, framework source hints, and likely
- * source candidates so the coding agent can make the source change with full
- * repo context instead of a deterministic resolver guessing.
+ * This module intentionally does not edit source files and does not choose a
+ * winner. It gathers staged browser edits, rendered context, framework source
+ * hints, and likely source candidates so the AI copy-edit batch runner can make
+ * source changes with full repo context.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { getLiveDir } from './impeccable-paths.mjs';
 import { isGeneratedFile } from './is-generated.mjs';
 import { readBuffer, getBufferPath } from './live-manual-edits-buffer.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const HANDOFF_VERSION = 1;
-const HANDOFF_DIRNAME = 'manual-edit-handoffs';
+const EVIDENCE_VERSION = 1;
 const TEXT_EXTENSIONS = new Set(['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.js', '.mjs', '.ts']);
 const SEARCH_DIRS = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'site', 'lib', 'data'];
 const SKIP_DIRS = new Set([
@@ -34,75 +29,6 @@ const SKIP_DIRS = new Set([
   'out',
   'coverage',
 ]);
-
-export function getManualEditHandoffDir(cwd = process.cwd()) {
-  return path.join(getLiveDir(cwd), HANDOFF_DIRNAME);
-}
-
-export function getManualEditHandoffPath(cwd = process.cwd(), handoffId) {
-  return path.join(getManualEditHandoffDir(cwd), handoffId + '.json');
-}
-
-export function createManualEditHandoff({
-  cwd = process.cwd(),
-  pageUrl = null,
-  handoffId = createHandoffId(),
-  createdAt = new Date().toISOString(),
-} = {}) {
-  const packet = buildManualEditEvidence({ cwd, pageUrl });
-  const opCount = packet.ops.length;
-
-  if (opCount === 0) {
-    return {
-      cleared: false,
-      requiresAgent: true,
-      reason: 'no_pending_edits',
-      handoffId: null,
-      handoffPath: null,
-      pageUrl,
-      count: 0,
-      prompt: 'No pending Impeccable copy edits were found.',
-      entries: [],
-      ops: [],
-    };
-  }
-
-  const relativeHandoffPath = path.join('.impeccable', 'live', HANDOFF_DIRNAME, handoffId + '.json');
-  const completeScriptPath = resolveCompleteScriptPath(cwd);
-  const handoff = {
-    version: HANDOFF_VERSION,
-    handoffId,
-    createdAt,
-    pageUrl: pageUrl || null,
-    entries: packet.entries.map(summarizeEntry),
-    ops: packet.ops,
-    context: {
-      cwd,
-      bufferPath: path.relative(cwd, getBufferPath(cwd)),
-      totalEntries: packet.entries.length,
-      totalOps: opCount,
-    },
-    candidates: packet.candidates,
-    agentInstructions: buildAgentInstructions(relativeHandoffPath, handoffId, completeScriptPath),
-  };
-
-  const handoffPath = getManualEditHandoffPath(cwd, handoffId);
-  fs.mkdirSync(path.dirname(handoffPath), { recursive: true });
-  fs.writeFileSync(handoffPath, JSON.stringify(handoff, null, 2));
-
-  return {
-    cleared: false,
-    requiresAgent: true,
-    handoffId,
-    handoffPath: relativeHandoffPath,
-    pageUrl,
-    count: opCount,
-    prompt: buildPrompt(relativeHandoffPath, handoffId, opCount, pageUrl, completeScriptPath),
-    entries: handoff.entries,
-    ops: handoff.ops,
-    candidates: handoff.candidates,
-  };
-}
 
 export function buildManualEditEvidence({ cwd = process.cwd(), pageUrl = null } = {}) {
   const buffer = readBuffer(cwd);
@@ -125,7 +51,7 @@ export function buildManualEditEvidence({ cwd = process.cwd(), pageUrl = null } 
   const ops = flattenOps(entries);
   const candidates = ops.map((op) => buildCandidatesForOp(op, cwd, searchFiles));
   return {
-    version: HANDOFF_VERSION,
+    version: EVIDENCE_VERSION,
     pageUrl: pageUrl || null,
     count: opCount,
     entries,
@@ -140,24 +66,10 @@ export function buildManualEditEvidence({ cwd = process.cwd(), pageUrl = null } 
   };
 }
 
-function createHandoffId() {
-  return randomUUID().replace(/-/g, '').slice(0, 12);
-}
-
 function countOps(entries) {
   let count = 0;
   for (const entry of entries) count += Array.isArray(entry.ops) ? entry.ops.length : 0;
   return count;
-}
-
-function summarizeEntry(entry) {
-  return {
-    id: entry.id,
-    pageUrl: entry.pageUrl,
-    stagedAt: entry.stagedAt || null,
-    element: entry.element || null,
-    opCount: Array.isArray(entry.ops) ? entry.ops.length : 0,
-  };
 }
 
 function flattenOps(entries) {
@@ -412,36 +324,6 @@ function matchForIndex(file, index, kind, needle) {
   };
 }
 
-function resolveCompleteScriptPath(cwd) {
-  const rel = path.relative(cwd, __dirname);
-  const scriptsDir = rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : __dirname;
-  return path.join(scriptsDir || '.', 'live-complete-manual-edits.mjs');
-}
-
-function buildPrompt(relativeHandoffPath, handoffId, count, pageUrl, completeScriptPath) {
-  const scoped = pageUrl ? ' on ' + pageUrl : '';
-  return [
-    `Apply ${count} pending Impeccable copy edit${count === 1 ? '' : 's'}${scoped}.`,
-    `Read the handoff packet at ${relativeHandoffPath} (handoff ${handoffId}).`,
-    'Use the staged DOM paths, rendered context, source hints, and candidates as evidence.',
-    'Edit the true source files manually; update related references or object keys when the visible string is used as identity.',
-    'Run focused validation for changed files.',
-    `When done, run: node ${completeScriptPath} --handoff-id=${handoffId}`,
-  ].join('\n');
-}
-
-function buildAgentInstructions(relativeHandoffPath, handoffId, completeScriptPath) {
-  return [
-    'Do not treat candidates as a resolver decision; they are evidence only.',
-    'Prefer true source files over generated output.',
-    'When changing identity strings, check matching object keys and references before writing.',
-    'Preserve unrelated staged/site demo edits unless the handoff specifically targets them.',
-    'After applying and validating the source change, clear only this handoff with:',
-    `node ${completeScriptPath} --handoff-id=${handoffId}`,
-    `Handoff path: ${relativeHandoffPath}`,
-  ];
-}
-
 function isPathInsideOrEqual(cwd, file) {
   const rel = path.relative(path.resolve(cwd), path.resolve(file));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -463,32 +345,4 @@ function decodeBasicHtml(value) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function argVal(args, name) {
-  const prefix = name + '=';
-  for (const arg of args) {
-    if (arg === name) return true;
-    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-  }
-  return null;
-}
-
-async function main() {
-  const args = process.argv.slice(2);
-  if (args.includes('--help') || args.includes('-h')) {
-    console.log('Usage: node live-manual-edit-handoff.mjs [--page-url=<url>] [--handoff-id=<id>]');
-    process.exit(0);
-  }
-  const result = createManualEditHandoff({
-    cwd: process.cwd(),
-    pageUrl: argVal(args, '--page-url'),
-    handoffId: argVal(args, '--handoff-id') || undefined,
-  });
-  console.log(JSON.stringify(result));
-}
-
-const _running = process.argv[1] ? path.resolve(process.argv[1]) : '';
-if (_running === fileURLToPath(import.meta.url)) {
-  main();
 }
