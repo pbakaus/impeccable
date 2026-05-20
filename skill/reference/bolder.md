@@ -78,10 +78,10 @@ Systematically increase impact across these dimensions:
 - **Custom elements**: Illustrative elements, custom icons, decorative details that reinforce brand
 
 ### Motion & Animation
-- **Entrance choreography**: Staggered, dramatic page load animations with 50-100ms delays
-- **Scroll effects**: Parallax, reveal animations, scroll-triggered sequences
-- **Micro-interactions**: Satisfying hover effects, click feedback, state changes
-- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic, which cheapen the effect)
+- **Hero moment**: One signature entrance, once. Not on every visit and not on every section.
+- **Micro-interactions**: Satisfying hover effects, click feedback, state changes.
+- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic, which cheapen the effect).
+- **Bolder ≠ scroll-fade-rise on every section.** That's the saturated AI default, the opposite of bold.
 
 ### Composition Boldness
 - **Hero moments**: Create clear focal points with dramatic treatment

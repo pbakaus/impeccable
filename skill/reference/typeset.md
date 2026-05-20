@@ -4,7 +4,7 @@ Typography carries most of the information on the page. Replace generic defaults
 
 ## Register
 
-Brand: run the font selection procedure in [brand.md](brand.md). Pairing follows the brand's lane (display serif + sans body for editorial/luxury, one committed sans for tech, etc.). Fluid `clamp()` scale, ≥1.25 ratio between steps.
+Brand: run the font selection procedure in [brand.md](brand.md). Fluid `clamp()` scale, ≥1.25 ratio between steps.
 
 Product: system fonts and familiar sans stacks are legitimate here. One well-tuned family typically carries the whole UI. Fixed `rem` scale, 1.125–1.2 ratio between more closely-spaced steps.
 

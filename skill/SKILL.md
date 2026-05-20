@@ -80,6 +80,11 @@ Before choosing, write one sentence of physical scene: who uses this, where, und
 
 - Cap body line length at 65–75ch.
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
+- Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
+
+<codex>
+The hero ceiling is hard. Stop at 6rem max. 8–11rem (128–176px) clamp maxes read as comically loud, not bold.
+</codex>
 
 ### Layout
 

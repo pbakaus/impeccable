@@ -43,12 +43,7 @@ The reflex-reject lists apply to **new design choices**. When the existing brand
 
 ### Pairing and voice
 
-Distinctive + refined is the goal. The specific shape depends on the brand:
-
-- **Editorial / long-form / luxury**: display serif + sans body (a magazine shape).
-- **Tech / dev tools / fintech**: one committed sans, usually; custom-tight tracking, strong weight contrast inside a single family.
-- **Consumer / food / travel**: warmer pairings, often a humanist sans plus a script or display serif.
-- **Creative studios / agencies**: rule-breaking welcome. Mono-only, or display-only, or custom-drawn type as voice.
+Distinctive + refined is the goal. The specific shape depends on the brand, not on the brand's category. A category — "restaurant", "dev tool", "magazine", "fintech" — is not a recipe; treating it as one is the first-order reflex SKILL.md warns against.
 
 Two families minimum is the rule *only* when the voice needs it. A single well-chosen family with committed weight/size contrast is stronger than a timid display+body pair.
 
@@ -93,7 +88,7 @@ Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landin
 
 ## Motion
 
-- One well-orchestrated page-load with staggered reveals beats scattered micro-interactions, when the brand invites it. Tech-minimal brands often skip entrance motion entirely; the restraint is the voice.
+- One well-orchestrated page-load beats scattered micro-interactions, when the brand invites it. Some brands skip entrance motion entirely; the restraint is the voice.
 - For collapsing/expanding sections, transition `grid-template-rows` rather than `height`.
 
 ## Brand bans (on top of the shared absolute bans)
@@ -111,8 +106,7 @@ Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landin
 
 Brand can afford things product can't. Take them.
 
-- Ambitious first-load motion. Reveals, scroll-triggered transitions, typographic choreography.
+- Ambitious first-load motion. Reveals and typographic choreography that earn their place; not fade-on-scroll for every section.
 - Single-purpose viewports. One dominant idea per fold, long scroll, deliberate pacing.
-- Typographic risk. Enormous display type, unexpected italic cuts, mixed cases, hand-drawn headlines, a single oversize word as a hero.
 - Unexpected color strategies. Palette IS voice; a calm brand and a restless brand should not share palette mechanics.
 - Art direction per section. Different sections can have different visual worlds if the narrative demands it. Consistency of voice beats consistency of treatment.

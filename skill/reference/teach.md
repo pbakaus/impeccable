@@ -84,8 +84,7 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Brand & Personality
 - How would you describe the brand personality in 3 words?
 - Reference sites or apps that capture the right feel? What specifically about them?
-  - For brand, push for real-world references in the right lane (tech-minimal, editorial-magazine, consumer-warm, brutalist-grid, etc.), not generic "modern" adjectives.
-  - For product, push for category best-tool references (Linear, Figma, Notion, Raycast, Stripe).
+  - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
 - What should this explicitly NOT look like? Any anti-references?
 
 ### Accessibility & Inclusion

@@ -6,7 +6,7 @@ Add motion that conveys state, gives feedback, and clarifies hierarchy. Cut moti
 
 ## Register
 
-Brand: orchestrated page-load sequences, staggered reveals, scroll-driven animation. Motion is part of the voice; one well-rehearsed entrance beats scattered micro-interactions.
+Brand: motion is part of the voice; one well-rehearsed entrance beats scattered micro-interactions. The saturated AI default is fade-and-rise reveals on every scrolled section — that's a tell, not a choreography. Reserve scroll-triggered motion for moments that earn it.
 
 Product: 150–250 ms on most transitions. Motion conveys state: feedback, reveal, loading, transitions between views. No page-load choreography; users are in a task and won't wait for it.
 
@@ -49,10 +49,9 @@ Create a purposeful animation plan:
 Add motion systematically across these categories:
 
 ### Entrance Animations
-- **Page load choreography**: Stagger element reveals (100-150ms delays), fade + slide combinations
 - **Hero section**: Dramatic entrance for primary content (scale, parallax, or creative effects)
-- **Content reveals**: Scroll-triggered animations using intersection observer
 - **Modal/drawer entry**: Smooth slide + fade, backdrop fade, focus management
+- **List rhythm**: Sibling stagger is legitimate for cards-in-a-grid or list-items-appearing — cap total stagger time per [motion-design.md](motion-design.md). Whole-section fade-on-scroll is not a list and is not legitimate.
 
 ### Micro-interactions
 - **Button feedback**:
