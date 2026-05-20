@@ -129,4 +129,24 @@ describe('scrubManualEditsAgainstOriginalBlock', () => {
     assert.equal(buf.entries.length, 1);
     assert.equal(buf.entries[0].ops.length, 1);
   });
+
+  it('does not scrub ops whose copy is only a substring of the accepted block', () => {
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'home',
+          ops: [
+            op({ ref: 'short', originalText: 'Edit', newText: 'Save' }),
+            op({ ref: 'exact', originalText: 'Cancel', newText: 'Done' }),
+          ],
+        }),
+      ],
+    });
+
+    scrubManualEditsAgainstOriginalBlock('<div><button>Edit profile</button><button>Done</button></div>', tmpDir, '/');
+
+    const buf = readBuffer(tmpDir);
+    assert.equal(buf.entries.length, 1);
+    assert.deepEqual(buf.entries[0].ops.map((item) => item.ref), ['short']);
+  });
 });

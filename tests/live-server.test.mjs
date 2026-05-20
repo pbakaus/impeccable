@@ -279,6 +279,44 @@ colors: {}
     }
   });
 
+  it('/manual-edit-discard returns discarded entries so the browser can restore visible text', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-server-'));
+    let discardServer;
+    try {
+      discardServer = await startServer(8523, { cwd: tmp });
+      const stash = await fetch(`http://localhost:${discardServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: discardServer.token,
+          id: 'abcdef16',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Hello</h1>', textContent: 'Hello' },
+          ops: [{ ref: 'body>h1.hero:nth-of-type(1)', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+
+      const discard = await fetch(`http://localhost:${discardServer.port}/manual-edit-discard?token=${discardServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      assert.equal(discard.status, 200);
+      const result = await discard.json();
+
+      assert.equal(result.discarded, 1);
+      assert.equal(result.entries.length, 1);
+      assert.equal(result.entries[0].ops[0].originalText, 'Welcome');
+      assert.equal(result.entries[0].ops[0].newText, 'Hello');
+      assert.equal(result.perPage['/'] || 0, 0);
+    } finally {
+      if (discardServer) {
+        await stopServer(discardServer.port, discardServer.token);
+        discardServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/events rejects direct manual_edit_apply because copy edits use staged apply', async () => {
     const res = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',

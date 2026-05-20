@@ -47,6 +47,7 @@ describe('live-discard-manual-edits.mjs', () => {
     const result = runDiscard();
 
     assert.equal(result.discarded, 3, 'reports ops removed, not entries');
+    assert.deepEqual(result.entries.map((item) => item.id), ['a', 'b']);
     assert.equal(result.totalCount, 0);
     assert.equal(readBuffer(tmpDir).entries.length, 0);
   });
@@ -62,6 +63,7 @@ describe('live-discard-manual-edits.mjs', () => {
     const result = runDiscard(['--page-url=/a']);
 
     assert.equal(result.discarded, 2, 'reports ops on /a, not entries (CB-5)');
+    assert.deepEqual(result.entries.map((item) => item.id), ['a']);
     assert.equal(result.totalCount, 1);
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);

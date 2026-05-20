@@ -144,7 +144,27 @@ function scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd = process.c
 function manualEditOpAppearsInBlock(op, originalBlock) {
   const candidates = [op?.newText, op?.originalText]
     .filter((text) => typeof text === 'string' && text.length > 0);
-  return candidates.some((text) => originalBlock.includes(text));
+  return candidates.some((text) => originalBlockHasExactManualText(originalBlock, text));
+}
+
+function originalBlockHasExactManualText(originalBlock, text) {
+  const needle = normalizeManualEditText(text);
+  if (!needle) return false;
+  return manualEditTextSegments(originalBlock).some((segment) => segment === needle);
+}
+
+function manualEditTextSegments(source) {
+  return String(source || '')
+    .replace(/<[^>]*>/g, '\n')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '\n')
+    .replace(/<!--[\s\S]*?-->/g, '\n')
+    .split(/\n+/)
+    .map(normalizeManualEditText)
+    .filter(Boolean);
+}
+
+function normalizeManualEditText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 // Compatibility export for older tests/callers. The unsafe file-wide scrub was

@@ -675,10 +675,14 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const pageUrl = url.searchParams.get('pageUrl');
       let discarded;
+      let discardedEntries = [];
       try {
+        const buffer = readManualEditsBuffer(process.cwd());
         if (pageUrl) {
+          discardedEntries = buffer.entries.filter((entry) => entry.pageUrl === pageUrl);
           discarded = removeManualEditEntries(process.cwd(), (entry) => entry.pageUrl === pageUrl);
         } else {
+          discardedEntries = buffer.entries;
           discarded = truncateManualEditsBuffer(process.cwd());
         }
       } catch (err) {
@@ -688,7 +692,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       }
       const { totalCount, perPage } = countPendingByPage(process.cwd());
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ discarded, totalCount, perPage }));
+      res.end(JSON.stringify({ discarded, entries: discardedEntries, totalCount, perPage }));
       return;
     }
 

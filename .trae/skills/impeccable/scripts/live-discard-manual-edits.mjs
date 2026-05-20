@@ -37,11 +37,15 @@ const pageUrlFilter = argVal(args, '--page-url');
 const cwd = process.cwd();
 
 let discarded;
+let entries;
+const buffer = readBuffer(cwd);
 if (pageUrlFilter) {
+  entries = buffer.entries.filter((entry) => entry.pageUrl === pageUrlFilter);
   discarded = removeEntries(cwd, (entry) => entry.pageUrl === pageUrlFilter);
 } else {
+  entries = buffer.entries;
   discarded = truncateBuffer(cwd);
 }
 
 const remaining = readBuffer(cwd).entries.reduce((n, e) => n + e.ops.length, 0);
-console.log(JSON.stringify({ discarded, totalCount: remaining }));
+console.log(JSON.stringify({ discarded, entries, totalCount: remaining }));

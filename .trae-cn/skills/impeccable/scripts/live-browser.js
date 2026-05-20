@@ -2277,12 +2277,57 @@
         { method: 'POST' },
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      const result = await res.json().catch(() => ({}));
+      restoreDiscardedManualEdits(result.entries || []);
       updatePendingCounter(0);
       showToast('Discarded ' + count + ' copy edit' + (count === 1 ? '' : 's'), 2500);
     } catch (err) {
       console.error('[impeccable] discard failed:', err);
       showToast('Discard failed — see console', 4000);
     }
+  }
+
+  function restoreDiscardedManualEdits(entries) {
+    for (const entry of entries || []) {
+      for (const op of entry.ops || []) {
+        const el = findManualEditRestoreElement(op);
+        if (!el || typeof op.originalText !== 'string') continue;
+        el.textContent = op.originalText;
+      }
+    }
+  }
+
+  function findManualEditRestoreElement(op) {
+    for (const ref of [op?.ref, op?.leaf?.ref]) {
+      const byRef = queryManualEditRef(ref);
+      if (byRef) return byRef;
+    }
+    const tag = op?.tag || op?.leaf?.tagName || '*';
+    const classes = Array.isArray(op?.classes) ? op.classes : (Array.isArray(op?.leaf?.classes) ? op.leaf.classes : []);
+    const selector = (tag === '*' ? '' : tag) + classes.map((cls) => '.' + cssIdent(cls)).join('') || '*';
+    let matches = [];
+    try {
+      matches = Array.from(document.querySelectorAll(selector));
+    } catch {
+      matches = [];
+    }
+    const newText = normalizeManualContextText(op?.newText);
+    const filtered = matches.filter((el) => normalizeManualContextText(el.textContent) === newText);
+    return filtered.length === 1 ? filtered[0] : null;
+  }
+
+  function queryManualEditRef(ref) {
+    if (!ref || typeof ref !== 'string') return null;
+    try {
+      return document.querySelector(ref);
+    } catch {
+      return null;
+    }
+  }
+
+  function cssIdent(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(String(value));
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
   // ---------------------------------------------------------------------------

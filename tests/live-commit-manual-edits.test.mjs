@@ -377,4 +377,26 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
+
+  it('clears verified source edits even when post-apply validation fails', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), "const label = 'XX29';\nconst answer = ;\n");
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'bad', ops: [{ ref: 'a', tag: 'span', originalText: '29', newText: 'XX29' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['bad'],
+        files: ['src/broken.js'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
 });

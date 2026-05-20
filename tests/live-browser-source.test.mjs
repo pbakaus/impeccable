@@ -29,6 +29,16 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
+      /const result = await res\.json\(\)\.catch\(\(\) => \(\{\}\)\);[\s\S]{0,120}?restoreDiscardedManualEdits\(result\.entries \|\| \[\]\);/,
+      'Discard copy edits should restore the visible staged DOM from returned buffer entries',
+    );
+    assert.match(
+      SOURCE,
+      /function restoreDiscardedManualEdits\(entries\)[\s\S]*?el\.textContent = op\.originalText;/,
+      'Discard restore should put edited leaves back to their original text',
+    );
+    assert.match(
+      SOURCE,
       /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply copy edit' : 'Apply copy edits';/,
       'the staged apply pill should use Apply copy edits copy',
     );

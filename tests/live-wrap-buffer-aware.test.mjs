@@ -119,6 +119,27 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.equal(fs.readFileSync(file, 'utf-8'), '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
   });
 
+  it('without --page-url, does not block wrap for unrelated pending edits', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
+
+    seedBuffer([
+      entry({
+        pageUrl: '/other',
+        ops: [{
+          ref: 'body>p:nth-of-type(1)',
+          tag: 'p',
+          originalText: 'Different page copy',
+          newText: 'Different page edited',
+          sourceHint: { file: 'src/other.html', line: 1 },
+        }],
+      }),
+    ]);
+
+    const result = runWrap(['--classes', 'hero', '--tag', 'h1']);
+    assert.ok(result.file, 'wrap should succeed when staged edits cannot affect the target block');
+  });
+
   it('with empty buffer, --page-url is optional', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
