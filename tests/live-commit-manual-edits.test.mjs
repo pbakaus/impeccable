@@ -373,12 +373,15 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     });
 
     assert.equal(result.cleared, 0);
-    assert.equal(result.failed.length, 1);
-    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(result.applied.length, 0);
+    assert.equal(
+      result.failed.some((item) => item.reason === 'post_apply_validation_failed'),
+      true,
+    );
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('clears verified source edits even when post-apply validation fails', () => {
+  it('keeps verified source edits staged when post-apply validation fails', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), "const label = 'XX29';\nconst answer = ;\n");
     writeBuffer(tmpDir, {
       entries: [
@@ -394,9 +397,9 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
       }),
     });
 
-    assert.equal(result.cleared, 1);
-    assert.equal(result.applied.length, 1);
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
-    assert.equal(readBuffer(tmpDir).entries.length, 0);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 });

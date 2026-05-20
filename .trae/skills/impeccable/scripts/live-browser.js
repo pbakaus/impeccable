@@ -2318,11 +2318,49 @@
 
   function queryManualEditRef(ref) {
     if (!ref || typeof ref !== 'string') return null;
-    try {
-      return document.querySelector(ref);
-    } catch {
-      return null;
+    const parts = ref.split('>').map((part) => part.trim()).filter(Boolean);
+    let current = null;
+    for (let index = 0; index < parts.length; index += 1) {
+      const segment = parseManualEditRefSegment(parts[index]);
+      if (!segment) return null;
+      if (index === 0 && segment.tag === 'body') {
+        current = document.body;
+        if (!elementMatchesManualRefSegment(current, segment)) return null;
+        continue;
+      }
+      const scope = current || document.body;
+      const children = Array.from(scope.children || []);
+      current = children.find((child) => elementMatchesManualRefSegment(child, segment)) || null;
+      if (!current) return null;
     }
+    return current;
+  }
+
+  function parseManualEditRefSegment(segment) {
+    const nthMatch = String(segment || '').match(/:nth-of-type\((\d+)\)$/);
+    const nth = nthMatch ? Number(nthMatch[1]) : null;
+    const base = nthMatch ? segment.slice(0, nthMatch.index) : segment;
+    const tagMatch = base.match(/^[^#.:\s]+/);
+    const tag = tagMatch ? tagMatch[0].toLowerCase() : null;
+    if (!tag) return null;
+    const idMatch = base.match(/#([^#.]+)/);
+    const classes = base
+      .slice(tag.length)
+      .replace(/#[^#.]+/, '')
+      .split('.')
+      .filter(Boolean);
+    return { tag, id: idMatch ? idMatch[1] : null, classes, nth };
+  }
+
+  function elementMatchesManualRefSegment(el, segment) {
+    if (!el || !segment) return false;
+    if (el.tagName.toLowerCase() !== segment.tag) return false;
+    if (segment.nth) return indexAmongSameTag(el) === segment.nth;
+    if (segment.id && el.id !== segment.id) return false;
+    for (const cls of segment.classes) {
+      if (!el.classList || !el.classList.contains(cls)) return false;
+    }
+    return true;
   }
 
   function cssIdent(value) {

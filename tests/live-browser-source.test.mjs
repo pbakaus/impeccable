@@ -39,6 +39,16 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
+      /function parseManualEditRefSegment\(segment\)[\s\S]*?function elementMatchesManualRefSegment\(el, segment\)/,
+      'Discard restore should parse Impeccable document refs instead of treating them as raw CSS selectors',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /document\.querySelector\(ref\)/,
+      'Discard restore must not pass saved document refs directly to querySelector',
+    );
+    assert.match(
+      SOURCE,
       /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply copy edit' : 'Apply copy edits';/,
       'the staged apply pill should use Apply copy edits copy',
     );

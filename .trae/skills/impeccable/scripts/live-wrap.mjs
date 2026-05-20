@@ -211,23 +211,12 @@ The agent should insert variant HTML at insertLine.`);
   // untouched here — only the wrap block's embedded "original" copy is
   // adjusted. The pending edits remain in the buffer until committed.
   //
-  // Refuse-with-error rather than silently skipping when --page-url is missing
-  // and a pending edit could affect this exact target block. The silent-skip
-  // case let agents author variants off un-edited source while the user was
-  // seeing edited DOM. Pending edits on unrelated files/routes should not block
-  // a normal wrap, though, so we only fail when the selected source range has a
-  // plausible overlap with the buffer.
+  // Apply buffered edits only when the browser provided the current page URL.
+  // Without it, the CLI cannot distinguish same-file routes or repeated source
+  // blocks, so guessing would either leak another page's staged copy into this
+  // wrap or block unrelated wraps.
   let pendingBuffer = { entries: [] };
   try { pendingBuffer = readManualEditsBuffer(process.cwd()); } catch {}
-  const pendingEntriesForTarget = pendingEntriesThatMayAffectWrap(pendingBuffer.entries, targetFile, originalLines, process.cwd());
-  if (pendingEntriesForTarget.length > 0 && !pageUrl) {
-    console.error(JSON.stringify({
-      error: 'missing_page_url_with_pending_edits',
-      pendingEntries: pendingEntriesForTarget.length,
-      hint: 'The manual-edit buffer has pending entries. Pass --page-url=$event.pageUrl so the wrap block\'s "original" content reflects the user\'s staged DOM, not the un-edited source. See reference/live.md, "Wrap the element".',
-    }));
-    process.exit(1);
-  }
   if (pageUrl) {
     try {
       let mutated = false;
@@ -333,23 +322,6 @@ The agent should insert variant HTML at insertLine.`);
 function argVal(args, flag) {
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
-}
-
-function pendingEntriesThatMayAffectWrap(entries, targetFile, originalLines, cwd) {
-  const targetAbs = path.resolve(cwd, targetFile);
-  const originalBlock = originalLines.join('\n');
-  return (entries || []).filter((entry) => {
-    return (entry.ops || []).some((op) => {
-      const hintFile = op?.sourceHint?.file;
-      if (hintFile) {
-        const hintAbs = path.isAbsolute(hintFile) ? hintFile : path.resolve(cwd, hintFile);
-        if (path.resolve(hintAbs) === targetAbs) return true;
-      }
-      return typeof op?.originalText === 'string'
-        && op.originalText.length > 0
-        && originalBlock.includes(op.originalText);
-    });
-  });
 }
 
 function applyBufferedManualEditToLines(originalLines, selectionStartLine, op) {

@@ -340,33 +340,28 @@ export async function commitManualEdits({
 
   const postChecks = runCopyEditPostApplyChecks({ cwd, files: result.files || [] });
   if (!postChecks.ok) {
-    if (verifiedAppliedIds.length === 0) {
-      return {
-        applied: [],
-        failed: batch.entries.map((entry) => ({
+    const postCheckEntries = verifiedAppliedIds.length > 0
+      ? reportedAppliedEntries.filter((entry) => verifiedAppliedIds.includes(entry.id))
+      : batch.entries;
+    return {
+      applied: [],
+      failed: [
+        ...postCheckEntries.map((entry) => ({
           id: entry.id,
           reason: 'post_apply_validation_failed',
           checks: postChecks.failures,
           candidates: candidatesForEntry(batch, entry.id),
         })),
-        files: result.files || [],
-        cleared: 0,
-        count,
-        pageUrl,
-        warnings: postChecks.warnings,
-        notes: result.notes || [],
-        ...countByPage(cwd),
-      };
-    }
-    const postCheckEntries = verifiedAppliedIds.length > 0
-      ? reportedAppliedEntries.filter((entry) => verifiedAppliedIds.includes(entry.id))
-      : batch.entries;
-    failed.unshift(...postCheckEntries.map((entry) => ({
-      id: entry.id,
-      reason: 'post_apply_validation_failed',
-      checks: postChecks.failures,
-      candidates: candidatesForEntry(batch, entry.id),
-    })));
+        ...failed,
+      ],
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      warnings: postChecks.warnings,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
   }
 
   const cleared = clearAppliedEntries(cwd, verifiedAppliedIds);
