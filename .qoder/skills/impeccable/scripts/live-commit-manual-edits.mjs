@@ -117,15 +117,12 @@ function sourceHintWindowFailure(cwd, op) {
   try { content = fs.readFileSync(absolute, 'utf-8'); } catch { return null; }
   const lines = content.split('\n');
   const line = Math.max(1, Number(hint.line) || 1);
-  const start = Math.max(0, line - 4);
-  const end = Math.min(lines.length, line + 3);
-  const windowText = lines.slice(start, end).join('\n');
+  const lineText = lines[line - 1] || '';
   if (
     typeof op.originalText === 'string'
     && op.originalText
-    && typeof op.newText === 'string'
-    && !windowText.includes(op.newText)
-    && windowText.includes(op.originalText)
+    && lineText.includes(op.originalText)
+    && !lineShowsAppliedOp(lineText, op)
   ) {
     return {
       file: relative,
@@ -153,29 +150,111 @@ function candidateFilesForOp(batch, op, reportedFiles, cwd) {
     .filter(Boolean);
 }
 
+function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
+  const candidate = (batch.candidates || []).find((item) => item.entryId === op.entryId && item.ref === op.ref);
+  const out = [];
+  const add = (file, line, kind) => {
+    const relativeFile = normalizeRelativeFile(cwd, file);
+    const lineNumber = Number(line);
+    if (!relativeFile || !Number.isFinite(lineNumber) || lineNumber < 1) return;
+    out.push({ file: relativeFile, line: lineNumber, kind });
+  };
+
+  add(op.sourceHint?.file, op.sourceHint?.line, 'source_hint');
+  add(candidate?.sourceHint?.relativeFile || candidate?.sourceHint?.file, candidate?.sourceHint?.line, 'candidate_source_hint');
+  for (const item of candidate?.textMatches || []) add(item.file, item.line, 'text_match');
+  for (const item of candidate?.objectKeyMatches || []) add(item.file, item.line, 'object_key_match');
+  for (const item of candidate?.locatorMatches || []) add(item.file, item.line, 'locator_match');
+
+  for (const relativeFile of reportedFiles || []) {
+    for (const target of locatorTargetsInFile(cwd, relativeFile, op)) {
+      out.push(target);
+    }
+  }
+
+  const seen = new Set();
+  return out.filter((target) => {
+    const key = target.file + ':' + target.line + ':' + target.kind;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function locatorTargetsInFile(cwd, relativeFile, op) {
+  if (!opHasLocator(op)) return [];
+  const absolute = path.resolve(cwd, relativeFile);
+  let lines;
+  try { lines = fs.readFileSync(absolute, 'utf-8').split('\n'); } catch { return []; }
+  const out = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lineMatchesManualEditLocator(lines[index], op)) continue;
+    out.push({ file: relativeFile, line: index + 1, kind: 'reported_locator_match' });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+function verificationTargetPasses(cwd, target, op) {
+  let lines;
+  try { lines = fs.readFileSync(path.resolve(cwd, target.file), 'utf-8').split('\n'); } catch { return false; }
+  const line = lines[target.line - 1] || '';
+  return lineShowsAppliedOp(line, op);
+}
+
+function lineShowsAppliedOp(line, op) {
+  const originalText = typeof op?.originalText === 'string' ? op.originalText : '';
+  const newText = typeof op?.newText === 'string' ? op.newText : '';
+  const deletion = op?.deleted === true || newText.length === 0;
+  if (deletion) return !!originalText && !line.includes(originalText);
+  if (!line.includes(newText)) return false;
+  if (originalText && !newText.includes(originalText) && line.includes(originalText)) return false;
+  return true;
+}
+
+function opHasLocator(op) {
+  return !!(
+    op?.tag
+    || op?.elementId
+    || (Array.isArray(op?.classes) && op.classes.filter(Boolean).length > 0)
+  );
+}
+
+function lineMatchesManualEditLocator(line, op) {
+  if (op.tag) {
+    const tagRe = new RegExp('<\\s*' + escapeRegExp(op.tag) + '(?=[\\s>/]|$)', 'i');
+    if (!tagRe.test(line)) return false;
+  }
+
+  if (op.elementId) {
+    const idRe = new RegExp('\\bid\\s*=\\s*["\']' + escapeRegExp(op.elementId) + '["\']');
+    if (!idRe.test(line)) return false;
+  }
+
+  const classes = Array.isArray(op.classes) ? op.classes.filter(Boolean) : [];
+  for (const className of classes) {
+    if (!line.includes(className)) return false;
+  }
+
+  return true;
+}
+
 function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
   const failures = [];
   for (const rawOp of entry.ops || []) {
     const op = { ...rawOp, entryId: entry.id };
-    if (op.deleted === true) continue;
-    if (typeof op.newText !== 'string' || op.newText.trim().length === 0) {
+    if (op.deleted === true && typeof op.newText !== 'string') op.newText = '';
+    if (typeof op.newText !== 'string') {
       failures.push({
         ref: op.ref,
         reason: 'source_verification_failed',
-        detail: 'empty_newText_not_supported',
+        detail: 'missing_newText',
         candidates: candidatesForEntry(batch, entry.id).slice(0, 12),
       });
       continue;
     }
-    const files = candidateFilesForOp(batch, op, reportedFiles, cwd);
-    const found = files.some((relativeFile) => {
-      try {
-        return fs.readFileSync(path.resolve(cwd, relativeFile), 'utf-8').includes(op.newText);
-      } catch {
-        return false;
-      }
-    });
-    if (found) continue;
+    const targets = verificationTargetsForOp(batch, op, reportedFiles, cwd);
+    if (targets.some((target) => verificationTargetPasses(cwd, target, op))) continue;
 
     const hintedOldText = sourceHintWindowFailure(cwd, op);
     if (hintedOldText) {
@@ -183,7 +262,7 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
         ref: op.ref,
         reason: 'source_verification_failed',
         detail: hintedOldText.reason,
-        candidates: [hintedOldText, ...files.map((file) => ({ file })), ...candidatesForEntry(batch, entry.id)].slice(0, 12),
+        candidates: [hintedOldText, ...targets.map((target) => ({ file: target.file, line: target.line, kind: target.kind })), ...candidatesForEntry(batch, entry.id)].slice(0, 12),
       });
       continue;
     }
@@ -191,8 +270,8 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
     failures.push({
       ref: op.ref,
       reason: 'source_verification_failed',
-      detail: 'newText_not_found_in_plausible_source_file',
-      candidates: files.map((file) => ({ file })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
+      detail: op.newText.length === 0 ? 'originalText_still_present_in_plausible_source_location' : 'newText_not_found_in_plausible_source_location',
+      candidates: targets.map((target) => ({ file: target.file, line: target.line, kind: target.kind })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
     });
   }
   return failures;
@@ -224,6 +303,56 @@ function clearAppliedEntries(cwd, appliedEntryIds) {
   return cleared;
 }
 
+function snapshotBatchFiles(batch, cwd) {
+  const files = new Set();
+  for (const entry of batch.entries || []) {
+    for (const rawOp of entry.ops || []) {
+      const op = { ...rawOp, entryId: entry.id };
+      for (const file of candidateFilesForOp(batch, op, [], cwd)) files.add(file);
+    }
+  }
+
+  const snapshot = new Map();
+  for (const relativeFile of files) {
+    const absolute = path.resolve(cwd, relativeFile);
+    try {
+      snapshot.set(relativeFile, {
+        exists: fs.existsSync(absolute),
+        content: fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf-8') : null,
+      });
+    } catch {
+      // If we cannot read a candidate before the AI run, it is not safe to roll back.
+    }
+  }
+  return snapshot;
+}
+
+function rollbackFiles(cwd, snapshot, files) {
+  const rolledBackFiles = [];
+  const rollbackFailures = [];
+  for (const relativeFile of files || []) {
+    const file = normalizeRelativeFile(cwd, relativeFile);
+    if (!file) continue;
+    const item = snapshot.get(file);
+    if (!item) {
+      rollbackFailures.push({ file, reason: 'no_snapshot' });
+      continue;
+    }
+    const absolute = path.resolve(cwd, file);
+    try {
+      if (item.exists) {
+        fs.writeFileSync(absolute, item.content, 'utf-8');
+      } else if (fs.existsSync(absolute)) {
+        fs.rmSync(absolute);
+      }
+      rolledBackFiles.push(file);
+    } catch (err) {
+      rollbackFailures.push({ file, reason: 'restore_failed', message: err.message || String(err) });
+    }
+  }
+  return { rolledBackFiles, rollbackFailures };
+}
+
 export async function commitManualEdits({
   cwd = process.cwd(),
   pageUrl = null,
@@ -246,6 +375,7 @@ export async function commitManualEdits({
     };
   }
 
+  const rollbackSnapshot = snapshotBatchFiles(batch, cwd);
   let result;
   try {
     result = await runCopyEditBatchAgent(batch, { cwd, provider, env, timeoutMs });
@@ -340,6 +470,7 @@ export async function commitManualEdits({
 
   const postChecks = runCopyEditPostApplyChecks({ cwd, files: result.files || [] });
   if (!postChecks.ok) {
+    const rollback = rollbackFiles(cwd, rollbackSnapshot, reportedFiles);
     const postCheckEntries = verifiedAppliedIds.length > 0
       ? reportedAppliedEntries.filter((entry) => verifiedAppliedIds.includes(entry.id))
       : batch.entries;
@@ -359,6 +490,8 @@ export async function commitManualEdits({
       count,
       pageUrl,
       warnings: postChecks.warnings,
+      rolledBackFiles: rollback.rolledBackFiles,
+      rollbackFailures: rollback.rollbackFailures,
       notes: result.notes || [],
       ...countByPage(cwd),
     };
@@ -399,4 +532,8 @@ if (process.argv[1]?.endsWith('live-commit-manual-edits.mjs')) {
     console.error(JSON.stringify({ error: 'commit_failed', message: err.message || String(err) }));
     process.exit(1);
   });
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

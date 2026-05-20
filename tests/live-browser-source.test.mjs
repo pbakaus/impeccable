@@ -34,8 +34,18 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function restoreDiscardedManualEdits\(entries\)[\s\S]*?el\.textContent = op\.originalText;/,
-      'Discard restore should put edited leaves back to their original text',
+      /const restoreFailures = restoreDiscardedManualEdits\(result\.entries \|\| \[\]\);[\s\S]{0,260}?refresh to reset/,
+      'Discard restore should report unsafe local DOM restores to the caller',
+    );
+    assert.match(
+      SOURCE,
+      /function canRestoreManualEditElement\(el, op\)[\s\S]*?el\.children && el\.children\.length > 0[\s\S]*?return false;[\s\S]*?normalizeManualContextText\(el\.textContent\) === normalizeManualContextText\(op\.newText\);/,
+      'Discard restore should only write textContent into pure text leaves, never parent containers',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!el \|\| typeof op\.originalText !== 'string' \|\| !canRestoreManualEditElement\(el, op\)\)[\s\S]*?failures \+= 1;[\s\S]*?continue;/,
+      'Unsafe discard restores should be skipped instead of wiping parent markup',
     );
     assert.match(
       SOURCE,

@@ -60,7 +60,7 @@ export async function runCopyEditBatchAgent(batch, opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const env = opts.env || process.env;
   const provider = opts.provider || chooseCopyEditAgent({ env });
-  if (provider === 'mock') return mockBatchResult(batch, env);
+  if (provider === 'mock') return mockBatchResult(batch, env, cwd);
   if (!provider) {
     throw new Error('No live copy-edit AI runner found. Install/authenticate Codex or Claude, or set IMPECCABLE_LIVE_COPY_AGENT=mock for tests.');
   }
@@ -187,7 +187,8 @@ function normalizeBatchResult(result) {
   };
 }
 
-function mockBatchResult(batch, env) {
+function mockBatchResult(batch, env, cwd = process.cwd()) {
+  applyMockWrites(env, cwd);
   const raw = env.IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT;
   if (raw) {
     const parsed = parseCopyEditBatchResult(raw);
@@ -201,6 +202,22 @@ function mockBatchResult(batch, env) {
     files: [],
     notes: ['mock copy-edit batch result'],
   };
+}
+
+function applyMockWrites(env, cwd) {
+  const raw = env.IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES;
+  if (!raw) return;
+  const writes = tryParseJson(raw);
+  if (!writes || typeof writes !== 'object' || Array.isArray(writes)) {
+    throw new Error('Invalid IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES JSON');
+  }
+  for (const [relativeFile, content] of Object.entries(writes)) {
+    if (typeof relativeFile !== 'string' || typeof content !== 'string') continue;
+    const absolute = path.resolve(cwd, relativeFile);
+    if (!isPathInsideOrEqual(cwd, absolute)) continue;
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    fs.writeFileSync(absolute, content, 'utf-8');
+  }
 }
 
 export function parseCopyEditAgentResult(text) {

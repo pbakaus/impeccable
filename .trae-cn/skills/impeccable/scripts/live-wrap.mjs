@@ -228,19 +228,32 @@ The agent should insert variant HTML at insertLine.`);
     process.exit(1);
   }
   if (pageUrl) {
-    try {
-      let mutated = false;
-      for (const entry of pendingBuffer.entries) {
-        if (entry.pageUrl !== pageUrl) continue;
-        for (const op of entry.ops) {
-          const result = applyBufferedManualEditToLines(originalLines, startLine, op);
-          if (!result.changed) continue;
+    const failedBufferedOps = [];
+    for (const entry of pendingBuffer.entries || []) {
+      if (entry.pageUrl !== pageUrl) continue;
+      for (const op of entry.ops || []) {
+        const mayAffectWrap = manualEditMayAffectWrap(op, targetFile, originalLines, startLine, process.cwd());
+        const result = applyBufferedManualEditToLines(originalLines, startLine, op);
+        if (result.changed) {
           originalLines = result.lines;
-          mutated = true;
+          continue;
         }
+        if (!mayAffectWrap) continue;
+        failedBufferedOps.push({
+          entryId: entry.id,
+          ref: op?.ref || null,
+          originalText: op?.originalText || null,
+          reason: 'ambiguous_or_unmatched_pending_edit',
+        });
       }
-    } catch {
-      // Buffer read failures are non-fatal; fall back to source-as-is.
+    }
+    if (failedBufferedOps.length > 0) {
+      console.error(JSON.stringify({
+        error: 'manual_edit_buffer_apply_failed',
+        pendingOps: failedBufferedOps,
+        hint: 'A staged copy edit appears to affect the selected source block, but could not be applied unambiguously to the wrap original. Apply or discard copy edits first, or write the wrapper manually.',
+      }));
+      process.exit(1);
     }
   }
 
@@ -338,10 +351,19 @@ function pendingEntriesThatMayAffectWrap(entries, targetFile, originalLines, sel
   const targetAbs = path.resolve(cwd, targetFile);
   return (entries || []).filter((entry) => {
     return (entry.ops || []).some((op) => {
-      if (manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd)) return true;
-      return manualEditLocatorMatchesSelection(op, originalLines);
+      return manualEditMayAffectWrap(op, targetAbs, originalLines, selectionStartLine, cwd);
     });
   });
+}
+
+function manualEditMayAffectWrap(op, targetFile, originalLines, selectionStartLine, cwd) {
+  const targetAbs = path.resolve(cwd, targetFile);
+  if (manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd)) return true;
+  if (manualEditLocatorMatchesSelection(op, originalLines)) return true;
+  if (typeof op?.originalText === 'string' && op.originalText.length > 0) {
+    return originalLines.join('\n').includes(op.originalText);
+  }
+  return false;
 }
 
 function manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd) {

@@ -86,6 +86,53 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.match(originalWrapper, /<p>Welcome<\/p>/);
   });
 
+  it('with matching --page-url, refuses when a staged edit in the block is ambiguous', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const original = '<section class="cards">\n  <p class="label">Same</p>\n  <p class="label">Same</p>\n</section>\n';
+    fs.writeFileSync(file, original);
+
+    seedBuffer([
+      entry({
+        pageUrl: '/',
+        ops: [{
+          ref: 'body>section.cards:nth-of-type(1)>p.label:nth-of-type(2)',
+          tag: 'p',
+          classes: ['label'],
+          originalText: 'Same',
+          newText: 'Second',
+        }],
+      }),
+    ]);
+
+    const result = runWrapExpectFailure(['--classes', 'cards', '--tag', 'section', '--page-url', '/']);
+    assert.equal(result.status, 1);
+    const errPayload = JSON.parse(result.stderr.split('\n').filter((l) => l.trim().startsWith('{')).pop());
+    assert.equal(errPayload.error, 'manual_edit_buffer_apply_failed');
+    assert.equal(errPayload.pendingOps.length, 1);
+    assert.equal(fs.readFileSync(file, 'utf-8'), original);
+  });
+
+  it('with matching --page-url, ignores unrelated same-page staged edits outside the selected block', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    fs.writeFileSync(file, '<main>\n  <section class="hero"><h1>Welcome</h1></section>\n  <aside><p>Footer copy</p></aside>\n</main>\n');
+
+    seedBuffer([
+      entry({
+        pageUrl: '/',
+        ops: [{
+          ref: 'body>main:nth-of-type(1)>aside:nth-of-type(1)>p:nth-of-type(1)',
+          tag: 'p',
+          originalText: 'Footer copy',
+          newText: 'Footer edited',
+          sourceHint: { file: 'src/page.html', line: 3 },
+        }],
+      }),
+    ]);
+
+    const result = runWrap(['--classes', 'hero', '--tag', 'section', '--page-url', '/']);
+    assert.ok(result.file, 'wrap should succeed when same-page staged edits cannot affect the target block');
+  });
+
   it('with mismatched --page-url, does NOT leak the edit (CB-4 regression)', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');

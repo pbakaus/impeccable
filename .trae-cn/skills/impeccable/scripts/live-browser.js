@@ -2280,9 +2280,13 @@
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const result = await res.json().catch(() => ({}));
-      restoreDiscardedManualEdits(result.entries || []);
+      const restoreFailures = restoreDiscardedManualEdits(result.entries || []);
       updatePendingCounter(0);
-      showToast('Discarded ' + count + ' copy edit' + (count === 1 ? '' : 's'), 2500);
+      if (restoreFailures > 0) {
+        showToast('Discarded ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' - refresh to reset ' + restoreFailures, 4000);
+      } else {
+        showToast('Discarded ' + count + ' copy edit' + (count === 1 ? '' : 's'), 2500);
+      }
     } catch (err) {
       console.error('[impeccable] discard failed:', err);
       showToast('Discard failed — see console', 4000);
@@ -2290,14 +2294,28 @@
   }
 
   function restoreDiscardedManualEdits(entries) {
+    let failures = 0;
     for (const entry of entries || []) {
       for (const op of entry.ops || []) {
         if (restoreMixedTextNodeManualEdit(op)) continue;
         const el = findManualEditRestoreElement(op);
-        if (!el || typeof op.originalText !== 'string') continue;
+        if (!el || typeof op.originalText !== 'string' || !canRestoreManualEditElement(el, op)) {
+          failures += 1;
+          continue;
+        }
         el.textContent = op.originalText;
       }
     }
+    if (failures > 0) {
+      console.warn('[impeccable] skipped unsafe copy edit DOM restore for', failures, 'edit(s). Refresh to reset the page DOM.');
+    }
+    return failures;
+  }
+
+  function canRestoreManualEditElement(el, op) {
+    if (!el || typeof op?.originalText !== 'string') return false;
+    if (el.children && el.children.length > 0) return false;
+    return normalizeManualContextText(el.textContent) === normalizeManualContextText(op.newText);
   }
 
   function mixedTextWrapRestoreHint(el) {
