@@ -234,7 +234,7 @@ The agent should insert variant HTML at insertLine.`);
         if (entry.pageUrl !== pageUrl) continue;
         for (const op of entry.ops) {
           if (op.originalText && op.newText !== undefined && originalBlock.includes(op.originalText)) {
-            originalBlock = originalBlock.replace(op.originalText, op.newText);
+            originalBlock = originalBlock.split(op.originalText).join(op.newText);
             mutated = true;
           }
         }

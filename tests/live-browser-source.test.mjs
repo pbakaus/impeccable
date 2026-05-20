@@ -41,8 +41,14 @@ describe('live-browser source contracts', () => {
     const applyEnd = SOURCE.indexOf('async function onPendingTrashClick', applyStart);
     const applyFn = SOURCE.slice(applyStart, applyEnd);
     assert.match(applyFn, /if \(count <= 0 \|\| pendingApplyInFlight\) return;/);
+    assert.doesNotMatch(applyFn, /page will reload/);
     assert.match(applyFn, /setPendingApplyLoading\(true, count\);[\s\S]*?\/manual-edit-commit\?token=/);
     assert.match(applyFn, /finally \{[\s\S]*?setPendingApplyLoading\(false\);[\s\S]*?\}/);
+    assert.match(
+      SOURCE,
+      /String\(newText \|\| ''\)\.trim\(\) === ''[\s\S]{0,120}?Save rejected: copy edits cannot be empty\./,
+      'manual copy edits should reject empty text instead of staging unverifiable deletes',
+    );
     assert.match(
       SOURCE,
       /pendingTrashTooltipEl\.textContent = 'Discard copy edits';/,

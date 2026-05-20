@@ -297,6 +297,23 @@ colors: {}
     assert.match(body.error, /manual_edit_apply is disabled/);
   });
 
+  it('/manual-edit-stash rejects empty copy-edit text before it reaches the pending buffer', async () => {
+    const res = await fetch(`http://localhost:${server.port}/manual-edit-stash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'abcdef15',
+        pageUrl: '/',
+        element: { tagName: 'p' },
+        ops: [{ ref: 'body>p:nth-of-type(1)', tag: 'p', originalText: 'A', newText: '' }],
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /newText cannot be empty/);
+  });
+
   it('/poll returns timeout when no events queued', async () => {
     const res = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=500`);
     assert.equal(res.status, 200);

@@ -2048,6 +2048,10 @@
     for (const row of inlineEditRows) {
       const newText = inlineEditDrafts.get(row.el);
       if (newText !== undefined && newText !== row.text) {
+        if (String(newText || '').trim() === '') {
+          showToast('Save rejected: copy edits cannot be empty.', 5500);
+          return;
+        }
         const forbidden = forbiddenManualTextChars(newText);
         if (forbidden.length > 0) {
           showToast('Save rejected: newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)', 5500);
@@ -2102,7 +2106,7 @@
     } catch (err) {
       console.error('[impeccable] manual edit stash failed:', err);
       const detail = String(err?.message || '');
-      if (detail.includes('newText cannot contain')) {
+      if (detail.includes('newText cannot contain') || detail.includes('newText cannot be empty')) {
         showToast('Save rejected: ' + detail.replace(/^manual_edits:\s*/, ''), 5500);
       } else {
         showToast('Save failed — retry or cancel', 4000);
@@ -2227,7 +2231,7 @@
   async function onPendingPillClick() {
     const count = parseInt(pendingPillEl?.dataset.count || '0', 10);
     if (count <= 0 || pendingApplyInFlight) return;
-    const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source? The page will reload.');
+    const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source?');
     if (!ok) return;
     setPendingApplyLoading(true, count);
     try {

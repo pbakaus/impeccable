@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
-import { scrubManualEditsAgainstFile } from '../skill/scripts/live-accept.mjs';
+import { scrubManualEditsAgainstOriginalBlock } from '../skill/scripts/live-accept.mjs';
 
 let tmpDir;
 
@@ -24,58 +24,59 @@ function op({ ref = 'div>p.1', originalText = 'A', newText = 'B' } = {}) {
   return { ref, tag: 'p', classes: ['x'], originalText, newText };
 }
 
-describe('scrubManualEditsAgainstFile', () => {
-  it('drops ops whose originalText is no longer in the file', () => {
-    const file = path.join(tmpDir, 'page.html');
-    fs.writeFileSync(file, '<div><p>Kept text</p></div>\n');
-
+describe('scrubManualEditsAgainstOriginalBlock', () => {
+  it('drops only ops whose original or edited text appeared in the accepted original block', () => {
     writeBuffer(tmpDir, {
       entries: [
         entry({
           ops: [
-            op({ ref: 'r1', originalText: 'Kept text' }),
-            op({ ref: 'r2', originalText: 'Stale text not in file' }),
+            op({ ref: 'r1', originalText: 'Accepted original', newText: 'Accepted edited' }),
+            op({ ref: 'r2', originalText: 'Accepted second', newText: 'Accepted second edited' }),
+            op({ ref: 'r3', originalText: 'Outside text', newText: 'Outside edited' }),
           ],
         }),
       ],
     });
 
-    scrubManualEditsAgainstFile(file, tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<section><p>Accepted edited</p><p>Accepted second</p></section>', tmpDir);
 
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);
     assert.equal(buf.entries[0].ops.length, 1);
-    assert.equal(buf.entries[0].ops[0].ref, 'r1');
+    assert.equal(buf.entries[0].ops[0].ref, 'r3');
   });
 
-  it('keeps ops whose originalText still appears in the file', () => {
-    const file = path.join(tmpDir, 'page.html');
-    fs.writeFileSync(file, '<div><p>Welcome</p><h2>Body copy</h2></div>\n');
-
+  it('preserves cross-file staged edits even when their original text is absent from the accepted file', () => {
     writeBuffer(tmpDir, {
       entries: [
-        entry({ ops: [op({ ref: 'r1', originalText: 'Welcome' }), op({ ref: 'r2', originalText: 'Body copy' })] }),
+        entry({
+          id: 'hero',
+          ops: [op({ ref: 'hero-h1', originalText: 'Hero title', newText: 'Hero title edited' })],
+        }),
+        entry({
+          id: 'header',
+          ops: [op({ ref: 'header-nav', originalText: 'Docs', newText: 'Docs edited' })],
+        }),
       ],
     });
 
-    scrubManualEditsAgainstFile(file, tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<h1>Hero title edited</h1>', tmpDir);
 
     const buf = readBuffer(tmpDir);
-    assert.equal(buf.entries[0].ops.length, 2);
+    assert.equal(buf.entries.length, 1);
+    assert.equal(buf.entries[0].id, 'header');
+    assert.equal(buf.entries[0].ops[0].ref, 'header-nav');
   });
 
-  it('prunes entries whose ops are all stale', () => {
-    const file = path.join(tmpDir, 'page.html');
-    fs.writeFileSync(file, '<div><p>Something else entirely</p></div>\n');
-
+  it('prunes entries whose ops all belonged to the accepted block', () => {
     writeBuffer(tmpDir, {
       entries: [
-        entry({ id: 'doomed', ops: [op({ originalText: 'Gone A' }), op({ originalText: 'Gone B' })] }),
-        entry({ id: 'survivor', ops: [op({ originalText: 'Something else entirely' })] }),
+        entry({ id: 'doomed', ops: [op({ originalText: 'Gone A', newText: 'New A' }), op({ originalText: 'Gone B', newText: 'New B' })] }),
+        entry({ id: 'survivor', ops: [op({ originalText: 'Other source', newText: 'Other source edited' })] }),
       ],
     });
 
-    scrubManualEditsAgainstFile(file, tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<div><p>New A</p><p>Gone B</p></div>', tmpDir);
 
     const buf = readBuffer(tmpDir);
     assert.equal(buf.entries.length, 1);
@@ -83,9 +84,7 @@ describe('scrubManualEditsAgainstFile', () => {
   });
 
   it('is a no-op when the buffer is empty', () => {
-    const file = path.join(tmpDir, 'page.html');
-    fs.writeFileSync(file, '<div></div>\n');
-    scrubManualEditsAgainstFile(file, tmpDir);
+    scrubManualEditsAgainstOriginalBlock('<div></div>', tmpDir);
     assert.equal(readBuffer(tmpDir).entries.length, 0);
   });
 });

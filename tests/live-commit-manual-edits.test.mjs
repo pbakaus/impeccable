@@ -142,6 +142,30 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('fails source verification for legacy empty newText entries instead of treating them as applied', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1 class="hero">Welcome</h1>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'empty', ops: [{ ref: 'a', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: '' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['empty'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].reason, 'source_verification_failed');
+    assert.equal(result.failed[0].failures[0].detail, 'empty_newText_not_supported');
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
   it('verifies current hero edits against Astro source hints before clearing', () => {
     fs.mkdirSync(path.join(tmpDir, 'site/pages'), { recursive: true });
     const astroPath = path.join(tmpDir, 'site/pages/index.astro');

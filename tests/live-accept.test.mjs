@@ -9,10 +9,11 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
+const WRAP = resolve(__dirname, '..', 'skill/scripts/live-wrap.mjs');
 
 function runAccept(cwd, args) {
   try {
@@ -227,10 +228,10 @@ describe('live-accept — style-element edge cases', () => {
 }`;
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
-    execSync(
-      `node skill/scripts/live-wrap.mjs --id INDENTDISC --count 3 --classes "card" --tag "aside" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
-    );
+    execFileSync('node', [WRAP, '--id', 'INDENTDISC', '--count', '3', '--classes', 'card', '--tag', 'aside', '--file', join(tmp, 'App.tsx')], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
 
     runAccept(tmp, ['--id', 'INDENTDISC', '--discard']);
     const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
@@ -274,10 +275,10 @@ describe('live-accept — style-element edge cases', () => {
 }`;
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
-    execSync(
-      `node skill/scripts/live-wrap.mjs --id MULTILINESC --count 3 --classes "card" --tag "aside" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
-    );
+    execFileSync('node', [WRAP, '--id', 'MULTILINESC', '--count', '3', '--classes', 'card', '--tag', 'aside', '--file', join(tmp, 'App.tsx')], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
 
     const result = runAccept(tmp, ['--id', 'MULTILINESC', '--discard']);
     assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
@@ -300,6 +301,45 @@ describe('live-accept — style-element edge cases', () => {
     // survive too.
     assert.match(after, /<div\s*\n\s*className="spacer"\s*\n\s*\/>/m,
       `multi-line self-closing <div /> inside original must survive; got:\n${after}`);
+  });
+
+  it('expandReplaceRange finds JSX wrapper openers with long multi-line attributes', () => {
+    const extraAttrs = Array.from({ length: 18 }, (_, i) => `        data-extra-${i}="x"`).join('\n');
+    const tsx = `export default function App() {
+  return (
+    <main>
+      <div
+        className="impeccable-preview-shell"
+${extraAttrs}
+        data-impeccable-variants="LONGOPEN"
+        data-impeccable-variant-count="2"
+        style={{ display: 'contents' }}
+      >
+        {/* impeccable-variants-start LONGOPEN */}
+        {/* Original */}
+        <div data-impeccable-variant="original">
+          <aside className="card">
+            <h1>Original</h1>
+          </aside>
+        </div>
+        {/* Variants: insert below this line */}
+        <div data-impeccable-variant="1"><aside className="card"><h1>Variant</h1></aside></div>
+        {/* impeccable-variants-end LONGOPEN */}
+      </div>
+      <div className="next-card">After</div>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'LONGOPEN', '--discard']);
+    assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
+    assert.doesNotMatch(after, /data-impeccable-variants/);
+    assert.doesNotMatch(after, /impeccable-variants-start/);
+    assert.match(after, /<aside className="card">\s*<h1>Original<\/h1>\s*<\/aside>/m);
+    assert.ok(after.includes('<div className="next-card">After</div>'));
   });
 
   it('accept (no carbonize, raw HTML) restores at the original indent on JSX', () => {

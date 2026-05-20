@@ -247,6 +247,9 @@ function validateManualEditEvent(msg, label) {
       return label + ': text op requires newText';
     }
     if (typeof op.newText === 'string') {
+      if (op.deleted !== true && op.newText.trim().length === 0) {
+        return label + ': newText cannot be empty';
+      }
       const forbidden = validateNewTextChars(op.newText);
       if (forbidden) {
         return label + ': newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)';

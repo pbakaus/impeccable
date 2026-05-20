@@ -102,7 +102,7 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
       failures.push({ file: relativeFile, reason: 'read_failed', message: err.message });
       continue;
     }
-    const markerMatch = content.match(/impeccable-carbonize-|data-impeccable-variant|IMPECCABLE_VARIANT|impeccable-live-variant/);
+    const markerMatch = content.match(/^\s*(?:<!--|\{\/\*)\s*impeccable-carbonize-(?:start|end)\b|^\s*(?:<!--|\{\/\*)\s*impeccable-variants-(?:start|end)\b|^\s*<[A-Za-z][\w:.-]*\b[^>\n]*\bdata-impeccable-variants?\s*=/m);
     if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch[0] });
     if (/\.(mjs|cjs|js)$/.test(relativeFile)) {
       const check = spawnSync(process.execPath, ['--check', file], { cwd, encoding: 'utf-8' });

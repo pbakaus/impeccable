@@ -58,15 +58,38 @@ describe('live-copy-edit-agent', () => {
     );
   });
 
-  it('flags invalid JS and leftover carbonize markers in post-apply checks', () => {
+  it('flags invalid JS and actual leftover carbonize markers in post-apply checks', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-checks-'));
     try {
       fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
-      fs.writeFileSync(path.join(tmp, 'src', 'bad.js'), 'const value = ;\n// impeccable-carbonize-end\n');
-      const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/bad.js'] });
+      fs.writeFileSync(path.join(tmp, 'src', 'bad.js'), 'const value = ;\n');
+      fs.writeFileSync(path.join(tmp, 'src', 'page.html'), '<!-- impeccable-carbonize-end abcdef12 -->\n<h1>Hi</h1>\n');
+      const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/bad.js', 'src/page.html'] });
       assert.equal(checks.ok, false);
       assert.equal(checks.failures.some((item) => item.reason === 'leftover_impeccable_marker'), true);
       assert.equal(checks.failures.some((item) => item.reason === 'invalid_js'), true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('does not flag live-mode marker words when they only appear as source literals', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-literals-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, 'src', 'live-helper.js'),
+        [
+          'const words = "impeccable-carbonize- data-impeccable-variant IMPECCABLE_VARIANT impeccable-live-variant";',
+          'const selector = "[data-impeccable-variant=\\"1\\"]";',
+          'const example = "<div data-impeccable-variant=\\"1\\">demo</div>";',
+          'export { words, selector, example };',
+          '',
+        ].join('\n'),
+      );
+      const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/live-helper.js'] });
+      assert.equal(checks.ok, true);
+      assert.deepEqual(checks.failures, []);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

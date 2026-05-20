@@ -87,18 +87,20 @@ Output (JSON):
     console.log(JSON.stringify({ handled: true, file: relFile, carbonize: false, ...result }));
   } else {
     const result = handleAccept(id, variantNum, lines, targetFile, paramValues);
+    const acceptedOriginalText = result.acceptedOriginalText || '';
+    delete result.acceptedOriginalText;
     // Single-line attention-grabber when cleanup is required. The full
     // five-step checklist lives in reference/live.md (loaded once per
     // session); repeating it per-event would waste tokens.
     if (result.carbonize) {
       result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + relFile + '. See reference/live.md "Required after accept".';
     }
-    // Scrub stash entries whose originalText was inside the just-replaced
-    // wrap block. The accept embodies those manual edits (wrap was buffer-
-    // aware), so the pending ops are now redundant. Bounded to one file read.
+    // Scrub stash entries whose text appeared inside the just-replaced
+    // original wrap block. The accept embodies those manual edits (wrap was
+    // buffer-aware), so only those scoped ops are redundant.
     if (result.handled !== false) {
       try {
-        scrubManualEditsAgainstFile(targetFile);
+        scrubManualEditsAgainstOriginalBlock(acceptedOriginalText);
       } catch {
         // Non-fatal; the buffer stays as-is and the user can discard later.
       }
@@ -108,30 +110,41 @@ Output (JSON):
 }
 
 /**
- * After a variant accept rewrites a portion of targetFile, drop buffer ops
- * whose originalText no longer appears in that file. Those ops were almost
- * certainly inside the replaced wrap block (which previously contained the
- * manual-edited text via buffer-aware wrap), and the accept now embodies them.
+ * After a variant accept rewrites one wrapper, drop only buffer ops whose
+ * text appeared inside that wrapper's original block. The previous file-wide
+ * scrub dropped unrelated staged edits from other components/files whenever
+ * their originalText wasn't present in the just-accepted file.
  *
- * Ops whose originalText still appears in targetFile are left alone — they
- * relate to other elements the user manually edited but didn't put through the
- * variants pipeline.
+ * Match both originalText and newText because live-wrap rewrites the original
+ * preview block to reflect pending manual edits before variants are generated.
  */
-function scrubManualEditsAgainstFile(targetFile, cwd = process.cwd()) {
+function scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd = process.cwd()) {
+  const originalBlock = String(originalBlockText || '');
+  if (!originalBlock) return;
   const buffer = readManualEditsBuffer(cwd);
   if (buffer.entries.length === 0) return;
-  const fileContent = fs.readFileSync(targetFile, 'utf-8');
   let mutated = false;
   for (const entry of buffer.entries) {
     const before = entry.ops.length;
     entry.ops = entry.ops.filter((op) => {
-      if (!op.originalText) return true;
-      return fileContent.includes(op.originalText);
+      return !manualEditOpAppearsInBlock(op, originalBlock);
     });
     if (entry.ops.length !== before) mutated = true;
   }
   buffer.entries = buffer.entries.filter((entry) => entry.ops.length > 0);
   if (mutated) writeManualEditsBuffer(cwd, buffer);
+}
+
+function manualEditOpAppearsInBlock(op, originalBlock) {
+  const candidates = [op?.newText, op?.originalText]
+    .filter((text) => typeof text === 'string' && text.length > 0);
+  return candidates.some((text) => originalBlock.includes(text));
+}
+
+// Compatibility export for older tests/callers. The unsafe file-wide scrub was
+// removed; callers must pass accepted original-block text for scoped cleanup.
+function scrubManualEditsAgainstFile(_targetFile, cwd = process.cwd(), originalBlockText = '') {
+  return scrubManualEditsAgainstOriginalBlock(originalBlockText, cwd);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +197,7 @@ function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   // Extract the chosen variant's inner content
   const variantContent = extractVariant(lines, block, variantNum);
   if (!variantContent) return { handled: false, error: 'Variant ' + variantNum + ' not found' };
+  const originalContent = extractOriginal(lines, block);
 
   // Extract CSS block if present
   const cssContent = extractCss(lines, block, id);
@@ -242,7 +256,7 @@ function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   ];
   fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
 
-  return { carbonize: needsCarbonize };
+  return { carbonize: needsCarbonize, acceptedOriginalText: originalContent.join('\n') };
 }
 
 // ---------------------------------------------------------------------------
@@ -291,11 +305,14 @@ function expandReplaceRange(block, lines, isJsx) {
   // Walk back for the wrapper `<div data-impeccable-variants="..."` opener.
   // The attr may sit on a continuation line of a multi-line opening tag, so
   // also walk to the line that actually contains `<div`.
-  for (let i = start - 1; i >= Math.max(0, start - 12); i--) {
+  for (let i = start - 1; i >= 0; i--) {
+    if (/impeccable-variants-end\s+/.test(lines[i])) break;
     if (/data-impeccable-variants=/.test(lines[i])) {
       let opener = i;
-      while (opener > 0 && !/<div\b/.test(lines[opener])) opener--;
-      start = opener;
+      while (opener > 0 && !/<div\b/.test(lines[opener]) && !/impeccable-variants-end\s+/.test(lines[opener])) {
+        opener--;
+      }
+      if (/<div\b/.test(lines[opener])) start = opener;
       break;
     }
   }
@@ -630,4 +647,4 @@ if (_running?.endsWith('live-accept.mjs') || _running?.endsWith('live-accept.mjs
   acceptCli();
 }
 
-export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile };
+export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile, scrubManualEditsAgainstOriginalBlock };

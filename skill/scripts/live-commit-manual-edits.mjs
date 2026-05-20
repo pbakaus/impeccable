@@ -158,6 +158,15 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
   for (const rawOp of entry.ops || []) {
     const op = { ...rawOp, entryId: entry.id };
     if (op.deleted === true) continue;
+    if (typeof op.newText !== 'string' || op.newText.trim().length === 0) {
+      failures.push({
+        ref: op.ref,
+        reason: 'source_verification_failed',
+        detail: 'empty_newText_not_supported',
+        candidates: candidatesForEntry(batch, entry.id).slice(0, 12),
+      });
+      continue;
+    }
     const hintedOldText = sourceHintWindowFailure(cwd, op);
     if (hintedOldText) {
       failures.push({
