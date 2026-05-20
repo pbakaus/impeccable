@@ -83,6 +83,7 @@
     "@google/genai": "^1.50.1",
     "ai": "^6.0.168",
     "archiver": "^7.0.1",
+    "jsdom": "^29.1.1",
     "modern-screenshot": "^4.7.0",
     "motion": "^12.38.0",
     "playwright": "^1.59.1",
