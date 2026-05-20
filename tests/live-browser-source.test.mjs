@@ -42,6 +42,16 @@ describe('live-browser source contracts', () => {
       /function parseManualEditRefSegment\(segment\)[\s\S]*?function elementMatchesManualRefSegment\(el, segment\)/,
       'Discard restore should parse Impeccable document refs instead of treating them as raw CSS selectors',
     );
+    assert.match(
+      SOURCE,
+      /const restoreHint = mixedTextWrapRestoreHint\(row\.el\);[\s\S]{0,80}if \(restoreHint\) op\.restore = restoreHint;/,
+      'Staged mixed-content text edits should carry a restore hint for their parent text node',
+    );
+    assert.match(
+      SOURCE,
+      /function restoreMixedTextNodeManualEdit\(op\)[\s\S]*?byIndex\.nodeValue = op\.originalText;/,
+      'Discard restore should restore unwrapped mixed-content text nodes by hint',
+    );
     assert.doesNotMatch(
       SOURCE,
       /document\.querySelector\(ref\)/,

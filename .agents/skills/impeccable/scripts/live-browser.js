@@ -2068,6 +2068,8 @@
         };
         op.leaf = copyEditLeafContext(row.el, row.text, newText);
         op.nearbyEditableTexts = nearbyEditableTextsForManualEdit(inlineEditRows, row.el, row.text, newText);
+        const restoreHint = mixedTextWrapRestoreHint(row.el);
+        if (restoreHint) op.restore = restoreHint;
         const sourceHint = sourceHintForElement(row.el);
         if (sourceHint) op.sourceHint = sourceHint;
         ops.push(op);
@@ -2290,11 +2292,51 @@
   function restoreDiscardedManualEdits(entries) {
     for (const entry of entries || []) {
       for (const op of entry.ops || []) {
+        if (restoreMixedTextNodeManualEdit(op)) continue;
         const el = findManualEditRestoreElement(op);
         if (!el || typeof op.originalText !== 'string') continue;
         el.textContent = op.originalText;
       }
     }
+  }
+
+  function mixedTextWrapRestoreHint(el) {
+    if (!el || !el.dataset || el.dataset.impeccableTextWrap !== 'true' || !el.parentElement) return null;
+    const siblings = directMixedTextRestoreNodes(el.parentElement);
+    const textIndex = siblings.indexOf(el);
+    return {
+      kind: 'mixedTextNode',
+      parentRef: documentRefForElement(el.parentElement),
+      textIndex,
+    };
+  }
+
+  function restoreMixedTextNodeManualEdit(op) {
+    const restore = op?.restore;
+    if (!restore || restore.kind !== 'mixedTextNode' || typeof op?.originalText !== 'string') return false;
+    const parent = queryManualEditRef(restore.parentRef);
+    if (!parent) return false;
+    const textNodes = directMixedTextRestoreNodes(parent).filter((node) => node.nodeType === 3);
+    const newText = normalizeManualContextText(op.newText);
+    const byIndex = textNodes[Number(restore.textIndex)];
+    if (byIndex && normalizeManualContextText(byIndex.nodeValue) === newText) {
+      byIndex.nodeValue = op.originalText;
+      return true;
+    }
+    const matches = textNodes.filter((node) => normalizeManualContextText(node.nodeValue) === newText);
+    if (matches.length !== 1) return false;
+    matches[0].nodeValue = op.originalText;
+    return true;
+  }
+
+  function directMixedTextRestoreNodes(parent) {
+    return Array.from(parent?.childNodes || []).filter((node) => {
+      if (node.nodeType === 3) return /\S/.test(node.nodeValue || '');
+      return node.nodeType === 1
+        && node.dataset
+        && node.dataset.impeccableTextWrap === 'true'
+        && /\S/.test(node.textContent || '');
+    });
   }
 
   function findManualEditRestoreElement(op) {

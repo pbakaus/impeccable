@@ -42,10 +42,9 @@ Optional:
                      classes/tag match multiple sibling elements (e.g. a list
                      of <Card>s with the same className). Pass the first ~80
                      chars of event.element.textContent.
-  --page-url URL     Current page URL. Required for the buffer-aware "original"
-                     content step: pending manual edits are filtered to this
-                     page so an edit on /a doesn't bleed into a wrap on /b. If
-                     omitted, the buffer-aware step is skipped.
+  --page-url URL     Current page URL. Required when pending manual edits may
+                     affect the picked source block. Pending edits are filtered
+                     to this page so an edit on /a doesn't bleed into /b.
   --help             Show this help message
 
 Output (JSON):
@@ -212,11 +211,22 @@ The agent should insert variant HTML at insertLine.`);
   // adjusted. The pending edits remain in the buffer until committed.
   //
   // Apply buffered edits only when the browser provided the current page URL.
-  // Without it, the CLI cannot distinguish same-file routes or repeated source
-  // blocks, so guessing would either leak another page's staged copy into this
-  // wrap or block unrelated wraps.
+  // Without it, fail if pending edits plausibly touch this exact source range;
+  // otherwise skip buffer awareness so unrelated staged edits on another page
+  // do not block normal wrap work.
   let pendingBuffer = { entries: [] };
   try { pendingBuffer = readManualEditsBuffer(process.cwd()); } catch {}
+  const pendingEntriesForTarget = pageUrl
+    ? []
+    : pendingEntriesThatMayAffectWrap(pendingBuffer.entries, targetFile, originalLines, startLine, process.cwd());
+  if (pendingEntriesForTarget.length > 0) {
+    console.error(JSON.stringify({
+      error: 'missing_page_url_with_pending_edits',
+      pendingEntries: pendingEntriesForTarget.length,
+      hint: 'Pending manual edits may affect the selected source block. Pass --page-url=$event.pageUrl so the wrap block reflects the user\'s staged DOM.',
+    }));
+    process.exit(1);
+  }
   if (pageUrl) {
     try {
       let mutated = false;
@@ -322,6 +332,36 @@ The agent should insert variant HTML at insertLine.`);
 function argVal(args, flag) {
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
+}
+
+function pendingEntriesThatMayAffectWrap(entries, targetFile, originalLines, selectionStartLine, cwd) {
+  const targetAbs = path.resolve(cwd, targetFile);
+  return (entries || []).filter((entry) => {
+    return (entry.ops || []).some((op) => {
+      if (manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd)) return true;
+      return manualEditLocatorMatchesSelection(op, originalLines);
+    });
+  });
+}
+
+function manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd) {
+  const hintFile = op?.sourceHint?.file;
+  const hintedLine = Number(op?.sourceHint?.line);
+  if (!hintFile || !Number.isFinite(hintedLine)) return false;
+  const hintAbs = path.isAbsolute(hintFile) ? hintFile : path.resolve(cwd, hintFile);
+  if (path.resolve(hintAbs) !== targetAbs) return false;
+  const hintedIndex = hintedLine - 1 - selectionStartLine;
+  return hintedIndex >= 0
+    && hintedIndex < originalLines.length
+    && typeof op?.originalText === 'string'
+    && originalLines[hintedIndex].includes(op.originalText);
+}
+
+function manualEditLocatorMatchesSelection(op, originalLines) {
+  if (!op || typeof op.originalText !== 'string' || op.originalText.length === 0) return false;
+  return originalLines.some((line) => (
+    line.includes(op.originalText) && lineMatchesManualEditLocator(line, op)
+  ));
 }
 
 function applyBufferedManualEditToLines(originalLines, selectionStartLine, op) {
