@@ -1,4 +1,4 @@
-Space is the most underused design tool. Find the layout's actual problem (monotone spacing, weak hierarchy, identical card grids, the centered-stack default) and fix the structure, not the surface.
+Space is the most underused design tool. Find the layout's actual problem (monotone spacing, weak hierarchy, identical card grids) and fix the structure, not the surface.
 
 ---
 
@@ -27,7 +27,6 @@ Analyze what's weak about the current spatial design:
 3. **Grid & structure**:
    - Is there a clear underlying structure, or does the layout feel random?
    - Are identical card grids used everywhere? (Icon + heading + text, repeated endlessly)
-   - Is everything centered? (Left-aligned with asymmetric layouts feels more designed, but not a hard and fast rule)
 
 4. **Rhythm & variety**:
    - Does the layout have visual rhythm? (Alternating tight/generous spacing)
@@ -65,7 +64,7 @@ Create a systematic plan:
 - **Tight grouping** for related elements (8-12px between siblings)
 - **Generous separation** between distinct sections (48-96px)
 - **Varied spacing** within sections (not every row needs the same gap)
-- **Asymmetric compositions**: break the predictable centered-content pattern when it makes sense
+- **Asymmetric compositions**: a deliberate choice when the content invites it (not a default to chase).
 
 ### Choose the Right Layout Tool
 

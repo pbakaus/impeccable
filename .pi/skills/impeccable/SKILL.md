@@ -44,7 +44,6 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 #### Layout
 
 - Vary spacing for rhythm.
-- Don't default to centering everything. Left-aligned with asymmetric layout reads as designed; centered icon-title-subtitle stacks read as template.
 - Cards are the lazy answer. Use them only when they're truly the best affordance. Nested cards are always wrong.
 - Don't wrap everything in a container. Most things don't need one.
 - Flexbox for 1D, Grid for 2D. Don't default to Grid when `flex-wrap` would be simpler.

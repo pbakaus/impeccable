@@ -69,8 +69,7 @@ Brand surfaces have permission for Committed, Full palette, and Drenched strateg
 
 - Asymmetric compositions are one option. Break the grid intentionally for emphasis.
 - Fluid spacing with `clamp()` that breathes on larger viewports. Vary for rhythm: generous separations, tight groupings.
-- Alternative: a strict, visible grid as the voice (brutalist / Swiss / tech-spec aesthetics). Either asymmetric or rigorously-gridded can be "designed"; the failure mode is splitting the difference into a generic centered stack.
-- Don't default to centering everything. Left-aligned with asymmetric layouts feels more designed; a strict grid reads as confident structure. A centered-stack hero with icon-title-subtitle cards reads as template.
+- For image-led briefs (hotels, restaurants, magazines, photography), full-bleed hero imagery with overlaid menu and centered headline is a canonical move; let the photograph be the design.
 - When cards ARE the right affordance, use `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` for breakpoint-free responsiveness.
 
 ## Imagery
