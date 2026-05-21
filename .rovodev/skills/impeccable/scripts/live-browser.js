@@ -2179,7 +2179,7 @@
     const width = globalBarEl.offsetWidth;
     const height = globalBarEl.offsetHeight;
     if (!width || !height) return;
-    pendingDockEl.style.left = Math.round((window.innerWidth / 2) - (width / 2) - 8) + 'px';
+    pendingDockEl.style.left = Math.round((window.innerWidth / 2) - (width / 2) - 18) + 'px';
     pendingDockEl.style.top = 'auto';
     pendingDockEl.style.bottom = Math.round(14 + (height / 2)) + 'px';
   }
