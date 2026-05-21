@@ -247,6 +247,52 @@ const ANTIPATTERNS = [
     skillSection: 'Typography',
     skillGuideline: 'repeated eyebrow or kicker labels as section scaffolding',
   },
+  {
+    id: 'numbered-section-markers',
+    category: 'slop',
+    severity: 'advisory',
+    name: 'Numbered section markers (01 / 02 / 03)',
+    description:
+      'Numbered display markers as section labels (01, 02, 03) are the AI editorial scaffold one tier deeper than tracked eyebrow chips. If you find yourself reaching for them, choose a different section cadence.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'numbered section markers',
+  },
+  {
+    id: 'em-dash-overuse',
+    category: 'slop',
+    name: 'Em-dash overuse',
+    description:
+      'More than two em-dashes (— or --) in body copy is an AI cadence tell. Use commas, colons, periods, or parentheses instead.',
+    skillSection: 'Copy',
+    skillGuideline: 'no em dashes',
+  },
+  {
+    id: 'marketing-buzzword',
+    category: 'slop',
+    name: 'Marketing buzzword',
+    description:
+      'Generic SaaS phrases (streamline / empower / supercharge / world-class / enterprise-grade / next-generation / cutting-edge / etc) are instant AI tells. Pick a specific verb and noun that says what the product literally does.',
+    skillSection: 'Copy',
+    skillGuideline: 'marketing buzzwords',
+  },
+  {
+    id: 'aphoristic-cadence',
+    category: 'slop',
+    name: 'Aphoristic-cadence copy',
+    description:
+      'Three or more sections landing on a short rebuttal sentence ("X. No Y." / "X. Just Y.") or a manufactured-contrast aphorism ("Not a feature. A platform.") reads as AI cadence, not voice. Once is fine; the pattern is the tell.',
+    skillSection: 'Copy',
+    skillGuideline: 'aphoristic cadence',
+  },
+  {
+    id: 'broken-image',
+    category: 'quality',
+    name: 'Broken or placeholder image',
+    description:
+      '<img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.',
+    skillSection: 'Imagery',
+    skillGuideline: 'broken image references',
+  },
 
   // ── Quality: general design and accessibility issues ──
   {

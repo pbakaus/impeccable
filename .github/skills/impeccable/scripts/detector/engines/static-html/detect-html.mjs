@@ -21,7 +21,7 @@ import {
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
-import { detectText } from '../regex/detect-text.mjs';
+import { detectText, runTextContentAnalyzers } from '../regex/detect-text.mjs';
 import {
   StaticDocument,
   buildStaticStyleMap,
@@ -64,6 +64,20 @@ function checkStaticPageTypography(document, window) {
   return findings;
 }
 
+function checkElementBrokenImage(el) {
+  const src = (el.getAttribute && el.getAttribute('src')) ?? el.attribs?.src;
+  // Missing src attribute entirely
+  if (src === undefined || src === null) {
+    return [{ id: 'broken-image', snippet: '<img> with no src attribute' }];
+  }
+  const trimmed = String(src).trim();
+  // Empty or placeholder-only src values
+  if (trimmed === '' || trimmed === '#') {
+    return [{ id: 'broken-image', snippet: `<img src="${src}">` }];
+  }
+  return [];
+}
+
 const STATIC_ELEMENT_RULES = [
   { id: 'border-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementBorders(tag, style, null, resolveBorderRadiusPx(el, style, parseFloat(style.width) || 0, window)) },
   { id: 'color-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementColors(el, style, tag, window, customPropMap, false) },
@@ -72,6 +86,7 @@ const STATIC_ELEMENT_RULES = [
   { id: 'icon-tile-stack', selector: 'h1,h2,h3,h4,h5,h6', run: (el, tag, _style, window) => checkElementIconTile(el, tag, window) },
   { id: 'italic-serif-display', selector: 'h1,h2', run: (el, tag, style) => checkElementItalicSerif(el, style, tag) },
   { id: 'hero-eyebrow-chip', selector: 'h1', run: (el, tag, style, window, customPropMap) => checkElementHeroEyebrow(el, style, tag, window, customPropMap) },
+  { id: 'broken-image', selector: 'img', run: (el) => checkElementBrokenImage(el) },
   { id: 'quality-rules', selector: '*', run: (el, tag, style, window) => checkElementQuality(el, style, tag, window) },
 ];
 
@@ -165,6 +180,14 @@ async function detectHtml(filePath, options = {}) {
       item.id !== 'bounce-easing' && item.id !== 'layout-transition'
     ))) {
       findings.push(finding(f.id, filePath, f.snippet));
+    }
+    // Text-content analyzers (em-dash overuse, marketing buzzwords,
+    // numbered section markers, aphoristic cadence) live in the regex
+    // engine. Call them from here so .html files get the same coverage
+    // as .css/.tsx files. These are scoped to text content only and
+    // don't overlap with static-html's element/page rules.
+    for (const f of runPageCheck('text-content', () => runTextContentAnalyzers(html, filePath, options))) {
+      findings.push(finding(f.antipattern, filePath, f.snippet));
     }
   }
 
