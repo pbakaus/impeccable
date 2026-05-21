@@ -1841,45 +1841,54 @@
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
       .then(html => {
-        // Parse the raw source HTML
         const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        let srcWrapper = null;
+
+        // Full-file parse works for HTML/JSX; Astro/Vue sources need marker extraction.
+        const startMark = '<!-- impeccable-variants-start ' + sessionId + ' -->';
+        const endMark = '<!-- impeccable-variants-end ' + sessionId + ' -->';
+        const startIdx = html.indexOf(startMark);
+        const endIdx = html.indexOf(endMark);
+        const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
+          ? html.slice(startIdx + startMark.length, endIdx).trim()
+          : html;
+        const doc = parser.parseFromString(block, 'text/html');
+        srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
           console.error('[impeccable] Variant wrapper not found in source file.');
           return;
         }
 
-        // Find the original element in the live DOM.
-        // The original is inside the wrapper in the source. We find the
-        // corresponding element in the live DOM by matching the first child's
-        // tag + classes from the original snapshot.
-        const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
-        if (!origContent) return;
-
-        const tag = origContent.tagName.toLowerCase();
-        const cls = origContent.className;
-        let liveEl = null;
-        if (origContent.id) {
-          liveEl = document.getElementById(origContent.id);
-        } else if (cls) {
-          // Find by tag + exact class match
-          const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
-          for (const c of candidates) {
-            if (c.className === cls && !own(c)) { liveEl = c; break; }
-          }
-        }
-
-        if (!liveEl) {
-          console.error('[impeccable] Could not find original element in live DOM.');
-          return;
-        }
-
         const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
-
-        // Replace the live element with the full wrapper from source
         const wrapper = srcWrapper.cloneNode(true);
-        liveEl.parentElement.replaceChild(wrapper, liveEl);
+
+        // Wrapper already in DOM (wrap HMR landed, variant insert did not).
+        const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        if (existingWrapper) {
+          existingWrapper.parentElement.replaceChild(wrapper, existingWrapper);
+        } else {
+          const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
+          if (!origContent) return;
+
+          const tag = origContent.tagName.toLowerCase();
+          const cls = origContent.className;
+          let liveEl = null;
+          if (origContent.id) {
+            liveEl = document.getElementById(origContent.id);
+          } else if (cls) {
+            const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
+            for (const c of candidates) {
+              if (c.className === cls && !own(c)) { liveEl = c; break; }
+            }
+          }
+
+          if (!liveEl) {
+            console.error('[impeccable] Could not find original element in live DOM.');
+            return;
+          }
+
+          liveEl.parentElement.replaceChild(wrapper, liveEl);
+        }
 
         // Update state: count variants, preserving the user's current variant
         // when a late HMR/source reinjection lands after they have cycled.
@@ -2219,6 +2228,11 @@
               updateBarContent('cycling');
               refreshParamsPanel();
             }
+            break;
+          }
+          // Source fallback when HMR did not land variants in this tab.
+          if (msg.file && msg.id && state === 'GENERATING' && msg.id === currentSessionId) {
+            injectVariantsFromSource(msg.file, msg.id);
             break;
           }
           // Variants are in source but not in the DOM yet. Common when the

@@ -43,8 +43,6 @@ Analyze what's weak about the current spatial design:
 
 ## Plan Layout Improvements
 
-Consult the [spatial design reference](spatial-design.md) for detailed guidance on grids, rhythm, and container queries.
-
 Create a systematic plan:
 
 - **Spacing system**: Use a consistent scale (a framework's built-in scale like Tailwind's, rem-based tokens, or a custom system). The specific values matter less than consistency.
@@ -57,6 +55,7 @@ Create a systematic plan:
 ### Establish a Spacing System
 
 - Use a consistent spacing scale (framework scales like Tailwind, rem-based tokens, or a custom scale all work). What matters is that values come from a defined set, not arbitrary numbers.
+- Prefer a 4pt base scale (4, 8, 12, 16, 24, 32, 48, 64, 96px) over 8pt; 8pt is too coarse and you'll frequently need 12px between 8 and 16.
 - Name tokens semantically if using custom properties: `--space-xs` through `--space-xl`, not `--spacing-8`
 - Use `gap` for sibling spacing instead of margins; eliminates margin collapse hacks
 - Apply `clamp()` for fluid spacing that breathes on larger screens
@@ -70,11 +69,18 @@ Create a systematic plan:
 
 ### Choose the Right Layout Tool
 
-- **Use Flexbox for 1D layouts**: Rows of items, nav bars, button groups, card contents, most component internals. Flex is simpler and more appropriate for the majority of layout tasks.
+- **Use Flexbox for 1D layouts**: Rows of items, nav bars, button groups, card contents, most component internals.
 - **Use Grid for 2D layouts**: Page-level structure, dashboards, data-dense interfaces, anything where rows AND columns need coordinated control.
-- **Don't default to Grid** when Flexbox with `flex-wrap` would be simpler and more flexible.
-- Use `repeat(auto-fit, minmax(280px, 1fr))` for responsive grids without breakpoints.
 - Use named grid areas (`grid-template-areas`) for complex page layouts; redefine at breakpoints.
+- Use **container queries** for components, viewport queries for page layouts. A card in a narrow sidebar can stay compact while the same card in a main content area expands automatically:
+
+```css
+.card-container { container-type: inline-size; }
+.card { display: grid; gap: var(--space-md); }
+@container (min-width: 400px) {
+  .card { grid-template-columns: 120px 1fr; }
+}
+```
 
 ### Break Card Grid Monotony
 
@@ -85,18 +91,36 @@ Create a systematic plan:
 ### Strengthen Visual Hierarchy
 
 - Use the fewest dimensions needed for clear hierarchy. Space alone can be enough; generous whitespace around an element draws the eye. Some of the most polished designs achieve rhythm with just space and weight. Add color or size contrast only when simpler means aren't sufficient.
+- The best hierarchy combines 2–3 dimensions at once. A heading that's larger, bolder, AND has more space above it reads as primary without trying:
+
+| Tool | Strong Hierarchy | Weak Hierarchy |
+|------|------------------|----------------|
+| **Size** | 3:1 ratio or more | <2:1 ratio |
+| **Weight** | Bold vs Regular | Medium vs Regular |
+| **Color** | High contrast | Similar tones |
+| **Position** | Top/left (primary) | Bottom/right |
+| **Space** | Surrounded by white space | Crowded |
+
 - Be aware of reading flow: in LTR languages, the eye naturally scans top-left to bottom-right, but primary action placement depends on context (e.g., bottom-right in dialogs, top in navigation).
 - Create clear content groupings through proximity and separation.
 
 ### Manage Depth & Elevation
 
-- Create a semantic z-index scale (dropdown → sticky → modal-backdrop → modal → toast → tooltip)
 - Build a consistent shadow scale (sm → md → lg → xl); shadows should be subtle
 - Use elevation to reinforce hierarchy, not as decoration
 
 ### Optical Adjustments
 
 - If an icon looks visually off-center despite being geometrically centered, nudge it. But only if you're confident it actually looks wrong. Don't adjust speculatively.
+- Text at `margin-left: 0` looks slightly indented because of letterform whitespace; a negative margin (`-0.05em`) optically aligns it. Geometrically centered glyphs often look off-center (play icons need to shift right, arrows shift toward their direction).
+- Touch targets must be 44×44px minimum even when the visual element is smaller. Expand the hit area with padding or a pseudo-element:
+
+```css
+.icon-button { width: 24px; height: 24px; position: relative; }
+.icon-button::before {
+  content: ''; position: absolute; inset: -10px;
+}
+```
 
 **NEVER**:
 - Use arbitrary spacing values outside your scale
@@ -104,10 +128,7 @@ Create a systematic plan:
 - Wrap everything in cards (not everything needs a container)
 - Nest cards inside cards (use spacing and dividers for hierarchy within)
 - Use identical card grids everywhere (icon + heading + text, repeated)
-- Center everything (left-aligned with asymmetry feels more designed)
 - Default to the hero metric layout (big number, small label, stats, gradient) as a template. If showing real user data, a prominent metric can work, but it should display actual data, not decorative numbers.
-- Default to CSS Grid when Flexbox would be simpler; use the simplest tool for the job
-- Use arbitrary z-index values (999, 9999); build a semantic scale
 
 ## Verify Layout Improvements
 

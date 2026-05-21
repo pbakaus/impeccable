@@ -370,11 +370,14 @@ function buildCssAuthoring(styleMode, count) {
       selectorExamples: variantNumbers.map((n) => `[data-impeccable-variant="${n}"] > .variant-class`),
       requirements: [
         'Use the styleTag exactly; the is:inline attribute is required for this file.',
+        'Put raw CSS directly between the styleTag opening and a plain </style> close.',
         'Prefix every preview selector with the matching [data-impeccable-variant="N"] selector.',
         'Keep selectors anchored to the generated variant wrapper; do not rely on component CSS scoping for preview rules.',
       ],
       forbidden: [
         'Do not use @scope for this styleMode.',
+        'Do not wrap style content in a JSX/TSX template literal ({` ... `}); that syntax is for .tsx/.jsx only.',
+        'Do not put { immediately after the style opening tag; Astro parses { as expression syntax.',
       ],
     };
   }

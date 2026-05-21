@@ -148,15 +148,6 @@ const ANTIPATTERNS = [
 
   // ── Quality: general design and accessibility issues ──
   {
-    id: 'pure-black-white',
-    category: 'quality',
-    name: 'Pure black background',
-    description:
-      'Pure #000000 as a background color looks harsh and unnatural. Tint it slightly toward your brand hue (e.g., oklch(12% 0.01 250)) for a more refined feel.',
-    skillSection: 'Color & Contrast',
-    skillGuideline: 'pure black (#000)',
-  },
-  {
     id: 'gray-on-color',
     category: 'quality',
     name: 'Gray text on colored background',
