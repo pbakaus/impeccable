@@ -46,26 +46,34 @@ The trace is the source of truth, not the model's free-form reply.
 | 3 | PRODUCT.md + DESIGN.md (brand register) | runs `context.mjs` 1-3 times; loads `reference/brand.md`; consults the design system (DESIGN.md bundled in output, but CSS / tokens / directory listing also count) |
 | 4 | PRODUCT.md + DESIGN.md, context already loaded in turn 1 | turn 2 does **not** re-run `context.mjs`; `reference/brand.md` is loaded across turns 1+2 |
 | 5 | PRODUCT.md WITHOUT a `## Register` field; task cue says "landing page" | runs `context.mjs` (which emits a generic register directive); agent loads `reference/brand.md` via task-cue cascade |
+| 6 | PRODUCT.md + DESIGN.md + a minimal `index.html`; prompt is `/impeccable polish` | loads `reference/polish.md` |
+| 7 | same fixture; prompt is `/impeccable audit` | loads `reference/audit.md` |
+| 8 | PRODUCT.md + DESIGN.md + a SvelteKit scaffold (`src/app.css`, components, `+page.svelte`); prompt is `/impeccable polish src/routes/+page.svelte` | reads at least one project code file (CSS / component / page) — not just the skill's reference files |
 
 ## Baseline state (2026-05-20)
 
-Captured after condensing Setup to four bullets and teaching `context.mjs`
-to emit a `NEXT STEP:` directive that names the matching register
-reference when PRODUCT.md declares one (and a generic cascade prompt when
-it doesn't). Use this table when comparing pre/post refactor: a
-regression is "more failures than baseline", not "any failures at all".
+Captured after moving sub-command reference loading from step 4 to step 2
+of Setup (so the agent loads `reference/<command>.md` right after
+`context.mjs`, before "doing the work" preempts it), and tightening
+step 3 to require at least one project code read even when a sub-command
+reference loads first. Use this table when comparing pre/post refactor:
+a regression is "more failures than baseline", not "any failures at all".
 
 | Scenario | claude-haiku-4-5 | gpt-5.4-mini | gemini-3.1-flash-lite |
 |---|---|---|---|
-| 1 (no context) | pass (variance: ~1 in 5 the agent stops after `context.mjs` without loading `teach.md`) | pass | pass |
+| 1 (no context) | pass (rare flake — agent stops after `context.mjs` without loading `teach.md`) | pass | pass |
 | 2 (product only) | pass | pass | pass |
-| 3 (product + design) | pass | pass | pass |
-| 4 (already loaded) | pass | **fail** | pass |
+| 3 (product + design) | pass | pass | pass (rare flake — sub-command ref loads but register ref doesn't) |
+| 4 (already loaded) | pass | pass | pass |
 | 5 (no register field, task-cue cascade) | pass | pass | pass |
+| 6 (`polish` routing) | pass | **fail** | pass |
+| 7 (`audit` routing) | pass | **fail** | pass |
+| 8 (existing project, explore design system) | pass | pass | pass |
 
-13-14 / 15 typical. The stable failure is gpt-5.4-mini scenario 4:
-it re-runs `context.mjs` on turn 2 despite seeing its output in turn 1's
-history. Same known weakness as the v3.2.0 script baseline; Claude and
-Gemini honor the "don't re-run" rule. The S1 claude flake is rare
-(observed once across many runs) and likely terminates early under
-load — re-running typically clears it.
+21-22 / 24 typical. The stable failures are gpt-5.4-mini scenarios 6 and 7:
+the model reads `index.html` (the target file), recognizes "polish" or
+"audit" as a familiar action, and proceeds with the work without ever
+loading the sub-command reference. Stronger SKILL.md wording (MUST,
+"non-optional", reordered earlier) didn't move it; this looks like a
+model-floor behavior rather than a skill ambiguity. Claude and Gemini
+honor the load.

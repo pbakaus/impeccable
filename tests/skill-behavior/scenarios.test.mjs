@@ -24,7 +24,13 @@ import {
   summarizeTrace,
 } from './harness.mjs';
 import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from './providers.mjs';
-import { PRODUCT_MD_SAMPLE, PRODUCT_MD_SAMPLE_NO_REGISTER, DESIGN_MD_SAMPLE } from './fixtures.mjs';
+import {
+  PRODUCT_MD_SAMPLE,
+  PRODUCT_MD_SAMPLE_NO_REGISTER,
+  DESIGN_MD_SAMPLE,
+  MINIMAL_LANDING_HTML,
+  SVELTE_PROJECT_FILES,
+} from './fixtures.mjs';
 
 const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
 const PRIMER_PROMPT =
@@ -245,6 +251,91 @@ for (const modelId of resolveModelList()) {
           fileLoaded(trace, 'brand.md'),
           `agent should load brand.md via task-cue cascade (no register field, "landing page" cue).\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 6: sub-command routing (`/impeccable polish` loads polish.md)', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          'index.html': MINIMAL_LANDING_HTML,
+        },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable polish index.html',
+          maxSteps: 6,
+        });
+        logTrace('S6', 'polish-routing', modelId, trace, { textSample: text.slice(0, 300) });
+        assert.ok(
+          fileLoaded(trace, 'polish.md'),
+          `agent should load polish.md when /impeccable polish is invoked.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 7: sub-command routing (`/impeccable audit` loads audit.md)', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          'index.html': MINIMAL_LANDING_HTML,
+        },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable audit index.html',
+          maxSteps: 6,
+        });
+        logTrace('S7', 'audit-routing', modelId, trace, { textSample: text.slice(0, 300) });
+        assert.ok(
+          fileLoaded(trace, 'audit.md'),
+          `agent should load audit.md when /impeccable audit is invoked.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 8: existing SvelteKit project (agent explores design system)', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          ...SVELTE_PROJECT_FILES,
+        },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable polish src/routes/+page.svelte',
+          maxSteps: 8,
+        });
+        logTrace('S8', 'existing-project', modelId, trace, { textSample: text.slice(0, 400) });
+        // Setup step 2: familiarize with existing design system. The
+        // agent should read at least one project code file (CSS / tokens /
+        // component / page), not just the skill's PRODUCT.md / DESIGN.md
+        // / reference files.
+        const projectReads = trace.readPaths.filter((p) =>
+          /\.(css|svelte|tsx?|jsx?|astro)$/i.test(p) && !p.includes('.claude/skills/'),
+        );
+        assert.ok(
+          projectReads.length >= 1,
+          `agent should read at least one project code file to understand the existing design system.\n` +
+            `readPaths: ${JSON.stringify(trace.readPaths, null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
