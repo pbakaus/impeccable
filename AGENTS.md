@@ -16,6 +16,7 @@ If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or a
 - `bun test tests/build.test.js` - run a focused Bun test.
 - `bun run test` - run the full Bun + Node test suite.
 - `bun run test:live-e2e` - opt-in live-mode E2E against framework fixtures (~2 min; needs `npx playwright install chromium` once).
+- `bun run test:skill-behavior` - opt-in LLM-backed checks that the SKILL.md Setup flow actually drives the agent (~5 min; runs claude-haiku-4-5 / gpt-5.4-mini / gemini-3.1-flash-lite, costs cents per run, needs `.env` with provider keys).
 - `bun run build:browser` / `bun run build:extension` - rebuild browser-specific bundles.
 
 Run `bun run build` after changing anything in `source/`, transformer code, or user-facing counts.
@@ -40,6 +41,8 @@ Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.tes
 For changes to `skill/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for a Claude-backed one (`tests/live-e2e/agents/llm-agent.mjs`, default Haiku 4.5, override via `IMPECCABLE_E2E_LLM_MODEL`). Requires `ANTHROPIC_API_KEY`; tests skip cleanly when it's unset. This path hits the API — use it for verification, not CI.
+
+For changes to `skill/SKILL.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference file (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns real LLMs (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — all three, every run) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline (21-22/24) and per-scenario assertions live in `tests/skill-behavior/README.md`.
 
 ## Anti-pattern detection rules
 

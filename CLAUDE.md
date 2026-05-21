@@ -118,8 +118,9 @@ Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock
 ## Testing
 
 ```bash
-bun run test            # Default suite: unit + static framework fixtures
-bun run test:live-e2e   # Opt-in: full-cycle live-mode E2E across framework fixtures
+bun run test                  # Default suite: unit + static framework fixtures
+bun run test:live-e2e         # Opt-in: full-cycle live-mode E2E across framework fixtures
+bun run test:skill-behavior   # Opt-in: LLM-backed checks that the skill text actually drives the agent's setup flow
 ```
 
 Unit tests (build orchestration, detector logic) run via `bun test`. Fixture tests (jsdom-based HTML detection) run via `node --test` because bun is too slow with jsdom. The `test` script handles this split automatically.
@@ -145,6 +146,38 @@ The agent is pluggable via a one-method interface in `tests/live-e2e/agent.mjs`:
 **LLM agent (opt-in)**: set `IMPECCABLE_E2E_AGENT=llm` to swap the fake agent for `tests/live-e2e/agents/llm-agent.mjs`, which calls Claude (default Haiku 4.5) via `@anthropic-ai/sdk`. Requires `ANTHROPIC_API_KEY` in env; the test runner skips with a clear message when it's unset. Override the model with `IMPECCABLE_E2E_LLM_MODEL=claude-sonnet-4-6` if Haiku produces unreliable JSON. Caching is on — live.md is the cacheable prefix, and after the first call subsequent fixtures pay only the cache-read rate. Pass rate on a typical sweep is 18/19; the modal fixture's intrinsic state-loss flake is amplified by LLM latency and may need a re-run. **This path hits the API and costs money** — keep it out of CI unless you really want it there.
 
 Adding a new fixture is a matter of cloning a directory under `tests/framework-fixtures/`, swapping the source files, and writing a `fixture.json`. See `tests/framework-fixtures/README.md` for the full schema.
+
+### Skill-behavior tests
+
+`tests/skill-behavior/scenarios.test.mjs` is the LLM-backed safety net for edits to `skill/SKILL.md` and the Setup-adjacent reference files (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). It inlines the source `skill/SKILL.md` into the system prompt of a real LLM, gives the agent `bash` / `read` / `write` / `list` tools scoped to a temp workspace, and asserts on the tool-call trace — not on the model's free-form output. The trace is the source of truth.
+
+```bash
+bun run test:skill-behavior                                              # full suite (24 tests, ~5 min, ~$0.10 across providers)
+IMPECCABLE_SKILL_BEHAVIOR_MODELS=gemini-3.1-flash-lite bun run test:skill-behavior   # scope to one provider
+IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump per-scenario trace JSON to stderr (use when iterating)
+```
+
+**Three providers per run, every run.** The suite always exercises `claude-haiku-4-5`, `gpt-5.4-mini`, and `gemini-3.1-flash-lite` — the cheapest tier of each major coding-agent provider. The point of running the cheap tier is to catch instruction-following weaknesses early. If a SKILL.md edit relies on a tightening that only Sonnet / GPT-5.5 / Gemini Pro can follow, the cheap tier will flag it. **Don't substitute Claude alone** — many of the most useful findings come from divergence between providers.
+
+**Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
+
+**Eight scenarios:**
+1. empty workspace → agent loads `reference/teach.md`
+2. PRODUCT.md only → loads `brand.md`
+3. PRODUCT.md + DESIGN.md → loads `brand.md` + consults the design system
+4. context already loaded in turn 1 → turn 2 does **not** re-run `context.mjs`
+5. PRODUCT.md without `## Register` field → agent infers `brand` from task cue
+6. `/impeccable polish` → loads `reference/polish.md`
+7. `/impeccable audit` → loads `reference/audit.md`
+8. existing SvelteKit project → agent reads at least one project code file
+
+**Baseline** (post-refactor): 21-22 / 24. Stable failures live on gpt-5.4-mini scenarios 6 and 7 — it just doesn't load sub-command references regardless of MUST language. Captured in `tests/skill-behavior/README.md` as a known weakness.
+
+**Cost.** Each run is real LLM calls, billed to the keys in `.env`. ~$0.05-0.15 per full sweep. Keep it out of CI unless you really want it there.
+
+**Adding a scenario.** Write the fixture in `tests/skill-behavior/fixtures.mjs`, add the `it()` block in `scenarios.test.mjs` (the harness uses the source `skill/` dir via a symlink, so no rebuild needed), and update the baseline table in the suite's README. The harness's `fileLoaded(trace, filename)` helper checks both `read` and bash `cat` — different models prefer different tools.
+
+**The harness symlinks source, not built output.** This is deliberate so SKILL.md / reference / `scripts/context.mjs` edits show up immediately without `bun run build:skills`. The trade-off: reference files surface their raw `{{placeholders}}`, but the assertions key on tool calls rather than content, so it doesn't matter for correctness.
 
 ## CLI
 
