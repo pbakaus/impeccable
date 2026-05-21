@@ -395,58 +395,6 @@ Then remove the temporary wrapper from the served file if it's still there.
 
 Remove the wrapper you inserted in Step 2. Nothing else to do.
 
-## Manual copy edits: Save stages, Apply runs AI batch
-
-When the user clicks Save in the live overlay, the browser posts the edited text leaves to `/manual-edit-stash`. The page updates immediately and the bottom dock shows **Apply copy edits** plus a discard button. Nothing writes to source until the user clicks Apply.
-
-On Apply, `/manual-edit-commit` runs `live-commit-manual-edits.mjs`. That script gathers all staged edits for the current page, adds source hints and candidate evidence, and asks the local AI runner (`codex` first, `claude` fallback; `IMPECCABLE_LIVE_COPY_AGENT=mock` in tests) to apply the whole batch. Successful entries are cleared from `.impeccable/live/pending-manual-edits.json`; failed entries remain staged.
-
-The AI batch must also check related references. If a visible string is clearly coupled to object keys, animation keys, counts, or data references, update those references too. If the relationship is ambiguous or broad, report the entry as failed with candidate files/lines instead of guessing.
-
-Staged op shape:
-
-```json
-{
-  "id": "8hexid",
-  "pageUrl": "/",
-  "element": { "...": "selected/container context" },
-  "ops": [
-    {
-      "ref": "full DOM path for the edited leaf",
-      "contextRef": "full DOM path for the selected/container element",
-      "tag": "span",
-      "elementId": null,
-      "classes": [],
-      "originalText": "Before",
-      "newText": "After",
-      "sourceHint": null,
-      "leaf": {},
-      "nearbyEditableTexts": [],
-      "container": {}
-    }
-  ]
-}
-```
-
-The commit result stays UI-compatible:
-
-```json
-{
-  "applied": [],
-  "failed": [],
-  "files": [],
-  "cleared": 0,
-  "perPage": { "/": 0 }
-}
-```
-
-Common validation failure:
-- `newText cannot contain < > { } or a backtick`: the manual copy flow is plain text only. If the user wants markup, edit the source directly and explain that it cannot be saved from inline copy mode.
-
-Post-apply cleanup checks mirror the carbonize principle: touched files must not contain leftover `impeccable-carbonize-*` comments, `data-impeccable-variant` wrappers, or invalid JS syntax. Generated provider files should still be rebuilt from `skill/` with `bun run build`; do not hand-edit them.
-
-Compatibility note: direct `manual_edit_apply` events are disabled in the browser flow. Use `/manual-edit-stash`, `/manual-edit-commit`, and `/manual-edit-discard` for copy edits.
-
 ## Handle `accept`
 
 Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically, then acknowledged event delivery to the helper. The browser DOM is already updated.
@@ -489,6 +437,58 @@ Resolve `pageUrl` to the underlying file:
 Read the file into context, then poll again. No `--reply`: this is speculative pre-work; Go will come later. If you can't confidently resolve the route to a file, skip and poll again.
 
 Dedupe is the browser's job (one prefetch per unique pathname per session); trust it. If the same file shows up twice from different routes mapping to the same file, the second Read is cached anyway.
+
+## Manual copy edits: Save stages, Apply runs AI batch
+
+When the user clicks Save in the live overlay, the browser posts the edited text leaves to `/manual-edit-stash`. The page updates immediately and the bottom dock shows **Apply copy edits** plus a discard button. Nothing writes to source until the user clicks Apply.
+
+On Apply, `/manual-edit-commit` runs `live-commit-manual-edits.mjs`. That script gathers all staged edits for the current page, adds source hints and candidate evidence, and asks the local AI runner to apply the whole batch. Successful entries are cleared from `.impeccable/live/pending-manual-edits.json`; failed entries remain staged.
+
+The AI batch must also check related references. If a visible string is clearly coupled to object keys, animation keys, counts, or data references, update those references too. If the relationship is ambiguous or broad, report the entry as failed with candidate files/lines instead of guessing.
+
+Staged op shape:
+
+```json
+{
+  "id": "8hexid",
+  "pageUrl": "/",
+  "element": { "...": "selected/container context" },
+  "ops": [
+    {
+      "ref": "full DOM path for the edited leaf",
+      "contextRef": "full DOM path for the selected/container element",
+      "tag": "span",
+      "elementId": null,
+      "classes": [],
+      "originalText": "Before",
+      "newText": "After",
+      "sourceHint": null,
+      "leaf": {},
+      "nearbyEditableTexts": [],
+      "container": {}
+    }
+  ]
+}
+```
+
+Commit result shape:
+
+```json
+{
+  "applied": [],
+  "failed": [],
+  "files": [],
+  "cleared": 0,
+  "perPage": { "/": 0 }
+}
+```
+
+Common validation failure:
+- `newText cannot contain < > { } or a backtick`: the manual copy flow is plain text only. If the user wants markup, edit the source directly and explain that it cannot be saved from inline copy mode.
+
+Post-apply cleanup checks mirror the carbonize principle: touched files must not contain leftover `impeccable-carbonize-*` comments, `data-impeccable-variant` wrappers, or invalid JS syntax. Generated provider files should still be rebuilt from `skill/` with `bun run build`; do not hand-edit them.
+
+Compatibility note: direct `manual_edit_apply` events are disabled in the browser flow. Use `/manual-edit-stash`, `/manual-edit-commit`, and `/manual-edit-discard` for copy edits.
 
 ## Exit
 

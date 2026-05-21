@@ -25,6 +25,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- Use DOM refs, leaf/container HTML, source hints, nearby text, and candidate source evidence as context, not as an automatic resolver decision.',
     '- Prefer true source files over generated provider output.',
     '- Make the smallest source changes needed for the visible copy to match each newText.',
+    '- For text-only edits, replace only the target text node or source string literal; do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace.',
     '- If an original string is also used as a clearly coupled data key, object key, animation key, count label, or reference, update that related reference too.',
     '- If a reference change is broad, ambiguous, or risky, do not guess; report that entry as failed with candidate files/lines.',
     '- Preserve unrelated site/demo edits and unrelated staged changes.',
@@ -60,7 +61,11 @@ export async function runCopyEditBatchAgent(batch, opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const env = opts.env || process.env;
   const provider = opts.provider || chooseCopyEditAgent({ env });
-  if (provider === 'mock') return mockBatchResult(batch, env, cwd);
+  if (provider === 'mock') {
+    const delayMs = Number(env.IMPECCABLE_LIVE_COPY_AGENT_MOCK_DELAY_MS || 0);
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return mockBatchResult(batch, env, cwd);
+  }
   if (!provider) {
     throw new Error('No live copy-edit AI runner found. Install/authenticate Codex or Claude, or set IMPECCABLE_LIVE_COPY_AGENT=mock for tests.');
   }
@@ -102,7 +107,7 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
       failures.push({ file: relativeFile, reason: 'read_failed', message: err.message });
       continue;
     }
-    const markerMatch = content.match(/^\s*(?:<!--|\{\/\*)\s*impeccable-carbonize-(?:start|end)\b|^\s*(?:<!--|\{\/\*)\s*impeccable-variants-(?:start|end)\b|^\s*<[A-Za-z][\w:.-]*\b[^>\n]*\bdata-impeccable-variants?\s*=/m);
+    const markerMatch = content.match(/^\s*(?:<!--|\{\/\*)\s*impeccable-carbonize-(?:start|end)\b|^\s*(?:<!--|\{\/\*)\s*impeccable-variants-(?:start|end)\b|\bdata-impeccable-(?:variants?|original-text|editable|text-wrap)\s*=/m);
     if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch[0] });
     if (/\.(mjs|cjs|js)$/.test(relativeFile)) {
       const check = spawnSync(process.execPath, ['--check', file], { cwd, encoding: 'utf-8' });
@@ -159,8 +164,16 @@ function compactContextForBatch(value) {
     id: value.id,
     classes: value.classes,
     textContent: truncate(value.textContent, 900),
-    outerHTML: truncate(value.outerHTML, 1800),
+    outerHTML: truncate(stripLiveRuntimeHtml(value.outerHTML), 1800),
   };
+}
+
+function stripLiveRuntimeHtml(html) {
+  if (typeof html !== 'string') return html || null;
+  return html
+    .replace(/\sdata-impeccable-(?:original-text|editable|text-wrap)(?:=(?:"[^"]*"|'[^']*'|[^\s>]+))?/g, '')
+    .replace(/\scontenteditable(?:=(?:"[^"]*"|'[^']*'|[^\s>]+))?/g, '')
+    .replace(/\sstyle=(["'])(?:(?!\1)[\s\S])*(?:-webkit-user-modify|user-select:\s*text|cursor:\s*text)(?:(?!\1)[\s\S])*\1/g, '');
 }
 
 function normalizeBatchResult(result) {

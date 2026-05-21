@@ -77,6 +77,46 @@ describe('live-browser source contracts', () => {
       /function setPendingApplyLoading\(loading, count\)[\s\S]*?pendingPillSpinnerEl\.style\.display = pendingApplyInFlight \? 'inline-block' : 'none';[\s\S]*?pendingPillEl\.disabled = pendingApplyInFlight;[\s\S]*?pendingTrashBtn\.disabled = pendingApplyInFlight;[\s\S]*?schedulePendingDockPosition\(\);[\s\S]*?\n  \}/,
       'Apply copy edits should show a loading state and prevent double apply/discard while the AI batch runs',
     );
+    assert.match(
+      SOURCE,
+      /function handleGo\(\)[\s\S]{0,140}?if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}[\s\S]{0,80}?runGenerate\(\);/,
+      'Go should be blocked while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function buildConfigureRow\(\)[\s\S]{0,80}?const controlsLocked = pendingApplyInFlight === true;[\s\S]*?go\.disabled = controlsLocked;/,
+      'Configure controls should render disabled while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function handleMouseMove\(e\) \{[\s\S]{0,80}?if \(pendingApplyInFlight\) return;/,
+      'Element hover picking should pause while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\) \{[\s\S]{0,100}?if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}/,
+      'Pick mode should not toggle while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function updateGlobalBarState\(\)[\s\S]*?const controlsLocked = pendingApplyInFlight === true;[\s\S]*?btn\.disabled = controlsLocked;/,
+      'Global live controls should be disabled while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function hidePendingApplyDock\(\)[\s\S]*?pendingDockEl\.style\.display = 'none';[\s\S]*?pendingPillEl\.style\.display = 'none';[\s\S]*?pendingTrashBtn\.style\.display = 'none';/,
+      'Zero pending copy edits should fully hide the Apply dock controls',
+    );
+    assert.match(
+      SOURCE,
+      /case 'manual_edit_commit_done':[\s\S]{0,120}?handleManualEditActivity\(msg\);/,
+      'Apply completion SSE should update the pending dock even if HMR interrupts the original fetch handler',
+    );
+    assert.match(
+      SOURCE,
+      /if \(msg\.type === 'manual_edit_commit_done'\)[\s\S]*?const remainingCount = numberOrNull\(msg\.remainingCount\);[\s\S]*?updatePendingCounter\(remainingCount === null \? 0 : remainingCount\);/,
+      'Apply completion SSE should hide the dock when the server reports zero remaining edits',
+    );
     const applyStart = SOURCE.indexOf('async function onPendingPillClick');
     const applyEnd = SOURCE.indexOf('async function onPendingTrashClick', applyStart);
     const applyFn = SOURCE.slice(applyStart, applyEnd);
@@ -143,6 +183,21 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /op\.nearbyEditableTexts = nearbyEditableTextsForManualEdit\(inlineEditRows, row\.el, row\.text, newText\);/,
       'manual copy edits should capture nearby editable sibling text',
+    );
+    assert.match(
+      SOURCE,
+      /function sanitizedContextOuterHTML\(el, maxLength\)[\s\S]*?stripManualEditRuntimeState\(clone\);/,
+      'manual copy edit prompt context should strip browser-only edit markers before staging HTML',
+    );
+    assert.match(
+      SOURCE,
+      /outerHTML: sanitizedContextOuterHTML\(el, 10000\),/,
+      'staged element context should not include live edit runtime attributes',
+    );
+    assert.match(
+      SOURCE,
+      /function copyEditLeafContext\(el, originalText, newText\)[\s\S]*?outerHTML: sanitizedContextOuterHTML\(el, 3000\) \|\| null,/,
+      'staged leaf context should not include live edit runtime attributes',
     );
     assert.match(
       SOURCE,

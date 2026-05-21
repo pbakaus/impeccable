@@ -188,11 +188,12 @@ function candidateFilesForOp(batch, op, reportedFiles, cwd) {
 function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
   const candidate = (batch.candidates || []).find((item) => item.entryId === op.entryId && item.ref === op.ref);
   const out = [];
+  const reportedFileSet = new Set(reportedFiles || []);
   const add = (file, line, kind) => {
     const relativeFile = normalizeRelativeFile(cwd, file);
     const lineNumber = Number(line);
     if (!relativeFile || !Number.isFinite(lineNumber) || lineNumber < 1) return;
-    out.push({ file: relativeFile, line: lineNumber, kind });
+    out.push({ file: relativeFile, line: lineNumber, kind, reported: reportedFileSet.has(relativeFile) });
   };
 
   add(op.sourceHint?.file, op.sourceHint?.line, 'source_hint');
@@ -200,6 +201,17 @@ function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
   for (const item of candidate?.textMatches || []) add(item.file, item.line, 'text_match');
   for (const item of candidate?.objectKeyMatches || []) add(item.file, item.line, 'object_key_match');
   for (const item of candidate?.locatorMatches || []) add(item.file, item.line, 'locator_match');
+  for (const item of candidate?.contextTextMatches || []) add(item.file, item.line, 'context_text_match');
+
+  // Manual copy edits often stage coupled leaves from the same UI object, e.g.
+  // a card label plus its count. Dynamic source stores both on the label/key
+  // line, so the count op may need the sibling label's data candidates.
+  for (const siblingCandidate of siblingCandidatesForEntry(batch, op)) {
+    add(siblingCandidate.sourceHint?.relativeFile || siblingCandidate.sourceHint?.file, siblingCandidate.sourceHint?.line, 'entry_source_hint');
+    for (const item of siblingCandidate.textMatches || []) add(item.file, item.line, 'entry_text_match');
+    for (const item of siblingCandidate.objectKeyMatches || []) add(item.file, item.line, 'entry_object_key_match');
+    for (const item of siblingCandidate.contextTextMatches || []) add(item.file, item.line, 'entry_context_text_match');
+  }
 
   for (const relativeFile of reportedFiles || []) {
     for (const target of locatorTargetsInFile(cwd, relativeFile, op)) {
@@ -214,6 +226,11 @@ function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
     seen.add(key);
     return true;
   });
+}
+
+function siblingCandidatesForEntry(batch, op) {
+  if (!op?.entryId) return [];
+  return (batch.candidates || []).filter((item) => item.entryId === op.entryId && item.ref !== op.ref);
 }
 
 function locatorTargetsInFile(cwd, relativeFile, op) {
@@ -234,7 +251,11 @@ function verificationTargetPasses(cwd, target, op) {
   let lines;
   try { lines = fs.readFileSync(path.resolve(cwd, target.file), 'utf-8').split('\n'); } catch { return false; }
   const line = lines[target.line - 1] || '';
-  return lineShowsAppliedOp(line, op);
+  if (lineShowsAppliedOp(line, op)) return true;
+  if (!target.reported || !String(target.kind || '').includes('context_text_match')) return false;
+  const start = Math.max(0, target.line - 21);
+  const end = Math.min(lines.length, target.line + 20);
+  return lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op));
 }
 
 function lineShowsAppliedOp(line, op) {
@@ -663,6 +684,7 @@ async function main() {
     cwd: process.cwd(),
     pageUrl: argVal(args, '--page-url'),
     provider: argVal(args, '--provider') || undefined,
+    timeoutMs: Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000),
   });
   console.log(JSON.stringify(result));
 }

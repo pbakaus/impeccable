@@ -6,6 +6,10 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
+import {
+  buildCopyEditBatchPrompt,
+  runCopyEditPostApplyChecks,
+} from '../skill/scripts/live-copy-edit-agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -485,6 +489,132 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('verifies coupled label and count edits through same-entry dynamic data evidence', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts/components'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'site/scripts/data.js'),
+      "export const skillFocusAreas = [{ area: 'Responsive', detail: 'Fluid layouts, touch targets' }];\n" +
+      "export const dimensionGuidelineCounts = { 'Responsive': 23 };\n"
+    );
+    fs.writeFileSync(path.join(tmpDir, 'site/scripts/components/foundation-animations.js'),
+      "export const foundationAnimations = { 'Responsive': '<svg>responsive</svg>' };\n"
+    );
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'card',
+          element: {
+            tagName: 'div',
+            classes: ['foundation-card'],
+            textContent: 'Responsive 23 Fluid layouts, touch targets',
+          },
+          ops: [
+            {
+              ref: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)>span.foundation-card-label:nth-of-type(1)',
+              contextRef: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)',
+              tag: 'span',
+              classes: ['foundation-card-label'],
+              originalText: 'Responsive',
+              newText: 'ResXXX',
+              nearbyEditableTexts: [{ text: '23' }, { text: 'Fluid layouts, touch targets' }],
+            },
+            {
+              ref: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)>span.foundation-card-count:nth-of-type(2)',
+              contextRef: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)',
+              tag: 'span',
+              classes: ['foundation-card-count'],
+              originalText: '23',
+              newText: 'TT23',
+              nearbyEditableTexts: [{ text: 'Responsive' }, { text: 'Fluid layouts, touch targets' }],
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'site/scripts/data.js':
+          "export const skillFocusAreas = [{ area: 'ResXXX', detail: 'Fluid layouts, touch targets' }];\n" +
+          "export const dimensionGuidelineCounts = { 'ResXXX': 'TT23' };\n",
+        'site/scripts/components/foundation-animations.js':
+          "export const foundationAnimations = { 'ResXXX': '<svg>responsive</svg>' };\n",
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['card'],
+        files: ['site/scripts/data.js', 'site/scripts/components/foundation-animations.js'],
+      }),
+    });
+
+    assert.equal(result.cleared, 2);
+    assert.equal(result.applied.length, 2);
+    assert.equal(result.failed.length, 0);
+    assert.deepEqual(result.rolledBackFiles, undefined);
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
+  it('verifies standalone count edits from nearby dynamic data context', () => {
+    fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
+    const noisyCounts = Array.from({ length: 24 }, (_, index) => `  'noise-${index}': 23,`).join('\n');
+    const before =
+      "export const unrelatedCounts = {\n" +
+      noisyCounts + "\n" +
+      "};\n" +
+      "export const skillFocusAreas = [{ area: 'Responsive', detail: 'Fluid layouts, touch targets' }];\n" +
+      "export const repeatedMentions = ['Responsive', 'Responsive', 'Responsive', 'Responsive'];\n" +
+      "export const dimensionGuidelineCounts = {\n" +
+      "  'Responsive': 23,\n" +
+      "};\n";
+    fs.writeFileSync(path.join(tmpDir, 'site/scripts/data.js'), before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'count',
+          element: {
+            tagName: 'div',
+            classes: ['foundation-card'],
+            textContent: 'Responsive 23 Fluid layouts, touch targets',
+          },
+          ops: [
+            {
+              ref: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)>span.foundation-card-count:nth-of-type(2)',
+              contextRef: 'body>main>section#foundation>div.foundation-grid>div:nth-of-type(4)',
+              tag: 'span',
+              classes: ['foundation-card-count'],
+              originalText: '23',
+              newText: 'TTT',
+              nearbyEditableTexts: [{ text: 'Responsive' }, { text: 'Fluid layouts, touch targets' }],
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'site/scripts/data.js':
+          "export const unrelatedCounts = {\n" +
+          noisyCounts + "\n" +
+          "};\n" +
+          "export const skillFocusAreas = [{ area: 'Responsive', detail: 'Fluid layouts, touch targets' }];\n" +
+          "export const repeatedMentions = ['Responsive', 'Responsive', 'Responsive', 'Responsive'];\n" +
+          "export const dimensionGuidelineCounts = {\n" +
+          "  'Responsive': 'TTT',\n" +
+          "};\n",
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['count'],
+        files: ['site/scripts/data.js'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.failed.length, 0);
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
   it('fails validation and keeps staged entries when touched JS is invalid or markers remain', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'broken.js'), "const label = 'XX29';\nconst answer = ;\n// impeccable-carbonize-start\n");
     writeBuffer(tmpDir, {
@@ -508,6 +638,44 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
       true,
     );
     assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('strips live edit runtime attributes from the copy-edit prompt context', () => {
+    const decoratedHtml = '<section><h1 class="hero" contenteditable="true" data-impeccable-editable="true" data-impeccable-original-text="Original" style="user-select: text; cursor: text; outline: none; -webkit-user-modify: read-write-plaintext-only;">Edited</h1></section>';
+    const prompt = buildCopyEditBatchPrompt({
+      pageUrl: '/',
+      entries: [
+        entry({
+          id: 'clean',
+          element: { tagName: 'section', outerHTML: decoratedHtml, textContent: 'Edited' },
+          ops: [{
+            entryId: 'clean',
+            ref: 'body>section>h1:nth-of-type(1)',
+            tag: 'h1',
+            originalText: 'Original',
+            newText: 'Edited',
+            leaf: { tagName: 'h1', outerHTML: decoratedHtml, textContent: 'Edited' },
+            container: { tagName: 'section', outerHTML: decoratedHtml, textContent: 'Edited' },
+          }],
+        }),
+      ],
+      candidates: [],
+    }, { cwd: tmpDir });
+
+    assert.match(prompt, /replace only the target text node or source string literal/);
+    assert.match(prompt, /do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace/);
+    assert.doesNotMatch(prompt, /data-impeccable-original-text|data-impeccable-editable|contenteditable|-webkit-user-modify/);
+    assert.match(prompt, /Edited/);
+  });
+
+  it('fails post-apply validation when live edit runtime attributes leak into source', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'page.astro'), '<h1 class="hero" data-impeccable-original-text="Original">Edited</h1>\n');
+
+    const checks = runCopyEditPostApplyChecks({ cwd: tmpDir, files: ['src/page.astro'] });
+
+    assert.equal(checks.ok, false);
+    assert.equal(checks.failures[0].reason, 'leftover_impeccable_marker');
+    assert.match(checks.failures[0].marker, /data-impeccable-original-text/);
   });
 
   it('keeps verified source edits staged when post-apply validation fails', () => {

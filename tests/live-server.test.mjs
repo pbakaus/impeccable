@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
 import {
   getDesignSidecarPath,
+  getLiveDir,
   getLiveServerPath,
   getLiveSessionsDir,
 } from '../skill/scripts/impeccable-paths.mjs';
@@ -238,6 +239,7 @@ colors: {}
         cwd: tmp,
         env: {
           IMPECCABLE_LIVE_COPY_AGENT: 'mock',
+          IMPECCABLE_LIVE_COPY_AGENT_MOCK_DELAY_MS: '400',
           IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
             status: 'done',
             appliedEntryIds: ['abcdef12'],
@@ -259,9 +261,18 @@ colors: {}
       assert.equal(stash.status, 200);
       writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
 
-      const commit = await fetch(`http://localhost:${commitServer.port}/manual-edit-commit?token=${commitServer.token}&pageUrl=%2F`, {
+      const commitPromise = fetch(`http://localhost:${commitServer.port}/manual-edit-commit?token=${commitServer.token}&pageUrl=%2F`, {
         method: 'POST',
       });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const startedStatus = await fetch(`http://localhost:${commitServer.port}/status?token=${commitServer.token}`);
+      assert.equal(startedStatus.status, 200);
+      const startedBody = await startedStatus.json();
+      assert.equal(startedBody.manualEdits.lastActivity.type, 'manual_edit_commit_started');
+      assert.equal(startedBody.manualEdits.lastActivity.pendingCount, 1);
+
+      const commit = await commitPromise;
       assert.equal(commit.status, 200);
       const result = await commit.json();
 
@@ -270,6 +281,18 @@ colors: {}
       assert.equal(result.perPage['/'] || 0, 0);
       assert.equal(result.applied.length, 1);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+
+      const status = await fetch(`http://localhost:${commitServer.port}/status?token=${commitServer.token}`);
+      assert.equal(status.status, 200);
+      const statusBody = await status.json();
+      assert.equal(statusBody.manualEdits.lastActivity.type, 'manual_edit_commit_done');
+      assert.equal(statusBody.manualEdits.lastActivity.appliedCount, 1);
+      assert.equal(statusBody.manualEdits.lastActivity.cleared, 1);
+
+      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
+      assert.match(events, /"type":"manual_edit_stashed"/);
+      assert.match(events, /"type":"manual_edit_commit_started"/);
+      assert.match(events, /"type":"manual_edit_commit_done"/);
     } finally {
       if (commitServer) {
         await stopServer(commitServer.port, commitServer.token);

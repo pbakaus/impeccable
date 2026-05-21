@@ -15,7 +15,7 @@
 
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
@@ -25,6 +25,7 @@ import { resolveContextDir } from './load-context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
 import {
   getDesignSidecarPath,
+  getLiveDir,
   getLiveAnnotationsDir,
   readLiveServerInfo,
   removeLiveServerInfo,
@@ -78,6 +79,8 @@ const state = {
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
   leaseTimer: null,
+  manualEditActivity: null,
+  nextManualEditSeq: 1,
 };
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
@@ -162,6 +165,53 @@ function broadcast(msg) {
   for (const res of state.sseClients) {
     try { res.write(data); } catch { /* client gone */ }
   }
+}
+
+function recordManualEditActivity(type, details = {}) {
+  const entry = {
+    seq: state.nextManualEditSeq++,
+    type,
+    ts: new Date().toISOString(),
+    ...details,
+  };
+  state.manualEditActivity = entry;
+  try {
+    const filePath = path.join(getLiveDir(process.cwd()), 'manual-edit-events.jsonl');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, JSON.stringify(entry) + '\n');
+  } catch {
+    /* diagnostics are best-effort; never block live mode on observability */
+  }
+  broadcast(entry);
+  return entry;
+}
+
+function getManualEditStatus() {
+  try {
+    const { totalCount, perPage } = countPendingByPage(process.cwd());
+    return { totalCount, perPage, lastActivity: state.manualEditActivity };
+  } catch (err) {
+    return {
+      totalCount: null,
+      perPage: {},
+      lastActivity: state.manualEditActivity,
+      error: err.message,
+    };
+  }
+}
+
+function execFileText(file, args, options) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      resolve(stdout);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +500,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
           leaseUntil: entry.leaseUntil || null,
         })),
         activeSessions: sessions,
+        manualEdits: getManualEditStatus(),
       }));
       return;
     }
@@ -613,6 +664,13 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         }
         const { totalCount, perPage } = countPendingByPage(process.cwd());
         const pendingCount = perPage[msg.pageUrl] || 0;
+        recordManualEditActivity('manual_edit_stashed', {
+          id: msg.id,
+          pageUrl: msg.pageUrl,
+          opCount: msg.ops.length,
+          pendingCount,
+          totalCount,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
       });
@@ -642,30 +700,57 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const pageUrl = url.searchParams.get('pageUrl');
-      let result;
-      try {
-        const scriptPath = path.join(__dirname, 'live-commit-manual-edits.mjs');
-        const args = [scriptPath];
-        if (pageUrl) args.push('--page-url=' + pageUrl);
-        const stdout = execFileSync(process.execPath, args, {
-          cwd: process.cwd(),
-          env: process.env,
-          encoding: 'utf-8',
-          maxBuffer: 1024 * 1024 * 8,
-          timeout: Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000),
+      const before = getManualEditStatus();
+      recordManualEditActivity('manual_edit_commit_started', {
+        pageUrl,
+        pendingCount: pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount,
+        totalCount: before.totalCount,
+      });
+      (async () => {
+        let result;
+        try {
+          const scriptPath = path.join(__dirname, 'live-commit-manual-edits.mjs');
+          const args = [scriptPath];
+          if (pageUrl) args.push('--page-url=' + pageUrl);
+          const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
+          const stdout = await execFileText(process.execPath, args, {
+            cwd: process.cwd(),
+            env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS: String(timeoutMs) },
+            encoding: 'utf-8',
+            maxBuffer: 1024 * 1024 * 8,
+            timeout: timeoutMs + 5000,
+          });
+          result = JSON.parse(stdout || '{}');
+        } catch (err) {
+          const message = err.stderr?.toString?.() || err.message;
+          recordManualEditActivity('manual_edit_commit_failed', {
+            pageUrl,
+            error: 'manual_edit_commit_failed',
+            message,
+          });
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: 'manual_edit_commit_failed',
+            message,
+          }));
+          return;
+        }
+        const { totalCount, perPage } = countPendingByPage(process.cwd());
+        recordManualEditActivity('manual_edit_commit_done', {
+          pageUrl,
+          appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
+          failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
+          failed: Array.isArray(result.failed) ? result.failed.slice(0, 10).map((item) => ({
+            id: item.id || item.entryId || null,
+            reason: item.reason || item.message || 'failed',
+          })) : [],
+          cleared: result.cleared || 0,
+          remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+          totalCount,
         });
-        result = JSON.parse(stdout || '{}');
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: 'manual_edit_commit_failed',
-          message: err.stderr?.toString?.() || err.message,
-        }));
-        return;
-      }
-      const { totalCount, perPage } = countPendingByPage(process.cwd());
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ...result, totalCount, perPage }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ...result, totalCount, perPage }));
+      })();
       return;
     }
 
@@ -691,6 +776,11 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         return;
       }
       const { totalCount, perPage } = countPendingByPage(process.cwd());
+      recordManualEditActivity('manual_edit_discarded', {
+        pageUrl,
+        discarded,
+        totalCount,
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ discarded, entries: discardedEntries, totalCount, perPage }));
       return;

@@ -776,6 +776,36 @@
   // Element context extraction
   // ---------------------------------------------------------------------------
 
+  function stripManualEditRuntimeState(root) {
+    if (!root || root.nodeType !== 1) return;
+    unwrapMixedContentTextNodes(root);
+    const nodes = [root, ...root.querySelectorAll('[data-impeccable-editable], [data-impeccable-original-text], [data-impeccable-text-wrap]')];
+    for (const node of nodes) {
+      const runtimeEditable = node.hasAttribute('data-impeccable-editable')
+        || node.hasAttribute('data-impeccable-original-text');
+      node.removeAttribute('data-impeccable-editable');
+      node.removeAttribute('data-impeccable-original-text');
+      node.removeAttribute('data-impeccable-text-wrap');
+      if (runtimeEditable) {
+        node.removeAttribute('contenteditable');
+        if (node.style) {
+          node.style.userSelect = '';
+          node.style.cursor = '';
+          node.style.outline = '';
+          node.style.webkitUserModify = '';
+          if (!node.getAttribute('style')?.trim()) node.removeAttribute('style');
+        }
+      }
+    }
+  }
+
+  function sanitizedContextOuterHTML(el, maxLength) {
+    if (!el || !el.cloneNode) return '';
+    const clone = el.cloneNode(true);
+    stripManualEditRuntimeState(clone);
+    return clone.outerHTML ? clone.outerHTML.slice(0, maxLength) : '';
+  }
+
   function extractContext(el) {
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
@@ -797,7 +827,7 @@
       tagName: el.tagName.toLowerCase(), id: el.id || null,
       classes: [...el.classList],
       textContent: (el.textContent || '').slice(0, 500),
-      outerHTML: el.outerHTML.slice(0, 10000),
+      outerHTML: sanitizedContextOuterHTML(el, 10000),
       computedStyles: {
         'font-family': cs.fontFamily, 'font-size': cs.fontSize,
         'font-weight': cs.fontWeight, 'line-height': cs.lineHeight,
@@ -996,6 +1026,7 @@
   // --- Configure row ---
 
   function buildConfigureRow() {
+    const controlsLocked = pendingApplyInFlight === true;
     const row = el('div', {
       display: 'flex', alignItems: 'center', gap: '4px',
     });
@@ -1011,9 +1042,13 @@
       whiteSpace: 'nowrap', flexShrink: '0',
     });
     pill.textContent = actionLabel() + ' \u25BE';
-    pill.addEventListener('mouseenter', () => pill.style.background = BP.accent);
-    pill.addEventListener('mouseleave', () => pill.style.background = BP.mark);
-    pill.addEventListener('mousedown', () => pill.style.transform = 'scale(0.97)');
+    pill.disabled = controlsLocked;
+    pill.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    pill.style.opacity = controlsLocked ? '0.58' : '1';
+    if (controlsLocked) pill.title = 'Apply is still running';
+    pill.addEventListener('mouseenter', () => { if (!controlsLocked) pill.style.background = BP.accent; });
+    pill.addEventListener('mouseleave', () => { if (!controlsLocked) pill.style.background = BP.mark; });
+    pill.addEventListener('mousedown', () => { if (!controlsLocked) pill.style.transform = 'scale(0.97)'; });
     pill.addEventListener('mouseup', () => pill.style.transform = 'scale(1)');
     pill.addEventListener('click', (e) => { e.stopPropagation(); toggleActionPicker(); });
     row.appendChild(pill);
@@ -1036,6 +1071,12 @@
       outline: 'none',
       transition: 'border-color 0.15s ease',
     });
+    input.disabled = controlsLocked;
+    if (controlsLocked) {
+      input.placeholder = 'apply is running...';
+      input.style.cursor = 'not-allowed';
+      input.style.opacity = '0.58';
+    }
     if (!document.getElementById(PREFIX + '-input-style')) {
       const s = document.createElement('style');
       s.id = PREFIX + '-input-style';
@@ -1069,10 +1110,15 @@
     });
     count.textContent = '\u00D7' + selectedCount;
     count.title = 'Variants: click to change';
-    count.addEventListener('mouseenter', () => { count.style.color = BP.text; count.style.borderColor = BP.text; });
-    count.addEventListener('mouseleave', () => { count.style.color = BP.textDim; count.style.borderColor = BP.hairline; });
+    count.disabled = controlsLocked;
+    count.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    count.style.opacity = controlsLocked ? '0.58' : '1';
+    if (controlsLocked) count.title = 'Apply is still running';
+    count.addEventListener('mouseenter', () => { if (!controlsLocked) { count.style.color = BP.text; count.style.borderColor = BP.text; } });
+    count.addEventListener('mouseleave', () => { if (!controlsLocked) { count.style.color = BP.textDim; count.style.borderColor = BP.hairline; } });
     count.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (controlsLocked) { showManualApplyBusyToast(); return; }
       selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
       count.textContent = '\u00D7' + selectedCount;
     });
@@ -1088,15 +1134,19 @@
       flexShrink: '0', whiteSpace: 'nowrap',
     });
     go.textContent = 'Go \u2192';
-    go.addEventListener('mouseenter', () => go.style.filter = 'brightness(1.1)');
+    go.disabled = controlsLocked;
+    go.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    go.style.opacity = controlsLocked ? '0.58' : '1';
+    if (controlsLocked) go.title = 'Apply is still running';
+    go.addEventListener('mouseenter', () => { if (!controlsLocked) go.style.filter = 'brightness(1.1)'; });
     go.addEventListener('mouseleave', () => go.style.filter = 'none');
-    go.addEventListener('mousedown', () => go.style.transform = 'scale(0.97)');
+    go.addEventListener('mousedown', () => { if (!controlsLocked) go.style.transform = 'scale(0.97)'; });
     go.addEventListener('mouseup', () => go.style.transform = 'scale(1)');
     go.addEventListener('click', (e) => { e.stopPropagation(); handleGo(); });
     row.appendChild(go);
 
     // Auto-focus input after a beat
-    setTimeout(() => input.focus(), 60);
+    if (!controlsLocked) setTimeout(() => input.focus(), 60);
     return row;
   }
 
@@ -1445,6 +1495,7 @@
   }
 
   function toggleActionPicker() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (pickerEl.style.display !== 'none') { hideActionPicker(); return; }
     // Rebuild chips to reflect current selection
     const P = pickerEl.__iceq_palette || barPaletteForTheme(detectPageTheme());
@@ -1848,6 +1899,7 @@
   }
 
   function enterEditingMode() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     state = 'EDITING';
     hideBar();
     hideAnnotOverlay();
@@ -1999,7 +2051,7 @@
       originalText,
       newText,
       textContent: (el.textContent || '').slice(0, 500),
-      outerHTML: el.outerHTML ? el.outerHTML.slice(0, 3000) : null,
+      outerHTML: sanitizedContextOuterHTML(el, 3000) || null,
     };
   }
 
@@ -2031,7 +2083,7 @@
       id: el.id || null,
       classes: el.classList ? [...el.classList].filter((cls) => cls.indexOf('impeccable-') !== 0) : [],
       textContent: (el.textContent || '').slice(0, 1000),
-      outerHTML: el.outerHTML ? el.outerHTML.slice(0, 10000) : null,
+      outerHTML: sanitizedContextOuterHTML(el, 10000) || null,
     };
   }
 
@@ -2044,6 +2096,7 @@
   }
 
   async function applyEditing() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     const ops = [];
     for (const row of inlineEditRows) {
       const newText = inlineEditDrafts.get(row.el);
@@ -2170,6 +2223,58 @@
     return count === 1 ? 'Apply copy edit' : 'Apply copy edits';
   }
 
+  function showManualApplyBusyToast() {
+    showToast('Apply is still running. Wait for it to finish.', 2800);
+  }
+
+  function refreshLiveControlsForManualApply() {
+    if (pendingApplyInFlight) {
+      hideActionPicker();
+      closeTunePopover();
+    }
+    if (barEl && barEl.style.display !== 'none' && state === 'CONFIGURING') {
+      const input = document.getElementById(PREFIX + '-input');
+      const prompt = input ? input.value : '';
+      updateBarContent('configure');
+      const nextInput = document.getElementById(PREFIX + '-input');
+      if (nextInput) nextInput.value = prompt;
+    }
+    if (editBadgeEl && editBadgeEl.style.display !== 'none') {
+      if (pendingApplyInFlight) renderEditBadge('idle-disabled');
+      else if (state === 'CONFIGURING' && selectedElement && hasTextRows(selectedElement)) renderEditBadge('idle');
+    }
+    updateGlobalBarState();
+  }
+
+  function hidePendingApplyDock() {
+    pendingApplyInFlight = false;
+    if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
+    if (pendingDockEl) pendingDockEl.style.display = 'none';
+    if (pendingPillEl) {
+      pendingPillEl.dataset.count = '0';
+      pendingPillEl.style.display = 'none';
+      pendingPillEl.disabled = false;
+      pendingPillEl.setAttribute('aria-busy', 'false');
+      pendingPillEl.setAttribute('aria-label', 'Apply copy edits to source');
+      pendingPillEl.style.cursor = 'pointer';
+      pendingPillEl.style.filter = 'none';
+      pendingPillEl.style.transform = 'scale(1)';
+    }
+    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
+    if (pendingPillLabelEl) pendingPillLabelEl.textContent = pendingApplyLabel(0);
+    if (pendingPillCountEl) {
+      pendingPillCountEl.textContent = '0';
+      pendingPillCountEl.style.display = 'inline-flex';
+    }
+    if (pendingTrashBtn) {
+      pendingTrashBtn.style.display = 'none';
+      pendingTrashBtn.disabled = false;
+      pendingTrashBtn.style.cursor = 'pointer';
+      pendingTrashBtn.style.opacity = '1';
+    }
+    refreshLiveControlsForManualApply();
+  }
+
   function setPendingApplyLoading(loading, count) {
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
@@ -2188,15 +2293,14 @@
     pendingTrashBtn.style.cursor = pendingApplyInFlight ? 'not-allowed' : 'pointer';
     pendingTrashBtn.style.opacity = pendingApplyInFlight ? '0.58' : '1';
     schedulePendingDockPosition();
+    refreshLiveControlsForManualApply();
   }
 
   function updatePendingCounter(currentPageCount) {
     if (!pendingDockEl || !pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     const previousCount = parseInt(pendingPillEl.dataset.count || '0', 10);
     if (!currentPageCount || currentPageCount <= 0) {
-      pendingDockEl.style.display = 'none';
-      pendingPillEl.dataset.count = '0';
-      setPendingApplyLoading(false, 0);
+      hidePendingApplyDock();
       return;
     }
     pendingPillLabelEl.textContent = pendingApplyLabel(currentPageCount);
@@ -2264,7 +2368,9 @@
       console.error('[impeccable] commit failed:', err);
       showToast('Apply failed — see console', 4000);
     } finally {
-      setPendingApplyLoading(false);
+      const remainingCount = parseInt(pendingPillEl?.dataset.count || '0', 10) || 0;
+      if (remainingCount > 0) setPendingApplyLoading(false);
+      else hidePendingApplyDock();
     }
   }
 
@@ -2290,6 +2396,49 @@
     } catch (err) {
       console.error('[impeccable] discard failed:', err);
       showToast('Discard failed — see console', 4000);
+    }
+  }
+
+  function manualEditEventForCurrentPage(msg) {
+    return !msg?.pageUrl || msg.pageUrl === location.pathname;
+  }
+
+  function numberOrNull(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function handleManualEditActivity(msg) {
+    console.info('[impeccable] manual copy edit event:', msg);
+    if (!manualEditEventForCurrentPage(msg)) return;
+
+    if (msg.type === 'manual_edit_stashed') {
+      const pendingCount = numberOrNull(msg.pendingCount);
+      if (pendingCount !== null) updatePendingCounter(pendingCount);
+      return;
+    }
+
+    if (msg.type === 'manual_edit_commit_started') {
+      const pendingCount = numberOrNull(msg.pendingCount);
+      if (pendingCount !== null && pendingCount > 0) updatePendingCounter(pendingCount);
+      setPendingApplyLoading(true, pendingCount || undefined);
+      return;
+    }
+
+    if (msg.type === 'manual_edit_commit_done') {
+      const remainingCount = numberOrNull(msg.remainingCount);
+      updatePendingCounter(remainingCount === null ? 0 : remainingCount);
+      return;
+    }
+
+    if (msg.type === 'manual_edit_commit_failed') {
+      setPendingApplyLoading(false);
+      fetchPendingCount();
+      return;
+    }
+
+    if (msg.type === 'manual_edit_discarded') {
+      fetchPendingCount();
     }
   }
 
@@ -2647,6 +2796,7 @@
   }
 
   function toggleTunePopover() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (tuneOpen) { closeTunePopover(); return; }
     openTunePopover();
   }
@@ -2778,6 +2928,7 @@
   }
 
   function cycleVariant(dir) {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     const next = visibleVariant + dir;
     if (next < 1 || next > arrivedVariants) return;
     visibleVariant = next;
@@ -3085,6 +3236,13 @@
           console.log('[impeccable] Live mode connected.');
           if (state === 'IDLE') state = 'PICKING';
           break;
+        case 'manual_edit_stashed':
+        case 'manual_edit_discarded':
+        case 'manual_edit_commit_started':
+        case 'manual_edit_commit_done':
+        case 'manual_edit_commit_failed':
+          handleManualEditActivity(msg);
+          break;
         case 'done':
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
@@ -3212,6 +3370,7 @@
   // ---------------------------------------------------------------------------
 
   function handleMouseMove(e) {
+    if (pendingApplyInFlight) return;
     if (state !== 'PICKING' || !pickActive) return;
     const target = document.elementFromPoint(e.clientX, e.clientY);
     if (!target || !pickable(target) || target === hoveredElement) return;
@@ -3220,6 +3379,15 @@
   }
 
   function handleClick(e) {
+    if (pendingApplyInFlight && !pendingDockEl?.contains(e.target)) {
+      if (pickerEl?.style.display !== 'none') hideActionPicker();
+      if (own(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        showManualApplyBusyToast();
+      }
+      return;
+    }
     // Close action picker on any outside click
     if (pickerEl?.style.display !== 'none' && !own(e.target)) {
       hideActionPicker();
@@ -3358,6 +3526,19 @@
       e.target.blur();
       return;
     }
+    if (pendingApplyInFlight) {
+      const liveNavKey = e.key === 'Enter'
+        || e.key === 'ArrowUp'
+        || e.key === 'ArrowDown'
+        || e.key === 'ArrowLeft'
+        || e.key === 'ArrowRight';
+      if (liveNavKey && (state === 'PICKING' || state === 'CONFIGURING' || state === 'CYCLING')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === 'Enter') showManualApplyBusyToast();
+      }
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
@@ -3430,6 +3611,7 @@
   }
 
   function handleGo() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (!selectedElement || state !== 'CONFIGURING') return;
     runGenerate();
   }
@@ -3903,6 +4085,7 @@ void main() {
   }
 
   function handleAccept() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (!currentSessionId || arrivedVariants === 0) return;
     const domVisibleVariant = readVisibleVariantFromDOM(currentSessionId);
     if (domVisibleVariant > 0) visibleVariant = domVisibleVariant;
@@ -3980,6 +4163,7 @@ void main() {
   }
 
   function handleDiscard() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (!currentSessionId) return;
     sendEvent({ type: 'discard', id: currentSessionId }, { throwOnError: true })
       .then(() => {
@@ -4674,6 +4858,14 @@ void main() {
     sync(detectToggle, detectActive);
     sync(designToggle, designState.open);
 
+    const controlsLocked = pendingApplyInFlight === true;
+    [pickToggle, detectToggle, designToggle].forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = controlsLocked;
+      btn.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+      btn.style.opacity = controlsLocked ? '0.55' : '1';
+    });
+
     // If the bar is currently under the cursor, keep all labels expanded —
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
@@ -4696,6 +4888,7 @@ void main() {
   let detectPendingScan = false; // scan requested before script was ready
 
   function toggleDetect() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     detectActive = !detectActive;
     updateGlobalBarState();
 
@@ -4716,6 +4909,7 @@ void main() {
   }
 
   function togglePick() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     pickActive = !pickActive;
     updateGlobalBarState();
 
@@ -5231,6 +5425,7 @@ void main() {
   }
 
   function toggleDesignPanel() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     designState.open = !designState.open;
     renderDesignChrome();
     updateGlobalBarState();
