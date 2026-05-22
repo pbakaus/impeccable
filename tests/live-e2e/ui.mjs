@@ -50,7 +50,7 @@ export async function pickElement(page, selector) {
     // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
     // click handler reads from it.
     await page.waitForTimeout(50);
-    await el.click();
+    await clickPickTarget(page, el);
     // Per-element bar mounts on click → wait for it. Dialog fixtures can
     // briefly hide the global live chrome while preActions open a portal, so
     // retry once after explicitly re-arming picker mode.
@@ -78,6 +78,15 @@ export async function pickElement(page, selector) {
     BAR_ID,
     { timeout: 5_000 },
   );
+}
+
+async function clickPickTarget(page, el) {
+  const box = await el.boundingBox();
+  if (box) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    return;
+  }
+  await el.evaluate((node) => node.click());
 }
 
 async function ensurePickerActive(page) {
