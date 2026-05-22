@@ -187,12 +187,260 @@ function attrEscape(str, { svelte = false } = {}) {
 }
 
 /**
- * Translate an HTML snippet to JSX. Currently: class= → className=, optionally
- * preserves whitespace + tags. The fake agent writes innerHtml in HTML form;
- * the orchestrator translates per the target file's syntax.
+ * Translate an HTML snippet to JSX. The fake and LLM agents write innerHtml
+ * in HTML form; the orchestrator translates per the target file's syntax.
  */
-function htmlToJsx(html) {
-  return html.replace(/\bclass=/g, 'className=');
+export function htmlToJsx(html) {
+  return html
+    .replace(/(^|[\s<])class=/g, '$1className=')
+    .replace(/\sstyle=(["'])([\s\S]*?)\1/g, (_match, _quote, value) => {
+      const entries = parseInlineStyle(value);
+      if (entries.length === 0) return '';
+      return ' style={{ ' + entries.map(({ prop, value }) => `${formatJsxStyleKey(prop)}: ${JSON.stringify(value)}`).join(', ') + ' }}';
+    });
+}
+
+function parseInlineStyle(style) {
+  return splitInlineStyleDeclarations(String(style))
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .map(parseInlineStyleDeclaration)
+    .filter(Boolean);
+}
+
+function splitInlineStyleDeclarations(style) {
+  const declarations = [];
+  let quote = null;
+  let escaped = false;
+  let parenDepth = 0;
+  let start = 0;
+
+  for (let i = 0; i < style.length; i++) {
+    const ch = style[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')' && parenDepth > 0) {
+      parenDepth--;
+      continue;
+    }
+    if (ch === ';' && parenDepth === 0) {
+      declarations.push(style.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  declarations.push(style.slice(start));
+  return declarations;
+}
+
+function parseInlineStyleDeclaration(decl) {
+  const colon = decl.indexOf(':');
+  if (colon <= 0) return null;
+  const prop = decl.slice(0, colon).trim();
+  const value = decl.slice(colon + 1).trim();
+  if (!prop || !value) return null;
+  return { prop, value };
+}
+
+function formatJsxStyleKey(prop) {
+  if (prop.startsWith('--')) return JSON.stringify(prop);
+  const reactKey = cssPropertyToReactKey(prop);
+  return /^[A-Za-z_$][\w$]*$/.test(reactKey) ? reactKey : JSON.stringify(prop);
+}
+
+function cssPropertyToReactKey(prop) {
+  const lower = prop.toLowerCase();
+  if (lower.startsWith('-webkit-')) return 'Webkit' + capitalize(camelCaseCssProperty(lower.slice(8)));
+  if (lower.startsWith('-moz-')) return 'Moz' + capitalize(camelCaseCssProperty(lower.slice(5)));
+  if (lower.startsWith('-o-')) return 'O' + capitalize(camelCaseCssProperty(lower.slice(3)));
+  if (lower.startsWith('-ms-')) return 'ms' + camelCaseCssProperty(lower.slice(4));
+  if (lower === 'float') return 'cssFloat';
+  return camelCaseCssProperty(prop);
+}
+
+function camelCaseCssProperty(prop) {
+  return prop.replace(/-([a-z])/gi, (_match, ch) => ch.toUpperCase());
+}
+
+function capitalize(str) {
+  return str ? str[0].toUpperCase() + str.slice(1) : str;
+}
+
+export const HOIST_ATTR = 'data-impeccable-hoist-id';
+
+export function normalizeVariantOutput(output, wrapInfo = {}) {
+  const extraCss = [];
+  const variants = output.variants.map((variant, i) => {
+    const { innerHtml, groups } = stripInlineStylesPerElement(String(variant.innerHtml));
+
+    for (const { hoistId, declarations } of groups) {
+      extraCss.push(renderHoistedInlineStyleRule({
+        variantId: i + 1,
+        hoistId,
+        declarations,
+        styleMode: wrapInfo.styleMode,
+      }));
+    }
+
+    return { ...variant, innerHtml };
+  });
+
+  const baseCss = renderMissingBaseVariantRules({
+    scopedCss: output.scopedCss || '',
+    count: output.variants.length,
+    styleMode: wrapInfo.styleMode,
+  });
+  if (extraCss.length === 0 && baseCss.length === 0) return output;
+  const scopedCss = [output.scopedCss || '', ...extraCss, ...baseCss]
+    .map((chunk) => String(chunk).trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return { ...output, scopedCss, variants };
+}
+
+function renderMissingBaseVariantRules({ scopedCss, count, styleMode }) {
+  const rules = [];
+  for (let i = 1; i <= count; i++) {
+    if (!hasBaseVariantRule(scopedCss, i, styleMode)) {
+      rules.push(renderBaseVariantRule(i, styleMode));
+    }
+  }
+  return rules;
+}
+
+function hasBaseVariantRule(scopedCss, variantId, styleMode) {
+  const q = String.raw`["']${variantId}["']`;
+  if (styleMode === 'astro-global-prefixed') {
+    return new RegExp(String.raw`\[data-impeccable-variant=${q}\](?:\s|>|\.|#|\[${HOIST_ATTR}=)`).test(scopedCss);
+  }
+  return new RegExp(String.raw`@scope\s*\(\s*\[data-impeccable-variant=${q}\]\s*\)`).test(scopedCss);
+}
+
+function renderBaseVariantRule(variantId, styleMode) {
+  if (styleMode === 'astro-global-prefixed') {
+    return [
+      `[data-impeccable-variant="${variantId}"] > * {`,
+      '  --impeccable-variant-ready: 1;',
+      '}',
+    ].join('\n');
+  }
+  return [
+    `@scope ([data-impeccable-variant="${variantId}"]) {`,
+    '  :scope > * { --impeccable-variant-ready: 1; }',
+    '}',
+  ].join('\n');
+}
+
+// Walk each opening tag char-by-char (respecting quotes so a literal `>`
+// inside an attribute value doesn't terminate the tag early), strip any
+// `style="..."`, and tag the element with `data-impeccable-hoist-id="N"`.
+// The downstream rule selects on that attribute so it targets the exact
+// element that was styled — never sibling tags of the same name.
+function stripInlineStylesPerElement(innerHtml) {
+  const groups = [];
+  const styleRe = /\sstyle=(["'])([\s\S]*?)\1/;
+  let counter = 0;
+  let result = '';
+  let i = 0;
+
+  while (i < innerHtml.length) {
+    const lt = innerHtml.indexOf('<', i);
+    if (lt === -1) {
+      result += innerHtml.slice(i);
+      break;
+    }
+    result += innerHtml.slice(i, lt);
+
+    const tagMatch = innerHtml.slice(lt + 1).match(/^([A-Za-z][\w:-]*)/);
+    if (!tagMatch) {
+      // </tag>, comments, text content — copy `<` and continue.
+      result += '<';
+      i = lt + 1;
+      continue;
+    }
+    const tagName = tagMatch[1];
+
+    let j = lt + 1 + tagName.length;
+    let quote = null;
+    while (j < innerHtml.length) {
+      const ch = innerHtml[j];
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '>') {
+        break;
+      }
+      j++;
+    }
+    if (j >= innerHtml.length) {
+      // Unterminated tag (malformed input): copy verbatim and stop.
+      result += innerHtml.slice(lt);
+      break;
+    }
+
+    const attrs = innerHtml.slice(lt + 1 + tagName.length, j);
+    const styleMatch = attrs.match(styleRe);
+    if (!styleMatch) {
+      result += innerHtml.slice(lt, j + 1);
+      i = j + 1;
+      continue;
+    }
+    const entries = parseInlineStyle(styleMatch[2]);
+    const strippedAttrs = attrs.replace(styleRe, '');
+    if (entries.length === 0) {
+      result += `<${tagName}${strippedAttrs}>`;
+      i = j + 1;
+      continue;
+    }
+    counter++;
+    const hoistId = String(counter);
+    groups.push({ hoistId, declarations: entries });
+    result += `<${tagName} ${HOIST_ATTR}="${hoistId}"${strippedAttrs}>`;
+    i = j + 1;
+  }
+  return { innerHtml: result, groups };
+}
+
+function renderHoistedInlineStyleRule({ variantId, hoistId, declarations, styleMode }) {
+  // Select on the per-element hoist attribute, not the tag name, so two
+  // <span>s in the same variant where only one had an inline style cannot
+  // both pick up the hoisted declarations.
+  const lines = declarations.map(({ prop, value }) => `    ${prop}: ${value};`);
+  const target = `[${HOIST_ATTR}="${hoistId}"]`;
+  if (styleMode === 'astro-global-prefixed') {
+    return [
+      `[data-impeccable-variant="${variantId}"] ${target} {`,
+      ...lines.map((line) => line.slice(2)),
+      '}',
+    ].join('\n');
+  }
+  return [
+    `@scope ([data-impeccable-variant="${variantId}"]) {`,
+    `  :scope ${target} {`,
+    ...lines,
+    '  }',
+    '}',
+  ].join('\n');
 }
 
 /**
@@ -202,7 +450,7 @@ function htmlToJsx(html) {
  *   - <style>{`@scope ... { ... }`}</style> wraps CSS in a template literal so JSX
  *     doesn't choke on the {} in CSS
  *   - non-default visible variants use style={{display: 'none'}}
- *   - inner element class= becomes className=
+ *   - inner element class= becomes className=, style="..." becomes JSX style={{ ... }}
  *   - data-impeccable-params stays a single-quoted JSON string (JSX-legal)
  */
 function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, styleMode }) {
@@ -353,7 +601,8 @@ export async function runAgentLoop({
         log(`wrapped: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
         // 2. Agent generates variant content (LLM-pluggable seam)
-        const output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
+        let output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
+        output = normalizeVariantOutput(output, wrapInfo);
         if (output.variants.length !== event.count) {
           log(`warning: agent returned ${output.variants.length} variants, expected ${event.count}`);
         }
@@ -507,6 +756,13 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
       return dedented + '\n';
     },
   );
+
+  // 3. Strip any `data-impeccable-hoist-id` attributes the normalize step
+  // may have injected when the model emitted inline styles. The hoisted
+  // CSS already migrated into the project stylesheet (real agent) or was
+  // dropped with the carbonize block (fake agent); the attribute on the
+  // element is now dead weight.
+  body = body.replace(/\s+data-impeccable-hoist-id="[^"]*"/g, '');
 
   await fs.writeFile(filePath, body, 'utf-8');
 }

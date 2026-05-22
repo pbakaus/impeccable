@@ -13,6 +13,7 @@
 const BAR_ID = '#impeccable-live-bar';
 const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
+const PICK_TOGGLE_ID = '#impeccable-live-pick-toggle';
 
 /**
  * Wait for the live handshake to complete:
@@ -43,13 +44,24 @@ export async function waitForHandshake(page, { timeout = 20_000 } = {}) {
  */
 export async function pickElement(page, selector) {
   const el = await page.waitForSelector(selector, { timeout: 5_000 });
-  await el.hover();
-  // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
-  // click handler reads from it.
-  await page.waitForTimeout(50);
-  await el.click();
-  // Per-element bar mounts on click → wait for it.
-  await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await ensurePickerActive(page);
+    await el.hover();
+    // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
+    // click handler reads from it.
+    await page.waitForTimeout(50);
+    await clickPickTarget(page, el);
+    // Per-element bar mounts on click → wait for it. Dialog fixtures can
+    // briefly hide the global live chrome while preActions open a portal, so
+    // retry once after explicitly re-arming picker mode.
+    const visible = await page
+      .waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 })
+      .then(() => true, () => false);
+    if (visible) break;
+    if (attempt === 1) {
+      await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 1 });
+    }
+  }
   // Wait specifically for the Configure-row Go button to be in the bar.
   // pickElement returning before that race-conditions with clickGo on
   // fixtures whose framework re-renders right after pick (modal open, tab
@@ -64,6 +76,39 @@ export async function pickElement(page, selector) {
       return btns.some((b) => /Go\b/.test(b.textContent || ''));
     },
     BAR_ID,
+    { timeout: 5_000 },
+  );
+}
+
+async function clickPickTarget(page, el) {
+  const box = await el.boundingBox();
+  if (box) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    return;
+  }
+  await el.evaluate((node) => node.click());
+}
+
+async function ensurePickerActive(page) {
+  await page.waitForSelector(GLOBAL_BAR_ID, { timeout: 5_000 });
+  const active = await page
+    .locator(PICK_TOGGLE_ID)
+    .evaluate((el) => el.dataset.active === 'true')
+    .catch(() => false);
+  if (active) return;
+
+  const clicked = await page.evaluate((sel) => {
+    const btn = document.querySelector(sel);
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }, PICK_TOGGLE_ID);
+  if (!clicked) {
+    await page.locator(PICK_TOGGLE_ID).click({ timeout: 5_000 });
+  }
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel)?.dataset.active === 'true',
+    PICK_TOGGLE_ID,
     { timeout: 5_000 },
   );
 }

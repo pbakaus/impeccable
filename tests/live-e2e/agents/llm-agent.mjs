@@ -7,18 +7,20 @@
  * and carbonize cleanup deterministically, so this module's only job is
  * producing variant content for the wrapper.
  *
- * Default model: Claude Haiku 4.5 — fast, cheap, smart enough for variant
- * generation in test fixtures. Override via { model } when constructing,
- * or via the IMPECCABLE_E2E_LLM_MODEL env var at the call site (test runner).
+ * Primary provider/model: Anthropic + Claude Haiku 4.5. DeepSeek V4 Flash is
+ * a secondary cheap fallback used only when ANTHROPIC_API_KEY is absent and
+ * DEEPSEEK_API_KEY is present, or when explicitly forced with
+ * IMPECCABLE_E2E_LLM_PROVIDER=deepseek. Override the model via { model } when
+ * constructing, or via IMPECCABLE_E2E_LLM_MODEL at the call site.
  *
  * Prompt caching: live.md (the live-mode skill spec) is the bulk of the
  * system prompt and is stable across calls. We mark a cache_control breakpoint
  * on the last system block so both the JSON-contract instructions and the
  * spec are cached as one prefix. Subsequent calls in the same run pay only
- * the cache-read rate (~0.1× input).
+ * the cache-read rate (~0.1× input) when the selected provider honors it.
  *
- * Returns null from createLlmAgent() when ANTHROPIC_API_KEY is unset; the
- * test runner reads that and skips the case rather than failing.
+ * Returns null from createLlmAgent() when the selected provider's API key is
+ * unset; the test runner reads that and skips the case rather than failing.
  */
 
 import fs from 'node:fs/promises';
@@ -30,7 +32,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const LIVE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live.md');
 
-const DEFAULT_MODEL = 'claude-haiku-4-5';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+// DeepSeek model list: https://api-docs.deepseek.com/api/list-models
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
+const DEFAULT_DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com/anthropic';
 
 const SYSTEM_INSTRUCTIONS = [
   'You are an automated subagent inside Impeccable\'s live-mode test harness.',
@@ -60,6 +65,7 @@ const SYSTEM_INSTRUCTIONS = [
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
   '- Wire scopedCss rules against the params you emit (CSS vars for range/toggle, attribute selectors for steps/toggle).',
+  '- Put visual styling in scopedCss, not style= attributes inside variant.innerHtml.',
   '- Use HTML attribute syntax in innerHtml (class=, not className=). The orchestrator translates per file syntax.',
   '- Do NOT emit the wrapping <div data-impeccable-variant="N">. The orchestrator wraps your content.',
   '- Do NOT emit the outer <style data-impeccable-css> tag. Only its contents go in scopedCss.',
@@ -70,24 +76,61 @@ const SYSTEM_INSTRUCTIONS = [
 
 /**
  * @typedef {object} LlmAgentOptions
- * @property {string=} apiKey  Override ANTHROPIC_API_KEY env var.
- * @property {string=} model   Default 'claude-haiku-4-5'. Override to 'claude-sonnet-4-6' if Haiku produces unreliable JSON.
+ * @property {'anthropic' | 'deepseek'=} provider Override IMPECCABLE_E2E_LLM_PROVIDER.
+ * @property {string=} apiKey  Override the selected provider's API key env var.
+ * @property {string=} model   Override the selected provider's default model.
+ * @property {string=} baseURL Override the provider API base URL.
+ * @property {object=} config  Pre-resolved provider config from resolveLlmAgentConfig().
  * @property {(msg: string) => void=} log  Optional logger for debug output.
  */
+
+export function resolveLlmAgentConfig(opts = {}, env = process.env) {
+  const provider = resolveProvider(opts, env);
+
+  if (provider === 'anthropic') {
+    return {
+      provider,
+      model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_ANTHROPIC_MODEL,
+      apiKey: opts.apiKey || env.ANTHROPIC_API_KEY,
+      requiredEnv: 'ANTHROPIC_API_KEY',
+      baseURL: opts.baseURL || env.ANTHROPIC_BASE_URL,
+    };
+  }
+
+  if (provider === 'deepseek') {
+    return {
+      provider,
+      model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_DEEPSEEK_MODEL,
+      apiKey: opts.apiKey || env.DEEPSEEK_API_KEY,
+      requiredEnv: 'DEEPSEEK_API_KEY',
+      baseURL: opts.baseURL || env.DEEPSEEK_API_BASE_URL || DEFAULT_DEEPSEEK_API_BASE_URL,
+    };
+  }
+
+  throw new Error(`Unsupported IMPECCABLE_E2E_LLM_PROVIDER: ${provider}`);
+}
+
+function resolveProvider(opts, env) {
+  const explicit = opts.provider || env.IMPECCABLE_E2E_LLM_PROVIDER;
+  if (explicit) return String(explicit).trim().toLowerCase();
+  if (env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (env.DEEPSEEK_API_KEY) return 'deepseek';
+  return 'anthropic';
+}
 
 /**
  * @param {LlmAgentOptions} [opts]
  * @returns {Promise<{generateVariants: (event: object, context: object) => Promise<{scopedCss: string, variants: object[]}>} | null>}
  */
 export async function createLlmAgent(opts = {}) {
-  const apiKey = opts.apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  const config = opts.config || resolveLlmAgentConfig(opts);
+  if (!config.apiKey) return null;
 
-  const model = opts.model || DEFAULT_MODEL;
+  const { apiKey, baseURL, model, provider } = config;
   const log = opts.log || (() => {});
 
   const liveMd = await fs.readFile(LIVE_MD_PATH, 'utf-8');
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
 
   return {
     async generateVariants(event, context = {}) {
@@ -125,7 +168,9 @@ export async function createLlmAgent(opts = {}) {
           { type: 'text', text: SYSTEM_INSTRUCTIONS },
           // Cacheable: the entire stable prefix (instructions + spec) is
           // cached up to this breakpoint. The user message holds all the
-          // per-call volatile content.
+          // per-call volatile content. DeepSeek compatibility support is
+          // provider-reported and best-effort; the usage log below tells us
+          // whether cache reads/writes actually happened.
           { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
         ],
         messages: [{ role: 'user', content: userMessage }],
@@ -136,7 +181,7 @@ export async function createLlmAgent(opts = {}) {
       const inputTokens = response.usage?.input_tokens ?? 0;
       const outputTokens = response.usage?.output_tokens ?? 0;
       log(
-        `model=${model} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
+        `provider=${provider} model=${model} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
       );
 
       const text = response.content
@@ -144,34 +189,46 @@ export async function createLlmAgent(opts = {}) {
         .map((b) => b.text)
         .join('');
 
-      const cleaned = stripCodeFence(text.trim());
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (err) {
-        throw new Error(
-          `LLM agent: response was not valid JSON (${err.message}). First 500 chars:\n${cleaned.slice(0, 500)}`,
-        );
-      }
-
-      if (typeof parsed.scopedCss !== 'string') {
-        throw new Error(`LLM agent: missing or non-string scopedCss in response`);
-      }
-      if (!Array.isArray(parsed.variants) || parsed.variants.length === 0) {
-        throw new Error(`LLM agent: variants must be a non-empty array`);
-      }
-      for (const [i, v] of parsed.variants.entries()) {
-        if (typeof v.innerHtml !== 'string' || !v.innerHtml.trim()) {
-          throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty`);
-        }
-        if (v.params !== undefined && !Array.isArray(v.params)) {
-          throw new Error(`LLM agent: variants[${i}].params must be an array if present`);
-        }
-      }
-
-      return parsed;
+      return parseVariantResponse(text);
     },
   };
+}
+
+/**
+ * Parse and validate a model response into the variant-output schema. Throws
+ * with a `Parsed (first 500 chars): ...` echo on every schema failure so the
+ * caller can see what the model actually emitted.
+ */
+export function parseVariantResponse(text) {
+  const cleaned = stripCodeFence(String(text).trim());
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(
+      `LLM agent: response was not valid JSON (${err.message}). First 500 chars:\n${cleaned.slice(0, 500)}`,
+    );
+  }
+
+  const previewParsed = () => {
+    try { return JSON.stringify(parsed).slice(0, 500); }
+    catch { return '[unstringifiable]'; }
+  };
+  if (typeof parsed.scopedCss !== 'string') {
+    throw new Error(`LLM agent: missing or non-string scopedCss in response. Parsed (first 500 chars):\n${previewParsed()}`);
+  }
+  if (!Array.isArray(parsed.variants) || parsed.variants.length === 0) {
+    throw new Error(`LLM agent: variants must be a non-empty array. Parsed (first 500 chars):\n${previewParsed()}`);
+  }
+  for (const [i, v] of parsed.variants.entries()) {
+    if (typeof v.innerHtml !== 'string' || !v.innerHtml.trim()) {
+      throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty. Parsed (first 500 chars):\n${previewParsed()}`);
+    }
+    if (v.params !== undefined && !Array.isArray(v.params)) {
+      throw new Error(`LLM agent: variants[${i}].params must be an array if present. Parsed (first 500 chars):\n${previewParsed()}`);
+    }
+  }
+  return parsed;
 }
 
 /**
