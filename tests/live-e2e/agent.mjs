@@ -284,15 +284,17 @@ function capitalize(str) {
   return str ? str[0].toUpperCase() + str.slice(1) : str;
 }
 
+export const HOIST_ATTR = 'data-impeccable-hoist-id';
+
 export function normalizeVariantOutput(output, wrapInfo = {}) {
   const extraCss = [];
   const variants = output.variants.map((variant, i) => {
-    const { innerHtml, groups } = stripInlineStylesByTag(String(variant.innerHtml));
+    const { innerHtml, groups } = stripInlineStylesPerElement(String(variant.innerHtml));
 
-    for (const { tagName, declarations } of groups) {
+    for (const { hoistId, declarations } of groups) {
       extraCss.push(renderHoistedInlineStyleRule({
         variantId: i + 1,
-        tagName,
+        hoistId,
         declarations,
         styleMode: wrapInfo.styleMode,
       }));
@@ -310,45 +312,93 @@ export function normalizeVariantOutput(output, wrapInfo = {}) {
   return { ...output, scopedCss, variants };
 }
 
-// Walk each opening tag and pull off any `style="..."` attribute, returning
-// the stripped innerHtml plus one (tagName, declarations) group per styled
-// element. Per-tag grouping is the reason this is not a single global regex:
-// styles on nested elements must hoist to a selector that targets THAT
-// element, not the variant's first tag.
-function stripInlineStylesByTag(innerHtml) {
+// Walk each opening tag char-by-char (respecting quotes so a literal `>`
+// inside an attribute value doesn't terminate the tag early), strip any
+// `style="..."`, and tag the element with `data-impeccable-hoist-id="N"`.
+// The downstream rule selects on that attribute so it targets the exact
+// element that was styled — never sibling tags of the same name.
+function stripInlineStylesPerElement(innerHtml) {
   const groups = [];
   const styleRe = /\sstyle=(["'])([\s\S]*?)\1/;
-  const updated = innerHtml.replace(
-    /<([A-Za-z][\w:-]*)\b([^>]*)>/g,
-    (match, tagName, attrs) => {
-      const styleMatch = attrs.match(styleRe);
-      if (!styleMatch) return match;
-      const entries = parseInlineStyle(styleMatch[2]);
-      const newAttrs = attrs.replace(styleRe, '');
-      if (entries.length > 0) {
-        groups.push({ tagName, declarations: entries });
+  let counter = 0;
+  let result = '';
+  let i = 0;
+
+  while (i < innerHtml.length) {
+    const lt = innerHtml.indexOf('<', i);
+    if (lt === -1) {
+      result += innerHtml.slice(i);
+      break;
+    }
+    result += innerHtml.slice(i, lt);
+
+    const tagMatch = innerHtml.slice(lt + 1).match(/^([A-Za-z][\w:-]*)/);
+    if (!tagMatch) {
+      // </tag>, comments, text content — copy `<` and continue.
+      result += '<';
+      i = lt + 1;
+      continue;
+    }
+    const tagName = tagMatch[1];
+
+    let j = lt + 1 + tagName.length;
+    let quote = null;
+    while (j < innerHtml.length) {
+      const ch = innerHtml[j];
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '>') {
+        break;
       }
-      return `<${tagName}${newAttrs}>`;
-    },
-  );
-  return { innerHtml: updated, groups };
+      j++;
+    }
+    if (j >= innerHtml.length) {
+      // Unterminated tag (malformed input): copy verbatim and stop.
+      result += innerHtml.slice(lt);
+      break;
+    }
+
+    const attrs = innerHtml.slice(lt + 1 + tagName.length, j);
+    const styleMatch = attrs.match(styleRe);
+    if (!styleMatch) {
+      result += innerHtml.slice(lt, j + 1);
+      i = j + 1;
+      continue;
+    }
+    const entries = parseInlineStyle(styleMatch[2]);
+    const strippedAttrs = attrs.replace(styleRe, '');
+    if (entries.length === 0) {
+      result += `<${tagName}${strippedAttrs}>`;
+      i = j + 1;
+      continue;
+    }
+    counter++;
+    const hoistId = String(counter);
+    groups.push({ hoistId, declarations: entries });
+    result += `<${tagName} ${HOIST_ATTR}="${hoistId}"${strippedAttrs}>`;
+    i = j + 1;
+  }
+  return { innerHtml: result, groups };
 }
 
-function renderHoistedInlineStyleRule({ variantId, tagName, declarations, styleMode }) {
-  // Descendant combinator (not `>`) so a style hoisted off a nested element
-  // still lands on it. Top-level elements are descendants too, so the looser
-  // selector keeps the top-level case working.
+function renderHoistedInlineStyleRule({ variantId, hoistId, declarations, styleMode }) {
+  // Select on the per-element hoist attribute, not the tag name, so two
+  // <span>s in the same variant where only one had an inline style cannot
+  // both pick up the hoisted declarations.
   const lines = declarations.map(({ prop, value }) => `    ${prop}: ${value};`);
+  const target = `[${HOIST_ATTR}="${hoistId}"]`;
   if (styleMode === 'astro-global-prefixed') {
     return [
-      `[data-impeccable-variant="${variantId}"] ${tagName} {`,
+      `[data-impeccable-variant="${variantId}"] ${target} {`,
       ...lines.map((line) => line.slice(2)),
       '}',
     ].join('\n');
   }
   return [
     `@scope ([data-impeccable-variant="${variantId}"]) {`,
-    `  :scope ${tagName} {`,
+    `  :scope ${target} {`,
     ...lines,
     '  }',
     '}',
@@ -668,6 +718,13 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
       return dedented + '\n';
     },
   );
+
+  // 3. Strip any `data-impeccable-hoist-id` attributes the normalize step
+  // may have injected when the model emitted inline styles. The hoisted
+  // CSS already migrated into the project stylesheet (real agent) or was
+  // dropped with the carbonize block (fake agent); the attribute on the
+  // element is now dead weight.
+  body = body.replace(/\s+data-impeccable-hoist-id="[^"]*"/g, '');
 
   await fs.writeFile(filePath, body, 'utf-8');
 }
