@@ -192,7 +192,7 @@ function attrEscape(str, { svelte = false } = {}) {
  */
 export function htmlToJsx(html) {
   return html
-    .replace(/\bclass=/g, 'className=')
+    .replace(/(^|[\s<])class=/g, '$1className=')
     .replace(/\sstyle=(["'])(.*?)\1/g, (_match, _quote, value) => {
       const entries = parseInlineStyle(value);
       if (entries.length === 0) return '';
@@ -201,19 +201,63 @@ export function htmlToJsx(html) {
 }
 
 function parseInlineStyle(style) {
-  return String(style)
-    .split(';')
+  return splitInlineStyleDeclarations(String(style))
     .map((decl) => decl.trim())
     .filter(Boolean)
-    .map((decl) => {
-      const colon = decl.indexOf(':');
-      if (colon <= 0) return null;
-      const prop = decl.slice(0, colon).trim();
-      const value = decl.slice(colon + 1).trim();
-      if (!prop || !value) return null;
-      return { prop, value };
-    })
+    .map(parseInlineStyleDeclaration)
     .filter(Boolean);
+}
+
+function splitInlineStyleDeclarations(style) {
+  const declarations = [];
+  let quote = null;
+  let escaped = false;
+  let parenDepth = 0;
+  let start = 0;
+
+  for (let i = 0; i < style.length; i++) {
+    const ch = style[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')' && parenDepth > 0) {
+      parenDepth--;
+      continue;
+    }
+    if (ch === ';' && parenDepth === 0) {
+      declarations.push(style.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  declarations.push(style.slice(start));
+  return declarations;
+}
+
+function parseInlineStyleDeclaration(decl) {
+  const colon = decl.indexOf(':');
+  if (colon <= 0) return null;
+  const prop = decl.slice(0, colon).trim();
+  const value = decl.slice(colon + 1).trim();
+  if (!prop || !value) return null;
+  return { prop, value };
 }
 
 function formatJsxStyleKey(prop) {
@@ -238,6 +282,62 @@ function camelCaseCssProperty(prop) {
 
 function capitalize(str) {
   return str ? str[0].toUpperCase() + str.slice(1) : str;
+}
+
+export function normalizeVariantOutput(output, wrapInfo = {}) {
+  const extraCss = [];
+  const variants = output.variants.map((variant, i) => {
+    const declarations = [];
+    const innerHtml = String(variant.innerHtml).replace(/\sstyle=(["'])(.*?)\1/g, (_match, _quote, value) => {
+      const entries = parseInlineStyle(value);
+      if (entries.length === 0) return '';
+      declarations.push(...entries);
+      return '';
+    });
+
+    if (declarations.length > 0) {
+      extraCss.push(renderHoistedInlineStyleRule({
+        variantId: i + 1,
+        tagName: extractFirstTagName(innerHtml),
+        declarations,
+        styleMode: wrapInfo.styleMode,
+      }));
+    }
+
+    return { ...variant, innerHtml };
+  });
+
+  if (extraCss.length === 0) return output;
+  const scopedCss = [output.scopedCss || '', ...extraCss]
+    .map((chunk) => String(chunk).trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return { ...output, scopedCss, variants };
+}
+
+function renderHoistedInlineStyleRule({ variantId, tagName, declarations, styleMode }) {
+  const selector = tagName || '*';
+  const lines = declarations.map(({ prop, value }) => `    ${prop}: ${value};`);
+  if (styleMode === 'astro-global-prefixed') {
+    return [
+      `[data-impeccable-variant="${variantId}"] > ${selector} {`,
+      ...lines.map((line) => line.slice(2)),
+      '}',
+    ].join('\n');
+  }
+  return [
+    `@scope ([data-impeccable-variant="${variantId}"]) {`,
+    `  :scope > ${selector} {`,
+    ...lines,
+    '  }',
+    '}',
+  ].join('\n');
+}
+
+function extractFirstTagName(html) {
+  const match = String(html).match(/<([A-Za-z][\w:-]*)\b/);
+  return match ? match[1] : '*';
 }
 
 /**
@@ -398,7 +498,8 @@ export async function runAgentLoop({
         log(`wrapped: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
         // 2. Agent generates variant content (LLM-pluggable seam)
-        const output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
+        let output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
+        output = normalizeVariantOutput(output, wrapInfo);
         if (output.variants.length !== event.count) {
           log(`warning: agent returned ${output.variants.length} variants, expected ${event.count}`);
         }

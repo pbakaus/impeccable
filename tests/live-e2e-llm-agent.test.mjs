@@ -66,6 +66,16 @@ describe('live-e2e LLM agent provider config', () => {
     assert.equal(config.baseURL, 'https://example.test/anthropic');
   });
 
+  it('allows the DeepSeek API base URL to come from env', () => {
+    const config = resolveLlmAgentConfig({}, {
+      IMPECCABLE_E2E_LLM_PROVIDER: 'deepseek',
+      DEEPSEEK_API_KEY: 'test-key',
+      DEEPSEEK_API_BASE_URL: 'https://proxy.example.test/anthropic',
+    });
+
+    assert.equal(config.baseURL, 'https://proxy.example.test/anthropic');
+  });
+
   it('rejects unsupported providers', () => {
     assert.throws(
       () => resolveLlmAgentConfig({}, { IMPECCABLE_E2E_LLM_PROVIDER: 'other' }),

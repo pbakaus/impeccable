@@ -64,7 +64,7 @@ const fixtures = onlyName
   ? allFixtures.filter((f) => f.name === onlyName)
   : allFixtures;
 
-const cliLlmProvider = readCliOption('llm-provider') || (hasCliFlag('deepseek') ? 'deepseek' : undefined);
+const cliLlmProvider = readCliOption('llm-provider');
 const cliLlmModel = readCliOption('llm-model');
 
 if (fixtures.length === 0) {
@@ -119,10 +119,7 @@ for (const { name, fixture } of fixtures) {
           model: cliLlmModel || process.env.IMPECCABLE_E2E_LLM_MODEL,
         });
         agent = await createLlmAgent({
-          provider: llmConfig.provider,
-          model: llmConfig.model,
-          apiKey: llmConfig.apiKey,
-          baseURL: llmConfig.baseURL,
+          config: llmConfig,
           log: (m) => t.diagnostic('[llm] ' + m),
         });
         if (!agent) {
@@ -388,10 +385,6 @@ function readCliOption(name) {
     if (arg === '--' + name) return process.argv[i + 1];
   }
   return undefined;
-}
-
-function hasCliFlag(name) {
-  return process.argv.includes('--' + name);
 }
 
 // ---------------------------------------------------------------------------

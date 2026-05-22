@@ -17,7 +17,7 @@
  * system prompt and is stable across calls. We mark a cache_control breakpoint
  * on the last system block so both the JSON-contract instructions and the
  * spec are cached as one prefix. Subsequent calls in the same run pay only
- * the cache-read rate (~0.1× input).
+ * the cache-read rate (~0.1× input) when the selected provider honors it.
  *
  * Returns null from createLlmAgent() when the selected provider's API key is
  * unset; the test runner reads that and skips the case rather than failing.
@@ -33,8 +33,9 @@ const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const LIVE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live.md');
 
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+// DeepSeek model list: https://api-docs.deepseek.com/api/list-models
 const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
-const DEEPSEEK_ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic';
+const DEFAULT_DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com/anthropic';
 
 const SYSTEM_INSTRUCTIONS = [
   'You are an automated subagent inside Impeccable\'s live-mode test harness.',
@@ -64,6 +65,7 @@ const SYSTEM_INSTRUCTIONS = [
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
   '- Wire scopedCss rules against the params you emit (CSS vars for range/toggle, attribute selectors for steps/toggle).',
+  '- Put visual styling in scopedCss, not style= attributes inside variant.innerHtml.',
   '- Use HTML attribute syntax in innerHtml (class=, not className=). The orchestrator translates per file syntax.',
   '- Do NOT emit the wrapping <div data-impeccable-variant="N">. The orchestrator wraps your content.',
   '- Do NOT emit the outer <style data-impeccable-css> tag. Only its contents go in scopedCss.',
@@ -78,6 +80,7 @@ const SYSTEM_INSTRUCTIONS = [
  * @property {string=} apiKey  Override the selected provider's API key env var.
  * @property {string=} model   Override the selected provider's default model.
  * @property {string=} baseURL Override the provider API base URL.
+ * @property {object=} config  Pre-resolved provider config from resolveLlmAgentConfig().
  * @property {(msg: string) => void=} log  Optional logger for debug output.
  */
 
@@ -90,7 +93,7 @@ export function resolveLlmAgentConfig(opts = {}, env = process.env) {
       model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_ANTHROPIC_MODEL,
       apiKey: opts.apiKey || env.ANTHROPIC_API_KEY,
       requiredEnv: 'ANTHROPIC_API_KEY',
-      baseURL: opts.baseURL || env.ANTHROPIC_BASE_URL || undefined,
+      baseURL: opts.baseURL || env.ANTHROPIC_BASE_URL,
     };
   }
 
@@ -100,7 +103,7 @@ export function resolveLlmAgentConfig(opts = {}, env = process.env) {
       model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_DEEPSEEK_MODEL,
       apiKey: opts.apiKey || env.DEEPSEEK_API_KEY,
       requiredEnv: 'DEEPSEEK_API_KEY',
-      baseURL: opts.baseURL || env.DEEPSEEK_ANTHROPIC_BASE_URL || DEEPSEEK_ANTHROPIC_BASE_URL,
+      baseURL: opts.baseURL || env.DEEPSEEK_API_BASE_URL || DEFAULT_DEEPSEEK_API_BASE_URL,
     };
   }
 
@@ -120,7 +123,7 @@ function resolveProvider(opts, env) {
  * @returns {Promise<{generateVariants: (event: object, context: object) => Promise<{scopedCss: string, variants: object[]}>} | null>}
  */
 export async function createLlmAgent(opts = {}) {
-  const config = resolveLlmAgentConfig(opts);
+  const config = opts.config || resolveLlmAgentConfig(opts);
   if (!config.apiKey) return null;
 
   const { apiKey, baseURL, model, provider } = config;
@@ -165,7 +168,9 @@ export async function createLlmAgent(opts = {}) {
           { type: 'text', text: SYSTEM_INSTRUCTIONS },
           // Cacheable: the entire stable prefix (instructions + spec) is
           // cached up to this breakpoint. The user message holds all the
-          // per-call volatile content.
+          // per-call volatile content. DeepSeek compatibility support is
+          // provider-reported and best-effort; the usage log below tells us
+          // whether cache reads/writes actually happened.
           { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
         ],
         messages: [{ role: 'user', content: userMessage }],
