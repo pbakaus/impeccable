@@ -187,12 +187,57 @@ function attrEscape(str, { svelte = false } = {}) {
 }
 
 /**
- * Translate an HTML snippet to JSX. Currently: class= → className=, optionally
- * preserves whitespace + tags. The fake agent writes innerHtml in HTML form;
- * the orchestrator translates per the target file's syntax.
+ * Translate an HTML snippet to JSX. The fake and LLM agents write innerHtml
+ * in HTML form; the orchestrator translates per the target file's syntax.
  */
-function htmlToJsx(html) {
-  return html.replace(/\bclass=/g, 'className=');
+export function htmlToJsx(html) {
+  return html
+    .replace(/\bclass=/g, 'className=')
+    .replace(/\sstyle=(["'])(.*?)\1/g, (_match, _quote, value) => {
+      const entries = parseInlineStyle(value);
+      if (entries.length === 0) return '';
+      return ' style={{ ' + entries.map(({ prop, value }) => `${formatJsxStyleKey(prop)}: ${JSON.stringify(value)}`).join(', ') + ' }}';
+    });
+}
+
+function parseInlineStyle(style) {
+  return String(style)
+    .split(';')
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .map((decl) => {
+      const colon = decl.indexOf(':');
+      if (colon <= 0) return null;
+      const prop = decl.slice(0, colon).trim();
+      const value = decl.slice(colon + 1).trim();
+      if (!prop || !value) return null;
+      return { prop, value };
+    })
+    .filter(Boolean);
+}
+
+function formatJsxStyleKey(prop) {
+  if (prop.startsWith('--')) return JSON.stringify(prop);
+  const reactKey = cssPropertyToReactKey(prop);
+  return /^[A-Za-z_$][\w$]*$/.test(reactKey) ? reactKey : JSON.stringify(prop);
+}
+
+function cssPropertyToReactKey(prop) {
+  const lower = prop.toLowerCase();
+  if (lower.startsWith('-webkit-')) return 'Webkit' + capitalize(camelCaseCssProperty(lower.slice(8)));
+  if (lower.startsWith('-moz-')) return 'Moz' + capitalize(camelCaseCssProperty(lower.slice(5)));
+  if (lower.startsWith('-o-')) return 'O' + capitalize(camelCaseCssProperty(lower.slice(3)));
+  if (lower.startsWith('-ms-')) return 'ms' + camelCaseCssProperty(lower.slice(4));
+  if (lower === 'float') return 'cssFloat';
+  return camelCaseCssProperty(prop);
+}
+
+function camelCaseCssProperty(prop) {
+  return prop.replace(/-([a-z])/gi, (_match, ch) => ch.toUpperCase());
+}
+
+function capitalize(str) {
+  return str ? str[0].toUpperCase() + str.slice(1) : str;
 }
 
 /**
@@ -202,7 +247,7 @@ function htmlToJsx(html) {
  *   - <style>{`@scope ... { ... }`}</style> wraps CSS in a template literal so JSX
  *     doesn't choke on the {} in CSS
  *   - non-default visible variants use style={{display: 'none'}}
- *   - inner element class= becomes className=
+ *   - inner element class= becomes className=, style="..." becomes JSX style={{ ... }}
  *   - data-impeccable-params stays a single-quoted JSON string (JSX-legal)
  */
 function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, styleMode }) {

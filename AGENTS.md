@@ -39,7 +39,7 @@ Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.tes
 
 For changes to `skill/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
-Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for a Claude-backed one (`tests/live-e2e/agents/llm-agent.mjs`, default Haiku 4.5, override via `IMPECCABLE_E2E_LLM_MODEL`). Requires `ANTHROPIC_API_KEY`; tests skip cleanly when it's unset. This path hits the API — use it for verification, not CI.
+Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for an API-backed one (`tests/live-e2e/agents/llm-agent.mjs`). Claude Haiku 4.5 is the primary path whenever `ANTHROPIC_API_KEY` is set. DeepSeek V4 Flash is the secondary cheap fallback when only `DEEPSEEK_API_KEY` is set, and can be forced with `IMPECCABLE_E2E_LLM_PROVIDER=deepseek` or `bun run test:live-e2e -- --llm-provider=deepseek`; override either model via `IMPECCABLE_E2E_LLM_MODEL` or `--llm-model=<model>`. Tests skip cleanly when the selected provider key is unset. This path hits the API — use it for verification, not CI.
 
 ## Anti-pattern detection rules
 

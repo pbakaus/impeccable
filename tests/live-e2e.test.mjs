@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createFakeAgent } from './live-e2e/agent.mjs';
-import { createLlmAgent } from './live-e2e/agents/llm-agent.mjs';
+import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
 import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
 import {
   clickAccept,
@@ -63,6 +63,9 @@ const onlyName = process.env.IMPECCABLE_E2E_ONLY;
 const fixtures = onlyName
   ? allFixtures.filter((f) => f.name === onlyName)
   : allFixtures;
+
+const cliLlmProvider = readCliOption('llm-provider') || (hasCliFlag('deepseek') ? 'deepseek' : undefined);
+const cliLlmModel = readCliOption('llm-model');
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -103,22 +106,30 @@ for (const { name, fixture } of fixtures) {
       // the limitation is visible in the run output.
       const knownLimitation = fixture.runtime.knownLimitation;
 
-      // Pick the agent. `IMPECCABLE_E2E_AGENT=llm` opts into the real Claude
-      // API; everything else uses the deterministic fake. Skip rather than
-      // fail when LLM is requested but no API key is set so default suite
+      // Pick the agent. `IMPECCABLE_E2E_AGENT=llm` opts into Claude first,
+      // with DeepSeek as the secondary fallback/override; everything else
+      // uses the deterministic fake. Skip rather than fail when LLM is
+      // requested but the selected provider key is missing so default suite
       // runs in unauthenticated environments still pass.
       const agentMode = process.env.IMPECCABLE_E2E_AGENT || 'fake';
       let agent;
       if (agentMode === 'llm') {
+        const llmConfig = resolveLlmAgentConfig({
+          provider: cliLlmProvider,
+          model: cliLlmModel || process.env.IMPECCABLE_E2E_LLM_MODEL,
+        });
         agent = await createLlmAgent({
-          model: process.env.IMPECCABLE_E2E_LLM_MODEL,
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          apiKey: llmConfig.apiKey,
+          baseURL: llmConfig.baseURL,
           log: (m) => t.diagnostic('[llm] ' + m),
         });
         if (!agent) {
-          t.skip('IMPECCABLE_E2E_AGENT=llm requires ANTHROPIC_API_KEY');
+          t.skip(`IMPECCABLE_E2E_AGENT=llm with provider=${llmConfig.provider} requires ${llmConfig.requiredEnv}`);
           return;
         }
-        t.diagnostic(`Using LLM agent (model=${process.env.IMPECCABLE_E2E_LLM_MODEL || 'claude-haiku-4-5'})`);
+        t.diagnostic(`Using LLM agent (provider=${llmConfig.provider} model=${llmConfig.model})`);
       } else {
         agent = createFakeAgent();
       }
@@ -367,6 +378,20 @@ for (const { name, fixture } of fixtures) {
       }
     });
   });
+}
+
+function readCliOption(name) {
+  const prefix = '--' + name + '=';
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
+    if (arg === '--' + name) return process.argv[i + 1];
+  }
+  return undefined;
+}
+
+function hasCliFlag(name) {
+  return process.argv.includes('--' + name);
 }
 
 // ---------------------------------------------------------------------------

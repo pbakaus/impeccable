@@ -7,9 +7,11 @@
  * and carbonize cleanup deterministically, so this module's only job is
  * producing variant content for the wrapper.
  *
- * Default model: Claude Haiku 4.5 — fast, cheap, smart enough for variant
- * generation in test fixtures. Override via { model } when constructing,
- * or via the IMPECCABLE_E2E_LLM_MODEL env var at the call site (test runner).
+ * Primary provider/model: Anthropic + Claude Haiku 4.5. DeepSeek V4 Flash is
+ * a secondary cheap fallback used only when ANTHROPIC_API_KEY is absent and
+ * DEEPSEEK_API_KEY is present, or when explicitly forced with
+ * IMPECCABLE_E2E_LLM_PROVIDER=deepseek. Override the model via { model } when
+ * constructing, or via IMPECCABLE_E2E_LLM_MODEL at the call site.
  *
  * Prompt caching: live.md (the live-mode skill spec) is the bulk of the
  * system prompt and is stable across calls. We mark a cache_control breakpoint
@@ -17,8 +19,8 @@
  * spec are cached as one prefix. Subsequent calls in the same run pay only
  * the cache-read rate (~0.1× input).
  *
- * Returns null from createLlmAgent() when ANTHROPIC_API_KEY is unset; the
- * test runner reads that and skips the case rather than failing.
+ * Returns null from createLlmAgent() when the selected provider's API key is
+ * unset; the test runner reads that and skips the case rather than failing.
  */
 
 import fs from 'node:fs/promises';
@@ -30,7 +32,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const LIVE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live.md');
 
-const DEFAULT_MODEL = 'claude-haiku-4-5';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
+const DEEPSEEK_ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic';
 
 const SYSTEM_INSTRUCTIONS = [
   'You are an automated subagent inside Impeccable\'s live-mode test harness.',
@@ -70,24 +74,60 @@ const SYSTEM_INSTRUCTIONS = [
 
 /**
  * @typedef {object} LlmAgentOptions
- * @property {string=} apiKey  Override ANTHROPIC_API_KEY env var.
- * @property {string=} model   Default 'claude-haiku-4-5'. Override to 'claude-sonnet-4-6' if Haiku produces unreliable JSON.
+ * @property {'anthropic' | 'deepseek'=} provider Override IMPECCABLE_E2E_LLM_PROVIDER.
+ * @property {string=} apiKey  Override the selected provider's API key env var.
+ * @property {string=} model   Override the selected provider's default model.
+ * @property {string=} baseURL Override the provider API base URL.
  * @property {(msg: string) => void=} log  Optional logger for debug output.
  */
+
+export function resolveLlmAgentConfig(opts = {}, env = process.env) {
+  const provider = resolveProvider(opts, env);
+
+  if (provider === 'anthropic') {
+    return {
+      provider,
+      model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_ANTHROPIC_MODEL,
+      apiKey: opts.apiKey || env.ANTHROPIC_API_KEY,
+      requiredEnv: 'ANTHROPIC_API_KEY',
+      baseURL: opts.baseURL || env.ANTHROPIC_BASE_URL || undefined,
+    };
+  }
+
+  if (provider === 'deepseek') {
+    return {
+      provider,
+      model: opts.model || env.IMPECCABLE_E2E_LLM_MODEL || DEFAULT_DEEPSEEK_MODEL,
+      apiKey: opts.apiKey || env.DEEPSEEK_API_KEY,
+      requiredEnv: 'DEEPSEEK_API_KEY',
+      baseURL: opts.baseURL || env.DEEPSEEK_ANTHROPIC_BASE_URL || DEEPSEEK_ANTHROPIC_BASE_URL,
+    };
+  }
+
+  throw new Error(`Unsupported IMPECCABLE_E2E_LLM_PROVIDER: ${provider}`);
+}
+
+function resolveProvider(opts, env) {
+  const explicit = opts.provider || env.IMPECCABLE_E2E_LLM_PROVIDER;
+  if (explicit) return String(explicit).trim().toLowerCase();
+  if (env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (env.DEEPSEEK_API_KEY) return 'deepseek';
+  return 'anthropic';
+}
 
 /**
  * @param {LlmAgentOptions} [opts]
  * @returns {Promise<{generateVariants: (event: object, context: object) => Promise<{scopedCss: string, variants: object[]}>} | null>}
  */
 export async function createLlmAgent(opts = {}) {
-  const apiKey = opts.apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  const config = resolveLlmAgentConfig(opts);
+  if (!config.apiKey) return null;
 
-  const model = opts.model || DEFAULT_MODEL;
+  const { apiKey, baseURL, model, provider } = config;
   const log = opts.log || (() => {});
 
   const liveMd = await fs.readFile(LIVE_MD_PATH, 'utf-8');
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
 
   return {
     async generateVariants(event, context = {}) {
@@ -136,7 +176,7 @@ export async function createLlmAgent(opts = {}) {
       const inputTokens = response.usage?.input_tokens ?? 0;
       const outputTokens = response.usage?.output_tokens ?? 0;
       log(
-        `model=${model} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
+        `provider=${provider} model=${model} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
       );
 
       const text = response.content
