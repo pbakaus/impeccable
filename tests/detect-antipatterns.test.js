@@ -496,6 +496,27 @@ describe('detectText — dark glow', () => {
     const f = detectText(html, 'test.html');
     expect(f.filter(r => r.antipattern === 'dark-glow')).toHaveLength(0);
   });
+
+  // Multi-shadow values must be split by comma and evaluated per-shadow so
+  // each color is checked against its own blur — matches checkGlow() in the
+  // browser path. See issue ELS-73.
+  test('does not flag colored shadow with zero blur when a later gray shadow has blur', () => {
+    // Red shadow has zero blur (not a glow); gray shadow has blur (not colored).
+    // Pre-fix, this was a false positive because the gray shadow's 30px leaked
+    // into the px-vals list and was read as the red shadow's blur.
+    const html = '<!DOCTYPE html><html><body style="background: #111827;"><style>.x { box-shadow: rgba(255, 0, 0, 0.5) 0 0, rgba(0, 0, 0, 0.5) 30px 30px 30px; }</style></body></html>';
+    const f = detectText(html, 'test.html');
+    expect(f.filter(r => r.antipattern === 'dark-glow')).toHaveLength(0);
+  });
+
+  test('detects colored glow even when first shadow in list is gray', () => {
+    // Pre-fix, this was a false negative because only the first rgba() in the
+    // value was inspected — the gray match caused the loop to continue without
+    // ever reaching the red glow.
+    const html = '<!DOCTYPE html><html><body style="background: #111827;"><style>.x { box-shadow: rgba(0, 0, 0, 0.5) 0 0 1px, rgba(255, 0, 0, 0.5) 0 0 30px; }</style></body></html>';
+    const f = detectText(html, 'test.html');
+    expect(f.some(r => r.antipattern === 'dark-glow')).toBe(true);
+  });
 });
 
 

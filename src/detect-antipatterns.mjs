@@ -677,6 +677,32 @@ function checkGlow(opts) {
 }
 
 /**
+ * Scan a CSS `box-shadow` value for a colored shadow with blur > 4px.
+ * Splits multi-shadow values on commas (ignoring commas inside parens) so
+ * each shadow is evaluated against its own color and its own blur — mirrors
+ * `checkGlow` in detect-antipatterns-browser.js.
+ * Returns the first matching `{r,g,b}` or null.
+ */
+function findDarkGlowShadow(boxShadowVal) {
+  for (const shadow of boxShadowVal.split(/,(?![^(]*\))/)) {
+    const colorMatch = shadow.match(/rgba?\([^)]*\)/);
+    if (!colorMatch) continue;
+    const rgb = colorMatch[0].match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!rgb) continue;
+    const [r, g, b] = [+rgb[1], +rgb[2], +rgb[3]];
+    if ((Math.max(r, g, b) - Math.min(r, g, b)) < 30) continue;
+    // Strip the color expression before scanning for lengths — its internal
+    // 0/decimal channels would otherwise be mistaken for offsets/blur.
+    const geometry = shadow.replace(colorMatch[0], ' ');
+    const pxVals = [...geometry.matchAll(/(\d+)px|(?<![.\d])\b(0)\b(?![.\d])/g)].map(p => +(p[1] || p[2]));
+    if (pxVals.length >= 3 && pxVals[2] > 4) {
+      return { r, g, b };
+    }
+  }
+  return null;
+}
+
+/**
  * Regex-on-HTML checks shared between browser and Node page-level detection.
  * These don't need DOM access, just the raw HTML string.
  */
@@ -794,14 +820,9 @@ function checkHtmlPatterns(html) {
     const shadowRe = /box-shadow\s*:\s*([^;{}]+)/gi;
     let shm;
     while ((shm = shadowRe.exec(html)) !== null) {
-      const val = shm[1];
-      const colorMatch = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-      if (!colorMatch) continue;
-      const [r, g, b] = [+colorMatch[1], +colorMatch[2], +colorMatch[3]];
-      if ((Math.max(r, g, b) - Math.min(r, g, b)) < 30) continue;
-      const pxVals = [...val.matchAll(/(\d+)px|(?<![.\d])\b(0)\b(?![.\d])/g)].map(p => +(p[1] || p[2]));
-      if (pxVals.length >= 3 && pxVals[2] > 4) {
-        findings.push({ id: 'dark-glow', snippet: `Colored glow (rgb(${r},${g},${b})) on dark page` });
+      const glow = findDarkGlowShadow(shm[1]);
+      if (glow) {
+        findings.push({ id: 'dark-glow', snippet: `Colored glow (rgb(${glow.r},${glow.g},${glow.b})) on dark page` });
         break;
       }
     }
@@ -2935,20 +2956,14 @@ const REGEX_ANALYZERS = [
     const hasDarkBg = darkBgRe.test(content) || twDarkBg.test(content);
     if (!hasDarkBg) return [];
 
-    // Check for colored box-shadow with blur > 4px
+    // Check for colored box-shadow with blur > 4px (per-shadow within multi-shadow values)
     const shadowRe = /box-shadow\s*:\s*([^;{}]+)/gi;
     let m;
     while ((m = shadowRe.exec(content)) !== null) {
-      const val = m[1];
-      const colorMatch = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-      if (!colorMatch) continue;
-      const [r, g, b] = [+colorMatch[1], +colorMatch[2], +colorMatch[3]];
-      if ((Math.max(r, g, b) - Math.min(r, g, b)) < 30) continue; // skip gray
-      // Check blur: look for pattern like "0 0 20px" (third number > 4)
-      const pxVals = [...val.matchAll(/(\d+)px|(?<![.\d])\b(0)\b(?![.\d])/g)].map(p => +(p[1] || p[2]));
-      if (pxVals.length >= 3 && pxVals[2] > 4) {
+      const glow = findDarkGlowShadow(m[1]);
+      if (glow) {
         const lines = content.substring(0, m.index).split('\n');
-        return [finding('dark-glow', filePath, `Colored glow (rgb(${r},${g},${b})) on dark page`, lines.length)];
+        return [finding('dark-glow', filePath, `Colored glow (rgb(${glow.r},${glow.g},${glow.b})) on dark page`, lines.length)];
       }
     }
     return [];
