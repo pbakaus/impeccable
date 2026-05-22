@@ -194,6 +194,26 @@ describe('live-e2e agent output translation', () => {
     assert.doesNotMatch(output.scopedCss, /@scope/);
   });
 
+  it('fills missing base variant rules when a model emits only param-conditioned CSS', () => {
+    const output = normalizeVariantOutput(
+      {
+        scopedCss: [
+          '@scope ([data-impeccable-variant="1"]) { :scope > h1 { color: blue; } }',
+          '@scope ([data-impeccable-variant="2"][data-p-uppercase]) { :scope > h1 { text-transform: uppercase; } }',
+        ].join('\n'),
+        variants: [
+          { innerHtml: '<h1 class="hero-title">One</h1>' },
+          { innerHtml: '<h1 class="hero-title">Two</h1>' },
+        ],
+      },
+      { styleMode: 'scoped' },
+    );
+
+    assert.match(output.scopedCss, /@scope \(\[data-impeccable-variant="2"\]\)/);
+    assert.match(output.scopedCss, /--impeccable-variant-ready: 1;/);
+    assert.match(output.scopedCss, /@scope \(\[data-impeccable-variant="2"\]\[data-p-uppercase\]\)/);
+  });
+
   it('returns the original output untouched when no inline styles are present', () => {
     const original = {
       scopedCss: '@scope ([data-impeccable-variant="1"]) { :scope > h1 { color: blue; } }',

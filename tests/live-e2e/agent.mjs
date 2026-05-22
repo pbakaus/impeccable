@@ -303,13 +303,51 @@ export function normalizeVariantOutput(output, wrapInfo = {}) {
     return { ...variant, innerHtml };
   });
 
-  if (extraCss.length === 0) return output;
-  const scopedCss = [output.scopedCss || '', ...extraCss]
+  const baseCss = renderMissingBaseVariantRules({
+    scopedCss: output.scopedCss || '',
+    count: output.variants.length,
+    styleMode: wrapInfo.styleMode,
+  });
+  if (extraCss.length === 0 && baseCss.length === 0) return output;
+  const scopedCss = [output.scopedCss || '', ...extraCss, ...baseCss]
     .map((chunk) => String(chunk).trim())
     .filter(Boolean)
     .join('\n');
 
   return { ...output, scopedCss, variants };
+}
+
+function renderMissingBaseVariantRules({ scopedCss, count, styleMode }) {
+  const rules = [];
+  for (let i = 1; i <= count; i++) {
+    if (!hasBaseVariantRule(scopedCss, i, styleMode)) {
+      rules.push(renderBaseVariantRule(i, styleMode));
+    }
+  }
+  return rules;
+}
+
+function hasBaseVariantRule(scopedCss, variantId, styleMode) {
+  const q = String.raw`["']${variantId}["']`;
+  if (styleMode === 'astro-global-prefixed') {
+    return new RegExp(String.raw`\[data-impeccable-variant=${q}\](?:\s|>|\.|#|\[${HOIST_ATTR}=)`).test(scopedCss);
+  }
+  return new RegExp(String.raw`@scope\s*\(\s*\[data-impeccable-variant=${q}\]\s*\)`).test(scopedCss);
+}
+
+function renderBaseVariantRule(variantId, styleMode) {
+  if (styleMode === 'astro-global-prefixed') {
+    return [
+      `[data-impeccable-variant="${variantId}"] > * {`,
+      '  --impeccable-variant-ready: 1;',
+      '}',
+    ].join('\n');
+  }
+  return [
+    `@scope ([data-impeccable-variant="${variantId}"]) {`,
+    '  :scope > * { --impeccable-variant-ready: 1; }',
+    '}',
+  ].join('\n');
 }
 
 // Walk each opening tag char-by-char (respecting quotes so a literal `>`
