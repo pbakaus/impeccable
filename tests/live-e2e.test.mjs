@@ -382,7 +382,15 @@ function readCliOption(name) {
   for (let i = 0; i < process.argv.length; i++) {
     const arg = process.argv[i];
     if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-    if (arg === '--' + name) return process.argv[i + 1];
+    if (arg === '--' + name) {
+      const next = process.argv[i + 1];
+      if (next === undefined || next.startsWith('--')) {
+        throw new Error(
+          `--${name} requires a value (received ${next === undefined ? 'no value' : JSON.stringify(next)}). Use --${name}=<value> or --${name} <value>.`,
+        );
+      }
+      return next;
+    }
   }
   return undefined;
 }

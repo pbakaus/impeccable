@@ -193,7 +193,7 @@ function attrEscape(str, { svelte = false } = {}) {
 export function htmlToJsx(html) {
   return html
     .replace(/(^|[\s<])class=/g, '$1className=')
-    .replace(/\sstyle=(["'])(.*?)\1/g, (_match, _quote, value) => {
+    .replace(/\sstyle=(["'])([\s\S]*?)\1/g, (_match, _quote, value) => {
       const entries = parseInlineStyle(value);
       if (entries.length === 0) return '';
       return ' style={{ ' + entries.map(({ prop, value }) => `${formatJsxStyleKey(prop)}: ${JSON.stringify(value)}`).join(', ') + ' }}';

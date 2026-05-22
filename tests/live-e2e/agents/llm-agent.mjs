@@ -199,18 +199,22 @@ export async function createLlmAgent(opts = {}) {
         );
       }
 
+      const previewParsed = () => {
+        try { return JSON.stringify(parsed).slice(0, 500); }
+        catch { return '[unstringifiable]'; }
+      };
       if (typeof parsed.scopedCss !== 'string') {
-        throw new Error(`LLM agent: missing or non-string scopedCss in response`);
+        throw new Error(`LLM agent: missing or non-string scopedCss in response. Parsed (first 500 chars):\n${previewParsed()}`);
       }
       if (!Array.isArray(parsed.variants) || parsed.variants.length === 0) {
-        throw new Error(`LLM agent: variants must be a non-empty array`);
+        throw new Error(`LLM agent: variants must be a non-empty array. Parsed (first 500 chars):\n${previewParsed()}`);
       }
       for (const [i, v] of parsed.variants.entries()) {
         if (typeof v.innerHtml !== 'string' || !v.innerHtml.trim()) {
-          throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty`);
+          throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty. Parsed (first 500 chars):\n${previewParsed()}`);
         }
         if (v.params !== undefined && !Array.isArray(v.params)) {
-          throw new Error(`LLM agent: variants[${i}].params must be an array if present`);
+          throw new Error(`LLM agent: variants[${i}].params must be an array if present. Parsed (first 500 chars):\n${previewParsed()}`);
         }
       }
 
