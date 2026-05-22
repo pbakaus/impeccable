@@ -40,6 +40,7 @@ import {
   truncateBuffer as truncateManualEditsBuffer,
 } from './live-manual-edits-buffer.mjs';
 import { validateNewTextChars } from './live-edit.mjs';
+import { commitManualEdits } from './live-commit-manual-edits.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
@@ -81,7 +82,64 @@ const state = {
   leaseTimer: null,
   manualEditActivity: null,
   nextManualEditSeq: 1,
+  // Deferreds for in-flight chat-routed Apply events. Keyed by event id; each
+  // entry is resolved when the chat agent POSTs an ack carrying the batch
+  // result, or rejected when the hard timeout fires.
+  pendingApplyDeferreds: new Map(),
+  // Updated whenever a /poll long-poll request arrives or is resolved with an
+  // event. Used to detect "a chat agent is likely attached" without requiring
+  // a poll to be parked at the exact moment we dispatch.
+  lastPollAt: 0,
 };
+
+const CHAT_POLL_FRESHNESS_MS = 60_000;
+const APPLY_EVENT_HARD_TIMEOUT_MS = 150_000;
+const APPLY_EVENT_SOFT_DEADLINE_MS = 120_000;
+
+function chatAgentLikelyActive() {
+  if (state.pendingPolls.length > 0) return true;
+  if (!state.lastPollAt) return false;
+  return Date.now() - state.lastPollAt < CHAT_POLL_FRESHNESS_MS;
+}
+
+function pushApplyEventAndWait(batch, pageUrl) {
+  const eventId = randomUUID().replace(/-/g, '').slice(0, 8);
+  const event = {
+    type: 'manual_edit_apply',
+    id: eventId,
+    pageUrl,
+    batch,
+    schemaVersion: 1,
+    deadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
+  };
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      state.pendingApplyDeferreds.delete(eventId);
+      acknowledgePendingEvent(eventId);
+      reject(new Error('chat_agent_timeout'));
+    }, APPLY_EVENT_HARD_TIMEOUT_MS);
+    state.pendingApplyDeferreds.set(eventId, { resolve, reject, timer });
+    enqueueEvent(event);
+  });
+}
+
+function resolveApplyDeferred(eventId, body) {
+  const deferred = state.pendingApplyDeferreds.get(eventId);
+  if (!deferred) return false;
+  state.pendingApplyDeferreds.delete(eventId);
+  clearTimeout(deferred.timer);
+  deferred.resolve(body);
+  return true;
+}
+
+function rejectApplyDeferred(eventId, reason) {
+  const deferred = state.pendingApplyDeferreds.get(eventId);
+  if (!deferred) return false;
+  state.pendingApplyDeferreds.delete(eventId);
+  clearTimeout(deferred.timer);
+  deferred.reject(new Error(reason || 'chat_agent_error'));
+  return true;
+}
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
@@ -708,23 +766,42 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       });
       (async () => {
         let result;
+        let routedProvider = 'subprocess';
         try {
-          const scriptPath = path.join(__dirname, 'live-commit-manual-edits.mjs');
-          const args = [scriptPath];
-          if (pageUrl) args.push('--page-url=' + pageUrl);
-          const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
-          const stdout = await execFileText(process.execPath, args, {
-            cwd: process.cwd(),
-            env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS: String(timeoutMs) },
-            encoding: 'utf-8',
-            maxBuffer: 1024 * 1024 * 8,
-            timeout: timeoutMs + 5000,
-          });
-          result = JSON.parse(stdout || '{}');
+          const requestedMode = (process.env.IMPECCABLE_LIVE_COPY_AGENT || 'auto').trim().toLowerCase();
+          const useChatRoute = requestedMode === 'chat'
+            || (requestedMode === 'auto' && chatAgentLikelyActive());
+          if (useChatRoute) {
+            routedProvider = 'chat';
+            const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
+            result = await commitManualEdits({
+              cwd: process.cwd(),
+              pageUrl,
+              provider: 'chat',
+              env: process.env,
+              timeoutMs,
+              chatAvailable: chatAgentLikelyActive,
+              applyBatchToSource: (batch) => pushApplyEventAndWait(batch, pageUrl),
+            });
+          } else {
+            const scriptPath = path.join(__dirname, 'live-commit-manual-edits.mjs');
+            const args = [scriptPath];
+            if (pageUrl) args.push('--page-url=' + pageUrl);
+            const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
+            const stdout = await execFileText(process.execPath, args, {
+              cwd: process.cwd(),
+              env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS: String(timeoutMs) },
+              encoding: 'utf-8',
+              maxBuffer: 1024 * 1024 * 8,
+              timeout: timeoutMs + 5000,
+            });
+            result = JSON.parse(stdout || '{}');
+          }
         } catch (err) {
           const message = err.stderr?.toString?.() || err.message;
           recordManualEditActivity('manual_edit_commit_failed', {
             pageUrl,
+            provider: routedProvider,
             error: 'manual_edit_commit_failed',
             message,
           });
@@ -738,6 +815,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         const { totalCount, perPage } = countPendingByPage(process.cwd());
         recordManualEditActivity('manual_edit_commit_done', {
           pageUrl,
+          provider: routedProvider,
           appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
           failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
           failed: Array.isArray(result.failed) ? result.failed.slice(0, 10).map((item) => ({
@@ -880,6 +958,7 @@ function handlePollGet(req, res, url) {
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return;
   }
+  state.lastPollAt = Date.now();
   const timeout = parseInt(url.searchParams.get('timeout') || DEFAULT_POLL_TIMEOUT, 10);
   const leaseMs = parseInt(url.searchParams.get('leaseMs') || '30000', 10);
   const available = findAvailablePendingEvent();
@@ -897,6 +976,7 @@ function handlePollGet(req, res, url) {
   }, timeout);
   function resolve(event) {
     clearTimeout(timer);
+    state.lastPollAt = Date.now();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(event));
   }
@@ -922,6 +1002,18 @@ function handlePollPost(req, res) {
     if (msg.token !== state.token) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    if (state.pendingApplyDeferreds.has(msg.id)) {
+      if (msg.type === 'error') {
+        rejectApplyDeferred(msg.id, msg.message || 'chat_agent_error');
+      } else {
+        resolveApplyDeferred(msg.id, msg.data || {});
+      }
+      acknowledgePendingEvent(msg.id);
+      flushPendingPolls();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);

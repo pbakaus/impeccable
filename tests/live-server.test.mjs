@@ -302,6 +302,91 @@ colors: {}
     }
   });
 
+  it('/manual-edit-commit routes through the chat agent poll loop when configured', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-'));
+    let chatServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      chatServer = await startServer(8524, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      // Stash a single op.
+      const stash = await fetch(`http://localhost:${chatServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: chatServer.token,
+          id: 'cafebabe',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Welcome</h1>', textContent: 'Welcome' },
+          ops: [{ ref: 'body>h1.hero:nth-of-type(1)', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+
+      // Fake agent: long-poll, write the file, ack with the result shape.
+      const agentLoop = (async () => {
+        // First poll picks up the manual_edit_apply event.
+        const pollRes = await fetch(`http://localhost:${chatServer.port}/poll?token=${chatServer.token}&timeout=10000&leaseMs=30000`);
+        const event = await pollRes.json();
+        assert.equal(event.type, 'manual_edit_apply');
+        assert.equal(event.pageUrl, '/');
+        assert.equal(event.batch.entries.length, 1);
+        assert.equal(event.batch.entries[0].id, 'cafebabe');
+        // Apply the edit to source (simulating the agent's Edit tool).
+        writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
+        // Ack with the structured result.
+        const ackRes = await fetch(`http://localhost:${chatServer.port}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: chatServer.token,
+            id: event.id,
+            type: 'done',
+            data: {
+              status: 'done',
+              appliedEntryIds: ['cafebabe'],
+              failed: [],
+              files: ['src/page.html'],
+              notes: [],
+            },
+          }),
+        });
+        assert.equal(ackRes.status, 200);
+      })();
+
+      // Trigger Apply.
+      const commitPromise = fetch(`http://localhost:${chatServer.port}/manual-edit-commit?token=${chatServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      await agentLoop;
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.count, 1);
+      assert.equal(result.cleared, 1, 'verified entries should be cleared from the buffer');
+      assert.equal(result.applied.length, 1);
+      assert.deepEqual(result.files, ['src/page.html']);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+
+      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
+      assert.match(events, /"provider":"chat"/);
+      assert.match(events, /"type":"manual_edit_commit_done"/);
+    } finally {
+      if (chatServer) {
+        await stopServer(chatServer.port, chatServer.token);
+        chatServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/manual-edit-discard returns discarded entries so the browser can restore visible text', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-server-'));
     let discardServer;

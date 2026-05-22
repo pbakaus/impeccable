@@ -30,6 +30,23 @@ describe('live reference authoring contract', () => {
       liveMd.indexOf('## Manual copy edits') < liveMd.indexOf('## Exit'),
       'event=live_reference.copy_edit_pointer_order actor=agent operation=read_live_docs risk=copy_edit_pointer_drifts_into_cleanup expected=before_exit actual=after_exit',
     );
+    assert.match(liveMd, /"manual_edit_apply"\s+→ Handle Manual Edit Apply/);
+    assert.match(liveMd, /## Handle `manual_edit_apply`/);
+    assert.ok(
+      liveMd.indexOf('## Handle `manual_edit_apply`') > liveMd.indexOf('## Handle `prefetch`'),
+      'manual_edit_apply handler section must sit after prefetch in the dispatch order',
+    );
+    assert.ok(
+      liveMd.indexOf('## Handle `manual_edit_apply`') < liveMd.indexOf('## Manual copy edits'),
+      'manual_edit_apply handler section must precede the Manual copy edits lifecycle reference',
+    );
+    // The opening contract must advertise manual_edit_apply so a polling agent
+    // is never ambushed by an event the contract never mentioned.
+    assert.match(openingContract, /On `manual_edit_apply`:/);
+    // The handler must document the real reply mechanism: --reply ... --data <json>.
+    // This is the linchpin that was previously documented but unimplemented.
+    assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"done"/);
+    assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"partial"/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

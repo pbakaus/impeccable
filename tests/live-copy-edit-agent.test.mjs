@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
   buildCopyEditBatchPrompt,
   chooseCopyEditAgent,
+  describeNoProviderError,
+  extractRunnerErrorMessage,
   parseCopyEditBatchResult,
+  runCopyEditBatchAgent,
   runCopyEditPostApplyChecks,
 } from '../skill/scripts/live-copy-edit-agent.mjs';
 import fs from 'node:fs';
@@ -99,5 +102,167 @@ describe('live-copy-edit-agent', () => {
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'off' } }), null);
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'false' } }), null);
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'mock' } }), 'mock');
+  });
+
+  it('surfaces Claude CLI auth errors from is_error JSON output', () => {
+    const output = '{"type":"result","subtype":"success","is_error":true,"duration_ms":36,'
+      + '"result":"Not logged in · Please run /login","stop_reason":"stop_sequence","session_id":"abc"}';
+    const hint = extractRunnerErrorMessage(output, 'claude');
+    assert.ok(hint, 'expected extractRunnerErrorMessage to return a hint');
+    assert.match(hint, /claude CLI:/);
+    assert.match(hint, /Not logged in/);
+  });
+
+  it('falls back to last non-empty line when no JSON is recognizable', () => {
+    const hint = extractRunnerErrorMessage('warm-up...\nsome noise\nfatal: provider unreachable\n', 'codex');
+    assert.equal(hint, 'codex: fatal: provider unreachable');
+  });
+
+  it('returns null when there is nothing useful to surface', () => {
+    assert.equal(extractRunnerErrorMessage('', 'claude'), null);
+    assert.equal(extractRunnerErrorMessage('   \n   \n', 'claude'), null);
+  });
+
+  it('describeNoProviderError pinpoints which CLI needs which action', () => {
+    const claudeInstalledUnauthed = describeNoProviderError({
+      exists: (cmd) => cmd === 'claude',
+      authed: () => false,
+      env: {},
+    });
+    assert.match(claudeInstalledUnauthed, /Claude CLI: installed but the subprocess cannot read/);
+    assert.match(claudeInstalledUnauthed, /claude setup-token/);
+    assert.match(claudeInstalledUnauthed, /CLAUDE_CODE_OAUTH_TOKEN/);
+    assert.match(claudeInstalledUnauthed, /ANTHROPIC_API_KEY/);
+    assert.match(claudeInstalledUnauthed, /Codex CLI: not installed/);
+
+    const tokenSetButInvalid = describeNoProviderError({
+      exists: (cmd) => cmd === 'claude',
+      authed: () => false,
+      env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-broken' },
+    });
+    assert.match(tokenSetButInvalid, /CLAUDE_CODE_OAUTH_TOKEN is set but the CLI still rejected it/);
+
+    const nothingInstalled = describeNoProviderError({ exists: () => false, authed: () => false, env: {} });
+    assert.match(nothingInstalled, /Claude CLI: not installed/);
+    assert.match(nothingInstalled, /Codex CLI: not installed/);
+    assert.match(nothingInstalled, /IMPECCABLE_LIVE_COPY_AGENT=mock/);
+
+    const codexInstalled = describeNoProviderError({
+      exists: (cmd) => cmd === 'codex',
+      authed: () => false,
+      env: {},
+    });
+    assert.match(codexInstalled, /Codex CLI: installed/);
+    assert.match(codexInstalled, /codex login/);
+  });
+
+  it('auto mode picks the first authenticated provider via injected authCheck', () => {
+    const claudeUnauthedCodexAuthed = (cmd) => cmd === 'codex';
+    assert.equal(
+      chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'auto' }, authCheck: claudeUnauthedCodexAuthed }),
+      'codex',
+    );
+
+    const onlyClaudeAuthed = (cmd) => cmd === 'claude';
+    assert.equal(
+      chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'auto' }, authCheck: onlyClaudeAuthed }),
+      'claude',
+    );
+
+    const noneAuthed = () => false;
+    assert.equal(
+      chooseCopyEditAgent({ env: {}, authCheck: noneAuthed }),
+      null,
+    );
+  });
+
+  it('auto mode falls back to chat when no CLI is authenticated and chat is available', () => {
+    const noneAuthed = () => false;
+    assert.equal(
+      chooseCopyEditAgent({
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'auto' },
+        authCheck: noneAuthed,
+        chatAvailable: () => true,
+      }),
+      'chat',
+    );
+    assert.equal(
+      chooseCopyEditAgent({
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'auto' },
+        authCheck: noneAuthed,
+        chatAvailable: () => false,
+      }),
+      null,
+    );
+    // Explicit chat mode honors chatAvailable.
+    assert.equal(
+      chooseCopyEditAgent({
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+        chatAvailable: () => true,
+      }),
+      'chat',
+    );
+    assert.equal(
+      chooseCopyEditAgent({
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+        chatAvailable: () => false,
+      }),
+      null,
+    );
+    // CLI providers still preferred when authenticated.
+    assert.equal(
+      chooseCopyEditAgent({
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'auto' },
+        authCheck: (cmd) => cmd === 'codex',
+        chatAvailable: () => true,
+      }),
+      'codex',
+    );
+  });
+
+  it('runCopyEditBatchAgent with provider=chat delegates to applyBatchToSource', async () => {
+    const batch = {
+      pageUrl: '/',
+      entries: [{ id: 'a1b2c3d4', pageUrl: '/', element: {}, ops: [] }],
+      candidates: [],
+    };
+    let receivedBatch = null;
+    const fakeApply = async (b) => {
+      receivedBatch = b;
+      return {
+        status: 'done',
+        appliedEntryIds: ['a1b2c3d4'],
+        failed: [],
+        files: ['site/pages/index.astro'],
+        notes: ['ok'],
+      };
+    };
+    const result = await runCopyEditBatchAgent(batch, {
+      provider: 'chat',
+      applyBatchToSource: fakeApply,
+    });
+    assert.equal(receivedBatch, batch);
+    assert.equal(result.status, 'done');
+    assert.deepEqual(result.appliedEntryIds, ['a1b2c3d4']);
+    assert.deepEqual(result.files, ['site/pages/index.astro']);
+    assert.deepEqual(result.notes, ['ok']);
+  });
+
+  it('runCopyEditBatchAgent with provider=chat rejects when no callback is supplied', async () => {
+    await assert.rejects(
+      runCopyEditBatchAgent({ entries: [], candidates: [] }, { provider: 'chat' }),
+      /chat provider requires applyBatchToSource/,
+    );
+  });
+
+  it('describeNoProviderError mentions starting impeccable live when chat is the missing piece', () => {
+    const noChatPolling = describeNoProviderError({
+      exists: () => false,
+      authed: () => false,
+      chatAvailable: () => false,
+      env: {},
+    });
+    assert.match(noChatPolling, /Chat: no Impeccable live session is currently polling/);
+    assert.match(noChatPolling, /Start \/impeccable live/);
   });
 });

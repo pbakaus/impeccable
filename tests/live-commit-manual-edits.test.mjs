@@ -361,7 +361,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
     assert.equal(result.failed.length, 1);
-    assert.match(result.failed[0].reason, /No live copy-edit AI runner found/);
+    assert.match(result.failed[0].reason, /No live copy-edit AI runner is available/);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 

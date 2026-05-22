@@ -60,14 +60,21 @@ export function parseCopyEditBatchResult(text) {
 export async function runCopyEditBatchAgent(batch, opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const env = opts.env || process.env;
-  const provider = opts.provider || chooseCopyEditAgent({ env });
+  const provider = opts.provider || chooseCopyEditAgent({ env, chatAvailable: opts.chatAvailable });
   if (provider === 'mock') {
     const delayMs = Number(env.IMPECCABLE_LIVE_COPY_AGENT_MOCK_DELAY_MS || 0);
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     return mockBatchResult(batch, env, cwd);
   }
+  if (provider === 'chat') {
+    if (typeof opts.applyBatchToSource !== 'function') {
+      throw new Error('chat provider requires applyBatchToSource callback');
+    }
+    const raw = await opts.applyBatchToSource(batch);
+    return normalizeBatchResult(raw || {});
+  }
   if (!provider) {
-    throw new Error('No live copy-edit AI runner found. Install/authenticate Codex or Claude, or set IMPECCABLE_LIVE_COPY_AGENT=mock for tests.');
+    throw new Error(describeNoProviderError({ env }));
   }
 
   const prompt = buildCopyEditBatchPrompt(batch, { cwd });
@@ -253,15 +260,21 @@ export function parseCopyEditAgentResult(text) {
   return null;
 }
 
-export function chooseCopyEditAgent({ env = process.env } = {}) {
+export function chooseCopyEditAgent({
+  env = process.env,
+  authCheck = commandAuthed,
+  chatAvailable = () => false,
+} = {}) {
   const mode = (env.IMPECCABLE_LIVE_COPY_AGENT || 'auto').trim().toLowerCase();
   if (mode === '0' || mode === 'false' || mode === 'off' || mode === 'none') return null;
   if (mode === 'mock') return 'mock';
+  if (mode === 'chat') return chatAvailable() ? 'chat' : null;
   if (mode === 'codex') return commandExists('codex') ? 'codex' : null;
   if (mode === 'claude') return commandExists('claude') ? 'claude' : null;
   if (mode !== 'auto') return null;
-  if (commandExists('codex')) return 'codex';
-  if (commandExists('claude')) return 'claude';
+  if (authCheck('codex')) return 'codex';
+  if (authCheck('claude')) return 'claude';
+  if (chatAvailable()) return 'chat';
   return null;
 }
 
@@ -286,13 +299,16 @@ function runClaude(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_
     '--print',
     '--permission-mode', 'bypassPermissions',
     '--output-format', 'json',
-    '--no-session-persistence',
   ];
   if (env.IMPECCABLE_LIVE_COPY_AGENT_MODEL) {
     args.push('--model', env.IMPECCABLE_LIVE_COPY_AGENT_MODEL);
   }
   args.push(prompt);
-  return runAgentProcess('claude', args, '', { cwd, env: { ...env, CLAUDE_CODE_SIMPLE: '1' }, logPath, timeoutMs, mirrorOutputPath: resultPath });
+  // Forward env as-is so CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY flow
+  // through. On macOS, `claude /login` stores creds in the Keychain, which a
+  // non-TTY subprocess cannot read; setting CLAUDE_CODE_OAUTH_TOKEN (via
+  // `claude setup-token`) is the supported headless auth path.
+  return runAgentProcess('claude', args, '', { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
 }
 
 function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, mirrorOutputPath }) {
@@ -341,7 +357,8 @@ function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, m
       if (code === 0) {
         resolveOnce();
       } else {
-        rejectOnce(new Error(`${command} exited with ${signal || code}`));
+        const hint = extractRunnerErrorMessage(output, command);
+        rejectOnce(new Error(hint || `${command} exited with ${signal || code}`));
       }
     });
     if (stdin) child.stdin.end(stdin);
@@ -367,4 +384,136 @@ function truncate(value, max) {
 function commandExists(command) {
   const result = spawnSync(command, ['--version'], { stdio: 'ignore' });
   return !result.error && result.status === 0;
+}
+
+/**
+ * Build a diagnostic error message explaining why no AI runner is usable.
+ * Splits the previous "Install/authenticate Codex or Claude" lump into a
+ * per-provider summary so the user knows exactly which step unblocks them.
+ */
+export function describeNoProviderError({
+  exists = commandExists,
+  authed = commandAuthed,
+  chatAvailable = () => false,
+  env = process.env,
+} = {}) {
+  const lines = ['No live copy-edit AI runner is available.'];
+  if (exists('claude')) {
+    if (authed('claude')) {
+      lines.push('  • Claude CLI: installed and authenticated (selection chose another provider — unexpected; please report).');
+    } else if (env.CLAUDE_CODE_OAUTH_TOKEN) {
+      lines.push('  • Claude CLI: installed; CLAUDE_CODE_OAUTH_TOKEN is set but the CLI still rejected it. The token may be expired or invalid.');
+    } else {
+      lines.push('  • Claude CLI: installed but the subprocess cannot read your `claude /login` credentials (on macOS, the Keychain is unreachable from a no-TTY child).');
+      lines.push('      Headless fix: run `claude setup-token` once, then `export CLAUDE_CODE_OAUTH_TOKEN=<the printed sk-ant-oat01-… token>` before starting `live-server.mjs`.');
+      lines.push('      Alternative: `export ANTHROPIC_API_KEY=<key>` if you have console.anthropic.com credits.');
+    }
+  } else {
+    lines.push('  • Claude CLI: not installed.');
+  }
+  if (exists('codex')) {
+    lines.push('  • Codex CLI: installed. If Apply still fails, run `codex login` to authenticate.');
+  } else {
+    lines.push('  • Codex CLI: not installed.');
+  }
+  if (chatAvailable()) {
+    lines.push('  • Chat: an Impeccable live session is polling but selection chose another provider — unexpected; please report.');
+  } else {
+    lines.push('  • Chat: no Impeccable live session is currently polling on this server. Start /impeccable live in your chat to route Apply through the chat agent.');
+  }
+  lines.push('Fix one of the above, or set IMPECCABLE_LIVE_COPY_AGENT=mock for tests.');
+  return lines.join('\n');
+}
+
+/**
+ * Pull a human-readable failure reason out of a subprocess's stdout when the
+ * process exited non-zero. Recognizes:
+ *   - Claude CLI `--output-format json` errors:
+ *     {"is_error": true, "result": "Not logged in · Please run /login", ...}
+ *   - Generic JSON payloads with `message` or `error` strings.
+ *   - The last non-empty line of unstructured output.
+ * Returns null when nothing meaningful surfaces, so the caller can fall back
+ * to its existing "X exited with N" message.
+ */
+export function extractRunnerErrorMessage(output, command) {
+  const text = String(output || '').trim();
+  if (!text) return null;
+  const candidates = [];
+  const direct = tryParseJson(text);
+  if (direct) candidates.push(direct);
+  const trailingMatch = text.match(/\{[\s\S]*\}\s*$/);
+  if (trailingMatch) {
+    const tail = tryParseJson(trailingMatch[0]);
+    if (tail && tail !== direct) candidates.push(tail);
+  }
+  for (const parsed of candidates) {
+    if (!parsed || typeof parsed !== 'object') continue;
+    if (parsed.is_error === true && typeof parsed.result === 'string' && parsed.result.trim()) {
+      return `${command} CLI: ${parsed.result.trim()}`;
+    }
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return `${command} CLI: ${parsed.message.trim()}`;
+    }
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      return `${command} CLI: ${parsed.error.trim()}`;
+    }
+  }
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 0) {
+    const last = lines[lines.length - 1];
+    if (last.length > 0 && last.length < 400) return `${command}: ${last}`;
+  }
+  return null;
+}
+
+/**
+ * Pre-flight a CLI provider with a trivial prompt and report whether it can
+ * actually do work. Cached per process so the `auto` branch of
+ * chooseCopyEditAgent only pays the cost once per server boot.
+ *
+ * For claude we run the same `--print --output-format json` invocation we use
+ * for real batches; an unauthenticated CLI fails in ~36 ms with
+ * { is_error: true, result: "Not logged in · ..." }.
+ * For codex we only confirm the binary exists — `codex exec` always burns a
+ * real LLM call, so checking auth without spending tokens is not possible
+ * here; if the user has codex installed but unauthed, the runtime error from
+ * runCodex (now improved by extractRunnerErrorMessage) will surface clearly.
+ */
+const COMMAND_AUTH_CACHE = new Map();
+
+function commandAuthed(command) {
+  if (COMMAND_AUTH_CACHE.has(command)) return COMMAND_AUTH_CACHE.get(command);
+  const ok = computeCommandAuthed(command);
+  COMMAND_AUTH_CACHE.set(command, ok);
+  return ok;
+}
+
+function computeCommandAuthed(command) {
+  if (!commandExists(command)) return false;
+  if (command === 'codex') return true;
+  if (command !== 'claude') return false;
+  let result;
+  try {
+    result = spawnSync('claude', [
+      '--print',
+      '--output-format', 'json',
+      'ping',
+    ], {
+      encoding: 'utf-8',
+      timeout: 10000,
+      env: process.env,
+    });
+  } catch {
+    return false;
+  }
+  if (result.error || result.signal) return false;
+  const stdout = String(result.stdout || '').trim();
+  if (result.status !== 0) {
+    // Non-zero exit: probably an auth or config error. Definitely not usable.
+    return false;
+  }
+  if (!stdout) return true;
+  const parsed = tryParseJson(stdout) || tryParseJson(stdout.match(/\{[\s\S]*\}\s*$/)?.[0] || '');
+  if (parsed && parsed.is_error === true) return false;
+  return true;
 }

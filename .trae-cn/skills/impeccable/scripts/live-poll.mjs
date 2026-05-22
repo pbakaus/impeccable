@@ -33,6 +33,40 @@ export function buildPollReplyPayload(token, { id, type, message, file, data }) 
   return { token, id, type, message, file, data };
 }
 
+/**
+ * Parse `--reply <id> <status> [--file path] [--data '<json>'] [message]` argv
+ * into a reply object. Returns null when `--reply` is absent. Throws (code
+ * INVALID_DATA_JSON) when `--data` is present but not valid JSON. Exported so
+ * the arg-parsing contract is unit-tested without spawning a process.
+ */
+export function parseReplyArgs(args) {
+  const replyIdx = args.indexOf('--reply');
+  if (replyIdx === -1) return null;
+  const id = args[replyIdx + 1];
+  const status = args[replyIdx + 2] || 'done';
+  const fileIdx = args.indexOf('--file');
+  const file = fileIdx !== -1 && fileIdx + 1 < args.length ? args[fileIdx + 1] : undefined;
+  const dataIdx = args.indexOf('--data');
+  let data;
+  if (dataIdx !== -1 && dataIdx + 1 < args.length) {
+    try {
+      data = JSON.parse(args[dataIdx + 1]);
+    } catch (err) {
+      const wrapped = new Error('--data must be valid JSON: ' + err.message);
+      wrapped.code = 'INVALID_DATA_JSON';
+      throw wrapped;
+    }
+  }
+  // Message is any remaining positional arg that isn't a flag or a flag's value.
+  const message = args.find((a, i) =>
+    i > replyIdx + 2
+    && !a.startsWith('--')
+    && i !== fileIdx + 1
+    && i !== dataIdx + 1
+  ) || undefined;
+  return { id, type: status, message, file, data };
+}
+
 async function postReply(base, token, reply) {
   const res = await fetch(`${base}/poll`, {
     method: 'POST',
@@ -57,9 +91,13 @@ Modes:
   poll                             Block until a browser event arrives, print JSON
   poll --reply <id> done           Reply "done" to event <id>
   poll --reply <id> error "msg"    Reply with an error message
+  poll --reply <id> done --data '<json>'
+                                   Reply with a structured JSON result (manual_edit_apply)
 
 Options:
   --timeout=MS   Long-poll timeout in ms (default: 600000). Use the default unless the user asked to pause live; never use a short timeout to end the chat turn
+  --file PATH    Attach a source file path to the reply (generate flow)
+  --data JSON    Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
   --help         Show this help message`);
     process.exit(0);
   }
@@ -67,23 +105,23 @@ Options:
   const info = readServerInfo();
   const base = `http://localhost:${info.port}`;
 
-  // Reply mode: npx impeccable poll --reply <id> <status> [--file path] [message]
-  const replyIdx = args.indexOf('--reply');
-  if (replyIdx !== -1) {
-    const id = args[replyIdx + 1];
-    const status = args[replyIdx + 2] || 'done';
-    const fileIdx = args.indexOf('--file');
-    const filePath = fileIdx !== -1 && fileIdx + 1 < args.length ? args[fileIdx + 1] : undefined;
-    // Message is any remaining positional arg that isn't a flag
-    const message = args.find((a, i) => i > replyIdx + 2 && !a.startsWith('--') && i !== fileIdx + 1) || undefined;
+  // Reply mode: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]
+  if (args.includes('--reply')) {
+    let reply;
+    try {
+      reply = parseReplyArgs(args);
+    } catch (err) {
+      console.error(err.message);
+      process.exit(1);
+    }
 
-    if (!id) {
-      console.error('Usage: npx impeccable poll --reply <id> <status> [--file path] [message]');
+    if (!reply.id) {
+      console.error("Usage: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]");
       process.exit(1);
     }
 
     try {
-      await postReply(base, info.token, { id, type: status, message, file: filePath });
+      await postReply(base, info.token, reply);
 
       // Success — silent exit (agent doesn't need output for replies)
     } catch (err) {

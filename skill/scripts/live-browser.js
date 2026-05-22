@@ -2278,6 +2278,20 @@
   function setPendingApplyLoading(loading, count) {
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
+    // Watchdog: an apply can never legitimately outlast the server's hard
+    // timeout (150s). If a `done`/`failed` signal is missed (server restart,
+    // SSE/fetch race, reconnect), force-clear so the picker can never freeze
+    // permanently. Bound to 165s to clear the server's window plus margin.
+    if (pendingApplyWatchdog) { clearTimeout(pendingApplyWatchdog); pendingApplyWatchdog = null; }
+    if (pendingApplyInFlight) {
+      pendingApplyWatchdog = setTimeout(() => {
+        pendingApplyWatchdog = null;
+        if (!pendingApplyInFlight) return;
+        setPendingApplyLoading(false);
+        fetchPendingCount();
+        showToast('Apply timed out. You can pick elements again.', 4000);
+      }, 165000);
+    }
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
     pendingPillLabelEl.textContent = pendingApplyInFlight
@@ -2426,6 +2440,11 @@
     }
 
     if (msg.type === 'manual_edit_commit_done') {
+      // Clear the in-flight flag BEFORE updating the counter. updatePendingCounter
+      // re-asserts setPendingApplyLoading(true) whenever the flag is still set and
+      // edits remain (failed entries stay staged), which would otherwise leave the
+      // picker frozen forever after a partial/failed apply.
+      setPendingApplyLoading(false);
       const remainingCount = numberOrNull(msg.remainingCount);
       updatePendingCounter(remainingCount === null ? 0 : remainingCount);
       return;
@@ -4394,6 +4413,7 @@ void main() {
   let pendingDockResizeObserver = null;
   let pendingIntroAnimation = null;
   let pendingApplyInFlight = false;
+  let pendingApplyWatchdog = null;
   let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's

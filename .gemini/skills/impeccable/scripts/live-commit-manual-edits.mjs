@@ -482,6 +482,8 @@ export async function commitManualEdits({
   provider = undefined,
   env = process.env,
   timeoutMs = undefined,
+  applyBatchToSource = undefined,
+  chatAvailable = undefined,
 } = {}) {
   const batch = buildManualEditEvidence({ cwd, pageUrl });
   const count = countOps(batch.entries);
@@ -501,7 +503,14 @@ export async function commitManualEdits({
   const rollbackSnapshot = snapshotRollbackFiles(cwd);
   let result;
   try {
-    result = await runCopyEditBatchAgent(batch, { cwd, provider, env, timeoutMs });
+    result = await runCopyEditBatchAgent(batch, {
+      cwd,
+      provider,
+      env,
+      timeoutMs,
+      applyBatchToSource,
+      chatAvailable,
+    });
   } catch (err) {
     const rollback = rollbackChangedFiles(cwd, rollbackSnapshot);
     return {
