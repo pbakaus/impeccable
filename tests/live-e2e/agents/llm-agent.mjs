@@ -189,38 +189,46 @@ export async function createLlmAgent(opts = {}) {
         .map((b) => b.text)
         .join('');
 
-      const cleaned = stripCodeFence(text.trim());
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (err) {
-        throw new Error(
-          `LLM agent: response was not valid JSON (${err.message}). First 500 chars:\n${cleaned.slice(0, 500)}`,
-        );
-      }
-
-      const previewParsed = () => {
-        try { return JSON.stringify(parsed).slice(0, 500); }
-        catch { return '[unstringifiable]'; }
-      };
-      if (typeof parsed.scopedCss !== 'string') {
-        throw new Error(`LLM agent: missing or non-string scopedCss in response. Parsed (first 500 chars):\n${previewParsed()}`);
-      }
-      if (!Array.isArray(parsed.variants) || parsed.variants.length === 0) {
-        throw new Error(`LLM agent: variants must be a non-empty array. Parsed (first 500 chars):\n${previewParsed()}`);
-      }
-      for (const [i, v] of parsed.variants.entries()) {
-        if (typeof v.innerHtml !== 'string' || !v.innerHtml.trim()) {
-          throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty. Parsed (first 500 chars):\n${previewParsed()}`);
-        }
-        if (v.params !== undefined && !Array.isArray(v.params)) {
-          throw new Error(`LLM agent: variants[${i}].params must be an array if present. Parsed (first 500 chars):\n${previewParsed()}`);
-        }
-      }
-
-      return parsed;
+      return parseVariantResponse(text);
     },
   };
+}
+
+/**
+ * Parse and validate a model response into the variant-output schema. Throws
+ * with a `Parsed (first 500 chars): ...` echo on every schema failure so the
+ * caller can see what the model actually emitted.
+ */
+export function parseVariantResponse(text) {
+  const cleaned = stripCodeFence(String(text).trim());
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(
+      `LLM agent: response was not valid JSON (${err.message}). First 500 chars:\n${cleaned.slice(0, 500)}`,
+    );
+  }
+
+  const previewParsed = () => {
+    try { return JSON.stringify(parsed).slice(0, 500); }
+    catch { return '[unstringifiable]'; }
+  };
+  if (typeof parsed.scopedCss !== 'string') {
+    throw new Error(`LLM agent: missing or non-string scopedCss in response. Parsed (first 500 chars):\n${previewParsed()}`);
+  }
+  if (!Array.isArray(parsed.variants) || parsed.variants.length === 0) {
+    throw new Error(`LLM agent: variants must be a non-empty array. Parsed (first 500 chars):\n${previewParsed()}`);
+  }
+  for (const [i, v] of parsed.variants.entries()) {
+    if (typeof v.innerHtml !== 'string' || !v.innerHtml.trim()) {
+      throw new Error(`LLM agent: variants[${i}].innerHtml missing or empty. Parsed (first 500 chars):\n${previewParsed()}`);
+    }
+    if (v.params !== undefined && !Array.isArray(v.params)) {
+      throw new Error(`LLM agent: variants[${i}].params must be an array if present. Parsed (first 500 chars):\n${previewParsed()}`);
+    }
+  }
+  return parsed;
 }
 
 /**

@@ -66,4 +66,90 @@ describe('live-e2e agent output translation', () => {
     assert.match(output.scopedCss, /content: "a;b";/);
     assert.match(output.scopedCss, /background-image: url\("foo;bar"\);/);
   });
+
+  it('hoists styles split across multiple lines', () => {
+    const output = normalizeVariantOutput(
+      {
+        scopedCss: '',
+        variants: [
+          {
+            innerHtml: '<h1 class="hero-title" style="\n  color: red;\n  font-size: 2rem;\n">Title</h1>',
+          },
+        ],
+      },
+      { styleMode: 'scoped' },
+    );
+
+    assert.equal(output.variants[0].innerHtml, '<h1 class="hero-title">Title</h1>');
+    assert.match(output.scopedCss, /color: red;/);
+    assert.match(output.scopedCss, /font-size: 2rem;/);
+  });
+
+  it('binds hoisted rules to the tag the style was on, not the variant root', () => {
+    const output = normalizeVariantOutput(
+      {
+        scopedCss: '',
+        variants: [
+          {
+            innerHtml: '<h1 class="hero-title"><span style="color:red; transform:scale(1.1)">Title</span></h1>',
+          },
+        ],
+      },
+      { styleMode: 'scoped' },
+    );
+
+    assert.equal(
+      output.variants[0].innerHtml,
+      '<h1 class="hero-title"><span>Title</span></h1>',
+    );
+    assert.match(output.scopedCss, /:scope span\s*\{/);
+    assert.doesNotMatch(output.scopedCss, /:scope h1\s*\{/);
+    assert.match(output.scopedCss, /color: red;/);
+    assert.match(output.scopedCss, /transform: scale\(1\.1\);/);
+  });
+
+  it('emits a separate rule per styled tag inside one variant', () => {
+    const output = normalizeVariantOutput(
+      {
+        scopedCss: '',
+        variants: [
+          {
+            innerHtml: '<h1 style="color:red"><span style="font-weight:700">Title</span></h1>',
+          },
+        ],
+      },
+      { styleMode: 'scoped' },
+    );
+
+    assert.match(output.scopedCss, /:scope h1\s*\{[^}]*color: red;/);
+    assert.match(output.scopedCss, /:scope span\s*\{[^}]*font-weight: 700;/);
+  });
+
+  it('emits the astro-global-prefixed selector shape when styleMode requests it', () => {
+    const output = normalizeVariantOutput(
+      {
+        scopedCss: '',
+        variants: [
+          { innerHtml: '<h1 style="color:red">Title</h1>' },
+        ],
+      },
+      { styleMode: 'astro-global-prefixed' },
+    );
+
+    assert.match(
+      output.scopedCss,
+      /\[data-impeccable-variant="1"\] h1 \{/,
+    );
+    assert.doesNotMatch(output.scopedCss, /@scope/);
+  });
+
+  it('returns the original output untouched when no inline styles are present', () => {
+    const original = {
+      scopedCss: '@scope ([data-impeccable-variant="1"]) { :scope > h1 { color: blue; } }',
+      variants: [{ innerHtml: '<h1 class="hero-title">Title</h1>' }],
+    };
+    const result = normalizeVariantOutput(original, { styleMode: 'scoped' });
+    assert.equal(result, original);
+  });
+
 });

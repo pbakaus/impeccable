@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createFakeAgent } from './live-e2e/agent.mjs';
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
+import { readCliOption } from './live-e2e/cli-options.mjs';
 import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
 import {
   clickAccept,
@@ -64,8 +65,8 @@ const fixtures = onlyName
   ? allFixtures.filter((f) => f.name === onlyName)
   : allFixtures;
 
-const cliLlmProvider = readCliOption('llm-provider');
-const cliLlmModel = readCliOption('llm-model');
+const cliLlmProvider = readCliOption(process.argv, 'llm-provider');
+const cliLlmModel = readCliOption(process.argv, 'llm-model');
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -375,24 +376,6 @@ for (const { name, fixture } of fixtures) {
       }
     });
   });
-}
-
-function readCliOption(name) {
-  const prefix = '--' + name + '=';
-  for (let i = 0; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-    if (arg === '--' + name) {
-      const next = process.argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        throw new Error(
-          `--${name} requires a value (received ${next === undefined ? 'no value' : JSON.stringify(next)}). Use --${name}=<value> or --${name} <value>.`,
-        );
-      }
-      return next;
-    }
-  }
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------

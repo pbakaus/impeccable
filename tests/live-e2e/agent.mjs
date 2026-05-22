@@ -287,18 +287,12 @@ function capitalize(str) {
 export function normalizeVariantOutput(output, wrapInfo = {}) {
   const extraCss = [];
   const variants = output.variants.map((variant, i) => {
-    const declarations = [];
-    const innerHtml = String(variant.innerHtml).replace(/\sstyle=(["'])(.*?)\1/g, (_match, _quote, value) => {
-      const entries = parseInlineStyle(value);
-      if (entries.length === 0) return '';
-      declarations.push(...entries);
-      return '';
-    });
+    const { innerHtml, groups } = stripInlineStylesByTag(String(variant.innerHtml));
 
-    if (declarations.length > 0) {
+    for (const { tagName, declarations } of groups) {
       extraCss.push(renderHoistedInlineStyleRule({
         variantId: i + 1,
-        tagName: extractFirstTagName(innerHtml),
+        tagName,
         declarations,
         styleMode: wrapInfo.styleMode,
       }));
@@ -316,28 +310,49 @@ export function normalizeVariantOutput(output, wrapInfo = {}) {
   return { ...output, scopedCss, variants };
 }
 
+// Walk each opening tag and pull off any `style="..."` attribute, returning
+// the stripped innerHtml plus one (tagName, declarations) group per styled
+// element. Per-tag grouping is the reason this is not a single global regex:
+// styles on nested elements must hoist to a selector that targets THAT
+// element, not the variant's first tag.
+function stripInlineStylesByTag(innerHtml) {
+  const groups = [];
+  const styleRe = /\sstyle=(["'])([\s\S]*?)\1/;
+  const updated = innerHtml.replace(
+    /<([A-Za-z][\w:-]*)\b([^>]*)>/g,
+    (match, tagName, attrs) => {
+      const styleMatch = attrs.match(styleRe);
+      if (!styleMatch) return match;
+      const entries = parseInlineStyle(styleMatch[2]);
+      const newAttrs = attrs.replace(styleRe, '');
+      if (entries.length > 0) {
+        groups.push({ tagName, declarations: entries });
+      }
+      return `<${tagName}${newAttrs}>`;
+    },
+  );
+  return { innerHtml: updated, groups };
+}
+
 function renderHoistedInlineStyleRule({ variantId, tagName, declarations, styleMode }) {
-  const selector = tagName || '*';
+  // Descendant combinator (not `>`) so a style hoisted off a nested element
+  // still lands on it. Top-level elements are descendants too, so the looser
+  // selector keeps the top-level case working.
   const lines = declarations.map(({ prop, value }) => `    ${prop}: ${value};`);
   if (styleMode === 'astro-global-prefixed') {
     return [
-      `[data-impeccable-variant="${variantId}"] > ${selector} {`,
+      `[data-impeccable-variant="${variantId}"] ${tagName} {`,
       ...lines.map((line) => line.slice(2)),
       '}',
     ].join('\n');
   }
   return [
     `@scope ([data-impeccable-variant="${variantId}"]) {`,
-    `  :scope > ${selector} {`,
+    `  :scope ${tagName} {`,
     ...lines,
     '  }',
     '}',
   ].join('\n');
-}
-
-function extractFirstTagName(html) {
-  const match = String(html).match(/<([A-Za-z][\w:-]*)\b/);
-  return match ? match[1] : '*';
 }
 
 /**
