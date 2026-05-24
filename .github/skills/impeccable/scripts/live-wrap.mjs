@@ -343,6 +343,10 @@ The agent should insert variant HTML at insertLine.`);
 // ---------------------------------------------------------------------------
 
 function argVal(args, flag) {
+  const prefix = flag + '=';
+  for (const arg of args) {
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
+  }
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
 }

@@ -460,7 +460,7 @@ Be surgical with typed source data. If the visible edit changes integer-backed t
 
 Never copy live runtime scaffolding into source: no `contenteditable`, `data-impeccable-*` edit markers, variant wrappers, `<style>`, `<script>`, or generated browser attributes.
 
-If an `originalText` is not found, mark that entry failed and move to the next op. Do not retry blindly, do not fuzzy-match, do not create a new file.
+If an `originalText` is not found, mark that entry failed and move to the next entry. Do not partially apply the remaining ops for that failed entry, do not retry blindly, do not fuzzy-match, and do not create a new file.
 
 ### 2. Reply once, after every edit is attempted
 
@@ -493,8 +493,8 @@ The buffer schema, endpoints, and the full failure-reason catalog live in **Manu
 
 Read this section to answer the user ("what's staged?", "why didn't my edit apply?") or to recover a stuck Apply. The flow you actually execute is Handle `manual_edit_apply` above. The browser owns the three endpoints below; the server then routes the batch one of two ways:
 
-- **Track A (chat)**: server pushes a `manual_edit_apply` poll event you handle above. Chosen when chat is the only available AI runner, or when the user configured chat-only routing.
-- **Track B (subprocess)**: server spawns `live-commit-manual-edits.mjs`, which calls Codex or Claude CLI. Chosen when a CLI is authenticated. You are not involved; your only contact is the `--page-url` flag on `live-wrap.mjs` (Handle generate step 2).
+- **Track A (chat)**: server pushes a `manual_edit_apply` poll event you handle above. Chosen when the user configured chat-only routing, or when auto mode sees a fresh chat `/poll` loop.
+- **Track B (subprocess)**: server spawns `live-commit-manual-edits.mjs`, which calls Codex or Claude CLI. Chosen when auto mode does not see an active chat poll and a CLI runner is available. You are not involved; your only contact is the `--page-url` flag on `live-wrap.mjs` (Handle generate step 2).
 
 Both tracks share the same verify / rollback / buffer-clear pipeline.
 

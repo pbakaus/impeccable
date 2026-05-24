@@ -437,6 +437,24 @@ colors: {}
       assert.equal(result.failed[0].reason, 'chat_agent_timeout');
       assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
 
+      const lateAck = await fetch(`http://localhost:${timeoutServer.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: timeoutServer.token,
+          id: event.id,
+          type: 'done',
+          data: {
+            status: 'done',
+            appliedEntryIds: ['feedface'],
+            failed: [],
+            files: ['src/page.html'],
+          },
+        }),
+      });
+      assert.equal(lateAck.status, 409);
+      assert.equal((await lateAck.json()).error, 'stale_manual_edit_apply_reply');
+
       const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
       assert.equal(buffer.entries.length, 1);
     } finally {

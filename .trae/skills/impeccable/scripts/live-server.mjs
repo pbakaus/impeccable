@@ -90,11 +90,20 @@ const state = {
   // event. Used to detect "a chat agent is likely attached" without requiring
   // a poll to be parked at the exact moment we dispatch.
   lastPollAt: 0,
+  timedOutApplyIds: new Set(),
 };
 
 const CHAT_POLL_FRESHNESS_MS = 60_000;
 const APPLY_EVENT_HARD_TIMEOUT_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_HARD_TIMEOUT_MS || 150_000);
 const APPLY_EVENT_SOFT_DEADLINE_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_SOFT_DEADLINE_MS || 120_000);
+
+function tombstoneTimedOutApplyId(eventId) {
+  if (!eventId) return;
+  state.timedOutApplyIds.add(eventId);
+  if (state.timedOutApplyIds.size <= 200) return;
+  const oldest = state.timedOutApplyIds.values().next().value;
+  state.timedOutApplyIds.delete(oldest);
+}
 
 function chatAgentLikelyActive() {
   if (state.pendingPolls.length > 0) return true;
@@ -115,6 +124,7 @@ function pushApplyEventAndWait(batch, pageUrl) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       state.pendingApplyDeferreds.delete(eventId);
+      tombstoneTimedOutApplyId(eventId);
       acknowledgePendingEvent(eventId);
       reject(new Error('chat_agent_timeout'));
     }, APPLY_EVENT_HARD_TIMEOUT_MS);
@@ -1016,6 +1026,11 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
+    if (state.timedOutApplyIds.has(msg.id)) {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply' }));
+      return;
+    }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);
     let skipJournalReply = false;
     if (!acknowledgedEvent && state.sessionStore && msg.id) {
@@ -1101,6 +1116,9 @@ Endpoints:
   /annotation          POST raw image/png to stage a variant screenshot
   /events              SSE stream (server→browser) + POST (browser→server)
   /poll                Long-poll for agent CLI
+  /manual-edit-stash   Stage browser copy edits
+  /manual-edit-commit  Apply staged browser copy edits
+  /manual-edit-discard Discard staged browser copy edits
   /source              Raw source file reader (no-HMR fallback)
   /status              Durable recovery status (token-protected)
   /health              Health check`);

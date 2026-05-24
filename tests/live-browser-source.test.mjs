@@ -52,6 +52,14 @@ describe('live-browser source contracts', () => {
       /function parseManualEditRefSegment\(segment\)[\s\S]*?function elementMatchesManualRefSegment\(el, segment\)/,
       'Discard restore should parse Impeccable document refs instead of treating them as raw CSS selectors',
     );
+    const refMatchStart = SOURCE.indexOf('function elementMatchesManualRefSegment');
+    const refMatchEnd = SOURCE.indexOf('function cssIdent', refMatchStart);
+    const refMatchFn = SOURCE.slice(refMatchStart, refMatchEnd);
+    assert.match(
+      refMatchFn,
+      /if \(segment\.id && el\.id !== segment\.id\) return false;[\s\S]*for \(const cls of segment\.classes\)[\s\S]*if \(segment\.nth && indexAmongSameTag\(el\) !== segment\.nth\) return false;/,
+      'Discard restore refs should require id/classes and nth-of-type to match the same element',
+    );
     assert.match(
       SOURCE,
       /const restoreHint = mixedTextWrapRestoreHint\(row\.el\);[\s\S]{0,80}if \(restoreHint\) op\.restore = restoreHint;/,

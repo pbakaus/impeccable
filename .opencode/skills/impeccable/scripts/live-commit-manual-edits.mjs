@@ -16,7 +16,7 @@
  */
 
 import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
-import { readBuffer, writeBuffer, countByPage } from './live-manual-edits-buffer.mjs';
+import { readBuffer, readBufferStrict, writeBuffer, countByPage } from './live-manual-edits-buffer.mjs';
 import { isGeneratedFile } from './is-generated.mjs';
 import {
   runCopyEditBatchAgent,
@@ -166,23 +166,6 @@ function sourceHintWindowFailure(cwd, op) {
     };
   }
   return null;
-}
-
-function candidateFilesForOp(batch, op, reportedFiles, cwd) {
-  const candidate = (batch.candidates || []).find((item) => item.entryId === op.entryId && item.ref === op.ref);
-  const files = [
-    ...reportedFiles,
-    op.sourceHint?.file,
-    candidate?.sourceHint?.relativeFile,
-    candidate?.sourceHint?.file,
-    ...(candidate?.textMatches || []).map((item) => item.file),
-    ...(candidate?.objectKeyMatches || []).map((item) => item.file),
-    ...(candidate?.locatorMatches || []).map((item) => item.file),
-    ...(candidate?.contextTextMatches || []).map((item) => item.file),
-  ];
-  return uniqueStrings(files)
-    .map((file) => normalizeRelativeFile(cwd, file))
-    .filter(Boolean);
 }
 
 function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
@@ -434,9 +417,14 @@ function changedFilesSinceSnapshot(cwd, snapshot) {
   return [...changed.values()];
 }
 
-function rollbackChangedFiles(cwd, snapshot, extraFiles = []) {
+function rollbackChangedFiles(cwd, snapshot, extraFiles = [], scopeFiles = []) {
   const changed = changedFilesSinceSnapshot(cwd, snapshot);
   const byFile = new Map(changed.map((item) => [item.file, item]));
+  const scope = new Set(
+    [...(scopeFiles || []), ...(extraFiles || [])]
+      .map((file) => normalizeRollbackPath(cwd, file))
+      .filter(Boolean),
+  );
   for (const file of extraFiles || []) {
     const relative = normalizeRollbackPath(cwd, file);
     if (relative && !byFile.has(relative)) {
@@ -447,6 +435,7 @@ function rollbackChangedFiles(cwd, snapshot, extraFiles = []) {
   const rolledBackFiles = [];
   const rollbackFailures = [];
   for (const item of byFile.values()) {
+    if (!scope.has(item.file)) continue;
     const absolute = path.resolve(cwd, item.file);
     const before = snapshot.get(item.file);
     try {
@@ -467,6 +456,35 @@ function rollbackChangedFiles(cwd, snapshot, extraFiles = []) {
   return { rolledBackFiles, rollbackFailures };
 }
 
+function collectApplyOwnedFiles(batch, cwd, extraFiles = []) {
+  const files = [];
+  for (const entry of batch?.entries || []) {
+    for (const op of entry.ops || []) files.push(op.sourceHint?.file);
+  }
+  for (const candidate of batch?.candidates || []) {
+    files.push(candidate.sourceHint?.relativeFile, candidate.sourceHint?.file);
+    for (const item of candidate.textMatches || []) files.push(item.file);
+    for (const item of candidate.objectKeyMatches || []) files.push(item.file);
+    for (const item of candidate.locatorMatches || []) files.push(item.file);
+    for (const item of candidate.contextTextMatches || []) files.push(item.file);
+  }
+  files.push(...(extraFiles || []));
+  return uniqueStrings(files)
+    .map((file) => normalizeRollbackPath(cwd, file))
+    .filter(Boolean);
+}
+
+function unreportedChangedFiles(cwd, snapshot, reportedFiles) {
+  const reported = new Set(
+    (reportedFiles || [])
+      .map((file) => normalizeRollbackPath(cwd, file))
+      .filter(Boolean),
+  );
+  return changedFilesSinceSnapshot(cwd, snapshot)
+    .map((item) => item.file)
+    .filter((file) => !reported.has(file));
+}
+
 function normalizeRollbackPath(cwd, file) {
   if (!file || typeof file !== 'string') return null;
   const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
@@ -485,6 +503,22 @@ export async function commitManualEdits({
   applyBatchToSource = undefined,
   chatAvailable = undefined,
 } = {}) {
+  try {
+    readBufferStrict(cwd);
+  } catch (err) {
+    return {
+      applied: [],
+      failed: [],
+      files: [],
+      cleared: 0,
+      count: 0,
+      pageUrl,
+      reason: 'manual_edit_buffer_invalid',
+      message: err.message || String(err),
+      ...countByPage(cwd),
+    };
+  }
+
   const batch = buildManualEditEvidence({ cwd, pageUrl });
   const count = countOps(batch.entries);
   if (count === 0) {
@@ -501,6 +535,7 @@ export async function commitManualEdits({
   }
 
   const rollbackSnapshot = snapshotRollbackFiles(cwd);
+  const baseRollbackScope = collectApplyOwnedFiles(batch, cwd);
   let result;
   try {
     result = await runCopyEditBatchAgent(batch, {
@@ -512,7 +547,7 @@ export async function commitManualEdits({
       chatAvailable,
     });
   } catch (err) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, [], baseRollbackScope);
     return {
       applied: [],
       failed: batch.entries.map((entry) => ({
@@ -531,7 +566,8 @@ export async function commitManualEdits({
   }
 
   if (result.status === 'error') {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || []);
+    const rollbackScope = collectApplyOwnedFiles(batch, cwd, result.files || []);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     return {
       applied: [],
       failed: normalizeFailedEntries(batch, result, result.message || 'AI copy edit failed'),
@@ -551,9 +587,50 @@ export async function commitManualEdits({
     .map((file) => normalizeRelativeFile(cwd, file))
     .filter(Boolean);
   const aiFailed = normalizeFailedEntries(batch, result, 'AI copy edit failed');
+  const rollbackScope = collectApplyOwnedFiles(batch, cwd, result.files || []);
+  const failedIds = new Set(aiFailed.map((item) => item.id).filter(Boolean));
+  const conflictingAppliedIds = reportedAppliedIds.filter((id) => failedIds.has(id));
+
+  if (conflictingAppliedIds.length > 0) {
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
+    const conflictingEntries = batch.entries.filter((entry) => conflictingAppliedIds.includes(entry.id));
+    return {
+      applied: [],
+      failed: [
+        ...verificationFailuresForEntries(batch, conflictingEntries, 'conflicting_apply_result'),
+        ...aiFailed.filter((item) => !conflictingAppliedIds.includes(item.id)),
+      ],
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      notes: result.notes || [],
+      rolledBackFiles: rollback.rolledBackFiles,
+      rollbackFailures: rollback.rollbackFailures,
+      ...countByPage(cwd),
+    };
+  }
+
+  const unreportedFiles = unreportedChangedFiles(cwd, rollbackSnapshot, result.files || []);
+  if (unreportedFiles.length > 0) {
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
+    return {
+      applied: [],
+      failed: verificationFailuresForEntries(batch, batch.entries, 'unreported_source_changes', { files: unreportedFiles }),
+      files: result.files || [],
+      unreportedFiles,
+      cleared: 0,
+      count,
+      pageUrl,
+      notes: result.notes || [],
+      rolledBackFiles: rollback.rolledBackFiles,
+      rollbackFailures: rollback.rollbackFailures,
+      ...countByPage(cwd),
+    };
+  }
 
   if (result.status === 'done' && reportedAppliedIds.length === 0) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || []);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     return {
       applied: [],
       failed: verificationFailuresForEntries(batch, batch.entries, 'missing_applied_entry_ids'),
@@ -570,7 +647,7 @@ export async function commitManualEdits({
 
   const reportedAppliedEntries = batch.entries.filter((entry) => reportedAppliedIds.includes(entry.id));
   if (reportedAppliedIds.length > 0 && reportedFiles.length === 0) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || []);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     return {
       applied: [],
       failed: [
@@ -620,7 +697,7 @@ export async function commitManualEdits({
         reason: 'rolled_back_due_to_batch_verification_failure',
         candidates: candidatesForEntry(batch, entry.id),
       }));
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || []);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     return {
       applied: [],
       failed: [
@@ -640,7 +717,7 @@ export async function commitManualEdits({
 
   const postChecks = runCopyEditPostApplyChecks({ cwd, files: result.files || [] });
   if (!postChecks.ok) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || []);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     const postCheckEntries = verifiedAppliedIds.length > 0
       ? reportedAppliedEntries.filter((entry) => verifiedAppliedIds.includes(entry.id))
       : batch.entries;

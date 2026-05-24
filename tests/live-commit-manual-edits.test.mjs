@@ -106,6 +106,29 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'b,c');
   });
 
+  it('treats entries reported as both applied and failed as a malformed result', () => {
+    fs.writeFileSync(path.join(tmpDir, 'src', 'a.html'), '<h1>A new</h1>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'a', ops: [{ ref: 'a', tag: 'h1', originalText: 'A original', newText: 'A new' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'partial',
+        appliedEntryIds: ['a'],
+        failed: [{ entryId: 'a', reason: 'ambiguous after edit' }],
+        files: ['src/a.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'conflicting_apply_result');
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'a');
+  });
+
   it('treats done without explicit appliedEntryIds as failed and keeps staged entries', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1>Hello</h1>\n');
     writeBuffer(tmpDir, {
@@ -219,6 +242,51 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.failed[0].reason, 'source_verification_failed');
     assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
     assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('fails instead of clearing when Apply changes an unreported source file', () => {
+    const pageFile = path.join(tmpDir, 'src', 'page.html');
+    const notesFile = path.join(tmpDir, 'src', 'notes.html');
+    const beforePage = '<h1 class="hero">Welcome</h1>\n';
+    const beforeNotes = '<p>Do not touch</p>\n';
+    fs.writeFileSync(pageFile, beforePage);
+    fs.writeFileSync(notesFile, beforeNotes);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">Hello</h1>\n',
+        'src/notes.html': '<p>Unexpected side write</p>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'unreported_source_changes');
+    assert.deepEqual(result.unreportedFiles, ['src/notes.html']);
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), beforePage);
+    assert.equal(fs.readFileSync(notesFile, 'utf-8'), '<p>Unexpected side write</p>\n');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
@@ -427,6 +495,18 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.reason, 'no_pending_edits');
     assert.equal(result.count, 0);
+    assert.equal(result.cleared, 0);
+  });
+
+  it('reports a corrupt pending buffer instead of treating it as empty', () => {
+    const bufferPath = path.join(tmpDir, '.impeccable', 'live', 'pending-manual-edits.json');
+    fs.mkdirSync(path.dirname(bufferPath), { recursive: true });
+    fs.writeFileSync(bufferPath, '{ not valid json');
+
+    const result = runCommit();
+
+    assert.equal(result.reason, 'manual_edit_buffer_invalid');
+    assert.match(result.message, /manual_edit_buffer_unreadable/);
     assert.equal(result.cleared, 0);
   });
 

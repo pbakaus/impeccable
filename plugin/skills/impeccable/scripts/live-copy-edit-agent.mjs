@@ -11,8 +11,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const require = createRequire(import.meta.url);
 
 export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
   return [
@@ -122,6 +124,9 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
     }
     const markerMatch = findLeftoverImpeccableMarker(content);
     if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch });
+    const syntaxCheck = checkFrameworkSourceSyntax(relativeFile, content);
+    if (syntaxCheck?.failure) failures.push(syntaxCheck.failure);
+    if (syntaxCheck?.warning) warnings.push(syntaxCheck.warning);
     if (/\.(mjs|cjs|js)$/.test(relativeFile)) {
       const check = spawnSync(process.execPath, ['--check', file], { cwd, encoding: 'utf-8' });
       if (check.status !== 0) {
@@ -137,6 +142,34 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
   if (validation?.failure) failures.push(validation.failure);
   if (validation?.warning) warnings.push(validation.warning);
   return { ok: failures.length === 0, failures, warnings };
+}
+
+function checkFrameworkSourceSyntax(relativeFile, content) {
+  if (!/\.(jsx|tsx|ts)$/.test(relativeFile)) return null;
+  let parser;
+  try {
+    parser = require('@babel/parser');
+  } catch {
+    return { warning: { file: relativeFile, reason: 'syntax_parser_unavailable' } };
+  }
+  const plugins = ['jsx'];
+  if (/\.(ts|tsx)$/.test(relativeFile)) plugins.push('typescript');
+  try {
+    parser.parse(content, {
+      sourceType: 'module',
+      plugins,
+      errorRecovery: false,
+    });
+    return null;
+  } catch (err) {
+    return {
+      failure: {
+        file: relativeFile,
+        reason: 'invalid_source_syntax',
+        message: err.message || String(err),
+      },
+    };
+  }
 }
 
 function findLeftoverImpeccableMarker(content) {

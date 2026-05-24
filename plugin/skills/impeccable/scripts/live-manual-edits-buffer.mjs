@@ -22,15 +22,27 @@ export function getBufferPath(cwd = process.cwd()) {
 }
 
 export function readBuffer(cwd = process.cwd()) {
+  return readBufferInternal(cwd, { strict: false });
+}
+
+export function readBufferStrict(cwd = process.cwd()) {
+  return readBufferInternal(cwd, { strict: true });
+}
+
+function readBufferInternal(cwd, { strict }) {
   const filePath = getBufferPath(cwd);
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entries)) {
+      if (strict) throw new Error('manual_edit_buffer_invalid_schema');
       return { version: BUFFER_VERSION, entries: [] };
     }
     return { version: BUFFER_VERSION, entries: parsed.entries };
-  } catch {
+  } catch (err) {
+    if (strict && err?.code !== 'ENOENT') {
+      throw new Error('manual_edit_buffer_unreadable: ' + (err.message || String(err)));
+    }
     return { version: BUFFER_VERSION, entries: [] };
   }
 }
@@ -58,12 +70,14 @@ export function stageEntry(cwd, newEntry) {
       if (existing.pageUrl !== pageUrl) continue;
       const existingOpIdx = existing.ops.findIndex((op) => op.ref === newOp.ref);
       if (existingOpIdx >= 0) {
-        // Update newText only; keep originalText.
+        // Keep the original source text but refresh the latest DOM/source evidence.
         existing.ops[existingOpIdx] = {
-          ...existing.ops[existingOpIdx],
+          ...newOp,
+          originalText: existing.ops[existingOpIdx].originalText,
           newText: newOp.newText,
           deleted: newOp.deleted || false,
         };
+        if (newEntry.element) existing.element = newEntry.element;
         existing.stagedAt = new Date().toISOString();
         mergedIntoExisting = true;
         break;

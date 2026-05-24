@@ -69,6 +69,20 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.doesNotMatch(after, /<h1 class="hero">Welcome<\/h1>/);
   });
 
+  it('accepts --page-url=<url> when retrying after missing page-url guidance', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
+
+    seedBuffer([
+      entry({ pageUrl: '/', ops: [{ ref: 'div>h1.1', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello equals' }] }),
+    ]);
+
+    runWrap(['--classes', 'hero', '--tag', 'h1', '--page-url=/']);
+
+    const after = fs.readFileSync(file, 'utf-8');
+    assert.match(after, /Hello equals/);
+  });
+
   it('updates only the staged leaf when matching text repeats inside the selected original block', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<section class="hero">\n  <h1>Welcome</h1>\n  <p>Welcome</p>\n</section>\n');

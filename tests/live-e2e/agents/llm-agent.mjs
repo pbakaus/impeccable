@@ -1,11 +1,12 @@
 /**
  * LLM-backed VariantAgent for the live-mode E2E suite.
  *
- * Implements the same one-method interface as createFakeAgent() in
+ * Implements the same interface as createFakeAgent() in
  * tests/live-e2e/agent.mjs: generateVariants(event, context) returns
- * { scopedCss, variants[] }. The orchestrator handles wrap, write, accept,
- * and carbonize cleanup deterministically, so this module's only job is
- * producing variant content for the wrapper.
+ * { scopedCss, variants[] }, and applyManualEdits(event, context) returns the
+ * production manual-edit Apply result shape after applying sourceEdits in the
+ * fixture workspace. The orchestrator handles wrap, write, accept, and
+ * carbonize cleanup deterministically.
  *
  * Primary provider/model: Anthropic + Claude Haiku 4.5. DeepSeek V4 Flash is
  * a secondary cheap fallback used only when ANTHROPIC_API_KEY is absent and

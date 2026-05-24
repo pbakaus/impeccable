@@ -78,6 +78,19 @@ describe('live-copy-edit-agent', () => {
     }
   });
 
+  it('flags invalid JSX syntax in post-apply checks', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-jsx-checks-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'), 'export default function App() { return <h1>Broken</h2>; }\n');
+      const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/App.jsx'] });
+      assert.equal(checks.ok, false);
+      assert.equal(checks.failures.some((item) => item.reason === 'invalid_source_syntax'), true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('does not flag live-mode marker words when they only appear as source literals', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-literals-'));
     try {

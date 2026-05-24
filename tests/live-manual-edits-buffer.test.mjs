@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   readBuffer,
+  readBufferStrict,
   writeBuffer,
   stageEntry,
   removeEntries,
@@ -25,17 +26,17 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function entry({ id = 'e1', pageUrl = '/', ops = [] } = {}) {
+function entry({ id = 'e1', pageUrl = '/', element = { tagName: 'p' }, ops = [] } = {}) {
   return {
     id,
     pageUrl,
-    element: { tagName: 'p' },
+    element,
     ops,
   };
 }
 
-function op({ ref = 'div>p.1', originalText = 'A', newText = 'B' } = {}) {
-  return { ref, tag: 'p', classes: ['x'], originalText, newText };
+function op({ ref = 'div>p.1', originalText = 'A', newText = 'B', ...rest } = {}) {
+  return { ref, tag: 'p', classes: ['x'], originalText, newText, ...rest };
 }
 
 describe('live-manual-edits-buffer', () => {
@@ -51,6 +52,13 @@ describe('live-manual-edits-buffer', () => {
       fs.writeFileSync(filePath, '{ this is not json');
       const buf = readBuffer(tmpDir);
       assert.deepEqual(buf.entries, []);
+    });
+
+    it('strict mode throws when the buffer is malformed JSON', () => {
+      const filePath = getBufferPath(tmpDir);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, '{ this is not json');
+      assert.throws(() => readBufferStrict(tmpDir), /manual_edit_buffer_unreadable/);
     });
 
     it('returns empty shape when entries array is missing', () => {
@@ -80,6 +88,35 @@ describe('live-manual-edits-buffer', () => {
       assert.equal(buf.entries[0].ops.length, 1);
       assert.equal(buf.entries[0].ops[0].originalText, 'A');
       assert.equal(buf.entries[0].ops[0].newText, 'C');
+    });
+
+    it('merges by (pageUrl, ref): re-edit refreshes DOM and source evidence', () => {
+      stageEntry(tmpDir, entry({
+        element: { tagName: 'section', textContent: 'first' },
+        ops: [op({
+          originalText: 'A',
+          newText: 'B',
+          sourceHint: { file: 'src/old.jsx', line: 1 },
+          leaf: { textContent: 'first' },
+        })],
+      }));
+      stageEntry(tmpDir, entry({
+        element: { tagName: 'section', textContent: 'second' },
+        ops: [op({
+          originalText: 'IGNORED',
+          newText: 'C',
+          sourceHint: { file: 'src/new.jsx', line: 4 },
+          leaf: { textContent: 'second' },
+          nearbyEditableTexts: [{ text: 'fresh sibling' }],
+        })],
+      }));
+      const buf = readBuffer(tmpDir);
+      assert.equal(buf.entries[0].ops[0].originalText, 'A');
+      assert.equal(buf.entries[0].ops[0].newText, 'C');
+      assert.deepEqual(buf.entries[0].ops[0].sourceHint, { file: 'src/new.jsx', line: 4 });
+      assert.equal(buf.entries[0].ops[0].leaf.textContent, 'second');
+      assert.equal(buf.entries[0].ops[0].nearbyEditableTexts[0].text, 'fresh sibling');
+      assert.equal(buf.entries[0].element.textContent, 'second');
     });
 
     it('keeps separate entries per pageUrl even for the same ref', () => {

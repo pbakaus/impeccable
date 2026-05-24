@@ -2583,11 +2583,11 @@
   function elementMatchesManualRefSegment(el, segment) {
     if (!el || !segment) return false;
     if (el.tagName.toLowerCase() !== segment.tag) return false;
-    if (segment.nth) return indexAmongSameTag(el) === segment.nth;
     if (segment.id && el.id !== segment.id) return false;
     for (const cls of segment.classes) {
       if (!el.classList || !el.classList.contains(cls)) return false;
     }
+    if (segment.nth && indexAmongSameTag(el) !== segment.nth) return false;
     return true;
   }
 
