@@ -32,7 +32,7 @@ Required:
 
 Element identification (at least one required):
   --element-id ID    HTML id attribute of the element
-  --classes A,B,C    Comma-separated CSS class names
+  --classes A,B,C    Comma- or space-separated CSS class names
   --tag TAG          Tag name (div, section, etc.)
   --query TEXT       Fallback: raw text to search for
 
@@ -489,13 +489,15 @@ function buildSearchQueries(elementId, classes, tag, query) {
   // Emit both class="..." (HTML) and className="..." (React/JSX) so whichever
   // convention the file uses will match.
   if (classes) {
-    const classList = classes.split(',').map(c => c.trim()).filter(Boolean);
+    const classList = splitClassList(classes);
     if (classList.length > 1) {
       const joined = classList.join(' ');
       const sorted = [...classList].sort((a, b) => b.length - a.length);
       queries.push('class="' + joined + '"');
       queries.push('className="' + joined + '"');
-      queries.push(sorted[0]); // most distinctive single class, fallback
+      for (const className of sorted) {
+        queries.push(className);
+      }
     } else if (classList.length === 1) {
       queries.push(classList[0]);
     }
@@ -504,7 +506,7 @@ function buildSearchQueries(elementId, classes, tag, query) {
   // 3. Tag + class combo (e.g., <section class="hero">).
   // Same dual-emit for JSX compatibility.
   if (tag && classes) {
-    const firstClass = classes.split(',')[0].trim();
+    const firstClass = splitClassList(classes)[0];
     queries.push('<' + tag + ' class="' + firstClass);
     queries.push('<' + tag + ' className="' + firstClass);
   }
@@ -515,6 +517,10 @@ function buildSearchQueries(elementId, classes, tag, query) {
   }
 
   return queries;
+}
+
+function splitClassList(classes) {
+  return String(classes).split(/[,\s]+/).map(c => c.trim()).filter(Boolean);
 }
 
 function detectCommentSyntax(filePath) {

@@ -64,9 +64,16 @@ describe('buildSearchQueries', () => {
     assert.ok(queries.some(q => q === 'class="hero-section dark-theme"'));
   });
 
-  it('includes the most distinctive single class (longest)', () => {
+  it('accepts browser className whitespace when building class queries', () => {
+    const queries = buildSearchQueries(null, 'hero-title _heroTitle_1lpqp_2', 'h1', null);
+    assert.ok(queries.includes('<h1 className="hero-title'));
+    assert.ok(queries.includes('hero-title'));
+  });
+
+  it('includes each single class fallback for multi-class elements', () => {
     const queries = buildSearchQueries(null, 'btn,hero-combined-left', null, null);
     assert.ok(queries.some(q => q === 'hero-combined-left'));
+    assert.ok(queries.some(q => q === 'btn'));
   });
 
   it('includes tag+class combo', () => {
@@ -507,6 +514,29 @@ describe('live-wrap — JSX / TSX correctness', () => {
     const inside = originalMatch[1];
     assert.ok(inside.includes('shared-class target-marker'), 'correct target wrapped');
     assert.ok(!inside.includes('extra-class'), 'decoy not wrapped');
+  });
+
+  it('falls back to source-visible classes when runtime CSS Modules hashes are present', () => {
+    const jsx = `import styles from './App.module.css';
+
+export default function App() {
+  return (
+    <main>
+      <h1 className={\`hero-title \${styles.heroTitle}\`}>CSS Modules Fixture</h1>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.jsx'), jsx);
+
+    execSync(
+      `node skill/scripts/live-wrap.mjs --id cssModuleA --count 3 --classes "hero-title _heroTitle_1lpqp_2" --tag "h1" --text "CSS Modules Fixture" --file "${join(tmp, 'App.jsx')}"`,
+      { cwd: process.cwd(), encoding: 'utf-8' }
+    );
+
+    const modified = readFileSync(join(tmp, 'App.jsx'), 'utf-8');
+    const originalMatch = modified.match(/data-impeccable-variant="original"[^>]*>([\s\S]*?)\s*<\/div>/);
+    assert.ok(originalMatch, 'original variant wrapper exists');
+    assert.ok(originalMatch[1].includes('CSS Modules Fixture'), 'target content is wrapped');
   });
 
   it('keeps the JSX wrapper single-rooted by tucking marker comments INSIDE the outer <div>', () => {

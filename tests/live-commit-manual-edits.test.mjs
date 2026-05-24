@@ -523,7 +523,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
               tag: 'span',
               classes: ['foundation-card-count'],
               originalText: '23',
-              newText: 'TT23',
+              newText: '42',
               nearbyEditableTexts: [{ text: 'Responsive' }, { text: 'Fluid layouts, touch targets' }],
             },
           ],
@@ -535,7 +535,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
         'site/scripts/data.js':
           "export const skillFocusAreas = [{ area: 'ResXXX', detail: 'Fluid layouts, touch targets' }];\n" +
-          "export const dimensionGuidelineCounts = { 'ResXXX': 'TT23' };\n",
+          "export const dimensionGuidelineCounts = { 'ResXXX': 42 };\n",
         'site/scripts/components/foundation-animations.js':
           "export const foundationAnimations = { 'ResXXX': '<svg>responsive</svg>' };\n",
       }),
@@ -553,7 +553,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 0);
   });
 
-  it('verifies standalone count edits from nearby dynamic data context', () => {
+  it('verifies standalone integer count edits from nearby dynamic data context', () => {
     fs.mkdirSync(path.join(tmpDir, 'site/scripts'), { recursive: true });
     const noisyCounts = Array.from({ length: 24 }, (_, index) => `  'noise-${index}': 23,`).join('\n');
     const before =
@@ -582,7 +582,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
               tag: 'span',
               classes: ['foundation-card-count'],
               originalText: '23',
-              newText: 'TTT',
+              newText: '47',
               nearbyEditableTexts: [{ text: 'Responsive' }, { text: 'Fluid layouts, touch targets' }],
             },
           ],
@@ -599,7 +599,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
           "export const skillFocusAreas = [{ area: 'Responsive', detail: 'Fluid layouts, touch targets' }];\n" +
           "export const repeatedMentions = ['Responsive', 'Responsive', 'Responsive', 'Responsive'];\n" +
           "export const dimensionGuidelineCounts = {\n" +
-          "  'Responsive': 'TTT',\n" +
+          "  'Responsive': 47,\n" +
           "};\n",
       }),
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
@@ -613,6 +613,116 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.applied.length, 1);
     assert.equal(result.failed.length, 0);
     assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
+  it('allows non-numeric count display copy when integer source data stays typed', () => {
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({
+      scripts: {
+        'impeccable:manual-edit-validate': 'node src/validate.mjs',
+      },
+    }, null, 2));
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'stats.mjs'),
+      "export const stats = { count: 7 };\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'validate.mjs'),
+      [
+        "import { stats } from './stats.mjs';",
+        "if (!Number.isInteger(stats.count)) throw new Error('stats.count must stay integer');",
+        "if (stats.countLabel !== '7 seats') throw new Error('stats.countLabel must carry display copy');",
+        '',
+      ].join('\n'),
+    );
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'typed-count',
+          element: { tagName: 'span', classes: ['stat-count'], textContent: '7' },
+          ops: [{
+            ref: 'body>main>span.stat-count',
+            tag: 'span',
+            classes: ['stat-count'],
+            originalText: '7',
+            newText: '7 seats',
+            sourceHint: { file: 'src/stats.mjs', line: 1, column: 31 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/stats.mjs': "export const stats = { count: 7, countLabel: '7 seats' };\n",
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['typed-count'],
+        files: ['src/stats.mjs'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.failed.length, 0);
+    assert.equal(fs.readFileSync(path.join(tmpDir, 'src', 'stats.mjs'), 'utf-8'), "export const stats = { count: 7, countLabel: '7 seats' };\n");
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
+  it('rolls back when Apply coerces an integer source model into display text that crashes validation', () => {
+    const statsFile = path.join(tmpDir, 'src', 'stats.mjs');
+    const before = "export const stats = { count: 7 };\n";
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({
+      scripts: {
+        'impeccable:manual-edit-validate': 'node src/validate.mjs',
+      },
+    }, null, 2));
+    fs.writeFileSync(statsFile, before);
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'validate.mjs'),
+      [
+        "import { stats } from './stats.mjs';",
+        "if (!Number.isInteger(stats.count)) throw new Error('stats.count must stay integer');",
+        '',
+      ].join('\n'),
+    );
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'typed-count',
+          element: { tagName: 'span', classes: ['stat-count'], textContent: '7' },
+          ops: [{
+            ref: 'body>main>span.stat-count',
+            tag: 'span',
+            classes: ['stat-count'],
+            originalText: '7',
+            newText: '7 seats',
+            sourceHint: { file: 'src/stats.mjs', line: 1, column: 31 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/stats.mjs': "export const stats = { count: '7 seats' };\n",
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['typed-count'],
+        files: ['src/stats.mjs'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(result.failed[0].checks.some((check) => check.reason === 'manual_edit_validation_failed'), true);
+    assert.match(result.failed[0].checks.find((check) => check.reason === 'manual_edit_validation_failed').message, /stats\.count must stay integer/);
+    assert.deepEqual(result.rolledBackFiles, ['src/stats.mjs']);
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(statsFile, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'typed-count');
   });
 
   it('fails validation and keeps staged entries when touched JS is invalid or markers remain', () => {
@@ -664,8 +774,9 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.match(prompt, /replace only the target text node or source string literal/);
     assert.match(prompt, /do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace/);
-    assert.doesNotMatch(prompt, /data-impeccable-original-text|data-impeccable-editable|contenteditable|-webkit-user-modify/);
-    assert.match(prompt, /Edited/);
+    const serializedBatch = prompt.split('Staged copy-edit batch:\n').pop();
+    assert.doesNotMatch(serializedBatch, /data-impeccable-original-text|data-impeccable-editable|contenteditable|-webkit-user-modify/);
+    assert.match(serializedBatch, /Edited/);
   });
 
   it('fails post-apply validation when live edit runtime attributes leak into source', () => {
@@ -728,6 +839,130 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.deepEqual(result.rollbackFailures, []);
     assert.equal(fs.readFileSync(file, 'utf-8'), before);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('rolls back when Apply leaks edit-mode contenteditable attributes into source', () => {
+    const file = path.join(tmpDir, 'src', 'App.jsx');
+    const before = 'export default function App() { return <h1 className="hero">Old</h1>; }\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'edit-ui',
+          ops: [{ ref: 'body>h1.hero', tag: 'h1', classes: ['hero'], originalText: 'Old', newText: 'Old New' }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/App.jsx': 'export default function App() { return <h1 className="hero" contenteditable="true" data-impeccable-editable="true" data-impeccable-original-text="Old">Old New</h1>; }\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['edit-ui'],
+        files: ['src/App.jsx'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(result.failed[0].checks.some((check) => /data-impeccable-(editable|original-text)/.test(check.marker)), true);
+    assert.deepEqual(result.rolledBackFiles, ['src/App.jsx']);
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'edit-ui');
+  });
+
+  it('rolls back when Apply leaves carbonize or variant scaffolding in source', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = '<h1 class="hero">Old</h1>\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'variant-scaffold',
+          ops: [{ ref: 'body>h1.hero', tag: 'h1', classes: ['hero'], originalText: 'Old', newText: 'New' }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': [
+          '<!-- impeccable-carbonize-start deadbeef -->',
+          '<div data-impeccable-variants="deadbeef" data-impeccable-variant-count="3">',
+          '  <div data-impeccable-variant="original"><h1 class="hero">New</h1></div>',
+          '</div>',
+          '<!-- impeccable-carbonize-end deadbeef -->',
+          '',
+        ].join('\n'),
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['variant-scaffold'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(
+      result.failed[0].checks.some((check) => /impeccable-carbonize-start|data-impeccable-variant/.test(check.marker)),
+      true,
+    );
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'variant-scaffold');
+  });
+
+  it('rolls back the whole batch when one applied edit leaves UI scaffolding behind', () => {
+    const pageFile = path.join(tmpDir, 'src', 'page.html');
+    const cardFile = path.join(tmpDir, 'src', 'card.html');
+    const beforePage = '<h1 class="hero">Old title</h1>\n';
+    const beforeCard = '<article class="card">Old card</article>\n';
+    fs.writeFileSync(pageFile, beforePage);
+    fs.writeFileSync(cardFile, beforeCard);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'title',
+          ops: [{ ref: 'body>h1.hero', tag: 'h1', classes: ['hero'], originalText: 'Old title', newText: 'New title' }],
+        }),
+        entry({
+          id: 'card',
+          ops: [{ ref: 'body>article.card', tag: 'article', classes: ['card'], originalText: 'Old card', newText: 'New card' }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">New title</h1>\n',
+        'src/card.html': '<article class="card"><span data-impeccable-text-wrap="true">New card</span></article>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['title', 'card'],
+        files: ['src/page.html', 'src/card.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.deepEqual(result.failed.map((item) => item.reason), [
+      'post_apply_validation_failed',
+      'post_apply_validation_failed',
+    ]);
+    assert.equal(result.failed[0].checks.some((check) => /data-impeccable-text-wrap/.test(check.marker)), true);
+    assert.deepEqual(new Set(result.rolledBackFiles), new Set(['src/page.html', 'src/card.html']));
+    assert.deepEqual(result.rollbackFailures, []);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), beforePage);
+    assert.equal(fs.readFileSync(cardFile, 'utf-8'), beforeCard);
+    assert.deepEqual(readBuffer(tmpDir).entries.map((item) => item.id), ['title', 'card']);
   });
 
   it('rolls back newly created files when post-apply validation fails', () => {

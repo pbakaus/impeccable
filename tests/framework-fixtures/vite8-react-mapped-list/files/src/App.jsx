@@ -1,7 +1,7 @@
 const ITEMS = [
-  { id: 'a', title: 'Alpha card' },
-  { id: 'b', title: 'Beta card' },
-  { id: 'c', title: 'Gamma card' },
+  { id: 'a', title: 'Alpha card', body: 'Alpha detail' },
+  { id: 'b', title: 'Beta card', body: 'Beta detail' },
+  { id: 'c', title: 'Gamma card', body: 'Gamma detail' },
 ];
 
 export default function App() {
@@ -12,7 +12,7 @@ export default function App() {
         {ITEMS.map((item) => (
           <article key={item.id} className="card">
             <h1 className="hero-title">{item.title}</h1>
-            <p>Body for {item.id}.</p>
+            <p className="card-body">{item.body}</p>
           </article>
         ))}
       </section>

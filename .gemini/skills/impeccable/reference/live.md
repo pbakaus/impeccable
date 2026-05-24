@@ -259,6 +259,8 @@ Use the `cssAuthoring` object returned by `live-wrap.mjs` to author the temporar
 
 **Each variant div contains exactly one top-level element: the full replacement for the original.** Use the same tag as the original (e.g. `<section>` if the user picked a `<section>`). Loose siblings (heading + paragraph + div as direct children of the variant div) break the outline tracking and the accept flow, which both assume one child.
 
+Preserve existing class-bearing descendants in that replacement root. If the original root contains editable leaves like `<h1 class="hero-title">` and `<p class="hero-hook">`, keep those same elements/classes as descendants of the replacement root, preferably in the same direct-child positions. Do not hide them inside a new structural wrapper such as `<div class="hero-inner">`; later Go/Apply cycles use those stable source leaves to find the right element again.
+
 The first variant has no `display: none` (visible by default). All others do. If variants use only inline styles and no preview CSS, omit the `<style>` tag entirely.
 
 One edit, all variants; the browser's MutationObserver picks everything up in one pass.
@@ -450,7 +452,13 @@ Each `batch.entries[i]` has `id` and `ops[]`; each op has `originalText`, `newTe
 
 ### 1. Apply each edit
 
-For each op: open the file from `op.sourceHint` (when absent, take the strongest match in `candidates`), confirm `originalText` is present, and `Edit` the exact `originalText` → `newText`, changing nothing else on the line. Update a coupled key (object key, animation key, count) only when it sits on the same line and the match is unambiguous. Record each entry as applied or failed.
+For each op: open the file from `op.sourceHint` (when absent, take the strongest match in `candidates`), confirm `originalText` is present, and `Edit` the exact `originalText` → `newText`, changing nothing else on the line. `sourceHint.file` + `sourceHint.line` wins over duplicate text elsewhere; only fail a hinted op when the exact source text is not present at or near that location. Update a coupled key (object key, animation key, count) only when it sits on the same line and the match is unambiguous.
+
+Only record an entry as applied after every op in that entry has been applied. If one op in an entry fails, mark that entry failed with the best candidate files/lines and continue with the next entry.
+
+Be surgical with typed source data. If the visible edit changes integer-backed text like `7` → `7 seats`, do not coerce the source model field (`count: 7`) into a string. Prefer a display string/expression that contains `newText` literally, for example replacing JSX/Svelte template output like `{String(stats.count)}` or `{stats.count}` with `{"7 seats"}` while leaving `stats.count` numeric. This lets the server verify the copy and keeps the app from crashing after Apply.
+
+Never copy live runtime scaffolding into source: no `contenteditable`, `data-impeccable-*` edit markers, variant wrappers, `<style>`, `<script>`, or generated browser attributes.
 
 If an `originalText` is not found, mark that entry failed and move to the next op. Do not retry blindly, do not fuzzy-match, do not create a new file.
 

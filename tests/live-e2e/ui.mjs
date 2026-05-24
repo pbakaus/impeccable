@@ -10,10 +10,15 @@
  * the bar's text content changes.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 const BAR_ID = '#impeccable-live-bar';
 const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
 const PICK_TOGGLE_ID = '#impeccable-live-pick-toggle';
+const EDIT_BADGE_ID = '#impeccable-live-edit-badge';
+const PENDING_DOCK_ID = '#impeccable-live-pending-dock';
 
 /**
  * Wait for the live handshake to complete:
@@ -42,15 +47,25 @@ export async function waitForHandshake(page, { timeout = 20_000 } = {}) {
  * connect. The handler reads the hovered element from `mousemove`, so we
  * dispatch a hover before the click.
  */
-export async function pickElement(page, selector) {
-  const el = await page.waitForSelector(selector, { timeout: 5_000 });
-  for (let attempt = 0; attempt < 2; attempt++) {
+export async function pickElement(page, selector, opts = {}) {
+  const position = opts.position || null;
+  if (opts.resetPickMode) await resetPickMode(page);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const el = await page.waitForSelector(selector, { timeout: 5_000 });
     await ensurePickerActive(page);
-    await el.hover();
-    // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
-    // click handler reads from it.
-    await page.waitForTimeout(50);
-    await clickPickTarget(page, el);
+    await hideAnnotationOverlay(page);
+    try {
+      await el.hover(position ? { position } : undefined);
+      // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
+      // click handler reads from it.
+      await page.waitForTimeout(50);
+      await clickPickTarget(page, el, position);
+    } catch (err) {
+      if (attempt === 2) throw err;
+      await page.waitForTimeout(250);
+      await resetPickMode(page);
+      continue;
+    }
     // Per-element bar mounts on click → wait for it. Dialog fixtures can
     // briefly hide the global live chrome while preActions open a portal, so
     // retry once after explicitly re-arming picker mode.
@@ -58,7 +73,8 @@ export async function pickElement(page, selector) {
       .waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 })
       .then(() => true, () => false);
     if (visible) break;
-    if (attempt === 1) {
+    await resetPickMode(page);
+    if (attempt === 2) {
       await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 1 });
     }
   }
@@ -80,10 +96,19 @@ export async function pickElement(page, selector) {
   );
 }
 
-async function clickPickTarget(page, el) {
+async function hideAnnotationOverlay(page) {
+  await page.evaluate(() => {
+    const annot = document.querySelector('#impeccable-live-annot');
+    if (annot) annot.style.display = 'none';
+  }).catch(() => {});
+}
+
+async function clickPickTarget(page, el, position = null) {
   const box = await el.boundingBox();
   if (box) {
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const x = position ? box.x + position.x : box.x + box.width / 2;
+    const y = position ? box.y + position.y : box.y + box.height / 2;
+    await page.mouse.click(x, y);
     return;
   }
   await el.evaluate((node) => node.click());
@@ -111,6 +136,21 @@ async function ensurePickerActive(page) {
     PICK_TOGGLE_ID,
     { timeout: 5_000 },
   );
+}
+
+async function resetPickMode(page) {
+  await page.evaluate((sel) => {
+    const btn = document.querySelector(sel);
+    if (!btn) return;
+    const active = btn.dataset.active === 'true';
+    if (active) btn.click();
+    btn.click();
+  }, PICK_TOGGLE_ID).catch(() => {});
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel)?.dataset.active === 'true',
+    PICK_TOGGLE_ID,
+    { timeout: 5_000 },
+  ).catch(() => {});
 }
 
 /**
@@ -200,8 +240,17 @@ async function clickBarButton(page, label) {
   // Real-LLM fixtures can leave Vite/Tailwind HMR settling for longer than a
   // human-visible click target stays Playwright-stable. Dispatch the click on
   // the current button if normal user-like clicks lost the remount race.
-  const clicked = await page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
-  if (!clicked) throw lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const clicked = await page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
+      if (clicked) return;
+    } catch (err) {
+      lastErr = err;
+    }
+    await page.waitForSelector(BAR_ID, { timeout: 5_000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  throw lastErr;
 }
 
 async function dispatchBarButton(page, label) {
@@ -280,6 +329,107 @@ async function ensureVisibleVariant(page, expectedVariant) {
 export async function clickDiscard(page) {
   // The discard button has just a "✕" glyph as text content.
   await page.locator(`${BAR_ID} button`, { hasText: '✕' }).click();
+}
+
+export async function clickEditCopy(page) {
+  await clickEditBadgeButton(page, 'Edit copy');
+  await page.waitForFunction(
+    () => document.querySelector('[data-impeccable-editable="true"]')?.isContentEditable === true,
+    { timeout: 5_000 },
+  );
+}
+
+export async function editTextLeaf(page, leafSelector, newText) {
+  const leaf = page.locator(leafSelector).first();
+  await leaf.waitFor({ state: 'visible', timeout: 5_000 });
+  const editable = await resolveEditableLeaf(page, leafSelector);
+  await editable.click({ timeout: 5_000 });
+  await editable.fill(newText, { timeout: 5_000 });
+}
+
+async function resolveEditableLeaf(page, leafSelector) {
+  const direct = page.locator(`${leafSelector}[contenteditable="true"]`).first();
+  if (await direct.count()) return direct;
+  const nested = page.locator(leafSelector).first().locator('[contenteditable="true"]').first();
+  if (await nested.count()) return nested;
+  return page.locator(leafSelector).first();
+}
+
+export async function clickSaveEdit(page) {
+  await clickEditBadgeButton(page, 'Save');
+  await page.waitForFunction(
+    () => !document.querySelector('[data-impeccable-editable="true"]'),
+    { timeout: 5_000 },
+  );
+}
+
+async function clickEditBadgeButton(page, label) {
+  const button = page.locator(`${EDIT_BADGE_ID} button`, { hasText: label });
+  try {
+    await button.click({ timeout: 5_000 });
+    return;
+  } catch (err) {
+    const clicked = await page.evaluate(({ badgeSel, text }) => {
+      const badge = document.querySelector(badgeSel);
+      const btn = [...(badge?.querySelectorAll('button') || [])].find((candidate) =>
+        (candidate.textContent || '').includes(text)
+      );
+      if (!btn) return false;
+      btn.click();
+      return true;
+    }, { badgeSel: EDIT_BADGE_ID, text: label });
+    if (!clicked) throw err;
+  }
+}
+
+export async function assertApplyDockVisible(page, expectedCount, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    ({ dockSel, expected }) => {
+      const dock = document.querySelector(dockSel);
+      if (!dock || dock.style.display === 'none') return false;
+      const pill = [...dock.querySelectorAll('button')].find((btn) =>
+        /Apply copy edit/.test(btn.textContent || '')
+      );
+      if (!pill || pill.style.display === 'none') return false;
+      if (expected == null) return true;
+      return parseInt(pill.dataset.count || '0', 10) === expected;
+    },
+    { dockSel: PENDING_DOCK_ID, expected: expectedCount },
+    { timeout },
+  );
+}
+
+export async function waitForApplyDockHidden(page, { timeout = 10_000 } = {}) {
+  await page.waitForFunction(
+    (dockSel) => {
+      const dock = document.querySelector(dockSel);
+      if (!dock || dock.style.display === 'none') return true;
+      const pill = [...dock.querySelectorAll('button')].find((btn) =>
+        /Apply copy edit/.test(btn.textContent || '')
+      );
+      return !pill || pill.style.display === 'none' || parseInt(pill.dataset.count || '0', 10) === 0;
+    },
+    PENDING_DOCK_ID,
+    { timeout },
+  );
+}
+
+export async function clickApplyEdits(page) {
+  const dialog = page.waitForEvent('dialog', { timeout: 5_000 })
+    .then((d) => d.accept())
+    .catch(() => {});
+  await page.locator(`${PENDING_DOCK_ID} button`, { hasText: /Apply copy edit/ }).click({ timeout: 5_000 });
+  await dialog;
+}
+
+export function assertSourceApplied(tmp, file, originalText, newText) {
+  const body = readFileSync(join(tmp, file), 'utf-8');
+  if (!body.includes(newText)) {
+    throw new Error(`expected ${file} to include ${JSON.stringify(newText)}`);
+  }
+  if (originalText && !String(newText).includes(originalText) && body.includes(originalText)) {
+    throw new Error(`expected ${file} not to include ${JSON.stringify(originalText)}`);
+  }
 }
 
 /**

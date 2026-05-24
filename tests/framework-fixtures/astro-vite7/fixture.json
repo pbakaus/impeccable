@@ -23,6 +23,50 @@
     "probe": {
       "expectLiveInit": true,
       "expectConsoleClean": true
-    }
+    },
+    "manualEditScenarios": [
+      {
+        "name": "Astro Edit Save Apply title then Go Accept",
+        "element": { "selector": "h1.hero-title" },
+        "edits": [
+          {
+            "leafSelector": "h1.hero-title",
+            "originalText": "Astro + Vite 7 Fixture",
+            "newText": "Astro Manual Copy Applied",
+            "expectedSourceFile": "src/pages/index.astro",
+            "expectedSourceMatch": ">Astro Manual Copy Applied</h1>",
+            "expectedSourceAlso": ["<Layout title=\"Astro + Vite 7 Fixture\">"],
+            "expectedVisibleText": "Astro Manual Copy Applied",
+            "expectOriginalRemaining": true
+          }
+        ],
+        "expectedStashCount": 1,
+        "afterApply": [{ "type": "variantAccept", "selector": "h1.hero-title" }]
+      },
+      {
+        "name": "Astro Go Accept then Edit Save Apply batch",
+        "beforeManualEdit": [{ "type": "variantAccept", "selector": "h1.hero-title" }],
+        "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+        "edits": [
+          {
+            "leafSelector": "h1.hero-title",
+            "originalText": "Astro + Vite 7 Fixture",
+            "newText": "Astro batch title after Go accept",
+            "expectedSourceFile": "src/pages/index.astro",
+            "expectedSourceMatch": ">Astro batch title after Go accept</h1>",
+            "expectedSourceAlso": ["<Layout title=\"Astro + Vite 7 Fixture\">"],
+            "expectedVisibleText": "Astro batch title after Go accept",
+            "expectOriginalRemaining": true
+          },
+          {
+            "leafSelector": "p.hero-hook",
+            "originalText": "Static Astro page rendered server-side, hydrated nothing.",
+            "newText": "Astro batch hook after Go accept.",
+            "expectedSourceFile": "src/pages/index.astro"
+          }
+        ],
+        "expectedStashCount": 2
+      }
+    ]
   }
 }

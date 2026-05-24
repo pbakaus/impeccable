@@ -23,6 +23,58 @@
     "probe": {
       "expectLiveInit": true,
       "expectConsoleClean": true
-    }
+    },
+    "manualEditScenarios": [
+      {
+        "name": "Next Go Accept then Edit Save Apply batch then Go Accept",
+        "beforeManualEdit": [{ "type": "variantAccept", "selector": "h1.hero-title" }],
+        "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+        "edits": [
+          {
+            "leafSelector": "h1.hero-title",
+            "originalText": "Next.js App Router Fixture",
+            "newText": "Next App Router Manual Title",
+            "expectedSourceFile": "app/page.jsx"
+          },
+          {
+            "leafSelector": "p.hero-hook",
+            "originalText": "Client component under Turbopack HMR.",
+            "newText": "Manual copy stayed live through Turbopack.",
+            "expectedSourceFile": "app/page.jsx"
+          }
+        ],
+        "expectedStashCount": 2,
+        "afterApply": [{ "type": "variantAccept", "selector": "h1.hero-title" }]
+      },
+      {
+        "name": "Next Edit Save then Go Accept then Apply commit",
+        "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+        "edits": [
+          {
+            "leafSelector": "p.hero-hook",
+            "originalText": "Client component under Turbopack HMR.",
+            "newText": "Next hook committed after Go.",
+            "expectedSourceFile": "app/page.jsx"
+          }
+        ],
+        "afterSave": [{ "type": "variantAccept", "selector": "h1.hero-title" }],
+        "expectedStashCount": 1
+      },
+      {
+        "name": "Next punctuation copy after Go stays valid JSX",
+        "beforeManualEdit": [{ "type": "variantAccept", "selector": "h1.hero-title" }],
+        "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+        "edits": [
+          {
+            "leafSelector": "p.hero-hook",
+            "originalText": "Client component under Turbopack HMR.",
+            "newText": "Coach's \"Ship it\" checklist survived Turbopack.",
+            "expectedSourceFile": "app/page.jsx",
+            "expectedVisibleText": "Coach's \"Ship it\" checklist survived Turbopack."
+          }
+        ],
+        "expectedStashCount": 1
+      }
+    ]
   }
 }

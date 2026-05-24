@@ -93,8 +93,8 @@ const state = {
 };
 
 const CHAT_POLL_FRESHNESS_MS = 60_000;
-const APPLY_EVENT_HARD_TIMEOUT_MS = 150_000;
-const APPLY_EVENT_SOFT_DEADLINE_MS = 120_000;
+const APPLY_EVENT_HARD_TIMEOUT_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_HARD_TIMEOUT_MS || 150_000);
+const APPLY_EVENT_SOFT_DEADLINE_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_SOFT_DEADLINE_MS || 120_000);
 
 function chatAgentLikelyActive() {
   if (state.pendingPolls.length > 0) return true;

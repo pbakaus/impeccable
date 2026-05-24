@@ -26,10 +26,16 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- Prefer true source files over generated provider output.',
     '- Make the smallest source changes needed for the visible copy to match each newText.',
     '- For text-only edits, replace only the target text node or source string literal; do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace.',
+    '- Use sourceHint.file and sourceHint.line first; only fall back to candidates when the hinted source text truly cannot be found near that location.',
+    '- Mark an entry applied only after every op in that entry is applied. If one op fails, report that entry failed and continue with the next entry.',
     '- If an original string is also used as a clearly coupled data key, object key, animation key, count label, or reference, update that related reference too.',
+    '- Be surgical with typed data: if a source value is numeric, boolean, or structured data used by rendering logic, preserve that type.',
+    '- If visible copy adds words around an integer, do not edit the numeric model field. Update a display label/string/expression that contains newText literally, e.g. replace {String(stats.count)} with {"7 seats"} while leaving count: 7 numeric.',
     '- If a reference change is broad, ambiguous, or risky, do not guess; report that entry as failed with candidate files/lines.',
+    '- Never copy browser edit-mode scaffolding into source: no contenteditable, data-impeccable-* markers, wrapper variants, generated style/script tags, or runtime-only attributes.',
     '- Preserve unrelated site/demo edits and unrelated staged changes.',
     '- After editing, check touched JS files with node --check where applicable and inspect touched Astro/HTML for obvious syntax damage.',
+    '- If package.json defines scripts.impeccable:manual-edit-validate, it must pass after edits.',
     '- Check for leftover impeccable-carbonize markers or variant wrapper markers in touched files.',
     '',
     'Final response contract:',
@@ -114,8 +120,8 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
       failures.push({ file: relativeFile, reason: 'read_failed', message: err.message });
       continue;
     }
-    const markerMatch = content.match(/^\s*(?:<!--|\{\/\*)\s*impeccable-carbonize-(?:start|end)\b|^\s*(?:<!--|\{\/\*)\s*impeccable-variants-(?:start|end)\b|\bdata-impeccable-(?:variants?|original-text|editable|text-wrap)\s*=/m);
-    if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch[0] });
+    const markerMatch = findLeftoverImpeccableMarker(content);
+    if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch });
     if (/\.(mjs|cjs|js)$/.test(relativeFile)) {
       const check = spawnSync(process.execPath, ['--check', file], { cwd, encoding: 'utf-8' });
       if (check.status !== 0) {
@@ -127,7 +133,89 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
       }
     }
   }
+  const validation = runManualEditValidationScript(cwd);
+  if (validation?.failure) failures.push(validation.failure);
+  if (validation?.warning) warnings.push(validation.warning);
   return { ok: failures.length === 0, failures, warnings };
+}
+
+function findLeftoverImpeccableMarker(content) {
+  const commentMarker = content.match(/^\s*(?:<!--|\{\/\*)\s*impeccable-carbonize-(?:start|end)\b|^\s*(?:<!--|\{\/\*)\s*impeccable-variants-(?:start|end)\b/m);
+  if (commentMarker) return commentMarker[0];
+
+  const attrPattern = /\bdata-impeccable-(?:variants?|original-text|editable|text-wrap)\s*=/g;
+  for (const line of content.split(/\r?\n/)) {
+    attrPattern.lastIndex = 0;
+    let match;
+    while ((match = attrPattern.exec(line))) {
+      if (!isInsideQuotedLiteral(line, match.index)) return match[0];
+    }
+  }
+  return null;
+}
+
+function isInsideQuotedLiteral(line, index) {
+  let quote = null;
+  let escaped = false;
+  for (let i = 0; i < index; i++) {
+    const ch = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+  }
+  return quote !== null;
+}
+
+function runManualEditValidationScript(cwd) {
+  const script = readManualEditValidationScript(cwd);
+  if (!script) return null;
+  const validation = spawnSync(script, {
+    cwd,
+    encoding: 'utf-8',
+    shell: true,
+    timeout: 30_000,
+  });
+  if (validation.error) {
+    return {
+      failure: {
+        file: 'package.json',
+        reason: 'manual_edit_validation_failed',
+        message: validation.error.message || String(validation.error),
+      },
+    };
+  }
+  if (validation.status !== 0) {
+    return {
+      failure: {
+        file: 'package.json',
+        reason: 'manual_edit_validation_failed',
+        message: [validation.stderr, validation.stdout].filter(Boolean).join('\n').trim(),
+      },
+    };
+  }
+  return null;
+}
+
+function readManualEditValidationScript(cwd) {
+  const pkgPath = path.join(cwd, 'package.json');
+  if (!fs.existsSync(pkgPath)) return null;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const script = pkg?.scripts?.['impeccable:manual-edit-validate'];
+    return typeof script === 'string' && script.trim() ? script : null;
+  } catch {
+    return null;
+  }
 }
 
 function compactBatchForPrompt(batch) {

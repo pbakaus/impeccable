@@ -15,8 +15,8 @@
  *    the original tag.
  *
  * A future LLM-backed agent slots in by implementing the same VariantAgent
- * interface (one method, `generateVariants(event, context)`), so the loop and
- * harness stay unchanged.
+ * interface (`generateVariants(event, context)` plus optional
+ * `applyManualEdits(event, context)`), so the loop and harness stay unchanged.
  */
 
 import fs from 'node:fs/promises';
@@ -51,8 +51,16 @@ const execFileP = promisify(execFile);
  *                                       block — `@scope` rules per variant.
  * @property {VariantSpec[]} variants
  *
+ * @typedef {Object} ManualEditApplyOutput
+ * @property {'done' | 'partial' | 'error'} status
+ * @property {string[]=} appliedEntryIds
+ * @property {Array<{entryId: string, reason: string, candidates?: object[]}>=} failed
+ * @property {string[]=} files
+ * @property {string[]=} notes
+ *
  * @typedef {Object} VariantAgent
  * @property {(event: object, context: object) => Promise<GenerateOutput>} generateVariants
+ * @property {(event: object, context: object) => Promise<ManualEditApplyOutput>=} applyManualEdits
  */
 
 // ---------------------------------------------------------------------------
@@ -161,6 +169,11 @@ export function createFakeAgent() {
         variants: [variant1, variant2, variant3],
       };
     },
+
+    /** @type {VariantAgent['applyManualEdits']} */
+    async applyManualEdits(event, context = {}) {
+      return applyManualEditBatchToSource(event.batch, { tmp: context.tmp });
+    },
   };
 }
 
@@ -191,13 +204,69 @@ function attrEscape(str, { svelte = false } = {}) {
  * in HTML form; the orchestrator translates per the target file's syntax.
  */
 export function htmlToJsx(html) {
-  return html
+  return selfCloseHtmlVoidTagsForJsx(String(html)
     .replace(/(^|[\s<])class=/g, '$1className=')
     .replace(/\sstyle=(["'])([\s\S]*?)\1/g, (_match, _quote, value) => {
       const entries = parseInlineStyle(value);
       if (entries.length === 0) return '';
       return ' style={{ ' + entries.map(({ prop, value }) => `${formatJsxStyleKey(prop)}: ${JSON.stringify(value)}`).join(', ') + ' }}';
-    });
+    }));
+}
+
+const JSX_VOID_TAGS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
+  'param', 'source', 'track', 'wbr',
+]);
+
+function selfCloseHtmlVoidTagsForJsx(html) {
+  let result = '';
+  let index = 0;
+
+  while (index < html.length) {
+    const lt = html.indexOf('<', index);
+    if (lt === -1) {
+      result += html.slice(index);
+      break;
+    }
+    result += html.slice(index, lt);
+
+    const tagMatch = html.slice(lt + 1).match(/^([A-Za-z][\w:-]*)/);
+    if (!tagMatch) {
+      result += '<';
+      index = lt + 1;
+      continue;
+    }
+
+    const tagName = tagMatch[1];
+    let end = lt + 1 + tagName.length;
+    let quote = null;
+    while (end < html.length) {
+      const ch = html[end];
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '>') {
+        break;
+      }
+      end++;
+    }
+
+    if (end >= html.length) {
+      result += html.slice(lt);
+      break;
+    }
+
+    const tag = html.slice(lt, end + 1);
+    if (!JSX_VOID_TAGS.has(tagName.toLowerCase()) || /\/\s*>$/.test(tag)) {
+      result += tag;
+    } else {
+      result += html.slice(lt, end).replace(/\s+$/, '') + ' />';
+    }
+    index = end + 1;
+  }
+
+  return result;
 }
 
 function parseInlineStyle(style) {
@@ -287,6 +356,8 @@ function capitalize(str) {
 export const HOIST_ATTR = 'data-impeccable-hoist-id';
 
 export function normalizeVariantOutput(output, wrapInfo = {}) {
+  const scopedCssInput = output.scopedCss || '';
+  const normalizedInputCss = normalizeVariantSelectorQuotes(scopedCssInput);
   const extraCss = [];
   const variants = output.variants.map((variant, i) => {
     const { innerHtml, groups } = stripInlineStylesPerElement(String(variant.innerHtml));
@@ -304,17 +375,321 @@ export function normalizeVariantOutput(output, wrapInfo = {}) {
   });
 
   const baseCss = renderMissingBaseVariantRules({
-    scopedCss: output.scopedCss || '',
+    scopedCss: normalizedInputCss,
     count: output.variants.length,
     styleMode: wrapInfo.styleMode,
   });
-  if (extraCss.length === 0 && baseCss.length === 0) return output;
-  const scopedCss = [output.scopedCss || '', ...extraCss, ...baseCss]
+  if (extraCss.length === 0 && baseCss.length === 0 && normalizedInputCss === scopedCssInput) return output;
+  const scopedCss = [normalizedInputCss, ...extraCss, ...baseCss]
     .map((chunk) => String(chunk).trim())
     .filter(Boolean)
     .join('\n');
 
   return { ...output, scopedCss, variants };
+}
+
+function normalizeVariantSelectorQuotes(css) {
+  return String(css).replace(
+    /\[data-impeccable-variant=(['"])(\d+)\1\]/g,
+    (_match, _quote, id) => `[data-impeccable-variant="${id}"]`,
+  );
+}
+
+export async function applyManualEditBatchToSource(batch, { tmp, sourceEdits } = {}) {
+  if (!tmp) throw new Error('manual edit apply requires tmp project root');
+  const fileCache = new Map();
+  const filesTouched = new Set();
+  const appliedEntryIds = [];
+  const failed = [];
+  const sourceEditQueue = Array.isArray(sourceEdits) ? [...sourceEdits] : null;
+
+  const readRelativeFile = async (relativeFile) => {
+    if (fileCache.has(relativeFile)) return fileCache.get(relativeFile);
+    const full = safeProjectPath(tmp, relativeFile);
+    const body = await fs.readFile(full, 'utf-8');
+    fileCache.set(relativeFile, body);
+    return body;
+  };
+
+  for (const entry of batch?.entries || []) {
+    const beforeEntry = new Map(fileCache);
+    const beforeTouched = new Set(filesTouched);
+    const entrySourceEdits = sourceEditQueue
+      ? sourceEditQueue.filter((edit) => edit.entryId === entry.id)
+      : null;
+    let entryFailed = null;
+
+    if (sourceEditQueue) {
+      if (entrySourceEdits.length === 0) {
+        entryFailed = { reason: 'no source edits returned', candidates: candidatesForEntry(batch, entry.id) };
+      }
+      for (const edit of entrySourceEdits) {
+        if (entryFailed) break;
+        const relativeFile = normalizeRelativeSourceFile(edit.file);
+        if (!relativeFile) {
+          entryFailed = { reason: 'invalid source edit file', candidates: candidatesForEntry(batch, entry.id) };
+          break;
+        }
+        try {
+          const body = await readRelativeFile(relativeFile);
+          const replaced = replaceTextInSource(body, {
+            originalText: edit.originalText,
+            newText: edit.newText,
+            line: edit.line,
+            contextHints: contextHintsForEntry(entry),
+          });
+          if (!replaced.ok) {
+            entryFailed = { reason: replaced.reason, candidates: candidatesForEntry(batch, entry.id) };
+            break;
+          }
+          fileCache.set(relativeFile, replaced.body);
+          filesTouched.add(relativeFile);
+        } catch (err) {
+          entryFailed = { reason: err.message, candidates: candidatesForEntry(batch, entry.id) };
+          break;
+        }
+      }
+    } else {
+      for (const op of entry.ops || []) {
+        const attempts = candidateAttemptsForOp(batch, entry, op);
+        let opApplied = false;
+        let lastReason = 'originalText not found';
+
+        for (const attempt of attempts) {
+          try {
+            const body = await readRelativeFile(attempt.file);
+            const replaced = replaceTextInSource(body, {
+              originalText: op.originalText,
+              newText: op.newText,
+              line: attempt.line,
+              contextHints: contextHintsForEntry(entry),
+            });
+            if (!replaced.ok) {
+              lastReason = replaced.reason;
+              continue;
+            }
+            fileCache.set(attempt.file, replaced.body);
+            filesTouched.add(attempt.file);
+            opApplied = true;
+            break;
+          } catch (err) {
+            lastReason = err.message;
+          }
+        }
+
+        if (!opApplied) {
+          entryFailed = { reason: lastReason, candidates: candidatesForEntry(batch, entry.id) };
+          break;
+        }
+      }
+    }
+
+    if (entryFailed) {
+      fileCache.clear();
+      for (const [file, body] of beforeEntry) fileCache.set(file, body);
+      filesTouched.clear();
+      for (const file of beforeTouched) filesTouched.add(file);
+      failed.push({ entryId: entry.id, ...entryFailed });
+    } else {
+      appliedEntryIds.push(entry.id);
+    }
+  }
+
+  for (const file of filesTouched) {
+    await fs.writeFile(safeProjectPath(tmp, file), fileCache.get(file), 'utf-8');
+  }
+
+  const status = failed.length === 0 ? 'done' : (appliedEntryIds.length > 0 ? 'partial' : 'error');
+  return {
+    status,
+    appliedEntryIds,
+    failed,
+    files: [...filesTouched],
+    notes: [],
+  };
+}
+
+function safeProjectPath(root, relativeFile) {
+  const normalized = normalizeRelativeSourceFile(relativeFile);
+  if (!normalized) throw new Error('invalid source file path');
+  const full = path.resolve(root, normalized);
+  const rel = path.relative(path.resolve(root), full);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('source file outside fixture project');
+  }
+  return full;
+}
+
+function normalizeRelativeSourceFile(file) {
+  if (!file || typeof file !== 'string') return null;
+  if (path.isAbsolute(file)) return null;
+  const normalized = path.normalize(file).replace(/\\/g, '/');
+  if (!normalized || normalized === '.' || normalized.startsWith('../')) return null;
+  return normalized;
+}
+
+function candidateAttemptsForOp(batch, entry, op) {
+  const attempts = [];
+  const seen = new Set();
+  const add = (file, line, kind) => {
+    const relativeFile = normalizeRelativeSourceFile(file);
+    if (!relativeFile) return;
+    const key = `${relativeFile}:${line || ''}:${kind}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    attempts.push({ file: relativeFile, line, kind });
+  };
+
+  add(op?.sourceHint?.file, op?.sourceHint?.line, 'source_hint');
+
+  const opCandidates = (batch?.candidates || [])
+    .filter((candidate) => candidate.entryId === entry.id && (!candidate.ref || candidate.ref === op.ref));
+  for (const candidate of opCandidates) {
+    const sourceHint = candidate.sourceHint;
+    if (sourceHint?.status === 'ok') add(sourceHint.relativeFile || sourceHint.file, sourceHint.line, 'candidate_source_hint');
+    for (const match of candidate.locatorMatches || []) add(match.file, match.line, 'locator_match');
+    for (const match of candidate.textMatches || []) add(match.file, match.line, 'text_match');
+    for (const match of candidate.objectKeyMatches || []) add(match.file, match.line, 'object_key_match');
+    for (const match of candidate.contextTextMatches || []) add(match.file, match.line, 'context_text_match');
+  }
+
+  return attempts;
+}
+
+function replaceTextInSource(body, { originalText, newText, line, contextHints = [] }) {
+  const original = String(originalText || '');
+  if (!original) return { ok: false, reason: 'missing originalText' };
+
+  if (Number.isFinite(Number(line)) && Number(line) > 0) {
+    const typedDisplayMatch = replaceTypedNumericDisplayExpression(body, {
+      originalText: original,
+      newText,
+      line: Number(line),
+    });
+    if (typedDisplayMatch.ok) return typedDisplayMatch;
+    const lineMatch = replaceNearLine(body, original, String(newText), Number(line));
+    if (lineMatch.ok) return lineMatch;
+  }
+
+  const matches = allIndexesOf(body, original);
+  if (matches.length === 0) return { ok: false, reason: 'originalText not found' };
+  if (matches.length === 1) {
+    return replaceAtIndex(body, matches[0], original, String(newText));
+  }
+
+  const scored = matches.map((index) => ({
+    index,
+    score: scoreManualEditMatch(body, index, contextHints),
+  })).sort((a, b) => b.score - a.score);
+  if (scored[0].score > 0 && scored[0].score > scored[1].score) {
+    return replaceAtIndex(body, scored[0].index, original, String(newText));
+  }
+  return { ok: false, reason: 'originalText ambiguous' };
+}
+
+function replaceTypedNumericDisplayExpression(body, { originalText, newText, line }) {
+  const original = String(originalText || '').trim();
+  const displayText = String(newText || '');
+  const displayTrimmed = displayText.trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(original)) return { ok: false, reason: 'not a numeric display edit' };
+  if (!displayTrimmed.startsWith(original) || /^-?\d+(?:\.\d+)?$/.test(displayTrimmed)) {
+    return { ok: false, reason: 'not a typed display expansion' };
+  }
+
+  const lines = body.split('\n');
+  const lineIndex = Math.max(0, Math.min(lines.length - 1, Number(line) - 1));
+  const candidateIndexes = [lineIndex];
+  for (let i = 0; i < lines.length; i++) {
+    if (i !== lineIndex && /String\([^)]+\)/.test(lines[i])) candidateIndexes.push(i);
+  }
+
+  for (const index of candidateIndexes) {
+    const lineText = lines[index] || '';
+    const stringCall = lineText.match(/String\(([^)\n]+)\)/);
+    if (!stringCall) continue;
+
+    const replacement = JSON.stringify(displayTrimmed);
+    lines[index] = lineText.slice(0, stringCall.index) + replacement + lineText.slice(stringCall.index + stringCall[0].length);
+    return { ok: true, body: lines.join('\n') };
+  }
+
+  return { ok: false, reason: 'no String() display expression near sourceHint' };
+}
+
+function replaceNearLine(body, originalText, newText, line) {
+  const lines = body.split('\n');
+  const lineIndex = Math.max(0, Math.min(lines.length - 1, Number(line) - 1));
+  const indexes = [];
+  for (let distance = 0; distance <= 3; distance += 1) {
+    for (const i of distance === 0 ? [lineIndex] : [lineIndex - distance, lineIndex + distance]) {
+      if (i >= 0 && i < lines.length && !indexes.includes(i)) indexes.push(i);
+    }
+  }
+  for (const i of indexes) {
+    const idx = lines[i].indexOf(originalText);
+    if (idx === -1) continue;
+    lines[i] = lines[i].slice(0, idx) + newText + lines[i].slice(idx + originalText.length);
+    return { ok: true, body: lines.join('\n') };
+  }
+  return { ok: false, reason: 'originalText not found near sourceHint' };
+}
+
+function replaceAtIndex(body, index, originalText, newText) {
+  return {
+    ok: true,
+    body: body.slice(0, index) + newText + body.slice(index + originalText.length),
+  };
+}
+
+function allIndexesOf(body, needle) {
+  const out = [];
+  let index = 0;
+  while (true) {
+    index = body.indexOf(needle, index);
+    if (index === -1) return out;
+    out.push(index);
+    index += Math.max(1, needle.length);
+  }
+}
+
+function scoreManualEditMatch(body, index, contextHints) {
+  const windowText = body.slice(Math.max(0, index - 600), index + 600);
+  let score = 0;
+  for (const hint of contextHints) {
+    if (hint && windowText.includes(hint)) score++;
+  }
+  return score;
+}
+
+function contextHintsForEntry(entry) {
+  const hints = [];
+  const add = (value) => {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length >= 2 && text.length <= 180) hints.push(text);
+  };
+  for (const op of entry?.ops || []) {
+    for (const nearby of op.nearbyEditableTexts || []) add(typeof nearby === 'string' ? nearby : nearby?.text);
+    add(op.container?.textContent);
+    add(op.leaf?.textContent);
+  }
+  add(entry?.element?.textContent);
+  return [...new Set(hints)];
+}
+
+function candidatesForEntry(batch, entryId) {
+  const out = [];
+  for (const candidate of batch?.candidates || []) {
+    if (candidate.entryId !== entryId) continue;
+    if (candidate.sourceHint?.relativeFile) {
+      out.push({ file: candidate.sourceHint.relativeFile, line: candidate.sourceHint.line, kind: 'candidate_source_hint' });
+    }
+    for (const key of ['textMatches', 'objectKeyMatches', 'locatorMatches', 'contextTextMatches']) {
+      for (const match of candidate[key] || []) {
+        out.push({ file: match.file, line: match.line, kind: match.kind || key });
+      }
+    }
+  }
+  return out.slice(0, 20);
 }
 
 function renderMissingBaseVariantRules({ scopedCss, count, styleMode }) {
@@ -597,6 +972,7 @@ export async function runAgentLoop({
           count: event.count,
           ...target,
           text,
+          pageUrl: event.pageUrl,
         });
         log(`wrapped: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
@@ -618,7 +994,7 @@ export async function runAgentLoop({
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, type: 'done', id: event.id }),
+          body: JSON.stringify({ token, type: 'done', id: event.id, file: wrapInfo.file }),
           signal,
         });
       } catch (err) {
@@ -634,6 +1010,47 @@ export async function runAgentLoop({
       continue;
     }
 
+    if (event.type === 'manual_edit_apply') {
+      log(`manual_edit_apply id=${event.id} entries=${event.batch?.entries?.length || 0}`);
+      try {
+        if (typeof agent.applyManualEdits !== 'function') {
+          throw new Error('agent does not implement applyManualEdits');
+        }
+        const result = await agent.applyManualEdits(event, { tmp, scriptsDir });
+        if (process.env.IMPECCABLE_E2E_DEBUG) {
+          log(`manual_edit_apply result: ${JSON.stringify(result)}`);
+        }
+        if (result.status === 'error' && (!result.appliedEntryIds || result.appliedEntryIds.length === 0)) {
+          await runPollReply({
+            tmp,
+            scriptsDir,
+            id: event.id,
+            status: 'error',
+            message: result.failed?.[0]?.reason || 'could not resolve sources for any entry',
+          });
+        } else {
+          await runPollReply({
+            tmp,
+            scriptsDir,
+            id: event.id,
+            status: 'done',
+            data: result,
+          });
+        }
+      } catch (err) {
+        if (signal.aborted) return;
+        log('manual_edit_apply failed: ' + err.message);
+        await runPollReply({
+          tmp,
+          scriptsDir,
+          id: event.id,
+          status: 'error',
+          message: err.message,
+        }).catch(() => {});
+      }
+      continue;
+    }
+
     if (event.type === 'accept') {
       log(`accept id=${event.id} variantId=${event.variantId}`);
       try {
@@ -643,6 +1060,7 @@ export async function runAgentLoop({
           id: event.id,
           variant: event.variantId,
           paramValues: event.paramValues,
+          pageUrl: event.pageUrl,
         });
 
         // Carbonize cleanup — required after accept per the live skill spec.
@@ -677,7 +1095,7 @@ export async function runAgentLoop({
     if (event.type === 'discard') {
       log(`discard id=${event.id}`);
       try {
-        const discardResult = await runAccept({ tmp, scriptsDir, id: event.id, discard: true });
+        const discardResult = await runAccept({ tmp, scriptsDir, id: event.id, discard: true, pageUrl: event.pageUrl });
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -695,12 +1113,20 @@ export async function runAgentLoop({
   }
 }
 
-async function runWrap({ tmp, scriptsDir, id, count, classes, tag, elementId, text }) {
+async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {
+  const args = [path.join(scriptsDir, 'live-poll.mjs'), '--reply', id, status];
+  if (data !== undefined) args.push('--data', JSON.stringify(data));
+  if (message) args.push(message);
+  await execFileP(process.execPath, args, { cwd: tmp });
+}
+
+async function runWrap({ tmp, scriptsDir, id, count, classes, tag, elementId, text, pageUrl }) {
   const args = [path.join(scriptsDir, 'live-wrap.mjs'), '--id', id, '--count', String(count)];
   if (elementId) args.push('--element-id', elementId);
   if (classes) args.push('--classes', classes);
   if (tag) args.push('--tag', tag);
   if (text) args.push('--text', text);
+  if (pageUrl) args.push('--page-url', pageUrl);
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);
@@ -753,7 +1179,7 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
         if (l.startsWith(innerIndent)) return indent + l.slice(innerIndent.length);
         return l;
       }).join('\n');
-      return dedented + '\n';
+      return expandAcceptedVariantMarkup(dedented, indent) + '\n';
     },
   );
 
@@ -767,11 +1193,78 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   await fs.writeFile(filePath, body, 'utf-8');
 }
 
-async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues }) {
+function expandAcceptedVariantMarkup(source, indent) {
+  const lines = source.split('\n');
+  if (lines.length !== 1) return source;
+
+  const leading = lines[0].match(/^\s*/)?.[0] || indent;
+  const trimmed = lines[0].trim();
+  const expanded = expandSingleLineContainer(trimmed, leading);
+  return expanded || source;
+}
+
+function expandSingleLineContainer(html, indent) {
+  const outer = html.match(/^<([A-Za-z][\w:-]*)([^>]*)>([\s\S]+)<\/\1>$/);
+  if (!outer) return null;
+
+  const [, tagName, attrs, inner] = outer;
+  const children = splitTopLevelElements(inner.trim());
+  if (children.length < 2) return null;
+
+  return [
+    `${indent}<${tagName}${attrs}>`,
+    ...children.map((child) => `${indent}  ${child}`),
+    `${indent}</${tagName}>`,
+  ].join('\n');
+}
+
+function splitTopLevelElements(html) {
+  const children = [];
+  let index = 0;
+
+  while (index < html.length) {
+    while (/\s/.test(html[index] || '')) index++;
+    if (index >= html.length) break;
+    if (html[index] !== '<') return [];
+
+    const open = html.slice(index).match(/^<([A-Za-z][\w:-]*)(?:\s[^>]*)?>/);
+    if (!open) return [];
+
+    const tagName = open[1];
+    const tagRe = new RegExp(`</?${escapeRegExp(tagName)}(?=[\\s>/])[^>]*>`, 'g');
+    tagRe.lastIndex = index;
+    let depth = 0;
+    let end = -1;
+    let match;
+
+    while ((match = tagRe.exec(html))) {
+      const token = match[0];
+      if (token.startsWith('</')) depth--;
+      else if (!token.endsWith('/>')) depth++;
+      if (depth === 0) {
+        end = tagRe.lastIndex;
+        break;
+      }
+    }
+
+    if (end === -1) return [];
+    children.push(html.slice(index, end).trim());
+    index = end;
+  }
+
+  return children;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl }) {
   const args = [path.join(scriptsDir, 'live-accept.mjs'), '--id', id];
   if (discard) args.push('--discard');
   else args.push('--variant', String(variant));
   if (paramValues) args.push('--param-values', JSON.stringify(paramValues));
+  if (pageUrl) args.push('--page-url', pageUrl);
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);

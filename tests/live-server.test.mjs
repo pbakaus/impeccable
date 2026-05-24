@@ -387,6 +387,67 @@ colors: {}
     }
   });
 
+  it('/manual-edit-commit keeps entries staged when the chat agent does not ack', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-timeout-'));
+    let timeoutServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      timeoutServer = await startServer(8525, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'auto',
+          IMPECCABLE_LIVE_APPLY_EVENT_HARD_TIMEOUT_MS: '300',
+          IMPECCABLE_LIVE_APPLY_EVENT_SOFT_DEADLINE_MS: '250',
+        },
+      });
+
+      const stash = await fetch(`http://localhost:${timeoutServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: timeoutServer.token,
+          id: 'feedface',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Welcome</h1>', textContent: 'Welcome' },
+          ops: [{ ref: 'body>h1.hero:nth-of-type(1)', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+
+      const pollPromise = fetch(`http://localhost:${timeoutServer.port}/poll?token=${timeoutServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const commitPromise = fetch(`http://localhost:${timeoutServer.port}/manual-edit-commit?token=${timeoutServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      const event = await pollPromise;
+      assert.equal(event.type, 'manual_edit_apply');
+      assert.equal(event.deadlineMs, 250);
+
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.cleared, 0);
+      assert.equal(result.applied.length, 0);
+      assert.equal(result.failed.length, 1);
+      assert.equal(result.failed[0].reason, 'chat_agent_timeout');
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
+
+      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(buffer.entries.length, 1);
+    } finally {
+      if (timeoutServer) {
+        await stopServer(timeoutServer.port, timeoutServer.token);
+        timeoutServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/manual-edit-discard returns discarded entries so the browser can restore visible text', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-server-'));
     let discardServer;
@@ -458,6 +519,26 @@ colors: {}
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.match(body.error, /newText cannot be empty/);
+  });
+
+  it('/manual-edit-stash rejects markup-looking copy before it reaches the pending buffer', async () => {
+    const cases = ['<strong>B</strong>', 'B > A', '{label}', 'label}', '`label`'];
+    for (const [i, newText] of cases.entries()) {
+      const res = await fetch(`http://localhost:${server.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          id: `abcdef1${i}`,
+          pageUrl: '/',
+          element: { tagName: 'p' },
+          ops: [{ ref: 'body>p:nth-of-type(1)', tag: 'p', originalText: 'A', newText }],
+        }),
+      });
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.match(body.error, /plain text only/);
+    }
   });
 
   it('/poll returns timeout when no events queued', async () => {
