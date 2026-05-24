@@ -502,8 +502,8 @@ Both tracks share the same verify / rollback / buffer-clear pipeline.
 
 - `unstaged` → user clicks Save → `staged` (server writes the buffer).
 - `staged` → user clicks Apply → `applying` (Track A pushes the poll event; Track B spawns the commit script).
-- `applying` → success → `applied`; verified entries are cleared from the buffer.
-- `applying` → failure → entries stay `staged`; any source touched during the run is rolled back to its pre-apply snapshot.
+- `applying` → success or partial success → verified entries are cleared from the buffer; failed entries stay `staged`.
+- `applying` → batch validation failure or timeout → entries stay `staged`; source writes known to belong to the Apply run are rolled back to their pre-apply snapshot.
 - Any state → a variant Accept on a `(pageUrl, ref)` matching a staged op silently drops that op (`scrubManualEditsAgainstOriginalBlock` in `live-accept.mjs`); the accepted variant already embodies the edit.
 
 ### The staging buffer
@@ -554,7 +554,7 @@ Response (HTTP 200): `{ ok: true, pendingCount, totalCount, perPage }`.
 
 **`POST /manual-edit-commit?pageUrl=<route>`**: apply the staged page batch.
 
-Server picks Track A (chat) or Track B (subprocess) per the dispatch rules above, with a 120s default timeout. Either way: build evidence (source hints, candidate text / object-key / locator matches, sibling-op evidence for coupled leaves), apply the batch, verify the returned files, clear verified entries, and roll source back if anything fails.
+Server picks Track A (chat) or Track B (subprocess) per the dispatch rules above, with a 120s default timeout. Either way: build evidence (source hints, candidate text / object-key / locator matches, sibling-op evidence for coupled leaves), apply the batch, verify the returned files, clear verified entries, and keep failed entries staged. If source verification or post-apply validation fails for the batch, the server rolls source writes back before returning.
 
 Commit result shape (HTTP 200):
 

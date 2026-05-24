@@ -91,6 +91,19 @@ describe('live-copy-edit-agent', () => {
     }
   });
 
+  it('flags invalid JSON in post-apply checks', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-json-checks-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'src', 'data.json'), '{"title":"New",}\n');
+      const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/data.json'] });
+      assert.equal(checks.ok, false);
+      assert.equal(checks.failures.some((item) => item.reason === 'invalid_json'), true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('does not flag live-mode marker words when they only appear as source literals', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-literals-'));
     try {
@@ -144,7 +157,8 @@ describe('live-copy-edit-agent', () => {
       authed: () => false,
       env: {},
     });
-    assert.match(claudeInstalledUnauthed, /Claude CLI: installed but the subprocess cannot read/);
+    assert.match(claudeInstalledUnauthed, /Claude CLI: installed but not selected/);
+    assert.match(claudeInstalledUnauthed, /subprocess may be unable to read/);
     assert.match(claudeInstalledUnauthed, /claude setup-token/);
     assert.match(claudeInstalledUnauthed, /CLAUDE_CODE_OAUTH_TOKEN/);
     assert.match(claudeInstalledUnauthed, /ANTHROPIC_API_KEY/);
@@ -278,6 +292,6 @@ describe('live-copy-edit-agent', () => {
       env: {},
     });
     assert.match(noChatPolling, /Chat: no Impeccable live session is currently polling/);
-    assert.match(noChatPolling, /Start \/impeccable live/);
+    assert.match(noChatPolling, /Start Impeccable live/);
   });
 });

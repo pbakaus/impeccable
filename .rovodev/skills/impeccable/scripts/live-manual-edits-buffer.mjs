@@ -62,7 +62,7 @@ export function writeBuffer(cwd, buffer) {
  * Multiple ops in one Save are allowed; each is keyed by (pageUrl, ref).
  */
 export function stageEntry(cwd, newEntry) {
-  const buf = readBuffer(cwd);
+  const buf = readBufferStrict(cwd);
   const pageUrl = newEntry.pageUrl;
   for (const newOp of newEntry.ops) {
     let mergedIntoExisting = false;
@@ -122,39 +122,6 @@ export function removeEntries(cwd, predicate) {
   buf.entries = kept;
   writeBuffer(cwd, buf);
   return removedOps;
-}
-
-/**
- * Remove a single op by (pageUrl, ref). Used by live-accept.mjs when a variant
- * accept supersedes a pending manual edit on the same element ref. Empty
- * entries are pruned.
- */
-export function removeOp(cwd, { pageUrl, ref }) {
-  const buf = readBuffer(cwd);
-  let removed = 0;
-  for (const entry of buf.entries) {
-    if (entry.pageUrl !== pageUrl) continue;
-    const before = entry.ops.length;
-    entry.ops = entry.ops.filter((op) => op.ref !== ref);
-    removed += before - entry.ops.length;
-  }
-  buf.entries = buf.entries.filter((entry) => entry.ops.length > 0);
-  writeBuffer(cwd, buf);
-  return removed;
-}
-
-/**
- * Look up a pending op for a given (pageUrl, ref). Returns the op or null.
- * Used by live-wrap.mjs for buffer-aware "original" content in variant blocks.
- */
-export function findOp(cwd, { pageUrl, ref }) {
-  const buf = readBuffer(cwd);
-  for (const entry of buf.entries) {
-    if (entry.pageUrl !== pageUrl) continue;
-    const op = entry.ops.find((op) => op.ref === ref);
-    if (op) return op;
-  }
-  return null;
 }
 
 /**

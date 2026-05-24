@@ -9,8 +9,6 @@ import {
   writeBuffer,
   stageEntry,
   removeEntries,
-  removeOp,
-  findOp,
   countByPage,
   truncateBuffer,
   getBufferPath,
@@ -150,45 +148,6 @@ describe('live-manual-edits-buffer', () => {
       const buf = readBuffer(tmpDir);
       assert.equal(buf.entries.length, 1);
       assert.equal(buf.entries[0].id, 'b');
-    });
-  });
-
-  describe('removeOp', () => {
-    it('removes a single op by (pageUrl, ref) and prunes empty entries', () => {
-      stageEntry(tmpDir, entry({ ops: [op({ ref: 'r1' }), op({ ref: 'r2' })] }));
-      const removed = removeOp(tmpDir, { pageUrl: '/', ref: 'r1' });
-      assert.equal(removed, 1);
-      const buf = readBuffer(tmpDir);
-      assert.equal(buf.entries.length, 1);
-      assert.equal(buf.entries[0].ops.length, 1);
-      assert.equal(buf.entries[0].ops[0].ref, 'r2');
-    });
-
-    it('removes the entry entirely when its last op is dropped', () => {
-      stageEntry(tmpDir, entry({ ops: [op({ ref: 'only' })] }));
-      removeOp(tmpDir, { pageUrl: '/', ref: 'only' });
-      assert.equal(readBuffer(tmpDir).entries.length, 0);
-    });
-
-    it('does nothing for a missing (pageUrl, ref)', () => {
-      stageEntry(tmpDir, entry({ ops: [op()] }));
-      const removed = removeOp(tmpDir, { pageUrl: '/', ref: 'nope' });
-      assert.equal(removed, 0);
-      assert.equal(readBuffer(tmpDir).entries[0].ops.length, 1);
-    });
-  });
-
-  describe('findOp', () => {
-    it('returns the op when (pageUrl, ref) matches', () => {
-      stageEntry(tmpDir, entry({ ops: [op({ ref: 'r1', newText: 'X' })] }));
-      const found = findOp(tmpDir, { pageUrl: '/', ref: 'r1' });
-      assert.equal(found.newText, 'X');
-    });
-
-    it('returns null when no match', () => {
-      stageEntry(tmpDir, entry({ ops: [op({ ref: 'r1' })] }));
-      assert.equal(findOp(tmpDir, { pageUrl: '/', ref: 'nope' }), null);
-      assert.equal(findOp(tmpDir, { pageUrl: '/other', ref: 'r1' }), null);
     });
   });
 

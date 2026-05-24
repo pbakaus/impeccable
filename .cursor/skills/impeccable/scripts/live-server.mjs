@@ -15,7 +15,7 @@
 
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { spawn, execFile, execFileSync } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
@@ -90,18 +90,18 @@ const state = {
   // event. Used to detect "a chat agent is likely attached" without requiring
   // a poll to be parked at the exact moment we dispatch.
   lastPollAt: 0,
-  timedOutApplyIds: new Set(),
+  timedOutApplyIds: new Map(),
 };
 
 const CHAT_POLL_FRESHNESS_MS = 60_000;
 const APPLY_EVENT_HARD_TIMEOUT_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_HARD_TIMEOUT_MS || 150_000);
 const APPLY_EVENT_SOFT_DEADLINE_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EVENT_SOFT_DEADLINE_MS || 120_000);
 
-function tombstoneTimedOutApplyId(eventId) {
+function tombstoneTimedOutApplyId(eventId, details = {}) {
   if (!eventId) return;
-  state.timedOutApplyIds.add(eventId);
+  state.timedOutApplyIds.set(eventId, details);
   if (state.timedOutApplyIds.size <= 200) return;
-  const oldest = state.timedOutApplyIds.values().next().value;
+  const oldest = state.timedOutApplyIds.keys().next().value;
   state.timedOutApplyIds.delete(oldest);
 }
 
@@ -121,10 +121,11 @@ function pushApplyEventAndWait(batch, pageUrl) {
     schemaVersion: 1,
     deadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
   };
+  const rollbackSnapshot = snapshotApplyEventFiles(batch);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       state.pendingApplyDeferreds.delete(eventId);
-      tombstoneTimedOutApplyId(eventId);
+      tombstoneTimedOutApplyId(eventId, { batch, rollbackSnapshot });
       acknowledgePendingEvent(eventId);
       reject(new Error('chat_agent_timeout'));
     }, APPLY_EVENT_HARD_TIMEOUT_MS);
@@ -149,6 +150,74 @@ function rejectApplyDeferred(eventId, reason) {
   clearTimeout(deferred.timer);
   deferred.reject(new Error(reason || 'chat_agent_error'));
   return true;
+}
+
+function snapshotApplyEventFiles(batch) {
+  const snapshot = new Map();
+  for (const relativeFile of collectManualApplyFiles(batch)) {
+    const absolute = path.resolve(process.cwd(), relativeFile);
+    try {
+      snapshot.set(relativeFile, {
+        exists: fs.existsSync(absolute),
+        content: fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf-8') : '',
+      });
+    } catch {
+      // If a file cannot be read before dispatch, do not attempt late rollback.
+    }
+  }
+  return snapshot;
+}
+
+function collectManualApplyFiles(batch, extraFiles = []) {
+  const files = [];
+  for (const entry of batch?.entries || []) {
+    for (const op of entry.ops || []) files.push(op.sourceHint?.file);
+  }
+  for (const candidate of batch?.candidates || []) {
+    files.push(candidate.sourceHint?.relativeFile, candidate.sourceHint?.file);
+    for (const item of candidate.textMatches || []) files.push(item.file);
+    for (const item of candidate.objectKeyMatches || []) files.push(item.file);
+    for (const item of candidate.locatorMatches || []) files.push(item.file);
+    for (const item of candidate.contextTextMatches || []) files.push(item.file);
+  }
+  files.push(...(extraFiles || []));
+  return [...new Set(files)]
+    .map((file) => normalizeProjectFile(file))
+    .filter(Boolean);
+}
+
+function normalizeProjectFile(file) {
+  if (!file || typeof file !== 'string') return null;
+  const absolute = path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
+  const relative = path.relative(process.cwd(), absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return relative;
+}
+
+function rollbackTimedOutApplyReply(msg) {
+  const details = state.timedOutApplyIds.get(msg.id);
+  if (!details) return { rolledBackFiles: [], rollbackFailures: [] };
+  state.timedOutApplyIds.delete(msg.id);
+  const scope = collectManualApplyFiles(details.batch, msg.data?.files || []);
+  const rolledBackFiles = [];
+  const rollbackFailures = [];
+  for (const relativeFile of scope) {
+    const before = details.rollbackSnapshot?.get(relativeFile);
+    if (!before) continue;
+    const absolute = path.resolve(process.cwd(), relativeFile);
+    try {
+      if (before.exists) {
+        fs.mkdirSync(path.dirname(absolute), { recursive: true });
+        fs.writeFileSync(absolute, before.content, 'utf-8');
+      } else if (fs.existsSync(absolute)) {
+        fs.rmSync(absolute);
+      }
+      rolledBackFiles.push(relativeFile);
+    } catch (err) {
+      rollbackFailures.push({ file: relativeFile, reason: 'restore_failed', message: err.message || String(err) });
+    }
+  }
+  return { rolledBackFiles, rollbackFailures };
 }
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
@@ -266,20 +335,6 @@ function getManualEditStatus() {
       error: err.message,
     };
   }
-}
-
-function execFileText(file, args, options) {
-  return new Promise((resolve, reject) => {
-    execFile(file, args, options, (err, stdout, stderr) => {
-      if (err) {
-        err.stdout = stdout;
-        err.stderr = stderr;
-        reject(err);
-        return;
-      }
-      resolve(stdout);
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -794,18 +849,16 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
               applyBatchToSource: (batch) => pushApplyEventAndWait(batch, pageUrl),
             });
           } else {
-            const scriptPath = path.join(__dirname, 'live-commit-manual-edits.mjs');
-            const args = [scriptPath];
-            if (pageUrl) args.push('--page-url=' + pageUrl);
             const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
-            const stdout = await execFileText(process.execPath, args, {
+            const provider = ['codex', 'claude', 'mock'].includes(requestedMode) ? requestedMode : undefined;
+            result = await commitManualEdits({
               cwd: process.cwd(),
-              env: { ...process.env, IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS: String(timeoutMs) },
-              encoding: 'utf-8',
-              maxBuffer: 1024 * 1024 * 8,
-              timeout: timeoutMs + 5000,
+              pageUrl,
+              provider,
+              env: process.env,
+              timeoutMs,
+              chatAvailable: chatAgentLikelyActive,
             });
-            result = JSON.parse(stdout || '{}');
           }
         } catch (err) {
           const message = err.stderr?.toString?.() || err.message;
@@ -1027,8 +1080,9 @@ function handlePollPost(req, res) {
       return;
     }
     if (state.timedOutApplyIds.has(msg.id)) {
+      const rollback = rollbackTimedOutApplyReply(msg);
       res.writeHead(409, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply' }));
+      res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
       return;
     }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);

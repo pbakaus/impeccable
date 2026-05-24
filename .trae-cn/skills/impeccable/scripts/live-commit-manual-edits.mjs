@@ -27,6 +27,7 @@ import path from 'node:path';
 
 const ROLLBACK_EXTENSIONS = new Set([
   '.astro',
+  '.cjs',
   '.css',
   '.htm',
   '.html',
@@ -568,9 +569,12 @@ export async function commitManualEdits({
   if (result.status === 'error') {
     const rollbackScope = collectApplyOwnedFiles(batch, cwd, result.files || []);
     const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
+    const failed = normalizeFailedEntries(batch, result, result.message || 'AI copy edit failed');
     return {
       applied: [],
-      failed: normalizeFailedEntries(batch, result, result.message || 'AI copy edit failed'),
+      failed: failed.length > 0
+        ? failed
+        : verificationFailuresForEntries(batch, batch.entries, result.message || 'AI copy edit failed'),
       files: result.files || [],
       cleared: 0,
       count,
@@ -613,7 +617,7 @@ export async function commitManualEdits({
 
   const unreportedFiles = unreportedChangedFiles(cwd, rollbackSnapshot, result.files || []);
   if (unreportedFiles.length > 0) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], [...rollbackScope, ...unreportedFiles]);
     return {
       applied: [],
       failed: verificationFailuresForEntries(batch, batch.entries, 'unreported_source_changes', { files: unreportedFiles }),

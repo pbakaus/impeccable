@@ -70,6 +70,19 @@ async function drainPolls(server) {
   } while (drained.type !== 'timeout');
 }
 
+async function waitForManualActivity(server, type, { timeoutMs = 1000 } = {}) {
+  const startedAt = Date.now();
+  let last;
+  while (Date.now() - startedAt < timeoutMs) {
+    const res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    assert.equal(res.status, 200);
+    last = await res.json();
+    if (last.manualEdits?.lastActivity?.type === type) return last;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail('timed out waiting for manual edit activity ' + type + '; last=' + JSON.stringify(last?.manualEdits?.lastActivity || null));
+}
+
 // ---------------------------------------------------------------------------
 // Server integration tests
 // ---------------------------------------------------------------------------
@@ -264,11 +277,8 @@ colors: {}
       const commitPromise = fetch(`http://localhost:${commitServer.port}/manual-edit-commit?token=${commitServer.token}&pageUrl=%2F`, {
         method: 'POST',
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const startedStatus = await fetch(`http://localhost:${commitServer.port}/status?token=${commitServer.token}`);
-      assert.equal(startedStatus.status, 200);
-      const startedBody = await startedStatus.json();
+      const startedBody = await waitForManualActivity(commitServer, 'manual_edit_commit_started');
       assert.equal(startedBody.manualEdits.lastActivity.type, 'manual_edit_commit_started');
       assert.equal(startedBody.manualEdits.lastActivity.pendingCount, 1);
 
@@ -398,7 +408,7 @@ colors: {}
       timeoutServer = await startServer(8525, {
         cwd: tmp,
         env: {
-          IMPECCABLE_LIVE_COPY_AGENT: 'auto',
+          IMPECCABLE_LIVE_COPY_AGENT: 'chat',
           IMPECCABLE_LIVE_APPLY_EVENT_HARD_TIMEOUT_MS: '300',
           IMPECCABLE_LIVE_APPLY_EVENT_SOFT_DEADLINE_MS: '250',
         },
@@ -419,7 +429,6 @@ colors: {}
 
       const pollPromise = fetch(`http://localhost:${timeoutServer.port}/poll?token=${timeoutServer.token}&timeout=10000&leaseMs=30000`)
         .then((res) => res.json());
-      await new Promise((resolve) => setTimeout(resolve, 50));
       const commitPromise = fetch(`http://localhost:${timeoutServer.port}/manual-edit-commit?token=${timeoutServer.token}&pageUrl=%2F`, {
         method: 'POST',
       });
@@ -437,6 +446,7 @@ colors: {}
       assert.equal(result.failed[0].reason, 'chat_agent_timeout');
       assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
 
+      writeFileSync(sourcePath, '<h1 class="hero">Late write</h1>\n');
       const lateAck = await fetch(`http://localhost:${timeoutServer.port}/poll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -453,7 +463,10 @@ colors: {}
         }),
       });
       assert.equal(lateAck.status, 409);
-      assert.equal((await lateAck.json()).error, 'stale_manual_edit_apply_reply');
+      const lateAckBody = await lateAck.json();
+      assert.equal(lateAckBody.error, 'stale_manual_edit_apply_reply');
+      assert.deepEqual(lateAckBody.rolledBackFiles, ['src/page.html']);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
 
       const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
       assert.equal(buffer.entries.length, 1);
@@ -556,6 +569,40 @@ colors: {}
       assert.equal(res.status, 400);
       const body = await res.json();
       assert.match(body.error, /plain text only/);
+    }
+  });
+
+  it('/manual-edit-stash rejects a corrupt pending buffer instead of overwriting it', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-stash-corrupt-'));
+    let stashServer;
+    try {
+      stashServer = await startServer(8526, { cwd: tmp });
+      const liveDir = getLiveDir(tmp);
+      const bufferPath = join(liveDir, 'pending-manual-edits.json');
+      mkdirSync(liveDir, { recursive: true });
+      writeFileSync(bufferPath, '{ corrupt json');
+
+      const stash = await fetch(`http://localhost:${stashServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: stashServer.token,
+          id: 'badc0ffe',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1>Hello</h1>', textContent: 'Hello' },
+          ops: [{ ref: 'body>h1:nth-of-type(1)', tag: 'h1', originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 500);
+      const body = await stash.json();
+      assert.equal(body.error, 'stash_write_failed');
+      assert.match(readFileSync(bufferPath, 'utf-8'), /corrupt json/);
+    } finally {
+      if (stashServer) {
+        await stopServer(stashServer.port, stashServer.token);
+        stashServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
     }
   });
 

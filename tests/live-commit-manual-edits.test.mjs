@@ -284,9 +284,9 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.applied.length, 0);
     assert.equal(result.failed[0].reason, 'unreported_source_changes');
     assert.deepEqual(result.unreportedFiles, ['src/notes.html']);
-    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.deepEqual(new Set(result.rolledBackFiles), new Set(['src/page.html', 'src/notes.html']));
     assert.equal(fs.readFileSync(pageFile, 'utf-8'), beforePage);
-    assert.equal(fs.readFileSync(notesFile, 'utf-8'), '<p>Unexpected side write</p>\n');
+    assert.equal(fs.readFileSync(notesFile, 'utf-8'), beforeNotes);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
@@ -488,6 +488,30 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.deepEqual(result.rollbackFailures, []);
     assert.equal(fs.readFileSync(file, 'utf-8'), before);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('marks every staged entry failed when the AI reports error without per-entry failures', () => {
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'e1', ops: [{ ref: 'a', tag: 'h1', originalText: 'Old', newText: 'New' }] }),
+        entry({ id: 'e2', ops: [{ ref: 'b', tag: 'p', originalText: 'Before', newText: 'After' }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'error',
+        message: 'could not apply safely',
+        files: [],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.deepEqual(result.failed.map((item) => [item.id, item.reason]), [
+      ['e1', 'could not apply safely'],
+      ['e2', 'could not apply safely'],
+    ]);
+    assert.equal(readBuffer(tmpDir).entries.length, 2);
   });
 
   it('reports no_pending_edits when buffer is empty', () => {
@@ -827,6 +851,66 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
       result.failed.some((item) => item.reason === 'post_apply_validation_failed'),
       true,
     );
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('rolls back invalid touched JSON before clearing staged edits', () => {
+    const file = path.join(tmpDir, 'src', 'data.json');
+    const before = '{"title":"Old"}\n';
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'json', ops: [{ ref: 'a', tag: 'span', originalText: 'Old', newText: 'New', sourceHint: { file: 'src/data.json', line: 1 } }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/data.json': '{"title":"New",}\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['json'],
+        files: ['src/data.json'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(result.failed[0].checks.some((check) => check.reason === 'invalid_json'), true);
+    assert.deepEqual(result.rolledBackFiles, ['src/data.json']);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('rolls back invalid touched CJS before clearing staged edits', () => {
+    const file = path.join(tmpDir, 'src', 'config.cjs');
+    const before = "module.exports = { title: 'Old' };\n";
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({ id: 'cjs', ops: [{ ref: 'a', tag: 'span', originalText: 'Old', newText: 'New', sourceHint: { file: 'src/config.cjs', line: 1 } }] }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/config.cjs': "module.exports = { title: 'New', broken: };\n",
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['cjs'],
+        files: ['src/config.cjs'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
+    assert.equal(result.failed[0].checks.some((check) => check.reason === 'invalid_js'), true);
+    assert.deepEqual(result.rolledBackFiles, ['src/config.cjs']);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 

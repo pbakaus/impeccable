@@ -124,6 +124,17 @@ export function runCopyEditPostApplyChecks({ cwd = process.cwd(), files = [] } =
     }
     const markerMatch = findLeftoverImpeccableMarker(content);
     if (markerMatch) failures.push({ file: relativeFile, reason: 'leftover_impeccable_marker', marker: markerMatch });
+    if (/\.json$/.test(relativeFile)) {
+      try {
+        JSON.parse(content);
+      } catch (err) {
+        failures.push({
+          file: relativeFile,
+          reason: 'invalid_json',
+          message: err.message || String(err),
+        });
+      }
+    }
     const syntaxCheck = checkFrameworkSourceSyntax(relativeFile, content);
     if (syntaxCheck?.failure) failures.push(syntaxCheck.failure);
     if (syntaxCheck?.warning) warnings.push(syntaxCheck.warning);
@@ -514,18 +525,15 @@ function commandExists(command) {
  */
 export function describeNoProviderError({
   exists = commandExists,
-  authed = commandAuthed,
   chatAvailable = () => false,
   env = process.env,
 } = {}) {
   const lines = ['No live copy-edit AI runner is available.'];
   if (exists('claude')) {
-    if (authed('claude')) {
-      lines.push('  • Claude CLI: installed and authenticated (selection chose another provider — unexpected; please report).');
-    } else if (env.CLAUDE_CODE_OAUTH_TOKEN) {
+    if (env.CLAUDE_CODE_OAUTH_TOKEN) {
       lines.push('  • Claude CLI: installed; CLAUDE_CODE_OAUTH_TOKEN is set but the CLI still rejected it. The token may be expired or invalid.');
     } else {
-      lines.push('  • Claude CLI: installed but the subprocess cannot read your `claude /login` credentials (on macOS, the Keychain is unreachable from a no-TTY child).');
+      lines.push('  • Claude CLI: installed but not selected. If Apply still fails, the subprocess may be unable to read your `claude /login` credentials (on macOS, the Keychain can be unreachable from a no-TTY child).');
       lines.push('      Headless fix: run `claude setup-token` once, then `export CLAUDE_CODE_OAUTH_TOKEN=<the printed sk-ant-oat01-… token>` before starting `live-server.mjs`.');
       lines.push('      Alternative: `export ANTHROPIC_API_KEY=<key>` if you have console.anthropic.com credits.');
     }
@@ -540,7 +548,7 @@ export function describeNoProviderError({
   if (chatAvailable()) {
     lines.push('  • Chat: an Impeccable live session is polling but selection chose another provider — unexpected; please report.');
   } else {
-    lines.push('  • Chat: no Impeccable live session is currently polling on this server. Start /impeccable live in your chat to route Apply through the chat agent.');
+    lines.push('  • Chat: no Impeccable live session is currently polling on this server. Start Impeccable live in your chat to route Apply through the chat agent.');
   }
   lines.push('Fix one of the above, or set IMPECCABLE_LIVE_COPY_AGENT=mock for tests.');
   return lines.join('\n');

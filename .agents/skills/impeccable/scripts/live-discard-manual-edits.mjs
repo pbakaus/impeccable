@@ -13,7 +13,7 @@
  *   node live-discard-manual-edits.mjs              # discard all pending
  *   node live-discard-manual-edits.mjs --page-url=/ # discard only entries for "/"
  *
- * Output JSON: { discarded: N, totalCount: N }
+ * Output JSON: { discarded: N, entries: [...discardedEntries], totalCount: N }
  */
 
 import { readBuffer, removeEntries, truncateBuffer } from './live-manual-edits-buffer.mjs';
