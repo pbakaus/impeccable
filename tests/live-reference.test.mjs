@@ -59,6 +59,10 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /If Discard runs while a chat-routed Apply is in flight/);
     assert.match(liveMd, /A late reply for the old event id is stale; do not retry it/);
     assert.match(liveMd, /Response: `\{ discarded, entries, canceledApplyEvents, totalCount, perPage \}`/);
+    assert.match(liveMd, /Missing `sourceHint` is not a failure/);
+    assert.match(liveMd, /dynamic rendered UI often has none/);
+    assert.match(liveMd, /objectKeyMatches/);
+    assert.match(liveMd, /Do not fail solely because `sourceHint` is missing/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

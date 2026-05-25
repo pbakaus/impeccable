@@ -1081,6 +1081,9 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.match(prompt, /replace only the target text node or source string literal/);
     assert.match(prompt, /do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace/);
+    assert.match(prompt, /Missing sourceHint is not a failure/);
+    assert.match(prompt, /objectKeyMatches/);
+    assert.match(prompt, /data object or mapped list item/);
     const serializedBatch = prompt.split('Staged copy-edit batch:\n').pop();
     assert.doesNotMatch(serializedBatch, /data-impeccable-original-text|data-impeccable-editable|contenteditable|-webkit-user-modify/);
     assert.match(serializedBatch, /Edited/);

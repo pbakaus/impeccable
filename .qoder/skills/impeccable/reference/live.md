@@ -476,7 +476,7 @@ Do not put these progress sentences inside `--data`; `--data` is machine-readabl
 
 ### 1. Apply each edit
 
-For each op: open the file from `op.sourceHint` (when absent, take the strongest match in `candidates`), confirm `originalText` is present, and `Edit` the exact `originalText` → `newText`, changing nothing else on the line. `sourceHint.file` + `sourceHint.line` wins over duplicate text elsewhere; only fail a hinted op when the exact source text is not present at or near that location. Update a coupled key (object key, animation key, count) only when it sits on the same line and the match is unambiguous.
+For each op: open the file from `op.sourceHint` (when absent, take the strongest match in `candidates`), confirm `originalText` is present, and `Edit` the exact `originalText` → `newText`, changing nothing else on the line. `sourceHint.file` + `sourceHint.line` wins over duplicate text elsewhere; only fail a hinted op when the exact source text is not present at or near that location. Missing `sourceHint` is not a failure: dynamic rendered UI often has none, so use `candidates[].textMatches`, `candidates[].objectKeyMatches`, `candidates[].contextTextMatches`, `nearbyEditableTexts`, and container text to find the data object or mapped-list item that renders the visible copy. Update a coupled key (object key, animation key, count) only when it sits on the same line and the match is unambiguous.
 
 Only record an entry as applied after every op in that entry has been applied. If one op in an entry fails, revert any source edits you already made for that entry, mark that entry failed with the best candidate files/lines, and continue with the next entry. Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`; the server treats that as an invalid partial-entry write and rolls the whole batch back.
 
@@ -484,7 +484,7 @@ Be surgical with typed source data. If the visible edit changes integer-backed t
 
 Never copy live runtime scaffolding into source: no `contenteditable`, `data-impeccable-*` edit markers, variant wrappers, `<style>`, `<script>`, or generated browser attributes.
 
-If an `originalText` is not found, mark that entry failed and move to the next entry. Do not partially apply the remaining ops for that failed entry, do not retry blindly, do not fuzzy-match, and do not create a new file. If you already changed another op in the same entry before discovering the failure, undo that change before replying.
+If an `originalText` is not found in `sourceHint` or any usable candidate, mark that entry failed and move to the next entry. Do not fail solely because `sourceHint` is missing when candidate evidence identifies source data. Do not partially apply the remaining ops for that failed entry, do not retry blindly, do not fuzzy-match, and do not create a new file. If you already changed another op in the same entry before discovering the failure, undo that change before replying.
 
 ### 2. Reply once, after every edit is attempted
 

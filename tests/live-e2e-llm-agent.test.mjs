@@ -184,6 +184,9 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{String\(workshopStats\.seats\)\}"/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{stats\.seats\}"/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file and op\.sourceHint\.line/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /data object or mapped list item/);
   });
 
   it('tells the model to cover every op in multi-leaf applied entries', () => {
@@ -291,6 +294,59 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     );
 
     assert.match(error, /sourceHint\.file and sourceHint\.line for every op/);
+  });
+
+  it('rejects failed entries when candidates identify dynamic source data without sourceHint', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'partial',
+        appliedEntryIds: [],
+        failed: [{ entryId: 'entry-a', reason: 'sourceHint missing' }],
+        sourceEdits: [],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              {
+                ref: 'body>section.foundation-grid>article:nth-of-type(2)>span',
+                originalText: 'Color & Contrast',
+                newText: 'Color Systems',
+                nearbyEditableTexts: [{ text: 'Accessible palettes' }],
+              },
+              {
+                ref: 'body>section.foundation-grid>article:nth-of-type(2)>p',
+                originalText: 'Accessible palettes',
+                newText: 'Accessible contrast tokens',
+                nearbyEditableTexts: [{ text: 'Color & Contrast' }],
+              },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'body>section.foundation-grid>article:nth-of-type(2)>span',
+            originalText: 'Color & Contrast',
+            textMatches: [{ file: 'src/App.jsx', line: 3, kind: 'text' }],
+            objectKeyMatches: [],
+            contextTextMatches: [{ file: 'src/App.jsx', line: 3, kind: 'context' }],
+          },
+          {
+            entryId: 'entry-a',
+            ref: 'body>section.foundation-grid>article:nth-of-type(2)>p',
+            originalText: 'Accessible palettes',
+            textMatches: [{ file: 'src/App.jsx', line: 3, kind: 'text' }],
+            objectKeyMatches: [],
+            contextTextMatches: [{ file: 'src/App.jsx', line: 3, kind: 'context' }],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /candidate source evidence without sourceHint/);
+    assert.match(error, /text\/objectKey\/context candidates/);
   });
 
   it('accepts JSX expression replacements that contain the visible staged copy', () => {

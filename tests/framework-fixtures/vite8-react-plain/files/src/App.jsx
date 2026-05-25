@@ -1,4 +1,9 @@
 const workshopStats = { seats: 7 };
+const foundationCards = [
+  { label: 'Typography', detail: 'Readable hierarchy' },
+  { label: 'Color & Contrast', detail: 'Accessible palettes' },
+  { label: 'Interaction', detail: 'Responsive states' },
+];
 
 function assertIntegerStat(value) {
   if (!Number.isInteger(value)) throw new Error('workshopStats.seats must stay integer');
@@ -19,6 +24,14 @@ export default function App() {
       <section id="features" className="feature-grid">
         <article className="feature-card">One</article>
         <article className="feature-card">Two</article>
+      </section>
+      <section className="foundation-grid" aria-label="Foundation cards">
+        {foundationCards.map((card) => (
+          <article className="foundation-card" key={card.label}>
+            <span className="foundation-card-label">{card.label}</span>
+            <p className="foundation-card-detail">{card.detail}</p>
+          </article>
+        ))}
       </section>
       <section className="action-row" aria-label="Workshop actions">
         <span className="primary-action" role="button" tabIndex="0">Learn more</span>

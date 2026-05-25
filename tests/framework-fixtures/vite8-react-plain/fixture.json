@@ -157,6 +157,26 @@
         "expectedStashCount": 1
       },
       {
+        "name": "Edit dynamic data card without source hints",
+        "element": { "selector": "article.foundation-card:nth-of-type(2)" },
+        "edits": [
+          {
+            "leafSelector": "article.foundation-card:nth-of-type(2) span.foundation-card-label",
+            "originalText": "Color & Contrast",
+            "newText": "Color Systems",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "article.foundation-card:nth-of-type(2) p.foundation-card-detail",
+            "originalText": "Accessible palettes",
+            "newText": "Accessible contrast tokens",
+            "expectedSourceFile": "src/App.jsx",
+            "expectedSourceMatch": "{ label: 'Color Systems', detail: 'Accessible contrast tokens' }"
+          }
+        ],
+        "expectedStashCount": 2
+      },
+      {
         "name": "Overlapping duplicate multi-op Apply leaves no failed-entry source leak",
         "stages": [
           {

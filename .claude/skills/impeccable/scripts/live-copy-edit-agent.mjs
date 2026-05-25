@@ -30,6 +30,8 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- Make the smallest source changes needed for the visible copy to match each newText.',
     '- For text-only edits, replace only the target text node or source string literal; do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace.',
     '- Use sourceHint.file and sourceHint.line first; only fall back to candidates when the hinted source text truly cannot be found near that location.',
+    '- Missing sourceHint is not a failure. Dynamic rendered UI often has no sourceHint; use candidates[].textMatches, candidates[].objectKeyMatches, candidates[].contextTextMatches, nearbyEditableTexts, and container text to find the source data.',
+    '- When candidate evidence points to a data object or mapped list item, edit the source string literal or object field that renders the visible copy. Do not hard-code the rendered DOM elsewhere.',
     '- Mark an entry applied only after every op in that entry is applied. If one op fails, revert any edits already made for that entry, report that entry failed, and continue with the next entry.',
     '- Never leave source changes behind for entries that are failed, omitted, or absent from appliedEntryIds; the server will roll back the batch if a failed/unreported entry appears partially written.',
     '- If an original string is also used as a clearly coupled data key, object key, animation key, count label, or reference, update that related reference too.',
