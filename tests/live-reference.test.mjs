@@ -48,8 +48,12 @@ describe('live reference authoring contract', () => {
     // This is the linchpin that was previously documented but unimplemented.
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"done"/);
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"partial"/);
+    assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"error"/);
     assert.match(liveMd, /--reply done --file src\/page\.html/);
     assert.match(liveMd, /Use `--reply EVENT_ID done --data \.\.\.` for manual Apply/);
+    assert.match(liveMd, /"status":"applied","entries":3/);
+    assert.match(liveMd, /invalid_manual_apply_result/);
+    assert.match(liveMd, /full `status`, `appliedEntryIds`, `failed`, `files`, and `notes` arrays/);
     assert.match(liveMd, /evidencePath/);
     assert.match(liveMd, /poll event is intentionally compact/);
     assert.match(liveMd, /read `evidencePath`/);

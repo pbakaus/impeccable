@@ -510,10 +510,18 @@ node .trae/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --data 
 
 ```bash
 # no entry could be applied
-node .trae/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "could not resolve sources for any entry"
+node .trae/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --data '{"status":"error","appliedEntryIds":[],"failed":[{"entryId":"9f0e1d2c","reason":"could not resolve sources"}],"files":[],"notes":[],"message":"could not resolve sources for any entry"}'
 ```
 
 `appliedEntryIds` holds only entries whose every op landed. `files` lists every path you edited. Then poll again.
+
+The server validates this result shape before it acknowledges the event. Do not send summary counters such as:
+
+```bash
+node .trae/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --data '{"status":"applied","entries":3}'
+```
+
+That is invalid: the server rejects it with `invalid_manual_apply_result`, keeps the event leased for a corrected reply, and does not treat the source edits as committed. Send the full `status`, `appliedEntryIds`, `failed`, `files`, and `notes` arrays instead.
 
 ### Resume manual Apply after interruption
 

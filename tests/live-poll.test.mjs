@@ -25,6 +25,8 @@ describe('live-poll manual Apply guidance', () => {
     const banner = manualApplyPollBanner({ id: 'b79a4167' });
     assert.match(banner, /Manual Apply action required/);
     assert.match(banner, /--reply b79a4167 done --data '<json>'/);
+    assert.match(banner, /status, appliedEntryIds, failed, files, and notes/);
+    assert.match(banner, /summary counters are rejected/);
     assert.match(banner, /Do not run live-commit-manual-edits\.mjs/);
     assert.match(banner, /Do not poll again before replying/);
     assert.doesNotMatch(banner, /\{/);

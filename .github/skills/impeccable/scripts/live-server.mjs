@@ -341,6 +341,108 @@ function normalizeApplyChunkResult(result) {
   };
 }
 
+function manualApplyResultShapeHint(eventId = 'EVENT_ID') {
+  return `Use live-poll.mjs --reply ${eventId} done --data '{"status":"done","appliedEntryIds":["ENTRY_ID"],"failed":[],"files":["src/page.html"],"notes":[]}'`;
+}
+
+function invalidManualApplyResult(reason, eventId, extra = {}) {
+  return {
+    ok: false,
+    body: {
+      error: 'invalid_manual_apply_result',
+      reason,
+      hint: manualApplyResultShapeHint(eventId),
+      ...extra,
+    },
+  };
+}
+
+function validateManualApplyResultMessage(msg, deferred) {
+  const data = msg?.data;
+  const eventId = msg?.id || deferred?.event?.id || 'EVENT_ID';
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return invalidManualApplyResult('missing_result_data', eventId);
+  }
+  if ('entries' in data || 'ops' in data) {
+    return invalidManualApplyResult('summary_result_not_allowed', eventId);
+  }
+  if (!['done', 'partial', 'error'].includes(data.status)) {
+    return invalidManualApplyResult('invalid_status', eventId, { status: data.status ?? null });
+  }
+
+  for (const key of ['appliedEntryIds', 'failed', 'files', 'notes']) {
+    if (!Array.isArray(data[key])) {
+      return invalidManualApplyResult(`${key}_must_be_array`, eventId);
+    }
+  }
+
+  for (const [index, value] of data.appliedEntryIds.entries()) {
+    if (typeof value !== 'string' || !value) {
+      return invalidManualApplyResult('appliedEntryIds_must_contain_strings', eventId, { index });
+    }
+  }
+  for (const [index, value] of data.files.entries()) {
+    if (typeof value !== 'string' || !value) {
+      return invalidManualApplyResult('files_must_contain_strings', eventId, { index });
+    }
+  }
+  for (const [index, value] of data.notes.entries()) {
+    if (typeof value !== 'string') {
+      return invalidManualApplyResult('notes_must_contain_strings', eventId, { index });
+    }
+  }
+  for (const [index, item] of data.failed.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return invalidManualApplyResult('failed_must_contain_objects', eventId, { index });
+    }
+    if (typeof item.entryId !== 'string' || !item.entryId) {
+      return invalidManualApplyResult('failed_entryId_required', eventId, { index });
+    }
+    if (typeof item.reason !== 'string' || !item.reason) {
+      return invalidManualApplyResult('failed_reason_required', eventId, { index });
+    }
+  }
+
+  const eventEntryIds = new Set((deferred?.batch?.entries || []).map((entry) => entry.id).filter(Boolean));
+  for (const entryId of data.appliedEntryIds) {
+    if (eventEntryIds.size > 0 && !eventEntryIds.has(entryId)) {
+      return invalidManualApplyResult('applied_entry_id_not_in_event', eventId, { entryId });
+    }
+  }
+  for (const item of data.failed) {
+    if (eventEntryIds.size > 0 && !eventEntryIds.has(item.entryId)) {
+      return invalidManualApplyResult('failed_entry_id_not_in_event', eventId, { entryId: item.entryId });
+    }
+  }
+
+  if (data.status === 'done') {
+    if (data.failed.length > 0) {
+      return invalidManualApplyResult('done_result_has_failed_entries', eventId);
+    }
+    if (countManualApplyOps(deferred?.batch) > 0 && data.appliedEntryIds.length === 0) {
+      return invalidManualApplyResult('done_result_missing_applied_entry_ids', eventId);
+    }
+  }
+  if (data.status === 'partial' && data.appliedEntryIds.length === 0 && data.failed.length === 0) {
+    return invalidManualApplyResult('partial_result_has_no_entries', eventId);
+  }
+  if (data.status === 'error' && data.appliedEntryIds.length > 0) {
+    return invalidManualApplyResult('error_result_has_applied_entries', eventId);
+  }
+
+  return {
+    ok: true,
+    result: {
+      status: data.status,
+      message: typeof data.message === 'string' ? data.message : undefined,
+      appliedEntryIds: data.appliedEntryIds,
+      failed: data.failed,
+      files: data.files,
+      notes: data.notes,
+    },
+  };
+}
+
 function firstFailureReason(result) {
   const first = Array.isArray(result?.failed) ? result.failed.find(Boolean) : null;
   return first?.reason || first?.message || null;
@@ -1452,12 +1554,15 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
-    if (state.pendingApplyDeferreds.has(msg.id)) {
-      if (msg.type === 'error') {
-        rejectApplyDeferred(msg.id, msg.message || 'chat_agent_error');
-      } else {
-        resolveApplyDeferred(msg.id, msg.data || {});
+    const pendingApplyDeferred = state.pendingApplyDeferreds.get(msg.id);
+    if (pendingApplyDeferred) {
+      const validation = validateManualApplyResultMessage(msg, pendingApplyDeferred);
+      if (!validation.ok) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(validation.body));
+        return;
       }
+      resolveApplyDeferred(msg.id, validation.result);
       acknowledgePendingEvent(msg.id);
       flushPendingPolls();
       res.writeHead(200, { 'Content-Type': 'application/json' });

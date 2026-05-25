@@ -37,6 +37,7 @@ export function manualApplyPollBanner(event = {}) {
   const id = event.id || 'EVENT_ID';
   return [
     `Manual Apply action required: edit source, then reply with \`live-poll.mjs --reply ${id} done --data '<json>'\`.`,
+    'The JSON data must include status, appliedEntryIds, failed, files, and notes; summary counters are rejected.',
     'Do not run live-commit-manual-edits.mjs for this leased event.',
     'Do not poll again before replying.',
   ].join('\n') + '\n';
@@ -105,7 +106,8 @@ async function postReply(base, token, reply) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || res.statusText);
+    const parts = [body.error || res.statusText, body.reason, body.hint].filter(Boolean);
+    throw new Error(parts.join(': '));
   }
 }
 

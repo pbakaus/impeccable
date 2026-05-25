@@ -442,6 +442,116 @@ colors: {}
     }
   });
 
+  it('/manual-edit-commit rejects malformed chat Apply results without rolling back before retry', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-invalid-result-'));
+    let chatServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      chatServer = await startServer(8537, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      await stashManualEdit(chatServer, {
+        id: 'badc0de1',
+        pageUrl: '/',
+        element: { tagName: 'h1', outerHTML: '<h1 class="hero">Welcome</h1>', textContent: 'Welcome' },
+        ops: [{
+          ref: 'body>h1.hero:nth-of-type(1)',
+          tag: 'h1',
+          classes: ['hero'],
+          originalText: 'Welcome',
+          newText: 'Hello',
+          sourceHint: { file: 'src/page.html', line: 1 },
+        }],
+      });
+
+      const agentLoop = (async () => {
+        const pollRes = await fetch(`http://localhost:${chatServer.port}/poll?token=${chatServer.token}&timeout=10000&leaseMs=30000`);
+        const event = await pollRes.json();
+        assert.equal(event.type, 'manual_edit_apply');
+
+        writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
+
+        const rejectReply = async (data, expectedReason) => {
+          const badAck = await fetch(`http://localhost:${chatServer.port}/poll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: chatServer.token,
+              id: event.id,
+              type: 'done',
+              ...(data === undefined ? {} : { data }),
+            }),
+          });
+          assert.equal(badAck.status, 400);
+          const body = await badAck.json();
+          assert.equal(body.error, 'invalid_manual_apply_result');
+          assert.equal(body.reason, expectedReason);
+          assert.match(body.hint, new RegExp(`--reply ${event.id} done --data`));
+          assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+          const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+          assert.equal(buffer.entries.length, 1, 'invalid result must keep staged manual edits until a valid retry');
+          const statusRes = await fetch(`http://localhost:${chatServer.port}/status?token=${chatServer.token}`);
+          const status = await statusRes.json();
+          assert.equal(
+            status.pendingEvents.some((item) => item.id === event.id && item.type === 'manual_edit_apply'),
+            true,
+            'invalid result must not acknowledge the leased manual Apply event',
+          );
+        };
+
+        await rejectReply(undefined, 'missing_result_data');
+        await rejectReply({ status: 'applied', entries: 1 }, 'summary_result_not_allowed');
+        await rejectReply({ status: 'done', failed: [], files: [], notes: [] }, 'appliedEntryIds_must_be_array');
+        await rejectReply({ status: 'done', appliedEntryIds: [], failed: [], files: [], notes: [] }, 'done_result_missing_applied_entry_ids');
+        await rejectReply({ status: 'done', appliedEntryIds: ['not-this-event'], failed: [], files: [], notes: [] }, 'applied_entry_id_not_in_event');
+        await rejectReply({ status: 'partial', appliedEntryIds: ['badc0de1'], failed: 'nope', files: [], notes: [] }, 'failed_must_be_array');
+
+        const ackRes = await fetch(`http://localhost:${chatServer.port}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: chatServer.token,
+            id: event.id,
+            type: 'done',
+            data: {
+              status: 'done',
+              appliedEntryIds: ['badc0de1'],
+              failed: [],
+              files: ['src/page.html'],
+              notes: [],
+            },
+          }),
+        });
+        assert.equal(ackRes.status, 200);
+      })();
+
+      const commitPromise = fetch(`http://localhost:${chatServer.port}/manual-edit-commit?token=${chatServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      await agentLoop;
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.cleared, 1);
+      assert.equal(result.failed.length, 0);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(buffer.entries.length, 0, 'valid retry should clear staged manual edits');
+    } finally {
+      if (chatServer) {
+        await stopServer(chatServer.port, chatServer.token);
+        chatServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/manual-edit-commit chunks chat Apply events by op count and aggregates replies', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-chunks-'));
     let chunkServer;
@@ -704,8 +814,15 @@ colors: {}
           body: JSON.stringify({
             token: failServer.token,
             id: secondEvent.id,
-            type: 'error',
-            message: 'second chunk failed',
+            type: 'done',
+            data: {
+              status: 'error',
+              appliedEntryIds: [],
+              failed: [{ entryId: 'def55555', reason: 'second chunk failed' }],
+              files: [],
+              notes: [],
+              message: 'second chunk failed',
+            },
           }),
         });
         assert.equal(failedAck.status, 200);
@@ -1018,6 +1135,7 @@ colors: {}
             appliedEntryIds: ['cccccc33'],
             failed: [],
             files: ['src/docs.html'],
+            notes: [],
           },
         }),
       });
