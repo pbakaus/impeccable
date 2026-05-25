@@ -172,7 +172,8 @@ export function createFakeAgent() {
 
     /** @type {VariantAgent['applyManualEdits']} */
     async applyManualEdits(event, context = {}) {
-      return applyManualEditBatchToSource(event.batch, { tmp: context.tmp });
+      const batch = await loadManualEditEventBatch(event, { tmp: context.tmp });
+      return applyManualEditBatchToSource(batch, { tmp: context.tmp });
     },
   };
 }
@@ -509,6 +510,29 @@ export async function applyManualEditBatchToSource(batch, { tmp, sourceEdits } =
   };
 }
 
+export async function loadManualEditEventBatch(event, { tmp } = {}) {
+  if (!event?.evidencePath) return event?.batch;
+  const evidencePath = await resolveManualEditEvidencePath(event.evidencePath, tmp);
+  const body = await fs.readFile(evidencePath, 'utf-8');
+  const batch = JSON.parse(body);
+  return batch && typeof batch === 'object' && Array.isArray(batch.entries) ? batch : event.batch;
+}
+
+async function resolveManualEditEvidencePath(evidencePath, root) {
+  if (!evidencePath || typeof evidencePath !== 'string') throw new Error('invalid manual edit evidence path');
+  const base = root ? path.resolve(root) : process.cwd();
+  const full = path.isAbsolute(evidencePath) ? evidencePath : path.resolve(base, evidencePath);
+  const [realBase, realFull] = await Promise.all([
+    fs.realpath(base).catch(() => base),
+    fs.realpath(full).catch(() => full),
+  ]);
+  const rel = path.relative(realBase, realFull);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('manual edit evidence path outside fixture project');
+  }
+  return full;
+}
+
 function safeProjectPath(root, relativeFile) {
   const normalized = normalizeRelativeSourceFile(relativeFile);
   if (!normalized) throw new Error('invalid source file path');
@@ -606,14 +630,21 @@ function replaceTypedNumericDisplayExpression(body, { originalText, newText, lin
   for (const index of candidateIndexes) {
     const lineText = lines[index] || '';
     const stringCall = lineText.match(/String\(([^)\n]+)\)/);
-    if (!stringCall) continue;
+    if (stringCall) {
+      const replacement = JSON.stringify(displayTrimmed);
+      lines[index] = lineText.slice(0, stringCall.index) + replacement + lineText.slice(stringCall.index + stringCall[0].length);
+      return { ok: true, body: lines.join('\n') };
+    }
 
-    const replacement = JSON.stringify(displayTrimmed);
-    lines[index] = lineText.slice(0, stringCall.index) + replacement + lineText.slice(stringCall.index + stringCall[0].length);
-    return { ok: true, body: lines.join('\n') };
+    const bareExpression = lineText.match(/\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[['"][^'"]+['"]\])*\}/);
+    if (bareExpression) {
+      const replacement = `{${JSON.stringify(displayTrimmed)}}`;
+      lines[index] = lineText.slice(0, bareExpression.index) + replacement + lineText.slice(bareExpression.index + bareExpression[0].length);
+      return { ok: true, body: lines.join('\n') };
+    }
   }
 
-  return { ok: false, reason: 'no String() display expression near sourceHint' };
+  return { ok: false, reason: 'no typed display expression near sourceHint' };
 }
 
 function replaceNearLine(body, originalText, newText, line) {

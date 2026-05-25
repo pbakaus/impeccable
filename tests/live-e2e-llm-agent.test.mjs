@@ -213,6 +213,12 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /poll again for later chunks/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not fail entries just because later staged edits are not present in this chunk/);
   });
+
+  it('tells the model compact manual Apply events load full evidence out-of-band', () => {
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Track A poll events may be compact/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /evidencePath is present/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /loaded batch as authoritative/);
+  });
 });
 
 describe('live-e2e LLM agent manual edit coverage validation', () => {

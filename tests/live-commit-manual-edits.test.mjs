@@ -6,6 +6,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
+import { buildManualEditEvidence } from '../skill/scripts/live-manual-edit-evidence.mjs';
 import {
   buildCopyEditBatchPrompt,
   runCopyEditPostApplyChecks,
@@ -734,6 +735,33 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(candidates.some((item) => item.file === 'site/scripts/data.js'), true);
     assert.equal(candidates.some((item) => item.file === 'site/scripts/components/foundation-animations.js'), true);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('caps weak literal and locator evidence so manual Apply payloads stay compact', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'page.jsx'),
+      Array.from({ length: 30 }, (_, index) => `<span className="metric">${index % 2 === 0 ? '33' : '44'}</span>`).join('\n') + '\n',
+    );
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'weak-number',
+          element: { tagName: 'span', classes: ['metric'], textContent: '33' },
+          ops: [{
+            ref: 'body>span.metric:nth-of-type(1)',
+            tag: 'span',
+            classes: ['metric'],
+            originalText: '33',
+            newText: '0033',
+          }],
+        }),
+      ],
+    });
+
+    const evidence = buildManualEditEvidence({ cwd: tmpDir, pageUrl: '/' });
+    const candidate = evidence.candidates[0];
+    assert.ok(candidate.textMatches.length <= 4, 'short numeric text matches should be capped aggressively');
+    assert.ok(candidate.locatorMatches.length <= 4, 'broad locator matches should not dominate chat payloads');
   });
 
   it('verifies coupled label and count edits through same-entry dynamic data evidence', () => {

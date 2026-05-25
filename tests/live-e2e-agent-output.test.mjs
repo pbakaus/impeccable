@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { applyManualEditBatchToSource, htmlToJsx, normalizeVariantOutput } from './live-e2e/agent.mjs';
+import { applyManualEditBatchToSource, htmlToJsx, loadManualEditEventBatch, normalizeVariantOutput } from './live-e2e/agent.mjs';
 
 describe('live-e2e agent output translation', () => {
   it('converts HTML class and inline style attributes to JSX syntax', () => {
@@ -258,6 +258,32 @@ describe('live-e2e agent output translation', () => {
 });
 
 describe('live-e2e fake manual edit apply', () => {
+  it('loads compact manual Apply evidence through realpath-equivalent fixture roots', async () => {
+    const realTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'manual-apply-evidence-real-'));
+    const linkTmp = path.join(os.tmpdir(), `manual-apply-evidence-link-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    try {
+      fs.symlinkSync(realTmp, linkTmp, 'dir');
+      const evidenceDir = path.join(realTmp, '.impeccable', 'live', 'manual-edit-evidence');
+      fs.mkdirSync(evidenceDir, { recursive: true });
+      const evidencePath = path.join(evidenceDir, 'event.json');
+      fs.writeFileSync(evidencePath, JSON.stringify({
+        entries: [{ id: 'loaded', ops: [{ originalText: 'A', newText: 'B' }] }],
+        candidates: [{ entryId: 'loaded' }],
+      }));
+
+      const batch = await loadManualEditEventBatch({
+        batch: { entries: [] },
+        evidencePath,
+      }, { tmp: linkTmp });
+
+      assert.equal(batch.entries[0].id, 'loaded');
+      assert.equal(batch.candidates[0].entryId, 'loaded');
+    } finally {
+      fs.rmSync(linkTmp, { force: true });
+      fs.rmSync(realTmp, { recursive: true, force: true });
+    }
+  });
+
   it('applies a sourceHint-backed staged edit to source', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'manual-apply-source-hint-'));
     try {
@@ -407,6 +433,52 @@ describe('live-e2e fake manual edit apply', () => {
       assert.match(body, /seats: 7/);
       assert.match(body, /\{"7 seats"\}/);
       assert.doesNotMatch(body, /seats:\s*['"`]7 seats/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('expands Svelte-style bare numeric expressions without coercing the numeric model', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'manual-apply-svelte-display-'));
+    try {
+      fs.mkdirSync(path.join(tmp, 'src/routes'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, 'src/routes/+page.svelte'),
+        [
+          '<script>',
+          '  const stats = { seats: 7 };',
+          '  function assertIntegerStat(value) { return value; }',
+          '</script>',
+          '<span class="capacity-count">{stats.seats}</span>',
+          '<span hidden>{assertIntegerStat(stats.seats)}</span>',
+          '',
+        ].join('\n'),
+      );
+
+      const result = await applyManualEditBatchToSource({
+        entries: [
+          {
+            id: 'svelte-display',
+            ops: [
+              {
+                ref: 'body>main>span.capacity-count',
+                tag: 'span',
+                classes: ['capacity-count'],
+                originalText: '7',
+                newText: '7 Svelte seats',
+                sourceHint: { file: 'src/routes/+page.svelte', line: 5 },
+              },
+            ],
+          },
+        ],
+        candidates: [],
+      }, { tmp });
+
+      const body = fs.readFileSync(path.join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+      assert.equal(result.status, 'done');
+      assert.match(body, /seats: 7/);
+      assert.match(body, /<span class="capacity-count">\{"7 Svelte seats"\}<\/span>/);
+      assert.match(body, /assertIntegerStat\(stats\.seats\)/);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

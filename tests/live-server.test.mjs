@@ -362,12 +362,20 @@ colors: {}
           warning: 'Polling only leases this work item; it does not commit source edits.',
         });
         assert.equal(event.pageUrl, '/');
+        assert.equal(typeof event.evidencePath, 'string');
+        assert.equal(existsSync(event.evidencePath), true);
+        assert.equal(event.batch.candidates, undefined);
+        assert.doesNotMatch(JSON.stringify(event.batch), /outerHTML|computedStyles|cssCustomProperties/);
+        const evidence = JSON.parse(readFileSync(event.evidencePath, 'utf-8'));
+        assert.equal(evidence.entries[0].id, 'cafebabe');
+        assert.equal(Array.isArray(evidence.candidates), true);
         assert.equal(event.batch.entries.length, 1);
         assert.equal(event.batch.entries[0].id, 'cafebabe');
         const statusRes = await fetch(`http://localhost:${chatServer.port}/status?token=${chatServer.token}`);
         const status = await statusRes.json();
         const pendingManual = status.pendingEvents.find((item) => item.id === event.id);
         assert.equal(pendingManual.type, 'manual_edit_apply');
+        assert.equal(pendingManual.evidencePath, event.evidencePath);
         assert.equal(pendingManual.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
         assert.deepEqual(pendingManual.manualApplySummary.files, ['src/page.html']);
         const malformedAck = await fetch(`http://localhost:${chatServer.port}/poll`, {
@@ -474,6 +482,10 @@ colors: {}
           assert.equal(event.type, 'manual_edit_apply');
           assert.equal(event.agentAction.required, 'apply_source_edits_then_reply');
           assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
+          assert.equal(typeof event.evidencePath, 'string');
+          assert.equal(existsSync(event.evidencePath), true);
+          assert.equal(event.batch.candidates, undefined);
+          assert.ok(JSON.stringify(event).length < 9000, 'chat Apply poll payload should stay compact; full evidence lives at evidencePath');
           assert.deepEqual(event.chunk, {
             index: index + 1,
             total: 3,
@@ -567,6 +579,9 @@ colors: {}
           assert.equal(event.type, 'manual_edit_apply');
           assert.equal(event.agentAction.required, 'apply_source_edits_then_reply');
           assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
+          assert.equal(typeof event.evidencePath, 'string');
+          assert.equal(existsSync(event.evidencePath), true);
+          assert.equal(event.batch.candidates, undefined);
           assert.equal(event.batch.entries.length, 1);
           assert.equal(event.batch.entries[0].id, 'abc55555');
           assert.equal(event.batch.entries[0].ops.length, expectedSize);

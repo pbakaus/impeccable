@@ -16,6 +16,12 @@ import { readBuffer, getBufferPath } from './live-manual-edits-buffer.mjs';
 const EVIDENCE_VERSION = 1;
 const TEXT_EXTENSIONS = new Set(['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.js', '.mjs', '.ts']);
 const SEARCH_DIRS = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'site', 'lib', 'data'];
+const STRONG_LITERAL_MATCH_LIMIT = 8;
+const WEAK_LITERAL_MATCH_LIMIT = 4;
+const OBJECT_KEY_MATCH_LIMIT = 8;
+const LOCATOR_MATCH_LIMIT = 4;
+const CONTEXT_MATCH_LIMIT = 8;
+const CONTEXT_MATCH_PER_HINT = 2;
 const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
@@ -131,11 +137,20 @@ function buildCandidatesForOp(op, cwd, searchFiles) {
     ref: op.ref,
     originalText,
     sourceHint: analyzeSourceHint(op, cwd),
-    textMatches: originalText ? findLiteralMatches(searchFiles, originalText, { max: 20 }) : [],
-    objectKeyMatches: originalText ? findObjectKeyMatches(searchFiles, originalText, { max: 20 }) : [],
-    locatorMatches: findLocatorMatches(searchFiles, op, { max: 20 }),
-    contextTextMatches: findContextMatches(searchFiles, contextNeedles, { maxPerHint: 5, max: 24 }),
+    textMatches: originalText ? findLiteralMatches(searchFiles, originalText, { max: literalMatchLimit(originalText) }) : [],
+    objectKeyMatches: originalText ? findObjectKeyMatches(searchFiles, originalText, { max: OBJECT_KEY_MATCH_LIMIT }) : [],
+    locatorMatches: findLocatorMatches(searchFiles, op, { max: LOCATOR_MATCH_LIMIT }),
+    contextTextMatches: findContextMatches(searchFiles, contextNeedles, { maxPerHint: CONTEXT_MATCH_PER_HINT, max: CONTEXT_MATCH_LIMIT }),
   };
+}
+
+function literalMatchLimit(text) {
+  return isWeakSourceNeedle(text) ? WEAK_LITERAL_MATCH_LIMIT : STRONG_LITERAL_MATCH_LIMIT;
+}
+
+function isWeakSourceNeedle(text) {
+  const normalized = normalizeText(text);
+  return normalized.length < 4 || /^[\d.,+\-%\s]+$/.test(normalized);
 }
 
 function analyzeSourceHint(op, cwd) {

@@ -99,6 +99,8 @@ const APPLY_EVENT_SOFT_DEADLINE_MS = Number(process.env.IMPECCABLE_LIVE_APPLY_EV
 const DEFAULT_MANUAL_EDIT_APPLY_CHUNK_SIZE = 3;
 const MIN_MANUAL_EDIT_APPLY_CHUNK_SIZE = 1;
 const MAX_MANUAL_EDIT_APPLY_CHUNK_SIZE = 20;
+const MANUAL_APPLY_COMPACT_TEXT_LIMIT = 240;
+const MANUAL_APPLY_COMPACT_NEARBY_LIMIT = 4;
 
 function tombstoneTimedOutApplyId(eventId, details = {}) {
   if (!eventId) return;
@@ -132,11 +134,13 @@ function countManualApplyOps(entriesOrBatch) {
 
 function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
   const eventId = randomUUID().replace(/-/g, '').slice(0, 8);
+  const evidencePath = writeManualApplyEvidence(eventId, batch);
   const event = {
     type: 'manual_edit_apply',
     id: eventId,
     pageUrl,
-    batch,
+    batch: compactManualApplyBatch(batch),
+    evidencePath,
     agentAction: buildManualApplyAgentAction(eventId),
     schemaVersion: 1,
     deadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
@@ -153,6 +157,89 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
     state.pendingApplyDeferreds.set(eventId, { resolve, reject, timer, event, batch, pageUrl, rollbackSnapshot });
     enqueueEvent(event);
   });
+}
+
+function writeManualApplyEvidence(eventId, batch) {
+  const dir = path.join(getLiveDir(process.cwd()), 'manual-edit-evidence');
+  fs.mkdirSync(dir, { recursive: true });
+  const evidencePath = path.join(dir, `${eventId}.json`);
+  fs.writeFileSync(evidencePath, JSON.stringify(batch, null, 2) + '\n', 'utf-8');
+  return evidencePath;
+}
+
+function compactManualApplyBatch(batch = {}) {
+  const entries = (batch.entries || []).map(compactManualApplyEntry);
+  return {
+    version: batch.version,
+    pageUrl: batch.pageUrl || null,
+    count: batch.count,
+    entries,
+    ops: entries.flatMap((entry) => entry.ops.map((op) => ({ ...op, entryId: entry.id }))),
+    context: batch.context ? {
+      bufferPath: batch.context.bufferPath,
+      totalEntries: batch.context.totalEntries,
+      totalOps: batch.context.totalOps,
+      chunkIndex: batch.context.chunkIndex,
+      chunkTotal: batch.context.chunkTotal,
+      totalApplyOps: batch.context.totalApplyOps,
+    } : undefined,
+  };
+}
+
+function compactManualApplyEntry(entry = {}) {
+  return {
+    id: entry.id,
+    pageUrl: entry.pageUrl,
+    stagedAt: entry.stagedAt || null,
+    element: compactManualApplyContext(entry.element),
+    ops: (entry.ops || []).map(compactManualApplyOp),
+  };
+}
+
+function compactManualApplyOp(op = {}) {
+  return {
+    entryId: op.entryId,
+    ref: op.ref,
+    contextRef: op.contextRef,
+    tag: op.tag,
+    elementId: op.elementId,
+    classes: Array.isArray(op.classes) ? op.classes : [],
+    originalText: op.originalText,
+    newText: op.newText,
+    deleted: op.deleted === true || undefined,
+    sourceHint: op.sourceHint || null,
+    leaf: compactManualApplyContext(op.leaf),
+    nearbyEditableTexts: compactNearbyManualEditTexts(op.nearbyEditableTexts),
+    container: compactManualApplyContext(op.container),
+    contextHints: Array.isArray(op.contextHints) ? op.contextHints.slice(0, 8) : undefined,
+  };
+}
+
+function compactManualApplyContext(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    ref: value.ref,
+    tagName: value.tagName || value.tag || null,
+    id: value.id || null,
+    classes: Array.isArray(value.classes) ? value.classes : [],
+    textContent: truncateManualApplyText(value.textContent, MANUAL_APPLY_COMPACT_TEXT_LIMIT),
+  };
+}
+
+function compactNearbyManualEditTexts(items) {
+  return (Array.isArray(items) ? items : [])
+    .slice(0, MANUAL_APPLY_COMPACT_NEARBY_LIMIT)
+    .map((item) => typeof item === 'string' ? { text: truncateManualApplyText(item, MANUAL_APPLY_COMPACT_TEXT_LIMIT) } : {
+      ref: item?.ref,
+      tag: item?.tag,
+      classes: Array.isArray(item?.classes) ? item.classes : [],
+      text: truncateManualApplyText(item?.text, MANUAL_APPLY_COMPACT_TEXT_LIMIT),
+    });
+}
+
+function truncateManualApplyText(value, max) {
+  if (typeof value !== 'string') return value || null;
+  return value.length > max ? value.slice(0, max) : value;
 }
 
 async function pushApplyBatchInChunksAndWait(batch, pageUrl) {
@@ -499,15 +586,15 @@ function buildManualApplyAgentAction(eventOrId = 'EVENT_ID') {
   };
 }
 
-function summarizeManualApplyEvent(event = {}) {
-  const entries = Array.isArray(event.batch?.entries) ? event.batch.entries : [];
+function summarizeManualApplyEvent(event = {}, batch = event.batch) {
+  const entries = Array.isArray(batch?.entries) ? batch.entries : [];
   const opCount = entries.reduce((sum, entry) => sum + (Array.isArray(entry.ops) ? entry.ops.length : 0), 0);
   return {
     pageUrl: event.pageUrl || null,
     chunk: event.chunk || null,
     entryCount: entries.length,
     opCount,
-    files: collectManualApplyFiles(event.batch),
+    files: collectManualApplyFiles(batch),
   };
 }
 
@@ -522,8 +609,9 @@ function summarizePendingEventForStatus(entry) {
   if (event.type === 'manual_edit_apply') {
     summary.pageUrl = event.pageUrl || null;
     summary.chunk = event.chunk || null;
+    summary.evidencePath = event.evidencePath || null;
     summary.agentAction = event.agentAction || buildManualApplyAgentAction(event);
-    summary.manualApplySummary = summarizeManualApplyEvent(event);
+    summary.manualApplySummary = summarizeManualApplyEvent(event, state.pendingApplyDeferreds.get(event.id)?.batch || event.batch);
   }
   return summary;
 }
