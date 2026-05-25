@@ -357,12 +357,55 @@ function invalidManualApplyResult(reason, eventId, extra = {}) {
   };
 }
 
+function recoverLegacyManualApplySummary(data, deferred, eventId) {
+  if (data?.status !== 'applied') return { data };
+  const keys = Object.keys(data);
+  const allowedKeys = new Set(['status', 'entries', 'ops']);
+  const unexpectedKeys = keys.filter((key) => !allowedKeys.has(key));
+  if (unexpectedKeys.length > 0) {
+    return invalidManualApplyResult('legacy_summary_unexpected_fields', eventId, { fields: unexpectedKeys });
+  }
+  const hasEntries = Object.prototype.hasOwnProperty.call(data, 'entries');
+  const hasOps = Object.prototype.hasOwnProperty.call(data, 'ops');
+  if (!hasEntries && !hasOps) {
+    return invalidManualApplyResult('legacy_summary_missing_counts', eventId);
+  }
+
+  const expectedEntries = (deferred?.batch?.entries || []).length;
+  const expectedOps = countManualApplyOps(deferred?.batch);
+  if (hasEntries && data.entries !== expectedEntries) {
+    return invalidManualApplyResult('legacy_summary_entries_mismatch', eventId, {
+      expected: expectedEntries,
+      actual: data.entries,
+    });
+  }
+  if (hasOps && data.ops !== expectedOps) {
+    return invalidManualApplyResult('legacy_summary_ops_mismatch', eventId, {
+      expected: expectedOps,
+      actual: data.ops,
+    });
+  }
+
+  return {
+    data: {
+      status: 'done',
+      appliedEntryIds: (deferred?.batch?.entries || []).map((entry) => entry.id).filter(Boolean),
+      failed: [],
+      files: collectManualApplyFiles(deferred?.batch),
+      notes: [],
+    },
+  };
+}
+
 function validateManualApplyResultMessage(msg, deferred) {
-  const data = msg?.data;
+  let data = msg?.data;
   const eventId = msg?.id || deferred?.event?.id || 'EVENT_ID';
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return invalidManualApplyResult('missing_result_data', eventId);
   }
+  const legacy = recoverLegacyManualApplySummary(data, deferred, eventId);
+  if (!legacy.data) return legacy;
+  data = legacy.data;
   if ('entries' in data || 'ops' in data) {
     return invalidManualApplyResult('summary_result_not_allowed', eventId);
   }

@@ -53,6 +53,8 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /Use `--reply EVENT_ID done --data \.\.\.` for manual Apply/);
     assert.match(liveMd, /"status":"applied","entries":3/);
     assert.match(liveMd, /invalid_manual_apply_result/);
+    assert.match(liveMd, /recovery shim for exact legacy summaries only/);
+    assert.match(liveMd, /Mismatched or incomplete summaries are rejected/);
     assert.match(liveMd, /full `status`, `appliedEntryIds`, `failed`, `files`, and `notes` arrays/);
     assert.match(liveMd, /evidencePath/);
     assert.match(liveMd, /poll event is intentionally compact/);
@@ -81,6 +83,8 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /dynamic rendered UI often has none/);
     assert.match(liveMd, /objectKeyMatches/);
     assert.match(liveMd, /Do not fail solely because `sourceHint` is missing/);
+    assert.match(liveMd, /do not coerce the source model field/);
+    assert.match(liveMd, /fail that entry instead of demo-applying a string into the model/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

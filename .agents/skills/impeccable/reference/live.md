@@ -488,7 +488,7 @@ For each op: open the file from `op.sourceHint` (when absent, read `evidencePath
 
 Only record an entry as applied after every op in that entry has been applied. If one op in an entry fails, revert any source edits you already made for that entry, mark that entry failed with the best candidate files/lines, and continue with the next entry. Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`; the server treats that as an invalid partial-entry write and rolls the whole batch back.
 
-Be surgical with typed source data. If the visible edit changes integer-backed text like `7` → `7 seats`, do not coerce the source model field (`count: 7`) into a string. Prefer a display string/expression that contains `newText` literally, for example replacing JSX/Svelte template output like `{String(stats.count)}` or `{stats.count}` with `{"7 seats"}` while leaving `stats.count` numeric. This lets the server verify the copy and keeps the app from crashing after Apply.
+Be surgical with typed source data. If the visible edit changes integer-backed text like `7` → `7 seats`, do not coerce the source model field (`count: 7`) into a string. Prefer a display string/expression that contains `newText` literally, for example replacing JSX/Svelte template output like `{String(stats.count)}` or `{stats.count}` with `{"7 seats"}` while leaving `stats.count` numeric. If you cannot represent the visible copy safely without corrupting numeric/boolean/structured data, fail that entry instead of demo-applying a string into the model. This lets the server verify the copy and keeps the app from crashing after Apply.
 
 Never copy live runtime scaffolding into source: no `contenteditable`, `data-impeccable-*` edit markers, variant wrappers, `<style>`, `<script>`, or generated browser attributes.
 
@@ -521,7 +521,7 @@ The server validates this result shape before it acknowledges the event. Do not 
 node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --data '{"status":"applied","entries":3}'
 ```
 
-That is invalid: the server rejects it with `invalid_manual_apply_result`, keeps the event leased for a corrected reply, and does not treat the source edits as committed. Send the full `status`, `appliedEntryIds`, `failed`, `files`, and `notes` arrays instead.
+The server has a recovery shim for exact legacy summaries only: if `entries` and/or `ops` exactly match the current leased chunk, it can infer all entry ids and files, then still runs normal source verification. Mismatched or incomplete summaries are rejected with `invalid_manual_apply_result`, keep the event leased for a corrected reply, and do not treat source edits as committed. Always send the full `status`, `appliedEntryIds`, `failed`, `files`, and `notes` arrays instead.
 
 ### Resume manual Apply after interruption
 
