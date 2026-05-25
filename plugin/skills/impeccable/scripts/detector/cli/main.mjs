@@ -93,6 +93,7 @@ Examples:
   impeccable detect src/
   impeccable detect index.html
   impeccable detect https://example.com
+  cat index.html | impeccable detect -
   impeccable detect --fast --json .`);
 }
 
@@ -121,6 +122,11 @@ async function detectCli() {
 
     try {
       for (const target of paths) {
+        if (target === '-') {
+          allFindings.push(...await handleStdin());
+          continue;
+        }
+
         if (/^https?:\/\//i.test(target)) {
           try {
             const scanner = browserDetector

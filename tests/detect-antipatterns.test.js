@@ -688,6 +688,11 @@ describe('CLI', () => {
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
+  function runWithInput(input, ...args) {
+    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', input, timeout: 15000 });
+    return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
+  }
+
   test('--help exits 0', () => {
     const { stdout, code } = run('--help');
     expect(code).toBe(0);
@@ -737,6 +742,19 @@ describe('CLI', () => {
   test('--fast mode works', () => {
     const { code } = run('--fast', path.join(FIXTURES, 'should-flag.html'));
     expect(code).toBe(2);
+  });
+
+  test('dash target reads stdin', () => {
+    const { stdout, stderr, code } = runWithInput(
+      '<div class="border-l-4 border-blue-500 rounded-lg">Card</div>',
+      '--fast',
+      '--json',
+      '-',
+    );
+    expect(code).toBe(2);
+    expect(stderr).not.toContain('cannot access -');
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.some(f => f.file === '<stdin>' && f.antipattern === 'side-tab')).toBe(true);
   });
 
   test('linked stylesheet detected (static HTML/CSS default)', () => {
