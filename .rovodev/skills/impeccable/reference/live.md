@@ -721,6 +721,8 @@ Schema:
 | Astro | `[" <root layout .astro>"]` | `</body>` | `html` |
 | Multi-page (separate HTML per route) | `["public/**/*.html"]`: a glob covering the served directory | `</body>` | `html` |
 
+For Astro `.astro` inject targets, `live-inject.mjs` writes `<script is:inline src="http://localhost:PORT/live.js"></script>` automatically. Do not hand-copy a bare `<script src=".../live.js">` into Astro source; Astro may process or rewrite that external runtime script before the browser can load it.
+
 Pick an anchor that exists in every file (`</body>` almost always works). Use `insertAfter` if the anchor should match **after** a specific line.
 
 For multi-page sites, **prefer a glob over a literal file list**. New pages added later are picked up automatically on the next `live-inject.mjs` run; no config maintenance needed.

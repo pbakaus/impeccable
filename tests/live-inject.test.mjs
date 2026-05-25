@@ -288,6 +288,36 @@ const title = 'Test';
     assert.equal(afterRemove, original, 'astro file should round-trip cleanly after remove');
   });
 
+  it('normalizes stale bare live script blocks in .astro files', () => {
+    const original = `---
+const title = 'Test';
+---
+<html>
+  <body>
+    <h1>{title}</h1>
+    <!-- impeccable-live-start -->
+    <script src="http://localhost:8400/live.js"></script>
+    <!-- impeccable-live-end --></body>
+</html>
+`;
+    const file = join(tmp, 'Layout.astro');
+    writeFileSync(file, original);
+
+    const cfgPath = join(tmp, 'config.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      files: ['Layout.astro'],
+      insertBefore: '</body>',
+      commentSyntax: 'html',
+    }));
+
+    runInject(tmp, cfgPath, ['--port', '8400']);
+    const afterInject = readFileSync(file, 'utf-8');
+
+    assert.equal((afterInject.match(/impeccable-live-start/g) || []).length, 1, 'reinjection should leave one live block');
+    assert.match(afterInject, /<script is:inline src="http:\/\/localhost:8400\/live\.js"><\/script>/, 'astro reinject should restore is:inline');
+    assert.doesNotMatch(afterInject, /<script src="http:\/\/localhost:8400\/live\.js"><\/script>/, 'bare astro live script must not survive');
+  });
+
   it('round-trips when the insert anchor has no leading indent (column-0 </body>)', () => {
     const original = `<html>
 <body>

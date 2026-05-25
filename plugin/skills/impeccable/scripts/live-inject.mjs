@@ -303,12 +303,21 @@ function insertTag(content, config, port, filePath) {
  */
 function removeTag(content, _syntax) {
   const patterns = [
-    /([ \t]*)<!--\s*impeccable-live-start\s*-->[\s\S]*?<!--\s*impeccable-live-end\s*-->[ \t]*\n/,
-    /([ \t]*)\{\/\*\s*impeccable-live-start\s*\*\/\}[\s\S]*?\{\/\*\s*impeccable-live-end\s*\*\/\}[ \t]*\n/,
+    /([ \t]*)<!--\s*impeccable-live-start\s*-->[\s\S]*?<!--\s*impeccable-live-end\s*-->([ \t]*(?:\n|$)?)/,
+    /([ \t]*)\{\/\*\s*impeccable-live-start\s*\*\/\}[\s\S]*?\{\/\*\s*impeccable-live-end\s*\*\/\}([ \t]*(?:\n|$)?)/,
   ];
   for (const pat of patterns) {
-    const next = content.replace(pat, '$1');
-    if (next !== content) return next;
+    let changed = false;
+    let next = content;
+    do {
+      content = next;
+      next = content.replace(pat, (_match, leadingIndent, trailing = '') => {
+        if (trailing.includes('\n')) return leadingIndent;
+        return leadingIndent || trailing || '';
+      });
+      if (next !== content) changed = true;
+    } while (next !== content);
+    if (changed) return next;
   }
   return content;
 }
