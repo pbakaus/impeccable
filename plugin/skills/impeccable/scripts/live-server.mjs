@@ -129,7 +129,7 @@ function pushApplyEventAndWait(batch, pageUrl) {
       acknowledgePendingEvent(eventId);
       reject(new Error('chat_agent_timeout'));
     }, APPLY_EVENT_HARD_TIMEOUT_MS);
-    state.pendingApplyDeferreds.set(eventId, { resolve, reject, timer });
+    state.pendingApplyDeferreds.set(eventId, { resolve, reject, timer, event, batch, pageUrl, rollbackSnapshot });
     enqueueEvent(event);
   });
 }
@@ -263,6 +263,42 @@ function acknowledgePendingEvent(id) {
   state.pendingEvents.splice(idx, 1);
   scheduleLeaseFlush();
   return acknowledged;
+}
+
+function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded') {
+  const canceledById = new Map();
+  const shouldCancel = (event) => event?.type === 'manual_edit_apply' && (!pageUrl || event.pageUrl === pageUrl);
+
+  for (let i = state.pendingEvents.length - 1; i >= 0; i -= 1) {
+    const event = state.pendingEvents[i]?.event;
+    if (!shouldCancel(event)) continue;
+    state.pendingEvents.splice(i, 1);
+    canceledById.set(event.id, {
+      id: event.id,
+      pageUrl: event.pageUrl,
+      entryCount: event.batch?.entries?.length || 0,
+    });
+  }
+
+  for (const [eventId, deferred] of [...state.pendingApplyDeferreds.entries()]) {
+    if (!shouldCancel(deferred.event)) continue;
+    state.pendingApplyDeferreds.delete(eventId);
+    clearTimeout(deferred.timer);
+    tombstoneTimedOutApplyId(eventId, {
+      batch: deferred.batch,
+      rollbackSnapshot: deferred.rollbackSnapshot,
+      reason,
+    });
+    canceledById.set(eventId, {
+      id: eventId,
+      pageUrl: deferred.pageUrl,
+      entryCount: deferred.batch?.entries?.length || 0,
+    });
+    deferred.reject(new Error(reason));
+  }
+
+  if (canceledById.size > 0) flushPendingPolls();
+  return [...canceledById.values()];
 }
 
 function scheduleLeaseFlush() {
@@ -902,6 +938,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       const pageUrl = url.searchParams.get('pageUrl');
       let discarded;
       let discardedEntries = [];
+      let canceledApplyEvents = [];
       try {
         const buffer = readManualEditsBuffer(process.cwd());
         if (pageUrl) {
@@ -911,6 +948,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
           discardedEntries = buffer.entries;
           discarded = truncateManualEditsBuffer(process.cwd());
         }
+        canceledApplyEvents = cancelPendingManualApplyEvents(pageUrl);
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'discard_failed', message: err.message }));
@@ -920,10 +958,11 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       recordManualEditActivity('manual_edit_discarded', {
         pageUrl,
         discarded,
+        canceledApplyIds: canceledApplyEvents.map((event) => event.id),
         totalCount,
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ discarded, entries: discardedEntries, totalCount, perPage }));
+      res.end(JSON.stringify({ discarded, entries: discardedEntries, canceledApplyEvents, totalCount, perPage }));
       return;
     }
 

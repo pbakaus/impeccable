@@ -494,6 +494,221 @@ colors: {}
     }
   });
 
+  it('/manual-edit-discard cancels leased chat Apply events instead of redelivering them', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-apply-'));
+    let discardApplyServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      discardApplyServer = await startServer(8526, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      const stash = await fetch(`http://localhost:${discardApplyServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: discardApplyServer.token,
+          id: 'aaaaaa11',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Welcome</h1>', textContent: 'Welcome' },
+          ops: [{
+            ref: 'body>h1.hero:nth-of-type(1)',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/page.html', line: 1 },
+          }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+
+      const pollPromise = fetch(`http://localhost:${discardApplyServer.port}/poll?token=${discardApplyServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      const commitPromise = fetch(`http://localhost:${discardApplyServer.port}/manual-edit-commit?token=${discardApplyServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      const event = await pollPromise;
+      assert.equal(event.type, 'manual_edit_apply');
+      assert.equal(event.pageUrl, '/');
+      assert.equal(event.batch.entries[0].id, 'aaaaaa11');
+
+      const discard = await fetch(`http://localhost:${discardApplyServer.port}/manual-edit-discard?token=${discardApplyServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      assert.equal(discard.status, 200);
+      const discardBody = await discard.json();
+      assert.equal(discardBody.discarded, 1);
+      assert.deepEqual(discardBody.canceledApplyEvents.map((item) => item.id), [event.id]);
+      assert.equal(discardBody.totalCount, 0);
+
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const commitBody = await commit.json();
+      assert.equal(commitBody.cleared, 0);
+      assert.equal(commitBody.failed.length, 1);
+      assert.equal(commitBody.failed[0].reason, 'manual_edit_discarded');
+      assert.equal(commitBody.totalCount, 0);
+
+      const nextPoll = await fetch(`http://localhost:${discardApplyServer.port}/poll?token=${discardApplyServer.token}&timeout=100&leaseMs=1`);
+      const nextEvent = await nextPoll.json();
+      assert.equal(nextEvent.type, 'timeout');
+
+      writeFileSync(sourcePath, '<h1 class="hero">Late write</h1>\n');
+      const lateAck = await fetch(`http://localhost:${discardApplyServer.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: discardApplyServer.token,
+          id: event.id,
+          type: 'done',
+          data: {
+            status: 'done',
+            appliedEntryIds: ['aaaaaa11'],
+            failed: [],
+            files: ['src/page.html'],
+          },
+        }),
+      });
+      assert.equal(lateAck.status, 409);
+      const lateAckBody = await lateAck.json();
+      assert.equal(lateAckBody.error, 'stale_manual_edit_apply_reply');
+      assert.deepEqual(lateAckBody.rolledBackFiles, ['src/page.html']);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
+
+      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(buffer.entries.length, 0);
+    } finally {
+      if (discardApplyServer) {
+        await stopServer(discardApplyServer.port, discardApplyServer.token);
+        discardApplyServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/manual-edit-discard only cancels in-flight Apply events for the discarded page', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-page-scope-'));
+    let pageScopeServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const homePath = join(tmp, 'src', 'home.html');
+      const docsPath = join(tmp, 'src', 'docs.html');
+      writeFileSync(homePath, '<h1>Home</h1>\n');
+      writeFileSync(docsPath, '<h1>Docs</h1>\n');
+
+      pageScopeServer = await startServer(8527, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      const stashHome = await fetch(`http://localhost:${pageScopeServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: pageScopeServer.token,
+          id: 'bbbbbb22',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1>Home</h1>', textContent: 'Home' },
+          ops: [{
+            ref: 'body>h1:nth-of-type(1)',
+            tag: 'h1',
+            originalText: 'Home',
+            newText: 'Home Ready',
+            sourceHint: { file: 'src/home.html', line: 1 },
+          }],
+        }),
+      });
+      assert.equal(stashHome.status, 200);
+      const stashDocs = await fetch(`http://localhost:${pageScopeServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: pageScopeServer.token,
+          id: 'cccccc33',
+          pageUrl: '/docs',
+          element: { tagName: 'h1', outerHTML: '<h1>Docs</h1>', textContent: 'Docs' },
+          ops: [{
+            ref: 'body>h1:nth-of-type(1)',
+            tag: 'h1',
+            originalText: 'Docs',
+            newText: 'Docs Ready',
+            sourceHint: { file: 'src/docs.html', line: 1 },
+          }],
+        }),
+      });
+      assert.equal(stashDocs.status, 200);
+
+      const homePollPromise = fetch(`http://localhost:${pageScopeServer.port}/poll?token=${pageScopeServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      const homeCommitPromise = fetch(`http://localhost:${pageScopeServer.port}/manual-edit-commit?token=${pageScopeServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      const homeEvent = await homePollPromise;
+      assert.equal(homeEvent.type, 'manual_edit_apply');
+      assert.equal(homeEvent.pageUrl, '/');
+
+      const docsPollPromise = fetch(`http://localhost:${pageScopeServer.port}/poll?token=${pageScopeServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      const docsCommitPromise = fetch(`http://localhost:${pageScopeServer.port}/manual-edit-commit?token=${pageScopeServer.token}&pageUrl=%2Fdocs`, {
+        method: 'POST',
+      });
+      const docsEvent = await docsPollPromise;
+      assert.equal(docsEvent.type, 'manual_edit_apply');
+      assert.equal(docsEvent.pageUrl, '/docs');
+
+      const discardHome = await fetch(`http://localhost:${pageScopeServer.port}/manual-edit-discard?token=${pageScopeServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      assert.equal(discardHome.status, 200);
+      const discardHomeBody = await discardHome.json();
+      assert.deepEqual(discardHomeBody.canceledApplyEvents.map((item) => item.id), [homeEvent.id]);
+      assert.equal(discardHomeBody.perPage['/'] || 0, 0);
+      assert.equal(discardHomeBody.perPage['/docs'] || 0, 1);
+
+      const homeCommit = await homeCommitPromise;
+      const homeCommitBody = await homeCommit.json();
+      assert.equal(homeCommitBody.failed[0].reason, 'manual_edit_discarded');
+
+      writeFileSync(docsPath, '<h1>Docs Ready</h1>\n');
+      const docsAck = await fetch(`http://localhost:${pageScopeServer.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: pageScopeServer.token,
+          id: docsEvent.id,
+          type: 'done',
+          data: {
+            status: 'done',
+            appliedEntryIds: ['cccccc33'],
+            failed: [],
+            files: ['src/docs.html'],
+          },
+        }),
+      });
+      assert.equal(docsAck.status, 200);
+
+      const docsCommit = await docsCommitPromise;
+      const docsCommitBody = await docsCommit.json();
+      assert.equal(docsCommitBody.cleared, 1);
+      assert.equal(docsCommitBody.applied[0].id, 'cccccc33');
+      assert.equal(docsCommitBody.totalCount, 0);
+      assert.match(readFileSync(homePath, 'utf-8'), /Home/);
+      assert.match(readFileSync(docsPath, 'utf-8'), /Docs Ready/);
+    } finally {
+      if (pageScopeServer) {
+        await stopServer(pageScopeServer.port, pageScopeServer.token);
+        pageScopeServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/poll rejects unknown reply ids instead of silently acknowledging nothing', async () => {
     const res = await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',

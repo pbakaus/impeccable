@@ -611,7 +611,9 @@ Response (HTTP 500): `{ "error": "manual_edit_commit_failed", "message": "<stder
 
 **`POST /manual-edit-discard?pageUrl=<route>`**: drop staged entries.
 
-Omit `pageUrl` to drop every page. Response: `{ discarded, entries, totalCount, perPage }`. `entries` is the dropped set, so the browser can show "discarded N edits" and so you can reconstruct what was lost if the user asks.
+Omit `pageUrl` to drop every page. Response: `{ discarded, entries, canceledApplyEvents, totalCount, perPage }`. `entries` is the dropped set, so the browser can show "discarded N edits" and so you can reconstruct what was lost if the user asks.
+
+If Discard runs while a chat-routed Apply is in flight for the same page, the server cancels that `manual_edit_apply` event. A late reply for the old event id is stale; do not retry it. Poll again for the next real user action.
 
 ### Failure reasons (read these to explain a failed Apply)
 
