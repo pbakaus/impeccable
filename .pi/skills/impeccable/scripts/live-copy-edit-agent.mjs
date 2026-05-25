@@ -23,6 +23,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     'Apply the staged browser copy edits to the real source files in this repository.',
     '',
     'Rules:',
+    '- The user already clicked Apply. Do not ask what to do with the staged edits; apply them now.',
     '- Apply all staged edits in one coherent batch.',
     '- Use DOM refs, leaf/container HTML, source hints, nearby text, and candidate source evidence as context, not as an automatic resolver decision.',
     '- Prefer true source files over generated provider output.',

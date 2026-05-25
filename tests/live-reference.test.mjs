@@ -43,6 +43,7 @@ describe('live reference authoring contract', () => {
     // The opening contract must advertise manual_edit_apply so a polling agent
     // is never ambushed by an event the contract never mentioned.
     assert.match(openingContract, /On `manual_edit_apply`:/);
+    assert.match(openingContract, /the user already clicked Apply, so do not ask what to do/);
     // The handler must document the real reply mechanism: --reply ... --data <json>.
     // This is the linchpin that was previously documented but unimplemented.
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"done"/);
@@ -53,6 +54,8 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /Do not put these progress sentences inside `--data`/);
     assert.match(liveMd, /Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`/);
     assert.match(liveMd, /server treats that as an invalid partial-entry write and rolls the whole batch back/);
+    assert.match(liveMd, /Do not ask the user whether to apply, which edits to apply, or what they want done with the staged edits/);
+    assert.match(liveMd, /The browser Apply click is the instruction and confirmation/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

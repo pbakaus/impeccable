@@ -40,6 +40,7 @@ describe('live-copy-edit-agent', () => {
     }, { cwd: '/tmp/project' });
 
     assert.match(prompt, /staged copy-edit batch applier/);
+    assert.match(prompt, /The user already clicked Apply\. Do not ask what to do with the staged edits/);
     assert.match(prompt, /Apply all staged edits in one coherent batch/);
     assert.match(prompt, /"entryId": "cards"/);
     assert.match(prompt, /foundation-card-label/);

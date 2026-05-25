@@ -194,6 +194,13 @@ describe('live-e2e LLM agent manual edit prompt', () => {
   it('tells the model not to return source edits for failed entries', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never return sourceEdits for failed, omitted, or unreported entries/);
   });
+
+  it('tells the model manual Apply is non-interactive', () => {
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /user already clicked Apply/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never ask what to do with staged edits/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Start applying and return JSON/);
+    assert.doesNotMatch(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /What would you like to do with these changes/i);
+  });
 });
 
 describe('live-e2e LLM agent manual edit coverage validation', () => {
