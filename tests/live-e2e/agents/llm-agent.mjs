@@ -92,6 +92,7 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   '- Priority order: op.sourceHint.file + op.sourceHint.line, then candidate sourceHint, then locator/text/context candidates.',
   '- If every op in an entry has sourceHint.file and sourceHint.line, mark the entry applied unless the exact original source text truly cannot be found at or near those hinted lines.',
   '- Mark an entry applied only when sourceEdits cover every op in that entry. If one op fails, mark that entry failed and continue with the next entry.',
+  '- Never return sourceEdits for failed, omitted, or unreported entries. If you cannot apply every op in an entry, no sourceEdit for that entry may remain in the response.',
   '- If op.originalText appears in multiple source locations, use op.sourceHint.file and op.sourceHint.line for the exact replacement. Do not edit a duplicate prop, layout title, sibling, or data field unless that duplicate is the hinted source location.',
   '- Make surgical sourceEdits: preserve numeric, boolean, and structured source values used by rendering logic.',
   '- If visible copy adds words around an integer, do not edit the numeric model field. Update a display string/expression that contains op.newText literally, e.g. replace {String(stats.count)} with {"7 seats"} while leaving count: 7 numeric.',
@@ -581,6 +582,9 @@ export function validateManualEditCoverage(parsed, batch) {
 
   const editsByEntry = new Map();
   for (const edit of parsed.sourceEdits || []) {
+    if (!appliedSet.has(edit.entryId)) {
+      return `manual edit sourceEdit for entry ${edit.entryId} was returned but that entry is not in appliedEntryIds`;
+    }
     if (!editsByEntry.has(edit.entryId)) editsByEntry.set(edit.entryId, []);
     editsByEntry.get(edit.entryId).push(edit);
   }

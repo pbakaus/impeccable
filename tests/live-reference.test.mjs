@@ -51,6 +51,8 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /Use `--reply EVENT_ID done --data \.\.\.` for manual Apply/);
     assert.match(liveMd, /Applying 3 staged copy edits across src\/App\.jsx/);
     assert.match(liveMd, /Do not put these progress sentences inside `--data`/);
+    assert.match(liveMd, /Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`/);
+    assert.match(liveMd, /server treats that as an invalid partial-entry write and rolls the whole batch back/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

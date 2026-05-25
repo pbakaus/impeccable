@@ -190,6 +190,10 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /multiple ops/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /cover every op\.newText/);
   });
+
+  it('tells the model not to return source edits for failed entries', () => {
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never return sourceEdits for failed, omitted, or unreported entries/);
+  });
 });
 
 describe('live-e2e LLM agent manual edit coverage validation', () => {
@@ -224,6 +228,32 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
 
     assert.match(error, /no sourceEdit newText contains staged copy/);
     assert.match(error, /7 workshop seats remain/);
+  });
+
+  it('rejects sourceEdits for entries not listed in appliedEntryIds', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'partial',
+        appliedEntryIds: ['entry-a'],
+        failed: [{ entryId: 'entry-b', reason: 'conflict' }],
+        sourceEdits: [
+          {
+            entryId: 'entry-b',
+            file: 'src/App.jsx',
+            originalText: 'Old',
+            newText: 'Leaked failed-entry copy',
+          },
+        ],
+      },
+      {
+        entries: [
+          { id: 'entry-a', ops: [{ newText: 'Applied copy' }] },
+          { id: 'entry-b', ops: [{ newText: 'Leaked failed-entry copy' }] },
+        ],
+      },
+    );
+
+    assert.match(error, /not in appliedEntryIds/);
   });
 
   it('rejects unapplied entries when every op has a sourceHint', () => {

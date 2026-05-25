@@ -157,6 +157,49 @@
         "expectedStashCount": 1
       },
       {
+        "name": "Overlapping duplicate multi-op Apply leaves no failed-entry source leak",
+        "stages": [
+          {
+            "element": { "selector": "section.hero-copy", "position": { "x": 4, "y": 4 } },
+            "edits": [
+              {
+                "leafSelector": "p.hero-hook",
+                "originalText": "Minimal React tree for live-mode E2E tests.",
+                "newText": "Earlier staged hook stays applied.",
+                "expectedSourceFile": "src/App.jsx"
+              }
+            ],
+            "expectedStashCount": 1,
+            "skipApply": true,
+            "expectedFinalStashCount": 1
+          },
+          {
+            "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+            "edits": [
+              {
+                "leafSelector": "span.primary-action",
+                "originalText": "Learn more",
+                "newText": "Primary duplicate apply stays exact",
+                "expectedSourceFile": "src/App.jsx",
+                "expectedSourceMatch": "className=\"primary-action\" role=\"button\" tabIndex=\"0\">Primary duplicate apply stays exact</span>"
+              },
+              {
+                "leafSelector": "span.secondary-action",
+                "originalText": "Learn more",
+                "newText": "Secondary duplicate apply stays exact",
+                "expectedSourceFile": "src/App.jsx",
+                "expectedSourceMatch": "className=\"secondary-action\" role=\"button\" tabIndex=\"0\">Secondary duplicate apply stays exact</span>",
+                "expectedSourceAlso": [
+                  "className=\"primary-action\" role=\"button\" tabIndex=\"0\">Primary duplicate apply stays exact</span>",
+                  "<p className=\"hero-hook\">Earlier staged hook stays applied.</p>"
+                ]
+              }
+            ],
+            "expectedStashCount": 3
+          }
+        ]
+      },
+      {
         "name": "Edit Save then Go Accept then Apply commit",
         "element": { "selector": "h1.hero-title" },
         "edits": [

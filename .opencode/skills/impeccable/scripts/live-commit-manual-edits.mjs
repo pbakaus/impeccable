@@ -234,6 +234,10 @@ function locatorTargetsInFile(cwd, relativeFile, op) {
 function verificationTargetPasses(cwd, target, op) {
   let lines;
   try { lines = fs.readFileSync(path.resolve(cwd, target.file), 'utf-8').split('\n'); } catch { return false; }
+  return verificationTargetPassesLines(lines, target, op);
+}
+
+function verificationTargetPassesLines(lines, target, op) {
   const line = lines[target.line - 1] || '';
   if (lineShowsAppliedOp(line, op)) return true;
   if (!target.reported || !String(target.kind || '').includes('context_text_match')) return false;
@@ -313,6 +317,40 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
       detail: op.newText.length === 0 ? 'originalText_still_present_in_plausible_source_location' : 'newText_not_found_in_plausible_source_location',
       candidates: targets.map((target) => ({ file: target.file, line: target.line, kind: target.kind })).concat(candidatesForEntry(batch, entry.id)).slice(0, 12),
     });
+  }
+  return failures;
+}
+
+function snapshotTargetPasses(snapshot, target, op) {
+  const before = snapshot.get(target.file)?.content;
+  if (typeof before !== 'string') return false;
+  return verificationTargetPassesLines(before.split('\n'), target, op);
+}
+
+function findUnappliedEntrySourceChanges({ batch, entries, reportedFiles, cwd, rollbackSnapshot }) {
+  const failures = [];
+  for (const entry of entries || []) {
+    for (const rawOp of entry.ops || []) {
+      const op = { ...rawOp, entryId: entry.id };
+      if (typeof op.newText !== 'string' || op.newText.length === 0) continue;
+      const targets = verificationTargetsForOp(batch, op, reportedFiles, cwd);
+      const leakedTargets = targets.filter((target) =>
+        verificationTargetPasses(cwd, target, op)
+        && !snapshotTargetPasses(rollbackSnapshot, target, op)
+      );
+      if (leakedTargets.length === 0) continue;
+      failures.push({
+        id: entry.id,
+        reason: 'failed_entry_source_changed',
+        ref: op.ref,
+        newText: op.newText,
+        candidates: leakedTargets
+          .map((target) => ({ file: target.file, line: target.line, kind: target.kind }))
+          .concat(candidatesForEntry(batch, entry.id))
+          .slice(0, 12),
+      });
+      break;
+    }
   }
   return failures;
 }
@@ -692,6 +730,42 @@ export async function commitManualEdits({
     ...verificationFailuresForEntries(batch, unreportedEntries, 'not_reported_applied'),
     ...aiFailed,
   ];
+
+  const unappliedEntries = batch.entries.filter((entry) => !reportedAppliedIds.includes(entry.id));
+  const leakedUnapplied = findUnappliedEntrySourceChanges({
+    batch,
+    entries: unappliedEntries,
+    reportedFiles,
+    cwd,
+    rollbackSnapshot,
+  });
+  if (leakedUnapplied.length > 0) {
+    const leakedIds = new Set(leakedUnapplied.map((item) => item.id).filter(Boolean));
+    const rolledBackVerified = reportedAppliedEntries
+      .filter((entry) => verifiedAppliedIds.includes(entry.id))
+      .map((entry) => ({
+        id: entry.id,
+        reason: 'rolled_back_due_to_failed_entry_source_changed',
+        candidates: candidatesForEntry(batch, entry.id),
+      }));
+    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
+    return {
+      applied: [],
+      failed: [
+        ...leakedUnapplied,
+        ...failed.filter((item) => !leakedIds.has(item.id)),
+        ...rolledBackVerified,
+      ],
+      files: result.files || [],
+      cleared: 0,
+      count,
+      pageUrl,
+      rolledBackFiles: rollback.rolledBackFiles,
+      rollbackFailures: rollback.rollbackFailures,
+      notes: result.notes || [],
+      ...countByPage(cwd),
+    };
+  }
 
   if (verificationFailed.length > 0) {
     const rolledBackVerified = reportedAppliedEntries

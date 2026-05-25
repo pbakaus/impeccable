@@ -106,6 +106,149 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'b,c');
   });
 
+  it('rolls back when a failed multi-op entry leaves one op in source', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = [
+      '<h1 class="hero">Old title</h1>',
+      '<p class="tagline">Original tagline</p>',
+      '<p class="hero-hook">Original hook</p>',
+      '',
+    ].join('\n');
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'title',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Old title',
+            newText: 'New title',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+        entry({
+          id: 'combo',
+          ops: [
+            {
+              ref: 'body>p.tagline',
+              tag: 'p',
+              classes: ['tagline'],
+              originalText: 'Original tagline',
+              newText: 'New tagline from failed entry',
+              sourceHint: { file: 'src/page.html', line: 2, column: 1 },
+            },
+            {
+              ref: 'body>p.hero-hook',
+              tag: 'p',
+              classes: ['hero-hook'],
+              originalText: 'Original hook',
+              newText: 'New hook from failed entry',
+              sourceHint: { file: 'src/page.html', line: 3, column: 1 },
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': [
+          '<h1 class="hero">New title</h1>',
+          '<p class="tagline">New tagline from failed entry</p>',
+          '<p class="hero-hook">Original hook</p>',
+          '',
+        ].join('\n'),
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'partial',
+        appliedEntryIds: ['title'],
+        failed: [{ entryId: 'combo', reason: 'hook source conflict' }],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(
+      result.failed.some((item) => item.id === 'combo' && item.reason === 'failed_entry_source_changed'),
+      true,
+    );
+    assert.equal(
+      result.failed.some((item) => item.id === 'title' && item.reason === 'rolled_back_due_to_failed_entry_source_changed'),
+      true,
+    );
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'title,combo');
+  });
+
+  it('rolls back when an omitted entry is changed in a reported file', () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    const before = [
+      '<h1 class="hero">Old title</h1>',
+      '<span class="secondary-action">Learn more</span>',
+      '',
+    ].join('\n');
+    fs.writeFileSync(file, before);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'title',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Old title',
+            newText: 'New title',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+        entry({
+          id: 'secondary',
+          ops: [{
+            ref: 'body>span.secondary-action',
+            tag: 'span',
+            classes: ['secondary-action'],
+            originalText: 'Learn more',
+            newText: 'Omitted secondary action',
+            sourceHint: { file: 'src/page.html', line: 2, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': [
+          '<h1 class="hero">New title</h1>',
+          '<span class="secondary-action">Omitted secondary action</span>',
+          '',
+        ].join('\n'),
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['title'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.equal(result.applied.length, 0);
+    assert.equal(
+      result.failed.some((item) => item.id === 'secondary' && item.reason === 'failed_entry_source_changed'),
+      true,
+    );
+    assert.equal(
+      result.failed.some((item) => item.id === 'title' && item.reason === 'rolled_back_due_to_failed_entry_source_changed'),
+      true,
+    );
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'title,secondary');
+  });
+
   it('treats entries reported as both applied and failed as a malformed result', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'a.html'), '<h1>A new</h1>\n');
     writeBuffer(tmpDir, {
