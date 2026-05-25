@@ -50,6 +50,10 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"partial"/);
     assert.match(liveMd, /--reply done --file src\/page\.html/);
     assert.match(liveMd, /Use `--reply EVENT_ID done --data \.\.\.` for manual Apply/);
+    assert.match(liveMd, /Resume manual Apply after interruption/);
+    assert.match(liveMd, /Polling is not commit/);
+    assert.match(liveMd, /Source persistence requires both steps: apply the event's source edits, then reply with `--reply EVENT_ID done --data/);
+    assert.match(liveMd, /do not run `live-commit-manual-edits\.mjs` for that event/);
     assert.match(liveMd, /Applying 3 staged copy edits across src\/App\.jsx/);
     assert.match(liveMd, /Do not put these progress sentences inside `--data`/);
     assert.match(liveMd, /Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`/);

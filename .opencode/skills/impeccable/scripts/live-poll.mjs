@@ -33,6 +33,15 @@ export function buildPollReplyPayload(token, { id, type, message, file, data }) 
   return { token, id, type, message, file, data };
 }
 
+export function manualApplyPollBanner(event = {}) {
+  const id = event.id || 'EVENT_ID';
+  return [
+    `Manual Apply action required: edit source, then reply with \`live-poll.mjs --reply ${id} done --data '<json>'\`.`,
+    'Do not run live-commit-manual-edits.mjs for this leased event.',
+    'Do not poll again before replying.',
+  ].join('\n') + '\n';
+}
+
 /**
  * Parse `--reply <id> <status> [--file path] [--data '<json>'] [message]` argv
  * into a reply object. Returns null when `--reply` is absent. Throws (code
@@ -229,6 +238,10 @@ Options:
       if (!event._completionAck) {
         event._completionAck = completionAckForAcceptResult(event.id, completionType, event._acceptResult);
       }
+    }
+
+    if (event.type === 'manual_edit_apply') {
+      process.stderr.write('\n' + manualApplyPollBanner(event) + '\n');
     }
 
     // Second signal path: stderr banner in case the agent parses stdout

@@ -209,6 +209,12 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
       next.pendingEvent = toPendingEvent(event);
       break;
+    case 'manual_edit_apply':
+      next.phase = 'manual_edit_apply_requested';
+      next.pageUrl = event.pageUrl ?? next.pageUrl;
+      next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
+      next.pendingEvent = toPendingEvent(event);
+      break;
     case 'discard':
       next.phase = 'discard_requested';
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;

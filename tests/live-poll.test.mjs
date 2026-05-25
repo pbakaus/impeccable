@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPollReplyPayload, parseReplyArgs } from '../skill/scripts/live-poll.mjs';
+import { buildPollReplyPayload, manualApplyPollBanner, parseReplyArgs } from '../skill/scripts/live-poll.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -17,6 +17,17 @@ describe('live-poll reply payloads', () => {
       { carbonize: true },
       'event=live_poll.reply_data actor=agent operation=completion_ack risk=carbonize_flag_dropped_before_server_journal expected={"carbonize":true} actual=' + JSON.stringify(payload.data),
     );
+  });
+});
+
+describe('live-poll manual Apply guidance', () => {
+  it('prints a bounded stderr banner that keeps stdout JSON parseable', () => {
+    const banner = manualApplyPollBanner({ id: 'b79a4167' });
+    assert.match(banner, /Manual Apply action required/);
+    assert.match(banner, /--reply b79a4167 done --data '<json>'/);
+    assert.match(banner, /Do not run live-commit-manual-edits\.mjs/);
+    assert.match(banner, /Do not poll again before replying/);
+    assert.doesNotMatch(banner, /\{/);
   });
 });
 

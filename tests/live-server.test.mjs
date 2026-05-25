@@ -355,9 +355,21 @@ colors: {}
         const pollRes = await fetch(`http://localhost:${chatServer.port}/poll?token=${chatServer.token}&timeout=10000&leaseMs=30000`);
         const event = await pollRes.json();
         assert.equal(event.type, 'manual_edit_apply');
+        assert.deepEqual(event.agentAction, {
+          kind: 'manual_edit_apply',
+          required: 'apply_source_edits_then_reply',
+          replyCommand: `live-poll.mjs --reply ${event.id} done --data '<json>'`,
+          warning: 'Polling only leases this work item; it does not commit source edits.',
+        });
         assert.equal(event.pageUrl, '/');
         assert.equal(event.batch.entries.length, 1);
         assert.equal(event.batch.entries[0].id, 'cafebabe');
+        const statusRes = await fetch(`http://localhost:${chatServer.port}/status?token=${chatServer.token}`);
+        const status = await statusRes.json();
+        const pendingManual = status.pendingEvents.find((item) => item.id === event.id);
+        assert.equal(pendingManual.type, 'manual_edit_apply');
+        assert.equal(pendingManual.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
+        assert.deepEqual(pendingManual.manualApplySummary.files, ['src/page.html']);
         const malformedAck = await fetch(`http://localhost:${chatServer.port}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -460,6 +472,8 @@ colors: {}
           const pollRes = await fetch(`http://localhost:${chunkServer.port}/poll?token=${chunkServer.token}&timeout=10000&leaseMs=30000`);
           const event = await pollRes.json();
           assert.equal(event.type, 'manual_edit_apply');
+          assert.equal(event.agentAction.required, 'apply_source_edits_then_reply');
+          assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
           assert.deepEqual(event.chunk, {
             index: index + 1,
             total: 3,
@@ -551,6 +565,8 @@ colors: {}
           const event = await fetch(`http://localhost:${splitServer.port}/poll?token=${splitServer.token}&timeout=10000&leaseMs=30000`)
             .then((res) => res.json());
           assert.equal(event.type, 'manual_edit_apply');
+          assert.equal(event.agentAction.required, 'apply_source_edits_then_reply');
+          assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
           assert.equal(event.batch.entries.length, 1);
           assert.equal(event.batch.entries[0].id, 'abc55555');
           assert.equal(event.batch.entries[0].ops.length, expectedSize);

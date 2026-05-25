@@ -137,6 +137,7 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
     id: eventId,
     pageUrl,
     batch,
+    agentAction: buildManualApplyAgentAction(eventId),
     schemaVersion: 1,
     deadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
   };
@@ -482,6 +483,49 @@ function acknowledgePendingEvent(id) {
   state.pendingEvents.splice(idx, 1);
   scheduleLeaseFlush();
   return acknowledged;
+}
+
+function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
+  const id = typeof eventOrId === 'string' ? eventOrId : eventOrId?.id || 'EVENT_ID';
+  return `live-poll.mjs --reply ${id} done --data '<json>'`;
+}
+
+function buildManualApplyAgentAction(eventOrId = 'EVENT_ID') {
+  return {
+    kind: 'manual_edit_apply',
+    required: 'apply_source_edits_then_reply',
+    replyCommand: manualApplyReplyCommand(eventOrId),
+    warning: 'Polling only leases this work item; it does not commit source edits.',
+  };
+}
+
+function summarizeManualApplyEvent(event = {}) {
+  const entries = Array.isArray(event.batch?.entries) ? event.batch.entries : [];
+  const opCount = entries.reduce((sum, entry) => sum + (Array.isArray(entry.ops) ? entry.ops.length : 0), 0);
+  return {
+    pageUrl: event.pageUrl || null,
+    chunk: event.chunk || null,
+    entryCount: entries.length,
+    opCount,
+    files: collectManualApplyFiles(event.batch),
+  };
+}
+
+function summarizePendingEventForStatus(entry) {
+  const event = entry.event || {};
+  const summary = {
+    id: event.id,
+    type: event.type,
+    leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
+    leaseUntil: entry.leaseUntil || null,
+  };
+  if (event.type === 'manual_edit_apply') {
+    summary.pageUrl = event.pageUrl || null;
+    summary.chunk = event.chunk || null;
+    summary.agentAction = event.agentAction || buildManualApplyAgentAction(event);
+    summary.manualApplySummary = summarizeManualApplyEvent(event);
+  }
+  return summary;
 }
 
 function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded') {
@@ -871,12 +915,7 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         status: 'ok',
         port: state.port,
         connectedClients: state.sseClients.size,
-        pendingEvents: state.pendingEvents.map((entry) => ({
-          id: entry.event?.id,
-          type: entry.event?.type,
-          leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
-          leaseUntil: entry.leaseUntil || null,
-        })),
+        pendingEvents: state.pendingEvents.map((entry) => summarizePendingEventForStatus(entry)),
         activeSessions: sessions,
         manualEdits: getManualEditStatus(),
       }));

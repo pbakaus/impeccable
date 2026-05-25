@@ -515,6 +515,12 @@ node .pi/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "could n
 
 `appliedEntryIds` holds only entries whose every op landed. `files` lists every path you edited. Then poll again.
 
+### Resume manual Apply after interruption
+
+If you resume and see a pending `manual_edit_apply`, remember that `live-poll.mjs` only prints and leases the event. Polling is not commit. It also prints a stderr reminder, but stdout remains the machine-readable event JSON. Source persistence requires both steps: apply the event's source edits, then reply with `--reply EVENT_ID done --data '{...}'`.
+
+If you have already polled and leased a Track A `manual_edit_apply` event, do not run `live-commit-manual-edits.mjs` for that event. Finish the source edits for the leased `batch`, send the structured `/poll --reply --data` result, and only then poll again.
+
 Never reply without the event id. This is wrong and will not clear the Apply event or staged buffer:
 
 ```bash
@@ -647,7 +653,7 @@ Each `failed[]` entry carries `candidates: [{ file, line, kind }]` with `kind` d
 
 - The browser owns POSTs to `/manual-edit-stash`, `/manual-edit-commit`, `/manual-edit-discard`. Direct `manual_edit_apply` events on `/events` are rejected with HTTP 400; use the three endpoints above if a manual invocation is ever required (rare).
 - To answer "what's staged?", read `.impeccable/live/pending-manual-edits.json` directly.
-- To retry an Apply from chat (only when the user explicitly asks), run `node .pi/skills/impeccable/scripts/live-commit-manual-edits.mjs --page-url=/<route>` directly. The script prints the same JSON shape as the endpoint and the buffer / rollback semantics are identical.
+- To retry an Apply from chat (only when the user explicitly asks and no Track A event is already leased), run `node .pi/skills/impeccable/scripts/live-commit-manual-edits.mjs --page-url=/<route>` directly. The script prints the same JSON shape as the endpoint and the buffer / rollback semantics are identical.
 - On `live-wrap.mjs` exit `missing_page_url_with_pending_edits`, the buffer is non-empty for this page: pass `--page-url=$event.pageUrl` to wrap and retry. On the companion error `manual_edit_buffer_apply_failed`, a staged op straddles the wrap target ambiguously; ask the user to Apply or Discard first, then retry wrap.
 
 ## Exit
