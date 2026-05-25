@@ -456,6 +456,8 @@ Each `batch.entries[i]` has `id` and `ops[]`; each op has `originalText`, `newTe
 
 Do not ask the user whether to apply, which edits to apply, or what they want done with the staged edits. The browser Apply click is the instruction and confirmation. Start applying immediately; only ask a question if the event data itself is malformed and cannot be handled.
 
+Manual copy edits are first-class live-mode work, not test noise and not a detour from Go. Even if the text looks like "wowo", "test", or throwaway copy, never call it a test edit, never clean it up, never discard it, and never redirect the user back to the visual picker unless the user explicitly asks or the browser sends a real `discard` event.
+
 ### 0. Say what is happening
 
 Before editing, tell the user what is happening in one short line, then proceed with tools:

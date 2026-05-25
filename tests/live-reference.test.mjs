@@ -56,6 +56,9 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /server treats that as an invalid partial-entry write and rolls the whole batch back/);
     assert.match(liveMd, /Do not ask the user whether to apply, which edits to apply, or what they want done with the staged edits/);
     assert.match(liveMd, /The browser Apply click is the instruction and confirmation/);
+    assert.match(liveMd, /Manual copy edits are first-class live-mode work, not test noise/);
+    assert.match(liveMd, /never call it a test edit, never clean it up, never discard it/);
+    assert.match(liveMd, /never redirect the user back to the visual picker/);
     assert.match(liveMd, /If Discard runs while a chat-routed Apply is in flight/);
     assert.match(liveMd, /A late reply for the old event id is stale; do not retry it/);
     assert.match(liveMd, /Response: `\{ discarded, entries, canceledApplyEvents, totalCount, perPage \}`/);

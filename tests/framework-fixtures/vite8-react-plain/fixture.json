@@ -285,6 +285,19 @@
         "expectedStashCount": 1
       },
       {
+        "name": "Edit throwaway-looking copy as real manual work",
+        "element": { "selector": "section.hero-copy", "position": { "x": 4, "y": 4 } },
+        "edits": [
+          {
+            "leafSelector": "p.hero-hook",
+            "originalText": "Minimal React tree for live-mode E2E tests.",
+            "newText": "wowoowww stays applied as real copy.",
+            "expectedSourceFile": "src/App.jsx"
+          }
+        ],
+        "expectedStashCount": 1
+      },
+      {
         "name": "Edit dynamic data card without source hints",
         "element": { "selector": "article.foundation-card:nth-of-type(2)" },
         "edits": [
