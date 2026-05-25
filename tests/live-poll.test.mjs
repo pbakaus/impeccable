@@ -68,6 +68,25 @@ describe('live-poll --reply arg parsing', () => {
     );
   });
 
+  it('rejects the common malformed manual-apply ack that omits the event id', () => {
+    assert.throws(
+      () => parseReplyArgs(['--reply', 'done', '--file', 'site/pages/index.astro']),
+      (err) =>
+        err.code === 'INVALID_REPLY_ARGS'
+        && /must be the event id/.test(err.message)
+        && /--reply EVENT_ID done/.test(err.message),
+    );
+  });
+
+  it('requires an explicit reply status after the event id', () => {
+    assert.throws(
+      () => parseReplyArgs(['--reply', 'abc12345', '--file', 'src/App.tsx']),
+      (err) =>
+        err.code === 'INVALID_REPLY_ARGS'
+        && /Missing reply status/.test(err.message),
+    );
+  });
+
   it('coexists with --file without cross-contaminating values', () => {
     const reply = parseReplyArgs(['--reply', 'abc12345', 'done', '--file', 'src/App.tsx', '--data', '{"status":"done"}']);
     assert.equal(reply.file, 'src/App.tsx');

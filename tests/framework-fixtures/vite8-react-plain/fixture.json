@@ -81,6 +81,20 @@
         "expectedStashCount": 1
       },
       {
+        "name": "Malformed manual Apply ack does not clear stash before correct reply",
+        "probeMalformedAckBeforeApply": true,
+        "element": { "selector": "h1.hero-title" },
+        "edits": [
+          {
+            "leafSelector": "h1.hero-title",
+            "originalText": "Vite 8 Fixture",
+            "newText": "Malformed ack recovery title applied",
+            "expectedSourceFile": "src/App.jsx"
+          }
+        ],
+        "expectedStashCount": 1
+      },
+      {
         "name": "Edit same leaf twice before Apply keeps final staged copy",
         "stages": [
           {

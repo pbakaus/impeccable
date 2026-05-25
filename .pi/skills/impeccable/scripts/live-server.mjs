@@ -1087,11 +1087,21 @@ function handlePollPost(req, res) {
     }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);
     let skipJournalReply = false;
+    let existingSession = null;
     if (!acknowledgedEvent && state.sessionStore && msg.id) {
       try {
-        const existing = state.sessionStore.getSnapshot(msg.id, { includeCompleted: true });
-        skipJournalReply = existing?.phase === 'completed' || existing?.phase === 'discarded';
+        existingSession = state.sessionStore.getSnapshot(msg.id, { includeCompleted: true });
+        if (!existingSession?.updatedAt) existingSession = null;
+        skipJournalReply = existingSession?.phase === 'completed' || existingSession?.phase === 'discarded';
       } catch { /* fall through and record the reply normally */ }
+    }
+    if (!acknowledgedEvent && !existingSession) {
+      res.writeHead(msg.id ? 404 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: msg.id ? 'unknown_poll_reply_id' : 'missing_poll_reply_id',
+        id: msg.id,
+      }));
+      return;
     }
     if (state.sessionStore && msg.id && !skipJournalReply) {
       try {

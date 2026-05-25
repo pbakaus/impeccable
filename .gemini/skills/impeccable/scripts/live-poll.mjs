@@ -36,14 +36,16 @@ export function buildPollReplyPayload(token, { id, type, message, file, data }) 
 /**
  * Parse `--reply <id> <status> [--file path] [--data '<json>'] [message]` argv
  * into a reply object. Returns null when `--reply` is absent. Throws (code
- * INVALID_DATA_JSON) when `--data` is present but not valid JSON. Exported so
+ * INVALID_REPLY_ARGS) when the reply shape is missing its event id/status and
+ * INVALID_DATA_JSON when `--data` is present but not valid JSON. Exported so
  * the arg-parsing contract is unit-tested without spawning a process.
  */
 export function parseReplyArgs(args) {
   const replyIdx = args.indexOf('--reply');
   if (replyIdx === -1) return null;
   const id = args[replyIdx + 1];
-  const status = args[replyIdx + 2] || 'done';
+  const status = args[replyIdx + 2];
+  validateReplyArgs({ id, status });
   const fileIdx = args.indexOf('--file');
   const file = fileIdx !== -1 && fileIdx + 1 < args.length ? args[fileIdx + 1] : undefined;
   const dataIdx = args.indexOf('--data');
@@ -65,6 +67,25 @@ export function parseReplyArgs(args) {
     && i !== dataIdx + 1
   ) || undefined;
   return { id, type: status, message, file, data };
+}
+
+function validateReplyArgs({ id, status }) {
+  const usage = "Usage: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]";
+  if (!id || id.startsWith('--')) {
+    const err = new Error(`${usage}\nMissing event id after --reply.`);
+    err.code = 'INVALID_REPLY_ARGS';
+    throw err;
+  }
+  if (['done', 'error', 'complete', 'discard', 'discarded'].includes(id)) {
+    const err = new Error(`${usage}\nThe value after --reply must be the event id, not the status ${JSON.stringify(id)}. Use --reply EVENT_ID ${id}.`);
+    err.code = 'INVALID_REPLY_ARGS';
+    throw err;
+  }
+  if (!status || status.startsWith('--')) {
+    const err = new Error(`${usage}\nMissing reply status after event id ${JSON.stringify(id)}.`);
+    err.code = 'INVALID_REPLY_ARGS';
+    throw err;
+  }
 }
 
 async function postReply(base, token, reply) {
@@ -112,11 +133,6 @@ Options:
       reply = parseReplyArgs(args);
     } catch (err) {
       console.error(err.message);
-      process.exit(1);
-    }
-
-    if (!reply.id) {
-      console.error("Usage: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]");
       process.exit(1);
     }
 

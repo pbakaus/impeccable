@@ -25,6 +25,8 @@ Harness policy:
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
+Manual Apply is the exception where brief progress helps: the user is waiting while you edit source off-screen. Keep it to one line when the event arrives, one line before edits if useful, and one line after the reply.
+
 ## Start
 
 ```bash
@@ -450,6 +452,26 @@ Fires when the user clicks **Apply** in the copy-edit dock and the server routes
 
 Each `batch.entries[i]` has `id` and `ops[]`; each op has `originalText`, `newText`, `sourceHint`, and locator fields (`tag`, `elementId`, `classes`). `batch.candidates` carries per-op source evidence keyed by `entryId`.
 
+### 0. Say what is happening
+
+Before editing, tell the user what is happening in one short line, then proceed with tools:
+
+> Applying 3 staged copy edits across src/App.jsx.
+
+If useful, add one more bounded line:
+
+> Using source hints first; I will only touch the hinted copy.
+
+After the reply succeeds, say one short result line:
+
+> Applied 3/3 edits and cleared the Apply stash.
+
+For partial success:
+
+> Applied 2/3 edits; 1 stayed staged because originalText was not found.
+
+Do not put these progress sentences inside `--data`; `--data` is machine-readable result JSON only.
+
 ### 1. Apply each edit
 
 For each op: open the file from `op.sourceHint` (when absent, take the strongest match in `candidates`), confirm `originalText` is present, and `Edit` the exact `originalText` → `newText`, changing nothing else on the line. `sourceHint.file` + `sourceHint.line` wins over duplicate text elsewhere; only fail a hinted op when the exact source text is not present at or near that location. Update a coupled key (object key, animation key, count) only when it sits on the same line and the match is unambiguous.
@@ -482,6 +504,14 @@ node .github/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "cou
 ```
 
 `appliedEntryIds` holds only entries whose every op landed. `files` lists every path you edited. Then poll again.
+
+Never reply without the event id. This is wrong and will not clear the Apply event or staged buffer:
+
+```bash
+node .github/skills/impeccable/scripts/live-poll.mjs --reply done --file src/page.html
+```
+
+Use `--reply EVENT_ID done --data ...` for manual Apply.
 
 ### 3. Deadline
 

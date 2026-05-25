@@ -20,6 +20,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -396,9 +397,9 @@ for (const { name, fixture } of fixtures) {
       for (const scenario of fixture.runtime.manualEditScenarios) {
         if (manualScenarioFilter && !scenario.name.includes(manualScenarioFilter)) continue;
         it(`Edit copy → Save → Apply/commit: ${scenario.name}`, async (t) => {
-          const manualAgent = await createManualScenarioAgent(t);
+          const manualAgent = await createManualScenarioAgent(t, scenario);
           if (!manualAgent) return;
-          const { agent, agentMode } = manualAgent;
+          const { agent, agentMode, probeState } = manualAgent;
           const session = await bootFixtureSession({
             name,
             fixture,
@@ -421,6 +422,10 @@ for (const { name, fixture } of fixtures) {
                 defaultSelector: stage.element?.selector || fixture.runtime.pickSelector || 'h1.hero-title',
               });
             }
+            if (scenario.probeMalformedAckBeforeApply) {
+              assert.equal(probeState?.malformedAckRejected, true, 'malformed manual Apply ack should fail loudly');
+              assert.equal(probeState?.applyCalls, 1, 'manual_edit_apply event should not be redelivered after the correct ack');
+            }
           } finally {
             await teardown();
           }
@@ -434,13 +439,18 @@ for (const { name, fixture } of fixtures) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function createManualScenarioAgent(t) {
+async function createManualScenarioAgent(t, scenario = {}) {
   const requested = (process.env.IMPECCABLE_E2E_MANUAL_AGENT || process.env.IMPECCABLE_E2E_AGENT || 'auto')
     .trim()
     .toLowerCase();
   if (requested === 'fake' || requested === 'mock') {
     t.diagnostic('Using fake agent for manual-edit scenarios (explicit fallback)');
-    return { agent: createFakeAgent(), agentMode: 'fake' };
+    const probeState = {};
+    return {
+      agent: maybeWrapMalformedAckProbe(createFakeAgent(), scenario, probeState, t),
+      agentMode: 'fake',
+      probeState,
+    };
   }
 
   if (requested !== 'auto' && requested !== 'llm') {
@@ -457,7 +467,12 @@ async function createManualScenarioAgent(t) {
   });
   if (agent) {
     t.diagnostic(`Using LLM agent for manual-edit scenarios (provider=${llmConfig.provider} model=${llmConfig.model})`);
-    return { agent, agentMode: 'llm' };
+    const probeState = {};
+    return {
+      agent: maybeWrapMalformedAckProbe(agent, scenario, probeState, t),
+      agentMode: 'llm',
+      probeState,
+    };
   }
 
   if (requested === 'llm') {
@@ -466,7 +481,49 @@ async function createManualScenarioAgent(t) {
   }
 
   t.diagnostic(`Using fake agent for manual-edit scenarios because ${llmConfig.requiredEnv} is unset`);
-  return { agent: createFakeAgent(), agentMode: 'fake' };
+  const probeState = {};
+  return {
+    agent: maybeWrapMalformedAckProbe(createFakeAgent(), scenario, probeState, t),
+    agentMode: 'fake',
+    probeState,
+  };
+}
+
+function maybeWrapMalformedAckProbe(agent, scenario, probeState, t) {
+  if (!scenario.probeMalformedAckBeforeApply) return agent;
+  return {
+    ...agent,
+    async applyManualEdits(event, context = {}) {
+      probeState.applyCalls = (probeState.applyCalls || 0) + 1;
+      const sourceFile = firstExpectedSourceFile(scenario) || 'src/App.jsx';
+      try {
+        execFileSync(
+          process.execPath,
+          [join(context.scriptsDir, 'live-poll.mjs'), '--reply', 'done', '--file', sourceFile],
+          { cwd: context.tmp, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        assert.fail('malformed manual Apply ack unexpectedly succeeded');
+      } catch (err) {
+        const output = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n');
+        assert.match(output, /--reply EVENT_ID done|must be the event id|Missing reply status/);
+        probeState.malformedAckRejected = true;
+      }
+      const buffer = JSON.parse(readFileSync(join(context.tmp, '.impeccable/live/pending-manual-edits.json'), 'utf-8'));
+      assert.ok(buffer.entries.length > 0, 'malformed ack must not clear staged manual edits');
+      t.diagnostic(`Malformed manual Apply ack rejected for ${event.id}; continuing with correct reply`);
+      return agent.applyManualEdits(event, context);
+    },
+  };
+}
+
+function firstExpectedSourceFile(scenario) {
+  const stages = Array.isArray(scenario.stages) ? scenario.stages : [scenario];
+  for (const stage of stages) {
+    for (const edit of stage.edits || []) {
+      if (edit.expectedSourceFile) return edit.expectedSourceFile;
+    }
+  }
+  return null;
 }
 
 function wrapTargetFromPickedElement(event) {

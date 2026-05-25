@@ -348,6 +348,21 @@ colors: {}
         assert.equal(event.pageUrl, '/');
         assert.equal(event.batch.entries.length, 1);
         assert.equal(event.batch.entries[0].id, 'cafebabe');
+        const malformedAck = await fetch(`http://localhost:${chatServer.port}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: chatServer.token,
+            id: 'done',
+            type: '--file',
+            file: 'src/page.html',
+          }),
+        });
+        assert.equal(malformedAck.status, 404);
+        const malformedAckBody = await malformedAck.json();
+        assert.equal(malformedAckBody.error, 'unknown_poll_reply_id');
+        const stillPending = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+        assert.equal(stillPending.entries.length, 1, 'malformed ack must not clear staged manual edits');
         // Apply the edit to source (simulating the agent's Edit tool).
         writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
         // Ack with the structured result.
@@ -477,6 +492,23 @@ colors: {}
       }
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  it('/poll rejects unknown reply ids instead of silently acknowledging nothing', async () => {
+    const res = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'done',
+        type: '--file',
+        file: 'site/pages/index.astro',
+      }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.equal(body.error, 'unknown_poll_reply_id');
+    assert.equal(body.id, 'done');
   });
 
   it('/manual-edit-discard returns discarded entries so the browser can restore visible text', async () => {
@@ -1008,18 +1040,33 @@ colors: {}
     const text1 = decoder.decode(chunk1);
     assert.ok(text1.includes('"connected"'));
 
-    // Send a reply from the agent
+    // Queue a browser event, then send the matching reply from the agent.
+    const queueRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: '5ee7e575',
+        action: 'impeccable',
+        count: 3,
+        pageUrl: '/',
+        element: { tagName: 'h1', className: 'hero-title', outerHTML: '<h1 class="hero-title">Hello</h1>', textContent: 'Hello' },
+      }),
+    });
+    assert.equal(queueRes.status, 200);
+
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'sse-test', type: 'done', file: 'x.html' }),
+      body: JSON.stringify({ token: server.token, id: '5ee7e575', type: 'done', file: 'x.html' }),
     });
 
     // Read the next SSE message
     const { value: chunk2 } = await reader.read();
     const text2 = decoder.decode(chunk2);
     assert.ok(text2.includes('"done"'));
-    assert.ok(text2.includes('sse-test'));
+    assert.ok(text2.includes('5ee7e575'));
 
     controller.abort();
   });

@@ -47,6 +47,10 @@ describe('live reference authoring contract', () => {
     // This is the linchpin that was previously documented but unimplemented.
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"done"/);
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"partial"/);
+    assert.match(liveMd, /--reply done --file src\/page\.html/);
+    assert.match(liveMd, /Use `--reply EVENT_ID done --data \.\.\.` for manual Apply/);
+    assert.match(liveMd, /Applying 3 staged copy edits across src\/App\.jsx/);
+    assert.match(liveMd, /Do not put these progress sentences inside `--data`/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

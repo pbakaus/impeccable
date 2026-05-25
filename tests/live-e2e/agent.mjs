@@ -1011,11 +1011,14 @@ export async function runAgentLoop({
     }
 
     if (event.type === 'manual_edit_apply') {
-      log(`manual_edit_apply id=${event.id} entries=${event.batch?.entries?.length || 0}`);
+      const entryCount = event.batch?.entries?.length || 0;
+      const applyFiles = formatManualApplyFiles(event.batch);
+      log(`Applying ${entryCount} staged copy edit(s) across ${applyFiles}.`);
       try {
         if (typeof agent.applyManualEdits !== 'function') {
           throw new Error('agent does not implement applyManualEdits');
         }
+        log("Using source hints first; I'll only touch the hinted copy.");
         const result = await agent.applyManualEdits(event, { tmp, scriptsDir });
         if (process.env.IMPECCABLE_E2E_DEBUG) {
           log(`manual_edit_apply result: ${JSON.stringify(result)}`);
@@ -1028,6 +1031,7 @@ export async function runAgentLoop({
             status: 'error',
             message: result.failed?.[0]?.reason || 'could not resolve sources for any entry',
           });
+          log(`Applied 0/${entryCount} edit(s); ${entryCount} stayed staged because ${result.failed?.[0]?.reason || 'could not resolve sources for any entry'}.`);
         } else {
           await runPollReply({
             tmp,
@@ -1036,6 +1040,13 @@ export async function runAgentLoop({
             status: 'done',
             data: result,
           });
+          const appliedCount = result.appliedEntryIds?.length || 0;
+          const failedCount = result.failed?.length || Math.max(0, entryCount - appliedCount);
+          if (failedCount > 0) {
+            log(`Applied ${appliedCount}/${entryCount} edit(s); ${failedCount} stayed staged because ${result.failed?.[0]?.reason || 'one or more entries failed'}.`);
+          } else {
+            log(`Applied ${appliedCount}/${entryCount} edit(s) and cleared the Apply stash.`);
+          }
         }
       } catch (err) {
         if (signal.aborted) return;
@@ -1118,6 +1129,19 @@ async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {
   if (data !== undefined) args.push('--data', JSON.stringify(data));
   if (message) args.push(message);
   await execFileP(process.execPath, args, { cwd: tmp });
+}
+
+function formatManualApplyFiles(batch) {
+  const files = new Set();
+  for (const entry of batch?.entries || []) {
+    for (const op of entry.ops || []) {
+      if (op.sourceHint?.file) files.add(op.sourceHint.file);
+    }
+  }
+  for (const candidate of batch?.candidates || []) {
+    if (candidate.file) files.add(candidate.file);
+  }
+  return files.size > 0 ? [...files].slice(0, 3).join(', ') : 'source files';
 }
 
 async function runWrap({ tmp, scriptsDir, id, count, classes, tag, elementId, text, pageUrl }) {
