@@ -59,6 +59,10 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /If Discard runs while a chat-routed Apply is in flight/);
     assert.match(liveMd, /A late reply for the old event id is stale; do not retry it/);
     assert.match(liveMd, /Response: `\{ discarded, entries, canceledApplyEvents, totalCount, perPage \}`/);
+    assert.match(liveMd, /multiple small `manual_edit_apply` chunks/);
+    assert.match(liveMd, /current event's `batch` as the complete current work unit/);
+    assert.match(liveMd, /Do not infer that missing later entries failed/);
+    assert.match(liveMd, /Applied chunk 2\/7; polling for the next Apply chunk/);
     assert.match(liveMd, /Missing `sourceHint` is not a failure/);
     assert.match(liveMd, /dynamic rendered UI often has none/);
     assert.match(liveMd, /objectKeyMatches/);

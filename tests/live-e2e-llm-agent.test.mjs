@@ -204,6 +204,13 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Start applying and return JSON/);
     assert.doesNotMatch(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /What would you like to do with these changes/i);
   });
+
+  it('tells the model chunked manual Apply events are complete current work units', () => {
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /multiple small chunks/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /complete current work unit/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /poll again for later chunks/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not fail entries just because later staged edits are not present in this chunk/);
+  });
 });
 
 describe('live-e2e LLM agent manual edit coverage validation', () => {

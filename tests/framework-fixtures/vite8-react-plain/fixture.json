@@ -67,6 +67,134 @@
         "expectedStashCount": 5
       },
       {
+        "name": "Edit twenty dynamic leaves Save Apply chunked batch",
+        "element": { "selector": "main.page", "position": { "x": 4, "y": 4 } },
+        "applyTimeoutMs": 300000,
+        "edits": [
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(1)",
+            "originalText": "Bulk copy 01",
+            "newText": "Bulk applied 01",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(2)",
+            "originalText": "Bulk copy 02",
+            "newText": "Bulk applied 02",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(3)",
+            "originalText": "Bulk copy 03",
+            "newText": "Bulk applied 03",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(4)",
+            "originalText": "Bulk copy 04",
+            "newText": "Bulk applied 04",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(5)",
+            "originalText": "Bulk copy 05",
+            "newText": "Bulk applied 05",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(6)",
+            "originalText": "Bulk copy 06",
+            "newText": "Bulk applied 06",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(7)",
+            "originalText": "Bulk copy 07",
+            "newText": "Bulk applied 07",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(8)",
+            "originalText": "Bulk copy 08",
+            "newText": "Bulk applied 08",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(9)",
+            "originalText": "Bulk copy 09",
+            "newText": "Bulk applied 09",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(10)",
+            "originalText": "Bulk copy 10",
+            "newText": "Bulk applied 10",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(11)",
+            "originalText": "Bulk copy 11",
+            "newText": "Bulk applied 11",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(12)",
+            "originalText": "Bulk copy 12",
+            "newText": "Bulk applied 12",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(13)",
+            "originalText": "Bulk copy 13",
+            "newText": "Bulk applied 13",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(14)",
+            "originalText": "Bulk copy 14",
+            "newText": "Bulk applied 14",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(15)",
+            "originalText": "Bulk copy 15",
+            "newText": "Bulk applied 15",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(16)",
+            "originalText": "Bulk copy 16",
+            "newText": "Bulk applied 16",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(17)",
+            "originalText": "Bulk copy 17",
+            "newText": "Bulk applied 17",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(18)",
+            "originalText": "Bulk copy 18",
+            "newText": "Bulk applied 18",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(19)",
+            "originalText": "Bulk copy 19",
+            "newText": "Bulk applied 19",
+            "expectedSourceFile": "src/App.jsx"
+          },
+          {
+            "leafSelector": "section.large-manual-grid span.large-manual-item:nth-of-type(20)",
+            "originalText": "Bulk copy 20",
+            "newText": "Bulk applied 20",
+            "expectedSourceFile": "src/App.jsx"
+          }
+        ],
+        "expectedStashCount": 20
+      },
+      {
         "name": "Edit integer-backed display copy without corrupting numeric source",
         "element": { "selector": "span.capacity-count" },
         "edits": [

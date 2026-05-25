@@ -694,8 +694,9 @@ async function runManualEditStage(page, stage, { t, fixture, session, agentMode,
 
   t.diagnostic('Manual scenario clicking Apply/commit');
   await clickApplyEdits(page);
+  const applyTimeoutMs = stage.applyTimeoutMs || (agentMode === 'llm' ? 120_000 : 20_000);
   await waitForServerManualEditStashCount(session.live, 0, {
-    timeout: agentMode === 'llm' ? 120_000 : 20_000,
+    timeout: applyTimeoutMs,
   });
   await waitForApplyDockHidden(page, { timeout: 10_000 });
   const remaining = await getServerManualEditStashCount(session.live);
@@ -818,12 +819,18 @@ async function getServerManualEditStashCount(live, pageUrl = '/') {
 async function waitForServerManualEditStashCount(live, expectedCount, { pageUrl = '/', timeout = 20_000 } = {}) {
   const start = Date.now();
   let last = null;
+  let lastError = null;
   while (Date.now() - start < timeout) {
-    last = await getServerManualEditStashCount(live, pageUrl);
-    if (last === expectedCount) return;
+    try {
+      last = await getServerManualEditStashCount(live, pageUrl);
+      lastError = null;
+      if (last === expectedCount) return;
+    } catch (err) {
+      lastError = err;
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`manual edit stash count did not reach ${expectedCount}; last=${last}`);
+  throw new Error(`manual edit stash count did not reach ${expectedCount}; last=${last}; lastError=${lastError?.message || 'none'}`);
 }
 
 async function clickPickToggle(page, selector) {

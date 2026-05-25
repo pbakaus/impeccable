@@ -1012,8 +1012,10 @@ export async function runAgentLoop({
 
     if (event.type === 'manual_edit_apply') {
       const entryCount = event.batch?.entries?.length || 0;
+      const opCount = (event.batch?.entries || []).reduce((sum, entry) => sum + (entry.ops?.length || 0), 0) || entryCount;
+      const chunkLabel = event.chunk ? ` (chunk ${event.chunk.index}/${event.chunk.total})` : '';
       const applyFiles = formatManualApplyFiles(event.batch);
-      log(`Applying ${entryCount} staged copy edit(s) across ${applyFiles}.`);
+      log(`Applying ${opCount} staged copy edit(s)${chunkLabel} across ${applyFiles}.`);
       try {
         if (typeof agent.applyManualEdits !== 'function') {
           throw new Error('agent does not implement applyManualEdits');
@@ -1044,6 +1046,9 @@ export async function runAgentLoop({
           const failedCount = result.failed?.length || Math.max(0, entryCount - appliedCount);
           if (failedCount > 0) {
             log(`Applied ${appliedCount}/${entryCount} edit(s); ${failedCount} stayed staged because ${result.failed?.[0]?.reason || 'one or more entries failed'}.`);
+          } else if (event.chunk) {
+            const finalChunk = event.chunk.index === event.chunk.total;
+            log(`Applied ${appliedCount}/${entryCount} entry(s) for chunk ${event.chunk.index}/${event.chunk.total}; ${finalChunk ? 'waiting for server verification.' : 'polling for the next Apply chunk.'}`);
           } else {
             log(`Applied ${appliedCount}/${entryCount} edit(s) and cleared the Apply stash.`);
           }
