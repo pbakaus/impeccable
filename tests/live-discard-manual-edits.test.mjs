@@ -62,7 +62,7 @@ describe('live-discard-manual-edits.mjs', () => {
 
     const result = runDiscard(['--page-url=/a']);
 
-    assert.equal(result.discarded, 2, 'reports ops on /a, not entries (CB-5)');
+    assert.equal(result.discarded, 2, 'reports ops on /a, not entries');
     assert.deepEqual(result.entries.map((item) => item.id), ['a']);
     assert.equal(result.totalCount, 1);
     const buf = readBuffer(tmpDir);

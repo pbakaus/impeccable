@@ -126,7 +126,7 @@ describe('live-manual-edits-buffer', () => {
   });
 
   describe('removeEntries', () => {
-    it('returns count of OPS removed, not entries (CB-5)', () => {
+    it('returns count of ops removed, not entries', () => {
       stageEntry(tmpDir, entry({ id: 'a', pageUrl: '/a', ops: [op({ ref: 'r1' }), op({ ref: 'r2' }), op({ ref: 'r3' })] }));
       stageEntry(tmpDir, entry({ id: 'b', pageUrl: '/b', ops: [op({ ref: 'r4' })] }));
       const removed = removeEntries(tmpDir, (e) => e.pageUrl === '/a');

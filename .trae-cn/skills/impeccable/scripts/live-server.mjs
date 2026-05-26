@@ -39,7 +39,6 @@ import {
   stageEntry as stageManualEditEntry,
   truncateBuffer as truncateManualEditsBuffer,
 } from './live-manual-edits-buffer.mjs';
-import { validateNewTextChars } from './live-edit.mjs';
 import { commitManualEdits } from './live-commit-manual-edits.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +48,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTEXT_DIR = resolveContextDir(process.cwd());
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+const FORBIDDEN_MANUAL_EDIT_TEXT_CHARS = ['<', '>', '{', '}', '`'];
+
+function validateManualEditText(newText) {
+  if (typeof newText !== 'string') return null;
+  const hits = FORBIDDEN_MANUAL_EDIT_TEXT_CHARS.filter((char) => newText.includes(char));
+  return hits.length > 0 ? hits : null;
+}
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -925,7 +931,7 @@ function validateManualEditEvent(msg, label) {
       if (op.deleted !== true && op.newText.trim().length === 0) {
         return label + ': newText cannot be empty';
       }
-      const forbidden = validateNewTextChars(op.newText);
+      const forbidden = validateManualEditText(op.newText);
       if (forbidden) {
         return label + ': newText cannot contain ' + forbidden.join(' ') + ' (plain text only; ask the AI to insert markup)';
       }

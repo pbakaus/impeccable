@@ -147,7 +147,7 @@ describe('live-wrap.mjs buffer-aware "original" content', () => {
     assert.ok(result.file, 'wrap should succeed when same-page staged edits cannot affect the target block');
   });
 
-  it('with mismatched --page-url, does NOT leak the edit (CB-4 regression)', () => {
+  it('with mismatched --page-url, does not leak the edit', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<div>\n  <h1 class="hero">Welcome</h1>\n</div>\n');
 

@@ -361,7 +361,7 @@ async function waitForPendingManualEditCount(expected, { timeout = 10_000 } = {}
 }
 
 async function warmDevServerPage(page, url) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     const outdatedOptimizeDeps = [];
     const outdatedConsoleErrors = [];
     const onResponse = (response) => {
@@ -381,7 +381,7 @@ async function warmDevServerPage(page, url) {
     page.off('response', onResponse);
     page.off('console', onConsole);
     if (outdatedOptimizeDeps.length === 0 && outdatedConsoleErrors.length === 0) return;
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(1_500);
   }
   throw new Error('dev server kept returning Vite Outdated Optimize Dep responses during warmup');
 }
