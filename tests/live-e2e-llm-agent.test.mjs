@@ -361,6 +361,7 @@ describe('live-e2e LLM agent manual edit prompt', () => {
   it('tells the model to preserve typed source values during display-copy edits', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Preserve numeric, boolean, array, and object model data/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quoted display text/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /sourceContext is the current source/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file \+ op\.sourceHint\.line/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
@@ -771,7 +772,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.equal(error, null);
   });
 
-  it('rejects integer display edits that do not use a quoted display expression', () => {
+  it('accepts static markup replacements for integer display edits when model data stays typed', () => {
     const error = validateManualEditCoverage(
       {
         status: 'done',
@@ -786,15 +787,15 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
           {
             entryId: 'entry-a',
             file: 'src/App.jsx',
-            originalText: '{String(workshopStats.seats)}',
-            newText: '7 workshop seats remain',
+            originalText: '<span className="capacity-count">{String(workshopStats.seats)}</span>',
+            newText: '<span className="capacity-count">7 workshop seats remain</span>',
           },
         ],
       },
       batch,
     );
 
-    assert.match(error, /quoted display expression/);
+    assert.equal(error, null);
   });
 
   it('rejects integer display edits that corrupt typed model data', () => {

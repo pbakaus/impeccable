@@ -40,6 +40,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- Preserve newText exactly as visible copy, including leading zeros, punctuation, casing, spacing, and temporary-looking words. Do not normalize user text.',
     '- Preserve numeric, boolean, array, and object model data unless the visible value truly became display text.',
     '- If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.',
+    '- Treat current source evidence as authoritative after earlier chunks/retries. sourceEdit.originalText must appear exactly in the current file; do not reuse stale object keys or old line text.',
     '- When user copy contains framework-sensitive characters such as >, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like {"alpha -> beta"} instead of raw text that contains >.',
     '- Replacement text must still be valid source syntax. If newText is display text inside JS, TS, JSX, Svelte, Astro, or data files and is not the existing typed value, quote or escape it as source text instead of pasting raw user text into code.',
     '- When reverting a visible value back to a plain number and evidence shows the source model was numeric, replace the enclosing source value so the result is numeric, not a quoted string.',

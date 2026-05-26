@@ -42,11 +42,12 @@ The user already clicked Apply. Do not ask what to do. Do not discard edits. Do 
 11. Preserve `op.newText` exactly, including leading zeros, punctuation, casing, spacing, and temporary-looking words.
 12. Preserve typed source data. Do not turn numeric, boolean, array, or object model values into strings unless the visible value truly became display text.
 13. If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.
-14. When user copy contains framework-sensitive characters such as `>`, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like `{"alpha -> beta"}` instead of raw text that contains `>`.
-15. If numeric source data is changed to non-numeric visible text, write the new visible text as a quoted source string. Never substitute a similar number or a bare identifier.
-16. When reverting visible copy back to a plain number and evidence shows the source model was numeric, restore the numeric value without quotes.
-17. If a dependency is ambiguous or broad, fail that entry and leave no partial edits for it.
-18. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
+14. `sourceContext` is current source after earlier chunks and retries. If event evidence disagrees with current source, current source wins; `sourceEdit.originalText` must appear exactly in the current file.
+15. When user copy contains framework-sensitive characters such as `>`, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like `{"alpha -> beta"}` instead of raw text that contains `>`.
+16. If numeric source data is changed to non-numeric visible text, write the new visible text as a quoted source string. Never substitute a similar number or a bare identifier.
+17. When reverting visible copy back to a plain number and evidence shows the source model was numeric, restore the numeric value without quotes.
+18. If a dependency is ambiguous or broad, fail that entry and leave no partial edits for it.
+19. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
 
 ## Entry Atomicity
 
