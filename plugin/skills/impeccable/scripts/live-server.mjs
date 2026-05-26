@@ -868,16 +868,15 @@ function loadBrowserScripts() {
   // can re-read on every request. Editing the browser script during iteration
   // should land on the next tab reload, not require a server restart.
   const sessionPath = path.join(__dirname, 'live-browser-session.js');
-  const textRowsPath = path.join(__dirname, 'live-text-rows.js');
   const livePath = path.join(__dirname, 'live-browser.js');
-  for (const p of [sessionPath, textRowsPath, livePath]) {
+  for (const p of [sessionPath, livePath]) {
     if (!fs.existsSync(p)) {
       process.stderr.write('Error: live browser script not found at ' + p + '\n');
       process.exit(1);
     }
   }
 
-  return { detectScript, sessionPath, textRowsPath, livePath };
+  return { detectScript, sessionPath, livePath };
 }
 
 function hasProjectContext() {
@@ -988,7 +987,7 @@ function validateEvent(msg) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }) {
+function createRequestHandler({ detectScript, sessionPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1005,11 +1004,9 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       // sessions — during iteration, a cached old script silently breaks
       // every subsequent session.
       let sessionScript;
-      let textRowsScript;
       let liveScript;
       try {
         sessionScript = fs.readFileSync(sessionPath, 'utf-8');
-        textRowsScript = fs.readFileSync(textRowsPath, 'utf-8');
         liveScript = fs.readFileSync(livePath, 'utf-8');
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -1020,7 +1017,6 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
         sessionScript + '\n' +
-        textRowsScript + '\n' +
         liveScript;
       res.writeHead(200, {
         'Content-Type': 'application/javascript',
@@ -1806,8 +1802,8 @@ const annotRoot = getLiveAnnotationsDir(process.cwd());
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, sessionPath, textRowsPath, livePath } = loadBrowserScripts();
-httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, textRowsPath, livePath }));
+const { detectScript, sessionPath, livePath } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });

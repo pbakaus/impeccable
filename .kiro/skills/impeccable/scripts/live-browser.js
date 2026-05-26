@@ -1794,6 +1794,49 @@
   // wrappers are inline display by default and inherit styles, so the page
   // shouldn't visually shift. We unwrap in disableInlineEdit.
   const MIXED_WRAP_SKIP = { script: 1, style: 1, template: 1, noscript: 1, svg: 1, code: 1, pre: 1 };
+
+  function collectEditableTextRows(rootEl, opts) {
+    if (!rootEl || rootEl.nodeType !== 1) return [];
+    const isOwn = (opts && opts.isOwn) || (() => false);
+    const rows = [];
+
+    function visit(el) {
+      if (!el || el.nodeType !== 1) return;
+      const tag = el.tagName.toLowerCase();
+      if (MIXED_WRAP_SKIP[tag]) return;
+      if (el.hasAttribute && el.hasAttribute('contenteditable')) return;
+      if (el !== rootEl && isOwn(el)) return;
+
+      const children = Array.from(el.childNodes);
+      const textNodes = [];
+      let allText = children.length > 0;
+      let hasNonWhitespaceText = false;
+      for (const node of children) {
+        if (node.nodeType === 3) {
+          textNodes.push(node);
+          if (node.nodeValue && /\S/.test(node.nodeValue)) hasNonWhitespaceText = true;
+        } else {
+          allText = false;
+        }
+      }
+      if (allText && hasNonWhitespaceText) {
+        rows.push({
+          el,
+          ref: documentRefForElement(el) || el.tagName.toLowerCase(),
+          text: textNodes.map((node) => node.nodeValue).join(''),
+          textNodes,
+        });
+      }
+
+      for (const child of children) {
+        if (child.nodeType === 1) visit(child);
+      }
+    }
+
+    visit(rootEl);
+    return rows;
+  }
+
   function wrapMixedContentTextNodes(rootEl) {
     if (!rootEl || rootEl.nodeType !== 1) return;
     const tag = rootEl.tagName.toLowerCase();
@@ -1833,11 +1876,10 @@
   let inlineEditRoot = null;
 
   function enableInlineEdit(targetEl) {
-    const collect = window.__IMPECCABLE_LIVE_TEXT_ROWS__?.collectEditableTextRows;
-    if (!collect || !targetEl) return;
+    if (!targetEl) return;
     inlineEditRoot = targetEl;
     wrapMixedContentTextNodes(targetEl);
-    const rows = collect(targetEl, { isOwn: own });
+    const rows = collectEditableTextRows(targetEl, { isOwn: own });
     inlineEditRows = rows;
     inlineEditDrafts = new Map();
     for (const row of rows) {

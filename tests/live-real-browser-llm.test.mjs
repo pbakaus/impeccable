@@ -483,7 +483,7 @@ function removeLiveInjection() {
 }
 
 function startRepoDevServer() {
-  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1'], {
+  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--force'], {
     cwd: REPO_ROOT,
     env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
