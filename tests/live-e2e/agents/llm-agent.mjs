@@ -111,6 +111,7 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   '- If one op renames a label and another changes a value looked up by that label, update the same lookup/map entry so the key uses the new label and the value uses the exact new display text.',
   '- Preserve op.newText exactly, including leading zeros, punctuation, casing, spacing, and temporary-looking words.',
   '- Preserve numeric, boolean, array, and object model data. Use quoted display text only when the visible copy cannot remain a typed model value.',
+  '- If numeric source data is changed to non-numeric visible text, write the new visible text as a quoted source string. Never substitute a similar number or a bare identifier.',
   '- When reverting visible copy back to a plain number and evidence shows the source model was numeric, restore the numeric value without quotes.',
   '- If a dependency is ambiguous or broad, fail that entry and leave no sourceEdits for it.',
   '- Mark an entry applied only when sourceEdits cover every op in that entry. Never return sourceEdits for failed, omitted, or unreported entries.',
@@ -779,6 +780,10 @@ export function validateManualEditCoverage(parsed, batch) {
           entryErrors.push(missingLeadingZeroCopyMessage(entry, op));
           continue;
         }
+        if (isIntegerLikeText(op.originalText) && !isIntegerLikeText(expected)) {
+          entryErrors.push(missingNumericToTextCopyMessage(entry, op));
+          continue;
+        }
         entryErrors.push(`manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains staged copy ${JSON.stringify(op.newText)}`);
         continue;
       }
@@ -932,6 +937,18 @@ function missingLeadingZeroCopyMessage(entry, op) {
     ? ` If this entry also renames ${JSON.stringify(labelOp.originalText)} to ${JSON.stringify(labelOp.newText)}, the corrected lookup/map sourceEdit must satisfy both changes at once: key ${JSON.stringify(labelOp.newText)} and quoted value ${JSON.stringify(op.newText)}.`
     : '';
   return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains exact staged copy ${JSON.stringify(op.newText)}; leading zeros are user-visible copy and must not be normalized, so replace the enclosing lookup/map entry with a quoted display value that literally contains ${JSON.stringify(op.newText)} instead of leaving or writing the typed number ${JSON.stringify(op.originalText)}.${labelClause}`;
+}
+
+function missingNumericToTextCopyMessage(entry, op) {
+  const labelOp = (entry?.ops || []).find((candidate) => {
+    const original = normalizeManualEditText(candidate.originalText);
+    const next = normalizeManualEditText(candidate.newText);
+    return original && next && original !== next && !isIntegerLikeText(original) && !isIntegerLikeText(next);
+  });
+  const labelClause = labelOp
+    ? ` If this entry also renames ${JSON.stringify(labelOp.originalText)} to ${JSON.stringify(labelOp.newText)}, the corrected lookup/map sourceEdit must satisfy both changes at once: key ${JSON.stringify(labelOp.newText)} and quoted value ${JSON.stringify(op.newText)}.`
+    : '';
+  return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains staged copy ${JSON.stringify(op.newText)} exactly; ${JSON.stringify(op.newText)} is user-visible display text, so replace the enclosing lookup/map entry with a quoted source value that literally contains ${JSON.stringify(op.newText)} instead of leaving a numeric value or writing a bare identifier.${labelClause}`;
 }
 
 function validateCoupledSourceKeyEdit(entry, batch, sourceEdits) {

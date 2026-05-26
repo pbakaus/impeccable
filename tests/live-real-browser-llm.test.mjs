@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -96,11 +98,17 @@ describe('real browser LLM live manual edit flow', () => {
       '.impeccable/live/pending-manual-edits.json',
       '.impeccable/live/server.json',
     ]);
+    const liveStateSnapshots = snapshotPaths([
+      '.impeccable/live/manual-edit-events.jsonl',
+      '.impeccable/live/sessions',
+    ]);
+    cleanupFns.push(() => restorePaths(liveStateSnapshots));
     cleanupFns.push(() => restoreFiles(snapshots));
     cleanupFns.push(() => discardManualEditBuffer());
     cleanupFns.push(() => rmSync(join(REPO_ROOT, '.impeccable/live/manual-edit-evidence'), { recursive: true, force: true }));
 
     stopLiveServer();
+    resetLiveTestState();
     discardManualEditBuffer();
     removeLiveInjection();
 
@@ -652,6 +660,32 @@ function restoreFiles(snapshots) {
   }
 }
 
+function snapshotPaths(paths) {
+  const backupRoot = mkdtempSync(join(tmpdir(), 'impeccable-live-state-'));
+  return paths.map((file) => {
+    const abs = join(REPO_ROOT, file);
+    if (!existsSync(abs)) return { file, exists: false };
+    const backup = join(backupRoot, file.replace(/[\\/]/g, '__'));
+    cpSync(abs, backup, { recursive: true });
+    return {
+      file,
+      exists: true,
+      isDirectory: statSync(abs).isDirectory(),
+      backup,
+    };
+  });
+}
+
+function restorePaths(snapshots) {
+  for (const item of snapshots) {
+    const abs = join(REPO_ROOT, item.file);
+    rmSync(abs, { recursive: true, force: true });
+    if (!item.exists) continue;
+    mkdirSync(dirname(abs), { recursive: true });
+    cpSync(item.backup, abs, { recursive: item.isDirectory });
+  }
+}
+
 function discardManualEditBuffer() {
   try {
     execFileSync(process.execPath, [join(SCRIPTS_DIR, 'live-discard-manual-edits.mjs')], {
@@ -661,6 +695,12 @@ function discardManualEditBuffer() {
   } catch {
     // best effort
   }
+}
+
+function resetLiveTestState() {
+  rmSync(join(REPO_ROOT, '.impeccable/live/manual-edit-events.jsonl'), { force: true });
+  rmSync(join(REPO_ROOT, '.impeccable/live/manual-edit-evidence'), { recursive: true, force: true });
+  rmSync(join(REPO_ROOT, '.impeccable/live/sessions'), { recursive: true, force: true });
 }
 
 function readPendingManualEditCount() {

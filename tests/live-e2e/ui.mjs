@@ -175,16 +175,34 @@ export async function setCount(page, count) {
 }
 
 /**
- * Click Go. Browser POSTs the generate event; the agent picks it up.
- *
- * On fixtures whose preActions triggered a layout shift (modal/tab opening)
- * the bar's open animation can still be running when we click, and
- * Playwright's stability gate occasionally times out on the first attempt.
- * Retry up to three times with a settle in between so a single race doesn't
- * fail the test.
+ * Click Go. Browser POSTs the generate event; the agent picks it up. Headed
+ * browser runs can occasionally accept the click without leaving configure
+ * mode after a long manual Apply, so verify the bar advanced and retry the
+ * visible click if it did not.
  */
 export async function clickGo(page) {
-  await clickBarButton(page, /Go\b/);
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await clickBarButton(page, /Go\b/);
+    const advanced = await page.waitForFunction(
+      (barSel) => {
+        const bar = document.querySelector(barSel);
+        if (!bar) return false;
+        const text = bar.textContent || '';
+        if (/Generating\b/.test(text)) return true;
+        if (/\d+\s*\/\s*\d+/.test(text)) return true;
+        return ![...bar.querySelectorAll('button')].some((button) => /Go\b/.test(button.textContent || ''));
+      },
+      BAR_ID,
+      { timeout: 3_000 },
+    ).then(() => true, (err) => {
+      lastErr = err;
+      return false;
+    });
+    if (advanced) return;
+    await page.waitForTimeout(500);
+  }
+  throw lastErr || new Error('Go click did not leave configure mode');
 }
 
 /**

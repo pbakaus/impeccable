@@ -380,6 +380,8 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /ambiguous or broad/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Preserve op\.newText exactly/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /leading zeros/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /non-numeric visible text/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quoted source string/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /back to a plain number/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coverage is harness-only planning data/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coveredOps/);
@@ -757,6 +759,39 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /leading zeros/);
     assert.match(error, /must not be normalized/);
     assert.match(error, /must satisfy both changes at once/);
+    assert.match(error, /key "New label"/);
+  });
+
+  it('gives quoted-source guidance when non-numeric display copy is normalized away', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "'Old label': 23",
+            newText: "'New label': 33",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Old label', newText: 'New label' },
+              { originalText: '23', newText: 'Label count' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /staged copy "Label count" exactly/);
+    assert.match(error, /quoted source value/);
+    assert.match(error, /bare identifier/);
     assert.match(error, /key "New label"/);
   });
 
