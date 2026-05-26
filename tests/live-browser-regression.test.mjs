@@ -94,4 +94,17 @@ describe('live-browser.js regression guards', () => {
       'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
     );
   });
+
+  it('editing focus timeout does not read a stale inline edit row', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /setTimeout\(\(\) => \{\s*const el = inlineEditRows\[0\]\.el;/,
+      'event=live_browser.stale_edit_focus actor=browser operation=edit_mode_focus_timeout risk=post_apply_or_accept_pageerror expected=capture editable element before timeout and guard state actual=reads inlineEditRows[0].el after rows can be cleared',
+    );
+    assert.match(
+      SOURCE,
+      /const firstEditable = inlineEditRows\[0\] && inlineEditRows\[0\]\.el;[\s\S]{0,120}?setTimeout\(\(\) => \{[\s\S]{0,120}?if \(!el \|\| !el\.isConnected \|\| state !== 'EDITING'\) return;/,
+      'edit-mode delayed focus should capture the element before scheduling and no-op if editing ended before the timeout fires',
+    );
+  });
 });

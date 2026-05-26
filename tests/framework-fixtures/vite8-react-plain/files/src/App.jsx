@@ -26,6 +26,14 @@ const largeManualItems = [
   { label: 'Bulk copy 19' },
   { label: 'Bulk copy 20' },
 ];
+const hardManualCards = [
+  { name: 'Mercury copy key', code: 'M-17', detail: 'Nested React copy lives inside mapped data' },
+  { name: 'Venus copy key', code: 'V-23', detail: 'Sibling card keeps a similar source shape' },
+];
+const hardManualCountsByName = {
+  'Mercury copy key': 17,
+  'Venus copy key': 23,
+};
 
 function assertIntegerStat(value) {
   if (!Number.isInteger(value)) throw new Error('workshopStats.seats must stay integer');
@@ -58,6 +66,18 @@ export default function App() {
       <section className="large-manual-grid" aria-label="Large manual edit batch">
         {largeManualItems.map((item) => (
           <span className="large-manual-item" key={item.label}>{item.label}</span>
+        ))}
+      </section>
+      <section className="hard-manual-grid" aria-label="Hard manual edit cards">
+        {hardManualCards.map((card) => (
+          <article className="hard-manual-card" key={card.name}>
+            <h2 className="hard-manual-heading">
+              <span className="hard-manual-name">{card.name}</span>
+              <em className="hard-manual-code">{card.code}</em>
+            </h2>
+            <p className="hard-manual-detail">{card.detail}</p>
+            <span className="hard-manual-count">{hardManualCountsByName[card.name]}</span>
+          </article>
         ))}
       </section>
       <section className="action-row" aria-label="Workshop actions">

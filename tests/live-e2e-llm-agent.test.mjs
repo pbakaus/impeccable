@@ -383,6 +383,9 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /non-numeric visible text/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quoted source string/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /back to a plain number/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /framework-sensitive characters/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /valid source/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /JSX\/TSX text nodes/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coverage is harness-only planning data/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coveredOps/);
   });
@@ -648,7 +651,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /text\/objectKey\/context candidates/);
   });
 
-  it('gives data-map guidance for failed rendered counts without sourceHint', () => {
+  it('gives rendered-value guidance for failed counts without sourceHint', () => {
     const error = validateManualEditCoverage(
       {
         status: 'partial',
@@ -673,7 +676,8 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     );
 
     assert.match(error, /rendered count\/value without sourceHint/);
-    assert.match(error, /source data map or lookup value/);
+    assert.match(error, /location that renders/);
+    assert.match(error, /preserving typed model data/);
     assert.match(error, /"many seats"/);
   });
 
@@ -703,6 +707,70 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.equal(error, null);
   });
 
+  it('rejects raw JSX text replacements with framework-sensitive characters', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/App.jsx',
+            originalText: '<article className="feature-card">One</article>',
+            newText: '<article className="feature-card">One: alpha -> beta</article>',
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/App.jsx',
+            originalText: '{String(workshopStats.seats)}',
+            newText: '{"7 workshop seats remain"}',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'One', newText: 'One: alpha -> beta' },
+              { originalText: '7', newText: '7 workshop seats remain' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /raw JSX text/);
+    assert.match(error, /valid JSX/);
+  });
+
+  it('accepts quoted JSX expression replacements with framework-sensitive characters', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/App.jsx',
+            originalText: '<article className="feature-card">One</article>',
+            newText: '<article className="feature-card">{"One: alpha -> beta"}</article>',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [{ originalText: 'One', newText: 'One: alpha -> beta' }],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
+  });
+
   it('rejects integer display edits that do not use a quoted display expression', () => {
     const error = validateManualEditCoverage(
       {
@@ -727,6 +795,34 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     );
 
     assert.match(error, /quoted display expression/);
+  });
+
+  it('rejects integer display edits that corrupt typed model data', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/App.jsx',
+            originalText: 'Old title',
+            newText: 'Five-leaf stress title applied',
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/App.jsx',
+            line: 1,
+            originalText: 'const workshopStats = { seats: 7 };',
+            newText: "const workshopStats = { seats: '7 workshop seats remain' };",
+          },
+        ],
+      },
+      batch,
+    );
+
+    assert.match(error, /model data/);
+    assert.match(error, /preserve typed model data/);
   });
 
   it('gives exact-copy guidance when leading-zero display copy is normalized away', () => {

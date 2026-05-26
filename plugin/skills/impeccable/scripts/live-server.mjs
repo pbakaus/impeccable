@@ -48,7 +48,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTEXT_DIR = resolveContextDir(process.cwd());
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
-const FORBIDDEN_MANUAL_EDIT_TEXT_CHARS = ['<', '>', '{', '}', '`'];
+const FORBIDDEN_MANUAL_EDIT_TEXT_CHARS = ['<', '{', '}', '`'];
 
 function validateManualEditText(newText) {
   if (typeof newText !== 'string') return null;

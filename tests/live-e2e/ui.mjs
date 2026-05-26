@@ -139,6 +139,10 @@ async function ensurePickerActive(page) {
 }
 
 async function resetPickMode(page) {
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(100);
   await page.evaluate((sel) => {
     const btn = document.querySelector(sel);
     if (!btn) return;

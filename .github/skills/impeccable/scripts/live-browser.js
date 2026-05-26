@@ -1949,8 +1949,10 @@
     enableInlineEdit(selectedElement);
     // Focus first editable element and position cursor at end
     if (inlineEditRows.length > 0) {
+      const firstEditable = inlineEditRows[0] && inlineEditRows[0].el;
       setTimeout(() => {
-        const el = inlineEditRows[0].el;
+        const el = firstEditable;
+        if (!el || !el.isConnected || state !== 'EDITING') return;
         el.focus();
         const range = document.createRange();
         const sel = window.getSelection();
@@ -2131,7 +2133,7 @@
 
   function forbiddenManualTextChars(text) {
     const out = [];
-    for (const ch of ['<', '>', '{', '}', '`']) {
+    for (const ch of ['<', '{', '}', '`']) {
       if (String(text || '').includes(ch)) out.push(ch);
     }
     return out;

@@ -111,6 +111,8 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   '- If one op renames a label and another changes a value looked up by that label, update the same lookup/map entry so the key uses the new label and the value uses the exact new display text.',
   '- Preserve op.newText exactly, including leading zeros, punctuation, casing, spacing, and temporary-looking words.',
   '- Preserve numeric, boolean, array, and object model data. Use quoted display text only when the visible copy cannot remain a typed model value.',
+  '- If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.',
+  '- When user copy contains framework-sensitive characters such as >, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like {"alpha -> beta"} instead of raw text that contains >.',
   '- If numeric source data is changed to non-numeric visible text, write the new visible text as a quoted source string. Never substitute a similar number or a bare identifier.',
   '- When reverting visible copy back to a plain number and evidence shows the source model was numeric, restore the numeric value without quotes.',
   '- If a dependency is ambiguous or broad, fail that entry and leave no sourceEdits for it.',
@@ -763,7 +765,7 @@ export function validateManualEditCoverage(parsed, batch) {
       }
       if (entryHasResolvableCandidateEvidence(entry, batch)) {
         if (entryHasNumericToTextOp(entry)) {
-          return `manual edit entry ${entry.id} is a rendered count/value without sourceHint; use candidate objectKey/text/context evidence and current source to edit the source data map or lookup value to ${JSON.stringify(firstNumericToTextOp(entry)?.newText)}, not the renderer expression, and do not fail only because sourceHint is missing`;
+          return `manual edit entry ${entry.id} is a rendered count/value without sourceHint; use candidate source/text/object-key/context evidence and current source to edit the location that renders ${JSON.stringify(firstNumericToTextOp(entry)?.newText)} while preserving typed model data; do not fail only because sourceHint is missing`;
         }
         return `manual edit entry ${entry.id} has candidate source evidence without sourceHint; use text/objectKey/context candidates and return sourceEdits instead of failing only because sourceHint is missing`;
       }
@@ -791,6 +793,8 @@ export function validateManualEditCoverage(parsed, batch) {
       if (locationError) entryErrors.push(locationError);
       const typedDisplayError = validateTypedDisplayEdit(entry, op, matchingEdits);
       if (typedDisplayError) entryErrors.push(typedDisplayError);
+      const frameworkTextError = validateFrameworkTextEdit(entry, op, matchingEdits);
+      if (frameworkTextError) entryErrors.push(frameworkTextError);
     }
     const lookupPairError = validatePairedLookupCountEdit(entry, sourceEdits);
     if (lookupPairError) entryErrors.push(lookupPairError);
@@ -846,8 +850,10 @@ function opHasResolvableCandidateEvidence(entry, op, batch) {
 }
 
 function validateSourceHintLocation(entry, op, matchingEdits, batch) {
-  const hintFile = normalizeManualEditText(op.sourceHint?.file);
-  const hintLine = Number(op.sourceHint?.line);
+  const sourceHints = sourceHintsForOp(batch, entry.id, op);
+  const primaryHint = sourceHints[0] || {};
+  const hintFile = normalizeManualEditText(primaryHint.file);
+  const hintLine = Number(primaryHint.line);
   if (!hintFile || !Number.isFinite(hintLine) || hintLine <= 0) return null;
   const opOriginal = normalizeManualEditText(op.originalText);
   if (!opOriginal) return null;
@@ -866,6 +872,24 @@ function validateSourceHintLocation(entry, op, matchingEdits, batch) {
   return null;
 }
 
+function sourceHintsForOp(batch, entryId, op) {
+  const out = [];
+  const add = (hint) => {
+    const file = normalizeManualEditText(hint?.relativeFile || hint?.file);
+    const line = Number(hint?.line);
+    if (!file || !Number.isFinite(line) || line <= 0) return;
+    if (out.some((item) => item.file === file && item.line === line)) return;
+    out.push({ file, line });
+  };
+  add(op?.sourceHint);
+  for (const candidate of batch?.candidates || []) {
+    if (candidate.entryId !== entryId) continue;
+    if (candidate.ref && op?.ref && candidate.ref !== op.ref) continue;
+    add(candidate.sourceHint);
+  }
+  return out;
+}
+
 function sourceEditTargetsObjectKeyMatch(edit, batch, entryId, ref, oldText) {
   const editFile = normalizeManualEditText(edit.file);
   const editLine = Number(edit.line);
@@ -878,6 +902,10 @@ function validateTypedDisplayEdit(entry, op, matchingEdits) {
   const original = normalizeManualEditText(op.originalText);
   const next = normalizeManualEditText(op.newText);
   if (!/^-?\d+$/.test(original) || /^-?\d+$/.test(next)) return null;
+  const modelDataEdit = matchingEdits.find((edit) => isPlainNumericModelDataStringEdit(edit, original, next) && !sourceEditLooksLikeCoupledLookup(entry, edit));
+  if (modelDataEdit) {
+    return `manual edit entry ${entry.id} changes integer-backed copy ${JSON.stringify(op.originalText)} to ${JSON.stringify(op.newText)} by editing ${modelDataEdit.file}:${modelDataEdit.line} as model data; preserve typed model data and target the display expression or a clearly coupled lookup value instead`;
+  }
   const expressionEdits = matchingEdits.filter((edit) => isExpressionLikeSourceText(edit.originalText));
   if (expressionEdits.length === 0) return null;
   if (expressionEdits.some((edit) => isLookupRendererExpression(edit.originalText))) {
@@ -885,6 +913,47 @@ function validateTypedDisplayEdit(entry, op, matchingEdits) {
   }
   if (expressionEdits.some((edit) => hasQuotedDisplayExpression(edit.newText, next))) return null;
   return `manual edit entry ${entry.id} changes integer-backed copy ${JSON.stringify(op.originalText)} to ${JSON.stringify(op.newText)}; sourceEdit newText must use a quoted display expression like {"${next}"} and leave numeric source data typed`;
+}
+
+function validateFrameworkTextEdit(entry, op, matchingEdits) {
+  const next = normalizeManualEditText(op.newText);
+  if (!next.includes('>')) return null;
+  const badJsxEdit = matchingEdits.find((edit) => {
+    const file = normalizeManualEditText(edit.file);
+    if (!/\.[tj]sx$/.test(file)) return false;
+    const replacement = normalizeManualEditText(edit.newText);
+    if (!replacement.includes(next)) return false;
+    if (hasQuotedDisplayExpression(replacement, next) || hasQuotedStringLiteral(replacement, next)) return false;
+    return replacement === next || rawJsxTextNodeContains(replacement, next);
+  });
+  if (!badJsxEdit) return null;
+  return `manual edit entry ${entry.id} writes staged copy ${JSON.stringify(op.newText)} as raw JSX text in ${badJsxEdit.file}; keep the visible text exact but encode it as valid JSX, for example {"${next}"}, instead of pasting raw > into a text node`;
+}
+
+function rawJsxTextNodeContains(sourceText, visibleText) {
+  const escaped = escapeRegExp(visibleText);
+  return new RegExp(String.raw`>[^<{}]*${escaped}[^<{}]*<`).test(normalizeManualEditText(sourceText));
+}
+
+function isPlainNumericModelDataStringEdit(edit, original, next) {
+  const before = normalizeManualEditText(edit?.originalText);
+  const after = normalizeManualEditText(edit?.newText);
+  if (!before || !after || !hasQuotedStringLiteral(after, next)) return false;
+  if (hasQuotedDisplayExpression(after, next)) return false;
+  const escapedOriginal = escapeRegExp(original);
+  return new RegExp(String.raw`(?:^|[:=,\[\(\{]\s*)${escapedOriginal}(?:\s*[,;\]\)\}]|$)`).test(before);
+}
+
+function sourceEditLooksLikeCoupledLookup(entry, edit) {
+  const text = `${normalizeManualEditText(edit?.originalText)}\n${normalizeManualEditText(edit?.newText)}`;
+  if (/['"`][^'"`]+['"`]\s*:/.test(text)) return true;
+  return (entry?.ops || []).some((candidate) => {
+    const original = normalizeManualEditText(candidate.originalText);
+    const next = normalizeManualEditText(candidate.newText);
+    if (!original || !next || original === next) return false;
+    if (isIntegerLikeText(original) || isIntegerLikeText(next)) return false;
+    return text.includes(original) || text.includes(next);
+  });
 }
 
 function validatePairedLookupCountEdit(entry, sourceEdits) {
