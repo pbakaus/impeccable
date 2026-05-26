@@ -502,75 +502,6 @@ colors: {}
     }
   });
 
-  it('/manual-edit-commit recovers exact legacy summary chat Apply replies', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-legacy-summary-'));
-    let chatServer;
-    try {
-      mkdirSync(join(tmp, 'src'), { recursive: true });
-      const sourcePath = join(tmp, 'src', 'page.html');
-      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
-
-      chatServer = await startServer(8538, {
-        cwd: tmp,
-        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
-      });
-
-      await stashManualEdit(chatServer, {
-        id: 'feedbabe',
-        pageUrl: '/',
-        element: { tagName: 'h1', outerHTML: '<h1 class="hero">Welcome</h1>', textContent: 'Welcome' },
-        ops: [{
-          ref: 'body>h1.hero:nth-of-type(1)',
-          tag: 'h1',
-          classes: ['hero'],
-          originalText: 'Welcome',
-          newText: 'Hello legacy',
-          sourceHint: { file: 'src/page.html', line: 1 },
-        }],
-      });
-
-      const agentLoop = (async () => {
-        const pollRes = await fetch(`http://localhost:${chatServer.port}/poll?token=${chatServer.token}&timeout=10000&leaseMs=30000`);
-        const event = await pollRes.json();
-        assert.equal(event.type, 'manual_edit_apply');
-        writeFileSync(sourcePath, '<h1 class="hero">Hello legacy</h1>\n');
-
-        const ackRes = await fetch(`http://localhost:${chatServer.port}/poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: chatServer.token,
-            id: event.id,
-            type: 'done',
-            data: { status: 'applied', entries: 1 },
-          }),
-        });
-        assert.equal(ackRes.status, 200);
-      })();
-
-      const commitPromise = fetch(`http://localhost:${chatServer.port}/manual-edit-commit?token=${chatServer.token}&pageUrl=%2F`, {
-        method: 'POST',
-      });
-
-      await agentLoop;
-      const commit = await commitPromise;
-      assert.equal(commit.status, 200);
-      const result = await commit.json();
-      assert.equal(result.cleared, 1);
-      assert.equal(result.failed.length, 0);
-      assert.deepEqual(result.files, ['src/page.html']);
-      assert.match(readFileSync(sourcePath, 'utf-8'), /Hello legacy/);
-      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
-      assert.equal(buffer.entries.length, 0);
-    } finally {
-      if (chatServer) {
-        await stopServer(chatServer.port, chatServer.token);
-        chatServer.proc.kill();
-      }
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
   it('/manual-edit-commit rejects malformed chat Apply results without rolling back before retry', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-invalid-result-'));
     let chatServer;
@@ -634,9 +565,9 @@ colors: {}
         };
 
         await rejectReply(undefined, 'missing_result_data');
-        await rejectReply({ status: 'applied', entries: 99 }, 'legacy_summary_entries_mismatch');
-        await rejectReply({ status: 'applied' }, 'legacy_summary_missing_counts');
-        await rejectReply({ status: 'applied', entries: 1, files: ['src/page.html'] }, 'legacy_summary_unexpected_fields');
+        await rejectReply({ status: 'applied', entries: 99 }, 'summary_result_not_allowed');
+        await rejectReply({ status: 'applied' }, 'invalid_status');
+        await rejectReply({ status: 'applied', entries: 1, files: ['src/page.html'] }, 'summary_result_not_allowed');
         await rejectReply({ status: 'done', failed: [], files: [], notes: [] }, 'appliedEntryIds_must_be_array');
         await rejectReply({ status: 'done', appliedEntryIds: [], failed: [], files: [], notes: [] }, 'done_result_missing_applied_entry_ids');
         await rejectReply({ status: 'done', appliedEntryIds: ['not-this-event'], failed: [], files: [], notes: [] }, 'applied_entry_id_not_in_event');
@@ -890,98 +821,6 @@ colors: {}
       assert.equal(result.applied.length, 5);
       assert.equal(result.failed.length, 0);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Echo edited/);
-    } finally {
-      if (chunkServer) {
-        await stopServer(chunkServer.port, chunkServer.token);
-        chunkServer.proc.kill();
-      }
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('/manual-edit-commit aggregates exact legacy summary replies across chat Apply chunks', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-legacy-chunks-'));
-    let chunkServer;
-    try {
-      mkdirSync(join(tmp, 'src'), { recursive: true });
-      const sourcePath = join(tmp, 'src', 'page.html');
-      writeFileSync(sourcePath, Array.from({ length: 4 }, (_, index) => `<p>Legacy ${index + 1}</p>`).join('\n') + '\n');
-
-      chunkServer = await startServer(8539, {
-        cwd: tmp,
-        env: {
-          IMPECCABLE_LIVE_COPY_AGENT: 'chat',
-          IMPECCABLE_LIVE_MANUAL_EDIT_CHUNK_SIZE: '3',
-        },
-      });
-
-      for (let index = 0; index < 4; index += 1) {
-        const n = index + 1;
-        await stashManualEdit(chunkServer, {
-          id: `bb00000${n}`,
-          pageUrl: '/',
-          element: { tagName: 'p', outerHTML: `<p>Legacy ${n}</p>`, textContent: `Legacy ${n}` },
-          ops: [{
-            ref: `body>p:nth-of-type(${n})`,
-            tag: 'p',
-            originalText: `Legacy ${n}`,
-            newText: `Recovered ${n}`,
-            sourceHint: { file: 'src/page.html', line: n },
-          }],
-        });
-      }
-
-      const agentLoop = (async () => {
-        const expectedChunkSizes = [3, 1];
-        for (const [index, expectedSize] of expectedChunkSizes.entries()) {
-          const event = await fetch(`http://localhost:${chunkServer.port}/poll?token=${chunkServer.token}&timeout=10000&leaseMs=30000`)
-            .then((res) => res.json());
-          assert.equal(event.type, 'manual_edit_apply');
-          assert.deepEqual(event.chunk, {
-            index: index + 1,
-            total: 2,
-            opCount: expectedSize,
-            totalOpCount: 4,
-          });
-
-          let source = readFileSync(sourcePath, 'utf-8');
-          for (const entry of event.batch.entries) {
-            for (const op of entry.ops) source = source.replace(op.originalText, op.newText);
-          }
-          writeFileSync(sourcePath, source);
-
-          const ack = await fetch(`http://localhost:${chunkServer.port}/poll`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: chunkServer.token,
-              id: event.id,
-              type: 'done',
-              data: {
-                status: 'applied',
-                entries: expectedSize,
-                ops: expectedSize,
-              },
-            }),
-          });
-          assert.equal(ack.status, 200);
-        }
-      })();
-
-      const commitPromise = fetch(`http://localhost:${chunkServer.port}/manual-edit-commit?token=${chunkServer.token}&pageUrl=%2F`, {
-        method: 'POST',
-      });
-
-      await agentLoop;
-      const commit = await commitPromise;
-      assert.equal(commit.status, 200);
-      const result = await commit.json();
-      assert.equal(result.count, 4);
-      assert.equal(result.cleared, 4);
-      assert.equal(result.applied.length, 4);
-      assert.equal(result.failed.length, 0);
-      assert.deepEqual(result.files, ['src/page.html']);
-      assert.match(readFileSync(sourcePath, 'utf-8'), /Recovered 4/);
     } finally {
       if (chunkServer) {
         await stopServer(chunkServer.port, chunkServer.token);

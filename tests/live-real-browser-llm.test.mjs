@@ -55,20 +55,19 @@ const MANUAL_EDITS = [
   { selector: H1_SELECTOR, original: 'Impeccable', next: 'Impeccable WOWO' },
   { selector: TAGLINE_SELECTOR, original: 'Design fluency for AI harnesses', next: 'Design fluency for AI harnesses OOOO' },
   { selector: HOOK_SELECTOR, original: LONG_HOOK, next: `${LONG_HOOK}UUUUUU` },
-  { selector: INCLUDED_TITLE_SELECTOR, pickSelector: '.hero-included-box', original: "What's included", next: "What's includedYYYY" },
+  { selector: INCLUDED_TITLE_SELECTOR, original: "What's included", next: "What's includedYYYY" },
   {
     selector: INCLUDED_ITEM_SELECTOR,
-    pickSelector: '.hero-included-box',
     original: 'Impeccable agent skill with 23 design commands',
     next: 'Impeccable agent skill with 23 design commands HHH',
     editOriginal: ' agent skill with 23 design commands',
     editNext: ' agent skill with 23 design commands HHH',
   },
   { selector: CTA_SELECTOR, original: 'Get Started', next: 'Get Started YESSS' },
-  { selector: TYPOGRAPHY_LABEL_SELECTOR, pickSelector: '.foundation-grid .foundation-column:nth-child(1) .foundation-card', original: 'Typography', next: 'TypoXXX' },
-  { selector: TYPOGRAPHY_COUNT_SELECTOR, pickSelector: '.foundation-grid .foundation-column:nth-child(1) .foundation-card', original: '33', next: '0033' },
-  { selector: RESPONSIVE_LABEL_SELECTOR, pickSelector: '.foundation-grid .foundation-column:nth-child(4) .foundation-card', original: 'Responsive', next: 'RespoXXX' },
-  { selector: RESPONSIVE_COUNT_SELECTOR, pickSelector: '.foundation-grid .foundation-column:nth-child(4) .foundation-card', original: '23', next: 'TT33' },
+  { selector: TYPOGRAPHY_LABEL_SELECTOR, original: 'Typography', next: 'TypoXXX' },
+  { selector: TYPOGRAPHY_COUNT_SELECTOR, original: '33', next: '0033' },
+  { selector: RESPONSIVE_LABEL_SELECTOR, original: 'Responsive', next: 'RespoXXX' },
+  { selector: RESPONSIVE_COUNT_SELECTOR, original: '23', next: 'TT33' },
 ];
 
 const cleanupFns = [];
@@ -157,13 +156,16 @@ describe('real browser LLM live manual edit flow', () => {
     cleanupFns.push(() => ctx.close());
 
     const page = await ctx.newPage();
+    const appUrl = `http://127.0.0.1:${devPort}`;
+    await warmDevServerPage(page, appUrl);
+
     const consoleErrors = [];
     page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + err.message));
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push('console.error: ' + msg.text());
     });
 
-    await page.goto(`http://127.0.0.1:${devPort}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     await hideAstroDevToolbar(page);
     await waitForHandshake(page);
     await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })));
@@ -301,7 +303,7 @@ async function hideLiveAnnotation(page) {
   }).catch(() => {});
 }
 
-async function fillEditableByText(page, edit, targetKey, previousError = null) {
+async function fillEditableByText(page, edit, targetKey) {
   const currentText = targetKey === 'next'
     ? (edit.editOriginal || edit.original)
     : (edit.editNext || edit.next);
@@ -323,8 +325,7 @@ async function fillEditableByText(page, edit, targetKey, previousError = null) {
       text: node.textContent,
     }))
   ).catch(() => []);
-  const cause = previousError ? ` after ${previousError.message}` : '';
-  throw new Error(`Could not find editable text leaf for ${edit.selector}; tried ${JSON.stringify(currentText)}${cause}. Editable rows: ${JSON.stringify(rows)}`);
+  throw new Error(`Could not find editable text leaf for ${edit.selector}; tried ${JSON.stringify(currentText)}. Editable rows: ${JSON.stringify(rows)}`);
 }
 
 async function waitForBrowserTexts(page, expectations, { timeout = 30_000 } = {}) {
@@ -358,6 +359,23 @@ async function waitForPendingManualEditCount(expected, { timeout = 10_000 } = {}
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   assert.equal(readPendingManualEditCount(), expected, 'pending manual edit count');
+}
+
+async function warmDevServerPage(page, url) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const outdatedOptimizeDeps = [];
+    const onResponse = (response) => {
+      if (response.status() === 504 && /Outdated Optimize Dep/i.test(response.statusText())) {
+        outdatedOptimizeDeps.push(response.url());
+      }
+    };
+    page.on('response', onResponse);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    page.off('response', onResponse);
+    if (outdatedOptimizeDeps.length === 0) return;
+    await page.waitForTimeout(1_000);
+  }
 }
 
 function assertManualSourceApplied() {

@@ -1873,7 +1873,7 @@
   }
 
   function onInlineInput(e) {
-    inlineEditDrafts.set(e.currentTarget, e.currentTarget.innerText);
+    inlineEditDrafts.set(e.currentTarget, e.currentTarget.textContent);
   }
 
   function hasTextRows(el) {
@@ -1923,7 +1923,7 @@
   function cancelEditing() {
     for (const row of inlineEditRows) {
       if (inlineEditDrafts.has(row.el)) {
-        row.el.innerText = row.el.dataset.impeccableOriginalText;
+        row.el.textContent = row.el.dataset.impeccableOriginalText;
       }
     }
     disableInlineEdit();
@@ -2278,20 +2278,6 @@
   function setPendingApplyLoading(loading, count) {
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
-    // Watchdog: an apply can never legitimately outlast the server's hard
-    // timeout (150s). If a `done`/`failed` signal is missed (server restart,
-    // SSE/fetch race, reconnect), force-clear so the picker can never freeze
-    // permanently. Bound to 165s to clear the server's window plus margin.
-    if (pendingApplyWatchdog) { clearTimeout(pendingApplyWatchdog); pendingApplyWatchdog = null; }
-    if (pendingApplyInFlight) {
-      pendingApplyWatchdog = setTimeout(() => {
-        pendingApplyWatchdog = null;
-        if (!pendingApplyInFlight) return;
-        setPendingApplyLoading(false);
-        fetchPendingCount();
-        showToast('Apply timed out. You can pick elements again.', 4000);
-      }, 165000);
-    }
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
     pendingPillLabelEl.textContent = pendingApplyInFlight
@@ -2353,17 +2339,22 @@
     if (count <= 0 || pendingApplyInFlight) return;
     const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source?');
     if (!ok) return;
+    let waitForSseCompletion = false;
     setPendingApplyLoading(true, count);
     try {
       const res = await fetch(
-        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
-        { method: 'POST' },
+        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname) + '&async=1',
+        { method: 'POST', keepalive: true },
       );
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || ('HTTP ' + res.status));
       }
       const result = await res.json();
+      if (res.status === 202 || result.status === 'started') {
+        waitForSseCompletion = true;
+        return;
+      }
       const remaining = remainingManualEditCount(result);
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
@@ -2382,6 +2373,7 @@
       console.error('[impeccable] commit failed:', err);
       showToast('Apply failed — see console', 4000);
     } finally {
+      if (waitForSseCompletion) return;
       const remainingCount = parseInt(pendingPillEl?.dataset.count || '0', 10) || 0;
       if (remainingCount > 0) setPendingApplyLoading(false);
       else hidePendingApplyDock();
@@ -2454,9 +2446,19 @@
       // re-asserts setPendingApplyLoading(true) whenever the flag is still set and
       // edits remain (failed entries stay staged), which would otherwise leave the
       // picker frozen forever after a partial/failed apply.
+      const wasApplying = pendingApplyInFlight;
       setPendingApplyLoading(false);
       const remainingCount = remainingManualEditCount(msg);
       updatePendingCounter(remainingCount === null ? 0 : remainingCount);
+      if (wasApplying) {
+        const failedCount = numberOrNull(msg.failedCount) || 0;
+        const appliedCount = numberOrNull(msg.appliedCount) || numberOrNull(msg.cleared) || 0;
+        if (failedCount > 0) {
+          showToast('Applied ' + appliedCount + ', ' + failedCount + ' failed — see console', 5000);
+        } else if (appliedCount > 0) {
+          showToast('Applied ' + appliedCount + ' edit' + (appliedCount === 1 ? '' : 's'), 2500);
+        }
+      }
       return;
     }
 
@@ -3547,8 +3549,8 @@
       e.preventDefault();
       e.stopPropagation();
       const original = e.target.dataset.impeccableOriginalText;
-      if (original !== undefined) e.target.innerText = original;
-      // Programmatic innerText doesn't fire the 'input' event, so the draft
+      if (original !== undefined) e.target.textContent = original;
+      // Programmatic textContent doesn't fire the 'input' event, so the draft
       // map would otherwise hold the pre-revert value and Apply would commit
       // changes the user explicitly undid.
       inlineEditDrafts.delete(e.target);
@@ -4423,7 +4425,6 @@ void main() {
   let pendingDockResizeObserver = null;
   let pendingIntroAnimation = null;
   let pendingApplyInFlight = false;
-  let pendingApplyWatchdog = null;
   let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's

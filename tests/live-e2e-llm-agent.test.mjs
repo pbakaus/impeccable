@@ -214,7 +214,8 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /user already clicked Apply/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never ask what to do with staged edits/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Start applying and return JSON/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Manual copy edits are first-class work, not test noise/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Manual copy edits are first-class work/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /looks temporary, experimental, or unusual/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /never discard it, clean it up, or redirect the user to the visual picker/);
     assert.doesNotMatch(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /What would you like to do with these changes/i);
   });

@@ -357,55 +357,12 @@ function invalidManualApplyResult(reason, eventId, extra = {}) {
   };
 }
 
-function recoverLegacyManualApplySummary(data, deferred, eventId) {
-  if (data?.status !== 'applied') return { data };
-  const keys = Object.keys(data);
-  const allowedKeys = new Set(['status', 'entries', 'ops']);
-  const unexpectedKeys = keys.filter((key) => !allowedKeys.has(key));
-  if (unexpectedKeys.length > 0) {
-    return invalidManualApplyResult('legacy_summary_unexpected_fields', eventId, { fields: unexpectedKeys });
-  }
-  const hasEntries = Object.prototype.hasOwnProperty.call(data, 'entries');
-  const hasOps = Object.prototype.hasOwnProperty.call(data, 'ops');
-  if (!hasEntries && !hasOps) {
-    return invalidManualApplyResult('legacy_summary_missing_counts', eventId);
-  }
-
-  const expectedEntries = (deferred?.batch?.entries || []).length;
-  const expectedOps = countManualApplyOps(deferred?.batch);
-  if (hasEntries && data.entries !== expectedEntries) {
-    return invalidManualApplyResult('legacy_summary_entries_mismatch', eventId, {
-      expected: expectedEntries,
-      actual: data.entries,
-    });
-  }
-  if (hasOps && data.ops !== expectedOps) {
-    return invalidManualApplyResult('legacy_summary_ops_mismatch', eventId, {
-      expected: expectedOps,
-      actual: data.ops,
-    });
-  }
-
-  return {
-    data: {
-      status: 'done',
-      appliedEntryIds: (deferred?.batch?.entries || []).map((entry) => entry.id).filter(Boolean),
-      failed: [],
-      files: collectManualApplyFiles(deferred?.batch),
-      notes: [],
-    },
-  };
-}
-
 function validateManualApplyResultMessage(msg, deferred) {
   let data = msg?.data;
   const eventId = msg?.id || deferred?.event?.id || 'EVENT_ID';
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return invalidManualApplyResult('missing_result_data', eventId);
   }
-  const legacy = recoverLegacyManualApplySummary(data, deferred, eventId);
-  if (!legacy.data) return legacy;
-  data = legacy.data;
   if ('entries' in data || 'ops' in data) {
     return invalidManualApplyResult('summary_result_not_allowed', eventId);
   }
@@ -512,7 +469,20 @@ function splitManualApplyBatch(batch, maxOps) {
   const rawChunks = [];
   let current = createManualApplyChunkBuilder();
   for (const entry of batch?.entries || []) {
-    for (const op of entry.ops || []) {
+    const ops = entry.ops || [];
+    if (ops.length <= maxOps) {
+      if (current.opCount > 0 && current.opCount + ops.length > maxOps) {
+        rawChunks.push(current);
+        current = createManualApplyChunkBuilder();
+      }
+      for (const op of ops) addOpToManualApplyChunk(current, entry, op);
+      continue;
+    }
+    if (current.opCount > 0) {
+      rawChunks.push(current);
+      current = createManualApplyChunkBuilder();
+    }
+    for (const op of ops) {
       if (current.opCount >= maxOps) {
         rawChunks.push(current);
         current = createManualApplyChunkBuilder();
@@ -1350,12 +1320,23 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const pageUrl = url.searchParams.get('pageUrl');
+      const asyncMode = /^(1|true|yes)$/i.test(url.searchParams.get('async') || '');
       const before = getManualEditStatus();
+      const pendingCount = pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount;
       recordManualEditActivity('manual_edit_commit_started', {
         pageUrl,
-        pendingCount: pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount,
+        pendingCount,
         totalCount: before.totalCount,
       });
+      if (asyncMode) {
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'started',
+          pendingCount,
+          totalCount: before.totalCount,
+          perPage: before.perPage,
+        }));
+      }
       (async () => {
         let result;
         let routedProvider = 'subprocess';
@@ -1395,11 +1376,13 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
             error: 'manual_edit_commit_failed',
             message,
           });
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            error: 'manual_edit_commit_failed',
-            message,
-          }));
+          if (!asyncMode) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'manual_edit_commit_failed',
+              message,
+            }));
+          }
           return;
         }
         const { totalCount, perPage } = countPendingByPage(process.cwd());
@@ -1416,8 +1399,10 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
           remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
           totalCount,
         });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ...result, totalCount, perPage }));
+        if (!asyncMode) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ...result, totalCount, perPage }));
+        }
       })();
       return;
     }

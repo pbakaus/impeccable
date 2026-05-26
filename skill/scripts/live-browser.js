@@ -2278,20 +2278,6 @@
   function setPendingApplyLoading(loading, count) {
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
-    // Watchdog: an apply can never legitimately outlast the server's hard
-    // timeout (150s). If a `done`/`failed` signal is missed (server restart,
-    // SSE/fetch race, reconnect), force-clear so the picker can never freeze
-    // permanently. Bound to 165s to clear the server's window plus margin.
-    if (pendingApplyWatchdog) { clearTimeout(pendingApplyWatchdog); pendingApplyWatchdog = null; }
-    if (pendingApplyInFlight) {
-      pendingApplyWatchdog = setTimeout(() => {
-        pendingApplyWatchdog = null;
-        if (!pendingApplyInFlight) return;
-        setPendingApplyLoading(false);
-        fetchPendingCount();
-        showToast('Apply timed out. You can pick elements again.', 4000);
-      }, 165000);
-    }
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
     pendingPillLabelEl.textContent = pendingApplyInFlight
@@ -4439,7 +4425,6 @@ void main() {
   let pendingDockResizeObserver = null;
   let pendingIntroAnimation = null;
   let pendingApplyInFlight = false;
-  let pendingApplyWatchdog = null;
   let firstSaveOfSession = true;
 
   // Theme-aware color palette for the global bar. We detect the page's
