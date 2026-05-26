@@ -45,7 +45,7 @@ describe('live-copy-edit-agent', () => {
     assert.match(prompt, /"entryId": "cards"/);
     assert.match(prompt, /foundation-card-label/);
     assert.match(prompt, /site\/scripts\/data\.js/);
-    assert.match(prompt, /leaving count: 7 numeric/);
+    assert.match(prompt, /leaving model data typed/);
     assert.match(prompt, /impeccable:manual-edit-validate/);
     assert.match(prompt, /Return ONLY JSON/);
   });

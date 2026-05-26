@@ -182,8 +182,6 @@ describe('live-e2e LLM agent manual edit prompt', () => {
   it('tells the model to preserve typed source values during display-copy edits', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /preserve numeric, boolean, and structured source values/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /visible copy adds words around an integer/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{String\(item\.count\)\}"/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{item\.count\}"/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file and op\.sourceHint\.line/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
@@ -192,13 +190,11 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not rewrite the parent section/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never use DOM outerHTML as sourceEdit\.originalText/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /mixed markup that renders one visible phrase/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /lookup key/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /paired count\/value/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /old lookup key/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /do not edit the renderer expression/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /count\/value op arrives without the label op/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /restore the typed numeric value without quotes/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /replace the enclosing source literal or map entry/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coupled fields, lookup keys, and display values coherent/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /later chunk edits a value whose label\/key was already changed/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not edit a renderer expression unless that expression is the actual source/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /leaving model data typed/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /back to a plain number/);
   });
 
   it('tells the model to cover every op in multi-leaf applied entries', () => {

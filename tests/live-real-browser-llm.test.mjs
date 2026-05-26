@@ -483,12 +483,20 @@ function removeLiveInjection() {
 }
 
 function startRepoDevServer() {
+  const viteCacheDir = mkdtempSync(join(tmpdir(), 'impeccable-vite-cache-'));
   const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--force'], {
     cwd: REPO_ROOT,
-    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+    env: {
+      ...process.env,
+      FORCE_COLOR: '0',
+      NO_COLOR: '1',
+      IMPECCABLE_DISABLE_ASTRO_DEV_TOOLBAR: '1',
+      IMPECCABLE_VITE_CACHE_DIR: viteCacheDir,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
+  child.__impeccableViteCacheDir = viteCacheDir;
   const log = [];
   const capture = (chunk) => {
     const s = chunk.toString();
@@ -519,7 +527,12 @@ function startRepoDevServer() {
 }
 
 async function stopDevServer(child) {
-  if (!child || child.killed) return;
+  if (!child) return;
+  const cacheDir = child.__impeccableViteCacheDir;
+  if (child.killed) {
+    if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
+    return;
+  }
   const exited = new Promise((resolve) => child.once('exit', resolve));
   try {
     process.kill(-child.pid, 'SIGTERM');
@@ -532,6 +545,7 @@ async function stopDevServer(child) {
   } catch {
     if (!child.killed) child.kill('SIGKILL');
   }
+  if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
 }
 
 function snapshotFiles(files) {

@@ -49,13 +49,10 @@ describe('live reference authoring contract', () => {
     assert.match(manualAgentMd, /hinted leaf text/);
     assert.match(manualAgentMd, /Never use DOM outerHTML as source text/);
     assert.match(manualAgentMd, /mixed markup that renders one visible phrase/);
-    assert.match(manualAgentMd, /lookup key/);
-    assert.match(manualAgentMd, /paired count\/value/);
-    assert.match(manualAgentMd, /old lookup key/);
-    assert.match(manualAgentMd, /do not edit the renderer expression/);
-    assert.match(manualAgentMd, /count\/value op arrives without the label op/);
-    assert.match(manualAgentMd, /typed numeric value without quotes/);
-    assert.match(manualAgentMd, /replace the enclosing source literal or map entry/);
+    assert.match(manualAgentMd, /coupled fields, lookup keys, and display values coherent/);
+    assert.match(manualAgentMd, /later chunk edits a value whose label\/key was already changed/);
+    assert.match(manualAgentMd, /actual source of the visible copy/);
+    assert.match(manualAgentMd, /back to a plain number/);
     assert.match(manualAgentMd, /mapped lists or duplicated UI/);
     assert.match(manualAgentMd, /Preserve typed source data/);
     assert.match(manualAgentMd, /Never copy browser\/runtime scaffolding into source/);

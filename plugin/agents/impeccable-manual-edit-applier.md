@@ -38,14 +38,11 @@ The user already clicked Apply. Do not ask what to do. Do not discard edits. Do 
 7. Never use DOM outerHTML as source text. Source text must be an exact substring already present in the file.
 8. For mixed markup that renders one visible phrase, preserve existing child tags and edit only the text node that changed.
 9. In mapped lists or duplicated UI, edit only the object/item/leaf identified by the hint or evidence. Do not edit sibling duplicates unless that sibling has its own op.
-10. Preserve typed source data. Do not turn numeric, boolean, array, or object model values into strings. For visible text such as `7` to `7 seats`, change a display string or expression while keeping the model value numeric. If that cannot be done safely, fail that entry.
-11. When renaming a rendered data label used as a lookup key, update paired lookup keys such as counts so the same visible item still renders its count.
-12. If one entry renames a data label and edits a paired count/value, the count lookup must use the new label in the same response. Do not leave the paired value attached to the old lookup key.
-13. If reverting a lookup count from non-numeric text back to a plain integer, restore the typed numeric value without quotes when the source model was numeric.
-14. When changing a quoted lookup string back to a numeric value, replace the enclosing source literal or map entry. Do not replace only the inner string text, because that leaves a quoted numeric string in source.
-15. For dynamic list/count text rendered through a lookup expression, do not edit the renderer expression. Edit the source data object/map entry and paired lookup key/value that produced the visible item.
-16. If a count/value op arrives without the label op in the same chunk, use candidate context and current source to find the already-edited item/key, then edit only that lookup value.
-17. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
+10. Preserve typed source data. Do not turn numeric, boolean, array, or object model values into strings. If visible copy cannot be represented safely without corrupting model data, fail that entry.
+11. For rendered data, edit the source data that produces the visible leaf. Keep coupled fields, lookup keys, and display values coherent when one visible item is split across multiple source structures.
+12. If a later chunk edits a value whose label/key was already changed, use the current source plus candidate context to find the same rendered item. Do not edit the renderer expression unless that expression is the actual source of the visible copy.
+13. When reverting a visible value back to a plain number and evidence shows the source model was numeric, replace the enclosing source value so the result is numeric, not a quoted string.
+14. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
 
 ## Entry Atomicity
 
