@@ -1873,7 +1873,7 @@
   }
 
   function onInlineInput(e) {
-    inlineEditDrafts.set(e.currentTarget, e.currentTarget.innerText);
+    inlineEditDrafts.set(e.currentTarget, e.currentTarget.textContent);
   }
 
   function hasTextRows(el) {
@@ -1923,7 +1923,7 @@
   function cancelEditing() {
     for (const row of inlineEditRows) {
       if (inlineEditDrafts.has(row.el)) {
-        row.el.innerText = row.el.dataset.impeccableOriginalText;
+        row.el.textContent = row.el.dataset.impeccableOriginalText;
       }
     }
     disableInlineEdit();
@@ -2353,18 +2353,23 @@
     if (count <= 0 || pendingApplyInFlight) return;
     const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source?');
     if (!ok) return;
+    let waitForSseCompletion = false;
     setPendingApplyLoading(true, count);
     try {
       const res = await fetch(
-        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
-        { method: 'POST' },
+        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname) + '&async=1',
+        { method: 'POST', keepalive: true },
       );
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || ('HTTP ' + res.status));
       }
       const result = await res.json();
-      const remaining = (result.perPage && result.perPage[location.pathname]) || 0;
+      if (res.status === 202 || result.status === 'started') {
+        waitForSseCompletion = true;
+        return;
+      }
+      const remaining = remainingManualEditCount(result);
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
         console.warn('[impeccable] some copy edits failed:', result.failed);
@@ -2382,6 +2387,7 @@
       console.error('[impeccable] commit failed:', err);
       showToast('Apply failed — see console', 4000);
     } finally {
+      if (waitForSseCompletion) return;
       const remainingCount = parseInt(pendingPillEl?.dataset.count || '0', 10) || 0;
       if (remainingCount > 0) setPendingApplyLoading(false);
       else hidePendingApplyDock();
@@ -2422,6 +2428,16 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  function remainingManualEditCount(payload) {
+    const perPageCount = numberOrNull(payload?.perPage?.[location.pathname]);
+    if (perPageCount !== null) return perPageCount;
+    const remainingCount = numberOrNull(payload?.remainingCount);
+    if (remainingCount !== null) return remainingCount;
+    const totalCount = numberOrNull(payload?.totalCount);
+    if (totalCount === 0) return 0;
+    return null;
+  }
+
   function handleManualEditActivity(msg) {
     console.info('[impeccable] manual copy edit event:', msg);
     if (!manualEditEventForCurrentPage(msg)) return;
@@ -2444,9 +2460,19 @@
       // re-asserts setPendingApplyLoading(true) whenever the flag is still set and
       // edits remain (failed entries stay staged), which would otherwise leave the
       // picker frozen forever after a partial/failed apply.
+      const wasApplying = pendingApplyInFlight;
       setPendingApplyLoading(false);
-      const remainingCount = numberOrNull(msg.remainingCount);
+      const remainingCount = remainingManualEditCount(msg);
       updatePendingCounter(remainingCount === null ? 0 : remainingCount);
+      if (wasApplying) {
+        const failedCount = numberOrNull(msg.failedCount) || 0;
+        const appliedCount = numberOrNull(msg.appliedCount) || numberOrNull(msg.cleared) || 0;
+        if (failedCount > 0) {
+          showToast('Applied ' + appliedCount + ', ' + failedCount + ' failed — see console', 5000);
+        } else if (appliedCount > 0) {
+          showToast('Applied ' + appliedCount + ' edit' + (appliedCount === 1 ? '' : 's'), 2500);
+        }
+      }
       return;
     }
 
@@ -3537,8 +3563,8 @@
       e.preventDefault();
       e.stopPropagation();
       const original = e.target.dataset.impeccableOriginalText;
-      if (original !== undefined) e.target.innerText = original;
-      // Programmatic innerText doesn't fire the 'input' event, so the draft
+      if (original !== undefined) e.target.textContent = original;
+      // Programmatic textContent doesn't fire the 'input' event, so the draft
       // map would otherwise hold the pre-revert value and Apply would commit
       // changes the user explicitly undid.
       inlineEditDrafts.delete(e.target);

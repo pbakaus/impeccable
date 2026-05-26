@@ -513,14 +513,20 @@ function collectApplyOwnedFiles(batch, cwd, extraFiles = []) {
     .filter(Boolean);
 }
 
-function unreportedChangedFiles(cwd, snapshot, reportedFiles) {
+function unreportedChangedFiles(cwd, snapshot, reportedFiles, scopeFiles = []) {
   const reported = new Set(
     (reportedFiles || [])
       .map((file) => normalizeRollbackPath(cwd, file))
       .filter(Boolean),
   );
+  const scope = new Set(
+    (scopeFiles || [])
+      .map((file) => normalizeRollbackPath(cwd, file))
+      .filter(Boolean),
+  );
   return changedFilesSinceSnapshot(cwd, snapshot)
     .map((item) => item.file)
+    .filter((file) => scope.has(file))
     .filter((file) => !reported.has(file));
 }
 
@@ -653,7 +659,7 @@ export async function commitManualEdits({
     };
   }
 
-  const unreportedFiles = unreportedChangedFiles(cwd, rollbackSnapshot, result.files || []);
+  const unreportedFiles = unreportedChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
   if (unreportedFiles.length > 0) {
     const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], [...rollbackScope, ...unreportedFiles]);
     return {

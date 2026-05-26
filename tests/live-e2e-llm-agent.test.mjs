@@ -8,6 +8,7 @@ import {
   parseVariantResponse,
   resolveLlmAgentConfig,
   validateManualEditCoverage,
+  validateVariantMaterialChange,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
 
@@ -187,6 +188,17 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /data object or mapped list item/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /hinted leaf text edits/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not rewrite the parent section/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never use DOM outerHTML as sourceEdit\.originalText/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /mixed markup that renders one visible phrase/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /lookup key/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /paired count\/value/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /old lookup key/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /do not edit the renderer expression/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /count\/value op arrives without the label op/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /restore the typed numeric value without quotes/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /replace the enclosing source literal or map entry/);
   });
 
   it('tells the model to cover every op in multi-leaf applied entries', () => {
@@ -364,6 +376,35 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /text\/objectKey\/context candidates/);
   });
 
+  it('gives data-map guidance for failed rendered counts without sourceHint', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'partial',
+        appliedEntryIds: [],
+        failed: [{ entryId: 'entry-a', reason: 'sourceHint missing' }],
+        sourceEdits: [],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [{ originalText: '17', newText: 'many seats' }],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            objectKeyMatches: [{ file: 'src/data.js', key: 'Seats' }],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /rendered count\/value without sourceHint/);
+    assert.match(error, /source data map or lookup value/);
+    assert.match(error, /"many seats"/);
+  });
+
   it('accepts JSX expression replacements that contain the visible staged copy', () => {
     const error = validateManualEditCoverage(
       {
@@ -445,6 +486,150 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.equal(error, null);
   });
 
+  it('rejects lookup-renderer edits with data-map guidance instead of display-expression guidance', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/components/list.js',
+            originalText: '${counts[item.label] || \'\'}',
+            newText: '${"many seats"}',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: '17', newText: 'many seats' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /lookup-rendered copy/);
+    assert.match(error, /source data object\/map entry/);
+    assert.doesNotMatch(error, /quoted display expression/);
+  });
+
+  it('rejects paired label/count edits that leave the count lookup on the old label', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "'Old label': 17",
+            newText: "'Old label': 'many seats'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Old label', newText: 'New label' },
+              { originalText: '17', newText: 'many seats' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /renames lookup label/);
+    assert.match(error, /paired count\/lookup key/);
+    assert.match(error, /new label/);
+  });
+
+  it('rejects paired label/count reverts that leave plain integer counts quoted', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "label: 'Edited label'",
+            newText: "label: 'Original label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "'Edited label': 'many seats'",
+            newText: "'Original label': '17'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Edited label', newText: 'Original label' },
+              { originalText: 'many seats', newText: '17' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /plain integer/);
+    assert.match(error, /without quotes/);
+    assert.match(error, /numeric string/);
+  });
+
+  it('rejects paired label/count reverts that replace only the inner quoted string text', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "label: 'Edited label'",
+            newText: "label: 'Original label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: 'many seats',
+            newText: '17',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Edited label', newText: 'Original label' },
+              { originalText: 'many seats', newText: '17' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /enclosing source literal/);
+    assert.match(error, /not only the inner string text/);
+  });
+
   it('rejects exact visible-literal edits that miss the sourceHint line', () => {
     const error = validateManualEditCoverage(
       {
@@ -496,11 +681,19 @@ describe('live-e2e LLM agent variant prompt', () => {
   it('tells the model to preserve existing visible copy', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /PRESERVE all existing visible copy exactly/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /must not rewrite titles, paragraphs, button labels/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /full visible copy in one editable text node/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /wrap the entire copy/);
   });
 
   it('tells the model not to wrap editable descendants in new structural containers', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /PRESERVE existing class-bearing descendant elements/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /do not wrap them in a new structural div/);
+  });
+
+  it('tells the model bare text variants must not be source-identical no-ops', () => {
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Do not return source-identical variants/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /bare text element/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Accept persists a real source change/);
   });
 });
 
@@ -540,6 +733,45 @@ describe('live-e2e LLM agent variant copy validation', () => {
         ],
       },
       { outerHTML: '<section class="hero-copy"><h1>Batch Title</h1><p>Batch Body</p></section>' },
+    );
+
+    assert.equal(result, null);
+  });
+
+  it('rejects variants that are source-identical to the picked element', () => {
+    const result = validateVariantMaterialChange(
+      {
+        variants: [
+          { innerHtml: '<h1 class="hero-title">Manual Title Applied</h1>' },
+        ],
+      },
+      { outerHTML: '<h1 class="hero-title">Manual Title Applied</h1>' },
+    );
+
+    assert.match(result, /source-identical/);
+  });
+
+  it('rejects bare text variants that split the copy across sibling text nodes', () => {
+    const result = validateVariantMaterialChange(
+      {
+        variants: [
+          { innerHtml: '<h1 class="title">Manual <span>Title</span></h1>' },
+        ],
+      },
+      { outerHTML: '<h1 class="title">Manual Title</h1>' },
+    );
+
+    assert.match(result, /multiple editable text nodes/);
+  });
+
+  it('allows bare text variants that wrap the full copy in one child', () => {
+    const result = validateVariantMaterialChange(
+      {
+        variants: [
+          { innerHtml: '<h1 class="title"><span>Manual Title</span></h1>' },
+        ],
+      },
+      { outerHTML: '<h1 class="title">Manual Title</h1>' },
     );
 
     assert.equal(result, null);

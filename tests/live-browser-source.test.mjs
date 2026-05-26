@@ -19,8 +19,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /fetch\([^)]*\/manual-edit-commit\?token=/,
-      'Apply copy edits should call /manual-edit-commit',
+      /fetch\([^)]*\/manual-edit-commit\?token=[\s\S]*?&async=1/,
+      'Apply copy edits should start /manual-edit-commit in async mode',
     );
     assert.match(
       SOURCE,
@@ -122,8 +122,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /if \(msg\.type === 'manual_edit_commit_done'\)[\s\S]*?const remainingCount = numberOrNull\(msg\.remainingCount\);[\s\S]*?updatePendingCounter\(remainingCount === null \? 0 : remainingCount\);/,
-      'Apply completion SSE should hide the dock when the server reports zero remaining edits',
+      /function remainingManualEditCount\(payload\)[\s\S]*?payload\?\.perPage\?\.\[location\.pathname\][\s\S]*?payload\?\.remainingCount[\s\S]*?payload\?\.totalCount[\s\S]*?if \(totalCount === 0\) return 0;/,
+      'Apply completion counts should honor page count first and still hide the dock when only totalCount is zero',
+    );
+    assert.match(
+      SOURCE,
+      /if \(msg\.type === 'manual_edit_commit_done'\)[\s\S]*?const remainingCount = remainingManualEditCount\(msg\);[\s\S]*?updatePendingCounter\(remainingCount === null \? 0 : remainingCount\);/,
+      'Apply completion SSE should use the shared remaining-count helper',
     );
     const applyStart = SOURCE.indexOf('async function onPendingPillClick');
     const applyEnd = SOURCE.indexOf('async function onPendingTrashClick', applyStart);
@@ -131,7 +136,8 @@ describe('live-browser source contracts', () => {
     assert.match(applyFn, /if \(count <= 0 \|\| pendingApplyInFlight\) return;/);
     assert.doesNotMatch(applyFn, /page will reload/);
     assert.match(applyFn, /setPendingApplyLoading\(true, count\);[\s\S]*?\/manual-edit-commit\?token=/);
-    assert.match(applyFn, /finally \{[\s\S]*?setPendingApplyLoading\(false\);[\s\S]*?\}/);
+    assert.match(applyFn, /waitForSseCompletion = true;[\s\S]*?return;/);
+    assert.match(applyFn, /finally \{[\s\S]*?if \(waitForSseCompletion\) return;/);
     assert.match(
       SOURCE,
       /String\(newText \|\| ''\)\.trim\(\) === ''[\s\S]{0,120}?Save rejected: copy edits cannot be empty\./,

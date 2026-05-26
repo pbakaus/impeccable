@@ -68,7 +68,9 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '- The single top-level element is the replacement root itself. If the picked element is <section class="hero-copy">...</section>, emit <section class="hero-copy">...</section> with edited children directly; do not wrap a duplicate <section class="hero-copy"> inside another root.',
   '- PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain exactly class="hero-title"; do not add, remove, or rename classes. This is a hard requirement — mapped-list fixtures depend on the class string staying stable across the variant set.',
   '- PRESERVE all existing visible copy exactly. GO variants change presentation, hierarchy, and styling; they must not rewrite titles, paragraphs, button labels, or user-applied manual copy edits.',
+  '- For bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
   '- PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
+  '- Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
@@ -98,6 +100,15 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   '- Large chat-routed Apply batches may arrive as multiple small chunks. If event.chunk is present, this event.batch is the complete current work unit.',
   '- Apply only the entries/ops in the current event.batch, reply for this event id, then the harness will poll again for later chunks. Do not fail entries just because later staged edits are not present in this chunk.',
   '- When candidate evidence points to a data object or mapped list item, edit the source string literal or object field that renders the visible copy. Do not hard-code the rendered DOM elsewhere.',
+  '- For hinted leaf text edits, replace only the exact source text at or near the hint. Do not rewrite the parent section, container, unrelated markup, or unrelated formatting.',
+  '- Never use DOM outerHTML as sourceEdit.originalText. originalText must be an exact substring already present in the source file.',
+  '- For mixed markup that renders one visible phrase, preserve existing child tags and edit only the text node that changed.',
+  '- When renaming a rendered data label used as a lookup key, update paired lookup keys such as counts so the same visible item still renders its count.',
+  '- If one entry renames a data label and edits a paired count/value, the count lookup must use the new label in the same response. Do not leave the paired value attached to the old lookup key.',
+  '- If reverting a lookup count from non-numeric text back to a plain integer, restore the typed numeric value without quotes when the source model was numeric.',
+  '- When changing a quoted lookup string back to a numeric value, replace the enclosing source literal or map entry. Do not replace only the inner string text, because that leaves a quoted numeric string in source.',
+  '- For dynamic list/count text rendered through a lookup expression, do not edit the renderer expression. Edit the source data object/map entry and paired lookup key/value that produced the visible item.',
+  '- If a count/value op arrives without the label op in the same chunk, use candidate context and current source to find the already-edited item/key, then edit only that lookup value.',
   '- Mark an entry applied only when sourceEdits cover every op in that entry. If one op fails, mark that entry failed and continue with the next entry.',
   '- Never return sourceEdits for failed, omitted, or unreported entries. If you cannot apply every op in an entry, no sourceEdit for that entry may remain in the response.',
   '- If op.originalText appears in multiple source locations, use op.sourceHint.file and op.sourceHint.line for the exact replacement. Do not edit a duplicate prop, layout title, sibling, or data field unless that duplicate is the hinted source location.',
@@ -291,20 +302,23 @@ export async function createLlmAgent(opts = {}) {
           continue;
         }
 
+        const materialError = validateVariantMaterialChange(parsed, event.element);
         const copyError = validateVariantVisibleCopy(parsed, event.element);
-        if (!copyError) return parsed;
-        if (attempt === 1) throw new Error(`LLM agent: ${copyError}`);
+        const validationError = copyError || materialError;
+        if (!validationError) return parsed;
+        if (attempt === 1) throw new Error(`LLM agent: ${validationError}`);
 
         const expectedText = normalizeVisibleText(
           elementVisibleText(event.element),
         );
-        log(`variant copy validation failed; retrying: ${copyError}`);
+        log(`variant validation failed; retrying: ${validationError}`);
         userMessage = [
           baseUserMessage,
           '',
           'VALIDATION ERROR',
-          copyError,
+          validationError,
           `Every variant must preserve this exact normalized visible text: "${expectedText}"`,
+          'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
           'Return corrected JSON only.',
         ].join('\n');
       }
@@ -586,6 +600,54 @@ export function validateVariantVisibleCopy(parsed, element) {
   return null;
 }
 
+export function validateVariantMaterialChange(parsed, element) {
+  const originalHtml = normalizeVariantHtml(element?.outerHTML || '');
+  if (!originalHtml) return null;
+  const bareText = bareTextElementText(element?.outerHTML || '');
+
+  for (const [i, variant] of parsed.variants.entries()) {
+    const actualHtml = normalizeVariantHtml(variant.innerHtml || '');
+    if (actualHtml && actualHtml === originalHtml) {
+      return `variant ${i} is source-identical to the picked element; preserve copy but add a real presentation hook so Accept persists a source change`;
+    }
+    if (bareText && splitsVisibleTextAcrossSiblings(variant.innerHtml, bareText)) {
+      return `variant ${i} splits a bare text element across multiple editable text nodes; keep the full visible copy in one text node`;
+    }
+  }
+
+  return null;
+}
+
+function bareTextElementText(html) {
+  const inner = rootInnerHtml(html);
+  if (!inner || /<[^>]+>/.test(inner)) return '';
+  return normalizeVisibleText(inner);
+}
+
+function splitsVisibleTextAcrossSiblings(html, expectedText) {
+  const inner = rootInnerHtml(html);
+  if (!inner || !/<[^>]+>/.test(inner)) return false;
+  const segments = inner
+    .replace(/<[^>]+>/g, '\u0000')
+    .split('\u0000')
+    .map(normalizeVisibleText)
+    .filter(Boolean);
+  if (segments.length <= 1) return false;
+  return normalizeVisibleText(segments.join(' ')) === normalizeVisibleText(expectedText);
+}
+
+function rootInnerHtml(html) {
+  const match = String(html || '').trim().match(/^<([A-Za-z][\w:-]*)(?:\s[^>]*)?>([\s\S]*)<\/\1>$/);
+  return match ? match[2] : '';
+}
+
+function normalizeVariantHtml(html) {
+  return String(html || '')
+    .replace(/\s+/g, ' ')
+    .replace(/>\s+</g, '><')
+    .trim();
+}
+
 export function validateManualEditCoverage(parsed, batch) {
   const appliedSet = new Set(parsed.appliedEntryIds || []);
   if (parsed.status !== 'error' && appliedSet.size > 0 && parsed.sourceEdits.length === 0) {
@@ -607,6 +669,9 @@ export function validateManualEditCoverage(parsed, batch) {
         return `manual edit entry ${entry.id} has sourceHint.file and sourceHint.line for every op but was not marked applied; use sourceHint first and return sourceEdits for each staged op`;
       }
       if (entryHasResolvableCandidateEvidence(entry, batch)) {
+        if (entryHasNumericToTextOp(entry)) {
+          return `manual edit entry ${entry.id} is a rendered count/value without sourceHint; use candidate objectKey/text/context evidence and current source to edit the source data map or lookup value to ${JSON.stringify(firstNumericToTextOp(entry)?.newText)}, not the renderer expression, and do not fail only because sourceHint is missing`;
+        }
         return `manual edit entry ${entry.id} has candidate source evidence without sourceHint; use text/objectKey/context candidates and return sourceEdits instead of failing only because sourceHint is missing`;
       }
       continue;
@@ -624,6 +689,8 @@ export function validateManualEditCoverage(parsed, batch) {
       const typedDisplayError = validateTypedDisplayEdit(entry, op, matchingEdits);
       if (typedDisplayError) return typedDisplayError;
     }
+    const lookupPairError = validatePairedLookupCountEdit(entry, sourceEdits);
+    if (lookupPairError) return lookupPairError;
   }
 
   return null;
@@ -643,6 +710,18 @@ function entryHasResolvableCandidateEvidence(entry, batch) {
   const ops = entry?.ops || [];
   if (ops.length === 0) return false;
   return ops.every((op) => opHasResolvableCandidateEvidence(entry, op, batch));
+}
+
+function entryHasNumericToTextOp(entry) {
+  return !!firstNumericToTextOp(entry);
+}
+
+function firstNumericToTextOp(entry) {
+  return (entry?.ops || []).find((op) => {
+    const original = normalizeManualEditText(op.originalText);
+    const next = normalizeManualEditText(op.newText);
+    return /^-?\d+$/.test(original) && !!next && !/^-?\d+$/.test(next);
+  }) || null;
 }
 
 function opHasResolvableCandidateEvidence(entry, op, batch) {
@@ -686,13 +765,73 @@ function validateTypedDisplayEdit(entry, op, matchingEdits) {
   if (!/^-?\d+$/.test(original) || /^-?\d+$/.test(next)) return null;
   const expressionEdits = matchingEdits.filter((edit) => isExpressionLikeSourceText(edit.originalText));
   if (expressionEdits.length === 0) return null;
+  if (expressionEdits.some((edit) => isLookupRendererExpression(edit.originalText))) {
+    return `manual edit entry ${entry.id} changes lookup-rendered copy ${JSON.stringify(op.originalText)} to ${JSON.stringify(op.newText)}; edit the source data object/map entry and paired lookup key/value, not the renderer expression`;
+  }
   if (expressionEdits.some((edit) => hasQuotedDisplayExpression(edit.newText, next))) return null;
   return `manual edit entry ${entry.id} changes integer-backed copy ${JSON.stringify(op.originalText)} to ${JSON.stringify(op.newText)}; sourceEdit newText must use a quoted display expression like {"${next}"} and leave numeric source data typed`;
+}
+
+function validatePairedLookupCountEdit(entry, sourceEdits) {
+  const ops = entry?.ops || [];
+  const labelOp = ops.find((op) => {
+    const original = normalizeManualEditText(op.originalText);
+    const next = normalizeManualEditText(op.newText);
+    return original && next && original !== next && !isIntegerLikeText(original) && !isIntegerLikeText(next);
+  });
+  const countOp = ops.find((op) => {
+    const original = normalizeManualEditText(op.originalText);
+    const next = normalizeManualEditText(op.newText);
+    return original && next && original !== next && (isIntegerLikeText(original) || isIntegerLikeText(next));
+  });
+  if (!labelOp || !countOp) return null;
+
+  const oldLabel = normalizeManualEditText(labelOp.originalText);
+  const newLabel = normalizeManualEditText(labelOp.newText);
+  const nextCount = normalizeManualEditText(countOp.newText);
+  if (!oldLabel || !newLabel || oldLabel === newLabel || !nextCount) return null;
+
+  const countEdits = (sourceEdits || []).filter((edit) => normalizeManualEditText(edit.newText).includes(nextCount));
+  for (const edit of countEdits) {
+    const replacement = normalizeManualEditText(edit.newText);
+    if (replacement.includes(oldLabel) && !replacement.includes(newLabel)) {
+      return `manual edit entry ${entry.id} renames lookup label ${JSON.stringify(oldLabel)} to ${JSON.stringify(newLabel)} and count to ${JSON.stringify(nextCount)}; update the paired count/lookup key to the new label in the same sourceEdit so the edited card still renders its count`;
+    }
+    if (isPlainIntegerText(nextCount)) {
+      if (hasQuotedStringLiteral(replacement, nextCount)) {
+        return `manual edit entry ${entry.id} reverts lookup count to plain integer ${JSON.stringify(nextCount)}; restore the typed numeric lookup value without quotes so source data is not left as a numeric string`;
+      }
+      if (replacement === nextCount) {
+        return `manual edit entry ${entry.id} reverts lookup count to plain integer ${JSON.stringify(nextCount)}; replace the enclosing source literal or map entry, not only the inner string text, so quotes are removed from source`;
+      }
+    }
+  }
+
+  return null;
+}
+
+function isIntegerLikeText(text) {
+  return /^-?\d+$/.test(normalizeManualEditText(text));
+}
+
+function isPlainIntegerText(text) {
+  const normalized = normalizeManualEditText(text);
+  return /^-?(0|[1-9]\d*)$/.test(normalized);
+}
+
+function hasQuotedStringLiteral(text, value) {
+  const escaped = escapeRegExp(normalizeManualEditText(value));
+  return new RegExp(`['"]${escaped}['"]`).test(normalizeManualEditText(text));
 }
 
 function isExpressionLikeSourceText(text) {
   const normalized = normalizeManualEditText(text);
   return /\{[\s\S]*\}/.test(normalized) || /\bString\s*\(/.test(normalized);
+}
+
+function isLookupRendererExpression(text) {
+  const normalized = normalizeManualEditText(text);
+  return /\[[^\]]+\]/.test(normalized) || /\|\|\s*['"]/.test(normalized);
 }
 
 function hasQuotedDisplayExpression(text, expected) {

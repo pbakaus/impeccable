@@ -512,7 +512,20 @@ function splitManualApplyBatch(batch, maxOps) {
   const rawChunks = [];
   let current = createManualApplyChunkBuilder();
   for (const entry of batch?.entries || []) {
-    for (const op of entry.ops || []) {
+    const ops = entry.ops || [];
+    if (ops.length <= maxOps) {
+      if (current.opCount > 0 && current.opCount + ops.length > maxOps) {
+        rawChunks.push(current);
+        current = createManualApplyChunkBuilder();
+      }
+      for (const op of ops) addOpToManualApplyChunk(current, entry, op);
+      continue;
+    }
+    if (current.opCount > 0) {
+      rawChunks.push(current);
+      current = createManualApplyChunkBuilder();
+    }
+    for (const op of ops) {
       if (current.opCount >= maxOps) {
         rawChunks.push(current);
         current = createManualApplyChunkBuilder();
@@ -1350,12 +1363,23 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const pageUrl = url.searchParams.get('pageUrl');
+      const asyncMode = /^(1|true|yes)$/i.test(url.searchParams.get('async') || '');
       const before = getManualEditStatus();
+      const pendingCount = pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount;
       recordManualEditActivity('manual_edit_commit_started', {
         pageUrl,
-        pendingCount: pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount,
+        pendingCount,
         totalCount: before.totalCount,
       });
+      if (asyncMode) {
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'started',
+          pendingCount,
+          totalCount: before.totalCount,
+          perPage: before.perPage,
+        }));
+      }
       (async () => {
         let result;
         let routedProvider = 'subprocess';
@@ -1395,11 +1419,13 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
             error: 'manual_edit_commit_failed',
             message,
           });
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            error: 'manual_edit_commit_failed',
-            message,
-          }));
+          if (!asyncMode) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'manual_edit_commit_failed',
+              message,
+            }));
+          }
           return;
         }
         const { totalCount, perPage } = countPendingByPage(process.cwd());
@@ -1416,8 +1442,10 @@ function createRequestHandler({ detectScript, sessionPath, textRowsPath, livePat
           remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
           totalCount,
         });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ...result, totalCount, perPage }));
+        if (!asyncMode) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ...result, totalCount, perPage }));
+        }
       })();
       return;
     }

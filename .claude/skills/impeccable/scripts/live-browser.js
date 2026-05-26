@@ -2364,7 +2364,7 @@
         throw new Error(errBody.error || ('HTTP ' + res.status));
       }
       const result = await res.json();
-      const remaining = (result.perPage && result.perPage[location.pathname]) || 0;
+      const remaining = remainingManualEditCount(result);
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
         console.warn('[impeccable] some copy edits failed:', result.failed);
@@ -2422,6 +2422,16 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  function remainingManualEditCount(payload) {
+    const perPageCount = numberOrNull(payload?.perPage?.[location.pathname]);
+    if (perPageCount !== null) return perPageCount;
+    const remainingCount = numberOrNull(payload?.remainingCount);
+    if (remainingCount !== null) return remainingCount;
+    const totalCount = numberOrNull(payload?.totalCount);
+    if (totalCount === 0) return 0;
+    return null;
+  }
+
   function handleManualEditActivity(msg) {
     console.info('[impeccable] manual copy edit event:', msg);
     if (!manualEditEventForCurrentPage(msg)) return;
@@ -2445,7 +2455,7 @@
       // edits remain (failed entries stay staged), which would otherwise leave the
       // picker frozen forever after a partial/failed apply.
       setPendingApplyLoading(false);
-      const remainingCount = numberOrNull(msg.remainingCount);
+      const remainingCount = remainingManualEditCount(msg);
       updatePendingCounter(remainingCount === null ? 0 : remainingCount);
       return;
     }

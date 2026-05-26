@@ -8,5 +8,8 @@
   },
   "homepage": "https://impeccable.style",
   "repository": "https://github.com/pbakaus/impeccable",
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "agents": [
+    "./agents/impeccable-manual-edit-applier.md"
+  ]
 }

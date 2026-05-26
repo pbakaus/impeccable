@@ -389,7 +389,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('fails instead of clearing when Apply changes an unreported source file', () => {
+  it('does not roll back unrelated project changes made during Apply', () => {
     const pageFile = path.join(tmpDir, 'src', 'page.html');
     const notesFile = path.join(tmpDir, 'src', 'notes.html');
     const beforePage = '<h1 class="hero">Welcome</h1>\n';
@@ -415,7 +415,51 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     const result = runCommit([], {
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
         'src/page.html': '<h1 class="hero">Hello</h1>\n',
-        'src/notes.html': '<p>Unexpected side write</p>\n',
+        'src/notes.html': '<p>User changed this while Apply was running</p>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['e1'],
+        files: ['src/page.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.unreportedFiles, undefined);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), '<h1 class="hero">Hello</h1>\n');
+    assert.equal(fs.readFileSync(notesFile, 'utf-8'), '<p>User changed this while Apply was running</p>\n');
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
+  it('fails instead of clearing when Apply changes an unreported Apply-owned source file', () => {
+    const pageFile = path.join(tmpDir, 'src', 'page.html');
+    const notesFile = path.join(tmpDir, 'src', 'notes.html');
+    const beforePage = '<h1 class="hero">Welcome</h1>\n';
+    const beforeNotes = '<h1 class="hero">Welcome</h1>\n';
+    fs.writeFileSync(pageFile, beforePage);
+    fs.writeFileSync(notesFile, beforeNotes);
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero:nth-of-type(1)',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/notes.html', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">Hello</h1>\n',
+        'src/notes.html': '<h1 class="hero">Hello</h1>\n',
       }),
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
         status: 'done',

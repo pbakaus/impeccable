@@ -322,6 +322,66 @@ colors: {}
     }
   });
 
+  it('/manual-edit-commit async mode returns immediately and reports completion through status/SSE activity', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-server-async-'));
+    let asyncServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, '<h1 class="hero">Welcome</h1>\n');
+
+      asyncServer = await startServer(8546, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'mock',
+          IMPECCABLE_LIVE_COPY_AGENT_MOCK_DELAY_MS: '300',
+          IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+            status: 'done',
+            appliedEntryIds: ['ab12cd34'],
+            files: ['src/page.html'],
+          }),
+        },
+      });
+      const stash = await fetch(`http://localhost:${asyncServer.port}/manual-edit-stash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: asyncServer.token,
+          id: 'ab12cd34',
+          pageUrl: '/',
+          element: { tagName: 'h1', outerHTML: '<h1 class="hero">Hello</h1>', textContent: 'Hello' },
+          ops: [{ ref: 'body>h1.hero:nth-of-type(1)', tag: 'h1', classes: ['hero'], originalText: 'Welcome', newText: 'Hello' }],
+        }),
+      });
+      assert.equal(stash.status, 200);
+      writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
+
+      const commit = await fetch(`http://localhost:${asyncServer.port}/manual-edit-commit?token=${asyncServer.token}&pageUrl=%2F&async=1`, {
+        method: 'POST',
+      });
+      assert.equal(commit.status, 202);
+      const started = await commit.json();
+      assert.equal(started.status, 'started');
+      assert.equal(started.pendingCount, 1);
+
+      const done = await waitForManualActivity(asyncServer, 'manual_edit_commit_done', { timeoutMs: 2000 });
+      assert.equal(done.manualEdits.lastActivity.appliedCount, 1);
+      assert.equal(done.manualEdits.lastActivity.cleared, 1);
+
+      const stashAfter = await fetch(`http://localhost:${asyncServer.port}/manual-edit-stash?token=${asyncServer.token}&pageUrl=%2F`);
+      assert.equal(stashAfter.status, 200);
+      const stashBody = await stashAfter.json();
+      assert.equal(stashBody.count, 0);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+    } finally {
+      if (asyncServer) {
+        await stopServer(asyncServer.port, asyncServer.token);
+        asyncServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/manual-edit-commit routes through the chat agent poll loop when configured', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-'));
     let chatServer;
@@ -715,6 +775,121 @@ colors: {}
       assert.equal(result.applied.length, 7);
       assert.equal(result.failed.length, 0);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Edited 07/);
+    } finally {
+      if (chunkServer) {
+        await stopServer(chunkServer.port, chunkServer.token);
+        chunkServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/manual-edit-commit keeps fitting multi-op entries together across chat chunks', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-entry-chunks-'));
+    let chunkServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      writeFileSync(sourcePath, [
+        '<h1>Alpha</h1>',
+        '<p>Bravo</p>',
+        '<h2>Charlie</h2>',
+        '<p>Delta</p>',
+        '<button>Echo</button>',
+      ].join('\n') + '\n');
+
+      chunkServer = await startServer(8544, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'chat',
+          IMPECCABLE_LIVE_MANUAL_EDIT_CHUNK_SIZE: '3',
+        },
+      });
+
+      await stashManualEdit(chunkServer, {
+        id: 'aa111111',
+        pageUrl: '/',
+        element: { tagName: 'section', textContent: 'Alpha Bravo' },
+        ops: [
+          { ref: 'body>h1:nth-of-type(1)', tag: 'h1', originalText: 'Alpha', newText: 'Alpha edited', sourceHint: { file: 'src/page.html', line: 1 } },
+          { ref: 'body>p:nth-of-type(1)', tag: 'p', originalText: 'Bravo', newText: 'Bravo edited', sourceHint: { file: 'src/page.html', line: 2 } },
+        ],
+      });
+      await stashManualEdit(chunkServer, {
+        id: 'bb222222',
+        pageUrl: '/',
+        element: { tagName: 'section', textContent: 'Charlie Delta' },
+        ops: [
+          { ref: 'body>h2:nth-of-type(1)', tag: 'h2', originalText: 'Charlie', newText: 'Charlie edited', sourceHint: { file: 'src/page.html', line: 3 } },
+          { ref: 'body>p:nth-of-type(2)', tag: 'p', originalText: 'Delta', newText: 'Delta edited', sourceHint: { file: 'src/page.html', line: 4 } },
+        ],
+      });
+      await stashManualEdit(chunkServer, {
+        id: 'cc333333',
+        pageUrl: '/',
+        element: { tagName: 'button', textContent: 'Echo' },
+        ops: [
+          { ref: 'body>button:nth-of-type(1)', tag: 'button', originalText: 'Echo', newText: 'Echo edited', sourceHint: { file: 'src/page.html', line: 5 } },
+        ],
+      });
+
+      const agentLoop = (async () => {
+        const expected = [
+          { size: 2, ids: ['aa111111'] },
+          { size: 3, ids: ['bb222222', 'cc333333'] },
+        ];
+        for (const [index, expectation] of expected.entries()) {
+          const event = await fetch(`http://localhost:${chunkServer.port}/poll?token=${chunkServer.token}&timeout=10000&leaseMs=30000`)
+            .then((res) => res.json());
+          assert.equal(event.type, 'manual_edit_apply');
+          assert.equal(event.batch.count, expectation.size);
+          assert.deepEqual(event.batch.entries.map((entry) => entry.id), expectation.ids);
+          assert.deepEqual(event.batch.entries.map((entry) => entry.ops.length), expectation.ids.map((id) => id === 'cc333333' ? 1 : 2));
+          assert.deepEqual(event.chunk, {
+            index: index + 1,
+            total: 2,
+            opCount: expectation.size,
+            totalOpCount: 5,
+          });
+
+          let source = readFileSync(sourcePath, 'utf-8');
+          for (const entry of event.batch.entries) {
+            for (const op of entry.ops) source = source.replace(op.originalText, op.newText);
+          }
+          writeFileSync(sourcePath, source);
+
+          const ack = await fetch(`http://localhost:${chunkServer.port}/poll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: chunkServer.token,
+              id: event.id,
+              type: 'done',
+              data: {
+                status: 'done',
+                appliedEntryIds: event.batch.entries.map((entry) => entry.id),
+                failed: [],
+                files: ['src/page.html'],
+                notes: [],
+              },
+            }),
+          });
+          assert.equal(ack.status, 200);
+        }
+      })();
+
+      const commitPromise = fetch(`http://localhost:${chunkServer.port}/manual-edit-commit?token=${chunkServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      await agentLoop;
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.cleared, 5);
+      assert.equal(result.applied.length, 5);
+      assert.equal(result.failed.length, 0);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Echo edited/);
     } finally {
       if (chunkServer) {
         await stopServer(chunkServer.port, chunkServer.token);
