@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(node skill/scripts/live-*.mjs *)",
-      "Bash(node skill/scripts/live-*.mjs)"
-    ]
-  }
-}

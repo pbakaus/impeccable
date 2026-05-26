@@ -165,7 +165,6 @@ describe('real browser LLM live manual edit flow', () => {
       if (msg.type() === 'error') consoleErrors.push('console.error: ' + msg.text());
     });
 
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     await hideAstroDevToolbar(page);
     await waitForHandshake(page);
     await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })));
@@ -364,18 +363,27 @@ async function waitForPendingManualEditCount(expected, { timeout = 10_000 } = {}
 async function warmDevServerPage(page, url) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const outdatedOptimizeDeps = [];
+    const outdatedConsoleErrors = [];
     const onResponse = (response) => {
       if (response.status() === 504 && /Outdated Optimize Dep/i.test(response.statusText())) {
         outdatedOptimizeDeps.push(response.url());
       }
     };
+    const onConsole = (msg) => {
+      if (msg.type() === 'error' && /Outdated Optimize Dep/i.test(msg.text())) {
+        outdatedConsoleErrors.push(msg.text());
+      }
+    };
     page.on('response', onResponse);
+    page.on('console', onConsole);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     page.off('response', onResponse);
-    if (outdatedOptimizeDeps.length === 0) return;
+    page.off('console', onConsole);
+    if (outdatedOptimizeDeps.length === 0 && outdatedConsoleErrors.length === 0) return;
     await page.waitForTimeout(1_000);
   }
+  throw new Error('dev server kept returning Vite Outdated Optimize Dep responses during warmup');
 }
 
 function assertManualSourceApplied() {
