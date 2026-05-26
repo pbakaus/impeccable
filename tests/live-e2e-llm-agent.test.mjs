@@ -182,8 +182,8 @@ describe('live-e2e LLM agent manual edit prompt', () => {
   it('tells the model to preserve typed source values during display-copy edits', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /preserve numeric, boolean, and structured source values/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /visible copy adds words around an integer/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{String\(workshopStats\.seats\)\}"/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{stats\.seats\}"/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{String\(item\.count\)\}"/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /originalText="\{item\.count\}"/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file and op\.sourceHint\.line/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
