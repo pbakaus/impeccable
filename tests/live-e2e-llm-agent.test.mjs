@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
   MANUAL_EDIT_SYSTEM_INSTRUCTIONS,
@@ -8,6 +11,7 @@ import {
   parseVariantResponse,
   resolveLlmAgentConfig,
   validateManualEditCoverage,
+  validateManualEditPlanningCoverage,
   validateVariantMaterialChange,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
@@ -124,9 +128,183 @@ describe('live-e2e LLM agent createLlmAgent', () => {
   });
 });
 
+describe('live-e2e LLM agent provider replay', () => {
+  it('applies a generic label/count/source-key batch through the selected provider', async (t) => {
+    if (process.env.IMPECCABLE_LLM_REPLAY !== '1') {
+      t.skip('set IMPECCABLE_LLM_REPLAY=1 to run provider-backed manual edit replay');
+      return;
+    }
+
+    const config = resolveLlmAgentConfig({
+      provider: process.env.IMPECCABLE_E2E_LLM_PROVIDER || 'deepseek',
+      model: process.env.IMPECCABLE_E2E_LLM_MODEL,
+    });
+    const agent = await createLlmAgent({ config, log: (msg) => t.diagnostic(msg) });
+    if (!agent) {
+      t.skip(`missing API key for ${config.provider}; cannot run provider replay`);
+      return;
+    }
+
+    const tmp = createSourceKeyReplayProject('apply');
+    try {
+      const result = await agent.applyManualEdits(
+        { id: 'manual-apply-replay', batch: sourceKeyReplayBatch('apply') },
+        { tmp },
+      );
+
+      assert.equal(result.status, 'done');
+      assert.deepEqual(result.appliedEntryIds, ['entry-a']);
+      const data = readFileSync(join(tmp, 'src/data.js'), 'utf-8');
+      const visuals = readFileSync(join(tmp, 'src/visuals.js'), 'utf-8');
+      assert.match(data, /label:\s*'New Label'/);
+      assert.match(data, /'New Label':\s*'007'/);
+      assert.doesNotMatch(data, /'Old Label':\s*7/);
+      assert.match(visuals, /'New Label':\s*'<svg><\/svg>'/);
+      assert.doesNotMatch(visuals, /'Old Label':\s*'<svg><\/svg>'/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('reverts a generic source-key batch through the selected provider without leaving numeric strings', async (t) => {
+    if (process.env.IMPECCABLE_LLM_REPLAY !== '1') {
+      t.skip('set IMPECCABLE_LLM_REPLAY=1 to run provider-backed manual edit replay');
+      return;
+    }
+
+    const config = resolveLlmAgentConfig({
+      provider: process.env.IMPECCABLE_E2E_LLM_PROVIDER || 'deepseek',
+      model: process.env.IMPECCABLE_E2E_LLM_MODEL,
+    });
+    const agent = await createLlmAgent({ config, log: (msg) => t.diagnostic(msg) });
+    if (!agent) {
+      t.skip(`missing API key for ${config.provider}; cannot run provider replay`);
+      return;
+    }
+
+    const tmp = createSourceKeyReplayProject('revert');
+    try {
+      const result = await agent.applyManualEdits(
+        { id: 'manual-revert-replay', batch: sourceKeyReplayBatch('revert') },
+        { tmp },
+      );
+
+      assert.equal(result.status, 'done');
+      assert.deepEqual(result.appliedEntryIds, ['entry-a']);
+      const data = readFileSync(join(tmp, 'src/data.js'), 'utf-8');
+      const visuals = readFileSync(join(tmp, 'src/visuals.js'), 'utf-8');
+      assert.match(data, /label:\s*'Old Label'/);
+      assert.match(data, /'Old Label':\s*7/);
+      assert.doesNotMatch(data, /'Old Label':\s*'7'/);
+      assert.match(visuals, /'Old Label':\s*'<svg><\/svg>'/);
+      assert.doesNotMatch(visuals, /'New Label':\s*'<svg><\/svg>'/);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+function createSourceKeyReplayProject(mode) {
+  const root = mkdtempSync(join(tmpdir(), 'impeccable-llm-replay-'));
+  mkdirSync(join(root, 'src'), { recursive: true });
+  if (mode === 'revert') {
+    writeFileSync(join(root, 'src/data.js'), [
+      'export const cards = [',
+      "  { label: 'New Label', detail: 'Stable detail' },",
+      '];',
+      'export const countsByLabel = {',
+      "  'New Label': '007',",
+      '};',
+      '',
+    ].join('\n'));
+    writeFileSync(join(root, 'src/visuals.js'), [
+      'export const visualsByLabel = {',
+      "  'New Label': '<svg></svg>',",
+      '};',
+      '',
+    ].join('\n'));
+    return root;
+  }
+  writeFileSync(join(root, 'src/data.js'), [
+    'export const cards = [',
+    "  { label: 'Old Label', detail: 'Stable detail' },",
+    '];',
+    'export const countsByLabel = {',
+    "  'Old Label': 7,",
+    '};',
+    '',
+  ].join('\n'));
+  writeFileSync(join(root, 'src/visuals.js'), [
+    'export const visualsByLabel = {',
+    "  'Old Label': '<svg></svg>',",
+    '};',
+    '',
+  ].join('\n'));
+  return root;
+}
+
+function sourceKeyReplayBatch(mode) {
+  const reverting = mode === 'revert';
+  const originalLabel = reverting ? 'New Label' : 'Old Label';
+  const nextLabel = reverting ? 'Old Label' : 'New Label';
+  const originalCount = reverting ? '007' : '7';
+  const nextCount = reverting ? '7' : '007';
+  return {
+    entries: [
+      {
+        id: 'entry-a',
+        ops: [
+          {
+            ref: 'label',
+            originalText: originalLabel,
+            newText: nextLabel,
+            sourceHint: { file: 'src/data.js', line: 2 },
+          },
+          {
+            ref: 'count',
+            originalText: originalCount,
+            newText: nextCount,
+            nearbyEditableTexts: [{ text: originalLabel }],
+          },
+        ],
+      },
+    ],
+    candidates: [
+      {
+        entryId: 'entry-a',
+        ref: 'label',
+        originalText: originalLabel,
+        textMatches: [{ file: 'src/data.js', line: 2, kind: 'text' }],
+        objectKeyMatches: [
+          { file: 'src/data.js', line: 5, needle: originalLabel },
+          { file: 'src/visuals.js', line: 2, needle: originalLabel },
+        ],
+        contextTextMatches: [{ file: 'src/data.js', line: 2, kind: 'context' }],
+      },
+      {
+        entryId: 'entry-a',
+        ref: 'count',
+        originalText: originalCount,
+        textMatches: [{ file: 'src/data.js', line: 5, kind: 'text' }],
+        objectKeyMatches: [{ file: 'src/data.js', line: 5, needle: originalLabel }],
+        contextTextMatches: [{ file: 'src/data.js', line: 5, kind: 'context' }],
+      },
+    ],
+  };
+}
+
 describe('live-e2e LLM agent parseManualEditResponse', () => {
   const validParsed = {
     status: 'done',
+    coverage: [
+      {
+        entryId: 'cafebabe',
+        coveredOps: ['New'],
+        sourceTargets: ['src/App.jsx:3'],
+        coupledKeyEdits: ['none'],
+        typedValueDecision: 'not applicable',
+      },
+    ],
     appliedEntryIds: ['cafebabe'],
     failed: [],
     files: ['src/App.jsx'],
@@ -152,6 +330,7 @@ describe('live-e2e LLM agent parseManualEditResponse', () => {
 
     assert.deepEqual(parsed, {
       status: 'error',
+      coverage: [],
       appliedEntryIds: [],
       failed: [],
       files: [],
@@ -180,21 +359,36 @@ describe('live-e2e LLM agent parseManualEditResponse', () => {
 
 describe('live-e2e LLM agent manual edit prompt', () => {
   it('tells the model to preserve typed source values during display-copy edits', () => {
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /preserve numeric, boolean, and structured source values/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /visible copy adds words around an integer/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file and op\.sourceHint\.line/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Preserve numeric, boolean, array, and object model data/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quoted display text/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /op\.sourceHint\.file \+ op\.sourceHint\.line/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Missing sourceHint is not a failure/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /objectKeyMatches/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /data object or mapped list item/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /hinted leaf text edits/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not rewrite the parent section/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /sourceContext\[\]\.text/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quote style/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /enclosing source line/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /hinted leaf text/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not rewrite parent sections/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never use DOM outerHTML as sourceEdit\.originalText/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /mixed markup that renders one visible phrase/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coupled fields, lookup keys, and display values coherent/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /later chunk edits a value whose label\/key was already changed/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not edit a renderer expression unless that expression is the actual source/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /leaving model data typed/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coupled lookup keys/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /string literal or object key/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /animations, icons, images, assets/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /same lookup\/map entry/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Return a complete result/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /ambiguous or broad/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Preserve op\.newText exactly/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /leading zeros/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /back to a plain number/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coverage is harness-only planning data/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coveredOps/);
+  });
+
+  it('keeps manual edit prompt guidance generic instead of fixture-specific', () => {
+    for (const fixtureToken of ['Typography', 'Responsive', 'TypoXXX', 'RespoXXX', 'TT33']) {
+      assert.doesNotMatch(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, new RegExp(fixtureToken));
+    }
   });
 
   it('tells the model to cover every op in multi-leaf applied entries', () => {
@@ -208,25 +402,104 @@ describe('live-e2e LLM agent manual edit prompt', () => {
 
   it('tells the model manual Apply is non-interactive', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /user already clicked Apply/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Never ask what to do with staged edits/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Start applying and return JSON/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Manual copy edits are first-class work/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /looks temporary, experimental, or unusual/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /never discard it, clean it up, or redirect the user to the visual picker/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not ask what to do/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /discard edits/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /unusual copy/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /redirect to the visual picker/);
     assert.doesNotMatch(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /What would you like to do with these changes/i);
   });
 
   it('tells the model chunked manual Apply events are complete current work units', () => {
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /multiple small chunks/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /complete current work unit/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /poll again for later chunks/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Do not fail entries just because later staged edits are not present in this chunk/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /current event\.batch/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /later staged edits arrive in later chunks/);
   });
 
   it('tells the model compact manual Apply events load full evidence out-of-band', () => {
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Track A poll events may be compact/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /evidencePath is present/);
-    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /loaded batch as authoritative/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /full source evidence was loaded/);
+  });
+});
+
+describe('live-e2e LLM agent manual edit planning coverage validation', () => {
+  it('requires harness-only coverage rows for applied entries in provider responses', () => {
+    const error = validateManualEditPlanningCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        coverage: [],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: 'Old',
+            newText: 'New',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [{ newText: 'New' }],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /no coverage rows/);
+  });
+
+  it('requires coverage rows to list every staged op for applied entries', () => {
+    const error = validateManualEditPlanningCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        coverage: [
+          {
+            entryId: 'entry-a',
+            coveredOps: ['New label'],
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [{ newText: 'New label' }, { newText: '007' }],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /does not list staged copy "007"/);
+  });
+
+  it('accepts coverage that lists every staged op for applied entries', () => {
+    const error = validateManualEditPlanningCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        coverage: [
+          {
+            entryId: 'entry-a',
+            coveredOps: ['New label', '007'],
+            sourceTargets: ['src/data.js:2'],
+            coupledKeyEdits: ['src/visuals.js:4'],
+            typedValueDecision: 'quoted display text',
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [{ newText: 'New label' }, { newText: '007' }],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
   });
 });
 
@@ -454,6 +727,77 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /quoted display expression/);
   });
 
+  it('gives exact-copy guidance when leading-zero display copy is normalized away', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "'Old label': 33",
+            newText: "'New label': 33",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Old label', newText: 'New label' },
+              { originalText: '33', newText: '0033' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /leading zeros/);
+    assert.match(error, /must not be normalized/);
+    assert.match(error, /must satisfy both changes at once/);
+    assert.match(error, /key "New label"/);
+  });
+
+  it('rejects display text pasted raw into a data lookup replacement', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            originalText: "'Old label': 17",
+            newText: "'New label': display17",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { originalText: 'Old label', newText: 'New label' },
+              { originalText: '17', newText: 'display17' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /display text/);
+    assert.match(error, /quoted source text/);
+    assert.match(error, /raw user text/);
+  });
+
   it('allows numeric-looking literal text edits that are not source expressions', () => {
     const error = validateManualEditCoverage(
       {
@@ -550,6 +894,314 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /renames lookup label/);
     assert.match(error, /paired count\/lookup key/);
     assert.match(error, /new label/);
+  });
+
+  it('rejects label renames that miss dependent source keys', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 10,
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 20,
+            originalText: "'Old label': 17",
+            newText: "'New label': 'many seats'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { ref: 'label', originalText: 'Old label', newText: 'New label' },
+              { ref: 'count', originalText: '17', newText: 'many seats' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/data.js', line: 20, needle: 'Old label' },
+              { file: 'src/visuals.js', line: 5, needle: 'Old label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /objectKeyMatches/);
+    assert.match(error, /include a sourceEdit/);
+    assert.match(error, /dependent lookup\/asset\/count\/icon\/image key/);
+    assert.match(error, /src\/visuals\.js:5/);
+  });
+
+  it('combines label/count and dependent-key retry guidance for the same entry', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 10,
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 20,
+            originalText: "'Old label': 33",
+            newText: "'New label': 33",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { ref: 'label', originalText: 'Old label', newText: 'New label' },
+              { ref: 'count', originalText: '33', newText: '0033' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/visuals.js', line: 5, needle: 'Old label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.match(error, /exact staged copy "0033"/);
+    assert.match(error, /quoted display value/);
+    assert.match(error, /src\/visuals\.js:5/);
+  });
+
+  it('allows label renames that update dependent source keys', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 10,
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 20,
+            originalText: "'Old label': 17",
+            newText: "'New label': 'many seats'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/visuals.js',
+            line: 5,
+            originalText: "'Old label': '<svg>'",
+            newText: "'New label': '<svg>'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { ref: 'label', originalText: 'Old label', newText: 'New label' },
+              { ref: 'count', originalText: '17', newText: 'many seats' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/data.js', line: 20, needle: 'Old label' },
+              { file: 'src/visuals.js', line: 5, needle: 'Old label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
+  });
+
+  it('allows surgical same-line key literal replacements for dependent source keys', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 10,
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/visuals.js',
+            line: 5,
+            originalText: "'Old label'",
+            newText: "'New label'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { ref: 'label', originalText: 'Old label', newText: 'New label' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/visuals.js', line: 5, needle: 'Old label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
+  });
+
+  it('does not apply sourceHint line checks to dependent key edits for the same label text', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 2,
+            originalText: "label: 'Old label'",
+            newText: "label: 'New label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 5,
+            originalText: "'Old label': 7",
+            newText: "'New label': '007'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              {
+                ref: 'label',
+                originalText: 'Old label',
+                newText: 'New label',
+                sourceHint: { file: 'src/data.js', line: 2 },
+              },
+              { ref: 'count', originalText: '7', newText: '007' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/data.js', line: 5, needle: 'Old label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
+  });
+
+  it('allows label reverts that restore dependent source keys and typed counts', () => {
+    const error = validateManualEditCoverage(
+      {
+        status: 'done',
+        appliedEntryIds: ['entry-a'],
+        sourceEdits: [
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 10,
+            originalText: "label: 'New label'",
+            newText: "label: 'Old label'",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/data.js',
+            line: 20,
+            originalText: "'New label': '0033'",
+            newText: "'Old label': 33",
+          },
+          {
+            entryId: 'entry-a',
+            file: 'src/visuals.js',
+            line: 5,
+            originalText: "'New label': '<svg>'",
+            newText: "'Old label': '<svg>'",
+          },
+        ],
+      },
+      {
+        entries: [
+          {
+            id: 'entry-a',
+            ops: [
+              { ref: 'label', originalText: 'New label', newText: 'Old label' },
+              { ref: 'count', originalText: '0033', newText: '33' },
+            ],
+          },
+        ],
+        candidates: [
+          {
+            entryId: 'entry-a',
+            ref: 'label',
+            objectKeyMatches: [
+              { file: 'src/data.js', line: 20, needle: 'New label' },
+              { file: 'src/visuals.js', line: 5, needle: 'New label' },
+            ],
+          },
+        ],
+      },
+    );
+
+    assert.equal(error, null);
   });
 
   it('rejects paired label/count reverts that leave plain integer counts quoted', () => {

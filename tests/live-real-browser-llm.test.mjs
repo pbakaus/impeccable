@@ -43,12 +43,9 @@ const HOOK_SELECTOR = 'p.hero-hook-text--full';
 const INCLUDED_TITLE_SELECTOR = '.hero-included-title';
 const INCLUDED_ITEM_SELECTOR = '.hero-included-items span:first-child';
 const CTA_SELECTOR = '.hero-cta-combined';
-const TYPOGRAPHY_LABEL_SELECTOR = '.foundation-grid .foundation-column:nth-child(1) .foundation-card-label';
-const TYPOGRAPHY_COUNT_SELECTOR = '.foundation-grid .foundation-column:nth-child(1) .foundation-card-count';
-const RESPONSIVE_LABEL_SELECTOR = '.foundation-grid .foundation-column:nth-child(4) .foundation-card-label';
-const RESPONSIVE_COUNT_SELECTOR = '.foundation-grid .foundation-column:nth-child(4) .foundation-card-count';
 const INDEX_ASTRO = 'site/pages/index.astro';
 const DATA_JS = 'site/scripts/data.js';
+const FOUNDATION_ANIMATIONS_JS = 'site/scripts/components/foundation-animations.js';
 const MAIN_CSS = 'site/styles/main.css';
 const LONG_HOOK = "Great design prompts require design vocabulary. Most people don't have it. Impeccable teaches your AI deep design knowledge and gives you 23 commands to steer the result.";
 const MANUAL_EDITS = [
@@ -64,10 +61,10 @@ const MANUAL_EDITS = [
     editNext: ' agent skill with 23 design commands HHH',
   },
   { selector: CTA_SELECTOR, original: 'Get Started', next: 'Get Started YESSS' },
-  { selector: TYPOGRAPHY_LABEL_SELECTOR, original: 'Typography', next: 'TypoXXX' },
-  { selector: TYPOGRAPHY_COUNT_SELECTOR, original: '33', next: '0033' },
-  { selector: RESPONSIVE_LABEL_SELECTOR, original: 'Responsive', next: 'RespoXXX' },
-  { selector: RESPONSIVE_COUNT_SELECTOR, original: '23', next: 'TT33' },
+  { kind: 'foundation-label', cardOriginal: 'Typography', cardNext: 'TypoXXX', original: 'Typography', next: 'TypoXXX' },
+  { kind: 'foundation-count', cardOriginal: 'Typography', cardNext: 'TypoXXX', original: '33', next: '0033' },
+  { kind: 'foundation-label', cardOriginal: 'Responsive', cardNext: 'RespoXXX', original: 'Responsive', next: 'RespoXXX' },
+  { kind: 'foundation-count', cardOriginal: 'Responsive', cardNext: 'RespoXXX', original: '23', next: 'TT33' },
 ];
 
 const cleanupFns = [];
@@ -94,6 +91,7 @@ describe('real browser LLM live manual edit flow', () => {
       INDEX_ASTRO,
       'site/layouts/Base.astro',
       DATA_JS,
+      FOUNDATION_ANIMATIONS_JS,
       MAIN_CSS,
       '.impeccable/live/pending-manual-edits.json',
       '.impeccable/live/server.json',
@@ -167,24 +165,27 @@ describe('real browser LLM live manual edit flow', () => {
 
     await hideAstroDevToolbar(page);
     await waitForHandshake(page);
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })));
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'original');
 
     await stageManualEdits(page, MANUAL_EDITS, 'next');
     await assertApplyDockVisible(page, MANUAL_EDITS.length, { timeout: 10_000 });
     await clickApplyEdits(page);
     await waitForApplyDockHidden(page, { timeout: 300_000 });
     await waitForPendingManualEditCount(0, { timeout: 300_000 });
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, next }) => ({ selector, text: next })), { timeout: 120_000 });
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'next', { timeout: 120_000 });
+    await waitForFoundationVisuals(page, ['TypoXXX', 'RespoXXX'], { timeout: 30_000 });
     assert.deepEqual(consoleErrors, [], 'real browser console should stay clean after manual Apply');
 
     await page.waitForTimeout(30_000);
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, next }) => ({ selector, text: next })));
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'next');
+    await waitForFoundationVisuals(page, ['TypoXXX', 'RespoXXX']);
     assertManualSourceApplied();
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     await hideAstroDevToolbar(page);
     await waitForHandshake(page);
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, next }) => ({ selector, text: next })));
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'next');
+    await waitForFoundationVisuals(page, ['TypoXXX', 'RespoXXX']);
 
     const sourceBeforeGo = readSourceBundle([INDEX_ASTRO, MAIN_CSS]);
     await pickElement(page, H1_SELECTOR, { resetPickMode: true });
@@ -205,16 +206,19 @@ describe('real browser LLM live manual edit flow', () => {
     await clickApplyEdits(page);
     await waitForApplyDockHidden(page, { timeout: 300_000 });
     await waitForPendingManualEditCount(0, { timeout: 300_000 });
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })), { timeout: 120_000 });
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'original', { timeout: 120_000 });
+    await waitForFoundationVisuals(page, ['Typography', 'Responsive'], { timeout: 30_000 });
 
     await page.waitForTimeout(30_000);
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })));
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'original');
+    await waitForFoundationVisuals(page, ['Typography', 'Responsive']);
     assertManualSourceReverted();
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     await hideAstroDevToolbar(page);
     await waitForHandshake(page);
-    await waitForBrowserTexts(page, MANUAL_EDITS.map(({ selector, original }) => ({ selector, text: original })));
+    await waitForManualEditTexts(page, MANUAL_EDITS, 'original');
+    await waitForFoundationVisuals(page, ['Typography', 'Responsive']);
 
     assert.equal(readPendingManualEditCount(), 0, 'Apply stash should be empty after successful real-app Apply and revert');
     assert.deepEqual(consoleErrors, [], 'real browser console should stay clean through the full flow');
@@ -224,8 +228,8 @@ describe('real browser LLM live manual edit flow', () => {
 async function stageManualEdits(page, edits, targetKey) {
   const groups = [
     { pickSelector: '.hero-combined-left', edits: edits.slice(0, 6) },
-    { pickSelector: '.foundation-grid .foundation-column:nth-child(1) .foundation-card', edits: edits.slice(6, 8) },
-    { pickSelector: '.foundation-grid .foundation-column:nth-child(4) .foundation-card', edits: edits.slice(8) },
+    { pickSelector: (p) => foundationCardByLabel(p, targetKey === 'next' ? 'Typography' : 'TypoXXX'), edits: edits.slice(6, 8) },
+    { pickSelector: (p) => foundationCardByLabel(p, targetKey === 'next' ? 'Responsive' : 'RespoXXX'), edits: edits.slice(8) },
   ];
   let stagedCount = 0;
   for (const group of groups) {
@@ -242,7 +246,7 @@ async function stageManualEdits(page, edits, targetKey) {
 
 async function pickFreshElement(page, selector) {
   await resetPickerToFresh(page);
-  const target = page.locator(selector).first();
+  const target = typeof selector === 'function' ? selector(page).first() : page.locator(selector).first();
   await target.scrollIntoViewIfNeeded({ timeout: 10_000 });
   await hideLiveAnnotation(page);
   await target.hover({ timeout: 5_000 });
@@ -324,7 +328,48 @@ async function fillEditableByText(page, edit, targetKey) {
       text: node.textContent,
     }))
   ).catch(() => []);
-  throw new Error(`Could not find editable text leaf for ${edit.selector}; tried ${JSON.stringify(currentText)}. Editable rows: ${JSON.stringify(rows)}`);
+  throw new Error(`Could not find editable text leaf for ${edit.selector || edit.kind}; tried ${JSON.stringify(currentText)}. Editable rows: ${JSON.stringify(rows)}`);
+}
+
+function foundationCardByLabel(page, label) {
+  return page
+    .locator('.foundation-card')
+    .filter({
+      has: page.locator('.foundation-card-label').filter({ hasText: exactTextRegex(label) }),
+    });
+}
+
+function manualEditLocator(page, edit, targetKey) {
+  if (edit.kind === 'foundation-label' || edit.kind === 'foundation-count') {
+    const label = targetKey === 'next' ? edit.cardNext : edit.cardOriginal;
+    const part = edit.kind === 'foundation-label' ? '.foundation-card-label' : '.foundation-card-count';
+    return foundationCardByLabel(page, label).locator(part).first();
+  }
+  return page.locator(edit.selector).first();
+}
+
+async function waitForManualEditTexts(page, edits, targetKey, { timeout = 30_000 } = {}) {
+  for (const edit of edits) {
+    const expected = targetKey === 'next' ? edit.next : edit.original;
+    const locator = manualEditLocator(page, edit, targetKey);
+    await locator.waitFor({ state: 'visible', timeout });
+    await waitForLocatorText(locator, expected, { timeout });
+  }
+}
+
+async function waitForLocatorText(locator, text, { contains = false, timeout = 30_000 } = {}) {
+  const started = Date.now();
+  let actual = null;
+  while (Date.now() - started < timeout) {
+    actual = normalizeText(await locator.textContent({ timeout: 1_000 }).catch(() => null));
+    if (contains ? actual.includes(text) : actual === text) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for locator text to ${contains ? 'contain' : 'equal'} ${JSON.stringify(text)}; actual=${JSON.stringify(actual)}`);
+}
+
+function exactTextRegex(text) {
+  return new RegExp(`^\\s*${escapeRegExp(text)}\\s*$`);
 }
 
 async function waitForBrowserTexts(page, expectations, { timeout = 30_000 } = {}) {
@@ -349,6 +394,31 @@ async function waitForBrowserTexts(page, expectations, { timeout = 30_000 } = {}
 
 function normalizeText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+async function waitForFoundationVisuals(page, labels, { timeout = 30_000 } = {}) {
+  try {
+    await page.waitForFunction(
+      (expectedLabels) => expectedLabels.every((label) => {
+        for (const card of document.querySelectorAll('.foundation-card')) {
+          const actualLabel = (card.querySelector('.foundation-card-label')?.textContent || '').replace(/\s+/g, ' ').trim();
+          if (actualLabel !== label) continue;
+          const visual = card.querySelector('.foundation-card-viz');
+          return !!visual?.querySelector('svg') && visual.innerHTML.trim().length > 0;
+        }
+        return false;
+      }),
+      labels,
+      { timeout },
+    );
+  } catch (err) {
+    const cards = await page.locator('.foundation-card').evaluateAll((nodes) => nodes.map((card) => ({
+      label: (card.querySelector('.foundation-card-label')?.textContent || '').replace(/\s+/g, ' ').trim(),
+      hasSvg: !!card.querySelector('.foundation-card-viz svg'),
+      visualHtmlLength: (card.querySelector('.foundation-card-viz')?.innerHTML || '').trim().length,
+    }))).catch(() => []);
+    throw new Error(`Timed out waiting for foundation visuals for ${labels.join(', ')}; cards=${JSON.stringify(cards)}; ${err.message}`);
+  }
 }
 
 async function waitForPendingManualEditCount(expected, { timeout = 10_000 } = {}) {
@@ -389,6 +459,7 @@ async function warmDevServerPage(page, url) {
 function assertManualSourceApplied() {
   const index = readFileSync(join(REPO_ROOT, INDEX_ASTRO), 'utf-8');
   const data = readFileSync(join(REPO_ROOT, DATA_JS), 'utf-8');
+  const animations = readFileSync(join(REPO_ROOT, FOUNDATION_ANIMATIONS_JS), 'utf-8');
 
   assert.match(index, /<h1[^>]*>Impeccable WOWO<\/h1>/);
   assert.match(index, /Design fluency for AI harnesses OOOO/);
@@ -400,19 +471,27 @@ function assertManualSourceApplied() {
   assert.match(data, /['"]TypoXXX['"]:\s*['"]0033['"]/);
   assert.match(data, /area:\s*['"]RespoXXX['"]/);
   assert.match(data, /['"]RespoXXX['"]:\s*['"]TT33['"]/);
+  assert.match(animations, /['"]TypoXXX['"]:\s*`/);
+  assert.match(animations, /['"]RespoXXX['"]:\s*`/);
   assert.doesNotMatch(data, /area:\s*['"]Typography['"]/);
   assert.doesNotMatch(data, /area:\s*['"]Responsive['"]/);
+  assert.doesNotMatch(animations, /['"]Typography['"]:\s*`/);
+  assert.doesNotMatch(animations, /['"]Responsive['"]:\s*`/);
 }
 
 function assertManualSourceReverted() {
   const index = readFileSync(join(REPO_ROOT, INDEX_ASTRO), 'utf-8');
   const data = readFileSync(join(REPO_ROOT, DATA_JS), 'utf-8');
+  const animations = readFileSync(join(REPO_ROOT, FOUNDATION_ANIMATIONS_JS), 'utf-8');
 
   for (const token of ['WOWO', 'OOOO', 'UUUUUU', 'YYYY', 'HHH', 'YESSS']) {
     assert.doesNotMatch(index, new RegExp(escapeRegExp(token)));
   }
   for (const token of ['TypoXXX', '0033', 'RespoXXX', 'TT33']) {
     assert.doesNotMatch(data, new RegExp(escapeRegExp(token)));
+  }
+  for (const token of ['TypoXXX', 'RespoXXX']) {
+    assert.doesNotMatch(animations, new RegExp(escapeRegExp(token)));
   }
   assert.match(index, /Impeccable/);
   assert.match(index, /Design fluency for AI harnesses/);
@@ -424,6 +503,8 @@ function assertManualSourceReverted() {
   assert.match(data, /['"]Typography['"]:\s*33/);
   assert.match(data, /area:\s*['"]Responsive['"]/);
   assert.match(data, /['"]Responsive['"]:\s*23/);
+  assert.match(animations, /['"]Typography['"]:\s*`/);
+  assert.match(animations, /['"]Responsive['"]:\s*`/);
 }
 
 function assertNoRuntimeLeakage(source) {
