@@ -56,6 +56,7 @@ Wait for a browser event from the live variant server, or reply to one.
 Modes:
   poll                             Block until a browser event arrives, print JSON
   poll --reply <id> done           Reply "done" to event <id>
+  poll --reply <id> steer_done     Reply after handling a steer event (unlocks Steer bar)
   poll --reply <id> error "msg"    Reply with an error message
 
 Options:

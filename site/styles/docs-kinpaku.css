@@ -797,23 +797,30 @@
   margin: 0 0 16px;
 }
 
-/* Page h1 follows the Weight-Inversion Rule: display scale at weight 300.
-   Thinner than the heavier in-prose h2s, so size + weight contrast both
-   carry hierarchy. */
+/* Small `/impeccable` prefix above the command name — reads like a
+   kinpaku eyebrow so the command verb (the h1) is the real subject.
+   This replaces the earlier prefix-as-inline-text approach where
+   `/impeccable` was at display scale and competed with the verb. */
+.docs-kinpaku .sub-page-prefix {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  color: var(--ks-text-muted);
+  margin: 0 0 8px;
+}
+
+/* Command name (h1) — display scale, kinpaku gold so it carries the
+   page identity. The prefix above provides the `/impeccable …` context. */
 .docs-kinpaku .sub-page-title {
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-display-weight);
   font-size: var(--ks-type-display-size);
   line-height: var(--ks-type-display-line);
   letter-spacing: var(--ks-type-display-track);
-  color: var(--ks-champagne);
+  color: var(--ks-kinpaku);
   margin: 0 0 20px;
   text-wrap: balance;
-}
-
-.docs-kinpaku .sub-page-title em {
-  color: var(--ks-kinpaku);
-  font-style: normal;
 }
 
 .docs-kinpaku .sub-page-lede {
@@ -1044,28 +1051,25 @@
   color: var(--ks-champagne);
 }
 
-/* Inline code — champagne mono on a graphite chip with a hairline border.
-   The chip is the affordance; color stays neutral so a paragraph full of
-   inline references doesn't vibrate. Kinpaku is reserved for links, h3s,
-   eyebrows, and CTAs. */
+/* Inline code — champagne mono on a graphite chip. The chip is the
+   affordance; color stays neutral so a paragraph full of inline
+   references doesn't vibrate. Kinpaku is reserved for links, h3s,
+   eyebrows, and CTAs. `--ks-graphite-2` (≈19% lightness) reads as the
+   neutral gray the chip wants without picking up cool tint. */
 .docs-kinpaku .prose code {
   font-family: var(--ks-mono);
   font-size: 0.84em;
   color: var(--ks-champagne);
   background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
-  padding: 1px 7px;
-  border-radius: 2px;
-  /* Anchored slightly to the baseline so the chip doesn't shift line-height. */
-  position: relative;
-  top: -1px;
+  border: 0;
+  padding: 4px 7px;
+  border-radius: 3px;
 }
 
-/* Inline code that is itself a link — get the kinpaku cue back, since the
-   link semantic is the meaningful one. */
+/* Inline code that is itself a link — get the kinpaku cue back, since
+   the link semantic is the meaningful one. */
 .docs-kinpaku .prose a code {
   color: var(--ks-kinpaku);
-  border-color: oklch(78% 0.12 82 / 0.32);
 }
 
 /* Fenced code blocks — deep lacquer terminal. Shiki injects inline
@@ -1200,7 +1204,7 @@
    sub-page-header — no docs-hero wrapper, no grid. */
 .docs-kinpaku .docs-hero--with-demo {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
   gap: clamp(28px, 4vw, 48px);
   align-items: center;
   margin: 0 0 clamp(40px, 5vw, 64px);

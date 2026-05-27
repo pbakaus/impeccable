@@ -7,7 +7,7 @@ import { initScrollReveal } from "./utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./utils/scroll.js";
 import { initSectionNav } from "./components/section-nav.js";
 import { initFoundationGrid } from "./components/foundation-grid.js";
-import { initLiveDemo } from "./components/live-demo.js";
+import { initLiveDemo, initGbarPageChat } from "./components/live-demo.js";
 
 // ============================================
 // STATE
@@ -270,6 +270,7 @@ function init() {
 	initWhyTabs();
 	initLanguageTabs();
 	initLiveDemo();
+	initGbarPageChat();
 	loadContent();
 
 	document.body.classList.add("loaded");

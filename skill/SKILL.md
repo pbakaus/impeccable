@@ -34,7 +34,6 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 
 - Cap body line length at 65–75ch. <!-- rule:skill-typo-line-length -->
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales. <!-- rule:skill-typo-scale-ratio -->
-- Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces. <!-- rule:skill-typo-font-count -->
 - Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights. <!-- rule:skill-typo-font-pairing-contrast -->
 - No all-caps body copy. Reserve uppercase for short labels (≤4 words), section eyebrows (used sparingly per the Absolute bans), and badges. Sentences in ALL CAPS are unreadable at body sizes. <!-- rule:skill-typo-no-all-caps-body -->
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing. <!-- rule:skill-typo-hero-ceiling -->
@@ -60,6 +59,7 @@ Two hard typographic ceilings you currently miss:
 - Don't animate CSS layout properties unless truly needed. <!-- rule:skill-motion-no-layout-animate -->
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic. <!-- rule:skill-motion-ease-out-exp -->
 - Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis etc) <!-- rule:skill-motion-use-libraries -->
+- Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition. <!-- rule:skill-motion-reduced-motion -->
 - Sibling stagger on a list (cards, list items) is legitimate. Whole-section fade-on-scroll on every scrolled section is not a list; it's the saturated AI motion reflex. <!-- rule:skill-motion-no-section-fade -->
 - Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank. <!-- rule:skill-motion-reveal-safety -->
 - Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth. <!-- rule:skill-motion-materials-palette -->

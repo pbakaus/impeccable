@@ -840,33 +840,15 @@
   border-top: 0;
 }
 
-.home-kinpaku .slop-teaser-section::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-}
-
-/* Hero → Slop: D3 dot grid in the tinted-plinth tone, full viewport width to
-   match the hero above (which is full-bleed). 18px-tall registration field
-   of dots — quieter than gold, less geometric than ticks. */
-.home-kinpaku .slop-teaser-section::before {
-  height: 18px;
-  left: 50%;
-  right: auto;
-  width: 100vw;
-  transform: translateX(-50%);
-  background-image: radial-gradient(circle, oklch(0.42 0.014 82) 0.9px, transparent 1.4px);
-  background-size: 7px 6px;
-  background-position: 0 1px;
-  background-repeat: repeat;
-}
+/* The Hero → Slop dot-grid divider previously lived here as a ::before on
+   .slop-teaser-section. After the testimonials section was inserted between
+   hero and slop, that divider moved onto .testimonials-section in
+   testimonials.css. The slop section no longer needs a top divider — its
+   own padding and the testimonials section above carry the transition. */
 
 /* Slop → Live, Live → Language, Language → Get Started: intentionally no
-   dividers. The plinth dot grid at the top of Slop and the verdigris dot
-   grid at the top of the footer bracket the section stack — interior
+   dividers. The plinth dot grid at the top of Testimonials and the verdigris
+   dot grid at the top of the footer bracket the section stack — interior
    transitions read on layout alone. */
 
 
@@ -1356,15 +1338,19 @@
   stroke-dashoffset: 1;
   filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.35));
 }
-.hero-live-demo .live-demo-annotations.is-visible .live-demo-stroke path {
-  animation: liveDemoStroke 720ms var(--ks-ease, ease) forwards;
+/* Two circles drawn in sequence: p1 around the headline, p2 around the button. */
+.hero-live-demo .live-demo-annotations.is-circle-1 .live-demo-stroke-p1 {
+  animation: liveDemoStroke 600ms var(--ks-ease, ease) forwards;
+}
+.hero-live-demo .live-demo-annotations.is-circle-2 .live-demo-stroke-p2 {
+  animation: liveDemoStroke 560ms var(--ks-ease, ease) forwards;
 }
 
-/* Comment pin: gold dot + "Note…" bubble, anchored near the circled headline. */
+/* Comment pin: gold dot + note bubble, dropped near the button / suites edge. */
 .live-demo-pin {
   position: absolute;
-  left: 31%;
-  top: 60%;
+  left: 46%;
+  top: 78%;
   opacity: 0;
   transform: scale(0.5);
   transform-origin: center;

@@ -82,6 +82,39 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('global bar includes expandable page chat affordance', () => {
+    assert.match(
+      SOURCE,
+      /function initPageChat\(/,
+      'live-browser must mount a page-level chat control in the global bar',
+    );
+    assert.match(
+      SOURCE,
+      /pageChatEl\.id = PREFIX \+ '-page-chat'/,
+      'page chat container needs a stable id for future wiring and tests',
+    );
+    assert.match(
+      SOURCE,
+      /function syncPageChatFocus\(reason\)[\s\S]{0,160}?if \(state === 'CONFIGURING'\) focusConfigureInput\(reason\);[\s\S]{0,80}?else focusSteerChat\(reason\);/,
+      'focus should sit on the configure input while picking an element, otherwise on steer',
+    );
+    assert.match(
+      SOURCE,
+      /function steerFocusLog\(reason, extra\)/,
+      'steer focus attempts should be logged for debugging before adding retries',
+    );
+    assert.match(
+      SOURCE,
+      /function submitSteerMessage\(\)[\s\S]{0,220}?type: 'steer'/,
+      'steer submit must post a steer event to the live poller',
+    );
+    assert.match(
+      SOURCE,
+      /case 'steer_done':[\s\S]{0,80}?maybeCompleteSteer\(msg\)/,
+      'steer_done SSE must unlock the chat bar',
+    );
+  });
+
   it('pick mode preference persists in localStorage', () => {
     assert.match(
       SOURCE,

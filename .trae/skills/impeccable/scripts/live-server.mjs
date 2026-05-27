@@ -253,6 +253,12 @@ function validateEvent(msg) {
     case 'prefetch':
       if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
       return null;
+    case 'steer':
+      if (!isValidId(msg.id)) return 'steer: missing or malformed id';
+      if (typeof msg.message !== 'string' || !msg.message.trim()) return 'steer: message required';
+      if (msg.message.length > 4000) return 'steer: message too long';
+      if (msg.pageUrl !== undefined && typeof msg.pageUrl !== 'string') return 'steer: pageUrl must be string';
+      return null;
     default:
       return 'Unknown event type: ' + msg.type;
   }
@@ -648,13 +654,15 @@ function handlePollPost(req, res) {
     acknowledgePendingEvent(msg.id);
     if (state.sessionStore && msg.id) {
       try {
-        const eventType = msg.type === 'discard' || msg.type === 'discarded'
-          ? 'discarded'
-          : msg.type === 'complete'
-            ? 'complete'
-            : msg.type === 'error'
-              ? 'agent_error'
-              : 'agent_done';
+        const eventType = msg.type === 'steer_done'
+          ? 'steer_done'
+          : msg.type === 'discard' || msg.type === 'discarded'
+            ? 'discarded'
+            : msg.type === 'complete'
+              ? 'complete'
+              : msg.type === 'error'
+                ? 'agent_error'
+                : 'agent_done';
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,

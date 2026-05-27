@@ -7,10 +7,11 @@
  *   1. Stage → install → start live-server + dev server → inject script tag
  *   2. Open Playwright Chromium, assert the live handshake fires
  *   3. Spawn a deterministic fake-agent polling loop in this same process
- *   4. Drive the bar UI: pick element → Go → wait CYCLING → cycle → Accept
- *   5. Assert source rewrite (variants block, then accepted-only after accept)
- *   6. Assert DOM reflects the accepted variant via getComputedStyle
- *   7. Tear down (browser, dev server, agent loop, live-server, tmp)
+ *   4. Steer smoke: submit page-level chat → agent steer_done → bar unlocks
+ *   5. Drive the bar UI: pick element → Go → wait CYCLING → cycle → Accept
+ *   6. Assert source rewrite (variants block, then accepted-only after accept)
+ *   7. Assert DOM reflects the accepted variant via getComputedStyle
+ *   8. Tear down (browser, dev server, agent loop, live-server, tmp)
  *
  * The fake agent is pluggable — see tests/live-e2e/agent.mjs. A future
  * LLM-backed agent slots in by implementing the same VariantAgent interface.
@@ -33,9 +34,10 @@ import {
   clickNext,
   getVisibleVariant,
   pickElement,
-  waitForCycling,
   waitForHandshake,
 } from './live-e2e/ui.mjs';
+import { runSteerSmoke } from './live-e2e/steer.mjs';
+import { runPreActions, waitForCyclingRobust } from './live-e2e/preactions.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -141,6 +143,14 @@ for (const { name, fixture } of fixtures) {
         t.diagnostic('Waiting for live handshake');
         await waitForHandshake(page);
 
+        // 1b. Steer smoke — page-level chat before the heavier generate cycle.
+        if (fixture.runtime.steer !== false) {
+          const steerTimeouts = agentMode === 'llm'
+            ? { unlockTimeoutMs: 90_000, selectorTimeoutMs: 45_000, runPreActions }
+            : { runPreActions };
+          await runSteerSmoke(page, tmp, fixture, (m) => t.diagnostic(m), steerTimeouts);
+        }
+
         // 2. preActions — fixtures with hidden/conditional content (modals,
         //    tabs, routes) drive the page into the right state before pick.
         if (fixture.runtime.preActions) {
@@ -179,48 +189,11 @@ for (const { name, fixture } of fixtures) {
         //    install pressure, so keep this gate patient enough that we do
         //    not retrace while the agent is still writing the variants.
         t.diagnostic(`Waiting for CYCLING state with ${expectedCount} variants`);
-        const firstPassTimeoutMs = agentMode === 'llm' ? 90_000 : 5_000;
-        let cyclingReached = false;
-        if (fixture.runtime.preActions) {
-          try {
-            await waitForCycling(page, expectedCount, { timeout: firstPassTimeoutMs });
-            cyclingReached = true;
-          } catch {
-            t.diagnostic(`Cycling not reached in ${firstPassTimeoutMs}ms — retracing preActions`);
-            await runPreActions(page, fixture.runtime.preActions);
-          }
-        }
-        try {
-          if (!cyclingReached) {
-            // Default 30s; LLM mode bumps to 90s to absorb API latency on
-            // top of HMR settle time.
-            const finalTimeoutMs = agentMode === 'llm' ? 90_000 : 30_000;
-            await waitForCycling(page, expectedCount, { timeout: finalTimeoutMs });
-          }
-        } catch (err) {
-          if (process.env.IMPECCABLE_E2E_DEBUG) {
-            const variantCount = await page.evaluate(() =>
-              document.querySelectorAll('[data-impeccable-variant]').length,
-            );
-            const barInfo = await page.evaluate(() => {
-              const bars = document.querySelectorAll('#impeccable-live-bar');
-              return {
-                count: bars.length,
-                bars: [...bars].map((bar) => ({
-                  display: bar.style.display,
-                  opacity: bar.style.opacity,
-                  text: bar.textContent || '',
-                  innerHtml: bar.innerHTML.slice(0, 600),
-                })),
-                __init: window.__IMPECCABLE_LIVE_INIT__,
-              };
-            });
-            t.diagnostic(`waitForCycling failed; variants in DOM: ${variantCount}`);
-            t.diagnostic(`Bar state: ${JSON.stringify(barInfo)}`);
-            t.diagnostic(`--- dev server tail ---\n${session.dev.log()}`);
-          }
-          throw err;
-        }
+        await waitForCyclingRobust(page, expectedCount, {
+          agentMode,
+          preActions: fixture.runtime.preActions,
+          log: (m) => t.diagnostic(m),
+        });
 
         // 5. Source-side check: wrapper + style + variants are present
         const sourceFile = await locateSessionFile(tmp);
@@ -372,82 +345,6 @@ for (const { name, fixture } of fixtures) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Drive a list of pre-pick / reload-probe actions. Used to set up tricky
- * scenarios: open a modal, switch tabs, navigate routes.
- *
- * Live mode's element picker intercepts every page click in capture phase
- * while `pickActive === true`, so any action that depends on the page's own
- * click handler (open a modal, switch a tab) gets swallowed. We bracket the
- * action sequence with two clicks of the global bar's pick toggle and leave
- * the picker in its original state once preActions complete.
- *
- * Supported action shapes:
- *   { "type": "click", "selector": "..." }
- *   { "type": "goto",  "path": "/about" }
- *   { "type": "wait",  "selector": "..." }
- */
-async function runPreActions(page, actions) {
-  const PICK_TOGGLE = '#impeccable-live-pick-toggle';
-  const pickerToggle = await page.$(PICK_TOGGLE);
-  const wasActive = pickerToggle
-    ? await pickerToggle.evaluate((el) => el.dataset.active === 'true')
-    : false;
-  if (wasActive) await clickPickToggle(page, PICK_TOGGLE);
-
-  try {
-    for (let i = 0; i < actions.length; i++) {
-      const a = actions[i];
-      if (a.type === 'click') {
-        const next = actions[i + 1];
-        if (next?.type === 'wait') {
-          const alreadyVisible = await page.locator(next.selector).first().isVisible().catch(() => false);
-          if (alreadyVisible) continue;
-        }
-        const loc = page.locator(a.selector);
-        await loc.first().waitFor({ state: 'visible', timeout: 5_000 });
-        await loc.first().click();
-        continue;
-      }
-      if (a.type === 'goto') {
-        const target = new URL(a.path, page.url()).href;
-        await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 10_000 });
-        continue;
-      }
-      if (a.type === 'wait') {
-        await page.waitForSelector(a.selector, { timeout: 5_000 });
-        continue;
-      }
-      throw new Error(`unknown preAction type: ${a.type}`);
-    }
-  } finally {
-    if (wasActive) {
-      // Re-arm the picker. If the page navigated mid-action the toggle may
-      // belong to a freshly mounted bar — best-effort, no throw.
-      const after = await page.$(PICK_TOGGLE);
-      if (after) {
-        const isActive = await after.evaluate((el) => el.dataset.active === 'true');
-        if (!isActive) await clickPickToggle(page, PICK_TOGGLE);
-      }
-    }
-  }
-}
-
-async function clickPickToggle(page, selector) {
-  try {
-    await page.locator(selector).click({ timeout: 5_000 });
-    return;
-  } catch (err) {
-    const clicked = await page.evaluate((sel) => {
-      const btn = document.querySelector(sel);
-      if (!btn) return false;
-      btn.click();
-      return true;
-    }, selector);
-    if (!clicked) throw err;
-  }
-}
 
 /**
  * Poll the file until carbonize cleanup has landed: no variants wrapper, no

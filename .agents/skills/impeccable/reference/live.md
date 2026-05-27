@@ -14,9 +14,10 @@ Execute in order. No step skipped, no step reordered.
 2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
 4. On `generate`: read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
-5. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
-6. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
-7. On `exit`: run the cleanup at the bottom.
+5. On `steer`: read the message and `pageUrl`; do the work (page edits, navigation help, or a short reply in the `--reply` message); `--reply steer_done`; poll again. No pickup ack. The Steer bar unlocks when `steer_done` arrives over SSE.
+6. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
+7. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
+8. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
@@ -46,6 +47,7 @@ LOOP:
   Read JSON; dispatch on "type"
 
   "generate"  → Handle Generate; reply done; LOOP
+  "steer"     → Handle Steer; reply steer_done; LOOP
   "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
   "discard"   → Handle Discard; LOOP
   "prefetch"  → Handle Prefetch; LOOP
@@ -425,6 +427,26 @@ A background agent may be used for the rewrite, but the current thread is respon
 ## Handle `discard`
 
 Event: `{id, _acceptResult, _completionAck}`. The poll script already restored the original, removed all variant markers, and acknowledged `discarded` durable completion. Nothing to do unless `_completionAck.ok !== true`; in that case run `live-complete.mjs --id EVENT_ID --discarded`, then poll again.
+
+## Handle `steer`
+
+Event: `{id, message, pageUrl}`. The user typed into the global bar **Steer** control: page-level direction without picking an element or launching variant generation.
+
+This is lighter than `generate`: no screenshot, no element context, no variant cycling. Read `message` and inspect the live page or project files as needed, then either make edits or answer in prose.
+
+When finished:
+
+```bash
+node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID steer_done ["Optional short note for a browser toast"]
+```
+
+On failure:
+
+```bash
+node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "Short reason"
+```
+
+Then poll again immediately. Do not send a separate "picked up" reply. The Steer bar stays locked until `steer_done` or `error` arrives over SSE.
 
 ## Handle `prefetch`
 

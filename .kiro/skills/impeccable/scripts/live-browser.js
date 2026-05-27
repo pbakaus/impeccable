@@ -900,6 +900,7 @@
     requestAnimationFrame(() => {
       barEl.style.opacity = '1';
       barEl.style.transform = 'translateY(0)';
+      syncPageChatFocus('show-bar');
     });
   }
 
@@ -928,6 +929,7 @@
       barEl.style.background = 'oklch(95% 0.05 145)';
       barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
     }
+    syncPageChatFocus('update-bar-content');
   }
 
   // --- Configure row ---
@@ -988,7 +990,7 @@
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
-      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; return; }
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; syncPageChatFocus('configure-input-escape'); return; }
       // Let arrow keys pass through to the element picker when the input is empty
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
@@ -1032,8 +1034,6 @@
     go.addEventListener('click', (e) => { e.stopPropagation(); handleGo(); });
     row.appendChild(go);
 
-    // Auto-focus input after a beat
-    setTimeout(() => input.focus(), 60);
     return row;
   }
 
@@ -2221,8 +2221,13 @@
           if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable teach to generate one.', 7000);
           console.log('[impeccable] Live mode connected.');
           if (state === 'IDLE' && pickActive) state = 'PICKING';
+          syncPageChatFocus('sse-connected');
+          break;
+        case 'steer_done':
+          maybeCompleteSteer(msg);
           break;
         case 'done':
+          if (maybeCompleteSteer(msg)) break;
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
@@ -2254,6 +2259,7 @@
           }, 2000);
           break;
         case 'error':
+          if (maybeCompleteSteer(msg)) break;
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
           hideBar();
@@ -2376,6 +2382,7 @@
       state = 'PICKING';
       hoveredElement = null;
       hideHighlight();
+      syncPageChatFocus('configure-outside-click');
       return;
     }
     if (state !== 'PICKING' || !pickActive) return;
@@ -2474,7 +2481,7 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
-      if (state === 'CONFIGURING') { hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; return; }
+      if (state === 'CONFIGURING') { hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return; }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
       if (state === 'PICKING') {
@@ -3313,6 +3320,24 @@ void main() {
   let detectCount = 0;
   let detectScriptLoaded = false;
 
+  // Steer — collapsed pill in the global bar; expands while typing for page-level chat.
+  let pageChatEl = null;
+  let pageChatInput = null;
+  let pageChatHint = null;
+  let pageChatVoiceBtn = null;
+  let pageChatExpanded = false;
+  let steerLocked = false;
+  let steerRequestId = null;
+  let pageChatDotsEl = null;
+  let steerHandoffTimer = null;
+  const PAGE_CHAT_COLLAPSED_W = '88px';
+  const PAGE_CHAT_PROCESSING_W = '112px';
+  const PAGE_CHAT_EXPANDED_W = 'min(280px, 38vw)';
+  const ICON_PAGE_CHAT =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const ICON_PAGE_VOICE =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+
   // Theme-aware color palette for the global bar. We detect the page's
   // ambient background and invert — dark bar on light pages, light bar on
   // dark pages. This keeps the bar from fighting with the host design.
@@ -3368,7 +3393,441 @@ void main() {
       accentSoft: C.brandSoft,
       exitHover: 'oklch(58% 0.15 35 / 0.18)',
       shadow: PICKER_SHADOW,
+      chatSurface: 'oklch(22% 0.012 82)',
+      // Verdigris patina — secondary state (see site/styles/kinpaku-tokens.css)
+      patina: 'oklch(70% 0.12 188)',
+      patinaPale: 'oklch(82% 0.07 188)',
+      patinaSoft: 'oklch(70% 0.12 188 / 0.28)',
     };
+  }
+
+  function pageChatPalette() {
+    return barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+  }
+
+  function syncPageChatChrome() {
+    if (!pageChatEl) return;
+    const P = pageChatPalette();
+    pageChatEl.style.background = P.chatSurface;
+    pageChatEl.style.borderColor = steerLocked
+      ? P.patinaSoft
+      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    if (pageChatHint) pageChatHint.style.color = steerLocked ? P.patinaPale : P.textDim;
+    if (pageChatInput) pageChatInput.style.color = P.text;
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.style.color = pageChatVoiceBtn.dataset.active === 'true'
+        ? P.accent
+        : P.textDim;
+    }
+  }
+
+  function syncPageChatVisual() {
+    if (!pageChatInput || steerLocked) return;
+    const hasText = pageChatInput.value.length > 0;
+    if (hasText && !pageChatExpanded) expandPageChat({ focus: false });
+    else if (!hasText && pageChatExpanded) collapsePageChat();
+  }
+
+  function shouldFocusSteerChat() {
+    return state !== 'CONFIGURING' && !steerLocked;
+  }
+
+  function steerFocusTargetLabel(el) {
+    if (!el || el === document.body) return 'body';
+    if (el === document.documentElement) return 'html';
+    if (el.id) return el.tagName.toLowerCase() + '#' + el.id;
+    return el.tagName?.toLowerCase() || String(el);
+  }
+
+  function steerFocusDebugEnabled() {
+    try { return localStorage.getItem('impeccable-steer-debug') === '1'; } catch { return false; }
+  }
+
+  function steerFocusLog(reason, extra) {
+    if (!steerFocusDebugEnabled()) return;
+    console.log('[impeccable.steer]', reason, {
+      state,
+      pickActive,
+      pageChatReady: !!pageChatInput,
+      pageChatExpanded,
+      active: steerFocusTargetLabel(document.activeElement),
+      shouldSteer: shouldFocusSteerChat(),
+      ...(extra || {}),
+    });
+  }
+
+  function attachSteerFocusDebug() {
+    if (!steerFocusDebugEnabled()) return;
+    if (window.__IMPECCABLE_STEER_FOCUS_DEBUG__) return;
+    window.__IMPECCABLE_STEER_FOCUS_DEBUG__ = true;
+    document.addEventListener('focusin', (e) => {
+      if (!pageChatInput) return;
+      steerFocusLog('focusin', { target: steerFocusTargetLabel(e.target) });
+    }, true);
+  }
+
+  function focusConfigureInput(reason) {
+    steerFocusLog('focusConfigureInput', { reason });
+    const input = document.getElementById(PREFIX + '-input');
+    if (!input) {
+      steerFocusLog('focusConfigureInput missing', { reason });
+      return;
+    }
+    setTimeout(() => {
+      const before = document.activeElement;
+      input.focus();
+      steerFocusLog('focusConfigureInput result', {
+        reason,
+        before: steerFocusTargetLabel(before),
+        after: steerFocusTargetLabel(document.activeElement),
+        stuck: document.activeElement !== input,
+      });
+    }, 60);
+  }
+
+  function syncPageChatFocusRing() {
+    if (!pageChatEl || !pageChatInput) return;
+    const focused = document.activeElement === pageChatInput;
+    pageChatEl.dataset.inputFocused = focused ? 'true' : 'false';
+    const P = pageChatPalette();
+    pageChatEl.style.borderColor = steerLocked
+      ? P.patinaSoft
+      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    pageChatEl.style.boxShadow = 'none';
+    if (pageChatHint) {
+      pageChatHint.style.color = steerLocked
+        ? P.patinaPale
+        : ((!pageChatExpanded && focused) ? P.patinaPale : P.textDim);
+    }
+    if (!pageChatExpanded) {
+      pageChatInput.style.width = '0';
+      pageChatInput.style.padding = '0';
+      pageChatInput.style.opacity = '0';
+      pageChatInput.style.pointerEvents = focused ? 'auto' : 'none';
+      if (pageChatHint) pageChatHint.style.visibility = '';
+    }
+  }
+
+  function focusSteerChat(reason) {
+    steerFocusLog('focusSteerChat called', { reason });
+    if (!pageChatInput || !shouldFocusSteerChat()) {
+      steerFocusLog('focusSteerChat skipped', {
+        reason,
+        hasInput: !!pageChatInput,
+        shouldSteer: shouldFocusSteerChat(),
+      });
+      return;
+    }
+    syncPageChatVisual();
+    pageChatInput.style.pointerEvents = 'auto';
+    const before = document.activeElement;
+    try { window.focus(); } catch { /* embed may block */ }
+    try { pageChatInput.focus({ preventScroll: true }); } catch { pageChatInput.focus(); }
+    syncPageChatFocusRing();
+    steerFocusLog('focusSteerChat result', {
+      reason,
+      before: steerFocusTargetLabel(before),
+      after: steerFocusTargetLabel(document.activeElement),
+      stuck: document.activeElement !== pageChatInput,
+    });
+  }
+
+  function syncPageChatFocus(reason) {
+    steerFocusLog('syncPageChatFocus', { reason });
+    if (state === 'CONFIGURING') focusConfigureInput(reason);
+    else focusSteerChat(reason);
+  }
+
+  function buildSteerProcessingDots() {
+    const P = pageChatPalette();
+    const wrap = el('span', {
+      display: 'inline-flex', alignItems: 'center', gap: '3px',
+      marginLeft: '2px', flexShrink: '0', pointerEvents: 'none',
+    });
+    for (let i = 0; i < 3; i++) {
+      wrap.appendChild(el('span', {
+        display: 'inline-block',
+        width: '3px', height: '3px', borderRadius: '50%',
+        background: P.patinaPale,
+        animation: 'impeccable-steer-dot 1s ease-in-out ' + (i * 0.15) + 's infinite',
+      }));
+    }
+    return wrap;
+  }
+
+  function lockSteerChat() {
+    if (!pageChatEl || !pageChatInput) return;
+    steerLocked = true;
+    pageChatEl.dataset.processing = 'true';
+    pageChatInput.disabled = true;
+    pageChatInput.value = '';
+    pageChatInput.blur();
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.disabled = true;
+      pageChatVoiceBtn.style.display = 'none';
+    }
+    pageChatExpanded = false;
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.style.width = PAGE_CHAT_PROCESSING_W;
+    pageChatEl.style.cursor = 'default';
+    pageChatInput.style.width = '0';
+    pageChatInput.style.padding = '0';
+    pageChatInput.style.opacity = '0';
+    pageChatInput.style.pointerEvents = 'none';
+    if (pageChatHint) {
+      pageChatHint.style.display = '';
+      pageChatHint.style.opacity = '1';
+      pageChatHint.style.visibility = 'visible';
+      pageChatHint.textContent = 'Handing off';
+    }
+    if (!pageChatDotsEl) {
+      pageChatDotsEl = buildSteerProcessingDots();
+      pageChatEl.appendChild(pageChatDotsEl);
+    }
+    steerHandoffTimer = setTimeout(() => {
+      if (!steerLocked || !pageChatHint) return;
+      pageChatHint.textContent = 'Working';
+    }, 420);
+    syncPageChatFocusRing();
+    syncPageChatChrome();
+  }
+
+  function unlockSteerChat(opts) {
+    if (steerHandoffTimer) { clearTimeout(steerHandoffTimer); steerHandoffTimer = null; }
+    steerLocked = false;
+    steerRequestId = null;
+    if (!pageChatEl) return;
+    pageChatEl.dataset.processing = 'false';
+    pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
+    pageChatEl.style.cursor = 'pointer';
+    if (pageChatInput) {
+      pageChatInput.disabled = false;
+      pageChatInput.value = '';
+    }
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.disabled = false;
+      pageChatVoiceBtn.style.display = '';
+    }
+    if (pageChatHint) pageChatHint.textContent = 'Steer';
+    if (pageChatDotsEl?.parentNode) {
+      pageChatDotsEl.remove();
+      pageChatDotsEl = null;
+    }
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+    if (opts?.error) showToast(String(opts.error), 5000);
+    else if (opts?.message) showToast(String(opts.message), 4000);
+    syncPageChatFocus('steer-unlock');
+  }
+
+  function submitSteerMessage() {
+    const text = pageChatInput?.value.trim();
+    if (!text || steerLocked) return;
+    const id = id8();
+    steerRequestId = id;
+    lockSteerChat();
+    sendEvent({
+      type: 'steer',
+      id,
+      message: text,
+      pageUrl: location.href,
+    }).then((res) => {
+      if (!res) unlockSteerChat({ error: 'Could not reach live server' });
+    });
+  }
+
+  function maybeCompleteSteer(msg) {
+    if (!steerRequestId || msg.id !== steerRequestId) return false;
+    if (msg.type === 'steer_done') {
+      unlockSteerChat({ message: msg.message });
+      return true;
+    }
+    if (msg.type === 'error') {
+      unlockSteerChat({ error: msg.message || 'Steer failed' });
+      return true;
+    }
+    return false;
+  }
+
+  function expandPageChat(opts) {
+    const focus = !opts || opts.focus !== false;
+    if (!pageChatEl || !pageChatInput || steerLocked) return;
+    pageChatExpanded = true;
+    pageChatEl.dataset.expanded = 'true';
+    pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
+    pageChatEl.style.cursor = 'text';
+    if (pageChatHint) {
+      pageChatHint.style.display = 'none';
+      pageChatHint.style.opacity = '0';
+    }
+    pageChatInput.style.width = '';
+    pageChatInput.style.padding = '0 6px';
+    pageChatInput.style.opacity = '1';
+    pageChatInput.style.pointerEvents = 'auto';
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+    if (focus) pageChatInput.focus();
+  }
+
+  function collapsePageChat(opts) {
+    const blur = opts && opts.blur === true;
+    if (!pageChatEl || !pageChatInput) return;
+    pageChatExpanded = false;
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
+    pageChatEl.style.cursor = 'pointer';
+    if (blur) {
+      pageChatInput.blur();
+      pageChatInput.style.pointerEvents = 'none';
+    } else {
+      pageChatInput.style.pointerEvents = 'auto';
+    }
+    if (pageChatHint && document.activeElement !== pageChatInput) {
+      pageChatHint.style.display = '';
+      pageChatHint.style.opacity = '1';
+    }
+    if (pageChatVoiceBtn) pageChatVoiceBtn.dataset.active = 'false';
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+  }
+
+  function initPageChat(parent, P) {
+    pageChatEl = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      height: '28px', margin: '0 4px 0 2px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      overflow: 'hidden',
+      cursor: 'pointer',
+      flexShrink: '0',
+      width: PAGE_CHAT_COLLAPSED_W,
+      transition: 'width 0.28s ' + EASE + ', border-color 0.15s ease',
+    });
+    pageChatEl.id = PREFIX + '-page-chat';
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.title = 'Steer the page';
+
+    const chatIcon = el('span', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: '28px', height: '28px', flexShrink: '0',
+      color: P.textDim, pointerEvents: 'none',
+    });
+    chatIcon.innerHTML = ICON_PAGE_CHAT;
+
+    pageChatHint = el('span', {
+      fontSize: '11.5px', fontWeight: '500',
+      color: P.textDim,
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      flex: '1', minWidth: '0',
+      pointerEvents: 'none',
+      transition: 'opacity 0.15s ease',
+    });
+    pageChatHint.textContent = 'Steer';
+
+    pageChatInput = document.createElement('input');
+    pageChatInput.id = PREFIX + '-page-chat-input';
+    pageChatInput.type = 'text';
+    pageChatInput.placeholder = 'Steer the page…';
+    pageChatInput.setAttribute('aria-label', 'Steer the page');
+    Object.assign(pageChatInput.style, {
+      flex: '1', minWidth: '0', width: '0',
+      padding: '0', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: P.text,
+      outline: 'none', opacity: '0', pointerEvents: 'none',
+      transition: 'opacity 0.15s ease',
+    });
+
+    pageChatVoiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: P.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    pageChatVoiceBtn.id = PREFIX + '-page-chat-voice';
+    pageChatVoiceBtn.type = 'button';
+    pageChatVoiceBtn.setAttribute('aria-label', 'Voice input');
+    pageChatVoiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    pageChatEl.appendChild(chatIcon);
+    pageChatEl.appendChild(pageChatHint);
+    pageChatEl.appendChild(pageChatInput);
+    pageChatEl.appendChild(pageChatVoiceBtn);
+
+    if (!document.getElementById(PREFIX + '-page-chat-style')) {
+      const s = document.createElement('style');
+      s.id = PREFIX + '-page-chat-style';
+      s.textContent =
+        '@keyframes impeccable-steer-dot { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }' +
+        '@keyframes impeccable-steer-handoff { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }' +
+        '#' + PREFIX + '-page-chat[data-processing="true"] { animation: impeccable-steer-handoff 1.4s ease-in-out infinite; }' +
+        '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
+        '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
+      document.head.appendChild(s);
+    }
+
+    pageChatEl.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatEl.addEventListener('click', (e) => {
+      if (steerLocked) return;
+      if (pageChatVoiceBtn.contains(e.target)) return;
+      expandPageChat();
+    });
+
+    pageChatVoiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatVoiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!pageChatExpanded) expandPageChat();
+      pageChatVoiceBtn.dataset.active = 'true';
+      syncPageChatChrome();
+      // Voice mode wiring lands in a follow-up; pulse the icon as affordance.
+      showToast('Voice mode coming soon', 2200);
+      setTimeout(() => {
+        if (pageChatVoiceBtn) pageChatVoiceBtn.dataset.active = 'false';
+        syncPageChatChrome();
+      }, 900);
+    });
+
+    pageChatInput.addEventListener('input', () => {
+      syncPageChatVisual();
+    });
+
+    pageChatInput.addEventListener('focus', () => {
+      syncPageChatFocusRing();
+    });
+
+    pageChatInput.addEventListener('blur', () => {
+      syncPageChatFocusRing();
+      setTimeout(() => {
+        if (state === 'CONFIGURING' || steerLocked) return;
+        if (pageChatEl?.contains(document.activeElement)) return;
+        if (!pageChatInput.value.trim()) collapsePageChat();
+        syncPageChatFocus('steer-blur-recover');
+      }, 120);
+    });
+
+    pageChatInput.addEventListener('keydown', (e) => {
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !pageChatInput.value) return;
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (pageChatInput.value) {
+          pageChatInput.value = '';
+          syncPageChatVisual();
+        } else {
+          collapsePageChat();
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitSteerMessage();
+      }
+    });
+
+    parent.appendChild(pageChatEl);
+    steerFocusLog('page-chat-mounted', {});
   }
 
   // Impeccable mark — same paths as site/components/Header.astro + favicon.svg.
@@ -3520,13 +3979,7 @@ void main() {
     });
     inner.appendChild(designBtn);
 
-    // Thin divider before the exit button
-    const divider = el('span', {
-      width: '1px', height: '18px',
-      background: P.hairline,
-      margin: '0 4px 0 2px',
-    });
-    inner.appendChild(divider);
+    initPageChat(inner, P);
 
     // Exit × on the right — intentionally subtle (textDim at rest, text on
     // hover) so it sits behind the active toggles in visual hierarchy.
@@ -3561,6 +4014,9 @@ void main() {
     globalBarEl.addEventListener('mouseleave', () => {
       toggles.forEach((t) => t._collapseLabel && t._collapseLabel());
     });
+    globalBarEl.addEventListener('pointerdown', () => {
+      try { window.focus(); } catch { /* in-app preview may block */ }
+    }, true);
 
     document.body.appendChild(globalBarEl);
     defangOutsideHandlers(globalBarEl);
@@ -3568,6 +4024,7 @@ void main() {
     requestAnimationFrame(() => {
       globalBarEl.style.opacity = '1';
       globalBarEl.style.transform = 'translateX(-50%) translateY(0)';
+      syncPageChatFocus('global-bar-visible');
     });
 
     // Listen for detection results AND ready signal
@@ -3654,6 +4111,7 @@ void main() {
     } else {
       if (state === 'IDLE') state = 'PICKING';
     }
+    syncPageChatFocus('toggle-pick');
   }
 
   function loadDetectScript() {
@@ -3690,6 +4148,11 @@ void main() {
       globalBarEl.style.transform = 'translateY(100%)';
       setTimeout(() => { if (globalBarEl) globalBarEl.remove(); globalBarEl = null; }, 300);
     }
+    pageChatEl = null;
+    pageChatInput = null;
+    pageChatHint = null;
+    pageChatVoiceBtn = null;
+    pageChatExpanded = false;
     if (highlightEl) { highlightEl.remove(); highlightEl = null; }
     if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
     if (barEl) { barEl.remove(); barEl = null; }
@@ -4849,6 +5312,7 @@ void main() {
     initActionPicker();
     initParamsPanel();
     initGlobalBar();
+    attachSteerFocusDebug();
     initDesignPanel();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
@@ -4873,6 +5337,8 @@ void main() {
     } else {
       console.log('[impeccable] Resumed active variant session ' + currentSessionId + ' (' + arrivedVariants + '/' + expectedVariants + ' variants).');
     }
+
+    syncPageChatFocus('init-complete');
   }
 
   if (document.readyState === 'loading') {

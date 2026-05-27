@@ -13,6 +13,8 @@
 const BAR_ID = '#impeccable-live-bar';
 const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
+const STEER_CHAT_ID = '#impeccable-live-page-chat';
+const STEER_INPUT_ID = '#impeccable-live-page-chat-input';
 
 /**
  * Wait for the live handshake to complete:
@@ -247,6 +249,97 @@ export async function waitForBarHidden(page, { timeout = 10_000 } = {}) {
       return !bar || bar.style.display === 'none';
     },
     BAR_ID,
+    { timeout },
+  );
+}
+
+/**
+ * Dismiss dev-tool overlays that intercept clicks on the live bar (Astro, etc.).
+ * @param {import('playwright').Page} page
+ */
+export async function preparePageForBarInteraction(page) {
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll('astro-dev-toolbar')) {
+      el.style.setProperty('display', 'none', 'important');
+      el.style.setProperty('pointer-events', 'none', 'important');
+    }
+  });
+}
+
+async function focusSteerInput(page) {
+  return page.evaluate(({ chatSel, inputSel }) => {
+    const chat = document.querySelector(chatSel);
+    const input = document.querySelector(inputSel);
+    if (!chat || !input) return false;
+    chat.dataset.expanded = 'true';
+    chat.style.width = 'min(280px, 38vw)';
+    chat.style.cursor = 'text';
+    input.disabled = false;
+    input.style.pointerEvents = 'auto';
+    input.style.opacity = '1';
+    input.style.width = 'auto';
+    input.style.padding = '0 6px';
+    try { window.focus(); } catch { /* embed may block */ }
+    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+    return document.activeElement === input;
+  }, { chatSel: STEER_CHAT_ID, inputSel: STEER_INPUT_ID });
+}
+
+/**
+ * Expand the Steer pill, type a message, and submit with Enter.
+ * Uses a normal click when possible; falls back to direct focus when overlays
+ * (e.g. Astro dev toolbar) intercept pointer events — same outcome as keyboard focus.
+ */
+export async function submitSteer(page, message) {
+  await preparePageForBarInteraction(page);
+  await page.locator(STEER_CHAT_ID).waitFor({ state: 'visible', timeout: 5_000 });
+
+  try {
+    await page.locator(STEER_CHAT_ID).click({ timeout: 2_500 });
+  } catch {
+    await focusSteerInput(page);
+  }
+  if (!(await focusSteerInput(page))) {
+    await page.locator(STEER_CHAT_ID).click({ force: true, timeout: 2_500 }).catch(() => {});
+    await focusSteerInput(page);
+  }
+
+  const input = page.locator(STEER_INPUT_ID);
+  await input.fill(message, { timeout: 5_000 });
+  await input.press('Enter');
+}
+
+/**
+ * Poll until a marked hero is visible. Uses Playwright's visible check so
+ * elements inside closed modals/tabs do not satisfy the assertion.
+ */
+export async function waitForSteerDomMarker(page, selector, { timeout = 20_000 } = {}) {
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: 'visible', timeout });
+}
+
+/**
+ * Steer bar enters processing mode after submit (handing off / working).
+ */
+export async function waitForSteerLocked(page, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel)?.dataset.processing === 'true',
+    STEER_CHAT_ID,
+    { timeout },
+  );
+}
+
+/**
+ * Steer bar unlocks after the agent replies steer_done over SSE.
+ */
+export async function waitForSteerUnlocked(page, { timeout = 15_000 } = {}) {
+  await page.waitForFunction(
+    (sel) => {
+      const chat = document.querySelector(sel);
+      const input = document.querySelector('#impeccable-live-page-chat-input');
+      return chat?.dataset.processing !== 'true' && input && !input.disabled;
+    },
+    STEER_CHAT_ID,
     { timeout },
   );
 }

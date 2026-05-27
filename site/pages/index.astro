@@ -1,9 +1,11 @@
 ---
 import Base from '../layouts/Base.astro';
+import Testimonials from '../components/Testimonials.astro';
 import '../styles/main.css';
 import '../styles/sub-pages.css';
 import '../styles/home-kinpaku.css';
 import '../styles/home-rebuild.css';
+import '../styles/testimonials.css';
 
 // Hero background candidates — pulled from /design-system's candidate folders
 // so the homepage switcher and the design-system gallery stay in sync. The
@@ -183,11 +185,13 @@ import '../styles/home-rebuild.css';
 
               <div class="live-demo-outline" data-demo-outline aria-hidden="true"></div>
 
-              <!-- Annotation layer: a freehand circle around the price + a comment
-                   pin with a note. Mirrors the real picker; both are "sent along". -->
+              <!-- Annotation layer: two freehand circles isolating the off-brand
+                   bits (generic headline + purple button) + a comment pin with the
+                   intent. Mirrors the real picker; all of it is "sent along". -->
               <div class="live-demo-annotations" data-demo-annotations aria-hidden="true">
                 <svg class="live-demo-stroke" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M11 40 C7 24 30 16 47 22 C62 27 64 52 50 64 C35 76 11 70 7 53 C5 44 7 40 11 38" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+                  <path class="live-demo-stroke-p1" d="M8 44 C3 27 28 21 52 25 C66 27 68 40 56 45 C40 50 12 49 7 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+                  <path class="live-demo-stroke-p2" d="M6 74 C2 61 17 55 31 58 C41 60 42 72 31 75 C19 79 7 77 5 67" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
                 </svg>
                 <span class="live-demo-pin" data-demo-pin>
                   <span class="live-demo-pin-dot"></span>
@@ -199,7 +203,7 @@ import '../styles/home-rebuild.css';
               <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
                 <div class="live-demo-ctx-row live-demo-ctx-row--configure">
                   <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
-                    <span data-demo-cmd-name>bolder</span>
+                    <span data-demo-cmd-name>adapt</span>
                     <span class="live-demo-ctx-pill-caret" aria-hidden="true">▾</span>
                   </button>
                   <span class="live-demo-ctx-input" data-demo-input>
@@ -245,7 +249,16 @@ import '../styles/home-rebuild.css';
               <button type="button" class="live-demo-gbar-btn">
                 <span class="live-demo-gbar-dmd" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
               </button>
-              <span class="live-demo-gbar-divider"></span>
+              <div class="live-demo-gbar-chat" data-demo-gbar-chat data-expanded="false" title="Steer the page">
+                <span class="live-demo-gbar-chat-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </span>
+                <span class="live-demo-gbar-chat-hint">Steer</span>
+                <input class="live-demo-gbar-chat-input" type="text" placeholder="Steer the page…" aria-label="Steer the page" tabindex="-1" />
+                <button type="button" class="live-demo-gbar-chat-voice" aria-label="Voice input">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+              </div>
               <button type="button" class="live-demo-gbar-x" aria-label="Exit live mode">✕</button>
             </div>
           </div></div>
@@ -254,6 +267,11 @@ import '../styles/home-rebuild.css';
     </div>
   </section>
 </Fragment>
+
+    <!-- 01b. TESTIMONIALS: five-variant section, switcher in the bottom-right
+         floating panel. Sits between the hero and the slop teaser. The dot-grid
+         divider that used to open the slop section now opens this one. -->
+    <Testimonials />
 
 
     <!-- 02. CATCH THE SLOP - Anti-pattern detector teaser -->

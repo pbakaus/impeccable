@@ -719,6 +719,79 @@ colors: {}
     assert.equal(written.length, png.length);
   });
 
+  it('POST /events rejects steer with empty message', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'steer',
+        id: 'a1b2c3de',
+        message: '   ',
+        pageUrl: 'http://localhost:3000/',
+      }),
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('message'));
+  });
+
+  it('steer events flow from browser POST to agent poll and steer_done via SSE', async () => {
+    await drainPolls(server);
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    assert.equal(sseRes.status, 200);
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const pollPromise = fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=5000`)
+      .then(r => r.json());
+
+    await new Promise(r => setTimeout(r, 100));
+
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'steer',
+        id: 'b2c3d4e5',
+        message: 'Make the hero quieter',
+        pageUrl: 'http://localhost:3000/',
+      }),
+    });
+    assert.equal(postRes.status, 200);
+
+    const event = await pollPromise;
+    assert.equal(event.type, 'steer');
+    assert.equal(event.id, 'b2c3d4e5');
+    assert.equal(event.message, 'Make the hero quieter');
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'b2c3d4e5',
+        type: 'steer_done',
+        message: 'Hero spacing tightened',
+      }),
+    });
+
+    const { value: chunk } = await reader.read();
+    const text = decoder.decode(chunk);
+    assert.ok(text.includes('"steer_done"'));
+    assert.ok(text.includes('b2c3d4e5'));
+    assert.ok(text.includes('Hero spacing tightened'));
+
+    controller.abort();
+  });
+
   it('POST /events accepts generate with optional annotation fields', async () => {
     // Drain any queued events from previous tests
     let drained;

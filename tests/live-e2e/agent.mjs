@@ -14,17 +14,22 @@
  *    kinds across the variant set, single top-level element per variant matching
  *    the original tag.
  *
- * A future LLM-backed agent slots in by implementing the same VariantAgent
- * interface (one method, `generateVariants(event, context)`), so the loop and
- * harness stay unchanged.
+ * A future LLM-backed agent slots in by implementing the same LiveAgent
+ * interface: `generateVariants(event, context)` for picks, and optional
+ * `handleSteer(event, context)` for page-level Steer bar messages.
  */
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
+
+export const STEER_MARKER_ATTR = 'data-impeccable-steer';
+export const STEER_MARKER_VALUE = 'e2e';
 
 // ---------------------------------------------------------------------------
 // Variant-output schema
@@ -51,8 +56,12 @@ const execFileP = promisify(execFile);
  *                                       block — `@scope` rules per variant.
  * @property {VariantSpec[]} variants
  *
- * @typedef {Object} VariantAgent
+ * @typedef {Object} SteerOutput
+ * @property {string=} message  Optional short toast forwarded in steer_done.
+ *
+ * @typedef {Object} LiveAgent
  * @property {(event: object, context: object) => Promise<GenerateOutput>} generateVariants
+ * @property {(event: object, context: object) => Promise<SteerOutput>} [handleSteer]
  */
 
 // ---------------------------------------------------------------------------
@@ -160,6 +169,12 @@ export function createFakeAgent() {
         scopedCss,
         variants: [variant1, variant2, variant3],
       };
+    },
+
+    /** @type {LiveAgent['handleSteer']} */
+    async handleSteer(_event, context) {
+      await handleSteerDeterministic(context);
+      return { message: 'Hero marked' };
     },
   };
 }
@@ -293,12 +308,11 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
  * @param {string} opts.scriptsDir Path to the impeccable scripts dir.
  * @param {number} opts.port       live-server port.
  * @param {string} opts.token      live-server token.
- * @param {VariantAgent} opts.agent
+ * @param {LiveAgent} opts.agent
  * @param {AbortSignal} opts.signal
  * @param {(msg: string) => void} [opts.log]
- * @param {object} [opts.wrapTarget] Default target for live-wrap when an
- *                                   element comes from the picker without an
- *                                   id we can resolve. e.g. {classes:'hero-title', tag:'h1'}.
+ * @param {object} [opts.steerSourceFile]  Optional relative source path for steer edits.
+ * @param {object} [opts.steerTarget]      Optional { classes, tag } for steer target discovery.
  */
 export async function runAgentLoop({
   tmp,
@@ -309,6 +323,8 @@ export async function runAgentLoop({
   signal,
   log = () => {},
   wrapTarget = { classes: 'hero-title', tag: 'h1' },
+  steerSourceFile,
+  steerTarget,
 }) {
   const base = `http://127.0.0.1:${port}`;
 
@@ -328,6 +344,48 @@ export async function runAgentLoop({
     if (event.type === 'exit') return;
     if (event.type === 'prefetch') continue;
     if (event.type === 'connected') continue;
+
+    if (event.type === 'steer') {
+      log(`steer id=${event.id} message=${JSON.stringify(event.message)}`);
+      try {
+        const target = typeof wrapTarget === 'function' ? wrapTarget(event) : wrapTarget;
+        const steerCtxTarget = steerTarget || target;
+        const steerContext = buildSteerContext({
+          tmp,
+          event,
+          wrapTarget: steerCtxTarget,
+          sourceFile: steerSourceFile,
+        });
+        let toast = 'Hero marked';
+        if (typeof agent.handleSteer === 'function') {
+          const result = await agent.handleSteer(event, steerContext);
+          toast = result?.message || toast;
+        } else {
+          await handleSteerDeterministic(steerContext);
+        }
+        await fetch(`${base}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            type: 'steer_done',
+            id: event.id,
+            message: toast,
+          }),
+          signal,
+        });
+      } catch (err) {
+        if (signal.aborted) return;
+        log('steer failed: ' + err.message);
+        await fetch(`${base}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, type: 'error', id: event.id, message: err.message }),
+          signal,
+        }).catch(() => {});
+      }
+      continue;
+    }
 
     if (event.type === 'generate') {
       log(`generate id=${event.id} action=${event.action} count=${event.count}`);
@@ -444,6 +502,121 @@ export async function runAgentLoop({
 
     log(`unhandled event: ${event.type}`);
   }
+}
+
+const SOURCE_EXTS = new Set(['.html', '.jsx', '.tsx', '.svelte', '.astro', '.vue']);
+const SOURCE_SKIP = new Set(['node_modules', '.git', '.svelte-kit', 'dist', '.vite', 'build', '.next']);
+
+/**
+ * Locate the source file the fake steer handler would edit (for assertions).
+ * @param {string} tmp
+ * @param {{ classes?: string, tag?: string }=} target
+ */
+export function findSteerTargetFile(tmp, target = { classes: 'hero-title', tag: 'h1' }) {
+  const file = findSteerTargetFileSync(tmp, target);
+  if (!file) {
+    throw new Error('Could not locate steer target file under ' + tmp);
+  }
+  return file;
+}
+
+/**
+ * Context passed to agent.handleSteer (fake + LLM).
+ * @param {{ tmp: string, event: object, wrapTarget: object, sourceFile?: string }} opts
+ */
+export function buildSteerContext({ tmp, event, wrapTarget, sourceFile }) {
+  const target = wrapTarget || { classes: 'hero-title', tag: 'h1' };
+  const targetFileAbs = sourceFile
+    ? path.join(tmp, sourceFile)
+    : findSteerTargetFile(tmp, target);
+  const targetFile = path.relative(tmp, targetFileAbs);
+  const source = readFileSync(targetFileAbs, 'utf-8');
+  const tag = target.tag || 'h1';
+  const classToken = (target.classes || 'hero-title').split(/\s+/)[0];
+  const tagLine = source.split('\n').find((line) =>
+    new RegExp(`<${tag}\\b`, 'i').test(line) && line.includes(classToken),
+  );
+  return {
+    tmp,
+    target,
+    targetFile,
+    targetFileAbs,
+    pageUrl: event.pageUrl,
+    tagLine: tagLine || null,
+    sourceExcerpt: source.split('\n').slice(0, 60).join('\n'),
+    requiredMarker: `${STEER_MARKER_ATTR}="${STEER_MARKER_VALUE}"`,
+  };
+}
+
+/**
+ * Apply one or more exact find/replace edits inside the staged fixture tree.
+ * @param {string} tmp
+ * @param {{ file: string, edits: Array<{ find: string, replace: string }> }} payload
+ */
+export async function applySteerEdits(tmp, { file, edits }) {
+  if (!file || typeof file !== 'string') throw new Error('steer edits: file required');
+  if (!Array.isArray(edits) || edits.length === 0) throw new Error('steer edits: edits array required');
+  const abs = path.isAbsolute(file) ? file : path.join(tmp, file);
+  const root = path.resolve(tmp);
+  if (!path.resolve(abs).startsWith(root + path.sep) && path.resolve(abs) !== root) {
+    throw new Error('steer edits: path escapes fixture root');
+  }
+  let body = await fs.readFile(abs, 'utf-8');
+  for (const [i, edit] of edits.entries()) {
+    if (!edit || typeof edit.find !== 'string' || typeof edit.replace !== 'string') {
+      throw new Error(`steer edits[${i}]: find and replace must be strings`);
+    }
+    if (!body.includes(edit.find)) {
+      throw new Error(`steer edits[${i}]: find string not found in ${file}`);
+    }
+    body = body.replace(edit.find, edit.replace);
+  }
+  await fs.writeFile(abs, body, 'utf-8');
+}
+
+async function handleSteerDeterministic(context) {
+  const { targetFileAbs, target } = context;
+  let body = await fs.readFile(targetFileAbs, 'utf-8');
+  const attr = `${STEER_MARKER_ATTR}="${STEER_MARKER_VALUE}"`;
+  if (body.includes(attr)) return;
+
+  const { classes = 'hero-title', tag = 'h1' } = target;
+  const classToken = classes.split(/\s+/)[0];
+  const openTagRe = new RegExp(
+    `(<${tag}\\b(?=[^>]*\\b(?:className|class)=["'][^"']*\\b${classToken}\\b)[^>]*)(>)`,
+    'i',
+  );
+  if (!openTagRe.test(body)) {
+    throw new Error(`steer target <${tag}.${classToken}> not found in ${targetFileAbs}`);
+  }
+  body = body.replace(openTagRe, `$1 ${attr}$2`);
+  await fs.writeFile(targetFileAbs, body, 'utf-8');
+}
+
+function findSteerTargetFileSync(tmp, target) {
+  const { classes = 'hero-title', tag = 'h1' } = target;
+  const classNeedle = classes.split(/\s+/)[0];
+  const stack = [tmp];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SOURCE_SKIP.has(entry.name)) stack.push(full);
+        continue;
+      }
+      const ext = path.extname(entry.name);
+      if (!SOURCE_EXTS.has(ext)) continue;
+      let body;
+      try { body = readFileSync(full, 'utf-8'); } catch { continue; }
+      if (!body.includes(classNeedle)) continue;
+      if (!new RegExp(`<${tag}\\b`, 'i').test(body)) continue;
+      return full;
+    }
+  }
+  return null;
 }
 
 async function runWrap({ tmp, scriptsDir, id, count, classes, tag, elementId, text }) {

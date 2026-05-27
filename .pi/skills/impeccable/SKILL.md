@@ -33,7 +33,6 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 
 - Cap body line length at 65–75ch.
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
-- Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces.
 - Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights.
 - No all-caps body copy. Reserve uppercase for short labels (≤4 words), section eyebrows (used sparingly per the Absolute bans), and badges. Sentences in ALL CAPS are unreadable at body sizes.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
@@ -53,6 +52,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - Don't animate CSS layout properties unless truly needed.
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 - Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis etc)
+- Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition.
 - Sibling stagger on a list (cards, list items) is legitimate. Whole-section fade-on-scroll on every scrolled section is not a list; it's the saturated AI motion reflex.
 - Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank.
 - Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth.
