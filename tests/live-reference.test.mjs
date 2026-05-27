@@ -32,6 +32,9 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
+    assert.match(liveMd, /If `repair` is present/);
+    assert.match(liveMd, /Fix the current source/);
+    assert.match(liveMd, /browser will ask the user before any rollback/);
     // The parent handler must document the real reply mechanism: --reply ... --data <json>.
     // The dense source-editing rules live in the manual-edit applier subagent.
     assert.match(liveMd, /--reply EVENT_ID done --data '\{"status":"done"/);
@@ -57,11 +60,16 @@ describe('live reference authoring contract', () => {
     assert.match(manualAgentMd, /ambiguous or broad/);
     assert.match(manualAgentMd, /Preserve `op\.newText` exactly/);
     assert.match(manualAgentMd, /leading zeros/);
+    assert.match(manualAgentMd, /expression-only text node/);
+    assert.match(manualAgentMd, /quoted expression such as `\{"7 seats"\}`/);
     assert.match(manualAgentMd, /back to a plain number/);
     assert.match(manualAgentMd, /Preserve typed source data/);
     assert.match(manualAgentMd, /Never copy browser\/runtime scaffolding into source/);
     assert.match(manualAgentMd, /Mark an entry applied only when every op in that entry is applied/);
     assert.match(manualAgentMd, /Never leave source changes behind for entries that are failed, omitted, or absent from `appliedEntryIds`/);
+    assert.match(manualAgentMd, /repair metadata/);
+    assert.match(manualAgentMd, /repair the current source/);
+    assert.match(manualAgentMd, /do not roll back files yourself/);
     assert.match(manualAgentMd, /Return only JSON/);
     assert.match(manualAgentMd, /"status":"partial"/);
     assert.match(manualAgentMd, /"status":"error"/);

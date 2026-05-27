@@ -60,6 +60,7 @@ const ROLLBACK_SKIP_DIRS = new Set([
   'node_modules',
   'out',
 ]);
+const DEFAULT_REPAIR_ATTEMPTS = 3;
 
 function argVal(args, name) {
   const prefix = name + '=';
@@ -133,6 +134,67 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()))];
 }
 
+function allEntryIds(batch) {
+  return (batch?.entries || []).map((entry) => entry.id).filter(Boolean);
+}
+
+function mergeUniqueStrings(...groups) {
+  return uniqueStrings(groups.flatMap((group) => Array.isArray(group) ? group : []));
+}
+
+function repairAttemptLimit(env = process.env) {
+  const value = Number(env.IMPECCABLE_LIVE_MANUAL_EDIT_REPAIR_ATTEMPTS || DEFAULT_REPAIR_ATTEMPTS);
+  if (!Number.isFinite(value)) return DEFAULT_REPAIR_ATTEMPTS;
+  return Math.max(1, Math.min(10, Math.trunc(value)));
+}
+
+function summarizeRepairFailures(failures = []) {
+  return failures.map((failure) => {
+    const out = {
+      reason: failure.reason || failure.detail || 'validation_failed',
+    };
+    if (failure.id || failure.entryId) out.entryId = failure.id || failure.entryId;
+    if (failure.ref) out.ref = failure.ref;
+    if (failure.detail) out.detail = failure.detail;
+    if (failure.file) out.file = failure.file;
+    if (failure.message) out.message = failure.message;
+    if (failure.marker) out.marker = failure.marker;
+    if (Array.isArray(failure.files)) out.files = failure.files.slice(0, 8);
+    if (Array.isArray(failure.candidates)) {
+      out.candidates = failure.candidates.slice(0, 8).map((candidate) => ({
+        file: candidate.file,
+        line: candidate.line,
+        kind: candidate.kind,
+        reason: candidate.reason,
+      }));
+    }
+    if (Array.isArray(failure.failures)) {
+      out.failures = failure.failures.slice(0, 8).map((item) => ({
+        ref: item.ref,
+        reason: item.reason || item.detail,
+        detail: item.detail,
+        candidates: Array.isArray(item.candidates)
+          ? item.candidates.slice(0, 6).map((candidate) => ({
+              file: candidate.file,
+              line: candidate.line,
+              kind: candidate.kind,
+              reason: candidate.reason,
+            }))
+          : undefined,
+      }));
+    }
+    if (failure.checks) out.checks = failure.checks;
+    return out;
+  }).slice(0, 20);
+}
+
+function buildRepairBatch(batch, repair) {
+  return {
+    ...batch,
+    repair,
+  };
+}
+
 function normalizeRelativeFile(cwd, file) {
   if (!file || typeof file !== 'string') return null;
   const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
@@ -154,6 +216,9 @@ function sourceHintWindowFailure(cwd, op) {
   const lines = content.split('\n');
   const line = Math.max(1, Number(hint.line) || 1);
   const lineText = lines[line - 1] || '';
+  const start = Math.max(0, line - 5);
+  const end = Math.min(lines.length, line + 4);
+  if (lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op))) return null;
   if (
     typeof op.originalText === 'string'
     && op.originalText
@@ -212,6 +277,56 @@ function verificationTargetsForOp(batch, op, reportedFiles, cwd) {
   });
 }
 
+function objectKeyCandidatesForOp(batch, op) {
+  const candidates = (batch.candidates || [])
+    .filter((item) => item.entryId === op.entryId && item.ref === op.ref);
+  return candidates.flatMap((candidate) => candidate.objectKeyMatches || []);
+}
+
+function lineHasObjectKey(line, text) {
+  if (typeof text !== 'string' || text.length === 0) return false;
+  const quotedKey = new RegExp('(^|[\\s,{])([\'"`])' + escapeRegExp(text) + '\\2\\s*:');
+  if (quotedKey.test(line)) return true;
+  const identifierSafe = /^[A-Za-z_$][\w$]*$/.test(text);
+  if (!identifierSafe) return false;
+  const bareKey = new RegExp('(^|[\\s,{])' + escapeRegExp(text) + '\\s*:');
+  return bareKey.test(line);
+}
+
+function objectKeyMatchStillUsesOriginal(cwd, match, op) {
+  const relative = normalizeRelativeFile(cwd, match?.file);
+  const lineNumber = Number(match?.line);
+  if (!relative || !Number.isFinite(lineNumber) || lineNumber < 1) return false;
+  let lines;
+  try { lines = fs.readFileSync(path.resolve(cwd, relative), 'utf-8').split('\n'); } catch { return false; }
+  const start = Math.max(0, lineNumber - 4);
+  const end = Math.min(lines.length, lineNumber + 3);
+  const windowLines = lines.slice(start, end);
+  if (windowLines.some((line) => lineHasObjectKey(line, op.newText))) return false;
+  return windowLines.some((line) => lineHasObjectKey(line, op.originalText));
+}
+
+function coupledObjectKeyFailuresForOp(batch, op, cwd) {
+  if (
+    typeof op?.originalText !== 'string'
+    || typeof op?.newText !== 'string'
+    || op.originalText === op.newText
+  ) return [];
+  return objectKeyCandidatesForOp(batch, op)
+    .filter((match) => objectKeyMatchStillUsesOriginal(cwd, match, op))
+    .map((match) => ({
+      ref: op.ref,
+      reason: 'source_verification_failed',
+      detail: 'edited_text_source_key_dependency_not_updated',
+      candidates: [{
+        file: normalizeRelativeFile(cwd, match.file) || match.file,
+        line: match.line,
+        kind: 'object_key_match',
+        reason: 'edited text is also a source key; update the coupled key to newText or fail the entry',
+      }],
+    }));
+}
+
 function siblingCandidatesForEntry(batch, op) {
   if (!op?.entryId) return [];
   return (batch.candidates || []).filter((item) => item.entryId === op.entryId && item.ref !== op.ref);
@@ -240,9 +355,16 @@ function verificationTargetPasses(cwd, target, op) {
 function verificationTargetPassesLines(lines, target, op) {
   const line = lines[target.line - 1] || '';
   if (lineShowsAppliedOp(line, op)) return true;
-  if (!target.reported || !String(target.kind || '').includes('context_text_match')) return false;
-  const start = Math.max(0, target.line - 21);
-  const end = Math.min(lines.length, target.line + 20);
+  const kind = String(target.kind || '');
+  const canSearchWindow = target.reported
+    || kind.includes('source_hint')
+    || kind.includes('context_text_match')
+    || kind.includes('object_key_match')
+    || kind.includes('text_match');
+  if (!canSearchWindow) return false;
+  const radius = kind.includes('context_text_match') ? 20 : 4;
+  const start = Math.max(0, target.line - radius - 1);
+  const end = Math.min(lines.length, target.line + radius);
   return lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op));
 }
 
@@ -298,7 +420,23 @@ function verifyAppliedEntry({ batch, entry, reportedFiles, cwd }) {
       continue;
     }
     const targets = verificationTargetsForOp(batch, op, reportedFiles, cwd);
-    if (targets.some((target) => verificationTargetPasses(cwd, target, op))) continue;
+    const coupledObjectKeyFailures = coupledObjectKeyFailuresForOp(batch, op, cwd);
+    if (
+      coupledObjectKeyFailures.length === 0
+      && targets.some((target) => verificationTargetPasses(cwd, target, op))
+    ) continue;
+
+    if (coupledObjectKeyFailures.length > 0) {
+      failures.push(...coupledObjectKeyFailures.map((failure) => ({
+        ...failure,
+        candidates: [
+          ...(failure.candidates || []),
+          ...targets.map((target) => ({ file: target.file, line: target.line, kind: target.kind })),
+          ...candidatesForEntry(batch, entry.id),
+        ].slice(0, 12),
+      })));
+      continue;
+    }
 
     const hintedOldText = sourceHintWindowFailure(cwd, op);
     if (hintedOldText) {
@@ -539,6 +677,170 @@ function normalizeRollbackPath(cwd, file) {
   return relative;
 }
 
+function verifyEntriesAfterRepair({ batch, appliedEntryIds, files, cwd }) {
+  const reportedFiles = uniqueStrings(files || [])
+    .map((file) => normalizeRelativeFile(cwd, file))
+    .filter(Boolean);
+  const entries = (batch.entries || []).filter((entry) => appliedEntryIds.includes(entry.id));
+  const verifiedIds = [];
+  const failed = [];
+  for (const entry of entries) {
+    const failures = verifyAppliedEntry({ batch, entry, reportedFiles, cwd });
+    if (failures.length === 0) {
+      verifiedIds.push(entry.id);
+    } else {
+      failed.push({
+        id: entry.id,
+        reason: 'source_verification_failed',
+        failures,
+        candidates: candidatesForEntry(batch, entry.id),
+      });
+    }
+  }
+  return { verifiedIds, failed, reportedFiles };
+}
+
+async function repairPostApplyValidation({
+  batch,
+  cwd,
+  pageUrl,
+  count,
+  provider,
+  env,
+  timeoutMs,
+  applyBatchToSource,
+  chatAvailable,
+  transactionId,
+  appliedEntryIds,
+  files,
+  failed,
+  notes,
+  warnings,
+  postChecks,
+  repairReason = 'post_apply_validation_failed',
+  repairFailures = null,
+}) {
+  const maxAttempts = repairAttemptLimit(env);
+  let currentFiles = mergeUniqueStrings(files || []);
+  let currentAppliedIds = mergeUniqueStrings(appliedEntryIds || []);
+  let currentFailed = Array.isArray(failed) ? failed : [];
+  let currentNotes = Array.isArray(notes) ? notes : [];
+  let currentWarnings = Array.isArray(warnings) ? warnings : [];
+  let currentFailures = Array.isArray(repairFailures) ? repairFailures : (postChecks?.failures || []);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const repair = {
+      attempt,
+      maxAttempts,
+      transactionId: transactionId || null,
+      reason: repairReason,
+      failures: summarizeRepairFailures(currentFailures),
+      files: currentFiles,
+      pageUrl,
+    };
+    let repairResult;
+    try {
+      repairResult = await runCopyEditBatchAgent(buildRepairBatch(batch, repair), {
+        cwd,
+        provider,
+        env,
+        timeoutMs,
+        applyBatchToSource,
+        chatAvailable,
+      });
+    } catch (err) {
+      currentFailures = [{
+        reason: 'repair_agent_failed',
+        message: err.message || String(err),
+      }];
+      continue;
+    }
+
+    currentFiles = mergeUniqueStrings(currentFiles, repairResult.files || []);
+    currentNotes = [...currentNotes, ...(repairResult.notes || [])];
+    currentWarnings = [...currentWarnings];
+    currentAppliedIds = mergeUniqueStrings(currentAppliedIds, repairResult.appliedEntryIds || []);
+    currentFailed = [
+      ...currentFailed,
+      ...normalizeFailedEntries(batch, repairResult, 'repair_failed'),
+    ];
+
+    const verified = verifyEntriesAfterRepair({
+      batch,
+      appliedEntryIds: currentAppliedIds,
+      files: currentFiles,
+      cwd,
+    });
+    if (verified.failed.length > 0) {
+      currentFailures = verified.failed;
+      continue;
+    }
+
+    const repairedChecks = runCopyEditPostApplyChecks({ cwd, files: currentFiles });
+    currentWarnings = [...currentWarnings, ...(repairedChecks.warnings || [])];
+    if (!repairedChecks.ok) {
+      currentFailures = repairedChecks.failures || [];
+      continue;
+    }
+
+    const cleared = clearAppliedEntries(cwd, verified.verifiedIds);
+    const counts = countByPage(cwd);
+    const verifiedIdSet = new Set(verified.verifiedIds);
+    return {
+      applied: summarizeAppliedEntries(batch.entries, verified.verifiedIds),
+      failed: currentFailed.filter((item) => !verifiedIdSet.has(item.id)),
+      files: currentFiles,
+      cleared,
+      count,
+      pageUrl,
+      warnings: currentWarnings,
+      notes: currentNotes,
+      repair: {
+        status: 'repaired',
+        attempts: attempt,
+        maxAttempts,
+        transactionId: transactionId || null,
+      },
+      ...counts,
+    };
+  }
+
+  const decisionFailedEntries = currentAppliedIds.length > 0
+    ? (batch.entries || [])
+        .filter((entry) => currentAppliedIds.includes(entry.id))
+        .map((entry) => ({
+          id: entry.id,
+          reason: repairReason,
+          checks: currentFailures,
+          candidates: candidatesForEntry(batch, entry.id),
+        }))
+    : verificationFailuresForEntries(batch, batch.entries || [], repairReason, { checks: currentFailures });
+  return {
+    applied: [],
+    failed: [
+      ...decisionFailedEntries,
+      ...currentFailed,
+    ],
+    files: currentFiles,
+    cleared: 0,
+    count,
+    pageUrl,
+    warnings: currentWarnings,
+    notes: currentNotes,
+    reason: 'manual_edit_repair_needs_decision',
+    needsManualDecision: true,
+    repair: {
+      status: 'needs_decision',
+      attempts: maxAttempts,
+      maxAttempts,
+      transactionId: transactionId || null,
+      failures: summarizeRepairFailures(currentFailures),
+      files: currentFiles,
+    },
+    ...countByPage(cwd),
+  };
+}
+
 export async function commitManualEdits({
   cwd = process.cwd(),
   pageUrl = null,
@@ -547,6 +849,8 @@ export async function commitManualEdits({
   timeoutMs = undefined,
   applyBatchToSource = undefined,
   chatAvailable = undefined,
+  repairOnly = false,
+  transactionId = null,
 } = {}) {
   try {
     readBufferStrict(cwd);
@@ -583,14 +887,22 @@ export async function commitManualEdits({
   const baseRollbackScope = collectApplyOwnedFiles(batch, cwd);
   let result;
   try {
-    result = await runCopyEditBatchAgent(batch, {
-      cwd,
-      provider,
-      env,
-      timeoutMs,
-      applyBatchToSource,
-      chatAvailable,
-    });
+    result = repairOnly
+      ? {
+          status: 'done',
+          appliedEntryIds: allEntryIds(batch),
+          failed: [],
+          files: collectApplyOwnedFiles(batch, cwd),
+          notes: ['repair-only validation pass'],
+        }
+      : await runCopyEditBatchAgent(batch, {
+          cwd,
+          provider,
+          env,
+          timeoutMs,
+          applyBatchToSource,
+          chatAvailable,
+        });
   } catch (err) {
     const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, [], baseRollbackScope);
     return {
@@ -695,22 +1007,25 @@ export async function commitManualEdits({
 
   const reportedAppliedEntries = batch.entries.filter((entry) => reportedAppliedIds.includes(entry.id));
   if (reportedAppliedIds.length > 0 && reportedFiles.length === 0) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
-    return {
-      applied: [],
-      failed: [
-        ...verificationFailuresForEntries(batch, reportedAppliedEntries, 'missing_touched_files'),
-        ...aiFailed,
-      ],
-      files: result.files || [],
-      cleared: 0,
-      count,
+    return repairPostApplyValidation({
+      batch,
+      cwd,
       pageUrl,
+      count,
+      provider,
+      env,
+      timeoutMs,
+      applyBatchToSource,
+      chatAvailable,
+      transactionId,
+      appliedEntryIds: reportedAppliedIds,
+      files: result.files || [],
+      failed: aiFailed,
       notes: result.notes || [],
-      rolledBackFiles: rollback.rolledBackFiles,
-      rollbackFailures: rollback.rollbackFailures,
-      ...countByPage(cwd),
-    };
+      warnings: [],
+      repairReason: 'missing_touched_files',
+      repairFailures: verificationFailuresForEntries(batch, reportedAppliedEntries, 'missing_touched_files'),
+    });
   }
 
   const verifiedAppliedIds = [];
@@ -731,10 +1046,13 @@ export async function commitManualEdits({
   const unreportedEntries = result.status === 'done' || result.status === 'partial'
     ? batch.entries.filter((entry) => !reportedAppliedIds.includes(entry.id) && !aiFailed.some((item) => item.id === entry.id))
     : [];
-  const failed = [
-    ...verificationFailed,
+  const nonRepairFailed = [
     ...verificationFailuresForEntries(batch, unreportedEntries, 'not_reported_applied'),
     ...aiFailed,
+  ];
+  const failed = [
+    ...verificationFailed,
+    ...nonRepairFailed,
   ];
 
   const unappliedEntries = batch.entries.filter((entry) => !reportedAppliedIds.includes(entry.id));
@@ -774,58 +1092,52 @@ export async function commitManualEdits({
   }
 
   if (verificationFailed.length > 0) {
-    const rolledBackVerified = reportedAppliedEntries
-      .filter((entry) => verifiedAppliedIds.includes(entry.id))
-      .map((entry) => ({
-        id: entry.id,
-        reason: 'rolled_back_due_to_batch_verification_failure',
-        candidates: candidatesForEntry(batch, entry.id),
-      }));
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
-    return {
-      applied: [],
-      failed: [
-        ...failed,
-        ...rolledBackVerified,
-      ],
-      files: result.files || [],
-      cleared: 0,
-      count,
+    return repairPostApplyValidation({
+      batch,
+      cwd,
       pageUrl,
-      rolledBackFiles: rollback.rolledBackFiles,
-      rollbackFailures: rollback.rollbackFailures,
+      count,
+      provider,
+      env,
+      timeoutMs,
+      applyBatchToSource,
+      chatAvailable,
+      transactionId,
+      appliedEntryIds: reportedAppliedIds,
+      files: result.files || [],
+      failed: nonRepairFailed,
       notes: result.notes || [],
-      ...countByPage(cwd),
-    };
+      warnings: [],
+      repairReason: 'source_verification_failed',
+      repairFailures: verificationFailed,
+    });
   }
 
   const postChecks = runCopyEditPostApplyChecks({ cwd, files: result.files || [] });
   if (!postChecks.ok) {
-    const rollback = rollbackChangedFiles(cwd, rollbackSnapshot, result.files || [], rollbackScope);
     const postCheckEntries = verifiedAppliedIds.length > 0
       ? reportedAppliedEntries.filter((entry) => verifiedAppliedIds.includes(entry.id))
       : batch.entries;
-    return {
-      applied: [],
-      failed: [
-        ...postCheckEntries.map((entry) => ({
-          id: entry.id,
-          reason: 'post_apply_validation_failed',
-          checks: postChecks.failures,
-          candidates: candidatesForEntry(batch, entry.id),
-        })),
-        ...failed,
-      ],
-      files: result.files || [],
-      cleared: 0,
-      count,
+    return repairPostApplyValidation({
+      batch,
+      cwd,
       pageUrl,
-      warnings: postChecks.warnings,
-      rolledBackFiles: rollback.rolledBackFiles,
-      rollbackFailures: rollback.rollbackFailures,
+      count,
+      provider,
+      env,
+      timeoutMs,
+      applyBatchToSource,
+      chatAvailable,
+      transactionId,
+      appliedEntryIds: verifiedAppliedIds.length > 0
+        ? verifiedAppliedIds
+        : postCheckEntries.map((entry) => entry.id).filter(Boolean),
+      files: result.files || [],
+      failed,
       notes: result.notes || [],
-      ...countByPage(cwd),
-    };
+      warnings: postChecks.warnings || [],
+      postChecks,
+    });
   }
 
   const cleared = clearAppliedEntries(cwd, verifiedAppliedIds);

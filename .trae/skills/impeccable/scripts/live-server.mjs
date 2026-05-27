@@ -139,7 +139,7 @@ function countManualApplyOps(entriesOrBatch) {
   return count;
 }
 
-function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
+function pushApplyEventAndWait(batch, pageUrl, chunk = null, repair = null) {
   const eventId = randomUUID().replace(/-/g, '').slice(0, 8);
   const evidencePath = writeManualApplyEvidence(eventId, batch);
   const event = {
@@ -153,16 +153,20 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
     deadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
   };
   if (chunk) event.chunk = chunk;
+  if (repair) event.repair = repair;
   const rollbackSnapshot = snapshotApplyEventFiles(batch);
   recordManualEditActivity('manual_edit_apply_dispatched', {
     id: eventId,
     pageUrl,
     evidencePath,
     chunk,
+    repair,
     entryIds: (batch.entries || []).map((entry) => entry.id).filter(Boolean),
     opCount: countManualApplyOps(batch),
     files: collectManualApplyFiles(batch).slice(0, 20),
     inlineCandidateCount: event.batch.candidates?.length || 0,
+    hardTimeoutMs: APPLY_EVENT_HARD_TIMEOUT_MS,
+    softDeadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
   });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -359,7 +363,9 @@ function truncateManualApplyText(value, max) {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-async function pushApplyBatchInChunksAndWait(batch, pageUrl) {
+async function pushApplyBatchInChunksAndWait(batch, pageUrl, context = {}) {
+  const repair = context?.repair || batch?.repair || null;
+  if (repair) return pushApplyEventAndWait(batch, pageUrl, null, repair);
   const chunks = splitManualApplyBatch(batch, manualEditApplyChunkSize());
   if (chunks.length <= 1) return pushApplyEventAndWait(batch, pageUrl);
 
@@ -837,7 +843,7 @@ function normalizeProjectFile(file) {
   return relative;
 }
 
-function rollbackApplySnapshot(batch, rollbackSnapshot, extraFiles = []) {
+function rollbackApplySnapshot(batch, rollbackSnapshot, extraFiles = [], reason = 'manual_edit_apply_snapshot_rollback') {
   const scope = collectManualApplyFiles(batch, extraFiles);
   const rolledBackFiles = [];
   const rollbackFailures = [];
@@ -864,7 +870,7 @@ function rollbackTimedOutApplyReply(msg) {
   const details = state.timedOutApplyIds.get(msg.id);
   if (!details) return { rolledBackFiles: [], rollbackFailures: [] };
   state.timedOutApplyIds.delete(msg.id);
-  return rollbackApplySnapshot(details.batch, details.rollbackSnapshot, msg.data?.files || []);
+  return rollbackApplySnapshot(details.batch, details.rollbackSnapshot, msg.data?.files || [], 'stale_manual_edit_apply_reply');
 }
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
@@ -949,6 +955,7 @@ function summarizePendingEventForStatus(entry) {
   if (event.type === 'manual_edit_apply') {
     summary.pageUrl = event.pageUrl || null;
     summary.chunk = event.chunk || null;
+    summary.repair = event.repair || null;
     summary.evidencePath = event.evidencePath || null;
     summary.agentAction = event.agentAction || buildManualApplyAgentAction(event);
     summary.manualApplySummary = summarizeManualApplyEvent(event, state.pendingApplyDeferreds.get(event.id)?.batch || event.batch);
@@ -976,7 +983,7 @@ function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded
     if (!shouldCancel(deferred.event)) continue;
     state.pendingApplyDeferreds.delete(eventId);
     clearTimeout(deferred.timer);
-    const rollback = rollbackApplySnapshot(deferred.batch, deferred.rollbackSnapshot);
+    const rollback = rollbackApplySnapshot(deferred.batch, deferred.rollbackSnapshot, [], reason);
     tombstoneTimedOutApplyId(eventId, {
       batch: deferred.batch,
       rollbackSnapshot: deferred.rollbackSnapshot,
@@ -1584,6 +1591,13 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           opCount: msg.ops.length,
           pendingCount,
           totalCount,
+          ops: (msg.ops || []).slice(0, 20).map((op) => ({
+            ref: compactManualLogText(op.ref, 180),
+            originalText: compactManualLogText(op.originalText, 180),
+            newText: compactManualLogText(op.newText, 180),
+            file: summarizeManualLogFile(op.sourceHint?.file),
+            line: op.sourceHint?.line || null,
+          })),
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
@@ -1615,7 +1629,14 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const pageUrl = url.searchParams.get('pageUrl');
       const asyncMode = /^(1|true|yes)$/i.test(url.searchParams.get('async') || '');
-      rollbackManualApplyTransaction({
+      const repairOnly = /^(1|true|yes)$/i.test(url.searchParams.get('repair') || '');
+      const existingTransaction = readManualApplyTransaction(process.cwd());
+      if (repairOnly && !existingTransaction) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'manual_edit_repair_transaction_missing' }));
+        return;
+      }
+      const recoveredTransaction = repairOnly ? null : rollbackManualApplyTransaction({
         cwd: process.cwd(),
         pageUrl,
         reason: 'manual_edit_commit_recovered_abandoned_transaction',
@@ -1625,8 +1646,16 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       const commitStartedAt = Date.now();
       recordManualEditActivity('manual_edit_commit_started', {
         pageUrl,
+        repairOnly,
         pendingCount,
         totalCount: before.totalCount,
+        recoveredTransaction: recoveredTransaction ? {
+          id: recoveredTransaction.id,
+          reason: recoveredTransaction.reason,
+          skipped: recoveredTransaction.skipped,
+          rolledBackFiles: recoveredTransaction.rolledBackFiles,
+          rollbackFailures: summarizeManualDiagnostics(recoveredTransaction.rollbackFailures),
+        } : null,
         ...summarizePendingManualEditBatch(pageUrl),
       });
       if (asyncMode) {
@@ -1645,12 +1674,14 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         try {
           if (pendingCount > 0) {
             const transactionBatch = buildManualEditEvidence({ cwd: process.cwd(), pageUrl });
-            if (countManualApplyOps(transactionBatch) > 0) {
+            if (!repairOnly && countManualApplyOps(transactionBatch) > 0) {
               transaction = writeManualApplyTransaction({
                 cwd: process.cwd(),
                 pageUrl,
                 batch: transactionBatch,
               });
+            } else if (repairOnly && existingTransaction) {
+              transaction = existingTransaction;
             }
           }
           const requestedMode = (process.env.IMPECCABLE_LIVE_COPY_AGENT || 'auto').trim().toLowerCase();
@@ -1666,7 +1697,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
               env: process.env,
               timeoutMs,
               chatAvailable: chatAgentLikelyActive,
-              applyBatchToSource: (batch) => pushApplyBatchInChunksAndWait(batch, pageUrl),
+              applyBatchToSource: (batch, context) => pushApplyBatchInChunksAndWait(batch, pageUrl, context),
+              repairOnly,
+              transactionId: transaction?.id || existingTransaction?.id || null,
             });
           } else {
             const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
@@ -1678,6 +1711,8 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
               env: process.env,
               timeoutMs,
               chatAvailable: chatAgentLikelyActive,
+              repairOnly,
+              transactionId: transaction?.id || existingTransaction?.id || null,
             });
           }
         } catch (err) {
@@ -1695,6 +1730,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             error: 'manual_edit_commit_failed',
             message,
             durationMs: Date.now() - commitStartedAt,
+            transactionId: transaction?.id || null,
           });
           if (!asyncMode) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1705,13 +1741,32 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           }
           return;
         } finally {
-          if (transaction) clearManualApplyTransaction(process.cwd(), transaction.id);
+          if (transaction) {
+            const shouldKeepTransaction = result?.needsManualDecision === true;
+            if (!shouldKeepTransaction) clearManualApplyTransaction(process.cwd(), transaction.id);
+          }
         }
         const { totalCount, perPage } = countPendingByPage(process.cwd());
+        if (result?.needsManualDecision) {
+          recordManualEditActivity('manual_edit_repair_needs_decision', {
+            pageUrl,
+            provider: routedProvider,
+            durationMs: Date.now() - commitStartedAt,
+            transactionId: transaction?.id || existingTransaction?.id || null,
+            repair: result.repair || null,
+            failed: summarizeManualApplyFailures(result.failed),
+            files: Array.isArray(result.files) ? result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
+            remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+            totalCount,
+          });
+        }
         recordManualEditActivity('manual_edit_commit_done', {
           pageUrl,
           provider: routedProvider,
           durationMs: Date.now() - commitStartedAt,
+          reason: result.reason || null,
+          needsManualDecision: result.needsManualDecision === true,
+          repair: result.repair || null,
           appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
           failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
           failed: summarizeManualApplyFailures(result.failed),
@@ -1730,6 +1785,47 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           res.end(JSON.stringify({ ...result, totalCount, perPage }));
         }
       })();
+      return;
+    }
+
+    // POST /manual-edit-repair-decision  →  user resolves an exhausted repair loop.
+    if (p === '/manual-edit-repair-decision' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        let payload = {};
+        try { payload = body ? JSON.parse(body) : {}; } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+        const token = payload.token || url.searchParams.get('token');
+        if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+        const pageUrl = payload.pageUrl || url.searchParams.get('pageUrl') || null;
+        const action = String(payload.action || url.searchParams.get('action') || '').trim().toLowerCase();
+        if (action !== 'rollback') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'unsupported_manual_edit_repair_decision', action }));
+          return;
+        }
+        const rollback = rollbackManualApplyTransaction({
+          cwd: process.cwd(),
+          pageUrl,
+          reason: 'manual_edit_user_requested_rollback',
+        });
+        const { totalCount, perPage } = countPendingByPage(process.cwd());
+        const response = {
+          action,
+          pageUrl,
+          rollback,
+          remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+          totalCount,
+          perPage,
+        };
+        recordManualEditActivity('manual_edit_repair_rollback_done', response);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response));
+      });
       return;
     }
 
@@ -1928,6 +2024,7 @@ function handlePollPost(req, res) {
           id: msg.id,
           pageUrl: pendingApplyDeferred.pageUrl,
           chunk: pendingApplyDeferred.event?.chunk || null,
+          repair: pendingApplyDeferred.event?.repair || null,
           reason: validation.body?.reason || validation.body?.error || 'invalid_manual_apply_result',
           status: msg.data?.status || null,
         });
@@ -1939,6 +2036,7 @@ function handlePollPost(req, res) {
         id: msg.id,
         pageUrl: pendingApplyDeferred.pageUrl,
         chunk: pendingApplyDeferred.event?.chunk || null,
+        repair: pendingApplyDeferred.event?.repair || null,
         status: validation.result.status,
         appliedEntryIds: validation.result.appliedEntryIds,
         failed: summarizeManualApplyFailures(validation.result.failed),

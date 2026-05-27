@@ -17,6 +17,19 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const require = createRequire(import.meta.url);
 
 export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
+  const repairLines = batch?.repair ? [
+    '',
+    'Repair mode:',
+    '- The previous Apply attempt changed source, but validation failed.',
+    '- Do not restart from the old source. Inspect and repair the current source files.',
+    '- Fix the validation failures below while preserving all successfully applied visible copy edits.',
+    '- If a failure says source_verification_failed, make the current source prove each applied op: the newText must appear at a plausible hinted, candidate, or coupled source location.',
+    '- If the old visible text is still present only because newText contains it, keep the valid append/edit and repair only missing source evidence.',
+    '- If failures or candidates show edited text is also a lookup key, update coupled count, animation, icon, image, asset, style, or metadata keys in the current source, or fail that entry without partial edits.',
+    '- Keep failed and notes as arrays.',
+    '- Return the same canonical JSON shape after repair.',
+    JSON.stringify(batch.repair, null, 2),
+  ] : [];
   return [
     'You are the Impeccable staged copy-edit batch applier.',
     '',
@@ -32,18 +45,21 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '- For text-only edits, replace only the target text node or source string literal; do not reformat surrounding markup, indentation, attributes, blank lines, or unrelated whitespace.',
     '- Missing sourceHint is not a failure when candidates identify source data.',
     '- When candidate evidence points to a data object or mapped list item, edit the source data that renders the visible copy. Do not hard-code rendered DOM elsewhere.',
-    '- Mark an entry applied only after every op in that entry is applied. If one op fails, revert any edits already made for that entry, report that entry failed, and continue with the next entry.',
+    '- Mark an entry applied only after every op in that entry is applied. If one op fails, undo any source edits already made for that entry, report that entry failed, and continue with the next entry.',
     '- Never leave source changes behind for entries that are failed, omitted, or absent from appliedEntryIds; the server will roll back the batch if a failed/unreported entry appears partially written.',
     '- If visible text is also a string literal or object key, update clearly coupled lookup keys for counts, animations, icons, images, assets, styles, metadata, or other dependent maps in the same response.',
+    '- If candidates.objectKeyMatches points at the old visible text as a key, that key must either be renamed to newText or the entry must fail. Leaving the old key behind can break rendered images, counts, or assets.',
     '- If one op renames a label and another changes a value looked up by that label, update the same lookup/map entry so the key uses the new label and the value uses the exact new display text.',
     '- If a dependency is broad, ambiguous, or risky, report that entry as failed and leave no partial edits for it.',
     '- Preserve newText exactly as visible copy, including leading zeros, punctuation, casing, spacing, and temporary-looking words. Do not normalize user text.',
     '- Preserve numeric, boolean, array, and object model data unless the visible value truly became display text.',
     '- If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.',
+    '- If newText looks numeric but is not a valid safe numeric literal for the current source language, represent it as display text. For example, leading-zero decimals or mixed alphanumeric counts must be quoted/escaped as strings in JS/TS data.',
     '- Treat current source evidence as authoritative after earlier chunks/retries. sourceEdit.originalText must appear exactly in the current file; do not reuse stale object keys or old line text.',
+    '- In JSX/TSX, if the original visible copy is rendered by an expression-only text node and the new value is display copy, keep the replacement expression-shaped with a quoted expression such as {"7 seats"} rather than raw text.',
     '- When user copy contains framework-sensitive characters such as >, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like {"alpha -> beta"} instead of raw text that contains >.',
     '- Replacement text must still be valid source syntax. If newText is display text inside JS, TS, JSX, Svelte, Astro, or data files and is not the existing typed value, quote or escape it as source text instead of pasting raw user text into code.',
-    '- When reverting a visible value back to a plain number and evidence shows the source model was numeric, replace the enclosing source value so the result is numeric, not a quoted string.',
+    '- When the user changes a visible value back to a plain number and evidence shows the source model was numeric, replace the enclosing source value so the result is numeric, not a quoted string.',
     '- Never copy browser edit-mode scaffolding into source: no contenteditable, data-impeccable-* markers, wrapper variants, generated style/script tags, or runtime-only attributes.',
     '- Preserve unrelated site/demo edits and unrelated staged changes.',
     '- After editing, check touched JS files with node --check where applicable and inspect touched Astro/HTML for obvious syntax damage.',
@@ -61,6 +77,7 @@ export function buildCopyEditBatchPrompt(batch, { cwd = process.cwd() } = {}) {
     '',
     'Repository root:',
     cwd,
+    ...repairLines,
     '',
     'Staged copy-edit batch:',
     JSON.stringify(compactBatchForPrompt(batch), null, 2),
@@ -88,7 +105,7 @@ export async function runCopyEditBatchAgent(batch, opts = {}) {
     if (typeof opts.applyBatchToSource !== 'function') {
       throw new Error('chat provider requires applyBatchToSource callback');
     }
-    const raw = await opts.applyBatchToSource(batch);
+    const raw = await opts.applyBatchToSource(batch, { repair: batch?.repair || null });
     return normalizeBatchResult(raw || {});
   }
   if (!provider) {
@@ -275,6 +292,7 @@ function readManualEditValidationScript(cwd) {
 function compactBatchForPrompt(batch) {
   return {
     pageUrl: batch?.pageUrl || null,
+    repair: batch?.repair || undefined,
     entries: (batch?.entries || []).map((entry) => ({
       id: entry.id,
       pageUrl: entry.pageUrl,

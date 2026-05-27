@@ -130,6 +130,31 @@ describe('live-browser source contracts', () => {
       /if \(msg\.type === 'manual_edit_commit_done'\)[\s\S]*?const remainingCount = remainingManualEditCount\(msg\);[\s\S]*?updatePendingCounter\(remainingCount === null \? 0 : remainingCount\);/,
       'Apply completion SSE should use the shared remaining-count helper',
     );
+    assert.match(
+      SOURCE,
+      /function updateManualApplyProgressFromChunk\(chunk\)[\s\S]*?remainingCount[\s\S]*?phase: remainingCount > 0 \? 'applying' : 'verifying'[\s\S]*?setPendingApplyLoading\(true, remainingCount\);/,
+      'Apply progress should count completed chunk ops down and switch to verification after all chunk replies',
+    );
+    assert.match(
+      SOURCE,
+      /function manualApplyLoadingText\(fallbackCount\)[\s\S]*?Fixing apply issue, attempt[\s\S]*?Verifying copy edits[\s\S]*?Applying ' \+ remaining \+ ' copy edit/,
+      'Apply loading text should cover applying, verifying, and repair states',
+    );
+    assert.match(
+      SOURCE,
+      /manual_edit_repair_needs_decision[\s\S]*?showManualApplyDecision\(msg\);/,
+      'Repair exhaustion should show the user decision controls instead of hiding the dock',
+    );
+    assert.match(
+      SOURCE,
+      /function onPendingKeepFixingClick\(\)[\s\S]*?&repair=1/,
+      'Keep fixing should restart the repair loop against the current transaction',
+    );
+    assert.match(
+      SOURCE,
+      /function onPendingRollbackClick\(\)[\s\S]*?\/manual-edit-repair-decision[\s\S]*?action: 'rollback'/,
+      'Rollback should be an explicit user decision through the repair-decision endpoint',
+    );
     const applyStart = SOURCE.indexOf('async function onPendingPillClick');
     const applyEnd = SOURCE.indexOf('async function onPendingTrashClick', applyStart);
     const applyFn = SOURCE.slice(applyStart, applyEnd);

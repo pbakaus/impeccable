@@ -1239,6 +1239,226 @@ colors: {}
     }
   });
 
+  it('/manual-edit-commit repairs post-apply validation failures instead of rolling back', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-repair-success-'));
+    let repairServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      writeFileSync(join(tmp, 'package.json'), '{"type":"module"}\n');
+      const pagePath = join(tmp, 'src', 'page.html');
+      const dataPath = join(tmp, 'src', 'data.js');
+      writeFileSync(pagePath, '<h1>Welcome</h1>\n');
+      writeFileSync(dataPath, "export const counts = { 'Color': 29 };\n");
+
+      repairServer = await startServer(8551, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      await stashManualEdit(repairServer, {
+        id: 'a0000001',
+        pageUrl: '/',
+        element: { tagName: 'h1', outerHTML: '<h1>Welcome</h1>', textContent: 'Welcome' },
+        ops: [{
+          ref: 'body>h1:nth-of-type(1)',
+          tag: 'h1',
+          originalText: 'Welcome',
+          newText: 'Hello',
+          sourceHint: { file: 'src/page.html', line: 1 },
+        }],
+      });
+      await stashManualEdit(repairServer, {
+        id: 'a0000002',
+        pageUrl: '/',
+        element: { tagName: 'span', outerHTML: '<span>29</span>', textContent: '29' },
+        ops: [{
+          ref: 'body>span:nth-of-type(1)',
+          tag: 'span',
+          originalText: '29',
+          newText: '0029',
+          sourceHint: { file: 'src/data.js', line: 1 },
+        }],
+      });
+
+      const agentLoop = (async () => {
+        const event = await fetch(`http://localhost:${repairServer.port}/poll?token=${repairServer.token}&timeout=10000&leaseMs=30000`)
+          .then((res) => res.json());
+        assert.equal(event.type, 'manual_edit_apply');
+        assert.equal(event.repair, undefined);
+        writeFileSync(pagePath, '<h1>Hello</h1>\n');
+        writeFileSync(dataPath, "export const counts = { 'Color': 0029 };\n");
+        const ack = await fetch(`http://localhost:${repairServer.port}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: repairServer.token,
+            id: event.id,
+            type: 'done',
+            data: {
+              status: 'done',
+              appliedEntryIds: ['a0000001', 'a0000002'],
+              failed: [],
+              files: ['src/page.html', 'src/data.js'],
+              notes: [],
+            },
+          }),
+        });
+        assert.equal(ack.status, 200);
+
+        const repairEvent = await fetch(`http://localhost:${repairServer.port}/poll?token=${repairServer.token}&timeout=10000&leaseMs=30000`)
+          .then((res) => res.json());
+        assert.equal(repairEvent.type, 'manual_edit_apply');
+        assert.equal(repairEvent.repair.attempt, 1);
+        assert.equal(repairEvent.repair.maxAttempts, 3);
+        assert.equal(repairEvent.repair.reason, 'post_apply_validation_failed');
+        assert.match(readFileSync(dataPath, 'utf-8'), /0029/);
+        writeFileSync(dataPath, "export const counts = { 'Color': '0029' };\n");
+        const repairAck = await fetch(`http://localhost:${repairServer.port}/poll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: repairServer.token,
+            id: repairEvent.id,
+            type: 'done',
+            data: {
+              status: 'done',
+              appliedEntryIds: ['a0000001', 'a0000002'],
+              failed: [],
+              files: ['src/data.js'],
+              notes: [],
+            },
+          }),
+        });
+        assert.equal(repairAck.status, 200);
+      })();
+
+      const commit = await fetch(`http://localhost:${repairServer.port}/manual-edit-commit?token=${repairServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      await agentLoop;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.cleared, 2);
+      assert.equal(result.failed.length, 0);
+      assert.equal(result.repair.status, 'repaired');
+      assert.deepEqual(result.rolledBackFiles || [], []);
+      assert.equal(readFileSync(pagePath, 'utf-8'), '<h1>Hello</h1>\n');
+      assert.equal(readFileSync(dataPath, 'utf-8'), "export const counts = { 'Color': '0029' };\n");
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
+      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(buffer.entries.length, 0);
+    } finally {
+      if (repairServer) {
+        await stopServer(repairServer.port, repairServer.token);
+        repairServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/manual-edit-commit asks for a decision after repeated repair failures', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-repair-decision-'));
+    let decisionServer;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      writeFileSync(join(tmp, 'package.json'), '{"type":"module"}\n');
+      const dataPath = join(tmp, 'src', 'data.js');
+      const originalSource = "export const counts = { 'Color': 29 };\n";
+      writeFileSync(dataPath, originalSource);
+
+      decisionServer = await startServer(8552, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      await stashManualEdit(decisionServer, {
+        id: 'b0000001',
+        pageUrl: '/',
+        element: { tagName: 'span', outerHTML: '<span>29</span>', textContent: '29' },
+        ops: [{
+          ref: 'body>span:nth-of-type(1)',
+          tag: 'span',
+          originalText: '29',
+          newText: '0029',
+          sourceHint: { file: 'src/data.js', line: 1 },
+        }],
+      });
+
+      const agentLoop = (async () => {
+        for (let index = 0; index < 4; index += 1) {
+          const event = await fetch(`http://localhost:${decisionServer.port}/poll?token=${decisionServer.token}&timeout=10000&leaseMs=30000`)
+            .then((res) => res.json());
+          assert.equal(event.type, 'manual_edit_apply');
+          if (index === 0) {
+            assert.equal(event.repair, undefined);
+          } else {
+            assert.equal(event.repair.attempt, index);
+            assert.equal(event.repair.maxAttempts, 3);
+          }
+          writeFileSync(dataPath, "export const counts = { 'Color': 0029 };\n");
+          const ack = await fetch(`http://localhost:${decisionServer.port}/poll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: decisionServer.token,
+              id: event.id,
+              type: 'done',
+              data: {
+                status: 'done',
+                appliedEntryIds: ['b0000001'],
+                failed: [],
+                files: ['src/data.js'],
+                notes: [],
+              },
+            }),
+          });
+          assert.equal(ack.status, 200);
+        }
+      })();
+
+      const commit = await fetch(`http://localhost:${decisionServer.port}/manual-edit-commit?token=${decisionServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+      await agentLoop;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.reason, 'manual_edit_repair_needs_decision');
+      assert.equal(result.needsManualDecision, true);
+      assert.equal(result.cleared, 0);
+      assert.equal(result.repair.attempts, 3);
+      assert.equal(readFileSync(dataPath, 'utf-8'), "export const counts = { 'Color': 0029 };\n");
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), true);
+      const bufferBeforeRollback = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(bufferBeforeRollback.entries.length, 1);
+
+      const rollback = await fetch(`http://localhost:${decisionServer.port}/manual-edit-repair-decision?token=${decisionServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: decisionServer.token, pageUrl: '/', action: 'rollback' }),
+      });
+      assert.equal(rollback.status, 200);
+      const rollbackBody = await rollback.json();
+      assert.deepEqual(rollbackBody.rollback.rolledBackFiles, ['src/data.js']);
+      assert.equal(readFileSync(dataPath, 'utf-8'), originalSource);
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
+      const bufferAfterRollback = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(bufferAfterRollback.entries.length, 1);
+
+      const repairWithoutTransaction = await fetch(`http://localhost:${decisionServer.port}/manual-edit-commit?token=${decisionServer.token}&pageUrl=%2F&repair=1`, {
+        method: 'POST',
+      });
+      assert.equal(repairWithoutTransaction.status, 409);
+      const repairWithoutTransactionBody = await repairWithoutTransaction.json();
+      assert.equal(repairWithoutTransactionBody.error, 'manual_edit_repair_transaction_missing');
+    } finally {
+      if (decisionServer) {
+        await stopServer(decisionServer.port, decisionServer.token);
+        decisionServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('/manual-edit-discard cancels leased chat Apply events instead of redelivering them', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-discard-apply-'));
     let discardApplyServer;

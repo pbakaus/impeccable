@@ -50,6 +50,7 @@
   const Z = { highlight: 100001, bar: 100005, picker: 100007, toast: 100010 };
   const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'; // ease-out-quint
   const PREFIX = 'impeccable-live';
+  const MANUAL_APPLY_STATE_TTL_MS = 15 * 60 * 1000;
   const sessionState = window.__IMPECCABLE_LIVE_SESSION__?.createLiveBrowserSessionState({
     prefix: PREFIX,
     storage: localStorage,
@@ -721,7 +722,7 @@
     if (!annotEditing) return;
     const { idx, originalText } = annotEditing;
     annotEditing = null;
-    // If the pin had text before this edit, revert to it. If it was a
+    // If the pin had text before this edit, restore it. If it was a
     // just-created empty pin, Escape removes it.
     if (originalText) {
       annotState.comments[idx].text = originalText;
@@ -2270,6 +2271,122 @@
     showToast('Apply is still running. Wait for it to finish.', 2800);
   }
 
+  function manualApplyStateKey() {
+    return PREFIX + ':manual-apply:' + PORT + ':' + TOKEN + ':' + location.pathname;
+  }
+
+  function readStoredManualApplyState() {
+    try {
+      const raw = sessionStorage.getItem(manualApplyStateKey());
+      if (!raw) return null;
+      const state = JSON.parse(raw);
+      if (!state || state.pageUrl !== location.pathname || Date.now() > Number(state.expiresAt || 0)) {
+        sessionStorage.removeItem(manualApplyStateKey());
+        return null;
+      }
+      return state;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeManualApplyState(state) {
+    try {
+      sessionStorage.setItem(manualApplyStateKey(), JSON.stringify({
+        ...state,
+        pageUrl: location.pathname,
+        updatedAt: Date.now(),
+        expiresAt: Date.now() + MANUAL_APPLY_STATE_TTL_MS,
+      }));
+    } catch {
+      // Best-effort only. The in-memory flag still covers non-reload flows.
+    }
+  }
+
+  function storeManualApplyState(count, patch) {
+    const currentCount = Number(count) || 0;
+    const existing = readStoredManualApplyState() || {};
+    const totalOps = Number(existing.totalOps) || Number(existing.count) || currentCount;
+    if (totalOps <= 0 && currentCount <= 0) return;
+    writeManualApplyState({
+      count: Number(existing.count) || currentCount || totalOps,
+      totalOps: totalOps || currentCount,
+      completedOps: Number(existing.completedOps) || 0,
+      remainingCount: Number.isFinite(Number(existing.remainingCount)) ? Number(existing.remainingCount) : currentCount,
+      phase: existing.phase || 'applying',
+      startedAt: Number(existing.startedAt) || Date.now(),
+      ...(patch || {}),
+    });
+  }
+
+  function clearStoredManualApplyState() {
+    try {
+      sessionStorage.removeItem(manualApplyStateKey());
+    } catch {
+      // Ignore storage failures; UI state can still clear in memory.
+    }
+  }
+
+  function shouldResumeManualApplyLoading(count) {
+    return Number(count) > 0 && readStoredManualApplyState() !== null;
+  }
+
+  function manualApplyLoadingText(fallbackCount) {
+    const stored = readStoredManualApplyState();
+    if (stored?.phase === 'repair-decision') return 'Apply needs attention';
+    if (stored?.phase === 'repairing') {
+      const attempt = Number(stored.repairAttempt) || 1;
+      const max = Number(stored.repairMaxAttempts) || 3;
+      return 'Fixing apply issue, attempt ' + attempt + '/' + max;
+    }
+    if (stored?.phase === 'verifying') return 'Verifying copy edits';
+    const remaining = Number.isFinite(Number(stored?.remainingCount))
+      ? Number(stored.remainingCount)
+      : Number(fallbackCount) || 0;
+    return remaining > 0
+      ? 'Applying ' + remaining + ' copy edit' + (remaining === 1 ? '' : 's')
+      : 'Verifying copy edits';
+  }
+
+  function resetManualApplyProgress(count) {
+    const total = Number(count) || 0;
+    if (total <= 0) return;
+    writeManualApplyState({
+      count: total,
+      totalOps: total,
+      completedOps: 0,
+      remainingCount: total,
+      phase: 'applying',
+      startedAt: Date.now(),
+    });
+  }
+
+  function updateManualApplyProgressFromChunk(chunk) {
+    if (!chunk || !pendingApplyInFlight) return;
+    const stored = readStoredManualApplyState() || {};
+    const totalOps = Number(chunk.totalOpCount) || Number(stored.totalOps) || Number(stored.count) || parseInt(pendingPillEl?.dataset.count || '0', 10) || 0;
+    const completedOps = Math.min(totalOps, (Number(stored.completedOps) || 0) + (Number(chunk.opCount) || 0));
+    const remainingCount = Math.max(0, totalOps - completedOps);
+    storeManualApplyState(Number(stored.count) || totalOps, {
+      totalOps,
+      completedOps,
+      remainingCount,
+      phase: remainingCount > 0 ? 'applying' : 'verifying',
+    });
+    setPendingApplyLoading(true, remainingCount);
+  }
+
+  function updateManualApplyRepairState(repair, phase) {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10) || Number(readStoredManualApplyState()?.count) || 0;
+    if (count <= 0) return;
+    storeManualApplyState(count, {
+      phase,
+      repairAttempt: Number(repair?.attempt || repair?.attempts) || 1,
+      repairMaxAttempts: Number(repair?.maxAttempts) || 3,
+    });
+    setPendingApplyLoading(true, count);
+  }
+
   function refreshLiveControlsForManualApply() {
     if (pendingApplyInFlight) {
       hideActionPicker();
@@ -2291,6 +2408,7 @@
 
   function hidePendingApplyDock() {
     pendingApplyInFlight = false;
+    clearStoredManualApplyState();
     if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
     if (pendingDockEl) pendingDockEl.style.display = 'none';
     if (pendingPillEl) {
@@ -2315,6 +2433,8 @@
       pendingTrashBtn.style.cursor = 'pointer';
       pendingTrashBtn.style.opacity = '1';
     }
+    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
+    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
     refreshLiveControlsForManualApply();
   }
 
@@ -2322,9 +2442,11 @@
     if (!pendingPillEl || !pendingPillLabelEl || !pendingPillCountEl || !pendingTrashBtn) return;
     pendingApplyInFlight = loading === true;
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
+    if (pendingApplyInFlight) storeManualApplyState(currentCount);
+    else clearStoredManualApplyState();
     if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
     pendingPillLabelEl.textContent = pendingApplyInFlight
-      ? 'Applying ' + currentCount + ' copy edit' + (currentCount === 1 ? '' : 's')
+      ? manualApplyLoadingText(currentCount)
       : pendingApplyLabel(currentCount);
     pendingPillCountEl.style.display = pendingApplyInFlight ? 'none' : 'inline-flex';
     pendingPillEl.disabled = pendingApplyInFlight;
@@ -2335,6 +2457,11 @@
     pendingTrashBtn.disabled = pendingApplyInFlight;
     pendingTrashBtn.style.cursor = pendingApplyInFlight ? 'not-allowed' : 'pointer';
     pendingTrashBtn.style.opacity = pendingApplyInFlight ? '0.58' : '1';
+    if (pendingApplyInFlight) {
+      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
+      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
+      pendingTrashBtn.style.display = 'inline-flex';
+    }
     schedulePendingDockPosition();
     refreshLiveControlsForManualApply();
   }
@@ -2353,7 +2480,7 @@
     pendingTrashBtn.style.display = 'inline-flex';
     pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
-    if (pendingApplyInFlight) setPendingApplyLoading(true, currentPageCount);
+    if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
     schedulePendingDockPosition();
     if (previousCount <= 0) playPendingIntroAnimation();
   }
@@ -2383,6 +2510,7 @@
     const ok = confirm('Apply ' + count + ' copy edit' + (count === 1 ? '' : 's') + ' to source?');
     if (!ok) return;
     let waitForSseCompletion = false;
+    resetManualApplyProgress(count);
     setPendingApplyLoading(true, count);
     try {
       const res = await fetch(
@@ -2448,6 +2576,74 @@
     }
   }
 
+  function showManualApplyDecision(msg) {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10) || numberOrNull(msg?.remainingCount) || 0;
+    pendingApplyInFlight = false;
+    storeManualApplyState(count, {
+      phase: 'repair-decision',
+      repairAttempt: numberOrNull(msg?.repair?.attempts) || numberOrNull(msg?.repair?.attempt) || 3,
+      repairMaxAttempts: numberOrNull(msg?.repair?.maxAttempts) || 3,
+    });
+    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
+    if (pendingPillLabelEl) pendingPillLabelEl.textContent = 'Apply needs attention';
+    if (pendingPillCountEl) pendingPillCountEl.style.display = 'none';
+    if (pendingPillEl) {
+      pendingPillEl.disabled = true;
+      pendingPillEl.setAttribute('aria-busy', 'false');
+      pendingPillEl.style.cursor = 'default';
+      pendingPillEl.style.display = 'inline-flex';
+    }
+    if (pendingTrashBtn) pendingTrashBtn.style.display = 'none';
+    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'inline-flex';
+    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'inline-flex';
+    if (pendingDockEl) pendingDockEl.style.display = 'inline-flex';
+    schedulePendingDockPosition();
+    refreshLiveControlsForManualApply();
+  }
+
+  async function onPendingKeepFixingClick() {
+    const count = parseInt(pendingPillEl?.dataset.count || '0', 10) || numberOrNull(readStoredManualApplyState()?.count) || 0;
+    if (count <= 0) return;
+    updateManualApplyRepairState({ attempt: 1, maxAttempts: 3 }, 'repairing');
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-commit?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname) + '&async=1&repair=1',
+        { method: 'POST', keepalive: true },
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
+      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
+      if (pendingTrashBtn) pendingTrashBtn.style.display = 'inline-flex';
+    } catch (err) {
+      console.error('[impeccable] repair retry failed:', err);
+      showToast('Repair retry failed - see console', 4000);
+      showManualApplyDecision({ remainingCount: count, repair: readStoredManualApplyState() });
+    }
+  }
+
+  async function onPendingRollbackClick() {
+    const ok = confirm('Rollback source files to before this Apply and keep the edits staged?');
+    if (!ok) return;
+    try {
+      const res = await fetch(
+        'http://localhost:' + PORT + '/manual-edit-repair-decision?token=' + encodeURIComponent(TOKEN) + '&pageUrl=' + encodeURIComponent(location.pathname),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN, pageUrl: location.pathname, action: 'rollback' }),
+        },
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const result = await res.json().catch(() => ({}));
+      clearStoredManualApplyState();
+      updatePendingCounter(numberOrNull(result.remainingCount) || 0);
+      showToast('Rolled back source; copy edits are still staged.', 3500);
+    } catch (err) {
+      console.error('[impeccable] manual Apply rollback failed:', err);
+      showToast('Rollback failed - see console', 4000);
+    }
+  }
+
   function manualEditEventForCurrentPage(msg) {
     return !msg?.pageUrl || msg.pageUrl === location.pathname;
   }
@@ -2468,7 +2664,6 @@
   }
 
   function handleManualEditActivity(msg) {
-    console.info('[impeccable] manual copy edit event:', msg);
     if (!manualEditEventForCurrentPage(msg)) return;
 
     if (msg.type === 'manual_edit_stashed') {
@@ -2480,11 +2675,39 @@
     if (msg.type === 'manual_edit_commit_started') {
       const pendingCount = numberOrNull(msg.pendingCount);
       if (pendingCount !== null && pendingCount > 0) updatePendingCounter(pendingCount);
+      if (!msg.repairOnly && pendingCount !== null && pendingCount > 0) resetManualApplyProgress(pendingCount);
+      if (msg.repairOnly) updateManualApplyRepairState({ attempt: 1, maxAttempts: 3 }, 'repairing');
       setPendingApplyLoading(true, pendingCount || undefined);
       return;
     }
 
+    if (msg.type === 'manual_edit_apply_reply_received') {
+      if (msg.chunk) updateManualApplyProgressFromChunk(msg.chunk);
+      if (msg.repair) updateManualApplyRepairState(msg.repair, 'repairing');
+      return;
+    }
+
+    if (msg.type === 'manual_edit_apply_dispatched' && msg.repair) {
+      updateManualApplyRepairState(msg.repair, 'repairing');
+      return;
+    }
+
+    if (msg.type === 'manual_edit_repair_needs_decision') {
+      showManualApplyDecision(msg);
+      return;
+    }
+
+    if (msg.type === 'manual_edit_repair_rollback_done') {
+      clearStoredManualApplyState();
+      fetchPendingCount();
+      return;
+    }
+
     if (msg.type === 'manual_edit_commit_done') {
+      if (msg.reason === 'manual_edit_repair_needs_decision' || msg.needsManualDecision === true) {
+        showManualApplyDecision(msg);
+        return;
+      }
       // Clear the in-flight flag BEFORE updating the counter. updatePendingCounter
       // re-asserts setPendingApplyLoading(true) whenever the flag is still set and
       // edits remain (failed entries stay staged), which would otherwise leave the
@@ -3580,7 +3803,7 @@
       const original = e.target.dataset.impeccableOriginalText;
       if (original !== undefined) e.target.textContent = original;
       // Programmatic textContent doesn't fire the 'input' event, so the draft
-      // map would otherwise hold the pre-revert value and Apply would commit
+      // map would otherwise hold the pre-cancel value and Apply would commit
       // changes the user explicitly undid.
       inlineEditDrafts.delete(e.target);
       e.target.blur();
@@ -4508,6 +4731,8 @@ void main() {
   let pendingPillLabelEl = null;
   let pendingPillCountEl = null;
   let pendingTrashBtn = null;
+  let pendingKeepFixingBtn = null;
+  let pendingRollbackBtn = null;
   let pendingDockResizeObserver = null;
   let pendingIntroAnimation = null;
   let pendingApplyInFlight = false;
@@ -4885,8 +5110,40 @@ void main() {
     pendingTrashBtn.addEventListener('focus', showTrashTooltip);
     pendingTrashBtn.addEventListener('blur', hideTrashTooltip);
     pendingTrashBtn.addEventListener('click', onPendingTrashClick);
+
+    const makePendingDecisionBtn = (label, accent) => {
+      const btn = el('button', {
+        display: 'none',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '30px',
+        padding: '0 12px',
+        borderRadius: '999px',
+        border: '1px solid ' + (accent ? P.accent : P.hairline),
+        background: accent ? P.accent : P.surface,
+        color: accent ? P.mark : P.textDim,
+        fontFamily: FONT,
+        fontSize: '12px',
+        fontWeight: '600',
+        letterSpacing: '0',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        boxShadow: '0 4px 16px oklch(0% 0 0 / 0.12), 0 1px 3px oklch(0% 0 0 / 0.08)',
+      });
+      btn.textContent = label;
+      return btn;
+    };
+    pendingKeepFixingBtn = makePendingDecisionBtn('Keep fixing', true);
+    pendingKeepFixingBtn.setAttribute('aria-label', 'Ask the agent to keep fixing Apply errors');
+    pendingKeepFixingBtn.addEventListener('click', onPendingKeepFixingClick);
+    pendingRollbackBtn = makePendingDecisionBtn('Rollback', false);
+    pendingRollbackBtn.setAttribute('aria-label', 'Rollback source and keep copy edits staged');
+    pendingRollbackBtn.addEventListener('click', onPendingRollbackClick);
+
     pendingDockEl.appendChild(pendingPillEl);
     pendingDockEl.appendChild(pendingTrashBtn);
+    pendingDockEl.appendChild(pendingKeepFixingBtn);
+    pendingDockEl.appendChild(pendingRollbackBtn);
 
     // Thin divider before the exit button
     const divider = el('span', {
@@ -5085,6 +5342,8 @@ void main() {
       pendingPillLabelEl = null;
       pendingPillCountEl = null;
       pendingTrashBtn = null;
+      pendingKeepFixingBtn = null;
+      pendingRollbackBtn = null;
       pendingApplyInFlight = false;
     }
     if (globalBarEl) {

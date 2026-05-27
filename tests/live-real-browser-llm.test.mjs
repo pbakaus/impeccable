@@ -90,7 +90,7 @@ function pushCleanup(label, fn) {
 }
 
 describe('real browser LLM live manual edit flow', () => {
-  it('visibly applies a 10-leaf manual batch, accepts a Go variant, then reverts the batch through the real browser', async (t) => {
+  it('visibly applies a 10-leaf manual batch, accepts a Go variant, then restores the batch through the real browser', async (t) => {
     if (!REAL_BROWSER_ENABLED) {
       t.skip('set IMPECCABLE_REAL_BROWSER_LLM=1 to run the real-app browser+LLM flow');
       return;
@@ -230,7 +230,7 @@ describe('real browser LLM live manual edit flow', () => {
     await page.waitForTimeout(30_000);
     await waitForManualEditTexts(page, MANUAL_EDITS, 'original');
     await waitForFoundationVisuals(page, ['Typography', 'Responsive']);
-    assertManualSourceReverted();
+    assertManualSourceRestored();
 
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     await hideAstroDevToolbar(page);
@@ -238,7 +238,7 @@ describe('real browser LLM live manual edit flow', () => {
     await waitForManualEditTexts(page, MANUAL_EDITS, 'original');
     await waitForFoundationVisuals(page, ['Typography', 'Responsive']);
 
-    assert.equal(readPendingManualEditCount(), 0, 'Apply stash should be empty after successful real-app Apply and revert');
+    assert.equal(readPendingManualEditCount(), 0, 'Apply stash should be empty after successful real-app Apply and restore');
     assert.deepEqual(consoleErrors, [], 'real browser console should stay clean through the full flow');
   });
 });
@@ -497,7 +497,7 @@ function assertManualSourceApplied() {
   assert.doesNotMatch(animations, /['"]Responsive['"]:\s*`/);
 }
 
-function assertManualSourceReverted() {
+function assertManualSourceRestored() {
   const index = readFileSync(join(REPO_ROOT, INDEX_ASTRO), 'utf-8');
   const data = readFileSync(join(REPO_ROOT, DATA_JS), 'utf-8');
   const animations = readFileSync(join(REPO_ROOT, FOUNDATION_ANIMATIONS_JS), 'utf-8');

@@ -166,7 +166,7 @@ describe('live-e2e LLM agent provider replay', () => {
     }
   });
 
-  it('reverts a generic source-key batch through the selected provider without leaving numeric strings', async (t) => {
+  it('restores a generic source-key batch through the selected provider without leaving numeric strings', async (t) => {
     if (process.env.IMPECCABLE_LLM_REPLAY !== '1') {
       t.skip('set IMPECCABLE_LLM_REPLAY=1 to run provider-backed manual edit replay');
       return;
@@ -182,10 +182,10 @@ describe('live-e2e LLM agent provider replay', () => {
       return;
     }
 
-    const tmp = createSourceKeyReplayProject('revert');
+    const tmp = createSourceKeyReplayProject('restore');
     try {
       const result = await agent.applyManualEdits(
-        { id: 'manual-revert-replay', batch: sourceKeyReplayBatch('revert') },
+        { id: 'manual-restore-replay', batch: sourceKeyReplayBatch('restore') },
         { tmp },
       );
 
@@ -207,7 +207,7 @@ describe('live-e2e LLM agent provider replay', () => {
 function createSourceKeyReplayProject(mode) {
   const root = mkdtempSync(join(tmpdir(), 'impeccable-llm-replay-'));
   mkdirSync(join(root, 'src'), { recursive: true });
-  if (mode === 'revert') {
+  if (mode === 'restore') {
     writeFileSync(join(root, 'src/data.js'), [
       'export const cards = [',
       "  { label: 'New Label', detail: 'Stable detail' },",
@@ -244,11 +244,11 @@ function createSourceKeyReplayProject(mode) {
 }
 
 function sourceKeyReplayBatch(mode) {
-  const reverting = mode === 'revert';
-  const originalLabel = reverting ? 'New Label' : 'Old Label';
-  const nextLabel = reverting ? 'Old Label' : 'New Label';
-  const originalCount = reverting ? '007' : '7';
-  const nextCount = reverting ? '7' : '007';
+  const restoring = mode === 'restore';
+  const originalLabel = restoring ? 'New Label' : 'Old Label';
+  const nextLabel = restoring ? 'Old Label' : 'New Label';
+  const originalCount = restoring ? '007' : '7';
+  const nextCount = restoring ? '7' : '007';
   return {
     entries: [
       {
@@ -378,6 +378,9 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /animations, icons, images, assets/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /same lookup\/map entry/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Return a complete result/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /event\.repair/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /repair the current source/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /do not restart from old source or roll files back/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /ambiguous or broad/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /Preserve op\.newText exactly/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /leading zeros/);
@@ -387,6 +390,8 @@ describe('live-e2e LLM agent manual edit prompt', () => {
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /framework-sensitive characters/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /valid source/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /JSX\/TSX text nodes/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /expression-only text node/);
+    assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /quoted expression such as \{"7 seats"\}/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coverage is harness-only planning data/);
     assert.match(MANUAL_EDIT_SYSTEM_INSTRUCTIONS, /coveredOps/);
   });
@@ -1281,7 +1286,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.equal(error, null);
   });
 
-  it('allows label reverts that restore dependent source keys and typed counts', () => {
+  it('allows label restores that restore dependent source keys and typed counts', () => {
     const error = validateManualEditCoverage(
       {
         status: 'done',
@@ -1336,7 +1341,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.equal(error, null);
   });
 
-  it('rejects paired label/count reverts that leave plain integer counts quoted', () => {
+  it('rejects paired label/count restores that leave plain integer counts quoted', () => {
     const error = validateManualEditCoverage(
       {
         status: 'done',
@@ -1374,7 +1379,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /numeric string/);
   });
 
-  it('rejects paired label/count reverts that replace only the inner quoted string text', () => {
+  it('rejects paired label/count restores that replace only the inner quoted string text', () => {
     const error = validateManualEditCoverage(
       {
         status: 'done',
