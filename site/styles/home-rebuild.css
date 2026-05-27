@@ -231,14 +231,14 @@
 }
 
 @media (max-width: 1080px) {
-  .hero-rebuild { padding: 48px 36px 80px; }
+  .hero-rebuild { padding: 108px 36px 80px; }   /* keep top clear of the fixed header */
   .hero-rebuild-container { grid-template-columns: 1fr; gap: 48px; }
   .hero-rebuild-right { justify-self: stretch; max-width: 100%; }
   .home-kinpaku .hero-rebuild-right .split-container { height: 380px; }
 }
 
 @media (max-width: 720px) {
-  .hero-rebuild { padding: 40px 24px 64px; }
+  .hero-rebuild { padding: 92px 24px 64px; }   /* clear the compact mobile header */
   .hero-rebuild-actions { flex-direction: column; align-items: stretch; }
   .home-kinpaku .hero-rebuild-right .split-container { height: 320px; }
 }
@@ -873,10 +873,9 @@
 
 .hero-live-demo .live-demo-frame {
   aspect-ratio: auto;
-  /* Cap to the viewport so the centered demo's top always clears the fixed
-     header (97px) regardless of viewport height. 380 = hero padding (64+96) +
-     ~2× the header+clearance, derived so the frame top stays ≥ ~116px. */
-  height: min(640px, calc(100svh - 380px));
+  /* Cap to the viewport so the whole demo stays on screen below the header
+     (the hero's 113px top padding already clears the 97px fixed header). */
+  height: min(640px, calc(100svh - 140px));
   max-width: 100%;
 }
 
