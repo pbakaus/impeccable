@@ -2392,6 +2392,10 @@
     }
     if (state !== 'PICKING' || !pickActive) return;
     if (own(e.target)) return;
+    if (pagePickSkipClick || pageHasHostTextSelection()) {
+      pagePickSkipClick = false;
+      return;
+    }
     if (!hoveredElement || !pickable(hoveredElement)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -3303,8 +3307,15 @@ void main() {
 
   let globalBarEl = null;
   let globalBarBrandEl = null;
+  let agentPollTooltipEl = null;
   let agentPollingConnected = false;
   let agentStatusPollTimer = null;
+  let steerFocusSuspended = false;
+  let steerFocusPauseUntil = 0;
+  let pagePointerGesture = null;
+  let pagePickSkipClick = false;
+  let steerFocusRecoverTimer = null;
+  const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
   const PICK_PREFS_KEY = 'impeccable-live-pick';
 
@@ -3346,6 +3357,11 @@ void main() {
   const PAGE_CHAT_PROCESSING_W = '76px';
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
+  const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected — run live-poll.mjs to connect';
+  const GLOBAL_BAR_SECTION_GAP = 8;
+  const GLOBAL_BAR_INNER_GAP = 2;
+  const GLOBAL_BAR_INNER_PAD_LEFT = 2;
   const PAGE_CHAT_EXPANDED_W = 'min(280px, 38vw)';
   const ICON_PAGE_CHAT =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -3449,6 +3465,97 @@ void main() {
     return state !== 'CONFIGURING' && !steerLocked;
   }
 
+  function pageHasHostTextSelection() {
+    const sel = window.getSelection?.();
+    if (!sel || sel.isCollapsed) return false;
+    if (!(sel.toString() || '').trim()) return false;
+    const node = sel.anchorNode;
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (el && own(el)) return false;
+    return true;
+  }
+
+  function shouldSteerAutoFocus() {
+    return shouldFocusSteerChat()
+      && !steerFocusSuspended
+      && performance.now() >= steerFocusPauseUntil;
+  }
+
+  function clearSteerFocusRecoverTimer() {
+    if (steerFocusRecoverTimer) {
+      clearTimeout(steerFocusRecoverTimer);
+      steerFocusRecoverTimer = null;
+    }
+  }
+
+  function scheduleSteerFocusRecover(reason) {
+    clearSteerFocusRecoverTimer();
+    const attempt = () => {
+      steerFocusRecoverTimer = null;
+      if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
+      if (pageChatEl?.contains(document.activeElement)) return;
+      if (pageHasHostTextSelection()) {
+        steerFocusRecoverTimer = setTimeout(attempt, 120);
+        return;
+      }
+      const pauseLeft = steerFocusPauseUntil - performance.now();
+      if (pauseLeft > 0) {
+        steerFocusRecoverTimer = setTimeout(attempt, pauseLeft);
+        return;
+      }
+      if (!shouldFocusSteerChat()) return;
+      syncPageChatFocus(reason);
+    };
+    steerFocusRecoverTimer = setTimeout(attempt, 0);
+  }
+
+  function notePagePointerDown(e) {
+    if (!shouldFocusSteerChat() || own(e.target)) return;
+    steerFocusSuspended = true;
+    steerFocusPauseUntil = performance.now() + STEER_PAGE_FOCUS_PAUSE_MS;
+    pagePointerGesture = { x: e.clientX, y: e.clientY, dragged: false };
+    if (pageChatInput && document.activeElement === pageChatInput) {
+      pageChatInput.blur();
+    }
+  }
+
+  function attachSteerFocusGuard() {
+    if (window.__IMPECCABLE_STEER_FOCUS_GUARD__) return;
+    window.__IMPECCABLE_STEER_FOCUS_GUARD__ = true;
+
+    document.addEventListener('mousedown', (e) => {
+      notePagePointerDown(e);
+    }, true);
+
+    document.addEventListener('mousemove', (e) => {
+      if (!pagePointerGesture || pagePointerGesture.dragged) return;
+      const dx = e.clientX - pagePointerGesture.x;
+      const dy = e.clientY - pagePointerGesture.y;
+      if (Math.hypot(dx, dy) > 4) pagePointerGesture.dragged = true;
+    }, true);
+
+    document.addEventListener('mouseup', () => {
+      if (!shouldFocusSteerChat()) return;
+      pagePickSkipClick = !!(pagePointerGesture?.dragged || pageHasHostTextSelection());
+      if (pageHasHostTextSelection()) {
+        steerFocusSuspended = true;
+      } else {
+        steerFocusSuspended = false;
+        scheduleSteerFocusRecover('page-mouseup-recover');
+      }
+      pagePointerGesture = null;
+    }, true);
+
+    document.addEventListener('selectionchange', () => {
+      if (!shouldFocusSteerChat()) return;
+      const wasSuspended = steerFocusSuspended;
+      steerFocusSuspended = pageHasHostTextSelection();
+      if (wasSuspended && !steerFocusSuspended) {
+        scheduleSteerFocusRecover('selection-cleared');
+      }
+    });
+  }
+
   function steerFocusTargetLabel(el) {
     if (!el || el === document.body) return 'body';
     if (el === document.documentElement) return 'html';
@@ -3527,11 +3634,12 @@ void main() {
 
   function focusSteerChat(reason) {
     steerFocusLog('focusSteerChat called', { reason });
-    if (!pageChatInput || !shouldFocusSteerChat()) {
+    if (!pageChatInput || !shouldSteerAutoFocus()) {
       steerFocusLog('focusSteerChat skipped', {
         reason,
         hasInput: !!pageChatInput,
         shouldSteer: shouldFocusSteerChat(),
+        suspended: steerFocusSuspended,
       });
       return;
     }
@@ -3552,7 +3660,7 @@ void main() {
   function syncPageChatFocus(reason) {
     steerFocusLog('syncPageChatFocus', { reason });
     if (state === 'CONFIGURING') focusConfigureInput(reason);
-    else focusSteerChat(reason);
+    else if (shouldSteerAutoFocus()) focusSteerChat(reason);
   }
 
   function buildSteerProcessingDots() {
@@ -3898,7 +4006,7 @@ void main() {
   function initPageChat(parent, P) {
     pageChatEl = el('div', {
       display: 'inline-flex', alignItems: 'center',
-      height: '28px', margin: '0 4px 0 2px',
+      height: '28px', margin: '0 4px 0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_GAP) + 'px',
       borderRadius: '7px',
       background: P.chatSurface,
       border: '1px solid ' + P.hairline,
@@ -4005,7 +4113,7 @@ void main() {
         if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
         if (pageChatEl?.contains(document.activeElement)) return;
         if (!pageChatInput.value.trim()) collapsePageChat();
-        syncPageChatFocus('steer-blur-recover');
+        scheduleSteerFocusRecover('steer-blur-recover');
       }, 120);
     });
 
@@ -4048,13 +4156,66 @@ void main() {
     globalBarBrandEl.setAttribute('aria-label', connected
       ? 'Impeccable live mode'
       : 'Impeccable live mode — agent not polling');
-    globalBarBrandEl.title = connected
-      ? 'Impeccable'
-      : 'Agent not polling — run live-poll.mjs to connect';
+    globalBarBrandEl.removeAttribute('title');
+    globalBarBrandEl.style.cursor = connected ? 'default' : 'help';
     const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
-    if (mark) mark.innerHTML = brandMarkSvg(connected ? P.accent : P.textDim, 18);
+    if (mark) {
+      mark.innerHTML = brandMarkSvg(connected ? P.accent : AGENT_DISCONNECTED_MARK, 18);
+      mark.style.opacity = '1';
+    }
     const dot = globalBarBrandEl.querySelector('[data-agent-dot]');
     if (dot) dot.style.display = connected ? 'none' : 'block';
+    if (connected) hideAgentPollTooltip();
+  }
+
+  function ensureAgentPollTooltip() {
+    if (agentPollTooltipEl) return agentPollTooltipEl;
+    const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+    agentPollTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      opacity: '0',
+      zIndex: String(Z.bar + 6),
+      pointerEvents: 'none',
+      maxWidth: '220px',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      boxShadow: P.shadow,
+      color: P.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+      letterSpacing: '0.01em',
+      whiteSpace: 'normal',
+    });
+    agentPollTooltipEl.id = PREFIX + '-agent-poll-tooltip';
+    agentPollTooltipEl.textContent = AGENT_DISCONNECTED_TIP;
+    document.body.appendChild(agentPollTooltipEl);
+    return agentPollTooltipEl;
+  }
+
+  function showAgentPollTooltip(anchor) {
+    if (agentPollingConnected || !anchor) return;
+    const tip = ensureAgentPollTooltip();
+    tip.style.transition = 'none';
+    tip.style.display = 'block';
+    tip.style.opacity = '1';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideAgentPollTooltip() {
+    if (!agentPollTooltipEl) return;
+    agentPollTooltipEl.style.display = 'none';
+    agentPollTooltipEl.style.opacity = '0';
   }
 
   function stopAgentStatusPoll() {
@@ -4106,7 +4267,7 @@ void main() {
       transform: 'translateX(-50%) translateY(20px)',
       zIndex: Z.bar + 5,
       display: 'flex', alignItems: 'stretch',
-      gap: '2px',
+      gap: '0',
       background: P.surface,
       border: '1.5px solid ' + P.border,
       borderRadius: '10px',
@@ -4123,7 +4284,7 @@ void main() {
     const brand = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       alignSelf: 'stretch', position: 'relative',
-      padding: '0 12px 0 14px',
+      padding: '0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_PAD_LEFT) + 'px 0 14px',
       background: 'transparent',
       color: P.accent,
       flexShrink: '0',
@@ -4152,7 +4313,8 @@ void main() {
 
     brandMark.appendChild(agentDot);
     brand.appendChild(brandMark);
-    brand.title = 'Agent not polling — run live-poll.mjs to connect';
+    brand.addEventListener('mouseenter', () => showAgentPollTooltip(brand));
+    brand.addEventListener('mouseleave', hideAgentPollTooltip);
     globalBarBrandEl = brand;
     globalBarEl.appendChild(brand);
     syncAgentPollingUi(false);
@@ -4160,7 +4322,7 @@ void main() {
     // Inner wrapper: holds the toggles with normal bar padding.
     const inner = el('div', {
       display: 'flex', alignItems: 'center',
-      padding: '4px 5px', gap: '2px',
+      padding: '4px 5px 4px ' + GLOBAL_BAR_INNER_PAD_LEFT + 'px', gap: GLOBAL_BAR_INNER_GAP + 'px',
     });
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
@@ -4412,7 +4574,17 @@ void main() {
   /** Full teardown: remove all UI, disconnect SSE, clean up. */
   function teardown() {
     stopAgentStatusPoll();
+    hideAgentPollTooltip();
+    if (agentPollTooltipEl) {
+      agentPollTooltipEl.remove();
+      agentPollTooltipEl = null;
+    }
     stopSteerVoice({ suppressSubmit: true });
+    clearSteerFocusRecoverTimer();
+    steerFocusSuspended = false;
+    steerFocusPauseUntil = 0;
+    pagePointerGesture = null;
+    pagePickSkipClick = false;
     cleanup();
     hideBar();
     if (globalBarEl) {
@@ -5584,6 +5756,7 @@ void main() {
     initParamsPanel();
     initGlobalBar();
     attachSteerFocusDebug();
+    attachSteerFocusGuard();
     initDesignPanel();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);

@@ -2392,6 +2392,10 @@
     }
     if (state !== 'PICKING' || !pickActive) return;
     if (own(e.target)) return;
+    if (pagePickSkipClick || pageHasHostTextSelection()) {
+      pagePickSkipClick = false;
+      return;
+    }
     if (!hoveredElement || !pickable(hoveredElement)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -3306,6 +3310,12 @@ void main() {
   let agentPollTooltipEl = null;
   let agentPollingConnected = false;
   let agentStatusPollTimer = null;
+  let steerFocusSuspended = false;
+  let steerFocusPauseUntil = 0;
+  let pagePointerGesture = null;
+  let pagePickSkipClick = false;
+  let steerFocusRecoverTimer = null;
+  const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
   const PICK_PREFS_KEY = 'impeccable-live-pick';
 
@@ -3455,6 +3465,97 @@ void main() {
     return state !== 'CONFIGURING' && !steerLocked;
   }
 
+  function pageHasHostTextSelection() {
+    const sel = window.getSelection?.();
+    if (!sel || sel.isCollapsed) return false;
+    if (!(sel.toString() || '').trim()) return false;
+    const node = sel.anchorNode;
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (el && own(el)) return false;
+    return true;
+  }
+
+  function shouldSteerAutoFocus() {
+    return shouldFocusSteerChat()
+      && !steerFocusSuspended
+      && performance.now() >= steerFocusPauseUntil;
+  }
+
+  function clearSteerFocusRecoverTimer() {
+    if (steerFocusRecoverTimer) {
+      clearTimeout(steerFocusRecoverTimer);
+      steerFocusRecoverTimer = null;
+    }
+  }
+
+  function scheduleSteerFocusRecover(reason) {
+    clearSteerFocusRecoverTimer();
+    const attempt = () => {
+      steerFocusRecoverTimer = null;
+      if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
+      if (pageChatEl?.contains(document.activeElement)) return;
+      if (pageHasHostTextSelection()) {
+        steerFocusRecoverTimer = setTimeout(attempt, 120);
+        return;
+      }
+      const pauseLeft = steerFocusPauseUntil - performance.now();
+      if (pauseLeft > 0) {
+        steerFocusRecoverTimer = setTimeout(attempt, pauseLeft);
+        return;
+      }
+      if (!shouldFocusSteerChat()) return;
+      syncPageChatFocus(reason);
+    };
+    steerFocusRecoverTimer = setTimeout(attempt, 0);
+  }
+
+  function notePagePointerDown(e) {
+    if (!shouldFocusSteerChat() || own(e.target)) return;
+    steerFocusSuspended = true;
+    steerFocusPauseUntil = performance.now() + STEER_PAGE_FOCUS_PAUSE_MS;
+    pagePointerGesture = { x: e.clientX, y: e.clientY, dragged: false };
+    if (pageChatInput && document.activeElement === pageChatInput) {
+      pageChatInput.blur();
+    }
+  }
+
+  function attachSteerFocusGuard() {
+    if (window.__IMPECCABLE_STEER_FOCUS_GUARD__) return;
+    window.__IMPECCABLE_STEER_FOCUS_GUARD__ = true;
+
+    document.addEventListener('mousedown', (e) => {
+      notePagePointerDown(e);
+    }, true);
+
+    document.addEventListener('mousemove', (e) => {
+      if (!pagePointerGesture || pagePointerGesture.dragged) return;
+      const dx = e.clientX - pagePointerGesture.x;
+      const dy = e.clientY - pagePointerGesture.y;
+      if (Math.hypot(dx, dy) > 4) pagePointerGesture.dragged = true;
+    }, true);
+
+    document.addEventListener('mouseup', () => {
+      if (!shouldFocusSteerChat()) return;
+      pagePickSkipClick = !!(pagePointerGesture?.dragged || pageHasHostTextSelection());
+      if (pageHasHostTextSelection()) {
+        steerFocusSuspended = true;
+      } else {
+        steerFocusSuspended = false;
+        scheduleSteerFocusRecover('page-mouseup-recover');
+      }
+      pagePointerGesture = null;
+    }, true);
+
+    document.addEventListener('selectionchange', () => {
+      if (!shouldFocusSteerChat()) return;
+      const wasSuspended = steerFocusSuspended;
+      steerFocusSuspended = pageHasHostTextSelection();
+      if (wasSuspended && !steerFocusSuspended) {
+        scheduleSteerFocusRecover('selection-cleared');
+      }
+    });
+  }
+
   function steerFocusTargetLabel(el) {
     if (!el || el === document.body) return 'body';
     if (el === document.documentElement) return 'html';
@@ -3533,11 +3634,12 @@ void main() {
 
   function focusSteerChat(reason) {
     steerFocusLog('focusSteerChat called', { reason });
-    if (!pageChatInput || !shouldFocusSteerChat()) {
+    if (!pageChatInput || !shouldSteerAutoFocus()) {
       steerFocusLog('focusSteerChat skipped', {
         reason,
         hasInput: !!pageChatInput,
         shouldSteer: shouldFocusSteerChat(),
+        suspended: steerFocusSuspended,
       });
       return;
     }
@@ -3558,7 +3660,7 @@ void main() {
   function syncPageChatFocus(reason) {
     steerFocusLog('syncPageChatFocus', { reason });
     if (state === 'CONFIGURING') focusConfigureInput(reason);
-    else focusSteerChat(reason);
+    else if (shouldSteerAutoFocus()) focusSteerChat(reason);
   }
 
   function buildSteerProcessingDots() {
@@ -4011,7 +4113,7 @@ void main() {
         if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
         if (pageChatEl?.contains(document.activeElement)) return;
         if (!pageChatInput.value.trim()) collapsePageChat();
-        syncPageChatFocus('steer-blur-recover');
+        scheduleSteerFocusRecover('steer-blur-recover');
       }, 120);
     });
 
@@ -4478,6 +4580,11 @@ void main() {
       agentPollTooltipEl = null;
     }
     stopSteerVoice({ suppressSubmit: true });
+    clearSteerFocusRecoverTimer();
+    steerFocusSuspended = false;
+    steerFocusPauseUntil = 0;
+    pagePointerGesture = null;
+    pagePickSkipClick = false;
     cleanup();
     hideBar();
     if (globalBarEl) {
@@ -5649,6 +5756,7 @@ void main() {
     initParamsPanel();
     initGlobalBar();
     attachSteerFocusDebug();
+    attachSteerFocusGuard();
     initDesignPanel();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);

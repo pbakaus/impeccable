@@ -95,8 +95,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function syncPageChatFocus\(reason\)[\s\S]{0,160}?if \(state === 'CONFIGURING'\) focusConfigureInput\(reason\);[\s\S]{0,80}?else focusSteerChat\(reason\);/,
-      'focus should sit on the configure input while picking an element, otherwise on steer',
+      /function syncPageChatFocus\(reason\)[\s\S]{0,220}?if \(state === 'CONFIGURING'\) focusConfigureInput\(reason\);[\s\S]{0,120}?else if \(shouldSteerAutoFocus\(\)\) focusSteerChat\(reason\);/,
+      'focus configure input while configuring; steer auto-focus unless page text is selected',
     );
     assert.match(
       SOURCE,
@@ -157,6 +157,16 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function showAgentPollTooltip\(/,
       'disconnected agent state must use an instant custom tooltip on brand hover',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleSteerFocusRecover\(reason\)/,
+      'steer focus must reschedule after page clicks once selection/pause gates clear',
+    );
+    assert.match(
+      SOURCE,
+      /steer-blur-recover/,
+      'steer blur should recover focus for type-to-steer when not selecting page text',
     );
   });
 
