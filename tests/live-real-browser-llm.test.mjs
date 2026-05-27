@@ -71,16 +71,23 @@ const MANUAL_EDITS = [
 
 const cleanupFns = [];
 
-afterEach(async () => {
+afterEach(async (t) => {
   while (cleanupFns.length) {
-    const fn = cleanupFns.pop();
+    const cleanup = cleanupFns.pop();
     try {
-      await fn();
-    } catch {
+      t.diagnostic(`[cleanup] ${cleanup.label}: start`);
+      await cleanup.fn();
+      t.diagnostic(`[cleanup] ${cleanup.label}: done`);
+    } catch (err) {
+      t.diagnostic(`[cleanup] ${cleanup.label}: failed: ${err.message || String(err)}`);
       // Best-effort cleanup; the test body reports the real failure.
     }
   }
 });
+
+function pushCleanup(label, fn) {
+  cleanupFns.push({ label, fn });
+}
 
 describe('real browser LLM live manual edit flow', () => {
   it('visibly applies a 10-leaf manual batch, accepts a Go variant, then reverts the batch through the real browser', async (t) => {
@@ -102,10 +109,13 @@ describe('real browser LLM live manual edit flow', () => {
       '.impeccable/live/manual-edit-events.jsonl',
       '.impeccable/live/sessions',
     ]);
-    cleanupFns.push(() => restorePaths(liveStateSnapshots));
-    cleanupFns.push(() => restoreFiles(snapshots));
-    cleanupFns.push(() => discardManualEditBuffer());
-    cleanupFns.push(() => rmSync(join(REPO_ROOT, '.impeccable/live/manual-edit-evidence'), { recursive: true, force: true }));
+    t.diagnostic(`[setup] snapshotting source files: ${snapshots.map((item) => item.file).join(', ')}`);
+    t.diagnostic(`[setup] snapshotting live state paths: ${liveStateSnapshots.map((item) => item.file).join(', ')}`);
+    pushCleanup('restore live event/session snapshots', () => restorePaths(liveStateSnapshots));
+    pushCleanup('restore source snapshots', () => restoreFiles(snapshots));
+    pushCleanup('discard manual edit buffer', () => discardManualEditBuffer());
+    pushCleanup('remove manual edit evidence', () => rmSync(join(REPO_ROOT, '.impeccable/live/manual-edit-evidence'), { recursive: true, force: true }));
+    pushCleanup('dump live diagnostics before restore', () => dumpLiveDiagnostics(t));
 
     stopLiveServer();
     resetLiveTestState();
@@ -124,11 +134,11 @@ describe('real browser LLM live manual edit flow', () => {
     t.diagnostic(`Using LLM agent provider=${llmConfig.provider} model=${llmConfig.model}`);
 
     const live = startLiveServer();
-    cleanupFns.push(() => stopLiveServer());
+    pushCleanup('stop live server', () => stopLiveServer());
     runInject(live.port);
 
     const dev = startRepoDevServer();
-    cleanupFns.push(() => stopDevServer(dev.child));
+    pushCleanup('stop dev server', () => stopDevServer(dev.child));
     const { port: devPort } = await dev.ready;
     t.diagnostic(`dev server ready on ${devPort}; live server on ${live.port}`);
 
@@ -142,13 +152,13 @@ describe('real browser LLM live manual edit flow', () => {
       signal: abort.signal,
       log: (msg) => t.diagnostic('[agent] ' + msg),
     });
-    cleanupFns.push(async () => {
+    pushCleanup('abort live agent loop', async () => {
       abort.abort();
       await agentDone.catch(() => {});
     });
 
     const userDataDir = mkdtempSync(join(tmpdir(), 'impeccable-real-browser-'));
-    cleanupFns.push(() => rmSync(userDataDir, { recursive: true, force: true }));
+    pushCleanup('remove persistent browser profile', () => rmSync(userDataDir, { recursive: true, force: true }));
     const slowMo = Number(process.env.IMPECCABLE_REAL_BROWSER_SLOWMO_MS || 250);
     const browserOptions = {
       headless: process.env.IMPECCABLE_REAL_BROWSER_HEADLESS === '1',
@@ -159,7 +169,7 @@ describe('real browser LLM live manual edit flow', () => {
       browserOptions.channel = process.env.IMPECCABLE_REAL_BROWSER_CHANNEL;
     }
     const ctx = await chromium.launchPersistentContext(userDataDir, browserOptions);
-    cleanupFns.push(() => ctx.close());
+    pushCleanup('close browser context', () => ctx.close());
 
     const page = await ctx.newPage();
     const appUrl = `http://127.0.0.1:${devPort}`;
@@ -526,6 +536,20 @@ function readSourceBundle(files) {
   return files.map((file) => `--- ${file} ---\n${readFileSync(join(REPO_ROOT, file), 'utf-8')}`).join('\n');
 }
 
+function dumpLiveDiagnostics(t) {
+  const eventPath = join(REPO_ROOT, '.impeccable/live/manual-edit-events.jsonl');
+  if (existsSync(eventPath)) {
+    const lines = readFileSync(eventPath, 'utf-8').trim().split('\n').filter(Boolean);
+    t.diagnostic(`[manual-edit-events tail]\n${lines.slice(-40).join('\n') || '(empty)'}`);
+  } else {
+    t.diagnostic('[manual-edit-events tail] missing');
+  }
+
+  t.diagnostic(`[pending manual edit count before cleanup] ${readPendingManualEditCount()}`);
+  t.diagnostic(`[manual edit evidence files before cleanup] ${listManualEditEvidenceFiles().join(', ') || '(none)'}`);
+  t.diagnostic(`[source diff before cleanup]\n${readSourceDiffForDiagnostics()}`);
+}
+
 function startLiveServer() {
   const out = execFileSync(process.execPath, [join(SCRIPTS_DIR, 'live-server.mjs'), '--background'], {
     cwd: REPO_ROOT,
@@ -657,6 +681,44 @@ function restoreFiles(snapshots) {
     }
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, item.body);
+  }
+}
+
+function listManualEditEvidenceFiles() {
+  const dir = join(REPO_ROOT, '.impeccable/live/manual-edit-evidence');
+  if (!existsSync(dir)) return [];
+  try {
+    return execFileSync('find', [dir, '-maxdepth', '1', '-type', 'f', '-print'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    })
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((file) => file.replace(REPO_ROOT + '/', ''));
+  } catch {
+    return [];
+  }
+}
+
+function readSourceDiffForDiagnostics() {
+  const files = [
+    INDEX_ASTRO,
+    'site/layouts/Base.astro',
+    DATA_JS,
+    FOUNDATION_ANIMATIONS_JS,
+    MAIN_CSS,
+  ];
+  try {
+    const diff = execFileSync('git', ['diff', '--unified=2', '--', ...files], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      maxBuffer: 1024 * 1024,
+    }).trim();
+    if (!diff) return '(no tracked source diff)';
+    return diff.length > 12000 ? diff.slice(0, 12000) + `\n... [truncated ${diff.length - 12000} chars]` : diff;
+  } catch (err) {
+    return `failed to read source diff: ${err.message || String(err)}`;
   }
 }
 

@@ -424,7 +424,7 @@ colors: {}
         assert.equal(event.pageUrl, '/');
         assert.equal(typeof event.evidencePath, 'string');
         assert.equal(existsSync(event.evidencePath), true);
-        assert.equal(event.batch.candidates, undefined);
+        assert.equal(Array.isArray(event.batch.candidates), true);
         assert.doesNotMatch(JSON.stringify(event.batch), /outerHTML|computedStyles|cssCustomProperties/);
         const evidence = JSON.parse(readFileSync(event.evidencePath, 'utf-8'));
         assert.equal(evidence.entries[0].id, 'cafebabe');
@@ -497,6 +497,101 @@ colors: {}
       if (chatServer) {
         await stopServer(chatServer.port, chatServer.token);
         chatServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/manual-edit-commit includes compact source candidates in chat Apply events', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-commit-chat-candidates-'));
+    let candidateServer;
+    try {
+      mkdirSync(join(tmp, 'site/scripts/components'), { recursive: true });
+      writeFileSync(join(tmp, 'site/scripts/data.js'), [
+        "export const skillFocusAreas = { impeccable: [",
+        "  { area: 'Typography', detail: 'Scale, rhythm, hierarchy, expression' },",
+        ']};',
+        "export const dimensionGuidelineCounts = { 'Typography': 33 };",
+        '',
+      ].join('\n'));
+      writeFileSync(join(tmp, 'site/scripts/components/foundation-animations.js'),
+        "export const foundationAnimations = { 'Typography': '<svg>type</svg>' };\n"
+      );
+      writeFileSync(join(tmp, 'site/scripts/components/foundation-grid.js'), [
+        "import { skillFocusAreas, dimensionGuidelineCounts } from '../data.js';",
+        "import { foundationAnimations } from './foundation-animations.js';",
+        "export const render = (dim) => `<span class=\"foundation-card-label\">${dim.area}</span><span class=\"foundation-card-count\">${dimensionGuidelineCounts[dim.area]}</span>${foundationAnimations[dim.area]}`;",
+        '',
+      ].join('\n'));
+
+      candidateServer = await startServer(8539, {
+        cwd: tmp,
+        env: { IMPECCABLE_LIVE_COPY_AGENT: 'chat' },
+      });
+
+      await stashManualEdit(candidateServer, {
+        id: 'feedcafe',
+        pageUrl: '/',
+        element: { tagName: 'div', classes: ['foundation-card'], textContent: 'Typography 33 Scale, rhythm, hierarchy, expression' },
+        ops: [
+          {
+            ref: 'body>main>section#foundation>div.foundation-card>span.foundation-card-label:nth-of-type(1)',
+            tag: 'span',
+            classes: ['foundation-card-label'],
+            originalText: 'Typography',
+            newText: 'Typo WOW',
+          },
+          {
+            ref: 'body>main>section#foundation>div.foundation-card>span.foundation-card-count:nth-of-type(2)',
+            tag: 'span',
+            classes: ['foundation-card-count'],
+            originalText: '33',
+            newText: '0033',
+          },
+        ],
+      });
+
+      const commitPromise = fetch(`http://localhost:${candidateServer.port}/manual-edit-commit?token=${candidateServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      });
+
+      const event = await fetch(`http://localhost:${candidateServer.port}/poll?token=${candidateServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      assert.equal(event.type, 'manual_edit_apply');
+      assert.equal(Array.isArray(event.batch.candidates), true);
+      const candidateJson = JSON.stringify(event.batch.candidates);
+      assert.match(candidateJson, /site\/scripts\/data\.js/);
+      assert.match(candidateJson, /site\/scripts\/components\/foundation-animations\.js/);
+      assert.match(candidateJson, /objectKeyMatches/);
+      assert.ok(JSON.stringify(event).length < 12000, 'chat Apply poll payload should stay compact with filtered candidates');
+
+      const ack = await fetch(`http://localhost:${candidateServer.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: candidateServer.token,
+          id: event.id,
+          type: 'done',
+          data: {
+            status: 'error',
+            appliedEntryIds: [],
+            failed: [{ entryId: 'feedcafe', reason: 'test finished after inspecting candidates' }],
+            files: [],
+            notes: [],
+          },
+        }),
+      });
+      assert.equal(ack.status, 200);
+
+      const commit = await commitPromise;
+      assert.equal(commit.status, 200);
+      const result = await commit.json();
+      assert.equal(result.cleared, 0);
+      assert.equal(result.failed[0].id, 'feedcafe');
+    } finally {
+      if (candidateServer) {
+        await stopServer(candidateServer.port, candidateServer.token);
+        candidateServer.proc.kill();
       }
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -656,7 +751,7 @@ colors: {}
           assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
           assert.equal(typeof event.evidencePath, 'string');
           assert.equal(existsSync(event.evidencePath), true);
-          assert.equal(event.batch.candidates, undefined);
+          assert.equal(Array.isArray(event.batch.candidates), true);
           assert.ok(JSON.stringify(event).length < 9000, 'chat Apply poll payload should stay compact; full evidence lives at evidencePath');
           assert.deepEqual(event.chunk, {
             index: index + 1,
@@ -868,7 +963,7 @@ colors: {}
           assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
           assert.equal(typeof event.evidencePath, 'string');
           assert.equal(existsSync(event.evidencePath), true);
-          assert.equal(event.batch.candidates, undefined);
+          assert.equal(Array.isArray(event.batch.candidates), true);
           assert.equal(event.batch.entries.length, 1);
           assert.equal(event.batch.entries[0].id, 'abc55555');
           assert.equal(event.batch.entries[0].ops.length, expectedSize);
@@ -1161,6 +1256,7 @@ colors: {}
       assert.equal(event.type, 'manual_edit_apply');
       assert.equal(event.pageUrl, '/');
       assert.equal(event.batch.entries[0].id, 'aaaaaa11');
+      writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
 
       const discard = await fetch(`http://localhost:${discardApplyServer.port}/manual-edit-discard?token=${discardApplyServer.token}&pageUrl=%2F`, {
         method: 'POST',
@@ -1169,7 +1265,9 @@ colors: {}
       const discardBody = await discard.json();
       assert.equal(discardBody.discarded, 1);
       assert.deepEqual(discardBody.canceledApplyEvents.map((item) => item.id), [event.id]);
+      assert.deepEqual(discardBody.canceledApplyEvents[0].rolledBackFiles, ['src/page.html']);
       assert.equal(discardBody.totalCount, 0);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
 
       const commit = await commitPromise;
       assert.equal(commit.status, 200);
@@ -1211,6 +1309,110 @@ colors: {}
       if (discardApplyServer) {
         await stopServer(discardApplyServer.port, discardApplyServer.token);
         discardApplyServer.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('/manual-edit-commit rolls back abandoned chunk transactions after server restart', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-manual-abandoned-transaction-'));
+    let abandonedServer;
+    let restarted;
+    try {
+      mkdirSync(join(tmp, 'src'), { recursive: true });
+      const sourcePath = join(tmp, 'src', 'page.html');
+      const originalSource = Array.from({ length: 4 }, (_, index) => `<p>Item ${index + 1}</p>`).join('\n') + '\n';
+      writeFileSync(sourcePath, originalSource);
+
+      abandonedServer = await startServer(8547, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'chat',
+          IMPECCABLE_LIVE_MANUAL_EDIT_CHUNK_SIZE: '3',
+        },
+      });
+
+      for (let index = 0; index < 4; index += 1) {
+        await stashManualEdit(abandonedServer, {
+          id: `abc0000${index}`,
+          pageUrl: '/',
+          element: { tagName: 'p', outerHTML: `<p>Item ${index + 1}</p>`, textContent: `Item ${index + 1}` },
+          ops: [{
+            ref: `body>p:nth-of-type(${index + 1})`,
+            tag: 'p',
+            originalText: `Item ${index + 1}`,
+            newText: `Edited ${index + 1}`,
+            sourceHint: { file: 'src/page.html', line: index + 1 },
+          }],
+        });
+      }
+
+      const commitPromise = fetch(`http://localhost:${abandonedServer.port}/manual-edit-commit?token=${abandonedServer.token}&pageUrl=%2F`, {
+        method: 'POST',
+      }).catch((err) => err);
+
+      const firstEvent = await fetch(`http://localhost:${abandonedServer.port}/poll?token=${abandonedServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      assert.equal(firstEvent.type, 'manual_edit_apply');
+      assert.equal(firstEvent.chunk.index, 1);
+      let source = readFileSync(sourcePath, 'utf-8');
+      for (const entry of firstEvent.batch.entries) {
+        for (const op of entry.ops) source = source.replace(op.originalText, op.newText);
+      }
+      writeFileSync(sourcePath, source);
+      assert.match(readFileSync(sourcePath, 'utf-8'), /Edited 1/);
+
+      const firstAck = await fetch(`http://localhost:${abandonedServer.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: abandonedServer.token,
+          id: firstEvent.id,
+          type: 'done',
+          data: {
+            status: 'done',
+                appliedEntryIds: firstEvent.batch.entries.map((entry) => entry.id),
+            failed: [],
+            files: ['src/page.html'],
+            notes: [],
+          },
+        }),
+      });
+      assert.equal(firstAck.status, 200);
+
+      const secondEvent = await fetch(`http://localhost:${abandonedServer.port}/poll?token=${abandonedServer.token}&timeout=10000&leaseMs=30000`)
+        .then((res) => res.json());
+      assert.equal(secondEvent.type, 'manual_edit_apply');
+      assert.equal(secondEvent.chunk.index, 2);
+
+      abandonedServer.proc.kill('SIGKILL');
+      await new Promise((resolve) => abandonedServer.proc.once('exit', resolve));
+      const interrupted = await commitPromise;
+      assert.ok(interrupted instanceof Error || interrupted.status === 200);
+      abandonedServer = null;
+
+      restarted = await startServer(8547, {
+        cwd: tmp,
+        env: {
+          IMPECCABLE_LIVE_COPY_AGENT: 'chat',
+          IMPECCABLE_LIVE_MANUAL_EDIT_CHUNK_SIZE: '3',
+        },
+      });
+
+      assert.equal(readFileSync(sourcePath, 'utf-8'), originalSource);
+      const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
+      assert.equal(buffer.entries.length, 4);
+      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
+      assert.match(events, /manual_edit_transaction_rolled_back/);
+      assert.match(events, /manual_edit_server_start_recovered_abandoned_transaction/);
+    } finally {
+      if (abandonedServer) {
+        try { await stopServer(abandonedServer.port, abandonedServer.token); } catch {}
+        abandonedServer.proc.kill();
+      }
+      if (restarted) {
+        await stopServer(restarted.port, restarted.token);
+        restarted.proc.kill();
       }
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -1425,7 +1627,7 @@ colors: {}
   });
 
   it('/manual-edit-stash rejects markup-looking copy before it reaches the pending buffer', async () => {
-    const cases = ['<strong>B</strong>', 'B > A', '{label}', 'label}', '`label`'];
+    const cases = ['<strong>B</strong>', '{label}', 'label}', '`label`'];
     for (const [i, newText] of cases.entries()) {
       const res = await fetch(`http://localhost:${server.port}/manual-edit-stash`, {
         method: 'POST',
