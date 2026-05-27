@@ -19,9 +19,9 @@ Execute in order. No step skipped, no step reordered.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
-- **Cursor**: run the poll in the **foreground** (blocking shell; not a background terminal, not a subagent). Cursor background terminals and subagents do not reliably resume the chat with poll stdout.
+- **Cursor**: run **one-shot** poll in a **background terminal** with notify on `"type":"(steer|generate|accept|discard|exit)"`. After each event the poll exits; handle it, `--reply`, then start `live-poll.mjs` again. Do **not** use `--stream` on Cursor: incremental stdout notify is slower in practice than exit-based notify (~5s vs sub-second in testing).
 - **Codex**: run the poll in the **foreground** (blocking shell; not a background task, not a subagent). Codex background exec sessions do not reliably surface poll stdout back into the conversation at the moment events arrive, so a "fire-and-forget" background poll will stall live mode.
-- **Other harnesses**: foreground unless you know stdout reliably returns to this session.
+- **Other harnesses**: one-shot foreground unless you know stdout reliably returns to this session when a shell exits.
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
@@ -39,6 +39,8 @@ If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, 
 
 ## Poll loop
 
+**Default (portable, all harnesses):**
+
 ```
 LOOP:
   node .trae-cn/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
@@ -52,6 +54,16 @@ LOOP:
   "timeout"   → LOOP
   "exit"      → break → Cleanup
 ```
+
+**Stream mode (experimental, not for Cursor):**
+
+```
+node .trae-cn/skills/impeccable/scripts/live-poll.mjs --stream   # stays running; one JSON line per event
+  Handle event; run --reply in a separate command
+  Repeat until "exit" line → Cleanup
+```
+
+Stream keeps one process alive and waits for `--reply` ack before polling again. Useful only when the harness reads incremental stdout reliably and quickly. **Cursor is not one of those:** background pattern notify on a long-running shell was ~5s to pick up events vs sub-second for one-shot exit notify. Default to one-shot everywhere unless you have measured otherwise.
 
 ## Recovery commands
 

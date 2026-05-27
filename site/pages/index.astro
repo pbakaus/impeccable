@@ -7,7 +7,7 @@ import '../styles/home-kinpaku.css';
 import '../styles/home-rebuild.css';
 import '../styles/testimonials.css';
 
-// Hero background candidates — pulled from /design-system's candidate folders
+// Hero background candidates: pulled from /design-system's candidate folders
 // so the homepage switcher and the design-system gallery stay in sync. The
 // switcher panel below the hero lets you cycle through them and pick one;
 // selection persists in localStorage. Remove the switcher block + this loader
@@ -185,13 +185,12 @@ import '../styles/testimonials.css';
 
               <div class="live-demo-outline" data-demo-outline aria-hidden="true"></div>
 
-              <!-- Annotation layer: two freehand circles isolating the off-brand
-                   bits (generic headline + purple button) + a comment pin with the
-                   intent. Mirrors the real picker; all of it is "sent along". -->
+              <!-- Annotation layer: one freehand circle around the off-brand
+                   purple button + a comment pin with the intent. Mirrors the real
+                   picker; both are "sent along". -->
               <div class="live-demo-annotations" data-demo-annotations aria-hidden="true">
                 <svg class="live-demo-stroke" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <path class="live-demo-stroke-p1" d="M8 44 C3 27 28 21 52 25 C66 27 68 40 56 45 C40 50 12 49 7 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
-                  <path class="live-demo-stroke-p2" d="M6 74 C2 61 17 55 31 58 C41 60 42 72 31 75 C19 79 7 77 5 67" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+                  <path d="M6 74 C2 60 18 54 33 57 C44 59 45 72 34 75 C20 79 7 77 5 66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
                 </svg>
                 <span class="live-demo-pin" data-demo-pin>
                   <span class="live-demo-pin-dot"></span>
@@ -379,7 +378,7 @@ import '../styles/testimonials.css';
     </section>
 
 
-    <!-- 05. READY TO DROP IN — bento grid with six tiles. Replaces the
+    <!-- 05. READY TO DROP IN: bento grid with six tiles. Replaces the
          carousel (initWhyTabs in app.js returns early when .why-layout is
          missing, so leaving that JS in place is harmless). Tiles share
          inner content classes (.why-panel-title, .why-panel-body,
@@ -392,7 +391,7 @@ import '../styles/testimonials.css';
         </div>
 
         <div class="ks-bento why-bento">
-          <!-- T1 — hero, wide. Respects your design system. -->
+          <!-- T1: hero, wide. Respects your design system. -->
           <article class="ks-bento-tile ks-bento-tile--span-8" id="why-respects">
             <span class="ks-bento-num" data-color="kinpaku">01</span>
             <h3 class="why-panel-title">Respects your design system.</h3>
@@ -420,7 +419,7 @@ import '../styles/testimonials.css';
               </div>
           </article>
 
-          <!-- T2 — narrow. Real product context. -->
+          <!-- T2: narrow. Real product context. -->
           <article class="ks-bento-tile ks-bento-tile--span-4" id="why-product">
             <span class="ks-bento-num" data-color="patina">02</span>
             <h3 class="why-panel-title">Real product context.</h3>
@@ -453,7 +452,7 @@ import '../styles/testimonials.css';
               </div>
           </article>
 
-          <!-- T3 — narrow. DESIGN.md travels. Restored from the parked panel
+          <!-- T3: narrow. DESIGN.md travels. Restored from the parked panel
                at site/_parked/the-case.astro. -->
           <article class="ks-bento-tile ks-bento-tile--span-4" id="why-designmd">
             <span class="ks-bento-num" data-color="kinpaku">03</span>
@@ -502,7 +501,7 @@ import '../styles/testimonials.css';
             </div>
           </article>
 
-          <!-- T4 — wide. Tuned to the agent you use. -->
+          <!-- T4: wide. Tuned to the agent you use. -->
           <article class="ks-bento-tile ks-bento-tile--span-8 why-panel--vizfirst" id="why-tuned">
             <span class="ks-bento-num" data-color="patina">04</span>
             <h3 class="why-panel-title">Tuned to the agent you actually use.</h3>
@@ -530,11 +529,11 @@ import '../styles/testimonials.css';
               <p class="why-panel-meta"><a href="/cases/neo-mirai">Read the case &rarr;</a> &nbsp;&middot;&nbsp; <a href="/neo-mirai/">Open the live build &rarr;</a></p>
           </article>
 
-          <!-- T5 — medium. Brand vs Product registers. -->
+          <!-- T5: medium. Brand vs Product registers. -->
           <article class="ks-bento-tile ks-bento-tile--span-6" id="why-registers">
             <span class="ks-bento-num" data-color="kinpaku">05</span>
             <h3 class="why-panel-title">Brand work is not product UI.</h3>
-            <p class="why-panel-body">A landing page and a dashboard play by different rules. Impeccable runs in two registers — <em>brand</em> or <em>product</em> — and every command knows which.</p>
+            <p class="why-panel-body">A landing page and a dashboard play by different rules. Impeccable runs in two registers, <em>brand</em> or <em>product</em>, and every command knows which.</p>
               <div class="why-visual why-visual--registers">
                 <div class="why-register why-register--brand">
                   <span class="why-register-label">Brand mode</span>
@@ -554,11 +553,11 @@ import '../styles/testimonials.css';
               </div>
           </article>
 
-          <!-- T6 — medium. CI/CD-ready. -->
+          <!-- T6: medium. CI/CD-ready. -->
           <article class="ks-bento-tile ks-bento-tile--span-6" id="why-ci">
             <span class="ks-bento-num" data-color="patina">06</span>
             <h3 class="why-panel-title">Block slop before it ships.</h3>
-            <p class="why-panel-body">A detector you can wire into PR checks. 28 deterministic rules, no LLM, exit codes the build can read.</p>
+            <p class="why-panel-body">A detector you can wire into PR checks. 41 deterministic rules, no LLM, exit codes the build can read.</p>
               <div class="why-visual why-visual--ci">
                 <div class="why-ci-window">
                   <div class="why-ci-header">
@@ -626,7 +625,7 @@ import '../styles/testimonials.css';
         </li>
         <li>
           <strong>CLI for CI</strong>
-          <span><code>npx impeccable detect src/</code> in a PR check. 25 deterministic rules. JSON output, exit codes for build gates.</span>
+          <span><code>npx impeccable detect src/</code> in a PR check. 41 deterministic rules. JSON output, exit codes for build gates.</span>
           <a href="https://www.npmjs.com/package/impeccable" target="_blank" rel="noopener">View on npm →</a>
         </li>
         <li>
