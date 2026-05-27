@@ -156,7 +156,10 @@
 }
 @media (max-width: 960px) {
   .designing-kinpaku .designing-hero {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr) instead of 1fr so the column shrinks to fit the
+       container — bare 1fr lets the column grow to the intrinsic min-content
+       width of "Impeccable" (~472px), blowing past a 360px viewport. */
+    grid-template-columns: minmax(0, 1fr);
     padding: 56px 24px 64px;
     align-items: start;
   }
@@ -202,6 +205,19 @@
   margin: 0 0 24px;
   text-wrap: balance;
   max-width: none;
+  /* "Impeccable" at the display token's 3.4rem minimum is 270px+ in the
+     narrow Pinstripe face and overflows a 360px viewport. Allow break-word
+     as a safety net so the title never blows out of its container. */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .designing-kinpaku .designing-page-title {
+    /* Bring the display size down for narrow viewports — the token's 3.4rem
+       minimum is sized for hero impact at desktop and tablet, too big when
+       the line has to wrap into a 320-400px column. */
+    font-size: clamp(2.2rem, 11vw, 3rem);
+  }
 }
 
 .designing-kinpaku .designing-page-title em {
@@ -305,6 +321,14 @@
    itself is the artifact, no need for an italic wordmark inside it. */
 .designing-kinpaku .designing-loop-wheel {
   display: block;
+}
+/* The wheel is a decorative SVG flourish that sits beside the hero.
+   On narrow viewports it overflows the page (~22px past the right edge);
+   hide it on mobile — the hero copy carries the page without it. */
+@media (max-width: 600px) {
+  .designing-kinpaku .designing-loop-wheel {
+    display: none;
+  }
 }
 .designing-kinpaku .designing-loop-wheel-ring {
   fill: none;

@@ -5,7 +5,7 @@ interface Props {
 const { activeNav } = Astro.props;
 ---
 
-<header class="site-header" data-site-header>
+<header class="site-header" data-site-header data-nav-open="false">
   <a href="/" class="site-header-brand" aria-label="Impeccable home">
     <span class="site-header-brand-logo" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="currentColor">
@@ -15,7 +15,18 @@ const { activeNav } = Astro.props;
     </span>
     <span class="site-header-brand-name">Impeccable</span>
   </a>
-  <div class="site-header-right">
+  <button
+    type="button"
+    class="site-header-menu"
+    aria-label="Toggle navigation"
+    aria-expanded="false"
+    aria-controls="site-header-nav-panel"
+    data-site-header-menu
+  >
+    <span class="site-header-menu-line" aria-hidden="true"></span>
+    <span class="site-header-menu-line" aria-hidden="true"></span>
+  </button>
+  <div class="site-header-right" id="site-header-nav-panel">
     <nav class="site-header-nav" aria-label="Primary">
       <a href="/" data-nav="home" aria-current={activeNav === 'home' ? 'page' : undefined}>Home</a>
       <a href="/designing" data-nav="designing" aria-current={activeNav === 'designing' ? 'page' : undefined}>Designing</a>
@@ -30,3 +41,23 @@ const { activeNav } = Astro.props;
     </a>
   </div>
 </header>
+
+<script is:inline>
+  (function () {
+    var header = document.querySelector('[data-site-header]');
+    var btn = document.querySelector('[data-site-header-menu]');
+    if (!header || !btn) return;
+    btn.addEventListener('click', function () {
+      var open = header.getAttribute('data-nav-open') === 'true';
+      header.setAttribute('data-nav-open', String(!open));
+      btn.setAttribute('aria-expanded', String(!open));
+    });
+    // Close on link tap (navigates within site).
+    header.querySelectorAll('.site-header-nav a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        header.setAttribute('data-nav-open', 'false');
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+  })();
+</script>

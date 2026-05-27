@@ -728,6 +728,131 @@
   backdrop-filter: blur(18px) saturate(1.25);
 }
 
+/* Hamburger toggle — hidden on desktop, shown on mobile. The toggle expands
+   the nav panel below the header. Two-line glyph styled in kinpaku gold so
+   it reads as the brand's own control, not a generic browser affordance. */
+.site-header-menu {
+  display: none;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid oklch(78% 0.12 82 / 0.32);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  margin-left: auto;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.site-header-menu:hover {
+  border-color: oklch(78% 0.12 82 / 0.55);
+  background: oklch(78% 0.12 82 / 0.06);
+}
+.site-header-menu-line {
+  display: block;
+  width: 16px;
+  height: 1.5px;
+  background: var(--ks-kinpaku);
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+[data-site-header][data-nav-open="true"] .site-header-menu-line:nth-child(1) {
+  transform: translateY(3.75px) rotate(45deg);
+}
+[data-site-header][data-nav-open="true"] .site-header-menu-line:nth-child(2) {
+  transform: translateY(-3.75px) rotate(-45deg);
+}
+
+/* Mobile nav drawer. The right cluster (nav + github) collapses below the
+   header into a vertical panel that's hidden by default and revealed when
+   the hamburger toggles data-nav-open="true" on the header. */
+@media (max-width: 760px) {
+  .home-kinpaku .site-header,
+  .designing-kinpaku .site-header,
+  .docs-kinpaku .site-header,
+  .slop-kinpaku .site-header,
+  .live-mode-kinpaku .site-header {
+    flex-wrap: wrap;
+    padding: 16px clamp(16px, 4vw, 24px);
+    row-gap: 12px;
+  }
+
+  .site-header-menu {
+    display: inline-flex;
+  }
+
+  /* The right cluster (nav + github) becomes a collapsible drawer. Default
+     hidden; revealed when the header carries data-nav-open="true". The
+     panel extends past the header's horizontal padding to read as a true
+     full-width drawer, with a solid background so it doesn't bleed into
+     the hero content behind it. */
+  [data-site-header] .site-header-right {
+    order: 3;
+    flex-basis: 100%;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 12px calc(-1 * clamp(16px, 4vw, 24px)) -16px;
+    padding: 4px 0 6px;
+    background: oklch(4% 0.004 95);
+    border-top: 1px solid oklch(78% 0.12 82 / 0.18);
+  }
+  [data-site-header][data-nav-open="true"] .site-header-right {
+    display: flex;
+  }
+
+  .home-kinpaku .site-header-nav,
+  .designing-kinpaku .site-header-nav,
+  .docs-kinpaku .site-header-nav,
+  .slop-kinpaku .site-header-nav,
+  .live-mode-kinpaku .site-header-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    font-size: 1rem;
+    /* Drop sub-pages.css's horizontal-scroll mask + overflow on the nav. */
+    overflow: visible;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  /* Each row reads as a tappable surface — full-width, generous vertical
+     padding, hairline separators between rows. */
+  [data-site-header] .site-header-nav a {
+    display: block;
+    padding: 14px clamp(16px, 4vw, 24px);
+    border-bottom: 1px solid oklch(78% 0.12 82 / 0.06);
+  }
+  [data-site-header] .site-header-nav a:last-child {
+    border-bottom: 0;
+  }
+
+  /* sub-pages.css hides Home on mobile via `a[data-nav="home"] {display:none}`
+     because the brand acted as the home link in the old horizontal nav.
+     The drawer pattern surfaces all items, so override that here. */
+  [data-site-header] .site-header-nav a[data-nav="home"] {
+    display: block;
+  }
+
+  .home-kinpaku .site-header-github,
+  .designing-kinpaku .site-header-github,
+  .docs-kinpaku .site-header-github,
+  .slop-kinpaku .site-header-github,
+  .live-mode-kinpaku .site-header-github {
+    align-self: flex-start;
+    margin: 12px clamp(16px, 4vw, 24px) 6px;
+  }
+
+  /* sub-pages.css hides the github star count label on mobile. The drawer
+     has room for it, so bring it back. */
+  [data-site-header] .site-header-github-label {
+    display: inline;
+  }
+}
+
 .home-kinpaku .site-header-brand,
 .designing-kinpaku .site-header-brand,
 .docs-kinpaku .site-header-brand,

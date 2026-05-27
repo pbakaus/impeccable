@@ -2729,18 +2729,9 @@
 }
 
 @media (max-width: 560px) {
-  .home-kinpaku .site-header-github {
-    display: none;
-  }
-
-  .home-kinpaku .site-header-nav a[data-nav="home"] {
-    display: inline-block;
-  }
-
-  .home-kinpaku .site-header-nav a[data-nav="designing"],
-  .home-kinpaku .site-header-nav a[data-nav="live"] {
-    display: none;
-  }
+  /* (The hamburger drawer in Header.astro now handles the mobile nav.
+     The old display:none hacks for github / designing / live were removed
+     because they hid items the drawer is meant to show.) */
 
   .home-kinpaku .hero-title-combined {
     font-size: 2.4rem;
