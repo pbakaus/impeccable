@@ -77,6 +77,7 @@
   align-items: center;
   gap: 4px;
   padding: 8px 12px;
+  min-height: 44px;
   text-decoration: none;
   border-radius: 100px;
   transition: background 0.2s ease, color 0.2s ease;
@@ -153,7 +154,7 @@ body {
   font-size: 16px;
   line-height: 1.625;
   color: var(--color-text);
-  background: var(--color-paper);
+  background: var(--color-bg);
   overflow-x: clip;
   min-height: 100vh;
   min-height: 100dvh;
@@ -683,7 +684,7 @@ code {
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -715,7 +716,7 @@ code {
   color: white;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -915,7 +916,7 @@ code {
 
 .foundation-card {
   padding: var(--spacing-md);
-  background: white;
+  background: var(--color-paper);
   border: 1px solid var(--color-bg);
   border-radius: 12px;
   display: flex;
@@ -1248,7 +1249,7 @@ code {
   width: 100%;
   height: 480px;
   border: none;
-  background: white;
+  background: var(--color-paper);
 }
 
 /* Details sidebar — editorial blocks, no cards.
@@ -1499,7 +1500,6 @@ code {
   padding: var(--spacing-sm) var(--spacing-md);
   background: transparent;
   border: none;
-  border-left: 2px solid transparent;
   color: var(--color-ash);
   font-family: var(--font-body);
   font-size: 0.9375rem;
@@ -1509,6 +1509,7 @@ code {
   text-align: left;
   text-decoration: none;
   display: block;
+  border-radius: 4px;
 }
 
 .skill-nav-item:hover {
@@ -1518,20 +1519,13 @@ code {
 
 .skill-nav-item.active {
   color: var(--color-accent);
-  border-left-color: var(--color-accent);
   background: var(--color-accent-dim);
   font-weight: 500;
 }
 
 @media (max-width: 968px) {
   .skill-nav-item {
-    border-left: none;
-    border-bottom: 2px solid transparent;
     padding: var(--spacing-xs) var(--spacing-md);
-  }
-  
-  .skill-nav-item.active {
-    border-bottom-color: var(--color-accent);
   }
 }
 
@@ -1948,6 +1942,9 @@ code {
   font-size: 0.875rem;
   color: var(--color-ash);
   text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
@@ -2315,7 +2312,7 @@ code {
   height: 24px;
   border-radius: 50%;
   border: 1px solid var(--color-mist);
-  background: white;
+  background: var(--color-paper);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2358,7 +2355,7 @@ code {
   overflow: hidden;
   border: 1px solid var(--color-mist);
   text-decoration: none;
-  background: white;
+  background: var(--color-paper);
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, box-shadow 0.35s ease;
   will-change: transform, opacity;
 }
@@ -2438,7 +2435,7 @@ code {
 /* ---- Pattern tabs ---- */
 .patterns-tabbed {
   margin-bottom: var(--spacing-xl);
-  background: white;
+  background: var(--color-paper);
   border-radius: 8px;
   padding: var(--spacing-lg);
 }
@@ -2799,7 +2796,7 @@ code {
   gap: var(--spacing-xl);
   align-items: start;
   margin: 0 0 var(--spacing-xl);
-  background: white;
+  background: var(--color-paper);
   border-radius: 16px;
   padding: var(--spacing-lg);
   min-width: 0;
@@ -3199,6 +3196,8 @@ code {
   border-radius: 6px;
   cursor: pointer;
   text-align: left;
+  max-width: 100%;
+  overflow-wrap: break-word;
   transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -3250,7 +3249,7 @@ code {
 }
 
 .install-path-primary {
-  background: white;
+  background: var(--color-paper);
   border-radius: 16px;
   padding: var(--spacing-lg);
 }
@@ -3492,8 +3491,8 @@ code {
   background: transparent;
   padding: 0;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .install-cmd-line .copy-btn {

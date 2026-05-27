@@ -35,7 +35,7 @@
 
 @media (min-width: 1100px) {
   .magazine-container {
-    background: white;
+    background: var(--color-paper);
     border-radius: 16px;
     padding: var(--spacing-lg);
   }
@@ -411,9 +411,8 @@
 .manual-entry {
   position: relative;
   padding: var(--spacing-lg);
-  padding-left: calc(var(--spacing-lg) + 16px); /* Reserve space for transform */
-  border-left: 2px solid var(--color-mist);
-  transition: border-color 0.4s var(--ease-out), opacity 0.4s var(--ease-out), background 0.4s var(--ease-out), transform 0.4s var(--ease-out);
+  padding-left: calc(var(--spacing-lg) + 16px);
+  transition: opacity 0.4s var(--ease-out), background 0.4s var(--ease-out), transform 0.4s var(--ease-out);
   opacity: 0.4;
   cursor: pointer;
   transform: translateX(-16px);
@@ -424,10 +423,9 @@
 }
 
 .manual-entry.active {
-  border-left-color: var(--color-accent);
   opacity: 1;
   transform: translateX(0);
-  background: linear-gradient(to right, var(--color-bg), transparent);
+  background: linear-gradient(to right, var(--color-accent-dim), transparent);
 }
 
 .manual-cmd-name {
@@ -1436,16 +1434,16 @@
   gap: var(--spacing-sm);
   align-items: baseline;
   width: 100%;
-  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 0;
+  padding: var(--spacing-sm);
+  min-height: 44px;
   background: transparent;
   border: 0;
-  border-left: 2px solid transparent;
-  padding-left: var(--spacing-sm);
+  border-radius: 4px;
   cursor: pointer;
   text-align: left;
   font-family: var(--font-body);
   color: var(--color-ash);
-  transition: color 180ms var(--ease-out), border-color 180ms var(--ease-out), background 180ms var(--ease-out);
+  transition: color 180ms var(--ease-out), background 180ms var(--ease-out);
 }
 
 .why-tab-num {
@@ -1787,7 +1785,7 @@
   box-shadow: 0 20px 40px oklch(40% 0.14 270 / 0.25);
 }
 .why-slop-pill {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1797,7 +1795,7 @@
   align-self: flex-start;
 }
 .why-slop-title {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
   font-size: 14px;
   font-weight: 700;
   background: linear-gradient(135deg, #fff, #c4b5fd);
@@ -1813,7 +1811,7 @@
 }
 .why-slop-line--short { width: 60%; }
 .why-slop-cta {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: system-ui, sans-serif;
   font-size: 10px;
   font-weight: 600;
   padding: 6px 10px;
@@ -2950,6 +2948,9 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 8px 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   background: transparent;
   border: 0;
   border-radius: 999px;

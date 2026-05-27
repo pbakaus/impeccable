@@ -174,7 +174,7 @@
   border-radius: 8px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 200ms var(--ease-out), top 320ms var(--ease-out), left 320ms var(--ease-out), width 320ms var(--ease-out), height 320ms var(--ease-out);
+  transition: opacity 200ms var(--ease-out), top 320ms var(--ease-out), left 320ms var(--ease-out), transform 320ms var(--ease-out);
   box-shadow: 0 0 0 4px var(--color-accent-dim);
 }
 .live-demo-outline.is-visible {

@@ -65,15 +65,15 @@ button, input, textarea, select {
   --color-paper: oklch(98% 0 0);
   --color-cream: oklch(96% 0.005 350);
   --color-charcoal: oklch(25% 0 0);
-  --color-ash: oklch(55% 0 0);
+  --color-ash: oklch(52% 0 0);
   --color-mist: oklch(92% 0 0);
   --color-bg: oklch(96% 0.005 350);
 
-  /* Accent - Vibrant Magenta/Rose (original) */
-  --color-accent: oklch(60% 0.25 350);
-  --color-accent-hover: oklch(52% 0.25 350);
-  --color-accent-dim: oklch(60% 0.25 350 / 0.15);
-  --color-accent-soft: oklch(60% 0.25 350 / 0.25);
+  /* Accent - Vibrant Magenta/Rose */
+  --color-accent: oklch(55% 0.25 350);
+  --color-accent-hover: oklch(48% 0.25 350);
+  --color-accent-dim: oklch(55% 0.25 350 / 0.15);
+  --color-accent-soft: oklch(55% 0.25 350 / 0.25);
 
   /* Framework category colors - Light mode */
   --cat-create-bg: #fdf2f8;

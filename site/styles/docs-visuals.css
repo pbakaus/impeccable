@@ -1328,9 +1328,9 @@
   margin: 0;
   max-width: 56ch;
   padding: 10px 14px;
-  border-left: 2px solid var(--color-accent);
+  border: 1px solid color-mix(in oklab, var(--color-accent) 20%, transparent);
   background: color-mix(in oklab, var(--color-accent) 6%, transparent);
-  border-radius: 0 4px 4px 0;
+  border-radius: 4px;
 }
 
 .live-mode-page-alpha-note strong {

@@ -129,10 +129,12 @@ a {
 
 .site-header-nav a {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
   color: var(--color-charcoal);
   padding: 4px 0;
+  min-height: 44px;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
@@ -442,16 +444,15 @@ main#main {
      edge; group titles above use the same 14px inset. Accepts a small
      misalignment with the header logo in exchange for a visible
      active-state accent. */
-  padding: 4px 0 4px 12px;
-  border-left: 2px solid transparent;
+  padding: 4px 8px 4px 12px;
   font-family: var(--font-mono);
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.5;
   color: var(--color-charcoal);
   text-decoration: none;
+  border-radius: 4px;
   transition: color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out),
               background var(--duration-fast) var(--ease-out);
 }
 
@@ -463,7 +464,7 @@ main#main {
 .skills-sidebar-list a[aria-current="page"] {
   color: var(--color-ink);
   font-weight: 600;
-  border-left-color: var(--color-accent);
+  background: var(--color-accent-dim);
 }
 
 .skills-sidebar-list a[aria-current="page"]:hover {
@@ -510,7 +511,7 @@ main#main {
   grid-template-columns: 1.1fr 1fr;
   gap: clamp(1.5rem, 3vw, 2.5rem);
   padding: clamp(1.5rem, 3vw, 2rem);
-  background: #ffffff;
+  background: var(--color-paper);
   border: 1px solid var(--color-mist);
   border-radius: 12px;
   margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
@@ -583,14 +584,14 @@ main#main {
   display: block;
   text-decoration: none;
   padding-left: 10px;
-  border-left: 2px solid transparent;
+  border-radius: 4px;
   transition:
-    border-color var(--duration-fast) var(--ease-out, ease),
+    background var(--duration-fast) var(--ease-out, ease),
     color var(--duration-fast) var(--ease-out, ease);
 }
 
 .docs-home-card-modes a:hover {
-  border-left-color: var(--color-accent);
+  background: var(--color-accent-dim);
 }
 
 .docs-home-card-modes a:hover .docs-home-mode-label {
@@ -1334,7 +1335,7 @@ main#main {
   width: 100%;
   height: 520px;
   border: none;
-  background: white;
+  background: var(--color-paper);
 }
 
 .tutorial-embed-caption {
@@ -1440,7 +1441,7 @@ main#main {
   width: 100%;
   height: 580px;
   border: none;
-  background: white;
+  background: var(--color-paper);
 }
 
 /* Then vs Now: era toggle inline with lede */
@@ -2371,8 +2372,9 @@ main#main {
 
 .prose blockquote {
   margin: 1.5em 0;
-  padding: 0 0 0 var(--spacing-md);
-  border-left: 3px solid var(--color-mist);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-cream);
+  border-radius: 4px;
   color: var(--color-ash);
   font-style: italic;
 }
