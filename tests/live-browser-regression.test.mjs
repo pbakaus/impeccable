@@ -173,25 +173,122 @@ describe('live-browser.js regression guards', () => {
   it('pick mode preference persists in localStorage', () => {
     assert.match(
       SOURCE,
-      /const PICK_PREFS_KEY = 'impeccable-live-pick';[\s\S]{0,400}?function savePickPref\(\)/,
-      'pick mode must use a dedicated localStorage key with savePickPref',
+      /const INTERACTION_PREFS_KEY = 'impeccable-live-interaction';[\s\S]{0,3000}?function saveInteractionPrefs\(\)/,
+      'pick/insert interaction prefs must persist in localStorage',
     );
     assert.match(
       SOURCE,
-      /function togglePick\(\)[\s\S]{0,120}?savePickPref\(\);/,
-      'togglePick must persist pickActive so Escape / bar toggle survive reloads',
+      /function togglePick\(\)[\s\S]{0,200}?saveInteractionPrefs\(\);/,
+      'togglePick must persist interaction prefs',
     );
     assert.match(
       SOURCE,
-      /if \(state === 'IDLE' && pickActive\) state = 'PICKING';/,
-      'SSE connected must not arm pick mode when the saved preference has pick off',
+      /function toggleInsert\(\)[\s\S]{0,800}?saveInteractionPrefs\(\);/,
+      'toggleInsert must persist interaction prefs',
+    );
+    assert.match(
+      SOURCE,
+      /if \(state === 'IDLE' && \(pickActive \|\| insertActive\)\) state = 'PICKING';/,
+      'SSE connected must arm insert mode when saved preference has insert on',
+    );
+  });
+
+  it('insert mode UI and generate payload guards', () => {
+    assert.match(SOURCE, /function toggleInsert\(\)/, 'global bar must expose insert toggle');
+    assert.match(SOURCE, /PREFIX \+ '-insert-toggle'/, 'insert toggle needs stable id');
+    assert.match(SOURCE, /function buildInsertConfigureRow\(\)/, 'insert configure bar required');
+    assert.match(SOURCE, /function handleInsertCreate\(\)/, 'insert create handler required');
+    assert.match(SOURCE, /mode: 'insert'/, 'insert generate must set mode insert');
+    assert.match(SOURCE, /function syncInsertCreateButton\(btn, input\)/, 'Create button must reflect prompt/annotation gate');
+    assert.match(
+      SOURCE,
+      /syncInsertCreateButton\(create, input\)/,
+      'Create gate must sync before the row is attached to the document',
+    );
+    assert.match(SOURCE, /function showInsertCreateTooltip\(/, 'Create disabled state uses a custom hover tooltip');
+    assert.match(
+      SOURCE,
+      /function buildCyclingRow\(\)[\s\S]*?background: C\.brand, color: C\.ink/,
+      'Accept button uses lacquer-deep text on kinpaku gold',
+    );
+    assert.match(SOURCE, /insertCreateDisabledReason/, 'disabled Create hover must explain why');
+    assert.match(SOURCE, /data-impeccable-insert-placeholder/, 'placeholder element must be marked');
+    assert.match(
+      SOURCE,
+      /showHighlight\(el\)[\s\S]{0,120}?data-impeccable-insert-placeholder/,
+      'pick highlight must not stack on insert placeholder',
+    );
+    assert.match(SOURCE, /border: '2px dotted ' \+ BP\.accent/, 'placeholder border matches insert line (dotted)');
+    assert.match(
+      SOURCE,
+      /function syncPageInteractionCursor\(\)[\s\S]{0,280}?cursorForInsertAxis/,
+      'insert picking cursor follows row/column axis',
+    );
+    assert.match(SOURCE, /function hitSiblingInsertGap\(/, 'insert mode detects gaps between siblings');
+    assert.match(SOURCE, /function resolveInsertHover\(/, 'insert hover resolves axis-aware boundaries');
+    assert.match(SOURCE, /data-impeccable-placeholder-resize/, 'placeholder edge handles on annotation overlay');
+    assert.match(SOURCE, /resizeEdge && configureKind === 'insert'/, 'resize takes priority over draw');
+    assert.match(SOURCE, /cursorForPlaceholderEdge\(spec\.edge\)/, 'edge handles use resize cursors');
+    assert.match(
+      SOURCE,
+      /create\.id = PREFIX \+ '-insert-create'/,
+      'Create button id must be set on the element, not passed to el() styles',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /buildInsertConfigureRow[\s\S]{0,1200}?toggleActionPicker/,
+      'insert configure bar must not include action picker',
+    );
+    assert.match(
+      SOURCE,
+      /buildInsertConfigureRow[\s\S]*?const count = el\('button', \{[\s\S]{0,320}?height: '28px'/,
+      'insert count toggle must match input height',
+    );
+    assert.match(
+      SOURCE,
+      /buildInsertConfigureRow[\s\S]*?const create = el\('button', \{[\s\S]{0,320}?height: '28px'/,
+      'insert Create button must match input height',
+    );
+    assert.match(SOURCE, /function resolveBarAnchor\(\)/, 'bar positions from a connected anchor');
+    assert.match(SOURCE, /function finalizeInsertSession\(\)/, 'insert placeholder outlives capture');
+    assert.match(SOURCE, /function placeholderSizing\(/, 'insert placeholder picks implicit vs explicit width');
+    assert.match(SOURCE, /applyPlaceholderSizingStyles\(placeholder, sizing\)/, 'placeholder width styles applied by kind');
+    assert.match(
+      SOURCE,
+      /function createInsertPlaceholder[\s\S]*?applyPlaceholderSizingStyles\(placeholder, sizing\)/,
+      'createInsertPlaceholder must not always set parent pixel width',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /sendEvent\(screenshotPath[\s\S]{0,200}?removeInsertPlaceholder/,
+      'capture must not remove insert placeholder before variants land',
+    );
+    assert.match(
+      SOURCE,
+      /function setVariantShown\(el, shown\)[\s\S]{0,200}?removeAttribute\('hidden'\)/,
+      'variant cycling must clear the hidden attribute, not only style.display',
+    );
+    assert.match(
+      SOURCE,
+      /count > 0 \? pickVariantContent\(wrapper, visibleVariant \|\| 1\) : null/,
+      'insert HMR re-anchor must not drop placeholder until variants exist',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureInsertPlaceholder\(\)/,
+      'insert generating must recreate placeholder after scaffold HMR',
+    );
+    assert.match(
+      SOURCE,
+      /insertPlaceholder: insertPlaceholderSnapshot/,
+      'insert placeholder snapshot must persist across HMR resume',
     );
   });
 
   it('handleAccept reads the visible DOM variant before sending accept', () => {
     assert.match(
       SOURCE,
-      /function readVisibleVariantFromDOM\(sessionId\)[\s\S]{0,900}?variant\.style\.display === 'none'[\s\S]{0,500}?return idx;/,
+      /function readVisibleVariantFromDOM\(sessionId\)[\s\S]{0,900}?isVariantShown\(variant\)[\s\S]{0,500}?return idx;/,
       'live-browser should be able to derive the accepted variant from the currently visible DOM node',
     );
     assert.match(

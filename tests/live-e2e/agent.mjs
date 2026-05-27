@@ -83,6 +83,9 @@ export function createFakeAgent() {
   return {
     /** @type {VariantAgent['generateVariants']} */
     async generateVariants(event, context = {}) {
+      if (event.mode === 'insert') {
+        return generateInsertFakeVariants(context);
+      }
       const text = extractText(event.element?.outerHTML) || 'Title';
       const cls = 'hero-title';
       const useAstroGlobalCss = context.wrapInfo?.styleMode === 'astro-global-prefixed';
@@ -176,6 +179,104 @@ export function createFakeAgent() {
       await handleSteerDeterministic(context);
       return { message: 'Hero marked' };
     },
+  };
+}
+
+function generateInsertFakeVariants(context = {}) {
+  const useAstroGlobalCss = context.wrapInfo?.styleMode === 'astro-global-prefixed';
+
+  const variant1 = {
+    innerHtml: '<div class="inserted-strip"><p class="inserted-copy">Insert variant one</p></div>',
+    params: [
+      {
+        id: 'lightness',
+        kind: 'range',
+        min: 0.3,
+        max: 0.7,
+        step: 0.05,
+        default: 0.5,
+        label: 'Lightness',
+      },
+    ],
+  };
+
+  const variant2 = {
+    innerHtml: '<div class="inserted-strip"><p class="inserted-copy">Insert variant two</p></div>',
+    params: [
+      {
+        id: 'face',
+        kind: 'steps',
+        default: 'sans',
+        label: 'Face',
+        options: [
+          { value: 'sans', label: 'Sans' },
+          { value: 'serif', label: 'Serif' },
+          { value: 'mono', label: 'Mono' },
+        ],
+      },
+    ],
+  };
+
+  const variant3 = {
+    innerHtml: '<div class="inserted-strip"><p class="inserted-copy">Insert variant three</p></div>',
+    params: [
+      {
+        id: 'italic',
+        kind: 'toggle',
+        default: false,
+        label: 'Italic',
+      },
+    ],
+  };
+
+  const scopedCss = useAstroGlobalCss
+    ? [
+        '[data-impeccable-variant="1"] .inserted-copy {',
+        '  color: oklch(var(--p-lightness, 0.5) 0.25 25);',
+        '}',
+        '[data-impeccable-variant="2"] .inserted-copy { font-weight: 900; }',
+        '[data-impeccable-variant="2"][data-p-face="serif"] .inserted-copy { font-family: ui-serif, serif; }',
+        '[data-impeccable-variant="2"][data-p-face="mono"]  .inserted-copy { font-family: ui-monospace, monospace; }',
+        '[data-impeccable-variant="3"] .inserted-copy { text-transform: uppercase; letter-spacing: 0.04em; }',
+        '[data-impeccable-variant="3"][data-p-italic] .inserted-copy { font-style: italic; }',
+      ].join('\n')
+    : [
+        '@scope ([data-impeccable-variant="1"]) {',
+        '  :scope .inserted-copy {',
+        '    color: oklch(var(--p-lightness, 0.5) 0.25 25);',
+        '  }',
+        '}',
+        '@scope ([data-impeccable-variant="2"]) {',
+        '  :scope .inserted-copy { font-weight: 900; }',
+        '  :scope[data-p-face="serif"] .inserted-copy { font-family: ui-serif, serif; }',
+        '  :scope[data-p-face="mono"]  .inserted-copy { font-family: ui-monospace, monospace; }',
+        '}',
+        '@scope ([data-impeccable-variant="3"]) {',
+        '  :scope .inserted-copy { text-transform: uppercase; letter-spacing: 0.04em; }',
+        '  :scope[data-p-italic] .inserted-copy { font-style: italic; }',
+        '}',
+      ].join('\n');
+
+  return {
+    scopedCss,
+    variants: [variant1, variant2, variant3],
+  };
+}
+
+export function insertTargetFromEvent(event) {
+  const anchor = event?.insert?.anchor || {};
+  const classes = Array.isArray(anchor.classes)
+    ? anchor.classes.join(' ')
+    : (anchor.classes || '');
+  const text = typeof anchor.textContent === 'string'
+    ? anchor.textContent.trim().slice(0, 80)
+    : '';
+  return {
+    position: event?.insert?.position === 'before' ? 'before' : 'after',
+    classes: classes || undefined,
+    tag: anchor.tagName || anchor.tag || undefined,
+    elementId: anchor.id || anchor.elementId || undefined,
+    text: text || undefined,
   };
 }
 
@@ -388,27 +489,40 @@ export async function runAgentLoop({
     }
 
     if (event.type === 'generate') {
-      log(`generate id=${event.id} action=${event.action} count=${event.count}`);
+      const isInsert = event.mode === 'insert';
+      log(`generate id=${event.id} mode=${isInsert ? 'insert' : 'replace'}${isInsert ? '' : ` action=${event.action}`} count=${event.count}`);
       try {
-        // 1. Wrap the original element in the variant scaffold (deterministic CLI)
-        // wrapTarget can be a static {classes, tag, elementId} (test fixtures
-        // know what they pick) or a function (event) => target (real-use
-        // sessions: the agent must derive the selector from the picked
-        // element on the fly).
-        const target = typeof wrapTarget === 'function' ? wrapTarget(event) : wrapTarget;
-        // Pull textContent from the picker event so wrap can disambiguate
-        // when sibling elements share classes/tag (issue #114). Fixtures can
-        // still override by including `text` in their wrapTarget.
-        const text = target.text ?? (event.element?.textContent || '').trim();
-        const wrapInfo = await runWrap({
-          tmp,
-          scriptsDir,
-          id: event.id,
-          count: event.count,
-          ...target,
-          text,
-        });
-        log(`wrapped: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
+        let wrapInfo;
+        if (isInsert) {
+          const insertTarget = insertTargetFromEvent(event);
+          wrapInfo = await runInsert({
+            tmp,
+            scriptsDir,
+            id: event.id,
+            count: event.count,
+            ...insertTarget,
+          });
+        } else {
+          // 1. Wrap the original element in the variant scaffold (deterministic CLI)
+          // wrapTarget can be a static {classes, tag, elementId} (test fixtures
+          // know what they pick) or a function (event) => target (real-use
+          // sessions: the agent must derive the selector from the picked
+          // element on the fly).
+          const target = typeof wrapTarget === 'function' ? wrapTarget(event) : wrapTarget;
+          // Pull textContent from the picker event so wrap can disambiguate
+          // when sibling elements share classes/tag (issue #114). Fixtures can
+          // still override by including `text` in their wrapTarget.
+          const text = target.text ?? (event.element?.textContent || '').trim();
+          wrapInfo = await runWrap({
+            tmp,
+            scriptsDir,
+            id: event.id,
+            count: event.count,
+            ...target,
+            text,
+          });
+        }
+        log(`scaffolded: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
         // 2. Agent generates variant content (LLM-pluggable seam)
         const output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
@@ -621,6 +735,22 @@ function findSteerTargetFileSync(tmp, target) {
 
 async function runWrap({ tmp, scriptsDir, id, count, classes, tag, elementId, text }) {
   const args = [path.join(scriptsDir, 'live-wrap.mjs'), '--id', id, '--count', String(count)];
+  if (elementId) args.push('--element-id', elementId);
+  if (classes) args.push('--classes', classes);
+  if (tag) args.push('--tag', tag);
+  if (text) args.push('--text', text);
+  const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
+  const last = stdout.trim().split('\n').filter(Boolean).pop();
+  return JSON.parse(last);
+}
+
+async function runInsert({ tmp, scriptsDir, id, count, position, classes, tag, elementId, text }) {
+  const args = [
+    path.join(scriptsDir, 'live-insert.mjs'),
+    '--id', id,
+    '--count', String(count),
+    '--position', position,
+  ];
   if (elementId) args.push('--element-id', elementId);
   if (classes) args.push('--classes', classes);
   if (tag) args.push('--tag', tag);

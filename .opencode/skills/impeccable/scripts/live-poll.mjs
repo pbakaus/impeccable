@@ -235,7 +235,7 @@ Wait for a browser event from the live variant server, or reply to one.
 Modes:
   poll                             Block until a browser event arrives, print JSON, exit
   poll --stream                    Keep polling; print one JSON line per event (see live.md)
-  poll --reply <id> done           Reply "done" to event <id>
+  poll --reply <id> done           Reply "done" to event <id> (replace or insert generate)
   poll --reply <id> steer_done     Reply after handling a steer event (unlocks Steer bar)
   poll --reply <id> error "msg"    Reply with an error message
 

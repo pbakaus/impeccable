@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
 import { resolveContextDir } from './context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
+import { validateEvent } from './live-event-validation.mjs';
 import {
   getDesignSidecarPath,
   getLiveAnnotationsDir,
@@ -212,72 +213,6 @@ function hasProjectContext() {
 
 function statOrNull(filePath) {
   try { return fs.statSync(filePath); } catch { return null; }
-}
-
-// ---------------------------------------------------------------------------
-// Validation (inline — no external import needed for self-contained script)
-// ---------------------------------------------------------------------------
-
-const VISUAL_ACTIONS = [
-  'impeccable', 'bolder', 'quieter', 'distill', 'polish', 'typeset',
-  'colorize', 'layout', 'adapt', 'animate', 'delight', 'overdrive',
-];
-
-// Browser generates ids via crypto.randomUUID().slice(0, 8) (8 hex chars)
-// and variantIds via String(small integer). Restrict to those shapes so
-// any value that reaches a downstream child_process or DOM selector is
-// inert by construction.
-const ID_PATTERN = /^[0-9a-f]{8}$/;
-const VARIANT_ID_PATTERN = /^[0-9]{1,3}$/;
-
-function isValidId(v) { return typeof v === 'string' && ID_PATTERN.test(v); }
-function isValidVariantId(v) { return typeof v === 'string' && VARIANT_ID_PATTERN.test(v); }
-
-function validateEvent(msg) {
-  if (!msg || typeof msg !== 'object' || !msg.type) return 'Missing or invalid message';
-  switch (msg.type) {
-    case 'generate':
-      if (!isValidId(msg.id)) return 'generate: missing or malformed id';
-      if (!msg.action || !VISUAL_ACTIONS.includes(msg.action)) return 'generate: invalid action';
-      if (!Number.isInteger(msg.count) || msg.count < 1 || msg.count > 8) return 'generate: count must be 1-8';
-      if (!msg.element || !msg.element.outerHTML) return 'generate: missing element context';
-      // Optional annotation fields (all-or-nothing: if any present, all must be well-formed).
-      if (msg.screenshotPath !== undefined && typeof msg.screenshotPath !== 'string') return 'generate: screenshotPath must be string';
-      if (msg.comments !== undefined && !Array.isArray(msg.comments)) return 'generate: comments must be array';
-      if (msg.strokes !== undefined && !Array.isArray(msg.strokes)) return 'generate: strokes must be array';
-      return null;
-    case 'accept':
-      if (!isValidId(msg.id)) return 'accept: missing or malformed id';
-      if (!isValidVariantId(msg.variantId)) return 'accept: missing or malformed variantId';
-      if (msg.paramValues !== undefined) {
-        if (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues)) {
-          return 'accept: paramValues must be an object';
-        }
-      }
-      return null;
-    case 'discard':
-      return isValidId(msg.id) ? null : 'discard: missing or malformed id';
-    case 'checkpoint':
-      if (!isValidId(msg.id)) return 'checkpoint: missing or malformed id';
-      if (!Number.isInteger(msg.revision) || msg.revision < 0) return 'checkpoint: revision must be a non-negative integer';
-      if (msg.paramValues !== undefined && (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues))) {
-        return 'checkpoint: paramValues must be an object';
-      }
-      return null;
-    case 'exit':
-      return null;
-    case 'prefetch':
-      if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
-      return null;
-    case 'steer':
-      if (!isValidId(msg.id)) return 'steer: missing or malformed id';
-      if (typeof msg.message !== 'string' || !msg.message.trim()) return 'steer: message required';
-      if (msg.message.length > 4000) return 'steer: message too long';
-      if (msg.pageUrl !== undefined && typeof msg.pageUrl !== 'string') return 'steer: pageUrl must be string';
-      return null;
-    default:
-      return 'Unknown event type: ' + msg.type;
-  }
 }
 
 // ---------------------------------------------------------------------------

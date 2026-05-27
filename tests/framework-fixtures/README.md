@@ -44,6 +44,14 @@ Fixtures can also opt into a **runtime E2E** pass that actually installs depende
     "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
     "readyTimeoutMs": 120000,
     "pickSelector": "h1.hero-title",
+    "mode": "insert",
+    "insert": {
+      "anchorSelector": "section#features",
+      "position": "after",
+      "prompt": "Add a testimonial strip below features",
+      "expectSelector": ".inserted-strip",
+      "assertAnchorContains": "feature-grid"
+    },
     "preActions": [
       { "type": "click", "selector": "[data-testid='open-modal']" },
       { "type": "goto",  "path": "/about" }

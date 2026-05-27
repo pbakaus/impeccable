@@ -869,4 +869,55 @@ colors: {}
     const data = await postRes.json();
     assert.ok(data.error.includes('comments'));
   });
+
+  it('POST /events accepts insert-mode generate with prompt only', async () => {
+    await drainPolls(server);
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'aa22bb33',
+        mode: 'insert',
+        count: 3,
+        pageUrl: '/',
+        insert: {
+          position: 'after',
+          anchor: { tagName: 'section', classes: ['hero'] },
+        },
+        placeholder: { width: 320, height: 80 },
+        freeformPrompt: 'Add testimonials',
+      }),
+    });
+    assert.equal(postRes.status, 200);
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=2000`).then(r => r.json());
+    assert.equal(polled.id, 'aa22bb33');
+    assert.equal(polled.mode, 'insert');
+    assert.equal(polled.freeformPrompt, 'Add testimonials');
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: 'aa22bb33', type: 'done' }),
+    });
+  });
+
+  it('POST /events rejects insert-mode generate without prompt or annotations', async () => {
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'bb33cc44',
+        mode: 'insert',
+        count: 2,
+        insert: { position: 'before', anchor: { tagName: 'div', classes: ['x'] } },
+        placeholder: { width: 200, height: 80 },
+      }),
+    });
+    assert.equal(postRes.status, 400);
+    const data = await postRes.json();
+    assert.match(data.error, /freeformPrompt or annotations/i);
+  });
 });

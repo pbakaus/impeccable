@@ -148,4 +148,52 @@ describe('live-poll --stream integration', () => {
       streamProc.kill('SIGTERM');
     }
   });
+
+  it('emits insert-mode generate and clears pending after done reply', async () => {
+    const streamProc = spawn('node', [POLL_SCRIPT, '--stream', '--ack-timeout=15000'], {
+      cwd: REPO_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env },
+    });
+
+    try {
+      const linePromise = readStdoutLine(streamProc);
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      const postRes = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type: 'generate',
+          id: 'aa999999',
+          mode: 'insert',
+          count: 3,
+          pageUrl: 'http://localhost:4321/',
+          insert: {
+            position: 'after',
+            anchor: { tagName: 'section', classes: ['hero'] },
+          },
+          placeholder: { width: 320, height: 80 },
+          freeformPrompt: 'Add testimonials',
+        }),
+      });
+      assert.equal(postRes.status, 200);
+
+      const line = await linePromise;
+      const event = JSON.parse(line);
+      assert.equal(event.type, 'generate');
+      assert.equal(event.mode, 'insert');
+      assert.equal(event.id, 'aa999999');
+      assert.equal(event.freeformPrompt, 'Add testimonials');
+
+      await postReply(`http://localhost:${server.port}`, server.token, {
+        id: 'aa999999',
+        type: 'done',
+      });
+    } finally {
+      streamProc.kill('SIGTERM');
+    }
+  });
 });

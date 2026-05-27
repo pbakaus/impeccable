@@ -274,6 +274,7 @@
 
   function showHighlight(el) {
     if (!el || !highlightEl) return;
+    if (el.hasAttribute?.('data-impeccable-insert-placeholder')) return;
     const r = el.getBoundingClientRect();
     const top = (r.top - 2) + 'px', left = (r.left - 2) + 'px';
     const width = (r.width + 4) + 'px', height = (r.height + 4) + 'px';
@@ -329,6 +330,8 @@
   let annotPointer = null;
   let annotEditing = null;        // { idx, input, wrapEl }
   let annotLastPinClick = { idx: -1, time: 0 }; // for click-click-to-delete
+  let placeholderResizeLayerEl = null;
+  let placeholderResizeDrag = null;
 
   function initAnnotOverlay() {
     annotOverlayEl = document.createElement('div');
@@ -375,6 +378,17 @@
     });
     annotOverlayEl.appendChild(annotClearChipEl);
 
+    placeholderResizeLayerEl = document.createElement('div');
+    placeholderResizeLayerEl.id = PREFIX + '-placeholder-resize';
+    Object.assign(placeholderResizeLayerEl.style, {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      display: 'none',
+      zIndex: '2',
+    });
+    annotOverlayEl.appendChild(placeholderResizeLayerEl);
+
     annotOverlayEl.addEventListener('pointerdown', onAnnotDown);
     annotOverlayEl.addEventListener('pointermove', onAnnotMove);
     annotOverlayEl.addEventListener('pointerup', onAnnotUp);
@@ -398,11 +412,14 @@
     annotActive = true;
     positionAnnotOverlay(el);
     annotOverlayEl.style.display = 'block';
+    syncPlaceholderResizeHandles();
   }
 
   function hideAnnotOverlay() {
     annotActive = false;
+    placeholderResizeDrag = null;
     if (annotOverlayEl) annotOverlayEl.style.display = 'none';
+    syncPlaceholderResizeHandles();
     // Drop any in-progress edit without touching annotState — clearAnnotations
     // (if the caller is exiting configure mode) handles state reset.
     annotEditing = null;
@@ -416,6 +433,7 @@
       width: r.width + 'px', height: r.height + 'px',
     });
     annotSvgEl.setAttribute('viewBox', '0 0 ' + r.width + ' ' + r.height);
+    syncPlaceholderResizeHandles();
   }
 
   function clearAnnotations() {
@@ -466,6 +484,13 @@
 
   function onAnnotDown(e) {
     if (!annotActive) return;
+
+    // 0) Insert placeholder edge resize — wins over draw / pins.
+    const resizeEdge = e.target.closest?.('[data-impeccable-placeholder-resize]')?.dataset.impeccablePlaceholderResize;
+    if (resizeEdge && configureKind === 'insert' && placeholderElement) {
+      startPlaceholderEdgeResize(resizeEdge, e);
+      return;
+    }
 
     // 1) Clear chip → wipe all annotations
     if (e.target.closest?.('[data-annot-clear]')) {
@@ -536,7 +561,23 @@
   }
 
   function onAnnotMove(e) {
-    if (!annotActive || !annotPointer) return;
+    if (!annotActive) return;
+
+    if (placeholderResizeDrag) {
+      const d = placeholderResizeDrag;
+      const next = resizePlaceholderFromEdge(
+        d.start,
+        d.edge,
+        e.clientX - d.startX,
+        e.clientY - d.startY,
+        d.parentWidth,
+      );
+      applyPlaceholderDimensions(next);
+      e.stopPropagation();
+      return;
+    }
+
+    if (!annotPointer) return;
     const p = localCoords(e);
 
     if (annotPointer.kind === 'pin') {
@@ -576,7 +617,22 @@
     e.stopPropagation();
   }
 
+  function pointsToPath(points) {
+    if (!points || points.length === 0) return '';
+    let d = 'M' + points[0][0].toFixed(1) + ' ' + points[0][1].toFixed(1);
+    for (let i = 1; i < points.length; i++) {
+      d += ' L' + points[i][0].toFixed(1) + ' ' + points[i][1].toFixed(1);
+    }
+    return d;
+  }
+
   function onAnnotUp(e) {
+    if (placeholderResizeDrag) {
+      try { annotOverlayEl.releasePointerCapture(e.pointerId); } catch {}
+      placeholderResizeDrag = null;
+      e.stopPropagation();
+      return;
+    }
     if (!annotActive || !annotPointer) return;
 
     if (annotPointer.kind === 'pin') {
@@ -609,16 +665,8 @@
     }
     try { annotOverlayEl.releasePointerCapture(e.pointerId); } catch {}
     annotPointer = null;
+    if (configureKind === 'insert') syncInsertCreateButton();
     e.stopPropagation();
-  }
-
-  function pointsToPath(points) {
-    if (!points || points.length === 0) return '';
-    let d = 'M' + points[0][0].toFixed(1) + ' ' + points[0][1].toFixed(1);
-    for (let i = 1; i < points.length; i++) {
-      d += ' L' + points[i][0].toFixed(1) + ' ' + points[i][1].toFixed(1);
-    }
-    return d;
   }
 
   function renderAllPins() {
@@ -863,8 +911,10 @@
   }
 
   function positionBar() {
-    if (!barEl || !selectedElement) return;
-    const r = selectedElement.getBoundingClientRect();
+    if (!barEl) return;
+    const anchor = resolveBarAnchor();
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
     const barH = barEl.offsetHeight || 44;
     const barW = barEl.offsetWidth || 380;
     const GLOBAL_BAR_RESERVE = 64; // global bar height + bottom margin + breathing room
@@ -892,8 +942,10 @@
 
   function showBar(mode) {
     barEl.innerHTML = '';
-    if (mode === 'configure') barEl.appendChild(buildConfigureRow());
-    else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
+    if (mode === 'configure') {
+      barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
+      if (configureKind === 'insert') syncInsertCreateButton();
+    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
     else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
     barEl.style.display = 'block';
     positionBar();
@@ -906,6 +958,8 @@
 
   function hideBar() {
     if (!barEl) return;
+    stopVoice({ suppressSubmit: true });
+    if (configureKind === 'insert') clearInsertPicking();
     barEl.style.opacity = '0';
     barEl.style.transform = 'translateY(6px)';
     setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
@@ -920,8 +974,10 @@
     barEl.style.background = BP.surface;
     barEl.style.border = '1.5px solid ' + BP.border;
     barEl.style.boxShadow = BP.shadow;
-    if (mode === 'configure') barEl.appendChild(buildConfigureRow());
-    else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
+    if (mode === 'configure') {
+      barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
+      if (configureKind === 'insert') syncInsertCreateButton();
+    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
     else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
     else if (mode === 'saving') barEl.appendChild(buildSavingRow());
     else if (mode === 'confirmed') {
@@ -934,60 +990,741 @@
 
   // --- Configure row ---
 
+  function syncConfigureInputChrome() {
+    const wrap = document.getElementById(PREFIX + '-configure-input-wrap');
+    const input = document.getElementById(PREFIX + '-input');
+    if (!wrap || !input) return;
+    const focused = document.activeElement === input;
+    wrap.dataset.inputFocused = focused ? 'true' : 'false';
+    wrap.dataset.voiceListening = (voiceListening && voiceCtx?.mode === 'configure') ? 'true' : 'false';
+    wrap.style.borderColor = (voiceListening && voiceCtx?.mode === 'configure')
+      ? BP.patinaSoft
+      : (focused ? BP.accentSoft : BP.hairline);
+  }
+
+  // --- Insert mode helpers (mirrors skill/scripts/live-insert-ui.mjs) ---
+
+  function detectInsertAxisFromStyle(style) {
+    const display = style?.display || 'block';
+    if (display.includes('flex')) {
+      const dir = style.flexDirection || 'row';
+      return dir.startsWith('row') ? 'row' : 'column';
+    }
+    if (display === 'grid' || display === 'inline-grid') {
+      const flow = style.gridAutoFlow || 'row';
+      if (flow.includes('column')) return 'column';
+      const cols = (style.gridTemplateColumns || '').trim();
+      if (cols && cols !== 'none') {
+        const colCount = cols.split(/\s+/).filter(Boolean).length;
+        if (colCount > 1) return 'row';
+      }
+      return 'row';
+    }
+    return 'column';
+  }
+
+  function detectInsertAxis(parent) {
+    if (!parent || parent.nodeType !== 1) return 'column';
+    const st = getComputedStyle(parent);
+    return detectInsertAxisFromStyle({
+      display: st.display,
+      flexDirection: st.flexDirection,
+      gridTemplateColumns: st.gridTemplateColumns,
+      gridAutoFlow: st.gridAutoFlow,
+    });
+  }
+
+  function layoutFlowChildren(parent) {
+    if (!parent) return [];
+    return [...parent.children]
+      .filter(pickable)
+      .map((el) => ({ el, rect: el.getBoundingClientRect() }));
+  }
+
+  function computeInsertPosition(clientX, clientY, rect, axis) {
+    axis = axis || 'column';
+    if (!rect) return 'after';
+    if (axis === 'row') {
+      if (!Number.isFinite(rect.width) || rect.width <= 0) return 'after';
+      return clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+    }
+    if (!Number.isFinite(rect.height) || rect.height <= 0) return 'after';
+    return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  }
+
+  function groupSiblingRows(siblings, rowThreshold) {
+    rowThreshold = rowThreshold ?? 8;
+    const sorted = [...siblings].sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    const rows = [];
+    for (const entry of sorted) {
+      let placed = false;
+      for (const row of rows) {
+        if (Math.abs(entry.rect.top - row[0].rect.top) <= rowThreshold) {
+          row.push(entry);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) rows.push([entry]);
+    }
+    return rows;
+  }
+
+  function horizontalOverlap(a, b) {
+    const left = Math.max(a.left, b.left);
+    const right = Math.min(a.right, b.right);
+    return Math.max(0, right - left);
+  }
+
+  function hitSiblingInsertGap(clientX, clientY, siblings, opts) {
+    opts = opts || {};
+    if (!siblings || siblings.length < 2) return null;
+    const slop = opts.slop ?? 12;
+    const minOverlap = opts.minOverlap ?? 0.25;
+
+    for (const row of groupSiblingRows(siblings)) {
+      if (row.length < 2) continue;
+      const sorted = [...row].sort((a, b) => a.rect.left - b.rect.left);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        const aRight = a.rect.right;
+        const bLeft = b.rect.left;
+        if (bLeft <= aRight) continue;
+        const top = Math.max(a.rect.top, b.rect.top);
+        const bottom = Math.min(a.rect.bottom, b.rect.bottom);
+        const span = bottom - top;
+        const minH = Math.min(a.rect.height, b.rect.height);
+        if (span < minH * minOverlap) continue;
+        const inX = clientX >= aRight - slop && clientX <= bLeft + slop;
+        const inY = clientY >= top - slop && clientY <= bottom + slop;
+        if (!inX || !inY) continue;
+        return {
+          anchor: b.el,
+          position: 'before',
+          axis: 'row',
+          line: { axis: 'row', left: (aRight + bLeft) / 2, top, width: 0, height: span },
+        };
+      }
+    }
+
+    const sortedCol = [...siblings].sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    for (let i = 0; i < sortedCol.length - 1; i++) {
+      const a = sortedCol[i];
+      const b = sortedCol[i + 1];
+      const overlap = horizontalOverlap(a.rect, b.rect);
+      const minW = Math.min(a.rect.width, b.rect.width);
+      if (overlap < minW * minOverlap) continue;
+      const gapTop = a.rect.bottom;
+      const gapBottom = b.rect.top;
+      if (gapBottom <= gapTop) continue;
+      const overlapLeft = Math.max(a.rect.left, b.rect.left);
+      const overlapRight = Math.min(a.rect.right, b.rect.right);
+      const inY = clientY >= gapTop - slop && clientY <= gapBottom + slop;
+      const inX = clientX >= overlapLeft - slop && clientX <= overlapRight + slop;
+      if (!inY || !inX) continue;
+      return {
+        anchor: b.el,
+        position: 'before',
+        axis: 'column',
+        line: { axis: 'column', top: (gapTop + gapBottom) / 2, left: overlapLeft, width: overlap, height: 0 },
+      };
+    }
+    return null;
+  }
+
+  function insertLineCoords(rect, position, axis) {
+    axis = axis || 'column';
+    if (axis === 'row') {
+      const x = position === 'before' ? rect.left - 2 : rect.right + 2;
+      return { axis: 'row', top: rect.top, left: x, width: 0, height: rect.height };
+    }
+    const y = position === 'before' ? rect.top - 2 : rect.bottom + 2;
+    return { axis: 'column', top: y, left: rect.left, width: rect.width, height: 0 };
+  }
+
+  function resolveInsertHover({ clientX, clientY, target, rect, axis, siblings }) {
+    const gap = hitSiblingInsertGap(clientX, clientY, siblings);
+    if (gap) return gap;
+    const position = computeInsertPosition(clientX, clientY, rect, axis);
+    const line = insertLineCoords(rect, position, axis);
+    return { anchor: target, position, axis, line };
+  }
+
+  function cursorForInsertAxis(axis) {
+    return axis === 'row' ? 'ew-resize' : 'ns-resize';
+  }
+
+  function placeholderSizing({ axis, parentDisplay, parentWidth, anchorFlex }) {
+    const display = parentDisplay || 'block';
+    const w = Number.isFinite(parentWidth) ? parentWidth : 0;
+    if (axis === 'row') {
+      if (display.includes('flex')) {
+        const flex = anchorFlex && anchorFlex !== 'none' && anchorFlex !== '0 1 auto'
+          ? anchorFlex
+          : '1 1 0';
+        return { kind: 'flex', flex, minWidth: 0 };
+      }
+      if (display === 'grid' || display === 'inline-grid') return { kind: 'auto' };
+    }
+    if (w >= PLACEHOLDER_MIN_WIDTH) return { kind: 'percent' };
+    return {
+      kind: 'explicit',
+      width: Math.max(PLACEHOLDER_MIN_WIDTH, w || PLACEHOLDER_MIN_WIDTH),
+    };
+  }
+
+  function placeholderWidthIsImplicit(kind) {
+    return kind === 'flex' || kind === 'percent' || kind === 'auto';
+  }
+
+  function applyPlaceholderSizingStyles(placeholder, sizing) {
+    placeholder.dataset.impeccablePlaceholderWidth = sizing.kind;
+    placeholder.style.flex = '';
+    placeholder.style.minWidth = '';
+    placeholder.style.maxWidth = '';
+    placeholder.style.width = '';
+    if (sizing.kind === 'flex') {
+      placeholder.style.flex = sizing.flex;
+      placeholder.style.minWidth = sizing.minWidth + 'px';
+    } else if (sizing.kind === 'percent') {
+      placeholder.style.width = '100%';
+      placeholder.style.maxWidth = '100%';
+    } else if (sizing.kind === 'explicit') {
+      placeholder.style.width = sizing.width + 'px';
+    }
+  }
+
+  function materializePlaceholderWidth(placeholder) {
+    if (!placeholder) return;
+    const kind = placeholder.dataset.impeccablePlaceholderWidth;
+    if (!placeholderWidthIsImplicit(kind)) return;
+    const w = Math.max(PLACEHOLDER_MIN_WIDTH, Math.round(placeholder.offsetWidth));
+    placeholder.style.flex = '';
+    placeholder.style.minWidth = '';
+    placeholder.style.maxWidth = '';
+    placeholder.style.width = w + 'px';
+    placeholder.dataset.impeccablePlaceholderWidth = 'explicit';
+  }
+
+  function canCreateInsert({ prompt, comments, strokes }) {
+    const hasPrompt = typeof prompt === 'string' && prompt.trim().length > 0;
+    const hasComments = Array.isArray(comments) && comments.length > 0;
+    const hasStrokes = Array.isArray(strokes) && strokes.some(
+      (s) => Array.isArray(s?.points) && s.points.length >= 2,
+    );
+    return hasPrompt || hasComments || hasStrokes;
+  }
+
+  function insertCreateDisabledReason({ prompt, comments, strokes }) {
+    if (canCreateInsert({ prompt, comments, strokes })) return null;
+    return 'Add a prompt or annotate the placeholder to create';
+  }
+
+  function clampPlaceholderSize(width, height, parentWidth) {
+    const maxW = Math.max(PLACEHOLDER_MIN_WIDTH, parentWidth || PLACEHOLDER_MIN_WIDTH);
+    return {
+      width: Math.min(maxW, Math.max(PLACEHOLDER_MIN_WIDTH, Math.round(width))),
+      height: Math.max(PLACEHOLDER_MIN_HEIGHT, Math.round(height)),
+    };
+  }
+
+  function cursorForPlaceholderEdge(edge) {
+    if (edge === 'n' || edge === 's') return 'ns-resize';
+    if (edge === 'e' || edge === 'w') return 'ew-resize';
+    return 'default';
+  }
+
+  function resizePlaceholderFromEdge(start, edge, dx, dy, parentWidth) {
+    const base = {
+      width: start.width,
+      height: start.height,
+      marginLeft: start.marginLeft ?? 0,
+      marginTop: start.marginTop ?? 0,
+    };
+    if (edge === 'e') base.width = start.width + dx;
+    else if (edge === 'w') {
+      base.width = start.width - dx;
+      base.marginLeft = start.marginLeft + dx;
+    } else if (edge === 's') base.height = start.height + dy;
+    else if (edge === 'n') {
+      base.height = start.height - dy;
+      base.marginTop = start.marginTop + dy;
+    }
+    const clamped = clampPlaceholderSize(base.width, base.height, parentWidth);
+    if (edge === 'w') base.marginLeft = start.marginLeft + start.width - clamped.width;
+    else if (edge === 'n') base.marginTop = start.marginTop + start.height - clamped.height;
+    return {
+      width: clamped.width,
+      height: clamped.height,
+      marginLeft: Math.round(base.marginLeft),
+      marginTop: Math.round(base.marginTop),
+    };
+  }
+
+  function ensureInsertLine() {
+    if (insertLineEl) return insertLineEl;
+    insertLineEl = document.createElement('div');
+    insertLineEl.id = PREFIX + '-insert-line';
+    Object.assign(insertLineEl.style, {
+      position: 'fixed',
+      zIndex: String(Z.highlight),
+      height: '0',
+      borderTop: '2px dotted ' + C.brand,
+      pointerEvents: 'none',
+      display: 'none',
+      opacity: '0.9',
+    });
+    document.body.appendChild(insertLineEl);
+    defangOutsideHandlers(insertLineEl);
+    return insertLineEl;
+  }
+
+  function showInsertLine(resolved) {
+    if (!resolved?.anchor || !resolved.line) return;
+    const line = ensureInsertLine();
+    const coords = resolved.line;
+    if (coords.axis === 'row') {
+      Object.assign(line.style, {
+        display: 'block',
+        top: coords.top + 'px',
+        left: coords.left + 'px',
+        width: '0',
+        height: coords.height + 'px',
+        borderTop: 'none',
+        borderLeft: '2px dotted ' + C.brand,
+      });
+    } else {
+      Object.assign(line.style, {
+        display: 'block',
+        top: coords.top + 'px',
+        left: coords.left + 'px',
+        width: coords.width + 'px',
+        height: '0',
+        borderLeft: 'none',
+        borderTop: '2px dotted ' + C.brand,
+      });
+    }
+    insertHoverAnchor = resolved.anchor;
+    insertHoverPosition = resolved.position;
+    insertHoverAxis = resolved.axis || 'column';
+  }
+
+  function hideInsertLine() {
+    if (!insertLineEl) return;
+    insertLineEl.style.display = 'none';
+    insertHoverAnchor = null;
+    insertHoverPosition = null;
+    insertHoverAxis = null;
+    syncPageInteractionCursor();
+  }
+
+  let pageInteractionCursorActive = false;
+
+  /** Page-level cursor while insert mode is choosing a before/after edge. */
+  function syncPageInteractionCursor() {
+    let next = '';
+    if (state === 'PICKING' && insertActive) {
+      next = insertHoverAnchor ? cursorForInsertAxis(insertHoverAxis || 'column') : '';
+    }
+    if (next) {
+      document.documentElement.style.cursor = next;
+      pageInteractionCursorActive = true;
+    } else if (pageInteractionCursorActive) {
+      document.documentElement.style.cursor = '';
+      pageInteractionCursorActive = false;
+    }
+  }
+
+  /** Element used to position the floating bar / shader during a session. */
+  function resolveBarAnchor() {
+    if (currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
+      const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+      if (wrapper) {
+        const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
+        if (variantCount > 0 && visibleVariant > 0) {
+          const visEl = pickVariantContent(wrapper, visibleVariant);
+          if (visEl) return visEl;
+        }
+        if (state === 'GENERATING') {
+          const ph = ensureInsertPlaceholder();
+          if (ph) return ph;
+          if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+        }
+      }
+    }
+    if (selectedElement && document.body.contains(selectedElement)) return selectedElement;
+    if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
+    if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+    return null;
+  }
+
+  function removeInsertPlaceholderDom() {
+    if (placeholderElement) {
+      placeholderElement.remove();
+      placeholderElement = null;
+    }
+    placeholderResizeDrag = null;
+    syncPlaceholderResizeHandles();
+  }
+
+  function finalizeInsertSession() {
+    removeInsertPlaceholderDom();
+    insertAnchorElement = null;
+    insertAnchorPosition = null;
+    insertAnchorLayoutAxis = null;
+    insertPlaceholderSnapshot = null;
+    if (configureKind === 'insert') configureKind = 'replace';
+  }
+
+  function buildInsertPlaceholderSnapshotFromDom(anchor, placeholder) {
+    return {
+      width: Math.round(placeholder.offsetWidth || 0),
+      height: Math.round(placeholder.offsetHeight || PLACEHOLDER_DEFAULT_HEIGHT),
+      marginLeft: parseFloat(placeholder.style.marginLeft) || 0,
+      marginTop: parseFloat(placeholder.style.marginTop) || 0,
+      position: insertAnchorPosition || 'before',
+      layoutAxis: insertAnchorLayoutAxis || 'column',
+      anchorTag: anchor.tagName || 'DIV',
+      anchorClasses: anchor.className || '',
+      anchorText: (anchor.textContent || '').trim().slice(0, 120),
+    };
+  }
+
+  function findInsertAnchorInDom() {
+    if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+    const snap = insertPlaceholderSnapshot;
+    if (!snap) return null;
+    const tag = (snap.anchorTag || 'div').toLowerCase();
+    const cls = (snap.anchorClasses || '').split(/\s+/).filter(Boolean)[0];
+    const needle = snap.anchorText || '';
+    const sel = cls ? tag + '.' + cls : tag;
+    const candidates = document.querySelectorAll(sel);
+    for (const candidate of candidates) {
+      if (own(candidate)) continue;
+      if (needle && !(candidate.textContent || '').includes(needle.slice(0, 40))) continue;
+      return candidate;
+    }
+    return null;
+  }
+
+  function isInsertGeneratingSession() {
+    if (state !== 'GENERATING' || !currentSessionId) return false;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    return !!wrapper && wrapper.dataset.impeccableMode === 'insert';
+  }
+
+  /** Recreate the dotted placeholder if Astro/Vite HMR removed it mid-generation. */
+  function ensureInsertPlaceholder() {
+    if (!isInsertGeneratingSession()) return placeholderElement;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
+    if (variantCount > 0) return placeholderElement;
+    if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
+
+    const anchor = findInsertAnchorInDom();
+    if (!anchor) return null;
+
+    insertAnchorElement = anchor;
+    const position = insertPlaceholderSnapshot?.position || insertAnchorPosition || 'before';
+    const axis = insertPlaceholderSnapshot?.layoutAxis || insertAnchorLayoutAxis;
+    const ph = createInsertPlaceholder(anchor, position, axis);
+    if (!ph) return null;
+
+    if (insertPlaceholderSnapshot) {
+      applyPlaceholderDimensions({
+        width: insertPlaceholderSnapshot.width,
+        height: insertPlaceholderSnapshot.height,
+        marginLeft: insertPlaceholderSnapshot.marginLeft,
+        marginTop: insertPlaceholderSnapshot.marginTop,
+      });
+    }
+    selectedElement = ph;
+    return ph;
+  }
+
+  function applyPlaceholderDimensions({ width, height, marginLeft, marginTop }) {
+    const ph = placeholderElement;
+    if (!ph) return;
+    materializePlaceholderWidth(ph);
+    ph.style.width = width + 'px';
+    ph.style.height = height + 'px';
+    ph.style.marginLeft = marginLeft ? marginLeft + 'px' : '';
+    ph.style.marginTop = marginTop ? marginTop + 'px' : '';
+    positionAnnotOverlay(ph);
+    positionBar();
+  }
+
+  function buildPlaceholderResizeHandles() {
+    if (!placeholderResizeLayerEl) return;
+    placeholderResizeLayerEl.innerHTML = '';
+    const hit = 10;
+    const half = hit / 2;
+    const specs = [
+      { edge: 'n', top: -half, left: 0, right: 0, height: hit },
+      { edge: 's', bottom: -half, left: 0, right: 0, height: hit },
+      { edge: 'e', top: 0, bottom: 0, right: -half, width: hit },
+      { edge: 'w', top: 0, bottom: 0, left: -half, width: hit },
+    ];
+    for (const spec of specs) {
+      const handle = el('div', {
+        position: 'absolute',
+        pointerEvents: 'auto',
+        cursor: cursorForPlaceholderEdge(spec.edge),
+      });
+      if (spec.top != null) handle.style.top = spec.top + 'px';
+      if (spec.bottom != null) handle.style.bottom = spec.bottom + 'px';
+      if (spec.left != null) handle.style.left = spec.left + 'px';
+      if (spec.right != null) handle.style.right = spec.right + 'px';
+      if (spec.width != null) handle.style.width = spec.width + 'px';
+      if (spec.height != null) handle.style.height = spec.height + 'px';
+      handle.dataset.impeccablePlaceholderResize = spec.edge;
+      handle.setAttribute('aria-label', 'Resize placeholder');
+      handle.title = 'Drag to resize';
+      placeholderResizeLayerEl.appendChild(handle);
+    }
+  }
+
+  function syncPlaceholderResizeHandles() {
+    if (!placeholderResizeLayerEl) return;
+    const show = configureKind === 'insert' && annotActive && !!placeholderElement && state === 'CONFIGURING';
+    placeholderResizeLayerEl.style.display = show ? 'block' : 'none';
+    if (!show) {
+      placeholderResizeLayerEl.innerHTML = '';
+      return;
+    }
+    if (!placeholderResizeLayerEl.childElementCount) buildPlaceholderResizeHandles();
+  }
+
+  function startPlaceholderEdgeResize(edge, e) {
+    const ph = placeholderElement;
+    if (!ph || configureKind !== 'insert') return;
+    materializePlaceholderWidth(ph);
+    placeholderResizeDrag = {
+      edge,
+      startX: e.clientX,
+      startY: e.clientY,
+      start: {
+        width: ph.offsetWidth,
+        height: ph.offsetHeight,
+        marginLeft: parseFloat(ph.style.marginLeft) || 0,
+        marginTop: parseFloat(ph.style.marginTop) || 0,
+      },
+      parentWidth: ph.parentNode?.getBoundingClientRect().width || PLACEHOLDER_MIN_WIDTH,
+      pointerId: e.pointerId,
+    };
+    try { annotOverlayEl.setPointerCapture(e.pointerId); } catch {}
+    e.stopPropagation();
+    e.preventDefault();
+  }
+
+  function createInsertPlaceholder(anchor, position, layoutAxis) {
+    removeInsertPlaceholderDom();
+    const parent = anchor.parentNode;
+    if (!parent) return null;
+    const axis = layoutAxis || detectInsertAxis(parent);
+    const pst = getComputedStyle(parent);
+    const ast = getComputedStyle(anchor);
+    const sizing = placeholderSizing({
+      axis,
+      parentDisplay: pst.display,
+      parentWidth: parent.getBoundingClientRect().width,
+      anchorFlex: ast.flex,
+    });
+    const placeholder = document.createElement('div');
+    placeholder.id = PREFIX + '-insert-placeholder';
+    placeholder.setAttribute('data-impeccable-insert-placeholder', 'true');
+    placeholder.setAttribute('aria-hidden', 'true');
+    Object.assign(placeholder.style, {
+      boxSizing: 'border-box',
+      height: PLACEHOLDER_DEFAULT_HEIGHT + 'px',
+      minHeight: PLACEHOLDER_MIN_HEIGHT + 'px',
+      border: '2px dotted ' + BP.accent,
+      borderRadius: '0',
+      background: 'transparent',
+      opacity: '1',
+      position: 'relative',
+      marginLeft: '',
+      marginTop: '',
+    });
+    applyPlaceholderSizingStyles(placeholder, sizing);
+    if (position === 'before') parent.insertBefore(placeholder, anchor);
+    else parent.insertBefore(placeholder, anchor.nextSibling);
+    placeholderElement = placeholder;
+    insertAnchorElement = anchor;
+    insertAnchorPosition = position;
+    insertAnchorLayoutAxis = axis;
+    return placeholder;
+  }
+
+  function clearInsertPicking() {
+    hideInsertLine();
+    finalizeInsertSession();
+  }
+
+  function isInsertCreateEnabled(btn) {
+    btn = btn || document.getElementById(PREFIX + '-insert-create');
+    return !!btn && btn.getAttribute('aria-disabled') !== 'true';
+  }
+
+  let insertCreateTooltipEl = null;
+
+  function ensureInsertCreateTooltip() {
+    if (insertCreateTooltipEl) return insertCreateTooltipEl;
+    insertCreateTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      zIndex: String(Z.bar + 7),
+      pointerEvents: 'none',
+      maxWidth: '240px',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      boxShadow: BP.shadow,
+      color: BP.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+    });
+    insertCreateTooltipEl.id = PREFIX + '-insert-create-tooltip';
+    document.body.appendChild(insertCreateTooltipEl);
+    return insertCreateTooltipEl;
+  }
+
+  function showInsertCreateTooltip(anchor, message) {
+    if (!anchor || !message) return;
+    const tip = ensureInsertCreateTooltip();
+    tip.textContent = message;
+    tip.style.display = 'block';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideInsertCreateTooltip() {
+    if (!insertCreateTooltipEl) return;
+    insertCreateTooltipEl.style.display = 'none';
+  }
+
+  function insertCreateGateState(input) {
+    return {
+      prompt: input?.value ?? '',
+      comments: annotState.comments,
+      strokes: annotState.strokes,
+    };
+  }
+
+  function syncInsertCreateButton(btn, input) {
+    btn = btn || document.getElementById(PREFIX + '-insert-create');
+    input = input || document.getElementById(PREFIX + '-insert-input');
+    if (!btn || !input) return;
+    const gate = insertCreateGateState(input);
+    const ok = canCreateInsert(gate);
+    const reason = ok ? 'Create variants' : insertCreateDisabledReason(gate);
+    btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    btn.setAttribute('aria-label', reason);
+    if (ok) {
+      hideInsertCreateTooltip();
+      btn.style.background = BP.accent;
+      btn.style.color = C.ink;
+      btn.style.border = 'none';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = BP.textDim;
+      btn.style.border = '1px solid ' + BP.hairline;
+      btn.style.opacity = '0.72';
+      btn.style.cursor = 'not-allowed';
+    }
+  }
+
   function buildConfigureRow() {
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '4px',
+      display: 'flex', alignItems: 'center', gap: '6px',
     });
 
-    // Action pill
+    // Action pill — dark graphite chip (matches kinpaku-kit .live-demo-ctx-pill)
     const pill = el('button', {
       display: 'inline-flex', alignItems: 'center', gap: '4px',
       padding: '5px 10px', borderRadius: '6px',
-      background: BP.mark, color: BP.markText,
+      background: BP.chatSurface, color: BP.text,
       fontFamily: FONT, fontSize: '12px', fontWeight: '500',
-      border: 'none', cursor: 'pointer',
-      transition: 'background 0.12s ease, transform 0.1s ease',
+      border: '1px solid ' + BP.hairline, cursor: 'pointer',
+      transition: 'background 0.12s ease, border-color 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap', flexShrink: '0',
     });
     pill.textContent = actionLabel() + ' \u25BE';
-    pill.addEventListener('mouseenter', () => pill.style.background = BP.accent);
-    pill.addEventListener('mouseleave', () => pill.style.background = BP.mark);
+    pill.addEventListener('mouseenter', () => {
+      pill.style.background = BP.accentSoft;
+      pill.style.borderColor = BP.accent;
+    });
+    pill.addEventListener('mouseleave', () => {
+      pill.style.background = BP.chatSurface;
+      pill.style.borderColor = BP.hairline;
+    });
     pill.addEventListener('mousedown', () => pill.style.transform = 'scale(0.97)');
     pill.addEventListener('mouseup', () => pill.style.transform = 'scale(1)');
     pill.addEventListener('click', (e) => { e.stopPropagation(); toggleActionPicker(); });
     row.appendChild(pill);
 
-    // Freeform input. Focus state shows an accent-colored border only —
-    // an earlier version tinted the background with `BP.accentSoft`, which
-    // composited against the dark bar surface to a murky purple where the
-    // browser's default placeholder gray was unreadable. Placeholder color
-    // is set explicitly via a one-shot stylesheet keyed off this input's id
-    // so it picks up the bar's `textDim` token in both themes.
+    // Prompt field — same chat-surface chrome as the bottom Steer bar
+    const inputWrap = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      flex: '1', minWidth: '0', height: '28px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      overflow: 'hidden',
+      transition: 'border-color 0.15s ease',
+    });
+    inputWrap.id = PREFIX + '-configure-input-wrap';
+
     const input = document.createElement('input');
     input.id = PREFIX + '-input';
     input.type = 'text';
-    input.placeholder = selectedAction === 'impeccable' ? 'describe what you want...' : 'refine further (optional)...';
+    input.placeholder = selectedAction === 'impeccable' ? 'describe what you want…' : 'refine further (optional)…';
+    input.setAttribute('aria-label', 'Describe the change');
     Object.assign(input.style, {
-      flex: '1', minWidth: '0',
-      padding: '5px 8px', borderRadius: '6px',
-      border: '1px solid transparent', background: 'transparent',
-      fontFamily: FONT, fontSize: '12px', color: BP.text,
+      flex: '1', minWidth: '0', width: '100%',
+      padding: '0 6px', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
       outline: 'none',
-      transition: 'border-color 0.15s ease',
     });
-    if (!document.getElementById(PREFIX + '-input-style')) {
+
+    const voiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: BP.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    voiceBtn.id = PREFIX + '-configure-voice';
+    voiceBtn.type = 'button';
+    voiceBtn.setAttribute('aria-label', 'Voice input');
+    voiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    if (!document.getElementById(PREFIX + '-configure-input-style')) {
       const s = document.createElement('style');
-      s.id = PREFIX + '-input-style';
+      s.id = PREFIX + '-configure-input-style';
       s.textContent =
-        '#' + PREFIX + '-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }';
+        '@keyframes impeccable-configure-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
+        '#' + PREFIX + '-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
+        '#' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
+        '#' + PREFIX + '-configure-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       document.head.appendChild(s);
     }
-    input.addEventListener('focus', () => {
-      input.style.borderColor = BP.accent;
-    });
-    input.addEventListener('blur', () => {
-      input.style.borderColor = 'transparent';
-    });
+
+    input.addEventListener('focus', () => syncConfigureInputChrome());
+    input.addEventListener('blur', () => syncConfigureInputChrome());
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
       if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; syncPageChatFocus('configure-input-escape'); return; }
@@ -995,11 +1732,23 @@
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
     });
-    row.appendChild(input);
+
+    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    voiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConfigureVoice();
+    });
+
+    inputWrap.appendChild(input);
+    inputWrap.appendChild(voiceBtn);
+    row.appendChild(inputWrap);
+    syncConfigureInputChrome();
 
     // Variant count toggle
     const count = el('button', {
-      padding: '4px 6px', borderRadius: '5px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 6px',
+      borderRadius: '5px',
       border: '1px solid ' + BP.hairline, background: 'transparent',
       fontFamily: MONO, fontSize: '11px', fontWeight: '600',
       color: BP.textDim, cursor: 'pointer',
@@ -1019,8 +1768,10 @@
 
     // Go button
     const go = el('button', {
-      padding: '5px 12px', borderRadius: '6px',
-      border: 'none', background: BP.accent, color: BP.mark,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 12px',
+      borderRadius: '6px',
+      border: 'none', background: BP.accent, color: C.ink,
       fontFamily: FONT, fontSize: '12px', fontWeight: '600',
       cursor: 'pointer',
       transition: 'filter 0.12s ease, transform 0.1s ease',
@@ -1037,6 +1788,114 @@
     return row;
   }
 
+  function buildInsertConfigureRow() {
+    const row = el('div', {
+      display: 'flex', alignItems: 'center', gap: '6px',
+    });
+
+    const inputWrap = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      flex: '1', minWidth: '0', height: '28px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      overflow: 'hidden',
+      transition: 'border-color 0.15s ease',
+    });
+    inputWrap.id = PREFIX + '-insert-input-wrap';
+
+    const input = document.createElement('input');
+    input.id = PREFIX + '-insert-input';
+    input.type = 'text';
+    input.placeholder = 'describe what to insert…';
+    input.setAttribute('aria-label', 'Describe the new element');
+    Object.assign(input.style, {
+      flex: '1', minWidth: '0', width: '100%',
+      padding: '0 6px', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
+      outline: 'none',
+    });
+
+    const voiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: BP.textDim, cursor: 'pointer',
+    });
+    voiceBtn.id = PREFIX + '-insert-voice';
+    voiceBtn.type = 'button';
+    voiceBtn.setAttribute('aria-label', 'Voice input');
+    voiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    input.addEventListener('input', () => syncInsertCreateButton());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.stopPropagation(); e.preventDefault();
+        if (isInsertCreateEnabled()) handleInsertCreate();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation(); e.preventDefault();
+        cancelInsertConfigure();
+        return;
+      }
+      e.stopPropagation();
+    });
+    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    voiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConfigureVoice();
+    });
+
+    inputWrap.appendChild(input);
+    inputWrap.appendChild(voiceBtn);
+    row.appendChild(inputWrap);
+
+    const count = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 6px',
+      borderRadius: '5px',
+      border: '1px solid ' + BP.hairline, background: 'transparent',
+      fontFamily: MONO, fontSize: '11px', fontWeight: '600',
+      color: BP.textDim, cursor: 'pointer', flexShrink: '0', whiteSpace: 'nowrap',
+    });
+    count.textContent = '\u00D7' + selectedCount;
+    count.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
+      count.textContent = '\u00D7' + selectedCount;
+    });
+    row.appendChild(count);
+
+    const create = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 12px',
+      borderRadius: '6px',
+      border: 'none', background: BP.accent, color: C.ink,
+      fontFamily: FONT, fontSize: '12px', fontWeight: '600',
+      flexShrink: '0', whiteSpace: 'nowrap',
+    });
+    create.id = PREFIX + '-insert-create';
+    create.textContent = 'Create \u2192';
+    create.addEventListener('mouseenter', () => {
+      if (isInsertCreateEnabled(create)) {
+        hideInsertCreateTooltip();
+        return;
+      }
+      showInsertCreateTooltip(create, insertCreateDisabledReason(insertCreateGateState(input)));
+    });
+    create.addEventListener('mouseleave', hideInsertCreateTooltip);
+    create.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!isInsertCreateEnabled(create)) return;
+      handleInsertCreate();
+    });
+    row.appendChild(create);
+    syncInsertCreateButton(create, input);
+    return row;
+  }
+
   // --- Generating row ---
 
   function buildGeneratingRow() {
@@ -1050,7 +1909,7 @@
       fontWeight: '600', fontSize: '12px', color: BP.text,
       flexShrink: '0', whiteSpace: 'nowrap',
     });
-    label.textContent = actionLabel();
+    label.textContent = configureKind === 'insert' ? 'Insert' : actionLabel();
     row.appendChild(label);
 
     // Dots
@@ -1151,11 +2010,10 @@
     // Spacer
     row.appendChild(el('div', { flex: '1' }));
 
-    // Accept — primary action, uses the site's saturated brand kinpaku
-    // with paper-white text, not the theme-muted BP.accent.
+    // Accept — primary action, kinpaku gold + lacquer-deep (matches demo .live-demo-ctx-accept)
     const accept = el('button', {
       padding: '5px 14px', borderRadius: '5px',
-      border: 'none', background: C.brand, color: 'oklch(98% 0 0)',
+      border: 'none', background: C.brand, color: C.ink,
       fontFamily: FONT, fontSize: '11px', fontWeight: '600',
       cursor: 'pointer', transition: 'filter 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap',
@@ -1819,13 +2677,31 @@
   // Variant cycling in DOM
   // ---------------------------------------------------------------------------
 
+  function isVariantShown(el) {
+    if (!el) return false;
+    if (el.hidden) return false;
+    if (el.style?.display === 'none') return false;
+    return true;
+  }
+
+  function setVariantShown(el, shown) {
+    if (!el) return;
+    if (shown) {
+      el.removeAttribute('hidden');
+      el.style.display = '';
+    } else {
+      el.setAttribute('hidden', '');
+      el.style.display = 'none';
+    }
+  }
+
   function showVariantInDOM(sessionId, num) {
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
     if (!wrapper) return;
     for (const child of wrapper.children) {
       const v = child.dataset ? child.dataset.impeccableVariant : null;
       if (!v) continue;
-      child.style.display = (v === String(num)) ? '' : 'none';
+      setVariantShown(child, v === String(num));
     }
     // Unconditional refresh — covers first-reveal (no-op if state isn't
     // CYCLING yet, the subsequent CYCLING transition triggers its own
@@ -1911,6 +2787,7 @@
         hideShaderOverlay();
         updateBarContent('cycling');
         refreshParamsPanel();
+        positionBar();
         saveSession();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
       })
@@ -1927,6 +2804,7 @@
     showVariantInDOM(currentSessionId, next); // calls refreshParamsPanel itself
     updateSelectedElement();
     updateBarContent('cycling');
+    positionBar();
     saveSession();
     queueCheckpoint('variant_changed');
   }
@@ -1944,7 +2822,7 @@
     if (!wrapper) return 0;
     const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
     for (const variant of variants) {
-      if (variant.style.display === 'none') continue;
+      if (!isVariantShown(variant)) continue;
       const idx = parseInt(variant.dataset.impeccableVariant || '0', 10);
       if (idx > 0) return idx;
     }
@@ -2125,15 +3003,32 @@
       const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (!wrapper) return;
 
+      const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+      const count = variants.length;
+
       // Re-anchor selectedElement if it was detached by live-wrap's HMR swap.
       // Without this, the shader / highlight / bar track a zero-rect phantom
       // and the overlay appears frozen.
       if (selectedElement && !document.body.contains(selectedElement)) {
-        selectedElement = pickVariantContent(wrapper, 'original') || wrapper;
+        const isInsert = wrapper.dataset.impeccableMode === 'insert';
+        if (isInsert) {
+          const visEl = count > 0 ? pickVariantContent(wrapper, visibleVariant || 1) : null;
+          if (visEl) {
+            selectedElement = visEl;
+            if (count > 0) removeInsertPlaceholderDom();
+          } else {
+            const ph = ensureInsertPlaceholder();
+            if (ph) selectedElement = ph;
+            else if (insertAnchorElement && document.body.contains(insertAnchorElement)) {
+              selectedElement = insertAnchorElement;
+            }
+          }
+        } else {
+          selectedElement = pickVariantContent(wrapper, 'original') || wrapper;
+        }
+      } else if (isInsertGeneratingSession() && count === 0) {
+        ensureInsertPlaceholder();
       }
-
-      const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
-      const count = variants.length;
 
       // Nothing new
       if (count <= arrivedVariants) return;
@@ -2158,8 +3053,11 @@
       if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
         state = 'CYCLING';
         hideShaderOverlay();
+        if (wrapper.dataset.impeccableMode === 'insert') finalizeInsertSession();
+        updateSelectedElement();
         updateBarContent('cycling');
         refreshParamsPanel();
+        positionBar();
       } else if (state === 'GENERATING') {
         updateBarContent('generating');
       }
@@ -2179,11 +3077,20 @@
   function startScrollTracking() {
     function tick() {
       if (state === 'CONFIGURING' || state === 'GENERATING' || state === 'CYCLING') {
+        if (isInsertGeneratingSession()) ensureInsertPlaceholder();
         positionBar();
-        showHighlight(selectedElement);
+        const hiTarget = resolveBarAnchor();
+        if (hiTarget && !hiTarget.hasAttribute?.('data-impeccable-insert-placeholder')) {
+          showHighlight(hiTarget);
+        } else {
+          hideHighlight();
+        }
         if (tuneOpen) positionParamsPanel();
       }
-      if (annotActive) positionAnnotOverlay(selectedElement);
+      if (annotActive) {
+        const annotTarget = resolveBarAnchor();
+        if (annotTarget) positionAnnotOverlay(annotTarget);
+      }
       // Shader overlay (via debug P toggle or generation) is repositioned
       // by its own branch below; debug no longer has a separate overlay.
       if (shaderState) positionShaderOverlay();
@@ -2222,7 +3129,7 @@
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
-          if (state === 'IDLE' && pickActive) state = 'PICKING';
+          if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
           syncPageChatFocus('sse-connected');
           break;
         case 'agent_polling':
@@ -2362,6 +3269,34 @@
   // ---------------------------------------------------------------------------
 
   function handleMouseMove(e) {
+    if (state === 'PICKING' && insertActive) {
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (!target || own(target) || !pickable(target)) {
+        hideInsertLine();
+        return;
+      }
+      const parent = target.parentElement;
+      const axis = detectInsertAxis(parent);
+      const siblings = layoutFlowChildren(parent);
+      const rect = target.getBoundingClientRect();
+      const resolved = resolveInsertHover({
+        clientX: e.clientX,
+        clientY: e.clientY,
+        target,
+        rect,
+        axis,
+        siblings,
+      });
+      if (
+        resolved.anchor !== insertHoverAnchor
+        || resolved.position !== insertHoverPosition
+        || resolved.axis !== insertHoverAxis
+      ) {
+        showInsertLine(resolved);
+      }
+      syncPageInteractionCursor();
+      return;
+    }
     if (state !== 'PICKING' || !pickActive) return;
     const target = document.elementFromPoint(e.clientX, e.clientY);
     if (!target || !pickable(target) || target === hoveredElement) return;
@@ -2378,8 +3313,9 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
-    // In CONFIGURING: click outside the bar and selected element returns to PICKING
+    // In CONFIGURING: click outside the bar and selected element returns to picking
     if (state === 'CONFIGURING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+      if (configureKind === 'insert') { cancelInsertConfigure(); return; }
       hideBar();
       stopScrollTracking();
       hideAnnotOverlay();
@@ -2388,6 +3324,29 @@
       hoveredElement = null;
       hideHighlight();
       syncPageChatFocus('configure-outside-click');
+      return;
+    }
+    if (state === 'PICKING' && insertActive) {
+      if (own(e.target)) return;
+      if (!insertHoverAnchor || !insertHoverPosition) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const placeholder = createInsertPlaceholder(
+        insertHoverAnchor,
+        insertHoverPosition,
+        insertHoverAxis,
+      );
+      if (!placeholder) return;
+      hideInsertLine();
+      configureKind = 'insert';
+      selectedElement = placeholder;
+      state = 'CONFIGURING';
+      hideHighlight();
+      clearAnnotations();
+      showAnnotOverlay(placeholder);
+      showBar('configure');
+      startScrollTracking();
+      syncPageInteractionCursor();
       return;
     }
     if (state !== 'PICKING' || !pickActive) return;
@@ -2490,13 +3449,15 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
-      if (state === 'CONFIGURING') { hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return; }
+      if (state === 'CONFIGURING') {
+        if (configureKind === 'insert') { cancelInsertConfigure(); return; }
+        hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return;
+      }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
       if (state === 'PICKING') {
-        // Use togglePick so the "Pick" button in the global bar also flips
-        // off, otherwise the bar stays lit while nothing else is active.
-        if (pickActive) togglePick();
+        if (insertActive) toggleInsert();
+        else if (pickActive) togglePick();
         else { hideHighlight(); state = 'IDLE'; }
         return;
       }
@@ -2556,6 +3517,7 @@
 
   function handleGo() {
     if (!selectedElement || state !== 'CONFIGURING') return;
+    stopVoice({ suppressSubmit: true });
     const input = document.getElementById(PREFIX + '-input');
     const prompt = input ? input.value.trim() : '';
 
@@ -2602,6 +3564,74 @@
     console.log('[impeccable.scroll] Go pressed', { scrollY: window.scrollY, sessionId: currentSessionId });
     startScrollLock(currentSessionId);
 
+    captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
+  }
+
+  function cancelInsertConfigure() {
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    clearInsertPicking();
+    configureKind = 'replace';
+    selectedElement = null;
+    state = insertActive ? 'PICKING' : 'IDLE';
+    hideHighlight();
+    syncPageChatFocus('insert-configure-cancel');
+  }
+
+  function handleInsertCreate() {
+    if (!placeholderElement || !insertAnchorElement || state !== 'CONFIGURING' || configureKind !== 'insert') return;
+    const input = document.getElementById(PREFIX + '-insert-input');
+    const prompt = input ? input.value.trim() : '';
+    if (annotEditing) finalizeEditingPin();
+    const snapshot = {
+      comments: annotState.comments.map(c => ({ x: c.x, y: c.y, text: c.text })),
+      strokes: annotState.strokes.map(s => ({ points: s.points.map(p => [p[0], p[1]]) })),
+    };
+    if (!canCreateInsert({ prompt, comments: snapshot.comments, strokes: snapshot.strokes })) return;
+
+    stopVoice({ suppressSubmit: true });
+    currentSessionId = id8();
+    expectedVariants = selectedCount;
+    arrivedVariants = 0;
+    visibleVariant = 0;
+    selectedElement = placeholderElement;
+    insertPlaceholderSnapshot = buildInsertPlaceholderSnapshotFromDom(insertAnchorElement, placeholderElement);
+
+    const elForCapture = placeholderElement;
+    const captureRect = elForCapture.getBoundingClientRect();
+    const basePayload = {
+      type: 'generate',
+      mode: 'insert',
+      id: currentSessionId,
+      count: selectedCount,
+      pageUrl: location.pathname,
+      insert: {
+        position: insertAnchorPosition,
+        anchor: extractContext(insertAnchorElement),
+      },
+      placeholder: {
+        width: Math.round(captureRect.width),
+        height: Math.round(captureRect.height),
+      },
+      freeformPrompt: prompt || undefined,
+    };
+    if (snapshot.comments.length > 0) basePayload.comments = snapshot.comments;
+    if (snapshot.strokes.length > 0) basePayload.strokes = snapshot.strokes;
+
+    hideAnnotOverlay();
+    clearAnnotations();
+
+    state = 'GENERATING';
+    showBar('generating');
+    startScrollTracking();
+    saveSession();
+    sendCheckpoint('generate_started');
+    writeScrollY(window.scrollY);
+    if (variantObserver) variantObserver.disconnect();
+    variantObserver = startVariantObserver(currentSessionId);
+    startScrollLock(currentSessionId);
     captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
   }
 
@@ -2881,8 +3911,10 @@ void main() {
   }
 
   function positionShaderOverlay() {
-    if (!shaderState || !selectedElement) return;
-    const r = selectedElement.getBoundingClientRect();
+    if (!shaderState) return;
+    const anchor = resolveBarAnchor();
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
     Object.assign(shaderState.canvas.style, {
       top: r.top + 'px', left: r.left + 'px',
       width: r.width + 'px', height: r.height + 'px',
@@ -3116,6 +4148,7 @@ void main() {
       expected: expectedVariants,
       arrived: arrivedVariants,
       visible: visibleVariant,
+      insertPlaceholder: insertPlaceholderSnapshot || undefined,
     });
   }
 
@@ -3175,6 +4208,7 @@ void main() {
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     stopScrollLock();
     clearScrollY();
+    finalizeInsertSession();
     clearSession();
     selectedElement = null;
     currentSessionId = null;
@@ -3253,16 +4287,26 @@ void main() {
       visibleVariant = arrivedVariants > 0 ? 1 : 0;
     }
 
+    if (saved && saved.id === sessionId && saved.insertPlaceholder) {
+      insertPlaceholderSnapshot = saved.insertPlaceholder;
+    }
+
+    const resumedState = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
+
     // Find the visible variant's content element for highlight positioning.
-    // Try the visible variant first, fall back to the original's content.
+    const isInsert = wrapper.dataset.impeccableMode === 'insert';
     const visEl = visibleVariant > 0 ? pickVariantContent(wrapper, visibleVariant) : null;
     const origEl = pickVariantContent(wrapper, 'original');
-    selectedElement = visEl || origEl || wrapper.parentElement;
+    state = resumedState;
+    if (isInsert && resumedState === 'GENERATING' && arrivedVariants === 0) {
+      selectedElement = ensureInsertPlaceholder() || findInsertAnchorInDom() || wrapper;
+    } else {
+      selectedElement = visEl || origEl || (isInsert ? findInsertAnchorInDom() : null) || wrapper.parentElement;
+    }
 
     // Set display state BEFORE starting observer (avoid triggering it)
     if (visibleVariant > 0) showVariantInDOM(currentSessionId, visibleVariant);
 
-    state = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
     showBar(state === 'CYCLING' ? 'cycling' : 'generating');
     startScrollTracking();
     // Build the params panel for the restored visible variant. Previously
@@ -3284,19 +4328,24 @@ void main() {
     // If we reloaded mid-generation (Bun's HTML HMR destroys the shader
     // canvas), re-capture the original's content and restart the shader so
     // the wait doesn't go dead.
-    if (state === 'GENERATING' && origEl) {
-      (async () => {
-        try {
-          const rect = origEl.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return;
-          const blob = await captureElementToBlob(origEl, null, rect);
-          if (blob && state === 'GENERATING') {
-            showShaderOverlay(origEl, blob, rect);
+    if (state === 'GENERATING') {
+      const shaderTarget = isInsert
+        ? (ensureInsertPlaceholder() || findInsertAnchorInDom())
+        : origEl;
+      if (shaderTarget) {
+        (async () => {
+          try {
+            const rect = shaderTarget.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            const blob = await captureElementToBlob(shaderTarget, null, rect);
+            if (blob && state === 'GENERATING') {
+              showShaderOverlay(shaderTarget, blob, rect);
+            }
+          } catch (err) {
+            console.warn('[impeccable] shader resume failed:', err);
           }
-        } catch (err) {
-          console.warn('[impeccable] shader resume failed:', err);
-        }
-      })();
+        })();
+      }
     }
     return true;
   }
@@ -3318,24 +4367,56 @@ void main() {
   const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
   const PICK_PREFS_KEY = 'impeccable-live-pick';
+  const INTERACTION_PREFS_KEY = 'impeccable-live-interaction';
+  const PLACEHOLDER_DEFAULT_HEIGHT = 80;
+  const PLACEHOLDER_MIN_HEIGHT = 48;
+  const PLACEHOLDER_MIN_WIDTH = 120;
+
+  function loadInteractionPrefs() {
+    try {
+      const raw = localStorage.getItem(INTERACTION_PREFS_KEY);
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        return {
+          pickActive: !!prefs.pickActive,
+          insertActive: !!prefs.insertActive,
+        };
+      }
+      const legacy = localStorage.getItem(PICK_PREFS_KEY);
+      if (legacy) {
+        const prefs = JSON.parse(legacy);
+        return { pickActive: !!prefs.pickActive, insertActive: false };
+      }
+    } catch { /* ignore */ }
+    return { pickActive: false, insertActive: false };
+  }
+
+  function saveInteractionPrefs() {
+    try {
+      localStorage.setItem(INTERACTION_PREFS_KEY, JSON.stringify({ pickActive, insertActive }));
+    } catch { /* ignore */ }
+  }
 
   function loadPickPref() {
-    try {
-      const raw = localStorage.getItem(PICK_PREFS_KEY);
-      if (raw == null) return true;
-      const prefs = JSON.parse(raw);
-      if (typeof prefs.pickActive === 'boolean') return prefs.pickActive;
-    } catch { /* ignore */ }
-    return true;
+    return loadInteractionPrefs().pickActive;
   }
 
   function savePickPref() {
-    try {
-      localStorage.setItem(PICK_PREFS_KEY, JSON.stringify({ pickActive }));
-    } catch { /* ignore */ }
+    saveInteractionPrefs();
   }
 
-  let pickActive = loadPickPref();
+  let pickActive = loadInteractionPrefs().pickActive;
+  let insertActive = loadInteractionPrefs().insertActive;
+  let configureKind = 'replace';
+  let insertLineEl = null;
+  let insertHoverAnchor = null;
+  let insertHoverPosition = null;
+  let insertHoverAxis = null;
+  let insertAnchorElement = null;
+  let insertAnchorPosition = null;
+  let insertAnchorLayoutAxis = null;
+  let insertPlaceholderSnapshot = null;
+  let placeholderElement = null;
   let detectCount = 0;
   let detectScriptLoaded = false;
 
@@ -3349,10 +4430,12 @@ void main() {
   let steerRequestId = null;
   let pageChatDotsEl = null;
   let steerAwaitTimer = null;
-  let steerVoiceRecognition = null;
-  let steerVoiceListening = false;
-  let steerVoiceSuppressSubmit = false;
-  let steerVoiceInterimBase = '';
+  let voiceRecognition = null;
+  let voiceListening = false;
+  let voiceSuppressSubmit = false;
+  let voiceInterimBase = '';
+  /** @type {{ mode: 'steer'|'configure', input: HTMLInputElement, submit: () => void, beforeStart?: () => void } | null} */
+  let voiceCtx = null;
   const PAGE_CHAT_COLLAPSED_W = '88px';
   const PAGE_CHAT_PROCESSING_W = '76px';
   const STEER_AWAIT_TIMEOUT_MS = 120000;
@@ -3492,7 +4575,7 @@ void main() {
     clearSteerFocusRecoverTimer();
     const attempt = () => {
       steerFocusRecoverTimer = null;
-      if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
+      if (state === 'CONFIGURING' || steerLocked || voiceListening) return;
       if (pageChatEl?.contains(document.activeElement)) return;
       if (pageHasHostTextSelection()) {
         steerFocusRecoverTimer = setTimeout(attempt, 120);
@@ -3592,7 +4675,8 @@ void main() {
 
   function focusConfigureInput(reason) {
     steerFocusLog('focusConfigureInput', { reason });
-    const input = document.getElementById(PREFIX + '-input');
+    const inputId = configureKind === 'insert' ? PREFIX + '-insert-input' : PREFIX + '-input';
+    const input = document.getElementById(inputId);
     if (!input) {
       steerFocusLog('focusConfigureInput missing', { reason });
       return;
@@ -3703,7 +4787,7 @@ void main() {
 
   function lockSteerChat() {
     if (!pageChatEl || !pageChatInput) return;
-    stopSteerVoice({ suppressSubmit: true });
+    stopVoice({ suppressSubmit: true });
     steerLocked = true;
     pageChatEl.dataset.processing = 'true';
     pageChatInput.disabled = true;
@@ -3808,22 +4892,33 @@ void main() {
     }
   }
 
-  function syncSteerVoiceUi(listening) {
-    steerVoiceListening = !!listening;
-    if (pageChatVoiceBtn) {
-      pageChatVoiceBtn.dataset.active = listening ? 'true' : 'false';
-      pageChatVoiceBtn.dataset.listening = listening ? 'true' : 'false';
-      pageChatVoiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
-      pageChatVoiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+  function syncVoiceUi(listening) {
+    voiceListening = !!listening;
+    if (voiceCtx?.mode === 'steer') {
+      if (pageChatVoiceBtn) {
+        pageChatVoiceBtn.dataset.active = listening ? 'true' : 'false';
+        pageChatVoiceBtn.dataset.listening = listening ? 'true' : 'false';
+        pageChatVoiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
+        pageChatVoiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+      }
+      if (pageChatEl) pageChatEl.dataset.voiceListening = listening ? 'true' : 'false';
+      syncPageChatChrome();
+    } else if (voiceCtx?.mode === 'configure') {
+      const voiceBtn = document.getElementById(PREFIX + '-configure-voice');
+      if (voiceBtn) {
+        voiceBtn.dataset.active = listening ? 'true' : 'false';
+        voiceBtn.dataset.listening = listening ? 'true' : 'false';
+        voiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
+        voiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+      }
+      syncConfigureInputChrome();
     }
-    if (pageChatEl) pageChatEl.dataset.voiceListening = listening ? 'true' : 'false';
-    syncPageChatChrome();
   }
 
-  function releaseSteerVoiceEngine(opts) {
-    if (opts && opts.suppressSubmit) steerVoiceSuppressSubmit = true;
-    const rec = steerVoiceRecognition;
-    steerVoiceRecognition = null;
+  function releaseVoiceEngine(opts) {
+    if (opts && opts.suppressSubmit) voiceSuppressSubmit = true;
+    const rec = voiceRecognition;
+    voiceRecognition = null;
     if (!rec) return;
     rec.onstart = null;
     rec.onresult = null;
@@ -3835,23 +4930,31 @@ void main() {
     } catch { /* already ended */ }
   }
 
-  function stopSteerVoice(opts) {
-    releaseSteerVoiceEngine(opts);
-    syncSteerVoiceUi(false);
+  function stopVoice(opts) {
+    releaseVoiceEngine(opts);
+    syncVoiceUi(false);
+    voiceCtx = null;
     if (opts && opts.message) showToast(String(opts.message), opts.duration || 4000);
   }
 
-  function finishSteerVoiceSession() {
-    steerVoiceRecognition = null;
-    syncSteerVoiceUi(false);
-    const suppress = steerVoiceSuppressSubmit;
-    steerVoiceSuppressSubmit = false;
-    const text = pageChatInput?.value.trim() || '';
-    if (!suppress && text && !steerLocked) submitSteerMessage();
+  function finishVoiceSession() {
+    voiceRecognition = null;
+    const ctx = voiceCtx;
+    syncVoiceUi(false);
+    const suppress = voiceSuppressSubmit;
+    voiceSuppressSubmit = false;
+    voiceCtx = null;
+    const input = ctx?.input;
+    const text = input?.value.trim() || '';
+    if (suppress || !text || !ctx) return;
+    if (ctx.mode === 'steer' && !steerLocked) ctx.submit();
+    else if (ctx.mode === 'configure' && state === 'CONFIGURING') ctx.submit();
   }
 
-  function startSteerVoice() {
-    if (steerLocked || state === 'CONFIGURING' || steerVoiceListening) return;
+  function startVoice(ctx) {
+    if (!ctx?.input || voiceListening) return;
+    if (ctx.mode === 'steer' && (steerLocked || state === 'CONFIGURING')) return;
+    if (ctx.mode === 'configure' && state !== 'CONFIGURING') return;
     const Ctor = steerSpeechRecognitionCtor();
     if (!Ctor) {
       showToast('Voice input needs Speech Recognition (Chrome, Safari, or Edge)', 4500);
@@ -3866,12 +4969,13 @@ void main() {
       return;
     }
 
-    releaseSteerVoiceEngine({ suppressSubmit: true, abort: true });
-    steerVoiceSuppressSubmit = false;
-    if (!pageChatExpanded) expandPageChat({ focus: false });
+    releaseVoiceEngine({ suppressSubmit: true, abort: true });
+    voiceSuppressSubmit = false;
+    voiceCtx = ctx;
+    if (ctx.beforeStart) ctx.beforeStart();
 
-    steerVoiceInterimBase = pageChatInput?.value.trim()
-      ? pageChatInput.value.trim() + ' '
+    voiceInterimBase = ctx.input.value.trim()
+      ? ctx.input.value.trim() + ' '
       : '';
 
     const rec = new Ctor();
@@ -3881,37 +4985,38 @@ void main() {
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
-      syncSteerVoiceUi(true);
+      syncVoiceUi(true);
     };
 
     rec.onresult = (event) => {
-      if (!pageChatInput) return;
+      if (!voiceCtx?.input) return;
       let transcript = '';
       for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0]?.transcript || '';
       }
-      pageChatInput.value = (steerVoiceInterimBase + transcript).trim();
-      syncPageChatVisual();
+      voiceCtx.input.value = (voiceInterimBase + transcript).trim();
+      if (voiceCtx.mode === 'steer') syncPageChatVisual();
+      else syncConfigureInputChrome();
     };
 
     rec.onerror = (event) => {
       const code = event.error || 'unknown';
       console.warn('[impeccable.voice] recognition error:', code);
       const message = steerVoiceErrorMessage(code);
-      stopSteerVoice({ suppressSubmit: true, message: message || undefined });
+      stopVoice({ suppressSubmit: true, message: message || undefined });
     };
 
     rec.onend = () => {
-      if (steerVoiceRecognition !== rec) return;
-      finishSteerVoiceSession();
+      if (voiceRecognition !== rec) return;
+      finishVoiceSession();
     };
 
-    steerVoiceRecognition = rec;
+    voiceRecognition = rec;
     try {
       rec.start();
     } catch (err) {
       console.warn('[impeccable.voice] start failed:', err);
-      stopSteerVoice({
+      stopVoice({
         suppressSubmit: true,
         message: err?.message?.includes('already started')
           ? 'Voice input already running'
@@ -3920,17 +5025,49 @@ void main() {
     }
   }
 
+  function steerVoiceContext() {
+    return {
+      mode: 'steer',
+      input: pageChatInput,
+      beforeStart: () => {
+        if (!pageChatExpanded) expandPageChat({ focus: false });
+      },
+      submit: submitSteerMessage,
+    };
+  }
+
+  function configureVoiceContext() {
+    const input = document.getElementById(
+      configureKind === 'insert' ? PREFIX + '-insert-input' : PREFIX + '-input',
+    );
+    return {
+      mode: 'configure',
+      input,
+      beforeStart: () => { input?.focus(); },
+      submit: configureKind === 'insert' ? handleInsertCreate : handleGo,
+    };
+  }
+
   function toggleSteerVoice() {
-    if (steerVoiceListening) {
-      steerVoiceSuppressSubmit = true;
-      stopSteerVoice({ suppressSubmit: true, abort: true });
+    if (voiceListening && voiceCtx?.mode === 'steer') {
+      voiceSuppressSubmit = true;
+      stopVoice({ suppressSubmit: true, abort: true });
       return;
     }
-    startSteerVoice();
+    startVoice(steerVoiceContext());
+  }
+
+  function toggleConfigureVoice() {
+    if (voiceListening && voiceCtx?.mode === 'configure') {
+      voiceSuppressSubmit = true;
+      stopVoice({ suppressSubmit: true, abort: true });
+      return;
+    }
+    startVoice(configureVoiceContext());
   }
 
   function submitSteerMessage() {
-    stopSteerVoice({ suppressSubmit: true });
+    stopVoice({ suppressSubmit: true });
     const text = pageChatInput?.value.trim();
     if (!text || steerLocked) return;
     const id = id8();
@@ -3982,7 +5119,7 @@ void main() {
 
   function collapsePageChat(opts) {
     const blur = opts && opts.blur === true;
-    if (steerVoiceListening) return;
+    if (voiceListening) return;
     if (!pageChatEl || !pageChatInput) return;
     pageChatExpanded = false;
     pageChatEl.dataset.expanded = 'false';
@@ -4110,7 +5247,7 @@ void main() {
     pageChatInput.addEventListener('blur', () => {
       syncPageChatFocusRing();
       setTimeout(() => {
-        if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
+        if (state === 'CONFIGURING' || steerLocked || voiceListening) return;
         if (pageChatEl?.contains(document.activeElement)) return;
         if (!pageChatInput.value.trim()) collapsePageChat();
         scheduleSteerFocusRecover('steer-blur-recover');
@@ -4366,7 +5503,7 @@ void main() {
       return b;
     }
 
-    // Pick toggle — active by default on first visit; restored from localStorage after.
+    // Pick toggle — restored from localStorage; both pick and insert may be off.
     const pickBtn = makeIconBtn({
       id: PREFIX + '-pick-toggle',
       svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>',
@@ -4375,6 +5512,15 @@ void main() {
       onClick: () => togglePick(),
     });
     inner.appendChild(pickBtn);
+
+    const insertBtn = makeIconBtn({
+      id: PREFIX + '-insert-toggle',
+      svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+      label: 'Insert',
+      ariaLabel: 'Insert new element',
+      onClick: () => toggleInsert(),
+    });
+    inner.appendChild(insertBtn);
 
     // Detect toggle
     const detectBtn = makeIconBtn({
@@ -4438,7 +5584,7 @@ void main() {
 
     // Bar-level hover: expand every toggle's label at once; collapse on leave.
     // Buttons with dataset.active="true" ignore collapse (their label stays).
-    const toggles = [pickBtn, detectBtn, designBtn];
+    const toggles = [pickBtn, insertBtn, detectBtn, designBtn];
     globalBarEl.addEventListener('mouseenter', () => {
       toggles.forEach((t) => t._expandLabel && t._expandLabel());
     });
@@ -4467,6 +5613,7 @@ void main() {
     const detectToggle = document.getElementById(PREFIX + '-detect-toggle');
     const detectBadge = document.getElementById(PREFIX + '-detect-badge');
     const pickToggle = document.getElementById(PREFIX + '-pick-toggle');
+    const insertToggle = document.getElementById(PREFIX + '-insert-toggle');
     const designToggle = document.getElementById(PREFIX + '-design-toggle');
     const theme = globalBarEl?.dataset.theme || 'light';
     const P = barPaletteForTheme(theme);
@@ -4481,6 +5628,7 @@ void main() {
       else if (!active && btn._collapseLabel) btn._collapseLabel();
     }
     sync(pickToggle, pickActive);
+    sync(insertToggle, insertActive);
     sync(detectToggle, detectActive);
     sync(designToggle, designState.open);
 
@@ -4488,7 +5636,7 @@ void main() {
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
     if (globalBarEl && globalBarEl.matches(':hover')) {
-      [pickToggle, detectToggle, designToggle].forEach((t) => t?._expandLabel?.());
+      [pickToggle, insertToggle, detectToggle, designToggle].forEach((t) => t?._expandLabel?.());
     }
 
     if (detectBadge) {
@@ -4496,10 +5644,11 @@ void main() {
       detectBadge.textContent = detectCount;
     }
 
-    // When pick is active, make detect overlays click-through so the picker works
+    // When pick/insert is active, make detect overlays click-through
     document.querySelectorAll('.impeccable-overlay').forEach(o => {
-      o.style.pointerEvents = pickActive ? 'none' : '';
+      o.style.pointerEvents = (pickActive || insertActive) ? 'none' : '';
     });
+    syncPageInteractionCursor();
   }
 
   let detectReady = false; // true once detect script posts 'impeccable-ready'
@@ -4527,22 +5676,48 @@ void main() {
 
   function togglePick() {
     pickActive = !pickActive;
-    savePickPref();
+    if (pickActive) {
+      insertActive = false;
+      clearInsertPicking();
+    }
+    saveInteractionPrefs();
     updateGlobalBarState();
 
     if (!pickActive) {
-      // Disabling pick clears any in-flight selection and UI: highlight,
-      // contextual bar, selectedElement. Otherwise a stale selection sits
-      // on screen with no obvious way to dismiss.
+      if (configureKind === 'insert' && state === 'CONFIGURING') {
+        cancelInsertConfigure();
+        return;
+      }
       hideHighlight();
       hideBar();
       hideActionPicker();
       selectedElement = null;
+      configureKind = 'replace';
       if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
     } else {
       if (state === 'IDLE') state = 'PICKING';
     }
     syncPageChatFocus('toggle-pick');
+  }
+
+  function toggleInsert() {
+    insertActive = !insertActive;
+    if (insertActive) {
+      pickActive = false;
+      hideHighlight();
+      hideBar();
+      hideActionPicker();
+      selectedElement = null;
+      configureKind = 'replace';
+      if (state === 'CONFIGURING') cancelInsertConfigure();
+      else if (state === 'IDLE' || state === 'PICKING') state = 'PICKING';
+    } else {
+      clearInsertPicking();
+      if (state === 'PICKING' && !pickActive) state = 'IDLE';
+    }
+    saveInteractionPrefs();
+    updateGlobalBarState();
+    syncPageChatFocus('toggle-insert');
   }
 
   function loadDetectScript() {
@@ -4579,7 +5754,7 @@ void main() {
       agentPollTooltipEl.remove();
       agentPollTooltipEl = null;
     }
-    stopSteerVoice({ suppressSubmit: true });
+    stopVoice({ suppressSubmit: true });
     clearSteerFocusRecoverTimer();
     steerFocusSuspended = false;
     steerFocusPauseUntil = 0;
@@ -4596,6 +5771,7 @@ void main() {
     pageChatHint = null;
     pageChatVoiceBtn = null;
     pageChatExpanded = false;
+    if (insertCreateTooltipEl) { insertCreateTooltipEl.remove(); insertCreateTooltipEl = null; }
     if (highlightEl) { highlightEl.remove(); highlightEl = null; }
     if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
     if (barEl) { barEl.remove(); barEl = null; }

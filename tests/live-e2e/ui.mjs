@@ -15,6 +15,10 @@ const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
 const STEER_CHAT_ID = '#impeccable-live-page-chat';
 const STEER_INPUT_ID = '#impeccable-live-page-chat-input';
+const PICK_TOGGLE = '#impeccable-live-pick-toggle';
+const INSERT_TOGGLE = '#impeccable-live-insert-toggle';
+const INSERT_INPUT_ID = '#impeccable-live-insert-input';
+const INSERT_CREATE_ID = '#impeccable-live-insert-create';
 
 /**
  * Wait for the live handshake to complete:
@@ -39,11 +43,11 @@ export async function waitForHandshake(page, { timeout = 20_000 } = {}) {
 
 /**
  * Click an in-page element to select it. live-browser.js's picker only acts
- * when state === 'PICKING' AND pickActive is true; pickActive starts true on
- * connect. The handler reads the hovered element from `mousemove`, so we
- * dispatch a hover before the click.
+ * when state === 'PICKING' AND pickActive is true. Both interaction toggles
+ * default off on a fresh page — enable pick mode before hovering.
  */
 export async function pickElement(page, selector) {
+  await enablePickMode(page);
   const el = await page.waitForSelector(selector, { timeout: 5_000 });
   await el.hover();
   // Tiny settle: live-browser updates `hoveredElement` on mousemove, and the
@@ -342,4 +346,77 @@ export async function waitForSteerUnlocked(page, { timeout = 15_000 } = {}) {
     STEER_CHAT_ID,
     { timeout },
   );
+}
+
+async function ensureToggleActive(page, selector, shouldBeActive) {
+  const isActive = await page.locator(selector).evaluate((el) => el?.dataset.active === 'true');
+  if (isActive === shouldBeActive) return;
+  await page.locator(selector).click({ timeout: 5_000 });
+  await page.waitForFunction(
+    ({ sel, active }) => document.querySelector(sel)?.dataset.active === (active ? 'true' : 'false'),
+    { sel: selector, active: shouldBeActive },
+    { timeout: 5_000 },
+  );
+}
+
+/** Turn on Pick mode (and off Insert — they are mutually exclusive). */
+export async function enablePickMode(page) {
+  await ensureToggleActive(page, PICK_TOGGLE, true);
+}
+
+/** Turn on Insert mode (and off Pick — they are mutually exclusive). */
+export async function enableInsertMode(page) {
+  await ensureToggleActive(page, INSERT_TOGGLE, true);
+}
+
+/**
+ * Insert flow: hover an anchor at before/after edge, click to place the
+ * resizable placeholder, describe the new element, and click Create.
+ */
+export async function runInsertFlow(page, {
+  anchorSelector,
+  position = 'after',
+  prompt = 'Add a testimonial strip',
+} = {}) {
+  await enableInsertMode(page);
+  const anchor = await page.waitForSelector(anchorSelector, { timeout: 5_000 });
+  const box = await anchor.boundingBox();
+  if (!box) throw new Error(`anchor ${anchorSelector} has no layout box`);
+
+  const x = box.x + box.width / 2;
+  const y = position === 'before' ? box.y + 4 : box.y + box.height - 4;
+  await page.mouse.move(x, y);
+  await page.waitForFunction(() => {
+    const line = document.getElementById('impeccable-live-insert-line');
+    return line && line.style.display !== 'none';
+  }, { timeout: 5_000 });
+  await page.mouse.click(x, y);
+
+  await page.waitForSelector(INSERT_INPUT_ID, { state: 'visible', timeout: 5_000 });
+  await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 });
+
+  await page.evaluate(({ sel, value }) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { sel: INSERT_INPUT_ID, value: prompt });
+
+  await page.waitForFunction(
+    (sel) => {
+      const btn = document.querySelector(sel);
+      return btn && !btn.disabled;
+    },
+    INSERT_CREATE_ID,
+    { timeout: 5_000 },
+  );
+  const clicked = await page.evaluate((sel) => {
+    const btn = document.querySelector(sel);
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  }, INSERT_CREATE_ID);
+  if (!clicked) {
+    await page.locator(INSERT_CREATE_ID).click({ force: true, timeout: 5_000 });
+  }
 }

@@ -34,6 +34,7 @@ import {
   clickNext,
   getVisibleVariant,
   pickElement,
+  runInsertFlow,
   waitForHandshake,
 } from './live-e2e/ui.mjs';
 import { runSteerSmoke } from './live-e2e/steer.mjs';
@@ -136,7 +137,12 @@ for (const { name, fixture } of fixtures) {
 
       const { page, tmp, consoleErrors, teardown } = session;
       const expectedCount = 3;
+      const isInsert = fixture.runtime.mode === 'insert';
+      const insertCfg = fixture.runtime.insert || {};
       const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+      const domSelector = isInsert
+        ? (insertCfg.expectSelector || '.inserted-strip')
+        : pickSelector;
 
       try {
         // 1. Handshake
@@ -158,21 +164,29 @@ for (const { name, fixture } of fixtures) {
           await runPreActions(page, fixture.runtime.preActions);
         }
 
-        // 3. Pick the target element
-        t.diagnostic(`Picking ${pickSelector}`);
-        await pickElement(page, pickSelector);
-
-        if (process.env.IMPECCABLE_E2E_DEBUG) {
-          const barText = await page.evaluate(() => {
-            const bar = document.querySelector('#impeccable-live-bar');
-            return bar ? { display: bar.style.display, text: bar.textContent || '', html: bar.innerHTML.slice(0, 500) } : null;
+        // 3. Start generate — replace picks an element; insert places a placeholder.
+        if (isInsert) {
+          t.diagnostic(`Insert after ${insertCfg.anchorSelector || 'anchor'}`);
+          await runInsertFlow(page, {
+            anchorSelector: insertCfg.anchorSelector || 'section#features',
+            position: insertCfg.position || 'after',
+            prompt: insertCfg.prompt || 'Add new content',
           });
-          t.diagnostic(`Bar after pick: ${JSON.stringify(barText)}`);
-        }
+        } else {
+          t.diagnostic(`Picking ${pickSelector}`);
+          await pickElement(page, pickSelector);
 
-        // 3. Click Go (default action 'impeccable', default count 3 — fixture-stable)
-        t.diagnostic('Clicking Go');
-        await clickGo(page);
+          if (process.env.IMPECCABLE_E2E_DEBUG) {
+            const barText = await page.evaluate(() => {
+              const bar = document.querySelector('#impeccable-live-bar');
+              return bar ? { display: bar.style.display, text: bar.textContent || '', html: bar.innerHTML.slice(0, 500) } : null;
+            });
+            t.diagnostic(`Bar after pick: ${JSON.stringify(barText)}`);
+          }
+
+          t.diagnostic('Clicking Go');
+          await clickGo(page);
+        }
 
         // 4. Wait for the agent's variants to land (HMR + MutationObserver).
         //    For fixtures whose picked element lives inside a conditional
@@ -199,6 +213,13 @@ for (const { name, fixture } of fixtures) {
         const sourceFile = await locateSessionFile(tmp);
         const after = readFileSync(sourceFile, 'utf-8');
         assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
+        if (isInsert) {
+          assert.match(after, /data-impeccable-mode="insert"/, 'insert mode wrapper');
+          assert.doesNotMatch(after, /data-impeccable-variant="original"/, 'insert has no original variant');
+          if (insertCfg.assertAnchorContains) {
+            assert.match(after, new RegExp(insertCfg.assertAnchorContains), 'anchor section untouched');
+          }
+        }
         if (sourceFile.endsWith('.astro')) {
           assert.match(after, /<style is:inline data-impeccable-css="/, 'Astro live CSS uses an inline compiler-bypassing style block');
           assert.match(
@@ -230,14 +251,17 @@ for (const { name, fixture } of fixtures) {
         const visible = await getVisibleVariant(page);
         assert.equal(visible, 2, 'variant 2 visible after one Next');
         if (agentMode === 'fake') {
-          await page.waitForFunction(() => {
-            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
-            return h1 && getComputedStyle(h1).fontWeight === '900';
-          }, null, { timeout: 5_000 }).catch(() => {});
-          const variantWeight = await page.evaluate(() => {
-            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
-            return h1 ? getComputedStyle(h1).fontWeight : null;
-          });
+          const variantSel = isInsert
+            ? '[data-impeccable-variant="2"] .inserted-copy'
+            : '[data-impeccable-variant="2"] > h1';
+          await page.waitForFunction((sel) => {
+            const el = document.querySelector(sel);
+            return el && getComputedStyle(el).fontWeight === '900';
+          }, variantSel, { timeout: 5_000 }).catch(() => {});
+          const variantWeight = await page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            return el ? getComputedStyle(el).fontWeight : null;
+          }, variantSel);
           assert.equal(
             variantWeight,
             '900',
@@ -259,15 +283,18 @@ for (const { name, fixture } of fixtures) {
         assert.doesNotMatch(final, /impeccable-carbonize-start/,     'carbonize-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-end/,       'carbonize-end marker removed');
         assert.doesNotMatch(final, /data-impeccable-variant="/,      'no leftover variant scaffolding');
-        // Accept the original class as a substring of the className value so
-        // an LLM agent that adds classes around the original (e.g.
-        // class="hero-title bold red") still passes — only the literal
-        // class="hero-title" form would otherwise match.
-        assert.match(
-          final,
-          /<h1[^>]*(class|className)="[^"]*\bhero-title\b[^"]*"/,
-          'accepted h1 survives with hero-title class',
-        );
+        if (isInsert) {
+          assert.match(final, /inserted-strip/, 'accepted insert content survives');
+          if (insertCfg.assertAnchorContains) {
+            assert.match(final, new RegExp(insertCfg.assertAnchorContains), 'anchor section still in source');
+          }
+        } else {
+          assert.match(
+            final,
+            /<h1[^>]*(class|className)="[^"]*\bhero-title\b[^"]*"/,
+            'accepted h1 survives with hero-title class',
+          );
+        }
 
         // Optional fixture hook: assert that arbitrary strings survive the
         // wrap → accept → carbonize cycle. Used by repeated-branch fixtures
@@ -292,7 +319,7 @@ for (const { name, fixture } of fixtures) {
             }
             return true;
           },
-          pickSelector,
+          domSelector,
           { timeout: 20_000 },
         );
 

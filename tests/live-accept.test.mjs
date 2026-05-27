@@ -358,3 +358,45 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(!after.includes('variant one'), 'variants dropped');
   });
 });
+
+describe('live-accept — insert sessions', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-insert-')); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  const insertHtml = (id) => `<main>
+  <section class="hero">Hero block</section>
+  <!-- impeccable-variants-start ${id} -->
+  <div data-impeccable-variants="${id}" data-impeccable-mode="insert" data-impeccable-variant-count="2" style="display: contents">
+    <!-- Variants: insert below this line -->
+    <style data-impeccable-css="${id}">@scope ([data-impeccable-variant="1"]) { .cta { color: red; } }</style>
+    <div data-impeccable-variant="1"><p class="cta">Variant one</p></div>
+    <div data-impeccable-variant="2" style="display: none"><p class="cta">Variant two</p></div>
+  </div>
+  <!-- impeccable-variants-end ${id} -->
+  <section class="footer">Footer</section>
+</main>`;
+
+  it('discard removes an insert wrapper without touching anchor sections', () => {
+    writeFileSync(join(tmp, 'page.html'), insertHtml('insaaa01'));
+    const result = runAccept(tmp, ['--id', 'insaaa01', '--discard']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    const after = readFileSync(join(tmp, 'page.html'), 'utf-8');
+    assert.ok(after.includes('Hero block'));
+    assert.ok(after.includes('Footer'));
+    assert.ok(!after.includes('impeccable-variants-start'));
+    assert.ok(!after.includes('Variant one'));
+  });
+
+  it('accept keeps the chosen insert variant and drops the wrapper', () => {
+    writeFileSync(join(tmp, 'page.html'), insertHtml('insbbb02'));
+    const result = runAccept(tmp, ['--id', 'insbbb02', '--variant', '2']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    const after = readFileSync(join(tmp, 'page.html'), 'utf-8');
+    assert.ok(after.includes('Variant two'));
+    assert.ok(!after.includes('Variant one'));
+    assert.ok(!after.includes('impeccable-variants-start'));
+    assert.ok(after.includes('Hero block'));
+    assert.ok(after.includes('Footer'));
+  });
+});

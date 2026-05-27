@@ -87,9 +87,32 @@ Server restart rule: start `live-server.mjs` again, then poll. Startup requeues 
 
 ## Handle `generate`
 
-Event: `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
+**Replace mode** (default): `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
 
-Speed matters; the user is watching a spinner. Minimize tool calls by using the `wrap` helper and writing all variants in a single edit.
+**Insert mode** (`event.mode === "insert"`): `{id, mode: "insert", count, pageUrl, insert: { position, anchor }, placeholder: { width, height }, freeformPrompt?, screenshotPath?, comments?, strokes?}`. No `action`. Requires a non-empty `freeformPrompt` **or** annotations. Screenshot is sent only when annotations exist (same rule as replace). Use `placeholder` dimensions as a soft size hint for net-new content.
+
+Speed matters; the user is watching a spinner. Minimize tool calls by using the wrap/insert helper and writing all variants in a single edit.
+
+### Insert mode branch
+
+When `event.mode === "insert"`:
+
+1. Read the screenshot if `event.screenshotPath` is present (annotations only).
+2. Run the insert helper instead of wrap:
+
+```bash
+node .pi/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVENT_COUNT --position after \
+  --element-id "ANCHOR_ID" --classes "class1,class2" --tag "section" --text "ANCHOR_TEXT"
+```
+
+- `--position` ← `event.insert.position` (`before` | `after`)
+- Anchor flags ← `event.insert.anchor` (same mapping as wrap: id, classes, tag, text)
+
+The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only — no action sub-command). Write all variants in one edit, then `--reply done`.
+
+On accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
+
+### Replace mode (default)
 
 ### 1. Read the screenshot (if present)
 
