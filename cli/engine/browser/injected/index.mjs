@@ -1262,11 +1262,10 @@ if (IS_BROWSER) {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
-    // Provider tells (gated) stay off unless explicitly enabled via config.
-    const _enabledProviders = (window.__IMPECCABLE_CONFIG__?.providers) || [];
-    const _gatedById = new Map(ANTIPATTERNS.filter(a => a.gated).map(a => [a.id, a.gated]));
-    const _providerOk = (id) => { const g = _gatedById.get(id); return !g || _enabledProviders.includes(g); };
-    const _ok = (id) => _ruleOk(id) && _providerOk(id);
+    // Note: provider-gated rules (--gpt / --gemini) are NOT filtered here. In a
+    // real browser env (detector page, live overlay, extension) running every
+    // check is free, so we always surface them; the gating is purely a CLI
+    // output concern, applied in the Node engines' detect* return paths.
 
     for (const el of document.querySelectorAll('*')) {
       // Skip impeccable's own elements and any descendants (overlays, labels, banner, nav buttons)
@@ -1288,20 +1287,28 @@ if (IS_BROWSER) {
         ...checkElementAIPaletteDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementIconTileDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementItalicSerifDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
-        ...checkElementHeroEyebrowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementQualityDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementOversizedH1DOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementClippedOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementGptBorderShadowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementTextOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
-      ].filter(f => _ok(f.type));
+      ].filter(f => _ruleOk(f.type));
 
       addBrowserFindings(groupMap, el, findings);
+
+      // Hero eyebrow: the offending element is the eyebrow above the heading,
+      // not the heading itself — highlight the previous sibling instead.
+      const eyebrowFindings = checkElementHeroEyebrowDOM(el)
+        .map(f => ({ type: f.id, detail: f.snippet }))
+        .filter(f => _ruleOk(f.type));
+      if (eyebrowFindings.length > 0 && el.previousElementSibling) {
+        addBrowserFindings(groupMap, el.previousElementSibling, eyebrowFindings);
+      }
     }
 
     const pageLevelFindings = [];
 
-    const typoFindings = checkTypography().filter(f => _ok(f.type));
+    const typoFindings = checkTypography().filter(f => _ruleOk(f.type));
     if (typoFindings.length > 0) {
       pageLevelFindings.push(...typoFindings);
       addBrowserFindings(groupMap, document.body, typoFindings);
@@ -1309,20 +1316,20 @@ if (IS_BROWSER) {
 
     const sectionKickerFindings = checkRepeatedSectionKickersDOM()
       .map(f => ({ type: f.id, detail: f.snippet }))
-      .filter(f => _ok(f.type));
+      .filter(f => _ruleOk(f.type));
     if (sectionKickerFindings.length > 0) {
       pageLevelFindings.push(...sectionKickerFindings);
       addBrowserFindings(groupMap, document.body, sectionKickerFindings);
     }
 
-    const layoutFindings = checkLayout().filter(f => _ok(f.type));
+    const layoutFindings = checkLayout().filter(f => _ruleOk(f.type));
     for (const f of layoutFindings) {
       const el = f.el || document.body;
       addBrowserFindings(groupMap, el, [{ type: f.type, detail: f.detail || f.snippet }]);
     }
 
     // Page-level quality checks (headings, etc.)
-    const qualityFindings = checkPageQualityDOM().filter(f => _ok(f.type));
+    const qualityFindings = checkPageQualityDOM().filter(f => _ruleOk(f.type));
     if (qualityFindings.length > 0) {
       pageLevelFindings.push(...qualityFindings);
       addBrowserFindings(groupMap, document.body, qualityFindings);
@@ -1338,7 +1345,7 @@ if (IS_BROWSER) {
     }
     const htmlPatternFindings = checkHtmlPatterns(docClone.outerHTML);
     if (htmlPatternFindings.length > 0) {
-      const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ok(f.type));
+      const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ruleOk(f.type));
       pageLevelFindings.push(...mapped);
       addBrowserFindings(groupMap, document.body, mapped);
     }

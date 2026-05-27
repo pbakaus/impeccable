@@ -498,30 +498,22 @@ describe('detectHtml — cramped-padding (wrapper variant)', () => {
 });
 
 describe('detectHtml — oversized-h1', () => {
-  // Two-column fixture: left col flag, right col pass. Snippet embeds the
-  // heading text in quotes so the test can extract it via /"([^"]+)"/.
-  // Fires only when a hero h1 is comically large AND carries almost no copy;
-  // neither huge-but-substantial nor small-and-terse should fire.
-  const SHOULD_FLAG = ['Bold.', 'Ship it.'];
-  const SHOULD_PASS = ['Short'];
-
-  it('oversized-h1: flags only the huge-and-empty headlines', async () => {
+  // Fires when a LONG headline is set at display size (dominating the
+  // viewport). A punchy one/two-word headline at the same size is a valid
+  // stylistic choice and must pass; so must a long headline at a sane size.
+  it('oversized-h1: flags only long headlines set at display size', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'oversized-h1.html'));
-    const flagged = new Set();
-    for (const r of f) {
-      if (r.antipattern !== 'oversized-h1') continue;
-      const m = (r.snippet || '').match(/"([^"]+)"/);
-      if (m) flagged.add(m[1]);
-    }
-    for (const text of SHOULD_FLAG) {
-      assert.ok(flagged.has(text), `expected "${text}" to be flagged as oversized-h1`);
-    }
-    for (const text of SHOULD_PASS) {
-      assert.ok(!flagged.has(text), `"${text}" should NOT be flagged as oversized-h1`);
-    }
-    // The huge headline carrying a full sentence must pass (length, not size, is the guard).
-    const longFlagged = [...flagged].some(t => t.length >= 50);
-    assert.equal(longFlagged, false, 'a large headline with substantial copy must not flag');
+    const hits = f.filter(r => r.antipattern === 'oversized-h1');
+    assert.equal(
+      hits.length, 2,
+      `expected 2 oversized-h1 findings, got ${hits.length}: ${hits.map(r => r.snippet).join('; ')}`,
+    );
+    // None of the pass cases (short-but-huge, or long-but-sane-size) may flag.
+    assert.equal(
+      hits.some(r => /Bold\.|Ship faster|ordinary headline/i.test(r.snippet || '')),
+      false,
+      'short display headlines and sanely-sized long headlines must not flag',
+    );
   });
 });
 

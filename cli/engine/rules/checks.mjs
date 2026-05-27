@@ -569,6 +569,18 @@ function checkHtmlPatterns(html) {
     findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
   }
 
+  // --- Provider tells (gated): "X theater" framing copy (GPT) ---
+  // Lives here (regex-on-HTML) rather than in the text-content analyzers so it
+  // runs in the bundled browser path too, not just the CLI/static path.
+  {
+    const bodyText = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    const tm = /\b(\w+)\s+theater\b/i.exec(bodyText);
+    if (tm) findings.push({ id: 'theater-slop-phrase', snippet: `"${tm[0].trim()}"` });
+  }
+
   // --- Provider tells (gated): image hover transform (Gemini) ---
   // A CSS `img...:hover { transform: ... }` rule, or a Tailwind hover:scale /
   // hover:rotate / hover:translate utility on an <img>. Each distinct
@@ -2059,13 +2071,17 @@ function checkPageLayout(doc, win) {
 }
 
 // ─── Oversized hero headline ────────────────────────────────────────────────
-// Fires only when an h1 is comically large AND carries almost no copy — neither
-// huge-but-substantial nor small-and-terse alone fires.
+// Fires when a *long* headline is set at display size, so a full sentence ends
+// up dominating the viewport. A punchy one- or two-word headline at the same
+// size is a legitimate stylistic choice and must pass — length, not size
+// alone, is the tell.
+const OVERSIZED_H1_FONT_PX = 72;
+const OVERSIZED_H1_MIN_CHARS = 40;
 function checkOversizedH1({ tag, fontSize, headingText }) {
   if (tag !== 'h1') return [];
   const textLen = headingText.length;
-  if (fontSize >= 130 && textLen > 0 && textLen < 50) {
-    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1 "${headingText}"` }];
+  if (fontSize >= OVERSIZED_H1_FONT_PX && textLen >= OVERSIZED_H1_MIN_CHARS) {
+    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars "${headingText.slice(0, 60)}"` }];
   }
   return [];
 }

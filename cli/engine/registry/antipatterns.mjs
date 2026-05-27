@@ -187,9 +187,9 @@ const ANTIPATTERNS = [
     category: 'slop',
     name: 'Oversized hero headline',
     description:
-      'A hero headline blown up well past the rest of the page while carrying only a word or two reads as scale standing in for substance. Size the headline to the weight of what it actually says.',
+      'A full-sentence headline set at display size ends up dominating the viewport, leaving no room for anything else above the fold. A punchy one- or two-word headline at that size is fine — the problem is a long headline blown up too large. Set long headlines smaller, or tighten the copy.',
     skillSection: 'Typography',
-    skillGuideline: 'oversized hero headline carrying almost no copy',
+    skillGuideline: 'long headline set at display size',
   },
   {
     id: 'extreme-negative-tracking',
