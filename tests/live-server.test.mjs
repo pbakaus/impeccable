@@ -93,6 +93,16 @@ async function stashManualEdit(server, entry) {
   return res.json();
 }
 
+it('gitignores local manual Apply runtime artifacts', () => {
+  const ignored = execFileSync('git', [
+    'check-ignore',
+    '.impeccable/live/manual-edit-apply-transaction.json',
+    '.impeccable/live/manual-edit-evidence/example.json',
+  ], { cwd: REPO_ROOT, encoding: 'utf-8' });
+  assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
+  assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
+});
+
 // ---------------------------------------------------------------------------
 // Server integration tests
 // ---------------------------------------------------------------------------
@@ -409,6 +419,7 @@ colors: {}
       });
       assert.equal(stash.status, 200);
 
+      let evidencePath;
       // Fake agent: long-poll, write the file, ack with the result shape.
       const agentLoop = (async () => {
         // First poll picks up the manual_edit_apply event.
@@ -423,6 +434,7 @@ colors: {}
         });
         assert.equal(event.pageUrl, '/');
         assert.equal(typeof event.evidencePath, 'string');
+        evidencePath = event.evidencePath;
         assert.equal(existsSync(event.evidencePath), true);
         assert.equal(Array.isArray(event.batch.candidates), true);
         assert.doesNotMatch(JSON.stringify(event.batch), /outerHTML|computedStyles|cssCustomProperties/);
@@ -489,6 +501,8 @@ colors: {}
       assert.equal(result.applied.length, 1);
       assert.deepEqual(result.files, ['src/page.html']);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+      assert.equal(existsSync(evidencePath), false, 'accepted chat Apply should clean up its evidence file');
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
 
       const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
       assert.match(events, /"provider":"chat"/);
@@ -558,6 +572,7 @@ colors: {}
       const event = await fetch(`http://localhost:${candidateServer.port}/poll?token=${candidateServer.token}&timeout=10000&leaseMs=30000`)
         .then((res) => res.json());
       assert.equal(event.type, 'manual_edit_apply');
+      const evidencePath = event.evidencePath;
       assert.equal(Array.isArray(event.batch.candidates), true);
       const candidateJson = JSON.stringify(event.batch.candidates);
       assert.match(candidateJson, /site\/scripts\/data\.js/);
@@ -588,6 +603,7 @@ colors: {}
       const result = await commit.json();
       assert.equal(result.cleared, 0);
       assert.equal(result.failed[0].id, 'feedcafe');
+      assert.equal(existsSync(evidencePath), false, 'terminal failed Apply reply should clean up evidence');
     } finally {
       if (candidateServer) {
         await stopServer(candidateServer.port, candidateServer.token);
@@ -628,6 +644,8 @@ colors: {}
         const pollRes = await fetch(`http://localhost:${chatServer.port}/poll?token=${chatServer.token}&timeout=10000&leaseMs=30000`);
         const event = await pollRes.json();
         assert.equal(event.type, 'manual_edit_apply');
+        const evidencePath = event.evidencePath;
+        assert.equal(existsSync(evidencePath), true);
 
         writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
 
@@ -648,6 +666,7 @@ colors: {}
           assert.equal(body.reason, expectedReason);
           assert.match(body.hint, new RegExp(`--reply ${event.id} done --data`));
           assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
+          assert.equal(existsSync(evidencePath), true, 'invalid replies should keep evidence for retry');
           const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
           assert.equal(buffer.entries.length, 1, 'invalid result must keep staged manual edits until a valid retry');
           const statusRes = await fetch(`http://localhost:${chatServer.port}/status?token=${chatServer.token}`);
@@ -685,6 +704,7 @@ colors: {}
           }),
         });
         assert.equal(ackRes.status, 200);
+        assert.equal(existsSync(evidencePath), false, 'valid retry should clean up evidence');
       })();
 
       const commitPromise = fetch(`http://localhost:${chatServer.port}/manual-edit-commit?token=${chatServer.token}&pageUrl=%2F`, {
@@ -741,6 +761,7 @@ colors: {}
         });
       }
 
+      const evidencePaths = [];
       const agentLoop = (async () => {
         const expectedChunkSizes = [3, 3, 1];
         for (const [index, expectedSize] of expectedChunkSizes.entries()) {
@@ -751,6 +772,7 @@ colors: {}
           assert.equal(event.agentAction.replyCommand, `live-poll.mjs --reply ${event.id} done --data '<json>'`);
           assert.equal(typeof event.evidencePath, 'string');
           assert.equal(existsSync(event.evidencePath), true);
+          evidencePaths.push(event.evidencePath);
           assert.equal(Array.isArray(event.batch.candidates), true);
           assert.ok(JSON.stringify(event).length < 9000, 'chat Apply poll payload should stay compact; full evidence lives at evidencePath');
           assert.deepEqual(event.chunk, {
@@ -801,6 +823,7 @@ colors: {}
       assert.equal(result.applied.length, 7);
       assert.equal(result.failed.length, 0);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Edited 07/);
+      assert.deepEqual(evidencePaths.map((file) => existsSync(file)), [false, false, false]);
     } finally {
       if (chunkServer) {
         await stopServer(chunkServer.port, chunkServer.token);
@@ -1170,6 +1193,7 @@ colors: {}
       const event = await pollPromise;
       assert.equal(event.type, 'manual_edit_apply');
       assert.equal(event.deadlineMs, 250);
+      assert.equal(existsSync(event.evidencePath), true);
 
       const commit = await commitPromise;
       assert.equal(commit.status, 200);
@@ -1179,6 +1203,8 @@ colors: {}
       assert.equal(result.failed.length, 1);
       assert.equal(result.failed[0].reason, 'chat_agent_timeout');
       assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
+      assert.equal(existsSync(event.evidencePath), false, 'timed-out Apply should clean up evidence');
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
 
       writeFileSync(sourcePath, '<h1 class="hero">Late write</h1>\n');
       const lateAck = await fetch(`http://localhost:${timeoutServer.port}/poll`, {
@@ -1256,6 +1282,7 @@ colors: {}
       assert.equal(event.type, 'manual_edit_apply');
       assert.equal(event.pageUrl, '/');
       assert.equal(event.batch.entries[0].id, 'aaaaaa11');
+      assert.equal(existsSync(event.evidencePath), true);
       writeFileSync(sourcePath, '<h1 class="hero">Hello</h1>\n');
 
       const discard = await fetch(`http://localhost:${discardApplyServer.port}/manual-edit-discard?token=${discardApplyServer.token}&pageUrl=%2F`, {
@@ -1268,6 +1295,8 @@ colors: {}
       assert.deepEqual(discardBody.canceledApplyEvents[0].rolledBackFiles, ['src/page.html']);
       assert.equal(discardBody.totalCount, 0);
       assert.match(readFileSync(sourcePath, 'utf-8'), /Welcome/);
+      assert.equal(existsSync(event.evidencePath), false, 'discarded Apply should clean up evidence');
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
 
       const commit = await commitPromise;
       assert.equal(commit.status, 200);
@@ -1355,6 +1384,7 @@ colors: {}
         .then((res) => res.json());
       assert.equal(firstEvent.type, 'manual_edit_apply');
       assert.equal(firstEvent.chunk.index, 1);
+      assert.equal(existsSync(firstEvent.evidencePath), true);
       let source = readFileSync(sourcePath, 'utf-8');
       for (const entry of firstEvent.batch.entries) {
         for (const op of entry.ops) source = source.replace(op.originalText, op.newText);
@@ -1379,11 +1409,13 @@ colors: {}
         }),
       });
       assert.equal(firstAck.status, 200);
+      assert.equal(existsSync(firstEvent.evidencePath), false);
 
       const secondEvent = await fetch(`http://localhost:${abandonedServer.port}/poll?token=${abandonedServer.token}&timeout=10000&leaseMs=30000`)
         .then((res) => res.json());
       assert.equal(secondEvent.type, 'manual_edit_apply');
       assert.equal(secondEvent.chunk.index, 2);
+      assert.equal(existsSync(secondEvent.evidencePath), true);
 
       abandonedServer.proc.kill('SIGKILL');
       await new Promise((resolve) => abandonedServer.proc.once('exit', resolve));
@@ -1400,6 +1432,8 @@ colors: {}
       });
 
       assert.equal(readFileSync(sourcePath, 'utf-8'), originalSource);
+      assert.equal(existsSync(secondEvent.evidencePath), false, 'server restart should prune stale Apply evidence');
+      assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
       const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
       assert.equal(buffer.entries.length, 4);
       const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
@@ -1478,6 +1512,7 @@ colors: {}
       const homeEvent = await homePollPromise;
       assert.equal(homeEvent.type, 'manual_edit_apply');
       assert.equal(homeEvent.pageUrl, '/');
+      assert.equal(existsSync(homeEvent.evidencePath), true);
 
       const docsPollPromise = fetch(`http://localhost:${pageScopeServer.port}/poll?token=${pageScopeServer.token}&timeout=10000&leaseMs=30000`)
         .then((res) => res.json());
@@ -1487,6 +1522,7 @@ colors: {}
       const docsEvent = await docsPollPromise;
       assert.equal(docsEvent.type, 'manual_edit_apply');
       assert.equal(docsEvent.pageUrl, '/docs');
+      assert.equal(existsSync(docsEvent.evidencePath), true);
 
       const discardHome = await fetch(`http://localhost:${pageScopeServer.port}/manual-edit-discard?token=${pageScopeServer.token}&pageUrl=%2F`, {
         method: 'POST',
@@ -1496,6 +1532,8 @@ colors: {}
       assert.deepEqual(discardHomeBody.canceledApplyEvents.map((item) => item.id), [homeEvent.id]);
       assert.equal(discardHomeBody.perPage['/'] || 0, 0);
       assert.equal(discardHomeBody.perPage['/docs'] || 0, 1);
+      assert.equal(existsSync(homeEvent.evidencePath), false, 'page-scoped discard should remove matching evidence');
+      assert.equal(existsSync(docsEvent.evidencePath), true, 'page-scoped discard should keep unrelated evidence');
 
       const homeCommit = await homeCommitPromise;
       const homeCommitBody = await homeCommit.json();
@@ -1527,6 +1565,7 @@ colors: {}
       assert.equal(docsCommitBody.totalCount, 0);
       assert.match(readFileSync(homePath, 'utf-8'), /Home/);
       assert.match(readFileSync(docsPath, 'utf-8'), /Docs Ready/);
+      assert.equal(existsSync(docsEvent.evidencePath), false, 'successful unrelated Apply should then clean its evidence');
     } finally {
       if (pageScopeServer) {
         await stopServer(pageScopeServer.port, pageScopeServer.token);

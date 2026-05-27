@@ -169,6 +169,7 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
       state.pendingApplyDeferreds.delete(eventId);
       tombstoneTimedOutApplyId(eventId, { batch, rollbackSnapshot });
       acknowledgePendingEvent(eventId);
+      removeManualApplyEvidence(evidencePath);
       recordManualEditActivity('manual_edit_apply_timeout', {
         id: eventId,
         pageUrl,
@@ -184,11 +185,67 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null) {
 }
 
 function writeManualApplyEvidence(eventId, batch) {
-  const dir = path.join(getLiveDir(process.cwd()), 'manual-edit-evidence');
+  const dir = manualApplyEvidenceDir(process.cwd());
   fs.mkdirSync(dir, { recursive: true });
   const evidencePath = path.join(dir, `${eventId}.json`);
   fs.writeFileSync(evidencePath, JSON.stringify(batch, null, 2) + '\n', 'utf-8');
   return evidencePath;
+}
+
+function manualApplyEvidenceDir(cwd = process.cwd()) {
+  return path.join(getLiveDir(cwd), 'manual-edit-evidence');
+}
+
+function normalizeManualApplyEvidencePath(evidencePath, cwd = process.cwd()) {
+  if (!evidencePath || typeof evidencePath !== 'string') return null;
+  const fullPath = path.isAbsolute(evidencePath) ? evidencePath : path.resolve(cwd, evidencePath);
+  const evidenceDir = manualApplyEvidenceDir(cwd);
+  const relative = path.relative(evidenceDir, fullPath);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  if (path.extname(relative) !== '.json') return null;
+  return fullPath;
+}
+
+function removeManualApplyEvidence(evidencePath, cwd = process.cwd()) {
+  const fullPath = normalizeManualApplyEvidencePath(evidencePath, cwd);
+  if (!fullPath) return false;
+  try {
+    fs.unlinkSync(fullPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function referencedManualApplyEvidencePaths(cwd = process.cwd()) {
+  const referenced = new Set();
+  const add = (event) => {
+    const fullPath = normalizeManualApplyEvidencePath(event?.evidencePath, cwd);
+    if (fullPath) referenced.add(fullPath);
+  };
+  for (const entry of state.pendingEvents) add(entry.event);
+  for (const deferred of state.pendingApplyDeferreds.values()) add(deferred.event);
+  return referenced;
+}
+
+function pruneStaleManualApplyEvidence(cwd = process.cwd()) {
+  const dir = manualApplyEvidenceDir(cwd);
+  if (!fs.existsSync(dir)) return [];
+  const referenced = referencedManualApplyEvidencePaths(cwd);
+  const removed = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const fullPath = path.join(dir, name);
+    if (referenced.has(fullPath)) continue;
+    try {
+      fs.unlinkSync(fullPath);
+      removed.push(fullPath);
+    } catch {
+      // Stale evidence cleanup is best-effort; Apply verification never relies
+      // on deleting these files.
+    }
+  }
+  return removed;
 }
 
 function compactManualApplyBatch(batch = {}) {
@@ -621,6 +678,7 @@ function resolveApplyDeferred(eventId, body) {
   if (!deferred) return false;
   state.pendingApplyDeferreds.delete(eventId);
   clearTimeout(deferred.timer);
+  removeManualApplyEvidence(deferred.event?.evidencePath);
   deferred.resolve(body);
   return true;
 }
@@ -630,6 +688,7 @@ function rejectApplyDeferred(eventId, reason) {
   if (!deferred) return false;
   state.pendingApplyDeferreds.delete(eventId);
   clearTimeout(deferred.timer);
+  removeManualApplyEvidence(deferred.event?.evidencePath);
   deferred.reject(new Error(reason || 'chat_agent_error'));
   return true;
 }
@@ -905,6 +964,7 @@ function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded
     const event = state.pendingEvents[i]?.event;
     if (!shouldCancel(event)) continue;
     state.pendingEvents.splice(i, 1);
+    removeManualApplyEvidence(event.evidencePath);
     canceledById.set(event.id, {
       id: event.id,
       pageUrl: event.pageUrl,
@@ -922,6 +982,7 @@ function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded
       rollbackSnapshot: deferred.rollbackSnapshot,
       reason,
     });
+    removeManualApplyEvidence(deferred.event?.evidencePath);
     canceledById.set(eventId, {
       id: eventId,
       pageUrl: deferred.pageUrl,
@@ -2089,6 +2150,7 @@ rollbackManualApplyTransaction({
   reason: 'manual_edit_server_start_recovered_abandoned_transaction',
 });
 restorePendingEventsFromStore();
+pruneStaleManualApplyEvidence(process.cwd());
 const portArg = args.find(a => a.startsWith('--port='));
 state.port = portArg ? parseInt(portArg.split('=')[1], 10) : await findOpenPort();
 // Annotation screenshots live in the project root so the agent's Read tool
