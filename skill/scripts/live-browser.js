@@ -2220,8 +2220,13 @@
           hasProjectContext = !!msg.hasProjectContext;
           if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable teach to generate one.', 7000);
           console.log('[impeccable] Live mode connected.');
+          syncAgentPollingUi(!!msg.agentPolling);
+          startAgentStatusPoll();
           if (state === 'IDLE' && pickActive) state = 'PICKING';
           syncPageChatFocus('sse-connected');
+          break;
+        case 'agent_polling':
+          syncAgentPollingUi(!!msg.connected);
           break;
         case 'steer_done':
           maybeCompleteSteer(msg);
@@ -3297,6 +3302,10 @@ void main() {
   // ---------------------------------------------------------------------------
 
   let globalBarEl = null;
+  let globalBarBrandEl = null;
+  let agentPollTooltipEl = null;
+  let agentPollingConnected = false;
+  let agentStatusPollTimer = null;
   let detectActive = false;
   const PICK_PREFS_KEY = 'impeccable-live-pick';
 
@@ -3329,12 +3338,20 @@ void main() {
   let steerLocked = false;
   let steerRequestId = null;
   let pageChatDotsEl = null;
+  let steerAwaitTimer = null;
   let steerVoiceRecognition = null;
   let steerVoiceListening = false;
   let steerVoiceSuppressSubmit = false;
   let steerVoiceInterimBase = '';
   const PAGE_CHAT_COLLAPSED_W = '88px';
   const PAGE_CHAT_PROCESSING_W = '76px';
+  const STEER_AWAIT_TIMEOUT_MS = 120000;
+  const AGENT_STATUS_POLL_MS = 5000;
+  const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected — run live-poll.mjs to connect';
+  const GLOBAL_BAR_SECTION_GAP = 8;
+  const GLOBAL_BAR_INNER_GAP = 2;
+  const GLOBAL_BAR_INNER_PAD_LEFT = 2;
   const PAGE_CHAT_EXPANDED_W = 'min(280px, 38vw)';
   const ICON_PAGE_CHAT =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -3565,6 +3582,23 @@ void main() {
     return wrap;
   }
 
+  function clearSteerAwaitTimer() {
+    if (steerAwaitTimer) {
+      clearTimeout(steerAwaitTimer);
+      steerAwaitTimer = null;
+    }
+  }
+
+  function scheduleSteerAwaitTimeout(id) {
+    clearSteerAwaitTimer();
+    steerAwaitTimer = setTimeout(() => {
+      if (!steerLocked || steerRequestId !== id) return;
+      unlockSteerChat({
+        error: 'Steer timed out waiting for the agent. Check that live-poll is running and replies with steer_done.',
+      });
+    }, STEER_AWAIT_TIMEOUT_MS);
+  }
+
   function lockSteerChat() {
     if (!pageChatEl || !pageChatInput) return;
     stopSteerVoice({ suppressSubmit: true });
@@ -3600,6 +3634,7 @@ void main() {
   }
 
   function unlockSteerChat(opts) {
+    clearSteerAwaitTimer();
     steerLocked = false;
     steerRequestId = null;
     if (!pageChatEl) return;
@@ -3799,6 +3834,7 @@ void main() {
     const id = id8();
     steerRequestId = id;
     lockSteerChat();
+    scheduleSteerAwaitTimeout(id);
     sendEvent({
       type: 'steer',
       id,
@@ -3868,7 +3904,7 @@ void main() {
   function initPageChat(parent, P) {
     pageChatEl = el('div', {
       display: 'inline-flex', alignItems: 'center',
-      height: '28px', margin: '0 4px 0 2px',
+      height: '28px', margin: '0 4px 0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_GAP) + 'px',
       borderRadius: '7px',
       background: P.chatSurface,
       border: '1px solid ' + P.hairline,
@@ -4010,6 +4046,98 @@ void main() {
     </svg>`;
   }
 
+  function syncAgentPollingUi(connected) {
+    agentPollingConnected = !!connected;
+    if (!globalBarBrandEl) return;
+    const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+    globalBarBrandEl.dataset.agentConnected = connected ? 'true' : 'false';
+    globalBarBrandEl.setAttribute('aria-label', connected
+      ? 'Impeccable live mode'
+      : 'Impeccable live mode — agent not polling');
+    globalBarBrandEl.removeAttribute('title');
+    globalBarBrandEl.style.cursor = connected ? 'default' : 'help';
+    const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
+    if (mark) {
+      mark.innerHTML = brandMarkSvg(connected ? P.accent : AGENT_DISCONNECTED_MARK, 18);
+      mark.style.opacity = '1';
+    }
+    const dot = globalBarBrandEl.querySelector('[data-agent-dot]');
+    if (dot) dot.style.display = connected ? 'none' : 'block';
+    if (connected) hideAgentPollTooltip();
+  }
+
+  function ensureAgentPollTooltip() {
+    if (agentPollTooltipEl) return agentPollTooltipEl;
+    const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+    agentPollTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      opacity: '0',
+      zIndex: String(Z.bar + 6),
+      pointerEvents: 'none',
+      maxWidth: '220px',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      boxShadow: P.shadow,
+      color: P.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+      letterSpacing: '0.01em',
+      whiteSpace: 'normal',
+    });
+    agentPollTooltipEl.id = PREFIX + '-agent-poll-tooltip';
+    agentPollTooltipEl.textContent = AGENT_DISCONNECTED_TIP;
+    document.body.appendChild(agentPollTooltipEl);
+    return agentPollTooltipEl;
+  }
+
+  function showAgentPollTooltip(anchor) {
+    if (agentPollingConnected || !anchor) return;
+    const tip = ensureAgentPollTooltip();
+    tip.style.transition = 'none';
+    tip.style.display = 'block';
+    tip.style.opacity = '1';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideAgentPollTooltip() {
+    if (!agentPollTooltipEl) return;
+    agentPollTooltipEl.style.display = 'none';
+    agentPollTooltipEl.style.opacity = '0';
+  }
+
+  function stopAgentStatusPoll() {
+    if (agentStatusPollTimer) {
+      clearInterval(agentStatusPollTimer);
+      agentStatusPollTimer = null;
+    }
+  }
+
+  function fetchAgentPollingStatus() {
+    fetch('http://localhost:' + PORT + '/status?token=' + TOKEN, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.agentPolling === 'boolean') syncAgentPollingUi(data.agentPolling);
+      })
+      .catch(() => { /* server loss handled elsewhere */ });
+  }
+
+  function startAgentStatusPoll() {
+    stopAgentStatusPoll();
+    fetchAgentPollingStatus();
+    agentStatusPollTimer = setInterval(fetchAgentPollingStatus, AGENT_STATUS_POLL_MS);
+  }
+
   function initGlobalBar() {
     const theme = detectPageTheme();
     const P = barPaletteForTheme(theme);
@@ -4025,7 +4153,10 @@ void main() {
         '#' + PREFIX + '-global-bar button:focus-visible {' +
         '  outline: none;' +
         '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
-        '}';
+        '}' +
+        '@keyframes impeccable-agent-dot { 0%, 100% { opacity: 0.45; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }' +
+        '#' + PREFIX + '-global-bar-brand[data-agent-connected="false"] [data-agent-dot] { animation: impeccable-agent-dot 1.4s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-global-bar-brand[data-agent-connected="false"] [data-agent-dot] { animation: none; opacity: 0.9; } }';
       document.head.appendChild(s);
     }
 
@@ -4034,7 +4165,7 @@ void main() {
       transform: 'translateX(-50%) translateY(20px)',
       zIndex: Z.bar + 5,
       display: 'flex', alignItems: 'stretch',
-      gap: '2px',
+      gap: '0',
       background: P.surface,
       border: '1.5px solid ' + P.border,
       borderRadius: '10px',
@@ -4050,20 +4181,46 @@ void main() {
     // Brand mark — kinpaku Impeccable icon (site header / favicon paths).
     const brand = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      alignSelf: 'stretch',
-      padding: '0 12px 0 14px',
+      alignSelf: 'stretch', position: 'relative',
+      padding: '0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_PAD_LEFT) + 'px 0 14px',
       background: 'transparent',
       color: P.accent,
       flexShrink: '0',
     });
-    brand.innerHTML = brandMarkSvg(P.accent, 18);
-    brand.title = 'Impeccable';
+    brand.id = PREFIX + '-global-bar-brand';
+    brand.dataset.agentConnected = 'false';
+    brand.setAttribute('role', 'img');
+    brand.setAttribute('aria-label', 'Impeccable live mode — agent not polling');
+
+    const brandMark = el('span', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      position: 'relative',
+    });
+    brandMark.dataset.brandMark = 'true';
+    brandMark.innerHTML = brandMarkSvg(P.accent, 18);
+
+    const agentDot = el('span', {
+      position: 'absolute', right: '-1px', bottom: '7px',
+      width: '6px', height: '6px', borderRadius: '50%',
+      background: 'oklch(78% 0.14 75)',
+      boxShadow: '0 0 0 2px ' + P.surface,
+      display: 'none', pointerEvents: 'none',
+    });
+    agentDot.dataset.agentDot = 'true';
+    agentDot.setAttribute('aria-hidden', 'true');
+
+    brandMark.appendChild(agentDot);
+    brand.appendChild(brandMark);
+    brand.addEventListener('mouseenter', () => showAgentPollTooltip(brand));
+    brand.addEventListener('mouseleave', hideAgentPollTooltip);
+    globalBarBrandEl = brand;
     globalBarEl.appendChild(brand);
+    syncAgentPollingUi(false);
 
     // Inner wrapper: holds the toggles with normal bar padding.
     const inner = el('div', {
       display: 'flex', alignItems: 'center',
-      padding: '4px 5px', gap: '2px',
+      padding: '4px 5px 4px ' + GLOBAL_BAR_INNER_PAD_LEFT + 'px', gap: GLOBAL_BAR_INNER_GAP + 'px',
     });
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
@@ -4314,6 +4471,12 @@ void main() {
 
   /** Full teardown: remove all UI, disconnect SSE, clean up. */
   function teardown() {
+    stopAgentStatusPoll();
+    hideAgentPollTooltip();
+    if (agentPollTooltipEl) {
+      agentPollTooltipEl.remove();
+      agentPollTooltipEl = null;
+    }
     stopSteerVoice({ suppressSubmit: true });
     cleanup();
     hideBar();

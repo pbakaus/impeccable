@@ -69,6 +69,17 @@ async function drainPolls(server) {
   } while (drained.type !== 'timeout');
 }
 
+async function readSseUntil(reader, decoder, needle, maxReads = 12) {
+  let text = '';
+  for (let i = 0; i < maxReads; i++) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+    if (text.includes(needle)) return text;
+  }
+  return text;
+}
+
 // ---------------------------------------------------------------------------
 // Server integration tests
 // ---------------------------------------------------------------------------
@@ -134,6 +145,30 @@ describe('live-server integration', () => {
     assert.equal(data.pendingEvents.some((e) => e.id === 'a1b2c3d5' && e.type === 'generate'), true);
 
     await drainPolls(server);
+  });
+
+  it('/status reports agentPolling from active poll leases', async () => {
+    await drainPolls(server);
+    let res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    let data = await res.json();
+    assert.equal(data.agentPolling, false);
+
+    const controller = new AbortController();
+    const pollPromise = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=5000`,
+      { signal: controller.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, true);
+
+    controller.abort();
+    await pollPromise.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, false);
   });
 
   it('/live.js serves script with token injected', async () => {
@@ -783,8 +818,7 @@ colors: {}
       }),
     });
 
-    const { value: chunk } = await reader.read();
-    const text = decoder.decode(chunk);
+    const text = await readSseUntil(reader, decoder, '"steer_done"');
     assert.ok(text.includes('"steer_done"'));
     assert.ok(text.includes('b2c3d4e5'));
     assert.ok(text.includes('Hero spacing tightened'));

@@ -143,6 +143,21 @@ describe('live-browser.js regression guards', () => {
       /Handing off|pageChatHint\.textContent = 'Working'/,
       'steer processing state should use dots-only animation, not truncated text',
     );
+    assert.match(
+      SOURCE,
+      /function syncAgentPollingUi\(/,
+      'global bar brand must reflect agent poll connectivity',
+    );
+    assert.match(
+      SOURCE,
+      /case 'agent_polling':/,
+      'browser must listen for agent_polling SSE updates',
+    );
+    assert.match(
+      SOURCE,
+      /function showAgentPollTooltip\(/,
+      'disconnected agent state must use an instant custom tooltip on brand hover',
+    );
   });
 
   it('pick mode preference persists in localStorage', () => {

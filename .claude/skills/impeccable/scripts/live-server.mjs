@@ -65,6 +65,7 @@ const state = {
   sseClients: new Set(),   // SSE response objects (server→browser push)
   pendingEvents: [],        // browser events waiting for agent ack ({ event, leaseUntil })
   pendingPolls: [],         // agent poll callbacks waiting for browser events
+  lastAgentPollingBroadcast: null,
   exitTimer: null,
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
@@ -130,16 +131,31 @@ function scheduleLeaseFlush() {
 }
 
 function flushPendingPolls() {
+  let changed = false;
   while (state.pendingPolls.length > 0) {
     const entry = findAvailablePendingEvent();
     if (!entry) {
       scheduleLeaseFlush();
+      broadcastAgentPollingIfChanged();
       return;
     }
     const poll = state.pendingPolls.shift();
     poll.resolve(leaseEvent(entry, poll.leaseMs));
+    changed = true;
   }
   scheduleLeaseFlush();
+  if (changed) broadcastAgentPollingIfChanged();
+}
+
+function agentPollingConnected() {
+  return state.pendingPolls.length > 0;
+}
+
+function broadcastAgentPollingIfChanged() {
+  const connected = agentPollingConnected();
+  if (state.lastAgentPollingBroadcast === connected) return;
+  state.lastAgentPollingBroadcast = connected;
+  broadcast({ type: 'agent_polling', connected });
 }
 
 /** Push a message to all connected SSE clients. */
@@ -401,6 +417,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         status: 'ok',
         port: state.port,
         connectedClients: state.sseClients.size,
+        agentPolling: agentPollingConnected(),
         pendingEvents: state.pendingEvents.map((entry) => ({
           id: entry.event?.id,
           type: entry.event?.type,
@@ -511,6 +528,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       res.write('data: ' + JSON.stringify({
         type: 'connected',
         hasProjectContext: hasProjectContext(),
+        agentPolling: agentPollingConnected(),
       }) + '\n\n');
 
       state.sseClients.add(res);
@@ -619,6 +637,7 @@ function handlePollGet(req, res, url) {
   const timer = setTimeout(() => {
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ type: 'timeout' }));
   }, timeout);
@@ -628,11 +647,13 @@ function handlePollGet(req, res, url) {
     res.end(JSON.stringify(event));
   }
   state.pendingPolls.push(poll);
+  broadcastAgentPollingIfChanged();
   scheduleLeaseFlush();
   req.on('close', () => {
     clearTimeout(timer);
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
   });
 }
 
