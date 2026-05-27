@@ -1,30 +1,36 @@
+/* ============================================================================
+   Impeccable — Neo Kinpaku Design System
+   Restrained dark surface. Kinpaku gold and verdigris patina carry the brand.
+   No nested cards, no decorative chrome, no washed-out textures.
+
+   Brand-defining tokens (kinpaku, pale, rich, patina, champagne, text, font,
+   ease, vermilion) live in kinpaku-tokens.css and are inherited from :root.
+   Only page-specific neutrals (ink/surface shades, rule alphas, muted) stay
+   scoped here.
+   ============================================================================ */
+
+@import "./kinpaku-tokens.css";
+/* Divider geometry, tone modifiers, and texture-fill modifiers — shared with
+   the homepage. Must stay at the top of the file because CSS @import is only
+   valid before any other rules. */
+@import "./divider-patterns.css";
+
 .kinpaku-system-page {
-  --ks-lacquer: oklch(7% 0.006 95);
-  --ks-lacquer-2: oklch(10% 0.006 95);
-  --ks-graphite: oklch(15% 0.008 95);
-  --ks-graphite-2: oklch(20% 0.008 95);
-  --ks-rule: oklch(45% 0.04 82 / 0.42);
-  --ks-rule-soft: oklch(45% 0.04 82 / 0.22);
-  --ks-kinpaku: oklch(78% 0.12 82);
-  --ks-kinpaku-deep: oklch(62% 0.08 78);
-  --ks-kinpaku-pale: oklch(88% 0.055 84);
-  --ks-champagne: oklch(84% 0.035 82);
-  --ks-text: oklch(78% 0.025 82);
-  --ks-muted: oklch(58% 0.02 82);
-  --ks-patina: oklch(69% 0.105 190);
-  --ks-oxide: oklch(48% 0.08 188);
-  --ks-vermilion: oklch(63% 0.16 35);
-  --ks-shadow: oklch(2% 0.004 95 / 0.7);
-  --ks-font: "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
-  --ks-mono: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  /* Legacy alias layer. All real values live in kinpaku-tokens.css at :root;
+     this page's selectors still reference the old short names (--ks-ink,
+     --ks-surface, --ks-muted, --ks-mute-deep), so we forward them to the
+     forward names. Phase 4 of the design-system rework will rename the
+     selectors and delete this block. */
+  --ks-ink:        var(--ks-lacquer);
+  --ks-ink-deep:   var(--ks-lacquer-deep);
+  --ks-surface:    var(--ks-lacquer-raised);
+  --ks-muted:      var(--ks-text-muted);
+  --ks-mute-deep: var(--ks-text-mute-deep);
+
   color: var(--ks-text);
-  background:
-    linear-gradient(180deg, oklch(3% 0.004 95 / 0.88), oklch(3% 0.004 95 / 0.97)),
-    radial-gradient(circle at 80% 18%, oklch(28% 0.04 82 / 0.075), transparent 34rem),
-    radial-gradient(circle at 18% 72%, oklch(69% 0.105 190 / 0.036), transparent 28rem),
-    url("/assets/neo-kinpaku/lacquer-grain.png") center top / 1900px auto fixed,
-    linear-gradient(180deg, var(--ks-lacquer), oklch(4% 0.004 95));
+  background: var(--ks-lacquer);
   font-family: var(--ks-font);
+  font-weight: 300;
   margin: 0;
 }
 
@@ -35,921 +41,1083 @@
 }
 
 .kinpaku-system-page img,
-.kinpaku-system-page svg,
-.kinpaku-system-page canvas,
-.kinpaku-system-page video {
+.kinpaku-system-page svg {
   display: block;
   max-width: 100%;
 }
 
 .kinpaku-system-page a {
   color: inherit;
+  text-decoration: none;
 }
 
 .kinpaku-system-page button,
-.kinpaku-system-page input {
-  font-family: inherit;
-}
-
-.kinpaku-system-page::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.11;
-  background-image:
-    linear-gradient(90deg, transparent 0, oklch(88% 0.055 84 / 0.06) 1px, transparent 1px),
-    linear-gradient(180deg, transparent 0, oklch(88% 0.055 84 / 0.04) 1px, transparent 1px),
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E");
-  background-size: 180px 180px, 180px 180px, 240px 240px;
-  mask-image: linear-gradient(180deg, black, transparent 78%);
+.kinpaku-system-page input,
+.kinpaku-system-page select {
+  font: inherit;
 }
 
 .kinpaku-system {
   position: relative;
   isolation: isolate;
-  overflow: clip;
 }
 
+/* Skip link */
 .kinpaku-system-page .skip-link {
   position: fixed;
   top: -96px;
   left: 50%;
   z-index: 1000;
   transform: translateX(-50%);
-  padding: 12px 18px;
-  border: 1px solid var(--ks-patina);
-  border-radius: 4px;
-  color: var(--ks-lacquer);
-  background: var(--ks-patina);
-  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 2px;
+  color: var(--ks-ink-deep);
+  background: var(--ks-kinpaku);
+  font-weight: 500;
   text-decoration: none;
-  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: top 180ms var(--ks-ease);
 }
+.kinpaku-system-page .skip-link:focus { top: 16px; }
+.kinpaku-system-page .skip-link:focus:not(:focus-visible) { top: -96px; }
 
-.kinpaku-system-page .skip-link:focus {
-  top: 16px;
-}
-
-.kinpaku-system-page .skip-link:focus:not(:focus-visible) {
-  top: -96px;
-}
-
-.kinpaku-system h1,
-.kinpaku-system h2,
-.kinpaku-system h3,
-.kinpaku-system p {
-  color: inherit;
-  letter-spacing: 0;
-}
+/* ============================================================================
+   Hero
+   ============================================================================ */
 
 .ks-hero {
+  position: relative;
   min-height: 100svh;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  padding: 42px 44px 0;
-  position: relative;
+  padding: 36px 56px 0;
+  overflow: hidden;
 }
 
-.ks-hero::after {
-  content: "";
+.ks-hero-art {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 91px;
-  height: 18px;
-  background: url("/assets/neo-kinpaku/gold-dust-rule.png") center / cover no-repeat;
-  opacity: 0.4;
-  mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, var(--ks-ink) 0%, oklch(4% 0.004 95 / 0.65) 26%, transparent 48%, transparent 88%, var(--ks-ink) 100%),
+    linear-gradient(180deg, oklch(4% 0.004 95 / 0.35) 0%, transparent 35%, var(--ks-ink) 100%),
+    url("/assets/neo-kinpaku/kintsugi-hero-v2.png") center / cover no-repeat;
+  filter: saturate(1.22) contrast(1.1);
 }
 
-.ks-topbar,
-.ks-header-sample {
+/* Header */
+.ks-topbar {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 32px;
 }
 
-.ks-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 22px;
-  text-decoration: none;
-}
-
-.ks-mark {
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--ks-kinpaku-deep);
-  border-radius: 6px;
-  color: var(--ks-kinpaku);
-  font-size: 26px;
-  line-height: 1;
-  box-shadow: inset 0 0 22px oklch(78% 0.12 82 / 0.07);
-}
-
-.ks-wordmark {
-  color: var(--ks-kinpaku);
-  font-size: 0.95rem;
-  font-weight: 400;
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-}
+/* Brand lockup (.ks-brand, .ks-mark, .ks-wordmark) is in kinpaku-kit.css. */
 
 .ks-nav {
   display: flex;
   align-items: center;
-  gap: 42px;
+  gap: 38px;
 }
 
-.ks-nav a,
-.ks-nav-cta {
+.ks-nav a {
   color: var(--ks-champagne);
-  font-size: 0.95rem;
-  line-height: 1;
+  font-size: 0.92rem;
   text-decoration: none;
-  transition: color 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: 0.01em;
+  transition: color 180ms var(--ks-ease);
 }
 
-.ks-nav a:hover,
-.ks-nav-cta:hover {
-  color: var(--ks-kinpaku);
-}
+.ks-nav a:hover { color: var(--ks-kinpaku); }
 
 .ks-nav a[aria-current="page"] {
   color: var(--ks-kinpaku);
-  box-shadow: 0 12px 0 -10px var(--ks-kinpaku);
+  position: relative;
+}
+.ks-nav a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 1px;
+  background: var(--ks-kinpaku);
 }
 
-.ks-nav-cta {
-  border: 1px solid var(--ks-kinpaku-deep);
-  padding: 18px 34px;
-  min-width: 142px;
-  text-align: center;
-}
-
-.ks-hero-grid {
+/* Hero body */
+.ks-hero-body {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: 1fr;
-  align-items: center;
-  position: relative;
-  min-height: 560px;
-  isolation: isolate;
+  align-content: center;
+  padding: 80px 0 96px;
+  max-width: 940px;
 }
 
-.ks-hero-copy {
-  position: relative;
-  z-index: 2;
-  max-width: 930px;
-  padding-left: 54px;
-}
-
-.ks-kicker,
-.ks-section-head > p,
-.ks-component-group > h3,
-.ks-token-panel > h3 {
+.ks-hero-eyebrow {
   color: var(--ks-kinpaku);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.34em;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.32em;
   text-transform: uppercase;
+  margin: 0 0 28px;
 }
 
-.ks-hero h1 {
-  margin-top: 112px;
+.ks-hero-wordmark {
+  display: block;
   color: var(--ks-kinpaku);
-  font-family: var(--ks-font);
-  font-size: 5.5rem;
+  font-family: var(--ks-font-display);
   font-weight: 300;
+  font-size: clamp(3.2rem, 7.2vw, 5.6rem);
   line-height: 1;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
+  margin: 0;
+  padding-right: 0.22em;
 }
 
 .ks-hero-line {
-  margin-top: 28px;
-  max-width: 640px;
+  margin: 28px 0 0;
+  max-width: 540px;
   color: var(--ks-champagne);
-  font-size: 1.45rem;
-  line-height: 1.65;
-}
-
-.ks-hero-actions,
-.ks-button-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
+  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+  font-weight: 300;
+  line-height: 1.55;
 }
 
 .ks-hero-actions {
-  margin-top: 42px;
-}
-
-.ks-button {
-  min-height: 56px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 0 34px;
-  border-radius: 2px;
-  font-size: 1rem;
-  line-height: 1;
-  text-decoration: none;
-  border: 1px solid transparent;
-  transition:
-    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    background 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    color 220ms cubic-bezier(0.16, 1, 0.3, 1);
-  cursor: pointer;
-}
-
-.ks-button:hover {
-  transform: translateY(-2px);
-}
-
-.ks-button:focus-visible,
-.ks-nav a:focus-visible,
-.ks-nav-cta:focus-visible,
-.ks-brand:focus-visible,
-.ks-category-rail a:focus-visible,
-.ks-rule-card a:focus-visible,
-.ks-menu-button:focus-visible,
-.ks-icon-button:focus-visible,
-.ks-tabs button:focus-visible,
-.ks-form-sample input:focus-visible {
-  outline: 2px solid var(--ks-patina);
-  outline-offset: 4px;
-}
-
-.ks-button-primary {
-  background:
-    linear-gradient(90deg, oklch(92% 0.065 84 / 0.4), oklch(78% 0.12 82 / 0.7)),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") center / 150% auto;
-  color: oklch(9% 0.006 95);
-  box-shadow:
-    inset 0 0 18px oklch(100% 0 0 / 0.08),
-    0 18px 42px oklch(2% 0.004 95 / 0.35);
-}
-
-.kinpaku-system-page .ks-button-primary {
-  color: oklch(9% 0.006 95) !important;
-}
-
-.kinpaku-system-page .ks-button-primary span {
-  color: oklch(9% 0.006 95);
-}
-
-.ks-button-primary:hover {
-  background:
-    linear-gradient(90deg, oklch(96% 0.05 84 / 0.32), oklch(78% 0.12 82 / 0.42)),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 60% 46% / 135% auto;
-}
-
-.ks-button-secondary,
-.ks-button-ghost {
-  background: transparent;
-  color: var(--ks-kinpaku);
-  border-color: var(--ks-kinpaku-deep);
-}
-
-.kinpaku-system-page .ks-button-secondary,
-.kinpaku-system-page .ks-button-ghost,
-.kinpaku-system-page .ks-nav-cta {
-  color: var(--ks-kinpaku);
-}
-
-.ks-button-secondary:hover,
-.ks-button-ghost:hover {
-  border-color: var(--ks-patina);
-  color: var(--ks-patina);
-}
-
-.ks-button-disabled,
-.ks-button-disabled:hover {
-  background: oklch(18% 0.008 95);
-  color: var(--ks-muted);
-  border-color: var(--ks-rule-soft);
-  transform: none;
-  cursor: not-allowed;
-}
-
-.ks-note {
-  margin-top: 42px;
-  display: grid;
-  grid-template-columns: 90px minmax(0, 1fr);
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
-  max-width: 460px;
-  color: var(--ks-muted);
-  font-size: 1rem;
-  line-height: 1.7;
+  margin-top: 36px;
 }
 
-.ks-note-pin {
-  height: 54px;
-  border-top: 1px solid var(--ks-kinpaku-deep);
-  border-left: 1px solid var(--ks-kinpaku-deep);
+.ks-hero-note {
+  margin-top: 56px;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  max-width: 480px;
+  color: var(--ks-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.ks-hero-note-pin {
+  height: 40px;
+  border-top: 1px solid var(--ks-kinpaku);
+  border-left: 1px solid var(--ks-kinpaku);
   position: relative;
 }
-
-.ks-note-pin::before,
-.ks-note-pin::after {
+.ks-hero-note-pin::before {
   content: "";
   position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--ks-kinpaku);
 }
 
-.ks-note-pin::before {
-  top: -4px;
-  left: -4px;
-  width: 8px;
-  height: 8px;
-}
-
-.ks-note-pin::after {
-  top: -3px;
-  right: -2px;
-  width: 6px;
-  height: 6px;
-}
-
-.ks-hero-art {
-  position: absolute;
-  inset: 0 -44px 0 -44px;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg, oklch(4% 0.004 95 / 0.74) 0%, oklch(4% 0.004 95 / 0.24) 42%, transparent 68%),
-    linear-gradient(180deg, oklch(4% 0.004 95 / 0.22) 0%, transparent 52%, oklch(4% 0.004 95 / 0.52) 100%),
-    url("/assets/neo-kinpaku/hero-seam-field-v2.png") center / cover no-repeat;
-  filter: saturate(1.16) contrast(1.1) brightness(1.04);
-  mask-image:
-    linear-gradient(90deg, transparent 0%, black 12%, black 100%),
-    linear-gradient(180deg, black 0%, black 88%, transparent 100%);
-  mask-composite: intersect;
-}
-
-.ks-circuit-field {
-  position: absolute;
-  right: 0;
-  top: 4%;
-  width: min(920px, 62vw);
-  height: 76%;
-  overflow: visible;
-  opacity: 0.68;
-  mix-blend-mode: screen;
-}
-
-.ks-circuit-field path,
-.ks-circuit-field circle,
-.ks-circuit-specimen path,
-.ks-circuit-specimen circle {
-  vector-effect: non-scaling-stroke;
-}
-
-.ks-circuit-lines path {
-  fill: none;
-  stroke: var(--ks-kinpaku-deep);
-  stroke-width: 1.1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.74;
-}
-
-.ks-circuit-nodes circle {
-  fill: oklch(5% 0.004 95 / 0.78);
-  stroke: var(--ks-kinpaku);
-  stroke-width: 1.2;
-  opacity: 0.9;
-}
-
-.ks-foil-seam {
-  position: absolute;
-  top: 24%;
-  right: 24%;
-  width: 18px;
-  height: 58%;
-  transform: rotate(44deg);
-  background:
-    radial-gradient(circle at 52% 10%, oklch(95% 0.04 84 / 0.9), transparent 9px),
-    radial-gradient(circle at 34% 38%, oklch(86% 0.08 82 / 0.95), transparent 12px),
-    radial-gradient(circle at 72% 58%, oklch(94% 0.05 84 / 0.9), transparent 10px),
-    linear-gradient(180deg, transparent, var(--ks-kinpaku) 12%, var(--ks-kinpaku-deep) 52%, var(--ks-kinpaku-pale) 82%, transparent);
-  clip-path: polygon(42% 0, 62% 8%, 47% 20%, 70% 33%, 41% 50%, 58% 66%, 38% 82%, 54% 100%, 25% 100%, 39% 82%, 20% 68%, 42% 49%, 18% 34%, 39% 19%, 24% 7%);
-  filter: drop-shadow(0 0 16px oklch(78% 0.12 82 / 0.38));
-  opacity: 0.22;
-}
-
-.ks-foil-seam::before {
-  content: "";
-  position: absolute;
-  inset: -18px -32px;
-  background:
-    radial-gradient(circle, oklch(78% 0.12 82 / 0.75) 0 1px, transparent 2px),
-    radial-gradient(circle, oklch(78% 0.12 82 / 0.4) 0 1px, transparent 3px);
-  background-size: 18px 14px, 31px 27px;
-  mask-image: linear-gradient(90deg, transparent, black 36%, transparent 78%);
-}
-
-.ks-calibration {
-  position: absolute;
-  border: 1px solid var(--ks-rule);
-  opacity: 0.68;
-}
-
-.ks-calibration::before,
-.ks-calibration::after {
-  content: "";
-  position: absolute;
-  background: var(--ks-kinpaku-deep);
-}
-
-.ks-calibration-one {
-  right: 0;
-  top: 16%;
-  width: 380px;
-  height: 250px;
-  border-left: 0;
-}
-
-.ks-calibration-one::before {
-  top: 54%;
-  left: -120px;
-  width: 220px;
-  height: 1px;
-}
-
-.ks-calibration-one::after {
-  top: -22px;
-  left: 38%;
-  width: 1px;
-  height: 300px;
-}
-
-.ks-calibration-two {
-  right: 9%;
-  bottom: 22%;
-  width: 460px;
-  height: 112px;
-  border-right: 0;
-  border-bottom: 0;
-}
-
-.ks-calibration-two::before {
-  left: 12%;
-  top: 50%;
-  width: 100%;
-  height: 1px;
-}
-
-.ks-calibration-two::after {
-  left: 22%;
-  bottom: -35px;
-  width: 1px;
-  height: 100px;
-}
-
-.ks-patina-dot {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--ks-patina);
-  box-shadow: 0 0 22px var(--ks-patina);
-  opacity: 0.9;
-}
-
-.ks-patina-dot-one {
-  right: 8%;
-  top: 47%;
-}
-
-.ks-patina-dot-two {
-  right: 34%;
-  bottom: 25%;
-}
-
+/* Category rail */
 .ks-category-rail {
-  min-height: 92px;
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  border-top: 1px solid var(--ks-rule-soft);
+  border-top: 1px solid var(--ks-rule);
+  margin: 0 -56px;
+  background: linear-gradient(180deg, transparent, oklch(4% 0.004 95 / 0.8));
 }
 
 .ks-category-rail a {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 14px;
+  padding: 26px 16px;
   color: var(--ks-champagne);
   text-decoration: none;
-  font-size: 1.05rem;
-  border-right: 1px solid var(--ks-rule-soft);
+  font-size: 0.96rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  border-right: 1px solid var(--ks-rule);
+  transition: color 180ms var(--ks-ease);
 }
 
-.ks-category-rail a:last-child {
-  border-right: 0;
-}
+.ks-category-rail a:last-child { border-right: 0; }
+.ks-category-rail a:hover { color: var(--ks-kinpaku); }
 
-.ks-category-rail a:hover {
-  color: var(--ks-patina);
-}
-
-.ks-rail-icon,
-.ks-rule-icon {
-  width: 28px;
-  height: 28px;
+.ks-category-rail svg {
+  width: 18px;
+  height: 18px;
   flex: none;
+  color: var(--ks-kinpaku);
+}
+
+/* ============================================================================
+   Sections
+   ============================================================================ */
+
+/* Section scaffolding (.ks-section, .ks-section-head, .ks-section-eyebrow,
+   .ks-subsection, .ks-subsection-label, .ks-section-sub) is in
+   kinpaku-kit.css. */
+
+/* Hero candidate gallery */
+.ks-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.ks-candidate {
+  position: relative;
+  margin: 0;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--ks-ink-deep);
+}
+
+.ks-candidate img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+
+.ks-icon-candidate img {
+  aspect-ratio: 1;
+}
+
+.ks-icon-family-label {
+  margin: 32px 0 14px;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  font-weight: 400;
+}
+
+.ks-icon-family-label:first-of-type {
+  margin-top: 4px;
+}
+
+/* Hand-drawn icon-mark concept tiles. Each tile shows the candidate inside the
+   actual 38px icon box so it's evaluated at the size it'd ship at. */
+.ks-icon-concepts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 18px;
+}
+
+.ks-icon-concept {
+  margin: 0;
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  padding: 36px 18px 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: var(--ks-ink-deep);
+}
+
+.ks-icon-concept-box {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-kinpaku);
+  color: var(--ks-kinpaku);
+  border-radius: 2px;
+}
+
+.ks-icon-concept-box svg {
+  width: 14px;
+  height: 22px;
+  display: block;
+}
+
+.ks-icon-concept figcaption {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-muted);
+  text-align: center;
+}
+
+/* Canonical mark, shown at a range of sizes. No container box — the tile is
+   the mark. */
+.ks-mark-scale {
+  display: flex;
+  align-items: flex-end;
+  gap: 40px;
+}
+.ks-mark-scale-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+}
+.ks-mark-glyph {
   display: inline-grid;
   place-items: center;
   color: var(--ks-kinpaku);
-  border: 1px solid var(--ks-kinpaku-deep);
+}
+.ks-mark-glyph svg { width: 100%; height: 100%; display: block; }
+.ks-mark-scale-item figcaption {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: var(--ks-muted);
 }
 
-.ks-rail-layout,
-.ks-rail-color {
-  background:
-    linear-gradient(90deg, transparent 47%, var(--ks-kinpaku-deep) 47% 53%, transparent 53%),
-    linear-gradient(180deg, transparent 47%, var(--ks-kinpaku-deep) 47% 53%, transparent 53%);
-}
-
-.ks-rail-type {
-  font-family: Georgia, serif;
-  font-size: 1rem;
-}
-
-.ks-rail-color {
-  border-radius: 999px;
-}
-
-.ks-rail-motion {
-  border: 0;
-  background:
-    linear-gradient(160deg, transparent 0 32%, var(--ks-kinpaku) 32% 37%, transparent 37% 60%, var(--ks-kinpaku) 60% 65%, transparent 65%);
-}
-
-.ks-rail-access {
-  border-radius: 999px;
-  position: relative;
-}
-
-.ks-rail-access::before,
-.ks-rail-access::after {
-  content: "";
+.ks-candidate figcaption {
   position: absolute;
-  background: var(--ks-kinpaku);
+  left: 10px;
+  top: 10px;
+  padding: 2px 8px;
+  background: oklch(4% 0.004 95 / 0.74);
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: 1px solid var(--ks-rule-strong);
+  border-radius: 2px;
+  pointer-events: none;
 }
 
-.ks-rail-access::before {
-  width: 14px;
-  height: 1px;
-  top: 9px;
-  left: 6px;
+.ks-candidate.is-kept figcaption {
+  color: var(--ks-patina);
+  border-color: var(--ks-patina);
 }
 
-.ks-rail-access::after {
-  width: 1px;
-  height: 13px;
-  top: 9px;
-  left: 13px;
+/* Keyed (transparent) candidates: split background to reveal alpha */
+.ks-candidate-keyed-stack {
+  position: relative;
+  aspect-ratio: 3 / 2;
 }
 
-.ks-section {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 118px 44px;
-  border-top: 1px solid var(--ks-rule-soft);
+.ks-candidate-keyed-stack img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 2;
 }
 
-.ks-section-head {
-  max-width: 760px;
-  margin-bottom: 52px;
-}
-
-.ks-section-head h2 {
-  margin-top: 14px;
-  color: var(--ks-champagne);
-  font-size: 2.55rem;
-  font-weight: 400;
-  line-height: 1.12;
-}
-
-.ks-token-layout,
-.ks-action-grid,
-.ks-proof-layout,
-.ks-content-modules,
-.ks-utility-grid {
-  display: grid;
-  gap: 24px;
-}
-
-.ks-token-layout {
-  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr);
-}
-
-.ks-token-panel,
-.ks-component-group,
-.ks-doc-module,
-.ks-pricing-module,
-.ks-changelog-module,
-.ks-before-after,
-.ks-audit-row,
-.ks-toast,
-.ks-tooltip-sample,
-.ks-skeleton {
+.ks-candidate-keyed-checker {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   background:
-    linear-gradient(135deg, oklch(100% 0 0 / 0.024), transparent 38%),
-    linear-gradient(180deg, oklch(5% 0.004 95 / 0.74), oklch(5% 0.004 95 / 0.96)),
-    url("/assets/neo-kinpaku/lacquer-grain.png") center / 960px auto,
-    oklch(11% 0.006 95 / 0.92);
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 8px;
-  box-shadow: 0 24px 70px var(--ks-shadow);
+    linear-gradient(90deg, var(--ks-ink-deep) 50%, transparent 50%),
+    linear-gradient(90deg, transparent 50%, var(--ks-graphite) 50%);
+  background-size: 100% 100%, 100% 100%;
 }
 
-.ks-token-panel,
-.ks-component-group {
-  padding: 28px;
+@media (max-width: 1080px) {
+  .ks-candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 640px) {
+  .ks-candidate-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   Buttons
+   ============================================================================ */
+
+/* Buttons (.ks-button, .ks-button-primary, .ks-button-secondary,
+   .ks-button-ghost, .ks-button-disabled, .ks-button-arrow, .ks-button-row,
+   focus-visible) are in kinpaku-kit.css. */
+
+/* ============================================================================
+   Foundations: Color swatches (flat, no card chrome)
+   ============================================================================ */
 
 .ks-swatch-grid {
-  margin-top: 28px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 28px;
 }
 
 .ks-swatch {
   display: grid;
-  gap: 10px;
-  padding: 14px;
-  min-height: 138px;
-  background: oklch(7% 0.004 95 / 0.7);
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 6px;
+  gap: 12px;
 }
 
 .ks-swatch-chip {
   width: 100%;
-  height: 48px;
-  border-radius: 4px;
-  border: 1px solid oklch(100% 0 0 / 0.08);
+  aspect-ratio: 5 / 4;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
 }
 
-.ks-swatch strong,
-.ks-swatch small {
+.ks-swatch-chip.is-kinpaku {
+  border-color: transparent;
+  background: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.18) contrast(1.08);
+}
+
+.ks-swatch-chip.is-patina {
+  border-color: transparent;
+  background: url("/assets/neo-kinpaku/verdigris-patina.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.2) contrast(1.06);
+}
+
+.ks-swatch-chip.is-ink { background: var(--ks-ink); border-color: oklch(20% 0.006 95); }
+.ks-swatch-chip.is-surface { background: var(--ks-surface); }
+.ks-swatch-chip.is-champagne { background: var(--ks-champagne); border-color: transparent; }
+.ks-swatch-chip.is-vermilion { background: var(--ks-vermilion); border-color: transparent; }
+
+.ks-swatch-name {
   display: block;
-}
-
-.ks-swatch strong {
   color: var(--ks-champagne);
   font-size: 0.92rem;
+  font-weight: 400;
 }
 
-.ks-swatch small {
+.ks-swatch-role {
+  display: block;
+  color: var(--ks-muted);
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.ks-swatch-value {
+  display: block;
+  color: var(--ks-mute-deep);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  margin-top: 6px;
+}
+
+/* ============================================================================
+   Foundations: Type specs (no card)
+   ============================================================================ */
+
+.ks-type-stack {
+  display: grid;
+  gap: 28px;
+}
+
+.ks-type-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 32px;
+  align-items: baseline;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.ks-type-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ks-type-label {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.ks-type-spec-line {
   color: var(--ks-muted);
   font-family: var(--ks-mono);
-  font-size: 0.68rem;
-  line-height: 1.45;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  margin-top: 8px;
 }
 
-.ks-swatch-lacquer { background: var(--ks-lacquer); }
-.ks-swatch-graphite {
-  background:
-    linear-gradient(180deg, oklch(15% 0.008 95 / 0.74), oklch(5% 0.004 95 / 0.9)),
-    url("/assets/neo-kinpaku/lacquer-grain.png") center / cover;
-}
-.ks-swatch-kinpaku {
-  background:
-    linear-gradient(180deg, oklch(96% 0.035 84 / 0.14), oklch(62% 0.08 78 / 0.22)),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") center / cover;
-}
-.ks-swatch-brass {
-  background:
-    linear-gradient(180deg, oklch(52% 0.08 78 / 0.18), oklch(24% 0.05 78 / 0.24)),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 66% 48% / 170% auto;
-}
-.ks-swatch-champagne { background: var(--ks-champagne); }
-.ks-swatch-patina {
-  background:
-    linear-gradient(180deg, oklch(80% 0.08 190 / 0.1), oklch(26% 0.05 188 / 0.2)),
-    url("/assets/neo-kinpaku/verdigris-patina.png") center / cover;
-}
-.ks-swatch-teal {
-  background:
-    linear-gradient(180deg, oklch(48% 0.08 188 / 0.22), oklch(12% 0.035 188 / 0.36)),
-    url("/assets/neo-kinpaku/verdigris-patina.png") 72% 64% / 165% auto;
-}
-.ks-swatch-vermilion { background: var(--ks-vermilion); }
+/* Type samples — render the production scale, full strength. The samples
+   read directly from --ks-type-* tokens so the design-system page literally
+   shows what the homepage ships. data-scale on each sample selects which
+   token family applies. */
 
-.ks-type-panel {
-  display: grid;
-  align-content: start;
-  gap: 24px;
+.ks-type-sample {
+  margin: 0;
+  font-family: var(--ks-font);
+  color: var(--ks-text);
 }
 
-.ks-type-spec {
-  display: grid;
-  gap: 8px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--ks-rule-soft);
-}
-
-.ks-type-spec:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-.ks-type-spec span {
+.ks-type-sample[data-scale="wordmark"] {
   color: var(--ks-kinpaku);
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-wordmark-size);
+  letter-spacing: var(--ks-type-wordmark-track);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.ks-type-sample[data-scale="display"] {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-display-size);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  text-wrap: balance;
+}
+
+.ks-type-sample[data-scale="headline"] {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-headline-weight);
+  font-size: var(--ks-type-headline-size);
+  line-height: var(--ks-type-headline-line);
+  text-wrap: balance;
+}
+
+.ks-type-sample[data-scale="body"] {
+  color: var(--ks-text);
+  font-size: var(--ks-type-body-size);
+  line-height: var(--ks-type-body-line);
+  max-width: 65ch;
+}
+
+.ks-type-sample[data-scale="mono"] {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-mono-size);
+  letter-spacing: var(--ks-type-mono-track);
+  text-transform: uppercase;
+}
+
+/* ============================================================================
+   Foundations: Paired material + solid swatches
+   The two brand anchors (kinpaku, verdigris) each get a side-by-side display
+   of their material texture and their solid color token. Reinforces that
+   "material" and "color" are two sides of the same anchor, not separate
+   categories.
+   ============================================================================ */
+
+.ks-pair-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.ks-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4px;
+  row-gap: 12px;
+}
+
+.ks-pair-chip {
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  border-radius: 2px;
+  grid-row: 1;
+  border: 1px solid transparent;
+}
+
+.ks-pair-chip.is-kinpaku-leaf {
+  background: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.18) contrast(1.08);
+}
+
+.ks-pair-chip.is-kinpaku-solid {
+  background: var(--ks-kinpaku);
+}
+
+.ks-pair-chip.is-patina-leaf {
+  background: url("/assets/neo-kinpaku/verdigris-patina.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.2) contrast(1.06);
+}
+
+.ks-pair-chip.is-patina-solid {
+  background: var(--ks-patina);
+}
+
+.ks-pair-name {
+  grid-column: 1 / -1;
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  font-weight: 400;
+}
+
+.ks-pair-role {
+  grid-column: 1 / -1;
+  color: var(--ks-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-top: -6px;
+}
+
+.ks-pair-value {
+  grid-column: 1 / -1;
+  color: var(--ks-mute-deep);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  margin-top: -2px;
+}
+
+@media (max-width: 700px) {
+  .ks-pair-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   Inline mono code chip (motion section, in-prose references to tokens)
+   ============================================================================ */
+
+.ks-mono-inline {
+  font-family: var(--ks-mono);
+  font-size: 0.8em;
+  color: var(--ks-kinpaku);
+  padding: 0.05em 0.4em;
+  border: 1px solid oklch(78% 0.12 82 / 0.18);
+  border-radius: 2px;
+}
+
+/* ============================================================================
+   Container patterns: Canonical bento showcase
+   Wraps a live .ks-bento at reduced height with a "Used in production"
+   annotation. The frame keeps the bento from breaking out of the section
+   because the doc's canonical sample is illustrative, not full-bleed.
+   ============================================================================ */
+
+.ks-canonical {
+  display: grid;
+  gap: 18px;
+}
+
+.ks-canonical-frame {
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  padding: 16px;
+  background: oklch(0.10 0.005 95);
+  overflow: hidden;
+}
+
+/* Override the .ks-bento's top/bottom border (which is brand-bearing 8px
+   plinth) for the in-doc sample so the frame's border carries the contain. */
+.ks-canonical-bento {
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+
+.ks-canonical-bento .ks-bento-tile {
+  padding: 24px;
+  gap: 8px;
+}
+
+.ks-canonical-foot {
+  display: grid;
+  gap: 6px;
+  color: var(--ks-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  max-width: 78ch;
+}
+
+.ks-canonical-foot strong {
+  color: var(--ks-champagne);
+  font-weight: 500;
+}
+
+.ks-canonical-meta {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ks-mute-deep);
+  margin: 0;
+}
+
+.ks-canonical-used {
+  color: var(--ks-kinpaku);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.ks-canonical-meta a {
+  color: var(--ks-champagne);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.ks-canonical-meta a:hover {
+  color: var(--ks-kinpaku);
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+/* ============================================================================
+   Foundations: Logo download tiles
+   ============================================================================ */
+
+.ks-logo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.ks-logo-tile {
+  margin: 0;
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ks-logo-tile img {
+  display: block;
+  width: auto;
+  max-width: 78%;
+  height: auto;
+  margin: 56px auto;
+}
+
+.ks-logo-tile.is-dark {
+  background: oklch(7% 0.006 95);
+}
+
+.ks-logo-tile.is-light {
+  background: oklch(94% 0.012 82);
+}
+
+.ks-logo-tile figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-top: 1px solid var(--ks-rule);
+  background: oklch(9% 0.006 95);
+  color: var(--ks-muted);
+}
+
+.ks-logo-tile-label {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+}
+
+.ks-logo-tile-links {
+  display: flex;
+  gap: 14px;
   font-family: var(--ks-mono);
   font-size: 0.72rem;
 }
 
-.ks-type-spec strong {
-  color: var(--ks-champagne);
-  font-weight: 400;
+.ks-logo-tile-links a {
+  color: var(--ks-text);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(40% 0.015 95);
+  padding-bottom: 1px;
+  transition: color 160ms ease, border-color 160ms ease;
 }
 
-.ks-type-spec:first-of-type strong {
+.ks-logo-tile-links a:hover {
   color: var(--ks-kinpaku);
-  font-size: 2.35rem;
-  letter-spacing: 0.18em;
+  border-bottom-color: var(--ks-kinpaku);
 }
 
-.ks-type-spec:first-of-type p {
-  max-width: 44ch;
-  font-size: 0.86rem;
+.ks-logo-note {
+  margin: 18px 0 0;
+  color: var(--ks-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  max-width: 62ch;
 }
 
-.ks-accent-library {
-  margin-top: 24px;
+@media (max-width: 720px) {
+  .ks-logo-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   Container prototypes
+   Six framing approaches that group content without nesting card-in-card.
+   The .ksp-tile is the prototype's outer frame (only there so the user can
+   compare techniques side-by-side). The .ksp-stage is the dark surface each
+   prototype "lives on" — that's the real container under test.
+   ============================================================================ */
+
+.ks-container-prototypes {
   display: grid;
-  grid-template-columns: 0.8fr 1fr 1fr 1.1fr;
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
 }
 
-.ks-accent-card {
-  min-height: 150px;
-  padding: 20px;
+.ksp-tile {
+  margin: 0;
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: oklch(9% 0.006 95);
   overflow: hidden;
-  position: relative;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, oklch(5% 0.004 95 / 0.78), oklch(4% 0.004 95 / 0.94)),
-    url("/assets/neo-kinpaku/lacquer-grain.png") center / 920px auto;
 }
 
-.ks-accent-card > span {
-  color: var(--ks-kinpaku);
+.ksp-tile-head {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 14px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: oklch(11% 0.006 95);
   font-family: var(--ks-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.16em;
+}
+
+.ksp-tile-id {
+  color: var(--ks-kinpaku);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
-.ks-pin-field {
-  position: absolute;
-  inset: 56px 24px 24px;
+.ksp-tile-name {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 0.95rem;
 }
 
-.ks-pin-field i {
-  position: absolute;
-  width: 42px;
-  height: 42px;
-  border-top: 1px solid var(--ks-kinpaku-deep);
-  border-left: 1px solid var(--ks-kinpaku-deep);
-}
-
-.ks-pin-field i::before,
-.ks-pin-field i::after {
-  content: "";
-  position: absolute;
-  background: var(--ks-kinpaku);
-}
-
-.ks-pin-field i::before {
-  top: 19px;
-  left: -14px;
-  width: 70px;
-  height: 1px;
-}
-
-.ks-pin-field i::after {
-  top: -14px;
-  left: 19px;
-  width: 1px;
-  height: 70px;
-}
-
-.ks-pin-field i:nth-child(1) {
-  left: 0;
-  top: 12px;
-}
-
-.ks-pin-field i:nth-child(2) {
-  left: 92px;
-  top: 30px;
-  transform: scale(0.64);
-}
-
-.ks-pin-field i:nth-child(3) {
-  right: 0;
-  top: 0;
-  transform: scale(0.46);
-  opacity: 0.7;
-}
-
-.ks-dust-field {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  top: 74px;
-  height: 52px;
-  background: url("/assets/neo-kinpaku/gold-dust-rule.png") center / cover no-repeat;
-  opacity: 0.64;
-  mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
-}
-
-.ks-circuit-specimen {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  bottom: 18px;
-  width: calc(100% - 44px);
-  height: 94px;
-}
-
-.ks-circuit-specimen path {
-  fill: none;
-  stroke: var(--ks-kinpaku-deep);
-  stroke-width: 1.35;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ks-circuit-specimen circle {
-  fill: oklch(5% 0.004 95);
-  stroke: var(--ks-kinpaku);
-  stroke-width: 1.35;
-}
-
-.ks-oxidation-field {
-  position: absolute;
-  inset: 12px -28px -32px auto;
-  width: 270px;
-  background: url("/assets/neo-kinpaku/oxidation-edge-accent.png") center bottom / contain no-repeat;
-  opacity: 0.72;
-}
-
-.ks-type-spec:nth-of-type(2) strong {
-  font-size: 1.55rem;
-}
-
-.ks-type-spec p {
+.ksp-tile-desc {
   color: var(--ks-muted);
-  line-height: 1.65;
-}
-
-.ks-component-strip {
-  padding: 26px;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 8px;
-  background: oklch(9% 0.006 95 / 0.72);
-}
-
-.ks-header-sample {
-  min-height: 82px;
-  padding: 0 22px;
-  background: var(--ks-lacquer-2);
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 6px;
-}
-
-.ks-brand-small .ks-mark {
-  width: 38px;
-  height: 38px;
-  font-size: 22px;
-}
-
-.ks-brand-small .ks-wordmark {
   font-size: 0.78rem;
+  text-align: right;
+}
+
+/* The "stage" is the lacquer surface each prototype sits on. Generous padding
+   so the framing technique has air to breathe; the real test is whether the
+   content feels grouped without sitting inside a competing card. */
+.ksp-stage {
+  position: relative;
+  padding: 56px 48px;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+}
+
+.ksp-stage--dark {
+  background: var(--ks-ink);
+}
+
+/* Sample content typography — shared across all six prototypes so framing
+   is the only visual variable. */
+.ksp-eyebrow {
+  margin: 0 0 12px;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.ksp-title {
+  margin: 0 0 12px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-weight: 300;
+  font-size: 1.6rem;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+}
+
+.ksp-body {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 46ch;
+}
+
+/* B · Numbered marginalia — large outlined number in the gutter. */
+.ksp-style-b {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.ksp-marginal-num {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-font);
+  font-weight: 300;
+  font-size: 4.4rem;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+/* F · Kinpaku slab anchor — tiny full-vibrancy gold-leaf chip behind the
+   eyebrow. The texture is brand-bearing, the rest is clean lacquer. */
+.ksp-style-f .ksp-eyebrow--chip {
+  display: inline-block;
+  padding: 6px 14px;
+  margin-bottom: 16px;
+  color: var(--ks-ink-deep);
+  background: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.15) contrast(1.08);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
+/* G · Tinted plinth — flat neutral lift. No border, no shadow, no inner
+   shape. Pure background-color step from the lacquer (7%) up to 17% neutral
+   gray. Zero chroma (the "0 0" in oklch) keeps it neutral so the gold accents
+   in the content carry the warmth on their own. The dark-mode equivalent of
+   the light-mode "raise content by 4% lightness" trick. */
+.ksp-style-g {
+  background: oklch(0.17 0 0);
+  padding: 28px 32px;
+  border-radius: 2px;
+}
+
+@media (max-width: 900px) {
+  .ks-container-prototypes { grid-template-columns: 1fr; }
+}
+
+/* ============================================================================
+   Divider patterns (CSS-only, no image assets)
+   Each pattern uses currentColor or var(--ks-kinpaku) so the gold tone follows
+   the brand token. Use these on full-width section transitions or as accent
+   rules above eyebrow labels.
+   ============================================================================ */
+
+.ks-divider-stack {
+  display: grid;
+  gap: 36px;
+}
+
+.ksd-row {
+  margin: 0;
+}
+
+.ksd-row figcaption {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-muted);
+  margin-bottom: 14px;
+}
+
+/* Tone comparison row inside a divider figure: small label + the actual
+   divider, repeated for each of kinpaku / patina / plinth / textures. */
+.ksd-tones {
+  display: grid;
+  gap: 14px;
+}
+.ksd-tone {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 18px;
+  align-items: center;
+}
+.ksd-tone-label {
+  font-family: var(--ks-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ks-muted);
+}
+
+/* ============================================================================
+   Foundations: Accent textures (full vibrancy, three only)
+   ============================================================================ */
+
+.ks-accent-stack {
+  display: grid;
+  gap: 28px;
+}
+
+.ks-accent-row {
+  display: grid;
+  gap: 14px;
+}
+
+.ks-accent-row-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.ks-accent-row-label small {
+  color: var(--ks-muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.ks-accent-band {
+  position: relative;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.ks-accent-band.is-leaf {
+  background: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.15) contrast(1.08);
+}
+
+.ks-accent-band.is-patina {
+  background: url("/assets/neo-kinpaku/verdigris-patina.png") 50% 50% / cover no-repeat;
+  filter: saturate(1.18) contrast(1.06);
+}
+
+.ks-accent-band.is-dust {
+  background: url("/assets/neo-kinpaku/gold-dust-rule.png") center / 100% 100% no-repeat;
+  filter: saturate(1.22) contrast(1.15) brightness(1.12);
+}
+
+/* ============================================================================
+   Navigation sample
+   ============================================================================ */
+
+.ks-nav-sample {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 68px;
+  padding: 0 24px;
+  border-top: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.ks-nav-sample .ks-brand { gap: 14px; }
+.ks-nav-sample .ks-mark { width: 32px; height: 32px; }
+.ks-nav-sample .ks-mark svg { width: 27px; height: 27px; }
+.ks-nav-sample .ks-wordmark { font-size: 0.78rem; }
+
+.ks-nav-sample-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 60px;
+  padding: 0 24px;
+  border-top: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+  margin-top: 28px;
+  max-width: 420px;
 }
 
 .ks-menu-button {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-content: center;
-  gap: 7px;
+  gap: 6px;
   background: transparent;
   border: 0;
   color: var(--ks-kinpaku);
@@ -957,417 +1125,270 @@
 }
 
 .ks-menu-button span {
-  width: 24px;
+  width: 22px;
   height: 1px;
   background: currentColor;
 }
 
-.ks-action-grid {
-  grid-template-columns: 1.05fr 0.95fr 0.9fr;
-}
+/* ============================================================================
+   Actions: button row, states, form, tabs
+   ============================================================================ */
 
-.ks-form-sample {
+/* .ks-button-row is in kinpaku-kit.css. */
+
+.ks-state-grid {
   display: grid;
-  gap: 20px;
-  margin-top: 24px;
-}
-
-.ks-form-sample label {
-  display: grid;
-  gap: 8px;
-  color: var(--ks-muted);
-  font-size: 0.86rem;
-}
-
-.ks-form-sample input[type="search"] {
-  min-height: 48px;
-  padding: 0 14px;
-  border: 1px solid var(--ks-rule);
-  border-radius: 4px;
-  background: oklch(6% 0.004 95);
-  color: var(--ks-champagne);
-}
-
-.ks-form-sample input[type="search"]:focus {
-  border-color: var(--ks-patina);
-}
-
-.ks-toggle {
-  display: flex !important;
-  grid-template-columns: none;
+  grid-template-columns: minmax(120px, auto) 1fr;
+  gap: 16px 24px;
   align-items: center;
-  gap: 12px !important;
+  max-width: 420px;
 }
 
-.ks-toggle input {
-  appearance: none;
-  width: 48px;
-  height: 26px;
-  border-radius: 999px;
-  border: 1px solid var(--ks-rule);
-  background: var(--ks-graphite);
-  position: relative;
-  cursor: pointer;
-}
-
-.ks-toggle input::before {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  left: 3px;
-  top: 3px;
-  border-radius: 999px;
-  background: var(--ks-muted);
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), background 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ks-toggle input:checked {
-  border-color: var(--ks-patina);
-  background: oklch(48% 0.08 188 / 0.2);
-}
-
-.ks-toggle input:checked::before {
-  transform: translateX(22px);
-  background: var(--ks-patina);
-}
-
-.ks-tabs {
-  margin-top: 24px;
-}
-
-.ks-tab-list {
-  display: flex;
-  border-bottom: 1px solid var(--ks-rule-soft);
-}
-
-.ks-tab-list button {
-  flex: 1;
-  min-height: 44px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
+.ks-state-label {
   color: var(--ks-muted);
-  cursor: pointer;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
-.ks-tab-list button[aria-selected="true"] {
-  color: var(--ks-kinpaku);
-  border-bottom-color: var(--ks-kinpaku);
+/* Force pseudo-states for state showcase */
+.ks-state-grid .ks-button-primary[data-state="hover"] {
+  background: var(--ks-kinpaku-pale);
+  border-color: var(--ks-kinpaku-pale);
+}
+.ks-state-grid .ks-button-primary[data-state="pressed"] {
+  background: oklch(72% 0.11 82);
+  border-color: oklch(72% 0.11 82);
 }
 
-.ks-tab-panel {
-  min-height: 86px;
-  padding: 20px 4px 0;
+/* Form controls (.ks-form-sample, .ks-toggle, .ks-checkbox, .ks-select) and
+   tabs (.ks-tabs, .ks-tab-list, .ks-tab-panel) are in kinpaku-kit.css. */
+
+/* ============================================================================
+   Components: Audit Result Row, badges, tags, integration badges, pagination
+   ============================================================================ */
+
+.ks-audit-result {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px;
+  padding: 32px 36px 36px;
+  border-top: 1px solid var(--ks-rule);
+  margin-bottom: 64px;
+}
+
+.ks-audit-stat {
+  display: grid;
+  gap: 6px;
+}
+
+.ks-audit-stat-label {
+  color: var(--ks-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.ks-audit-stat-value {
+  font-weight: 300;
+  font-size: clamp(2.4rem, 4vw, 3.2rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.ks-audit-stat-value.is-warning { color: var(--ks-vermilion); }
+.ks-audit-stat-value.is-improved { color: var(--ks-patina); }
+.ks-audit-stat-value.is-ready { color: var(--ks-kinpaku); }
+
+.ks-audit-stat-meta {
+  color: var(--ks-muted);
+  font-size: 0.84rem;
+}
+
+/* Badges (.ks-badge, .ks-badge-row) and tags (.ks-tag, .ks-tag-row) are in
+   kinpaku-kit.css. */
+
+/* Integration badges */
+.ks-integration-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+.ks-integration-badge {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
   color: var(--ks-champagne);
-  line-height: 1.65;
+  transition: border-color 180ms var(--ks-ease), color 180ms var(--ks-ease);
+}
+.ks-integration-badge:hover {
+  border-color: var(--ks-kinpaku);
+  color: var(--ks-kinpaku);
+}
+.ks-integration-badge svg { width: 20px; height: 20px; }
+
+/* Pagination, toast/alert, icon button + tooltip, modal, empty state,
+   changelog row, skeleton (+ ks-shimmer keyframes) are all in kinpaku-kit.css.
+   Only the tooltip *trigger* wrapper (.ks-tooltip-sample) stays here as
+   page-specific doc presentation. */
+
+.ks-tooltip-sample {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 22px 0;
 }
 
-.ks-proof-layout {
-  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr);
-  align-items: stretch;
+.ks-tooltip-sample:hover .ks-tooltip {
+  opacity: 1;
 }
 
-.ks-before-after {
-  padding: 22px;
+/* ============================================================================
+   Proof: Comparison + audit detail rows
+   ============================================================================ */
+
+.ks-proof-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+  gap: 48px;
+}
+
+.ks-comparison {
+  position: relative;
 }
 
 .ks-comparison-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  padding-bottom: 18px;
+  margin-bottom: 18px;
 }
 
 .ks-comparison-head h3 {
+  margin: 0;
   color: var(--ks-champagne);
-  font-size: 1.05rem;
-  font-weight: 500;
+  font-size: 0.96rem;
+  font-weight: 400;
 }
 
 .ks-comparison-head span {
   color: var(--ks-muted);
   font-family: var(--ks-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .ks-comparison-stage {
   position: relative;
-  min-height: 480px;
+  aspect-ratio: 16 / 10;
   overflow: hidden;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 6px;
+  border: 1px solid var(--ks-rule-strong);
+  border-radius: 2px;
   background:
-    linear-gradient(90deg, oklch(100% 0 0 / 0.026) 1px, transparent 1px),
-    linear-gradient(180deg, oklch(100% 0 0 / 0.018) 1px, transparent 1px),
-    radial-gradient(circle at 74% 50%, oklch(69% 0.105 190 / 0.08), transparent 18rem),
-    linear-gradient(180deg, oklch(5% 0.004 95 / 0.42), oklch(5% 0.004 95 / 0.95)),
-    url("/assets/neo-kinpaku/lacquer-grain.png") center / 900px auto,
-    oklch(7% 0.004 95);
-  background-size: 36px 36px, 36px 36px, auto, auto, 900px auto, auto;
+    linear-gradient(180deg, oklch(8% 0.006 95), oklch(5% 0.004 95));
 }
 
 .ks-comparison-side {
   position: absolute;
   inset: 0;
   padding: 28px;
+  display: grid;
+  align-items: center;
+  justify-items: center;
 }
 
 .ks-comparison-before {
   background:
-    radial-gradient(circle at 30% 42%, oklch(62% 0.18 305 / 0.1), transparent 15rem),
-    linear-gradient(180deg, transparent, oklch(3% 0.004 95 / 0.34));
+    radial-gradient(circle at 50% 50%, oklch(60% 0.18 305 / 0.12), transparent 18rem),
+    linear-gradient(180deg, oklch(8% 0.006 95), oklch(5% 0.004 95));
 }
 
 .ks-comparison-after {
   background:
-    radial-gradient(circle at 76% 46%, oklch(69% 0.105 190 / 0.11), transparent 18rem),
-    linear-gradient(90deg, oklch(5% 0.004 95 / 0.88), oklch(7% 0.006 95 / 0.96));
-}
-
-.ks-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.ks-badge-warning {
-  color: var(--ks-vermilion);
-}
-
-.ks-badge-success {
-  color: var(--ks-patina);
+    radial-gradient(circle at 50% 50%, oklch(69% 0.105 190 / 0.1), transparent 18rem),
+    linear-gradient(180deg, oklch(8% 0.006 95), oklch(5% 0.004 95));
 }
 
 .ks-mini-ui {
-  width: min(350px, 44%);
-  min-height: 258px;
+  width: min(360px, 88%);
   padding: 18px;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 7px;
-  box-shadow: 0 22px 58px oklch(1% 0.004 95 / 0.42);
-}
-
-.ks-mini-ui strong {
-  display: block;
-  color: var(--ks-champagne);
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.ks-mini-ui p {
-  margin-top: 8px;
-  color: var(--ks-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
-}
-
-.ks-mini-ui button {
-  width: 100%;
-  min-height: 46px;
-  margin-top: 18px;
-  border: 0;
+  border: 1px solid var(--ks-rule);
   border-radius: 4px;
+  background: var(--ks-surface);
 }
 
-.ks-mini-ui-before {
-  margin: 58px auto 0 7%;
-  background: oklch(96% 0.01 285);
-  color: oklch(20% 0.02 285);
-  box-shadow: 0 18px 50px oklch(78% 0.2 300 / 0.16);
-  background:
-    linear-gradient(135deg, oklch(100% 0 0 / 0.06), transparent 44%),
-    linear-gradient(180deg, oklch(17% 0.008 95), oklch(8% 0.006 95));
-}
-
-.ks-mini-ui-before strong {
-  color: oklch(90% 0.018 82);
-}
-
-.ks-mini-ui-before p {
-  color: oklch(58% 0.02 82);
-}
-
-.ks-mini-ui-before button {
-  color: oklch(98% 0.01 285);
-  background: linear-gradient(90deg, oklch(62% 0.24 285), oklch(48% 0.22 315));
-}
-
-.ks-mini-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.ks-mini-toolbar span {
-  height: 4px;
-  width: 42px;
-  display: block;
-  border-radius: 999px;
-  background: oklch(54% 0.01 95 / 0.55);
-}
-
-.ks-mini-toolbar span:first-child {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: oklch(54% 0.01 95 / 0.55);
-}
-
-.ks-mini-toolbar span:last-child {
-  margin-left: auto;
-  width: 34px;
-}
-
-.ks-mini-toolbar-after span {
-  background: var(--ks-kinpaku-deep);
-}
-
-.ks-mini-toolbar-after span:first-child {
-  background: var(--ks-kinpaku);
-}
-
-.ks-slop-card {
-  margin-top: 16px;
-  padding: 22px;
-  border: 1px solid oklch(100% 0 0 / 0.08);
-  border-radius: 7px;
-  background:
-    radial-gradient(circle at 22% 18%, oklch(66% 0.22 285 / 0.34), transparent 4.5rem),
-    linear-gradient(135deg, oklch(100% 0 0 / 0.08), oklch(100% 0 0 / 0.02));
-}
-
-.ks-ui-orb {
-  width: 42px;
-  height: 42px;
-  display: block;
-  margin-bottom: 16px;
+.ks-mini-ui-before .ks-mini-orb {
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   background: linear-gradient(135deg, oklch(65% 0.22 285), oklch(54% 0.25 310));
+  margin-bottom: 14px;
 }
-
-.ks-mini-tile-row {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+.ks-mini-ui-before strong {
+  color: var(--ks-champagne);
+  font-size: 0.98rem;
+  font-weight: 500;
+  display: block;
 }
-
-.ks-mini-tile-row span {
-  min-height: 26px;
-  border: 1px solid oklch(100% 0 0 / 0.08);
+.ks-mini-ui-before p {
+  margin: 6px 0 14px;
+  color: var(--ks-muted);
+  font-size: 0.82rem;
+}
+.ks-mini-ui-before .ks-mini-cta {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
   border-radius: 4px;
-  background: linear-gradient(180deg, oklch(100% 0 0 / 0.09), oklch(100% 0 0 / 0.02));
+  background: linear-gradient(90deg, oklch(62% 0.24 285), oklch(48% 0.22 315));
+  color: oklch(98% 0.01 285);
+  font-size: 0.86rem;
+  cursor: pointer;
 }
 
 .ks-mini-ui-after {
-  width: min(390px, 50%);
-  margin: 58px 6% 0 auto;
-  background:
-    linear-gradient(135deg, oklch(78% 0.12 82 / 0.1), transparent),
-    oklch(10% 0.006 95);
+  border-color: var(--ks-rule-strong);
 }
-
-.ks-after-layout {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: 0.9fr 1fr;
-  gap: 18px;
-  align-items: start;
-}
-
-.ks-after-visual {
-  aspect-ratio: 1.2;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 5px;
-  background:
-    linear-gradient(180deg, transparent 50%, oklch(5% 0.004 95 / 0.92)),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 48% 42% / 190% auto,
-    oklch(9% 0.006 95);
-  filter: saturate(0.72) contrast(1.02);
-}
-
-.ks-after-copy {
-  display: grid;
-  align-content: start;
-}
-
-.ks-ui-rule {
-  width: 86px;
+.ks-mini-ui-after .ks-mini-rule {
+  width: 64px;
   height: 1px;
-  display: block;
-  margin-bottom: 18px;
   background: var(--ks-kinpaku);
-  box-shadow: 94px 0 0 var(--ks-patina);
+  margin-bottom: 14px;
 }
-
-.ks-after-metrics {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+.ks-mini-ui-after strong {
+  color: var(--ks-champagne);
+  font-size: 0.98rem;
+  font-weight: 400;
+  display: block;
 }
-
-.ks-after-metrics span {
-  height: 36px;
-  border-top: 1px solid var(--ks-kinpaku-deep);
-  border-bottom: 1px solid var(--ks-rule-soft);
-  background:
-    linear-gradient(90deg, var(--ks-kinpaku-deep) 0 58%, transparent 58%) 0 9px / 100% 2px no-repeat,
-    linear-gradient(90deg, oklch(69% 0.105 190 / 0.5) 0 28%, transparent 28%) 0 23px / 100% 2px no-repeat;
-}
-
-.ks-callout {
-  position: absolute;
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 12px;
-  border-radius: 3px;
-  font-size: 0.76rem;
-  font-weight: 600;
-}
-
-.ks-callout-warning {
-  left: 8%;
-  bottom: 34%;
-  border: 1px solid var(--ks-vermilion);
-  color: var(--ks-vermilion);
-  background: oklch(9% 0.006 95 / 0.8);
-}
-
-.ks-callout-low {
-  bottom: 18%;
-  left: 12%;
-}
-
-.ks-callout-success {
-  right: 12%;
-  bottom: 26%;
-  border: 1px solid var(--ks-patina);
-  color: var(--ks-patina);
-  background: oklch(9% 0.006 95 / 0.8);
+.ks-mini-ui-after p {
+  margin: 6px 0 0;
+  color: var(--ks-muted);
+  font-size: 0.82rem;
 }
 
 .ks-comparison-divider {
   position: absolute;
-  top: -9%;
-  left: 56%;
-  width: 150px;
-  height: 118%;
+  top: -6%;
+  left: 50%;
+  width: 140px;
+  height: 112%;
   transform: translateX(-50%);
-  transform-origin: center;
   pointer-events: none;
   z-index: 4;
-  background: url("/assets/neo-kinpaku/before-after-seam.png") center / auto 100% no-repeat;
-  filter: drop-shadow(0 0 11px oklch(78% 0.12 82 / 0.28));
+  background-image: url("/assets/neo-kinpaku/before-after-seam.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: auto 100%;
+  filter: drop-shadow(0 0 16px oklch(77% 0.14 82 / 0.42)) saturate(1.22);
 }
 
 .ks-comparison-range {
@@ -1377,516 +1398,274 @@
   height: 100%;
   opacity: 0;
   cursor: ew-resize;
+  margin: 0;
 }
 
-.ks-audit-stack {
+.ks-audit-rows {
   display: grid;
-  gap: 14px;
+  gap: 0;
 }
 
 .ks-audit-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 70px 1fr auto;
   gap: 18px;
   align-items: center;
-  padding: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ks-rule);
 }
+.ks-audit-row:first-child { padding-top: 0; }
+.ks-audit-row:last-child { border-bottom: 0; }
 
-.ks-audit-row strong,
-.ks-doc-module h3,
-.ks-pricing-module h3,
-.ks-changelog-module h3,
-.ks-rule-card h3 {
-  color: var(--ks-champagne);
-  font-weight: 500;
-}
-
-.ks-audit-row p,
-.ks-doc-module p,
-.ks-pricing-module p,
-.ks-changelog-module p {
-  margin-top: 4px;
-  color: var(--ks-muted);
-  line-height: 1.55;
-}
-
-.ks-severity,
-.ks-status {
-  min-height: 28px;
+.ks-severity {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  border-radius: 3px;
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-
-.ks-severity-high {
-  color: var(--ks-vermilion);
-  border: 1px solid var(--ks-vermilion);
-}
-
-.ks-severity-medium {
-  color: var(--ks-kinpaku);
-  border: 1px solid var(--ks-kinpaku-deep);
-}
-
-.ks-severity-low {
-  color: var(--ks-muted);
-  border: 1px solid var(--ks-rule);
-}
-
-.ks-status {
-  color: var(--ks-kinpaku);
-}
-
-.ks-status-ready,
-.ks-status-fixed {
-  color: var(--ks-patina);
-}
-
-.ks-card-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.ks-rule-card {
-  min-height: 260px;
-  display: grid;
-  align-content: start;
-  gap: 18px;
-  padding: 24px;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 8px;
-  background: oklch(10% 0.006 95 / 0.82);
-  text-decoration: none;
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ks-rule-card::before {
-  content: "";
-  width: 100%;
-  height: 18px;
-  display: block;
-  order: -1;
-  margin-bottom: 2px;
-  background: url("/assets/neo-kinpaku/gold-dust-rule.png") center / cover no-repeat;
-  opacity: 0.32;
-  mask-image: linear-gradient(90deg, black, transparent 72%);
-}
-
-.ks-rule-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--ks-kinpaku-deep);
-}
-
-.ks-rule-card p,
-.ks-doc-module > span,
-.ks-pricing-module > span,
-.ks-changelog-module > span {
-  color: var(--ks-kinpaku);
+  gap: 6px;
   font-family: var(--ks-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.ks-rule-card h3 {
-  font-size: 1.18rem;
-  line-height: 1.35;
+.ks-severity::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
 }
 
-.ks-rule-card a {
-  margin-top: auto;
-  color: var(--ks-patina);
-  text-decoration: none;
-}
+.ks-severity.is-high { color: var(--ks-vermilion); }
+.ks-severity.is-high::before { background: var(--ks-vermilion); }
+.ks-severity.is-medium { color: var(--ks-kinpaku); }
+.ks-severity.is-medium::before { background: var(--ks-kinpaku); }
+.ks-severity.is-low { color: var(--ks-muted); }
+.ks-severity.is-low::before { background: var(--ks-muted); }
 
-.ks-content-modules {
-  margin-top: 24px;
-  grid-template-columns: 1.1fr 0.85fr 0.85fr;
-}
-
-.ks-doc-module,
-.ks-pricing-module,
-.ks-changelog-module {
-  padding: 26px;
-}
-
-.ks-doc-module h3,
-.ks-pricing-module h3,
-.ks-changelog-module h3 {
-  margin-top: 16px;
-  font-size: 1.35rem;
-}
-
-.ks-doc-module pre {
-  margin-top: 18px;
-  padding: 18px;
-  overflow-x: auto;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 6px;
-  color: var(--ks-patina);
-  background: oklch(5% 0.004 95);
-}
-
-.ks-doc-module code {
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  border-radius: 0;
-}
-
-.ks-pricing-module .ks-button {
-  margin-top: 22px;
-  width: 100%;
-}
-
-.ks-utility-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.ks-toast,
-.ks-tooltip-sample,
-.ks-skeleton {
-  min-height: 126px;
-  padding: 20px;
-}
-
-.ks-toast strong,
-.ks-toast span {
+.ks-audit-row-title {
+  color: var(--ks-champagne);
+  font-size: 0.96rem;
+  font-weight: 400;
   display: block;
 }
 
-.ks-toast strong {
-  color: var(--ks-champagne);
-}
-
-.ks-toast span {
-  margin-top: 8px;
+.ks-audit-row-meta {
+  display: block;
+  margin-top: 2px;
   color: var(--ks-muted);
-  line-height: 1.5;
+  font-size: 0.82rem;
 }
 
-.ks-toast-success {
-  border-color: oklch(69% 0.105 190 / 0.36);
-  background:
-    linear-gradient(90deg, oklch(4% 0.004 95 / 0.42), oklch(4% 0.004 95 / 0.78)),
-    linear-gradient(90deg, oklch(69% 0.105 190 / 0.2), transparent 34%),
-    url("/assets/neo-kinpaku/verdigris-patina.png") 20% 44% / 260% auto,
-    oklch(11% 0.006 95 / 0.92);
+.ks-audit-status {
+  color: var(--ks-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
+.ks-audit-status.is-improved { color: var(--ks-patina); }
+.ks-audit-status.is-ready { color: var(--ks-kinpaku); }
 
-.ks-toast-success span {
-  color: oklch(88% 0.028 82);
-}
+/* ============================================================================
+   Component grids
+   ============================================================================ */
 
-.ks-toast-warning {
-  border-color: oklch(63% 0.16 35 / 0.36);
-}
-
-.ks-tooltip-sample {
+.ks-component-grid {
   display: grid;
-  place-items: center;
-  position: relative;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 56px;
+  align-items: start;
 }
 
-.ks-icon-button {
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--ks-kinpaku-deep);
-  border-radius: 999px;
-  background: transparent;
+.ks-component-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px;
+  align-items: start;
+}
+
+.ks-component {
+  display: grid;
+  gap: 16px;
+  align-self: start;
+}
+
+.ks-component-label {
   color: var(--ks-kinpaku);
-  cursor: pointer;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
 }
 
-.ks-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  width: 220px;
-  padding: 10px 12px;
-  border-radius: 4px;
-  color: var(--ks-champagne);
-  background: oklch(4% 0.004 95);
-  border: 1px solid var(--ks-rule);
-  box-shadow: 0 18px 36px var(--ks-shadow);
-  font-size: 0.78rem;
-  line-height: 1.45;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
+/* ============================================================================
+   Footer (re-enabled)
+   ============================================================================ */
 
-.ks-icon-button:hover + .ks-tooltip,
-.ks-icon-button:focus-visible + .ks-tooltip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(-8px);
-}
-
-.ks-skeleton {
-  display: grid;
-  align-content: center;
-  gap: 14px;
-}
-
-.ks-skeleton span {
-  height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--ks-graphite), oklch(69% 0.105 190 / 0.14), var(--ks-graphite));
-  background-size: 240% 100%;
-  animation: ks-skeleton 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-.ks-skeleton span:nth-child(2) {
-  width: 72%;
-}
-
-.ks-skeleton span:nth-child(3) {
-  width: 48%;
-}
-
-.ks-implementation {
-  padding-bottom: 150px;
+.ks-footer {
   position: relative;
+  border-top: 1px solid var(--ks-rule);
+  padding: 80px 56px 56px;
+  margin-top: 80px;
   overflow: hidden;
 }
 
-.ks-implementation::after {
+.ks-footer::after {
   content: "";
   position: absolute;
-  right: -150px;
-  bottom: -120px;
-  width: 500px;
-  height: 860px;
+  right: -2%;
+  top: -10%;
+  width: 220px;
+  height: 140%;
+  background: url("/assets/neo-kinpaku/oxidation-edge-accent.png") right center / contain no-repeat;
+  opacity: 0.85;
   pointer-events: none;
-  background: url("/assets/neo-kinpaku/oxidation-edge-accent.png") center bottom / contain no-repeat;
-  opacity: 0.44;
-  filter: saturate(0.92);
+  filter: saturate(1.1);
 }
 
-.ks-implementation > * {
+.ks-footer-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1320px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.3fr 2fr;
+  gap: 64px;
+}
+
+.ks-footer-brand .ks-brand { margin-bottom: 22px; }
+
+.ks-footer-tagline {
+  color: var(--ks-muted);
+  max-width: 280px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.ks-footer-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.ks-footer-col h4 {
+  margin: 0 0 14px;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.ks-footer-col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.ks-footer-col a {
+  color: var(--ks-champagne);
+  font-size: 0.92rem;
+  text-decoration: none;
+  transition: color 180ms var(--ks-ease);
+}
+
+.ks-footer-col a:hover { color: var(--ks-kinpaku); }
+
+.ks-footer-meta {
+  max-width: 1320px;
+  margin: 56px auto 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--ks-rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  justify-content: space-between;
+  align-items: center;
   position: relative;
   z-index: 1;
 }
 
-.ks-build-plan {
-  display: grid;
-  gap: 12px;
-  counter-reset: build-plan;
-  list-style: none;
-  padding: 0;
+.ks-footer-meta small {
+  color: var(--ks-mute-deep);
+  font-size: 0.78rem;
 }
 
-.ks-build-plan li {
-  counter-increment: build-plan;
+.ks-footer-social {
+  display: flex;
+  gap: 14px;
+}
+.ks-footer-social a {
+  width: 32px;
+  height: 32px;
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  padding: 22px;
-  border: 1px solid var(--ks-rule-soft);
-  border-radius: 8px;
-  background: oklch(10% 0.006 95 / 0.72);
+  place-items: center;
   color: var(--ks-muted);
-  line-height: 1.65;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  transition: color 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+}
+.ks-footer-social a:hover {
+  color: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku);
+}
+.ks-footer-social svg { width: 14px; height: 14px; }
+
+/* ============================================================================
+   Focus states
+   ============================================================================ */
+
+.kinpaku-system-page button:focus-visible,
+.kinpaku-system-page a:focus-visible,
+.kinpaku-system-page input:focus-visible,
+.kinpaku-system-page select:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 3px;
 }
 
-.ks-build-plan li > span {
-  min-width: 0;
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 1080px) {
+  .ks-section { padding: 80px 36px; }
+  .ks-footer { padding: 64px 36px 40px; }
+  .ks-hero { padding: 28px 36px 0; }
+  .ks-category-rail { margin: 0 -36px; grid-template-columns: repeat(3, 1fr); }
+  .ks-category-rail a:nth-child(4),
+  .ks-category-rail a:nth-child(5) { display: none; }
+
+  .ks-swatch-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  .ks-proof-grid { grid-template-columns: 1fr; }
+  .ks-component-grid { grid-template-columns: 1fr; gap: 36px; }
+  .ks-component-grid-3 { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+  .ks-footer-inner { grid-template-columns: 1fr; gap: 40px; }
+  .ks-audit-result { padding: 24px; gap: 24px; }
 }
 
-.ks-build-plan li::before {
-  content: counter(build-plan, decimal-leading-zero);
-  color: var(--ks-patina);
-  font-family: var(--ks-mono);
-  font-size: 0.82rem;
-}
-
-.ks-build-plan strong {
-  color: var(--ks-champagne);
-  font-weight: 600;
-}
-
-@keyframes ks-skeleton {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
-
-@media (max-width: 1180px) {
-  .ks-nav {
-    gap: 22px;
-  }
-
-  .ks-hero-grid,
-  .ks-token-layout,
-  .ks-proof-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .ks-hero-copy {
-    padding-left: 0;
-  }
-
-  .ks-hero h1 {
-    margin-top: 96px;
-    font-size: 4.15rem;
-  }
-
-  .ks-hero-art {
-    min-height: 360px;
-  }
-
-  .ks-foil-seam {
-    right: 42%;
-    height: 118%;
-    top: -10%;
-    transform: rotate(72deg);
-  }
-
-  .ks-action-grid,
-  .ks-content-modules,
-  .ks-utility-grid,
-  .ks-accent-library {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ks-card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 820px) {
-  .ks-hero,
-  .ks-section {
-    padding-left: 22px;
-    padding-right: 22px;
-  }
-
-  .ks-topbar {
-    align-items: flex-start;
-  }
-
-  .ks-nav,
-  .ks-nav-cta,
-  .ks-nav-sample {
-    display: none;
-  }
-
-  .ks-hero h1 {
-    font-size: clamp(2rem, 8.2vw, 2.9rem);
-    letter-spacing: 0.08em;
-  }
-
-  .ks-hero-line {
-    font-size: 1.08rem;
-  }
-
-  .ks-hero-grid {
-    align-items: start;
-    min-height: 600px;
-  }
-
-  .ks-hero-art {
-    inset: 318px -150px 0 0;
-    background-position: right bottom;
-    background-size: auto 560px;
-    filter: saturate(1.08) contrast(1.04) brightness(0.92);
-    mask-image:
-      linear-gradient(90deg, transparent 0%, transparent 26%, black 58%, black 100%),
-      linear-gradient(180deg, transparent 0%, black 18%, black 88%, transparent 100%);
-  }
-
-  .ks-circuit-field {
-    top: 8%;
-    right: -18%;
-    width: 136vw;
-    height: 68%;
-    opacity: 0.42;
-  }
-
-  .ks-calibration,
-  .ks-patina-dot {
-    opacity: 0.36;
-  }
-
-  .ks-foil-seam {
-    opacity: 0.12;
-  }
-
-  .ks-wordmark {
-    font-size: 0.72rem;
-    letter-spacing: 0.28em;
-  }
-
-  .ks-category-rail {
-    grid-template-columns: 1fr;
-    padding: 12px 0;
-  }
-
-  .ks-category-rail a {
-    min-height: 62px;
-    justify-content: flex-start;
-    padding-left: 8px;
-    border-right: 0;
-    border-bottom: 1px solid var(--ks-rule-soft);
-  }
-
-  .ks-category-rail a:last-child {
-    border-bottom: 0;
-  }
-
-  .ks-section {
-    padding-top: 80px;
-    padding-bottom: 80px;
-  }
-
-  .ks-section-head h2 {
-    font-size: 2rem;
-  }
-
-  .ks-swatch-grid,
-  .ks-action-grid,
-  .ks-content-modules,
-  .ks-utility-grid,
-  .ks-accent-library,
-  .ks-card-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .ks-header-sample {
-    padding: 0 14px;
-  }
-
-  .ks-audit-row {
-    grid-template-columns: 1fr;
-  }
-
-  .ks-mini-ui {
-    width: 80%;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .ks-mini-ui-after {
-    width: 84%;
-  }
-
-  .ks-comparison-divider {
-    width: 108px;
-  }
+@media (max-width: 720px) {
+  .ks-section { padding: 64px 24px; }
+  .ks-hero { padding: 20px 24px 0; }
+  .ks-category-rail { margin: 0 -24px; grid-template-columns: repeat(2, 1fr); }
+  .ks-category-rail a:nth-child(3) { display: none; }
+  .ks-nav { display: none; }
+  .ks-topbar > .ks-nav { display: none; }
+  .ks-hero-actions { flex-direction: column; align-items: stretch; }
+  .ks-hero-actions .ks-button { width: 100%; }
+  .ks-swatch-grid { grid-template-columns: repeat(2, 1fr); }
+  .ks-component-grid-3 { grid-template-columns: 1fr; }
+  .ks-footer-links { grid-template-columns: 1fr 1fr; }
+  .ks-audit-result { grid-template-columns: 1fr; gap: 24px; padding: 24px 0; }
+  .ks-type-row { grid-template-columns: 1fr; gap: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
+  .kinpaku-system-page *,
+  .kinpaku-system-page *::before,
+  .kinpaku-system-page *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

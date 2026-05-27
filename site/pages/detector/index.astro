@@ -99,10 +99,52 @@ const FIXTURES = [
     summary: 'Large icon tiles stacked over headings.',
   },
   {
+    file: 'oversized-h1.html',
+    group: 'Typography',
+    title: 'Oversized H1',
+    summary: 'Comically large hero headlines carrying almost no copy, versus large type that earns its size.',
+  },
+  {
+    file: 'extreme-negative-tracking.html',
+    group: 'Typography',
+    title: 'Extreme negative tracking',
+    summary: 'Letter-spacing crushed past legibility, versus the optical tightening display type legitimately wants.',
+  },
+  {
+    file: 'clipped-overflow-container.html',
+    group: 'Layout',
+    title: 'Clipped overflow container',
+    summary: 'Clipping ancestors (overflow hidden/clip) that swallow positioned children, versus real scroll regions.',
+  },
+  {
+    file: 'text-overflow.html',
+    group: 'Browser layout',
+    title: 'Text overflow',
+    summary: 'Browser-only: content forced wider than its box, versus genuine horizontal scroll regions.',
+  },
+  {
+    file: 'gpt-tells.html',
+    group: 'Provider tells',
+    title: 'GPT tells (gated --gpt)',
+    summary: 'Provider-specific idioms surfaced only under --gpt: hairline border + wide shadow, repeating-gradient stripes, "X theater" copy.',
+  },
+  {
+    file: 'gemini-tells.html',
+    group: 'Provider tells',
+    title: 'Gemini tells (gated --gemini)',
+    summary: 'Provider-specific idiom surfaced only under --gemini: image hover-zoom transforms.',
+  },
+  {
     file: 'cramped-padding.html',
     group: 'Browser layout',
     title: 'Cramped padding',
     summary: 'Browser-only padding checks that need real element rectangles.',
+  },
+  {
+    file: 'flush-against-border.html',
+    group: 'Browser layout',
+    title: 'Cramped padding (wrapper)',
+    summary: 'The wrapper variant of cramped-padding: container with text-bearing children sits flush against its visible boundary (border, outline, or non-transparent background).',
   },
   {
     file: 'body-text-viewport-edge.html',

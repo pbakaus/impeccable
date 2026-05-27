@@ -41,13 +41,11 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
 - Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed".
 - Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans.
-- Use `font-variant-numeric: tabular-nums` on data tables, totals, and any column of aligned numbers.
 
 #### Layout
 
 - Vary spacing for rhythm.
 - Cards are the lazy answer. Use them only when they're truly the best affordance. Nested cards are always wrong.
-- Don't wrap everything in a container. Most things don't need one.
 - Flexbox for 1D, Grid for 2D. Don't default to Grid when `flex-wrap` would be simpler.
 - For responsive grids without breakpoints: `repeat(auto-fit, minmax(280px, 1fr))`.
 - Build a semantic z-index scale (dropdown → sticky → modal-backdrop → modal → toast → tooltip). Never arbitrary values like 999 or 9999.
@@ -57,15 +55,12 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - Don't animate CSS layout properties unless truly needed.
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 - Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis etc)
-- Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition.
 - Sibling stagger on a list (cards, list items) is legitimate. Whole-section fade-on-scroll on every scrolled section is not a list; it's the saturated AI motion reflex.
 - Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank.
 - Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth.
 
 #### Interaction
 
-- Never `outline: none` without a replacement. Use `:focus-visible` to show focus rings only for keyboard users; never strip focus indicators unconditionally.
-- Placeholders aren't labels. Always use a visible `<label>` element; placeholder text disappears on input and breaks accessibility.
 - Dropdowns rendered with `position: absolute` inside an `overflow: hidden` or `overflow: auto` container will be clipped. Use the native `<dialog>` / popover API, `position: fixed`, or a portal to escape the stacking context.
 
 ### Copy
@@ -81,6 +76,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 
 #### Color & Theme
 
+- **For new brands without an existing color identity**, run `node .rovodev/skills/impeccable/scripts/palette.mjs` to get a brand seed color and composition guidance. The script returns one OKLCH seed (the anchor for your primary brand color); compose the full 5-role palette (bg, surface, ink, accent, muted) around it per the brief. Skip if the brand already has shipped colors — identity-preservation wins.
 - Use OKLCH.
 - **The cream / sand / beige body bg is the saturated AI default of 2026.** The whole warm-neutral band (OKLCH L 0.84-0.97, C < 0.06, hue 40-100) reads as cream/sand/paper/parchment regardless of what you call it. Token names like `--paper`, `--cream`, `--sand`, `--bone`, `--flour`, `--linen`, `--parchment`, `--wheat`, `--biscuit`, `--ivory` are tells in themselves. If the brief is "warm, traditional, family-coastal-Italian" or "magazine-warm" or "editorial-restraint", DO NOT translate that into a near-white warm-tinted bg; that's the AI move. Pick: (a) a saturated brand color as the body (terracotta, oxblood, deep ochre, near-black), (b) a true off-white at chroma 0 (or chroma toward the brand's own hue, not toward warmth-by-default), or (c) a darker mid-tone tinted neutral that's clearly the brand's own. "Warmth" in the brand is carried by accent + typography + imagery, not by body bg.
 - Tinted neutrals: add 0.005–0.015 chroma toward the brand's hue. Don't default-tint toward warm or cool "because the brand feels that way"; that's the cross-project monoculture move.
@@ -100,9 +96,8 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 - **Glassmorphism as default.** Blurs and glass cards used decoratively. Rare and purposeful, or nothing.
 - **The hero-metric template.** Big number, small label, supporting stats, gradient accent. SaaS cliché.
 - **Identical card grids.** Same-sized cards with icon + heading + text, repeated endlessly.
-- **Modal as first thought.** Modals are usually laziness. Exhaust inline / progressive alternatives first.
 - **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading) is now the saturated AI scaffold; it appears on 55-95% of generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
-- **Numbered section markers (01 / 02 / 03).** Section labels as numbered display digits is the same trope, one tier deeper. If you find yourself reaching for them, you're scaffolding by reflex.
+- **Numbered section markers as default scaffolding (01 / 02 / 03).** Putting `01 · About / 02 · Process / 03 · Pricing` above every section is the eyebrow trope one tier deeper — reach for it because "landing pages do this" and you're scaffolding by reflex. Numbers earn their place when the section actually IS a sequence (a real 3-step process, an ordered flow, a typed timeline) and the order carries information the reader needs. One deliberate numbered sequence on one page is voice; numbered eyebrows on every section across the site is AI grammar.
 - **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design.
 
 ### The AI slop test

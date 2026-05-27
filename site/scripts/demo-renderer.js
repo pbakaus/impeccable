@@ -169,7 +169,7 @@ export function renderCommandDemo(commandId) {
     return `
       <div class="demo-container">
         <div class="demo-viewport">
-          <div style="text-align: center; color: var(--color-ash); font-style: italic; padding: var(--spacing-lg);">
+          <div class="demo-placeholder">
             Visual demo for /${commandId} coming soon
           </div>
         </div>
@@ -279,6 +279,5 @@ export function setupDemoTabs() {
     });
   });
 }
-
 
 

@@ -9,8 +9,21 @@ if (IS_BROWSER) {
   const EXTENSION_MODE = (_myScript && _myScript.dataset.impeccableExtension === 'true')
     || document.documentElement.dataset.impeccableExtension === 'true';
 
-  const BRAND_COLOR = 'oklch(55% 0.25 350)';
-  const BRAND_COLOR_HOVER = 'oklch(45% 0.25 350)';
+  // Kinpaku gold — pinned to the site's brand token (see
+  // site/styles/kinpaku-tokens.css --ks-kinpaku). Keep this in sync with
+  // the picker's C.brand in skill/scripts/live-browser.js and the kit's
+  // picker section in site/styles/kinpaku-kit.css.
+  //
+  // One color across both light and dark host pages. The outline is a
+  // 2px gesture pointing at an element + a labeled tag — it's a marker,
+  // not body text, so it doesn't need WCAG AA against the page. The
+  // label text inside the gold tag is dark (LABEL_INK) which has ~16:1
+  // against the leaf gold, so reading the rule name is solid in both
+  // modes. Hover deepens the gold (preserves chroma — never drops it,
+  // dropping chroma washes the gold into a sand/olive tone).
+  const BRAND_COLOR = 'oklch(84% 0.19 80.46)';
+  const BRAND_COLOR_HOVER = 'oklch(74% 0.18 80)';
+  const LABEL_INK = 'oklch(4% 0.004 95)';
   const LABEL_BG = BRAND_COLOR;
   const OUTLINE_COLOR = BRAND_COLOR;
 
@@ -278,7 +291,7 @@ if (IS_BROWSER) {
       display: 'flex', alignItems: 'center',
       whiteSpace: 'nowrap',
       fontSize: '11px', fontWeight: '600', letterSpacing: '0.02em',
-      color: 'white', lineHeight: '14px',
+      color: LABEL_INK, lineHeight: '14px',
       background: LABEL_BG,
       fontFamily: 'system-ui, sans-serif',
       borderRadius: '4px 4px 0 0',
@@ -398,7 +411,7 @@ if (IS_BROWSER) {
     banner.className = 'impeccable-overlay impeccable-banner';
     Object.assign(banner.style, {
       position: 'fixed', top: '0', left: '0', right: '0', zIndex: '100000',
-      background: LABEL_BG, color: 'white',
+      background: LABEL_BG, color: LABEL_INK,
       fontFamily: 'system-ui, sans-serif', fontSize: '13px',
       display: 'flex', alignItems: 'center', pointerEvents: 'auto',
       height: '36px', overflow: 'hidden', maxWidth: '100vw',
@@ -1223,12 +1236,12 @@ if (IS_BROWSER) {
     }
     console.group(
       `%c[impeccable] ${allFindings.length} anti-pattern${allFindings.length === 1 ? '' : 's'} found`,
-      'color: oklch(60% 0.25 350); font-weight: bold'
+      'color: oklch(84% 0.19 80.46); font-weight: bold'
     );
     for (const { el, findings } of allFindings) {
       for (const f of findings) {
         console.log(`%c${f.type || f.id}%c ${f.detail || f.snippet}`,
-          'color: oklch(55% 0.25 350); font-weight: bold', 'color: inherit', el);
+          'color: oklch(84% 0.19 80.46); font-weight: bold', 'color: inherit', el);
       }
     }
     console.groupEnd();
@@ -1249,6 +1262,11 @@ if (IS_BROWSER) {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
+    // Provider tells (gated) stay off unless explicitly enabled via config.
+    const _enabledProviders = (window.__IMPECCABLE_CONFIG__?.providers) || [];
+    const _gatedById = new Map(ANTIPATTERNS.filter(a => a.gated).map(a => [a.id, a.gated]));
+    const _providerOk = (id) => { const g = _gatedById.get(id); return !g || _enabledProviders.includes(g); };
+    const _ok = (id) => _ruleOk(id) && _providerOk(id);
 
     for (const el of document.querySelectorAll('*')) {
       // Skip impeccable's own elements and any descendants (overlays, labels, banner, nav buttons)
@@ -1272,14 +1290,18 @@ if (IS_BROWSER) {
         ...checkElementItalicSerifDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementHeroEyebrowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementQualityDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
-      ].filter(f => _ruleOk(f.type));
+        ...checkElementOversizedH1DOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementClippedOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementGptBorderShadowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementTextOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+      ].filter(f => _ok(f.type));
 
       addBrowserFindings(groupMap, el, findings);
     }
 
     const pageLevelFindings = [];
 
-    const typoFindings = checkTypography().filter(f => _ruleOk(f.type));
+    const typoFindings = checkTypography().filter(f => _ok(f.type));
     if (typoFindings.length > 0) {
       pageLevelFindings.push(...typoFindings);
       addBrowserFindings(groupMap, document.body, typoFindings);
@@ -1287,20 +1309,20 @@ if (IS_BROWSER) {
 
     const sectionKickerFindings = checkRepeatedSectionKickersDOM()
       .map(f => ({ type: f.id, detail: f.snippet }))
-      .filter(f => _ruleOk(f.type));
+      .filter(f => _ok(f.type));
     if (sectionKickerFindings.length > 0) {
       pageLevelFindings.push(...sectionKickerFindings);
       addBrowserFindings(groupMap, document.body, sectionKickerFindings);
     }
 
-    const layoutFindings = checkLayout().filter(f => _ruleOk(f.type));
+    const layoutFindings = checkLayout().filter(f => _ok(f.type));
     for (const f of layoutFindings) {
       const el = f.el || document.body;
       addBrowserFindings(groupMap, el, [{ type: f.type, detail: f.detail || f.snippet }]);
     }
 
     // Page-level quality checks (headings, etc.)
-    const qualityFindings = checkPageQualityDOM().filter(f => _ruleOk(f.type));
+    const qualityFindings = checkPageQualityDOM().filter(f => _ok(f.type));
     if (qualityFindings.length > 0) {
       pageLevelFindings.push(...qualityFindings);
       addBrowserFindings(groupMap, document.body, qualityFindings);
@@ -1316,7 +1338,7 @@ if (IS_BROWSER) {
     }
     const htmlPatternFindings = checkHtmlPatterns(docClone.outerHTML);
     if (htmlPatternFindings.length > 0) {
-      const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ruleOk(f.type));
+      const mapped = htmlPatternFindings.map(f => ({ type: f.id, detail: f.snippet })).filter(f => _ok(f.type));
       pageLevelFindings.push(...mapped);
       addBrowserFindings(groupMap, document.body, mapped);
     }

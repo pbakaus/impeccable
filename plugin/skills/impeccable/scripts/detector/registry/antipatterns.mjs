@@ -183,6 +183,24 @@ const ANTIPATTERNS = [
     skillGuideline: 'aphoristic cadence',
   },
   {
+    id: 'oversized-h1',
+    category: 'slop',
+    name: 'Oversized hero headline',
+    description:
+      'A hero headline blown up well past the rest of the page while carrying only a word or two reads as scale standing in for substance. Size the headline to the weight of what it actually says.',
+    skillSection: 'Typography',
+    skillGuideline: 'oversized hero headline carrying almost no copy',
+  },
+  {
+    id: 'extreme-negative-tracking',
+    category: 'slop',
+    name: 'Crushed letter spacing',
+    description:
+      'Letter-spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.',
+    skillSection: 'Typography',
+    skillGuideline: 'letter spacing crushed past legibility',
+  },
+  {
     id: 'broken-image',
     category: 'quality',
     name: 'Broken or placeholder image',
@@ -232,7 +250,9 @@ const ANTIPATTERNS = [
     category: 'quality',
     name: 'Cramped padding',
     description:
-      'Text is too close to the edge of its container. Add at least 8px (ideally 12-16px) of padding inside bordered or colored containers.',
+      'Text is too close to the edge of its container. Two shapes: (1) an element with its own text where the padding is too low for the font size, and (2) a wrapper with text-bearing children and near-zero padding against a visible boundary (border, outline, or non-transparent background) — children land flush against the boundary line. Add at least 8px (ideally 12–16px) of padding inside bordered, outlined, or colored containers.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'inside bordered or colored containers',
   },
   {
     id: 'body-text-viewport-edge',
@@ -285,6 +305,70 @@ const ANTIPATTERNS = [
     description:
       'Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.',
   },
+  {
+    id: 'text-overflow',
+    category: 'quality',
+    name: 'Content overflowing its container',
+    description:
+      'Content renders wider than its container, spilling out or forcing a horizontal scrollbar. Let text wrap, constrain widths, or give the region a deliberate scroll affordance.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'content wider than its container',
+  },
+  {
+    id: 'clipped-overflow-container',
+    category: 'quality',
+    name: 'Positioned child clipped by overflow container',
+    description:
+      'A clipping container (overflow hidden or clip) wrapping an absolutely-positioned child cuts off tooltips, menus, and popovers that need to escape. Let the overflow be visible, or move the positioned layer out of the clip.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'overflow container clipping positioned children',
+  },
+
+  // ── Provider tells: opt-in via --gpt / --gemini (gated off by default) ──
+  {
+    id: 'gpt-thin-border-wide-shadow',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Hairline border with wide shadow',
+    description:
+      'A hairline border paired with a wide, diffuse shadow is a recurring generated-UI signature. Commit to one — a defined edge or a soft elevation — rather than both at once.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'hairline border plus wide diffuse shadow',
+  },
+  {
+    id: 'repeating-stripes-gradient',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Repeating-gradient stripes',
+    description:
+      'Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture or leave the surface plain.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'repeating-gradient decorative stripes',
+  },
+  {
+    id: 'theater-slop-phrase',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Theater framing copy',
+    description:
+      'Dismissing something as "theater" is a recurring generated-copy tic. Say plainly what the thing does or does not do.',
+    skillSection: 'Copy',
+    skillGuideline: 'theater framing copy',
+  },
+  {
+    id: 'image-hover-transform',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gemini',
+    name: 'Image hover transform',
+    description:
+      'Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.',
+    skillSection: 'Motion',
+    skillGuideline: 'image scale or rotate on hover',
+  },
 ];
 
 const RULE_ENGINE_SUPPORT = {
@@ -306,10 +390,30 @@ function getRuleEngineSupport(engine) {
   return RULE_ENGINE_SUPPORT[engine] || new Set();
 }
 
+// Set of provider tags that gate rules off by default (e.g. 'gpt', 'gemini').
+const GATED_PROVIDERS = new Set(
+  ANTIPATTERNS.map(rule => rule.gated).filter(Boolean),
+);
+
+// Drop findings for rules gated behind a provider tag unless that provider
+// was explicitly enabled (CLI --gpt / --gemini). Non-gated findings always
+// pass through. `findings` carry the rule id on `.antipattern`.
+function filterByProviders(findings, providers = []) {
+  const enabled = new Set(providers || []);
+  if (!GATED_PROVIDERS.size) return findings;
+  return findings.filter(f => {
+    const rule = getAntipattern(f.antipattern);
+    if (!rule || !rule.gated) return true;
+    return enabled.has(rule.gated);
+  });
+}
+
 export {
   ANTIPATTERNS,
   RULE_ENGINE_SUPPORT,
+  GATED_PROVIDERS,
   getAntipattern,
   getRulesForCategory,
   getRuleEngineSupport,
+  filterByProviders,
 };

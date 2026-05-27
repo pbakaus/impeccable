@@ -85,8 +85,10 @@
     "ai": "^6.0.168",
     "archiver": "^7.0.1",
     "astro": "^6.2.1",
+    "fontkit": "^2.0.4",
     "modern-screenshot": "^4.7.0",
     "motion": "^12.38.0",
+    "opentype.js": "^2.0.0",
     "playwright": "^1.59.1",
     "wrangler": "^4.85.0",
     "zod": "^4.3.6"

@@ -1,0 +1,1367 @@
+/* ============================================================================
+   /docs — Neo Kinpaku redesign
+
+   Re-skins the docs index (/docs) and per-command detail (/docs/:slug) on the
+   dark lacquer kinpaku surface. Mirrors the /designing approach: remap the
+   generic light tokens (--color-paper, --color-cream, etc.) at the body class
+   so the inline visualizations from docs-visuals.css (.docs-viz-*) re-skin
+   into the dark theme without per-rule overrides.
+
+   Structure of this file mirrors the page structure:
+     1. Page scope + base
+     2. Sidebar (commands rail)
+     3. /docs index — categories + command tiles
+     4. /docs/:slug — breadcrumb, hero, related-commands footer
+     5. Prose body — markdown rendering on lacquer
+     6. Footer
+   ============================================================================ */
+
+@import "./kinpaku-tokens.css";
+
+
+/* ============================================================================
+   1. PAGE SCOPE + BASE
+   ============================================================================ */
+
+.docs-kinpaku {
+  --ks-muted: var(--ks-text-muted);
+
+  /* Match designing-kinpaku so embedded docs-viz visualizations inherit
+     dark surfaces without per-rule overrides. */
+  --font-body: var(--ks-font);
+  --font-display: var(--ks-font-display);
+  --font-mono: var(--ks-mono);
+
+  --color-paper: oklch(7% 0.006 95);
+  --color-cream: oklch(9% 0.006 95);
+  --color-bg: oklch(11% 0.006 95);
+  --color-mist: oklch(58% 0.065 82 / 0.22);
+  --color-charcoal: oklch(72% 0.025 82);
+  --color-ash: oklch(60% 0.018 82);
+  --color-ink: var(--ks-champagne);
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
+  /* Old branding's magenta leaked through these two; remap to kinpaku. */
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
+
+  background:
+    linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  min-height: 100vh;
+}
+
+.docs-kinpaku a {
+  color: inherit;
+}
+
+/* Page reset: the docs layout is its own full-bleed grid, no Base.astro
+   measure cap. */
+.docs-kinpaku.skills-layout-page main#main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.docs-kinpaku .skills-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: clamp(40px, 4vw, 72px);
+  padding: 0 clamp(22px, 4vw, 56px);
+  align-items: start;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .docs-kinpaku .skills-layout {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+
+
+/* ============================================================================
+   2. SIDEBAR — commands rail
+
+   Sticky dark rail. Mono command names in champagne; the active command
+   gets a kinpaku 2px border-left accent. Category labels are mono caps in
+   kinpaku, mirroring the .ks-section-eyebrow voice.
+   ============================================================================ */
+
+.docs-kinpaku .skills-sidebar {
+  position: sticky;
+  top: 86px;
+  align-self: start;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
+  padding: 48px 0 64px;
+  border-right: 1px solid var(--ks-rule);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ks-rule) transparent;
+}
+
+@media (min-width: 961px) {
+  .docs-kinpaku .skills-sidebar {
+    min-height: calc(100vh - 86px);
+  }
+}
+
+.docs-kinpaku .skills-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.docs-kinpaku .skills-sidebar::-webkit-scrollbar-thumb {
+  background: var(--ks-rule);
+  border-radius: 3px;
+}
+
+.docs-kinpaku .skills-sidebar-inner {
+  padding-right: 22px;
+}
+
+.docs-kinpaku .skills-sidebar-toggle {
+  display: none;
+}
+
+.docs-kinpaku .skills-sidebar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.docs-kinpaku .skills-sidebar-group {
+  margin-bottom: 26px;
+}
+
+.docs-kinpaku .skills-sidebar-group:last-child {
+  margin-bottom: 0;
+}
+
+.docs-kinpaku .skills-sidebar-category {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin-bottom: 10px;
+  padding: 0 0 0 14px;
+}
+
+.docs-kinpaku .skills-sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list li {
+  margin: 0;
+}
+
+.docs-kinpaku .skills-sidebar-list a {
+  display: block;
+  padding: 5px 0 5px 12px;
+  border-left: 2px solid transparent;
+  font-family: var(--ks-mono);
+  font-size: 0.86rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ks-text);
+  text-decoration: none;
+  transition: color 160ms var(--ks-ease),
+              border-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .skills-sidebar-list a:hover {
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
+  color: var(--ks-kinpaku);
+  font-weight: 500;
+  border-left-color: var(--ks-kinpaku);
+}
+
+
+/* Mobile: collapse the sidebar behind a toggle. */
+@media (max-width: 960px) {
+  .docs-kinpaku .skills-sidebar {
+    position: static;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    padding: 18px 0 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--ks-rule);
+  }
+
+  .docs-kinpaku .skills-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 14px 0;
+    background: transparent;
+    border: 0;
+    color: var(--ks-champagne);
+    font-family: var(--ks-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .docs-kinpaku .skills-sidebar-toggle-chevron {
+    transition: transform 220ms var(--ks-ease);
+    color: var(--ks-kinpaku);
+    flex-shrink: 0;
+  }
+
+  .docs-kinpaku .skills-sidebar-toggle[aria-expanded="true"] .skills-sidebar-toggle-chevron {
+    transform: rotate(180deg);
+  }
+
+  .docs-kinpaku .skills-sidebar-inner {
+    display: none;
+    padding: 14px 0 24px;
+  }
+
+  .docs-kinpaku .skills-sidebar-toggle[aria-expanded="true"] + .skills-sidebar-inner {
+    display: block;
+  }
+}
+
+
+/* ============================================================================
+   3. /docs INDEX
+
+   Sections, in render order:
+     a. Hero
+     b. Live mode callout (the headliner capability)
+     c. A typical session (linear workflow of 4 commands)
+     d. Pairs and chains (relational schema)
+     e. Full reference (cheatsheet by lifecycle phase)
+   ============================================================================ */
+
+.docs-kinpaku .docs-index {
+  padding: clamp(64px, 8vw, 110px) 0 clamp(80px, 10vw, 140px);
+}
+
+
+/* a. Hero -------------------------------------------------------------- */
+
+.docs-kinpaku .docs-index-header {
+  margin-bottom: clamp(72px, 9vw, 110px);
+  max-width: 760px;
+}
+
+.docs-kinpaku .docs-index-eyebrow {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  letter-spacing: var(--ks-type-eyebrow-track);
+  text-transform: uppercase;
+  margin: 0 0 18px;
+}
+
+.docs-kinpaku .docs-index-title {
+  font-family: var(--ks-font-display);
+  font-style: normal;
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-display-size);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  color: var(--ks-champagne);
+  margin: 0 0 22px;
+  text-wrap: balance;
+}
+
+.docs-kinpaku .docs-index-mark {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 0.82em;
+  vertical-align: 0.04em;
+}
+
+.docs-kinpaku .docs-index-lede {
+  font-size: 1.1rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 58ch;
+}
+
+
+/* Shared section scaffolding for the four index sections ---------------- */
+
+.docs-kinpaku .docs-live,
+.docs-kinpaku .docs-flow-section,
+.docs-kinpaku .docs-chains-section,
+.docs-kinpaku .docs-reference-section {
+  margin-bottom: clamp(64px, 8vw, 110px);
+}
+
+.docs-kinpaku .docs-reference-section:last-child {
+  margin-bottom: 0;
+}
+
+.docs-kinpaku .docs-live-eyebrow,
+.docs-kinpaku .docs-flow-eyebrow,
+.docs-kinpaku .docs-chains-eyebrow,
+.docs-kinpaku .docs-reference-eyebrow {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin: 0 0 14px;
+}
+
+.docs-kinpaku .docs-live-title,
+.docs-kinpaku .docs-flow-title,
+.docs-kinpaku .docs-chains-title,
+.docs-kinpaku .docs-reference-title {
+  font-family: var(--ks-font-display);
+  font-style: normal;
+  font-weight: var(--ks-type-headline-weight);
+  font-size: var(--ks-type-headline-size);
+  line-height: var(--ks-type-headline-line);
+  letter-spacing: -0.005em;
+  color: var(--ks-champagne);
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+
+.docs-kinpaku .docs-live-lede,
+.docs-kinpaku .docs-flow-sub,
+.docs-kinpaku .docs-chains-sub {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 52ch;
+}
+
+
+/* b. Live mode callout ------------------------------------------------- */
+
+.docs-kinpaku .docs-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: clamp(36px, 5vw, 64px);
+  align-items: center;
+  padding: 36px 0 0;
+  border-top: 1px solid var(--ks-rule);
+}
+
+@media (max-width: 880px) {
+  .docs-kinpaku .docs-live {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.docs-kinpaku .docs-live-cta {
+  margin: 26px 0 0;
+}
+
+/* Static browser frame mock. Lacquer-deep ground, kinpaku active outline
+   around the targeted element, mock action bar underneath. No animation;
+   this is a teaching diagram, not a demo. */
+.docs-kinpaku .docs-live-figure {
+  margin: 0;
+}
+
+.docs-kinpaku .docs-live-frame {
+  position: relative;
+  background: var(--ks-lacquer-deep);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px oklch(2% 0.004 95 / 0.55);
+}
+
+.docs-kinpaku .docs-live-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--ks-graphite);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.docs-kinpaku .docs-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: oklch(28% 0.01 95);
+}
+
+.docs-kinpaku .docs-live-url {
+  margin-left: 12px;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.docs-kinpaku .docs-live-stage {
+  position: relative;
+  padding: 42px 28px 28px;
+  min-height: 220px;
+}
+
+.docs-kinpaku .docs-live-target {
+  position: relative;
+  padding: 22px 24px;
+  border: 1px solid var(--ks-kinpaku);
+  border-radius: 2px;
+  background: oklch(11% 0.012 82);
+  /* Picker outline corner ticks (top-left & bottom-right) */
+  box-shadow:
+    inset 0 0 0 1px transparent,
+    -2px -2px 0 -1px var(--ks-kinpaku),
+     2px  2px 0 -1px var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-live-target-title {
+  font-family: var(--ks-font-display);
+  font-style: normal;
+  font-weight: 600;
+  font-size: 1.4rem;
+  line-height: 1.15;
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-live-target-sub {
+  margin-top: 8px;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-live-bar {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: oklch(8% 0.006 95);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+}
+
+.docs-kinpaku .docs-live-bar-counter {
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-live-bar-accept {
+  margin-left: auto;
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-live-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--ks-rule);
+  margin-left: auto;
+}
+
+
+/* c. A typical session (linear flow of commands) ----------------------- */
+
+.docs-kinpaku .docs-flow-head {
+  margin-bottom: 32px;
+}
+
+.docs-kinpaku .docs-flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  align-items: stretch;
+  gap: 0;
+}
+
+@media (max-width: 880px) {
+  .docs-kinpaku .docs-flow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+.docs-kinpaku .docs-flow-step {
+  display: contents;
+}
+
+.docs-kinpaku .docs-flow-link {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 22px 22px 24px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 180ms var(--ks-ease),
+              background 180ms var(--ks-ease);
+  min-height: 100%;
+}
+
+.docs-kinpaku .docs-flow-link:hover {
+  border-color: var(--ks-kinpaku);
+  background: oklch(11% 0.012 82);
+}
+
+.docs-kinpaku .docs-flow-verb {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-flow-cmd {
+  font-family: var(--ks-mono);
+  font-size: 0.94rem;
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-flow-tag {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+}
+
+.docs-kinpaku .docs-flow-arrow {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  color: var(--ks-rule-strong);
+}
+
+.docs-kinpaku .docs-flow-arrow svg {
+  width: 24px;
+  height: 8px;
+}
+
+@media (max-width: 880px) {
+  .docs-kinpaku .docs-flow-arrow {
+    width: 100%;
+    height: 18px;
+    transform: rotate(90deg);
+  }
+}
+
+.docs-kinpaku .docs-flow-alt {
+  margin: 22px 0 0;
+  font-family: var(--ks-font);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+  max-width: 60ch;
+}
+
+.docs-kinpaku .docs-flow-alt a {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.88em;
+  text-decoration: none;
+  border-bottom: 1px solid oklch(78% 0.12 82 / 0.4);
+  transition: border-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .docs-flow-alt a:hover {
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+
+/* d. Pairs and chains -------------------------------------------------- */
+
+.docs-kinpaku .docs-chains-head {
+  margin-bottom: 32px;
+}
+
+.docs-kinpaku .docs-chains-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .docs-kinpaku .docs-chains-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.docs-kinpaku .docs-chain {
+  display: grid;
+  gap: 10px;
+  padding: 28px 28px 30px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.docs-kinpaku .docs-chain-formula {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0;
+  font-family: var(--ks-mono);
+  font-size: 1.06rem;
+  line-height: 1.2;
+}
+
+.docs-kinpaku .docs-chain-cmd {
+  color: var(--ks-kinpaku);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .docs-chain-cmd:hover {
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-chain-arrow {
+  color: var(--ks-rule-strong);
+  font-size: 1.1em;
+}
+
+.docs-kinpaku .docs-chain-line {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: var(--ks-text);
+}
+
+
+/* e. Full reference (cheatsheet) --------------------------------------- */
+
+.docs-kinpaku .docs-reference-head {
+  margin-bottom: 32px;
+  padding-top: 36px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.docs-kinpaku .docs-reference {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 36px 48px;
+}
+
+@media (max-width: 760px) {
+  .docs-kinpaku .docs-reference {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.docs-kinpaku .docs-reference-group {
+  display: grid;
+  gap: 10px;
+}
+
+.docs-kinpaku .docs-reference-cat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ks-rule);
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-reference-count {
+  color: var(--ks-text-faint);
+  font-size: 0.86em;
+}
+
+.docs-kinpaku .docs-reference-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.docs-kinpaku .docs-reference-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 14px;
+  padding: 4px 0;
+  text-decoration: none;
+  color: inherit;
+  transition: color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .docs-reference-row:hover .docs-reference-name {
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .docs-reference-row:hover .docs-reference-line {
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-reference-name {
+  font-family: var(--ks-mono);
+  font-size: 0.92rem;
+  color: var(--ks-text);
+  transition: color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .docs-reference-line {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+  transition: color 160ms var(--ks-ease);
+}
+
+
+/* ============================================================================
+   4. /docs/:slug — breadcrumb, hero, related-commands footer
+   ============================================================================ */
+
+.docs-kinpaku .skills-main {
+  min-width: 0;
+  padding: 48px 0 clamp(80px, 10vw, 140px);
+}
+
+.docs-kinpaku .skills-detail {
+  max-width: 900px;
+}
+
+.docs-kinpaku .skills-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+  margin: 0 0 36px;
+}
+
+.docs-kinpaku .skills-breadcrumb a {
+  color: var(--ks-kinpaku);
+  text-decoration: none;
+  transition: color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .skills-breadcrumb a:hover {
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .skills-breadcrumb span[aria-hidden] {
+  color: var(--ks-text-faint);
+}
+
+
+/* Hero — eyebrow (category), title (/impeccable name), lede. */
+.docs-kinpaku .sub-page-header {
+  margin-bottom: clamp(40px, 5vw, 64px);
+}
+
+.docs-kinpaku .sub-page-eyebrow {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  letter-spacing: var(--ks-type-eyebrow-track);
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin: 0 0 16px;
+}
+
+/* Page h1 follows the Weight-Inversion Rule: display scale at weight 300.
+   Thinner than the heavier in-prose h2s, so size + weight contrast both
+   carry hierarchy. */
+.docs-kinpaku .sub-page-title {
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-display-size);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  color: var(--ks-champagne);
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+.docs-kinpaku .sub-page-title em {
+  color: var(--ks-kinpaku);
+  font-style: normal;
+}
+
+.docs-kinpaku .sub-page-lede {
+  font-size: 1.08rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 56ch;
+}
+
+
+/* Related commands footer — chips with relation label + command name. */
+.docs-kinpaku .skills-relationships {
+  margin-top: clamp(56px, 7vw, 88px);
+  padding-top: 32px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.docs-kinpaku .skills-relationships-title {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  font-weight: 400;
+  margin: 0 0 18px;
+}
+
+.docs-kinpaku .skills-relationships-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.docs-kinpaku .skills-relationship-chip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  background: var(--ks-lacquer-raised);
+  text-decoration: none;
+  transition: border-color 180ms var(--ks-ease),
+              background 180ms var(--ks-ease);
+}
+
+.docs-kinpaku .skills-relationship-chip:hover {
+  border-color: var(--ks-kinpaku);
+  background: oklch(11% 0.012 82);
+}
+
+.docs-kinpaku .skills-relationship-label {
+  font-family: var(--ks-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+}
+
+.docs-kinpaku .skills-relationship-name {
+  font-family: var(--ks-mono);
+  font-size: 0.88rem;
+  color: var(--ks-kinpaku);
+}
+
+
+/* ============================================================================
+   5. PROSE BODY — markdown rendering on lacquer
+   ============================================================================ */
+
+/* Vertical rhythm.
+
+   One base unit: 1em (≈ 16-17px at the prose font-size). Everything is a
+   multiple of that.
+
+     - paragraph-to-paragraph (sibling)          = 1em
+     - paragraph-to-list                         = 1em (sibling rule)
+     - list-item-to-list-item                    = 0.25em (members of one thought)
+     - list-to-paragraph                         = 1em (sibling rule)
+     - block (pre/blockquote/hr) to neighbor     = 1.4em (breathes more)
+     - h2 above body                             = 1.6em (anchor, not chasm)
+     - h3 above body                             = 1.2em
+     - heading to its body                       = 0.4em (kept tight)
+*/
+
+.docs-kinpaku .prose {
+  font-family: var(--ks-font);
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--ks-text);
+  max-width: 76ch;
+}
+
+/* Single source of truth for margins:
+   - `.prose > *` zeros every direct child's margin (universal selector,
+     beats browser default but loses to element-selector rules).
+   - `.prose > * + *` adds the sibling gap.
+   - Element-specific overrides (h2, h3, h4) inherit from the same family.
+   Element-selector rules elsewhere in this file MUST NOT set `margin`
+   shorthand or `margin-top` — they'd outrank the sibling rule and starve
+   blocks of their spacing (this happened with the list + p combo). */
+.docs-kinpaku .prose > * {
+  margin: 0;
+}
+
+.docs-kinpaku .prose > * + * {
+  margin-top: 1em;
+}
+
+/* Blocks (pre, blockquote, hr) get extra breath above and below. */
+.docs-kinpaku .prose > pre + *,
+.docs-kinpaku .prose > * + pre,
+.docs-kinpaku .prose > blockquote + *,
+.docs-kinpaku .prose > * + blockquote,
+.docs-kinpaku .prose > hr + *,
+.docs-kinpaku .prose > * + hr {
+  margin-top: 1.4em;
+}
+
+.docs-kinpaku .prose h1,
+.docs-kinpaku .prose h2,
+.docs-kinpaku .prose h3,
+.docs-kinpaku .prose h4 {
+  font-family: var(--ks-font-display);
+  color: var(--ks-champagne);
+  font-style: normal;
+  line-height: 1.2;
+  scroll-margin-top: 96px;
+  /* Intentionally no margin — see `.prose > *` rule above. */
+}
+
+.docs-kinpaku .prose > * + h2 {
+  margin-top: 1.6em;
+}
+
+.docs-kinpaku .prose > * + h3 {
+  margin-top: 1.2em;
+}
+
+.docs-kinpaku .prose > * + h4 {
+  margin-top: 1em;
+}
+
+.docs-kinpaku .prose > h2 + *,
+.docs-kinpaku .prose > h3 + *,
+.docs-kinpaku .prose > h4 + * {
+  margin-top: 0.4em;
+}
+
+/* h2/h3 follow the DESIGN.md type scale exactly:
+   - h2 (Headline): Alumni Sans Pinstripe, clamp 2.6-3.4rem, weight 600
+   - h3 (Title):    Albert Sans,           1.18rem,            weight 500
+   - h4:            Albert Sans,           1rem,               weight 600 (utility)
+*/
+.docs-kinpaku .prose h2 {
+  font-family: var(--ks-font-display);
+  font-size: var(--ks-type-headline-size);
+  font-weight: var(--ks-type-headline-weight);
+  line-height: var(--ks-type-headline-line);
+  letter-spacing: -0.005em;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  text-wrap: balance;
+}
+
+.docs-kinpaku .prose h3 {
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-title-size);
+  font-weight: var(--ks-type-title-weight);
+  line-height: var(--ks-type-title-line);
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .prose h4 {
+  font-family: var(--ks-font);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ks-champagne);
+}
+
+/* Lists. Margins are handled by the universal `> *` reset + sibling rule
+   above; only set list-specific padding and line-height here. */
+.docs-kinpaku .prose ul,
+.docs-kinpaku .prose ol {
+  padding-left: 1.4rem;
+  line-height: 1.6;
+}
+
+.docs-kinpaku .prose li + li {
+  margin-top: 0.5em;
+}
+
+.docs-kinpaku .prose li::marker {
+  color: var(--ks-kinpaku);
+}
+
+/* When a list item wraps multi-block content, hug its internals. */
+.docs-kinpaku .prose li > p {
+  margin: 0;
+}
+.docs-kinpaku .prose li > * + * {
+  margin-top: 0.35em;
+}
+
+.docs-kinpaku .prose a {
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.4);
+  transition: text-decoration-color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .prose a:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .prose strong {
+  color: var(--ks-champagne);
+  font-weight: 600;
+}
+
+.docs-kinpaku .prose em {
+  font-style: italic;
+  color: var(--ks-champagne);
+}
+
+/* Inline code — champagne mono on a graphite chip with a hairline border.
+   The chip is the affordance; color stays neutral so a paragraph full of
+   inline references doesn't vibrate. Kinpaku is reserved for links, h3s,
+   eyebrows, and CTAs. */
+.docs-kinpaku .prose code {
+  font-family: var(--ks-mono);
+  font-size: 0.84em;
+  color: var(--ks-champagne);
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  padding: 1px 7px;
+  border-radius: 2px;
+  /* Anchored slightly to the baseline so the chip doesn't shift line-height. */
+  position: relative;
+  top: -1px;
+}
+
+/* Inline code that is itself a link — get the kinpaku cue back, since the
+   link semantic is the meaningful one. */
+.docs-kinpaku .prose a code {
+  color: var(--ks-kinpaku);
+  border-color: oklch(78% 0.12 82 / 0.32);
+}
+
+/* Fenced code blocks — deep lacquer terminal. Shiki injects inline
+   `background-color` and `color` on `pre.astro-code` (default theme is
+   `github-dark`, which reads cool-gray against the warm kinpaku ground),
+   so we override with !important to bake the theme into the kinpaku
+   palette. Syntax token spans inside keep their own colors. */
+.docs-kinpaku .prose pre,
+.docs-kinpaku .prose .code-block,
+.docs-kinpaku .prose pre.astro-code {
+  margin: 0;
+  padding: 22px 24px;
+  background: var(--ks-lacquer-deep) !important;
+  color: oklch(86% 0.025 82) !important;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow-x: auto;
+  font-family: var(--ks-mono);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  max-width: 100%;
+}
+
+.docs-kinpaku .prose pre code,
+.docs-kinpaku .prose .code-block code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  border-radius: 0;
+}
+
+.docs-kinpaku .prose .code-block-wrap {
+  position: relative;
+  margin: 0;
+}
+
+/* Copy button on dark — match the kinpaku button voice. */
+.docs-kinpaku .code-block-copy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  color: var(--ks-text-muted);
+  border-radius: 2px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 180ms var(--ks-ease),
+              border-color 180ms var(--ks-ease),
+              color 180ms var(--ks-ease);
+}
+
+.docs-kinpaku .code-block-wrap:hover .code-block-copy,
+.docs-kinpaku .code-block-copy:focus-visible {
+  opacity: 1;
+}
+
+.docs-kinpaku .code-block-copy::before {
+  content: "Copy";
+}
+
+.docs-kinpaku .code-block-copy:hover {
+  border-color: var(--ks-kinpaku);
+  color: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .code-block-copy.is-copied {
+  opacity: 1;
+  border-color: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+  background: var(--ks-kinpaku);
+}
+
+.docs-kinpaku .code-block-copy.is-copied::before {
+  content: "Copied";
+}
+
+.docs-kinpaku .prose blockquote {
+  margin: 0;
+  padding: 6px 0 6px 22px;
+  border-left: 2px solid var(--ks-kinpaku);
+  color: var(--ks-text);
+  font-style: italic;
+}
+
+.docs-kinpaku .prose hr {
+  border: 0;
+  height: 1px;
+  background: var(--ks-rule);
+  margin: 32px 0;
+}
+
+.docs-kinpaku .prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.docs-kinpaku .prose th,
+.docs-kinpaku .prose td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--ks-rule);
+  vertical-align: top;
+}
+
+.docs-kinpaku .prose th {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  font-weight: 500;
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+
+/* Two-column editorial hero (when the command has a registered demo).
+   Demo on the left, h1 + lede on the right. Mirrors the old pre-Astro
+   layout: a slightly wider demo column (1.15fr) against a comfortable
+   text measure on the right (1fr). Collapses to single-column below
+   the breakpoint where the demo would be too cramped.
+
+   When there's no demo, the page renders the existing single-column
+   sub-page-header — no docs-hero wrapper, no grid. */
+.docs-kinpaku .docs-hero--with-demo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: clamp(28px, 4vw, 48px);
+  align-items: center;
+  margin: 0 0 clamp(40px, 5vw, 64px);
+}
+
+@media (max-width: 880px) {
+  .docs-kinpaku .docs-hero--with-demo {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+/* In the two-column hero, the h1 + lede sits in the right column and
+   doesn't need its own bottom margin (the grid gap handles spacing). */
+.docs-kinpaku .docs-hero--with-demo .sub-page-header {
+  margin: 0;
+}
+
+/* Command demo (rendered client-side by Doc.astro from
+   site/scripts/demos/commands/<id>.js). Same demos the homepage's
+   command carousel uses — one source of truth in the demo JS, two
+   surfaces that render from it.
+
+   Matches the homepage's dark dual-tone treatment: lacquer-raised
+   container with a subtle kinpaku-grid backing, then `before` and
+   `after` sides each picking up a different radial glow. The demo
+   content's `--color-*` tokens stay remapped to kinpaku (no local
+   light override) — shapes render light-on-dark and the kinpaku
+   accent shines. */
+.docs-kinpaku .docs-command-demo {
+  margin: 0;
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ks-lacquer-raised);
+}
+
+.docs-kinpaku .docs-command-demo .split-comparison {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.docs-kinpaku .docs-command-demo .split-container {
+  height: 300px;
+  max-width: none;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--ks-rule);
+  background:
+    linear-gradient(90deg, oklch(78% 0.12 82 / 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(78% 0.12 82 / 0.035) 1px, transparent 1px),
+    var(--ks-lacquer-raised);
+  background-size: 24px 24px;
+}
+
+.docs-kinpaku .docs-command-demo .split-before {
+  background:
+    linear-gradient(90deg, oklch(10% 0.006 95 / 0.92), oklch(12% 0.012 60 / 0.72)),
+    radial-gradient(circle at 28% 25%, oklch(60% 0.05 80 / 0.18), transparent 11rem);
+}
+
+.docs-kinpaku .docs-command-demo .split-after {
+  background:
+    linear-gradient(90deg, oklch(8% 0.006 95 / 0.92), oklch(10% 0.006 95 / 0.96)),
+    radial-gradient(circle at 82% 26%, oklch(78% 0.12 82 / 0.14), transparent 12rem);
+}
+
+.docs-kinpaku .docs-command-demo .split-divider {
+  background: var(--ks-kinpaku);
+  box-shadow: 0 0 20px oklch(78% 0.12 82 / 0.4);
+}
+
+.docs-kinpaku .docs-command-demo .demo-caption {
+  padding: 10px 16px;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ks-text-muted);
+  background: var(--ks-lacquer-deep);
+  text-align: center;
+}
+
+
+/* Visualization wrappers inside the markdown body.
+
+   Default: .docs-viz-hero is a transparent layout container — no card
+   chrome, no border. The inner mock owns its own surface treatment, so
+   we don't get card-in-card.
+
+   When the wrapper contains a multi-tile group (.docs-viz-flow), apply
+   the tinted-plinth pattern from .ks-bento on the homepage:
+   - the wrapper becomes a graphite mat
+   - tiles sit on top in flat lacquer with no borders
+   - the gap between tiles is the plinth showing through as inset gutters
+   - depth contrast carries the edges; no double borders required */
+
+.docs-kinpaku .prose .docs-viz-hero {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.docs-kinpaku .prose .docs-viz-hero:has(.docs-viz-flow),
+.docs-kinpaku .prose .docs-viz-hero:has(.docs-viz-variants) {
+  padding: 24px;
+  background: var(--ks-graphite-2);
+  border-radius: 2px;
+}
+
+.docs-kinpaku .prose .docs-viz-flow {
+  gap: 8px;
+}
+
+.docs-kinpaku .prose .docs-viz-flow-step,
+.docs-kinpaku .prose .docs-viz-variant {
+  background: var(--ks-lacquer);
+  border: 0;
+  border-radius: 2px;
+}
+
+.docs-kinpaku .prose .docs-viz-flow-step + .docs-viz-flow-step {
+  margin-left: 0;
+}
+
+.docs-kinpaku .prose .docs-viz-flow-step + .docs-viz-flow-step::before {
+  left: -8px;
+  width: 8px;
+}
+
+/* Accent / active states get a kinpaku-tinted fill instead of the
+   bordered/glow treatment from docs-visuals.css. */
+.docs-kinpaku .prose .docs-viz-flow-step--accent,
+.docs-kinpaku .prose .docs-viz-variant.is-active {
+  background: oklch(78% 0.12 82 / 0.16);
+  box-shadow: none;
+}
+
+/* Per-variant theming in docs-visuals.css uses paper/cream/light-magenta
+   on the v1/v3 backgrounds — both off-brand here. Re-skin to lacquer
+   ramps so the variants still differ but stay kinpaku. */
+.docs-kinpaku .prose .docs-viz-variant--v1 {
+  background: var(--ks-lacquer);
+}
+.docs-kinpaku .prose .docs-viz-variant--v3 {
+  background: var(--ks-lacquer-deep);
+}
+
+.docs-kinpaku .prose .docs-viz-caption {
+  margin-top: 16px;
+  color: var(--ks-text-muted);
+}
+
+
+/* ============================================================================
+   6. FOOTER on dark surface
+   ============================================================================ */
+
+.docs-kinpaku .site-footer {
+  background: oklch(4% 0.004 95);
+  border-top: 1px solid var(--ks-rule);
+}

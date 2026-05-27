@@ -377,6 +377,18 @@ const title = 'Astro title';
       result.cssAuthoring.forbidden.some((item) => item.includes('@scope')),
       'Astro-prefixed mode should explicitly reject @scope',
     );
+    assert.ok(
+      result.cssAuthoring.requirements.some((item) => item.includes('raw CSS')),
+      'Astro-prefixed mode should require raw CSS between style tags',
+    );
+    assert.ok(
+      result.cssAuthoring.forbidden.some((item) => item.includes('template literal')),
+      'Astro-prefixed mode should reject JSX template-literal style wrappers',
+    );
+    assert.ok(
+      result.cssAuthoring.forbidden.some((item) => item.includes('immediately after the style opening tag')),
+      'Astro-prefixed mode should reject Astro expression syntax after <style>',
+    );
   });
 });
 

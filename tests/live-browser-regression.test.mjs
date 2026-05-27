@@ -82,6 +82,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('pick mode preference persists in localStorage', () => {
+    assert.match(
+      SOURCE,
+      /const PICK_PREFS_KEY = 'impeccable-live-pick';[\s\S]{0,400}?function savePickPref\(\)/,
+      'pick mode must use a dedicated localStorage key with savePickPref',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\)[\s\S]{0,120}?savePickPref\(\);/,
+      'togglePick must persist pickActive so Escape / bar toggle survive reloads',
+    );
+    assert.match(
+      SOURCE,
+      /if \(state === 'IDLE' && pickActive\) state = 'PICKING';/,
+      'SSE connected must not arm pick mode when the saved preference has pick off',
+    );
+  });
+
   it('handleAccept reads the visible DOM variant before sending accept', () => {
     assert.match(
       SOURCE,

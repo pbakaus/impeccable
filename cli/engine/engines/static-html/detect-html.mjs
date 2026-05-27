@@ -7,12 +7,15 @@ import { finding } from '../../findings.mjs';
 import { profileFindings, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import {
   checkElementBorders,
+  checkElementClippedOverflow,
   checkElementColors,
   checkElementGlow,
+  checkElementGptBorderShadow,
   checkElementHeroEyebrow,
   checkElementIconTile,
   checkElementItalicSerif,
   checkElementMotion,
+  checkElementOversizedH1,
   checkElementQuality,
   checkHtmlPatterns,
   checkPageLayout,
@@ -21,6 +24,7 @@ import {
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
+import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { detectText, runTextContentAnalyzers } from '../regex/detect-text.mjs';
 import {
   StaticDocument,
@@ -88,6 +92,9 @@ const STATIC_ELEMENT_RULES = [
   { id: 'hero-eyebrow-chip', selector: 'h1', run: (el, tag, style, window, customPropMap) => checkElementHeroEyebrow(el, style, tag, window, customPropMap) },
   { id: 'broken-image', selector: 'img', run: (el) => checkElementBrokenImage(el) },
   { id: 'quality-rules', selector: '*', run: (el, tag, style, window) => checkElementQuality(el, style, tag, window) },
+  { id: 'oversized-h1', selector: 'h1', run: (el, tag, style, window) => checkElementOversizedH1(el, style, tag, window) },
+  { id: 'clipped-overflow-container', selector: '*', run: (el, tag, style, window) => checkElementClippedOverflow(el, style, tag, window) },
+  { id: 'gpt-thin-border-wide-shadow', selector: '*', run: (el, tag, style) => checkElementGptBorderShadow(el, style) },
 ];
 
 async function detectHtml(filePath, options = {}) {
@@ -191,7 +198,7 @@ async function detectHtml(filePath, options = {}) {
     }
   }
 
-  return findings;
+  return filterByProviders(findings, options.providers);
 }
 
 export { checkStaticPageTypography, STATIC_ELEMENT_RULES, detectHtml };

@@ -1,12 +1,14 @@
 ---
 import Base from './Base.astro';
 import '../styles/sub-pages.css';
+import '../styles/docs-kinpaku.css';
 import {
   SKILL_CATEGORIES,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
   COMMAND_RELATIONSHIPS,
 } from '../data/sub-pages-data';
+import { getCommandDemo } from '../scripts/demos/commands/index.js';
 
 interface Props {
   title: string;
@@ -19,7 +21,13 @@ interface Props {
 
 const { title, description, tagline, slug, category, allCommands } = Astro.props;
 
-const categoryLabel = CATEGORY_LABELS[category] || category;
+// Decide hero layout at build time: when a command has a registered demo
+// (in site/scripts/demos/commands/<id>.js), the hero is a two-column grid
+// with the demo on the left and h1/lede on the right — same editorial
+// before/after side-by-side that the old site used. When no demo exists,
+// the hero stays single-column.
+const hasDemo = !!getCommandDemo(slug);
+
 const relationships = COMMAND_RELATIONSHIPS[slug] || {};
 
 const sidebarGroups: Record<string, { slug: string }[]> = {};
@@ -35,7 +43,7 @@ for (const cat of CATEGORY_ORDER) {
   description={description}
   activeNav="docs"
   canonicalPath={`/docs/${slug}`}
-  bodyClass="sub-page skills-layout-page"
+  bodyClass="sub-page skills-layout-page docs-kinpaku"
 >
   <div class="skills-layout">
     <aside class="skills-sidebar" aria-label="Commands">
@@ -64,17 +72,24 @@ for (const cat of CATEGORY_ORDER) {
 
     <div class="skills-main">
       <div class="skills-detail">
-        <nav class="skills-breadcrumb" aria-label="Breadcrumb">
-          <a href="/docs">Docs</a>
-          <span aria-hidden="true">/</span>
-          <span>{slug}</span>
-        </nav>
-
-        <header class="sub-page-header">
-          <span class="sub-page-eyebrow">{categoryLabel}</span>
-          <h1 class="sub-page-title">/impeccable {slug}</h1>
-          {tagline && <p class="sub-page-lede">{tagline}</p>}
-        </header>
+        {hasDemo ? (
+          /* Two-column editorial hero: demo on the left, h1 + lede on
+             the right. The demo content is populated client-side by the
+             script below from site/scripts/demos/commands/<id>.js, same
+             source the homepage uses. */
+          <div class="docs-hero docs-hero--with-demo">
+            <div class="docs-command-demo" data-command={slug}></div>
+            <header class="sub-page-header">
+              <h1 class="sub-page-title">/impeccable <em>{slug}</em></h1>
+              {tagline && <p class="sub-page-lede">{tagline}</p>}
+            </header>
+          </div>
+        ) : (
+          <header class="sub-page-header">
+            <h1 class="sub-page-title">/impeccable <em>{slug}</em></h1>
+            {tagline && <p class="sub-page-lede">{tagline}</p>}
+          </header>
+        )}
 
         <div class="skills-detail-body docs-body prose">
           <slot />
@@ -116,5 +131,33 @@ for (const cat of CATEGORY_ORDER) {
       const expanded = toggle.getAttribute('aria-expanded') === 'true';
       toggle.setAttribute('aria-expanded', String(!expanded));
     });
+  </script>
+
+  <script>
+    import { getCommandDemo } from '../scripts/demos/commands/index.js';
+    import { renderCommandDemo, initCommandDemo } from '../scripts/demo-renderer.js';
+    import { initSplitCompare } from '../scripts/effects/split-compare.js';
+
+    const slot = document.querySelector('.docs-command-demo');
+    if (slot) {
+      const command = slot.dataset.command;
+      const demo = getCommandDemo(command);
+      if (demo) {
+        slot.innerHTML = renderCommandDemo(command);
+        const split = slot.querySelector('.demo-split-comparison');
+        if (split) {
+          initSplitCompare(split, {
+            defaultPosition: 50,
+            skewAngle: 0,
+            minPosition: 10,
+            maxPosition: 90,
+          });
+        }
+        initCommandDemo(command, slot);
+      } else {
+        // No demo registered for this command — leave the layout flush.
+        slot.remove();
+      }
+    }
   </script>
 </Base>

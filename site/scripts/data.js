@@ -30,6 +30,20 @@ export const skillFocusAreas = {
   ]
 };
 
+// Slop tells we prevent in each discipline. Same seven categories, but the
+// detail line communicates what bad-default we catch — not what we teach.
+export const slopFocusAreas = {
+  'impeccable': [
+    { area: 'Typography', detail: 'No Inter monoculture. No flat hierarchy. No all-caps body.' },
+    { area: 'Color & Contrast', detail: 'No purple gradients. No sub-WCAG text. No washed pastels.' },
+    { area: 'Spatial Design', detail: 'No cards in cards. No identical grids. No template layouts.' },
+    { area: 'Responsive', detail: 'No stiff breakpoints. No mobile-as-afterthought.' },
+    { area: 'Interaction', detail: 'No modal abuse. No generic CTAs. No gradient text.' },
+    { area: 'Motion', detail: 'No bouncy easing. No decorative fades. No spring overshoot.' },
+    { area: 'UX Writing', detail: 'No "Welcome to our platform." No em dashes. No "let\'s dive in".' }
+  ]
+};
+
 // Guideline counts per dimension (verified from reference files)
 export const dimensionGuidelineCounts = {
   'Typography': 33,

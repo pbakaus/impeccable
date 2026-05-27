@@ -47,8 +47,6 @@ Distinctive + refined is the goal. The specific shape depends on the brand, not 
 
 Two families minimum is the rule *only* when the voice needs it. A single well-chosen family with committed weight/size contrast is stronger than a timid display+body pair.
 
-Vary across projects. If the last brief was a serif-display landing page, this one isn't.
-
 ### Scale
 
 Modular scale, fluid `clamp()` for headings, ≥1.25 ratio between steps. Flat scales (1.1× apart) read as uncommitted.
@@ -88,7 +86,6 @@ Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landin
 ## Motion
 
 - One well-orchestrated page-load beats scattered micro-interactions, when the brand invites it. Some brands skip entrance motion entirely; the restraint is the voice.
-- For collapsing/expanding sections, transition `grid-template-rows` rather than `height`.
 
 ## Brand bans (on top of the shared absolute bans)
 

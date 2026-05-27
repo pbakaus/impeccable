@@ -1,6 +1,7 @@
 import { GENERIC_FONTS } from '../../shared/constants.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
+import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { profileFindings, profileStep } from '../../profile/profiler.mjs';
 
 // ---------------------------------------------------------------------------
@@ -302,6 +303,14 @@ const REGEX_ANALYZERS = [
     if (count < 3) return [];
     return [finding('aphoristic-cadence', filePath, `${count} aphoristic constructions: "${firstSample}"`)];
   },
+  // Theater framing copy ("X theater") — gated GPT tell. Kept in the
+  // text-content cluster (indices 4-8) so detectHtml picks it up too.
+  (content, filePath) => {
+    const text = stripHtmlToText(content);
+    const m = /\b(\w+)\s+theater\b/i.exec(text);
+    if (!m) return [];
+    return [finding('theater-slop-phrase', filePath, `"${m[0].trim()}"`)];
+  },
   // Dark glow (page-level: dark bg + colored box-shadow with blur)
   (content, filePath) => {
     // Check if page has a dark background
@@ -430,12 +439,13 @@ const TEXT_CONTENT_ANALYZER_IDS = [
   'marketing-buzzword',
   'numbered-section-markers',
   'aphoristic-cadence',
+  'theater-slop-phrase',
 ];
 
 function runTextContentAnalyzers(content, filePath, options = {}) {
   const profile = options?.profile;
   if (!isFullPage(content)) return [];
-  // The 4 text-content analyzers are at indices 4-7 in REGEX_ANALYZERS.
+  // The text-content analyzers are at indices 4-8 in REGEX_ANALYZERS.
   const findings = [];
   for (let i = 0; i < TEXT_CONTENT_ANALYZER_IDS.length; i++) {
     const analyzer = REGEX_ANALYZERS[4 + i];
@@ -520,6 +530,7 @@ function detectText(content, filePath, options = {}) {
       'marketing-buzzword',
       'numbered-section-markers',
       'aphoristic-cadence',
+      'theater-slop-phrase',
       'dark-glow',
     ];
     for (let i = 0; i < REGEX_ANALYZERS.length; i++) {
@@ -533,7 +544,7 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
-  return deduped;
+  return filterByProviders(deduped, options?.providers);
 }
 
 export {

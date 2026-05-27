@@ -30,20 +30,25 @@
   // Design tokens
   // ---------------------------------------------------------------------------
 
-  // Brand magenta is pinned to the site token (--color-accent in main.css)
-  // so Accept / knobs / cycle-dots match the site's accent, not a washed
-  // theme-adjusted one.
+  // Brand kinpaku (gold) is pinned to the site's neo-kinpaku tokens
+  // (see site/styles/kinpaku-tokens.css) so Accept / knobs / cycle-dots /
+  // the selection outline / the comment tag all match the site's accent,
+  // not a washed theme-adjusted one. These mirror the kit's picker
+  // colors in site/styles/kinpaku-kit.css; keep them in sync by hand.
   const C = {
-    brand:     'oklch(60% 0.25 350)',
-    brandHov:  'oklch(52% 0.25 350)',
-    brandSoft: 'oklch(60% 0.25 350 / 0.15)',
-    ink:       'oklch(15% 0.01 350)',
-    ash:       'oklch(55% 0 0)',
-    paper:     'oklch(98% 0.005 350 / 0.92)',
-    paperSolid:'oklch(98% 0.005 350)',
-    mist:      'oklch(90% 0.01 350 / 0.6)',
+    brand:     'oklch(84% 0.19 80.46)',         // kinpaku gold
+    brandHov:  'oklch(86% 0.07 84)',            // kinpaku-pale (hover lift)
+    brandSoft: 'oklch(84% 0.19 80.46 / 0.18)',  // kinpaku-dim
+    ink:       'oklch(4% 0.004 95)',            // lacquer-deep
+    ash:       'oklch(55% 0.018 82)',           // warm muted text
+    paper:     'oklch(98% 0.005 95 / 0.92)',    // light overlay on user pages
+    paperSolid:'oklch(98% 0.005 95)',
+    mist:      'oklch(90% 0.008 82 / 0.6)',     // light hairline
     white:     'oklch(99% 0 0)',
   };
+  // Picker bar chrome — mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css
+  const PICKER_SHADOW =
+    '0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28)';
   const FONT = 'system-ui, -apple-system, sans-serif';
   const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
   // z-index: detect overlays use 99999, so our UI must be above them
@@ -301,11 +306,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Annotation overlay (comment pins + magenta strokes)
+  // Annotation overlay (comment pins + kinpaku strokes)
   //
   // Active while state === 'CONFIGURING'. The overlay is a fixed-positioned
   // sibling of <body> mirroring selectedElement's bounding rect. Click (no
-  // drag) drops a comment pin; drag paints a magenta SVG stroke. All coords
+  // drag) drops a comment pin; drag paints a kinpaku SVG stroke. All coords
   // are stored in element-local CSS px so they survive scroll / resize and
   // correlate directly with the captured PNG.
   // ---------------------------------------------------------------------------
@@ -425,7 +430,7 @@
   }
 
   // Rebuild the SVG layer. Each stroke gets a wider invisible hit path
-  // beneath the visible magenta path so clicks register on thin lines.
+  // beneath the visible kinpaku path so clicks register on thin lines.
   function redrawStrokes() {
     while (annotSvgEl.firstChild) annotSvgEl.removeChild(annotSvgEl.firstChild);
     annotState.strokes.forEach((s, idx) => {
@@ -845,10 +850,9 @@
       transform: 'translateY(6px)',
       transition: 'opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       background: BP.surface,
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid ' + BP.hairline,
+      border: '1.5px solid ' + BP.border,
       borderRadius: '10px',
-      boxShadow: BAR_SHADOW_DEFAULT,
+      boxShadow: BP.shadow,
       transition: 'box-shadow 0.2s ease, opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       fontFamily: FONT, fontSize: '13px', color: BP.text,
       padding: '6px',
@@ -911,9 +915,10 @@
   function updateBarContent(mode) {
     if (!barEl || barEl.style.display === 'none') return;
     barEl.innerHTML = '';
-    // Reset bar styling to the theme-aware palette
+    // Reset bar styling to the kinpaku picker palette
     barEl.style.background = BP.surface;
-    barEl.style.border = '1px solid ' + BP.hairline;
+    barEl.style.border = '1.5px solid ' + BP.border;
+    barEl.style.boxShadow = BP.shadow;
     if (mode === 'configure') barEl.appendChild(buildConfigureRow());
     else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
     else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
@@ -1146,7 +1151,7 @@
     // Spacer
     row.appendChild(el('div', { flex: '1' }));
 
-    // Accept — primary action, uses the site's saturated brand magenta
+    // Accept — primary action, uses the site's saturated brand kinpaku
     // with paper-white text, not the theme-muted BP.accent.
     const accept = el('button', {
       padding: '5px 14px', borderRadius: '5px',
@@ -1244,10 +1249,10 @@
     for (let i = 1; i <= expectedVariants; i++) {
       const arrived = i <= arrivedVariants;
       const active = i === visibleVariant;
-      // active: solid site-brand magenta dot. arrived+inactive: muted neutral.
+      // active: solid site-brand kinpaku dot. arrived+inactive: muted neutral.
       // pending (not yet arrived): faint outline ring. No borders on arrived
       // dots — the previous "accent ring + ash fill" combo read as noisy
-      // magenta chips, especially when all variants had arrived and every
+      // kinpaku chips, especially when all variants had arrived and every
       // dot wore an accent ring.
       const dotBg = active ? C.brand
         : arrived ? BP.textDim
@@ -1321,13 +1326,11 @@
       transformOrigin: 'bottom left',
       transition: 'opacity 0.18s ' + EASE + ', transform 0.2s ' + EASE,
       background: P.surface,
-      border: '1px solid ' + P.hairline,
+      border: '1.5px solid ' + P.border,
       borderRadius: '10px',
-      boxShadow: '0 8px 30px oklch(0% 0 0 / 0.10), 0 2px 6px oklch(0% 0 0 / 0.06)',
+      boxShadow: P.shadow,
       padding: '6px',
       fontFamily: FONT,
-      backdropFilter: 'blur(10px)',
-      WebkitBackdropFilter: 'blur(10px)',
     });
 
     // Build the chip grid
@@ -1467,7 +1470,6 @@
       boxSizing: 'border-box',
       borderRadius: '0 0 10px 10px',
       pointerEvents: 'none',
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
 
       // clip-path is the same conceptual reveal as mask but with rock-solid
       // transition support across engines. Closed state clips from the far
@@ -2218,7 +2220,7 @@
           hasProjectContext = !!msg.hasProjectContext;
           if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable teach to generate one.', 7000);
           console.log('[impeccable] Live mode connected.');
-          if (state === 'IDLE') state = 'PICKING';
+          if (state === 'IDLE' && pickActive) state = 'PICKING';
           break;
         case 'done':
           // Variants already arrived via HMR → normal transition.
@@ -2788,7 +2790,7 @@
   // ---------------------------------------------------------------------------
   // Shader overlay — renders the captured screenshot as a WebGL texture and
   // runs an editorial "ink-wash" fragment shader over it during generation.
-  // A single rolling band sweeps top-to-bottom, desaturating + tinting magenta
+  // A single rolling band sweeps top-to-bottom, desaturating + tinting kinpaku
   // and leaving a soft trail. Makes the wait feel like a letterpress scan
   // instead of a dead spinner.
   // ---------------------------------------------------------------------------
@@ -2834,7 +2836,7 @@ void main() {
   vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
   vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
   float luma = dot(cellImg, vec3(0.299, 0.587, 0.114));
-  // Darker cells → bigger magenta dots (classic risograph halftone curve).
+  // Darker cells → bigger kinpaku dots (classic risograph halftone curve).
   float radius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
   float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
   vec3 paper = vec3(0.975, 0.965, 0.955);
@@ -2846,8 +2848,8 @@ void main() {
   gl_FragColor = vec4(mix(base, dotLayer, band), 1.0);
 }`;
 
-  // Editorial Magenta converted to approximate sRGB 0-1 (matches oklch(60% 0.25 350))
-  const SHADER_ACCENT = [0.82, 0.16, 0.47];
+  // Kinpaku gold converted to approximate sRGB 0-1 (matches oklch(84% 0.19 80.46))
+  const SHADER_ACCENT = [1.0, 0.78, 0.31];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
 
   function compileShader(gl, type, source) {
@@ -3289,7 +3291,25 @@ void main() {
 
   let globalBarEl = null;
   let detectActive = false;
-  let pickActive = true;
+  const PICK_PREFS_KEY = 'impeccable-live-pick';
+
+  function loadPickPref() {
+    try {
+      const raw = localStorage.getItem(PICK_PREFS_KEY);
+      if (raw == null) return true;
+      const prefs = JSON.parse(raw);
+      if (typeof prefs.pickActive === 'boolean') return prefs.pickActive;
+    } catch { /* ignore */ }
+    return true;
+  }
+
+  function savePickPref() {
+    try {
+      localStorage.setItem(PICK_PREFS_KEY, JSON.stringify({ pickActive }));
+    } catch { /* ignore */ }
+  }
+
+  let pickActive = loadPickPref();
   let detectCount = 0;
   let detectScriptLoaded = false;
 
@@ -3334,43 +3354,28 @@ void main() {
     } catch { return 'light'; }
   }
 
-  function barPaletteForTheme(theme) {
-    if (theme === 'dark') {
-      // Light bar on dark page
-      return {
-        surface: 'oklch(98% 0 0 / 0.92)',
-        surfaceDeep: 'oklch(92% 0.005 60 / 0.96)', // slightly deeper, faint warm
-        hairline: 'oklch(70% 0 0 / 0.35)',
-        text: 'oklch(15% 0 0)',
-        textDim: 'oklch(45% 0 0)',
-        accent: 'oklch(60% 0.25 350)',
-        accentSoft: 'oklch(60% 0.25 350 / 0.18)',
-        mark: 'oklch(98% 0 0)',      // logo mark fill
-        markText: 'oklch(15% 0 0)',  // logo "/" color
-        exitHover: 'oklch(85% 0 0 / 0.5)',
-      };
-    }
-    // Dark bar on light page. Bar is a warm charcoal, logo slab is much
-    // deeper so the rounded-right shape reads as a clear sculpted mark.
+  function barPaletteForTheme(_theme) {
+    // Picker chrome always uses neo-kinpaku styling (homepage /live-mode demo
+    // bars in kinpaku-kit.css), regardless of host page light/dark theme.
     return {
-      surface: 'oklch(26% 0 0 / 0.94)',
-      surfaceDeep: 'oklch(18% 0 0 / 0.96)', // darker sand for Tune popover
-      hairline: 'oklch(42% 0 0 / 0.5)',
-      text: 'oklch(96% 0 0)',
-      textDim: 'oklch(72% 0 0)',
-      accent: 'oklch(72% 0.22 350)',
-      accentSoft: 'oklch(72% 0.22 350 / 0.22)',
-      mark: 'oklch(8% 0 0)',
-      markText: 'oklch(96% 0 0)',
-      exitHover: 'oklch(36% 0 0 / 0.6)',
+      surface: C.ink,
+      surfaceDeep: C.ink,
+      border: C.brand,
+      hairline: 'oklch(58% 0.065 82 / 0.48)',
+      text: 'oklch(84% 0.035 82)',
+      textDim: 'oklch(63% 0.024 82)',
+      accent: C.brand,
+      accentSoft: C.brandSoft,
+      exitHover: 'oklch(58% 0.15 35 / 0.18)',
+      shadow: PICKER_SHADOW,
     };
   }
 
-  // Impeccable logo mark — matches the site-header SVG (rounded square + "/").
-  function brandMarkSvg(fill, ink, size = 18) {
-    return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="${fill}"/>
-      <text x="16" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="${ink}" text-anchor="middle">/</text>
+  // Impeccable mark — same paths as site/components/Header.astro + favicon.svg.
+  function brandMarkSvg(color = C.brand, size = 18) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${color}" aria-hidden="true">
+      <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+      <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
     </svg>`;
   }
 
@@ -3400,10 +3405,9 @@ void main() {
       display: 'flex', alignItems: 'stretch',
       gap: '2px',
       background: P.surface,
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid ' + P.hairline,
+      border: '1.5px solid ' + P.border,
       borderRadius: '10px',
-      boxShadow: '0 4px 20px oklch(0% 0 0 / 0.12), 0 1px 3px oklch(0% 0 0 / 0.08)',
+      boxShadow: P.shadow,
       fontFamily: FONT, fontSize: '12px', lineHeight: '1',
       opacity: '0',
       overflow: 'hidden',          // clip the full-bleed brand mark to the bar radius
@@ -3412,20 +3416,16 @@ void main() {
     globalBarEl.id = PREFIX + '-global-bar';
     globalBarEl.dataset.theme = theme;
 
-    // Brand mark — fills bar height on the left. Left side inherits the bar's
-    // rounded corner via overflow:hidden; right side is a clean hard edge since
-    // the near-black/charcoal contrast does the shape-defining work.
+    // Brand mark — kinpaku Impeccable icon (site header / favicon paths).
     const brand = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       alignSelf: 'stretch',
       padding: '0 12px 0 14px',
-      background: P.mark,
-      color: P.markText,
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontWeight: '500',
-      fontSize: '18px', lineHeight: '1',
+      background: 'transparent',
+      color: P.accent,
+      flexShrink: '0',
     });
-    brand.textContent = '/';
+    brand.innerHTML = brandMarkSvg(P.accent, 18);
     brand.title = 'Impeccable';
     globalBarEl.appendChild(brand);
 
@@ -3476,7 +3476,7 @@ void main() {
       return b;
     }
 
-    // Pick toggle — starts active (primary intent when entering live mode).
+    // Pick toggle — active by default on first visit; restored from localStorage after.
     const pickBtn = makeIconBtn({
       id: PREFIX + '-pick-toggle',
       svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>',
@@ -3484,10 +3484,6 @@ void main() {
       ariaLabel: 'Pick element',
       onClick: () => togglePick(),
     });
-    pickBtn.style.background = P.accentSoft;
-    pickBtn.style.color = P.accent;
-    pickBtn.dataset.active = 'true';
-    pickBtn._expandLabel();
     inner.appendChild(pickBtn);
 
     // Detect toggle
@@ -3501,7 +3497,7 @@ void main() {
     const detectBadge = el('span', {
       fontSize: '10px', fontWeight: '600',
       padding: '0px 5px', borderRadius: '7px', lineHeight: '16px',
-      background: P.accent, color: P.surface.includes('18%') ? 'oklch(18% 0 0)' : 'oklch(98% 0 0)',
+      background: P.accent, color: C.ink,
       display: 'none', fontFamily: MONO, marginLeft: '4px',
     });
     detectBadge.id = PREFIX + '-detect-badge';
@@ -3511,11 +3507,11 @@ void main() {
     // DESIGN.md panel toggle — quartet of color squares as the mark.
     const designBtn = makeIconBtn({
       id: PREFIX + '-design-toggle',
-      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px ${P.hairline};flex-shrink:0">
-        <span style="background:oklch(60% 0.25 350)"></span>
-        <span style="background:oklch(60% 0.15 45)"></span>
-        <span style="background:oklch(55% 0.12 250)"></span>
-        <span style="background:oklch(30% 0 0)"></span>
+      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);flex-shrink:0">
+        <span style="background:oklch(84% 0.19 80.46)"></span>
+        <span style="background:oklch(70% 0.12 188)"></span>
+        <span style="background:oklch(84% 0.035 82)"></span>
+        <span style="background:oklch(34% 0.014 82)"></span>
       </span>`,
       label: 'DESIGN.md',
       ariaLabel: 'Toggle DESIGN.md panel',
@@ -3551,7 +3547,7 @@ void main() {
     });
     exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
     exitBtn.title = 'Exit live mode';
-    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = P.text; exitBtn.style.background = P.exitHover; });
+    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
     exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
     exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
     inner.appendChild(exitBtn);
@@ -3576,6 +3572,7 @@ void main() {
 
     // Listen for detection results AND ready signal
     window.addEventListener('message', onDetectMessage);
+    updateGlobalBarState();
   }
 
   function updateGlobalBarState() {
@@ -3642,6 +3639,7 @@ void main() {
 
   function togglePick() {
     pickActive = !pickActive;
+    savePickPref();
     updateGlobalBarState();
 
     if (!pickActive) {
@@ -3826,10 +3824,9 @@ void main() {
         position: fixed; top: 12px; bottom: 72px; right: 12px;
         width: ${DESIGN_PANEL_WIDTH}px; max-width: calc(100vw - 24px);
         background: ${BP.surface};
-        border: 1px solid ${BP.hairline};
+        border: 1.5px solid ${BP.border};
         border-radius: 14px;
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        box-shadow: 0 20px 60px oklch(0% 0 0 / 0.18), 0 4px 12px oklch(0% 0 0 / 0.08);
+        box-shadow: ${BP.shadow};
         display: flex; flex-direction: column;
         transform: translateX(calc(100% + 24px));
         opacity: 0;
@@ -4281,7 +4278,7 @@ void main() {
       return {
         role: m.role || humanizeKey(key),
         name: m.displayName || humanizeKey(key),
-        value: value,
+        value: normalizeCssColor(m.canonical || value),
         canonical: m.canonical || null,
         description: m.description || findProseDescription(proseColors, key, m.displayName),
         tonalRamp: m.tonalRamp || null,
@@ -4372,7 +4369,7 @@ void main() {
 
       const hero = document.createElement('div');
       hero.className = 'c-hero';
-      hero.style.background = c.value;
+      hero.style.background = cssSafe(c.value || '');
       tile.appendChild(hero);
 
       const ramp = synthesizeRamp(c);
@@ -4693,6 +4690,18 @@ void main() {
     // Strip anything outside valid CSS value chars to prevent injection via
     // .impeccable/design.json values rendered into inline style strings.
     return String(v).replace(/[<>"'`\n]/g, '');
+  }
+
+  function normalizeCssColor(v) {
+    if (!v || typeof v !== 'string') return v;
+    const s = v.trim();
+    const oklch = s.match(/oklch\([^)]+\)/i);
+    if (oklch) return oklch[0];
+    const hex = s.match(/#[0-9a-fA-F]{3,8}\b/);
+    if (hex) return hex[0];
+    const rgb = s.match(/rgba?\([^)]+\)/i);
+    if (rgb) return rgb[0];
+    return s.replace(/\s+#.*$/, '').trim();
   }
 
   // --- Raw tab: minimal markdown renderer (subset) --------------------------

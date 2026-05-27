@@ -100,6 +100,7 @@ export class PeriodicTable {
 		const categoryOrder = ['create', 'evaluate', 'refine', 'simplify', 'harden', 'system'];
 
 		const grid = document.createElement('div');
+		grid.className = 'ptable-grid';
 		grid.style.cssText = `
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -191,9 +192,11 @@ export class PeriodicTable {
 		const colors = categoryColors[category];
 
 		const group = document.createElement('div');
+		group.className = `ptable-group ptable-group--${category}`;
 		group.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
 
 		const label = document.createElement('div');
+		label.className = 'ptable-group-label';
 		label.style.cssText = `
 			font-family: var(--font-body);
 			font-size: 10px;
@@ -207,6 +210,7 @@ export class PeriodicTable {
 		group.appendChild(label);
 
 		const row = document.createElement('div');
+		row.className = 'ptable-row';
 		row.style.cssText = `display: flex; flex-wrap: wrap; gap: 6px;`;
 
 		commands.forEach(cmd => {
@@ -223,6 +227,8 @@ export class PeriodicTable {
 		const display = commandDisplay[cmd];
 
 		const el = document.createElement('button');
+		el.className = `ptable-element ptable-element--${category}`;
+		el.dataset.category = category;
 		el.type = 'button';
 		// Build accessible label with the full invocation
 		const invocation = cmd === 'impeccable'
@@ -250,6 +256,7 @@ export class PeriodicTable {
 
 		// Atomic number
 		const number = document.createElement('div');
+		number.className = 'ptable-number';
 		number.style.cssText = `
 			position: absolute;
 			top: 3px;
@@ -264,6 +271,7 @@ export class PeriodicTable {
 
 		// Symbol
 		const symbol = document.createElement('div');
+		symbol.className = 'ptable-symbol';
 		symbol.style.cssText = `
 			font-family: var(--font-display);
 			font-size: 20px;
@@ -274,10 +282,10 @@ export class PeriodicTable {
 		symbol.textContent = commandSymbols[cmd];
 		el.appendChild(symbol);
 
-		// Command name. The root "impeccable" is shown with its slash as the
-		// entry point. All other commands are sub-commands and show their
-		// bare name (the invocation is /impeccable <name>).
+		// Command name. The palette lists names; invocation examples elsewhere
+		// include the slash syntax.
 		const name = document.createElement('div');
+		name.className = 'ptable-name';
 		name.style.cssText = `
 			font-family: var(--font-mono);
 			font-size: 8px;
@@ -290,7 +298,7 @@ export class PeriodicTable {
 			white-space: nowrap;
 		`;
 		if (cmd === 'impeccable') {
-			name.textContent = '/impeccable';
+			name.textContent = 'impeccable';
 		} else if (display) {
 			name.textContent = display.label;
 		} else {
@@ -301,6 +309,7 @@ export class PeriodicTable {
 		// Alpha badge
 		if (alphaCommands.includes(cmd)) {
 			const badge = document.createElement('div');
+			badge.className = 'ptable-alpha';
 			badge.style.cssText = `
 				position: absolute;
 				top: 2px;

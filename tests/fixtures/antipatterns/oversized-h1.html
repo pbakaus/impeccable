@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Oversized H1 fixture</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    h1 { margin: 0 0 24px; line-height: 1.05; }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: comically huge headline carrying almost no copy -->
+    <section class="col flag">
+      <h1 style="font-size: 168px">Bold.</h1>
+      <h1 style="font-size: 132px">Ship it.</h1>
+    </section>
+
+    <!-- PASS column: large type that earns its size, or modest headings -->
+    <section class="col pass">
+      <h1 style="font-size: 168px">A headline this large still reads as deliberate when it carries a real sentence of substance.</h1>
+      <h1 style="font-size: 44px">Short</h1>
+    </section>
+  </div>
+</body>
+</html>
