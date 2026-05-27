@@ -27,7 +27,6 @@ import { fileURLToPath } from 'node:url';
 
 import { createFakeAgent } from './live-e2e/agent.mjs';
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
-import { readCliOption } from './live-e2e/cli-options.mjs';
 import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
 import {
   assertApplyDockVisible,
@@ -75,8 +74,6 @@ const fixtures = onlyName
   ? allFixtures.filter((f) => f.name === onlyName)
   : allFixtures;
 
-const cliLlmProvider = readCliOption(process.argv, 'llm-provider');
-const cliLlmModel = readCliOption(process.argv, 'llm-model');
 const manualOnly = process.env.IMPECCABLE_E2E_MANUAL_ONLY === '1'
   || process.env.IMPECCABLE_E2E_MANUAL_ONLY === 'true';
 
@@ -132,8 +129,7 @@ for (const { name, fixture } of fixtures) {
       let agent;
       if (agentMode === 'llm') {
         const llmConfig = resolveLlmAgentConfig({
-          provider: cliLlmProvider,
-          model: cliLlmModel || process.env.IMPECCABLE_E2E_LLM_MODEL,
+          model: process.env.IMPECCABLE_E2E_LLM_MODEL,
         });
         agent = await createLlmAgent({
           config: llmConfig,
@@ -459,8 +455,7 @@ async function createManualScenarioAgent(t, scenario = {}) {
   }
 
   const llmConfig = resolveLlmAgentConfig({
-    provider: cliLlmProvider,
-    model: cliLlmModel || process.env.IMPECCABLE_E2E_LLM_MODEL,
+    model: process.env.IMPECCABLE_E2E_LLM_MODEL,
   });
   const agent = await createLlmAgent({
     config: llmConfig,
