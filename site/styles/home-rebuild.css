@@ -18,10 +18,16 @@
    transparent nav — the /design-system topbar treatment. */
 .hero-rebuild {
   position: relative;
-  min-height: 100svh;
+  /* Leave ~115px of the testimonials section visible above the fold
+     (dotted divider + first row's top edge). Without this the hero
+     fills the entire viewport and the testimonials read as out of sight. */
+  min-height: calc(100svh - 115px);
   display: grid;
   align-items: center;
-  padding: 64px 0 96px;
+  /* Top padding clears the fixed (overlay) header (97px). On short viewports the
+     hero grows to fit its content and pins it at this padding-top, so the demo
+     never tucks under the nav; on tall viewports the content still centers. */
+  padding: 113px 0 96px;
   overflow: hidden;
 }
 
@@ -867,7 +873,10 @@
 
 .hero-live-demo .live-demo-frame {
   aspect-ratio: auto;
-  height: 614px;
+  /* Cap to the viewport so the centered demo's top always clears the fixed
+     header (97px) regardless of viewport height. 380 = hero padding (64+96) +
+     ~2× the header+clearance, derived so the frame top stays ≥ ~116px. */
+  height: min(640px, calc(100svh - 380px));
   max-width: 100%;
 }
 
@@ -882,7 +891,7 @@
 .hero-live-demo .live-demo-target.hotel-hero-pick {
   align-self: stretch;
   width: auto;
-  height: 188px;
+  height: 214px;
   min-height: 0;
   margin: 16px 18px 0;
 }
@@ -913,6 +922,7 @@
 @media (max-width: 1080px) {
   .hero-live-demo { max-width: 460px; margin-inline: auto; }
 }
+
 
 /* ----------------------------------------------------------------------------
    The page under the picker: AURELIA, a warm serif boutique-hotel site.
@@ -1010,8 +1020,8 @@
   margin: 0;
   font-family: var(--h-serif);
   font-weight: 500;
-  font-size: 36px;
-  line-height: 0.98;
+  font-size: 31px;
+  line-height: 1.05;
   letter-spacing: -0.01em;
   color: oklch(98% 0.01 85);
 }
@@ -1058,8 +1068,9 @@
 /* v1 — warm dusk, text bottom-left (uses base photo) */
 .hotel-hero--1 .hotel-hero-cta { background: oklch(98% 0.01 85); color: oklch(30% 0.03 40); }
 
-/* v2 — sea-toned, centered, outline CTA */
-.hotel-hero--2 { align-items: center; text-align: center; }
+/* v2 — sea-toned, centered, outline CTA. justify-content centers the inner
+   block horizontally (the base hero is a flex row defaulting to flex-start). */
+.hotel-hero--2 { align-items: center; justify-content: center; text-align: center; }
 .hotel-hero--2 .hotel-hero-photo {
   background:
     linear-gradient(to top, oklch(24% 0.03 220 / 0.82), oklch(38% 0.04 220 / 0.12) 58%, transparent),
@@ -1338,12 +1349,9 @@
   stroke-dashoffset: 1;
   filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.35));
 }
-/* Two circles drawn in sequence: p1 around the headline, p2 around the button. */
-.hero-live-demo .live-demo-annotations.is-circle-1 .live-demo-stroke-p1 {
-  animation: liveDemoStroke 600ms var(--ks-ease, ease) forwards;
-}
-.hero-live-demo .live-demo-annotations.is-circle-2 .live-demo-stroke-p2 {
-  animation: liveDemoStroke 560ms var(--ks-ease, ease) forwards;
+/* Single circle around the off-brand button, drawn when the layer reveals. */
+.hero-live-demo .live-demo-annotations.is-visible .live-demo-stroke path {
+  animation: liveDemoStroke 620ms var(--ks-ease, ease) forwards;
 }
 
 /* Comment pin: gold dot + note bubble, dropped near the button / suites edge. */

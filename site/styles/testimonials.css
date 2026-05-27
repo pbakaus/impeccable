@@ -1,0 +1,200 @@
+/* ============================================================================
+   Testimonials — two-row marquee on a tinted graphite plinth.
+   Single variant, no switcher. Spotlight card (Ben Davis) gets a kinpaku
+   gold gradient so it commands attention even mid-row.
+   ============================================================================ */
+
+.home-kinpaku .testimonials-section {
+  position: relative;
+  /* Escape main.site-content's max-width + side padding so the section
+     spans the full viewport. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding: 20px 0 clamp(56px, 7vw, 96px);
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+  border-top: 0;
+  overflow: hidden;
+}
+
+/* Flat dotted top divider (matches the hero → testimonials boundary). */
+.home-kinpaku .testimonials-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 100vw;
+  height: 18px;
+  transform: translateX(-50%);
+  background-image: radial-gradient(circle, oklch(0.42 0.014 82) 0.9px, transparent 1.4px);
+  background-size: 7px 6px;
+  background-position: 0 1px;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Plinth — the tinted graphite shelf the marquee rides on
+   --------------------------------------------------------------------------- */
+
+.home-kinpaku .t-plinth {
+  position: relative;
+  width: 100vw;
+  padding: 20px 0;
+  background:
+    linear-gradient(180deg, oklch(20% 0.01 78) 0%, oklch(17% 0.008 78) 100%);
+  border-top: 1px solid oklch(78% 0.12 82 / 0.12);
+  border-bottom: 1px solid oklch(78% 0.12 82 / 0.10);
+}
+.home-kinpaku .t-plinth--shelf::before,
+.home-kinpaku .t-plinth--shelf::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 8px;
+  pointer-events: none;
+  z-index: 1;
+}
+.home-kinpaku .t-plinth--shelf::before {
+  top: 0;
+  background: linear-gradient(180deg, oklch(0% 0 0 / 0.18), transparent);
+}
+.home-kinpaku .t-plinth--shelf::after {
+  bottom: 0;
+  background: linear-gradient(0deg, oklch(0% 0 0 / 0.22), transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   Marquee engine
+   --------------------------------------------------------------------------- */
+
+.home-kinpaku .t-marquee {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+.home-kinpaku .t-marquee-row { overflow: hidden; }
+
+.home-kinpaku .t-marquee-track {
+  display: flex;
+  gap: 14px;
+  width: max-content;
+  /* Both rows share the same duration so on-screen speeds match. */
+  animation: t-marquee-fwd 110s linear infinite;
+}
+.home-kinpaku .t-marquee-track--reverse {
+  animation: t-marquee-rev 110s linear infinite;
+}
+.home-kinpaku .t-marquee:hover .t-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes t-marquee-fwd {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes t-marquee-rev {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .t-marquee-track { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Card
+   --------------------------------------------------------------------------- */
+
+.home-kinpaku .testimonials-section .t-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  width: 320px;
+  height: 168px;
+  flex: none;
+  padding: 18px 18px 14px;
+  border-radius: 10px;
+  color: var(--ks-text);
+  text-decoration: none;
+  transition: transform 200ms ease, background 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+/* Plinth-resident card — borderless, slightly raised tone */
+.home-kinpaku .t-card--plinth {
+  background: oklch(13% 0.008 95);
+  border: 1px solid transparent;
+  box-shadow: 0 1px 0 0 oklch(78% 0.12 82 / 0.06) inset, 0 4px 12px -8px oklch(0% 0 0 / 0.6);
+}
+.home-kinpaku .t-card--plinth:hover {
+  background: oklch(15% 0.012 78);
+  transform: translateY(-1px);
+}
+
+/* Quote text */
+.home-kinpaku .testimonials-section .t-card-quote {
+  font-family: var(--ks-font);
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: var(--ks-text);
+  margin: 0;
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Meta row (avatar + name + handle) */
+.home-kinpaku .testimonials-section .t-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ks-mono);
+}
+.home-kinpaku .testimonials-section .t-name-block {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.home-kinpaku .testimonials-section .t-name {
+  color: var(--ks-text);
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  font-family: var(--ks-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.home-kinpaku .testimonials-section .t-handle {
+  color: var(--ks-text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+}
+
+/* Avatar + coin fallback */
+.home-kinpaku .testimonials-section .t-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: var(--ks-graphite-2);
+  box-shadow: inset 0 0 0 1px oklch(78% 0.12 82 / 0.22);
+}
+.home-kinpaku .testimonials-section .t-coin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ks-graphite-2);
+  border: 1px solid oklch(78% 0.12 82 / 0.32);
+  font-family: var(--ks-font-display);
+  font-weight: 400;
+  font-size: 0.95rem;
+  color: var(--ks-kinpaku);
+  flex: none;
+}

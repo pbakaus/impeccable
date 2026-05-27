@@ -19,13 +19,11 @@ const TIMELINE = [
 	{ dt: 800,  action: 'outline-show', caption: 'Pick any element on your live page.' },
 	{ dt: 450,  action: 'cursor-click' },
 	{ dt: 200,  action: 'open-ctx' },
-	{ dt: 520,  action: 'cursor-to-headline' },
-	{ dt: 250,  action: 'draw-circle-1', caption: 'Mark what’s off-brand…' },
-	{ dt: 600,  action: 'cursor-to-button' },
-	{ dt: 250,  action: 'draw-circle-2' },
-	{ dt: 600,  action: 'drop-pin' },
+	{ dt: 560,  action: 'cursor-to-button' },
+	{ dt: 250,  action: 'draw-circle', caption: 'Circle what’s off-brand…' },
+	{ dt: 700,  action: 'drop-pin' },
 	{ dt: 300,  action: 'type-note', text: 'match the suites below', caption: '…and say what you want.' },
-	{ dt: 1900, action: 'hold', caption: 'Marks + note are sent to your agent.' },
+	{ dt: 1800, action: 'hold', caption: 'Mark + note are sent to your agent.' },
 	{ dt: 900,  action: 'cursor-to-go' },
 	{ dt: 300,  action: 'click-go', caption: 'Generating three variants…' },
 	{ dt: 1600, action: 'show-variant', n: 1, caption: 'Variant 1 of 3.' },
@@ -139,14 +137,14 @@ export function initLiveDemo() {
 		setCtxPhase(PHASE.HIDDEN);
 		cursor.classList.remove('is-visible', 'is-click');
 		outline.classList.remove('is-visible');
-		annotations.classList.remove('is-visible', 'is-circle-1', 'is-circle-2', 'is-pin-visible', 'is-note-visible');
+		annotations.classList.remove('is-visible', 'is-pin-visible', 'is-note-visible');
 		if (noteText) noteText.textContent = '';
 		if (inputText) inputText.textContent = '';
 		showVariant(0);
 	};
 
 	const clearAnnotations = () =>
-		annotations.classList.remove('is-visible', 'is-circle-1', 'is-circle-2', 'is-pin-visible', 'is-note-visible');
+		annotations.classList.remove('is-visible', 'is-pin-visible', 'is-note-visible');
 
 	const setCaption = (text) => {
 		if (text && captionLabel) captionLabel.textContent = text;
@@ -185,20 +183,13 @@ export function initLiveDemo() {
 			case 'open-ctx':
 				setCtxPhase(PHASE.CONFIGURING);
 				break;
-			case 'cursor-to-headline':
-				// Over the generic headline (upper-left of the wide hero).
-				moveCursor(target, -110, -36);
-				break;
-			case 'draw-circle-1':
-				positionAnnotations();
-				annotations.classList.add('is-visible', 'is-circle-1');
-				break;
 			case 'cursor-to-button':
 				// Over the purple "Book Now" button (lower-left).
 				moveCursor(target, -150, 26);
 				break;
-			case 'draw-circle-2':
-				annotations.classList.add('is-circle-2');
+			case 'draw-circle':
+				positionAnnotations();
+				annotations.classList.add('is-visible');
 				break;
 			case 'drop-pin':
 				// Near the pin's CSS position (left 46%, top 78%).
@@ -334,11 +325,51 @@ export function initGbarPageChat() {
 			expand();
 		});
 
+		let demoRec = null;
+
 		voice?.addEventListener('click', (e) => {
 			e.stopPropagation();
 			expand();
-			voice.classList.add('is-active');
-			window.setTimeout(() => voice.classList.remove('is-active'), 900);
+			const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+			if (!Ctor) return;
+			if (voice.dataset.listening === 'true') {
+				if (demoRec) {
+					try { demoRec.stop(); } catch { /* ignore */ }
+				}
+				return;
+			}
+			const demoBase = input.value.trim() ? input.value.trim() + ' ' : '';
+			const rec = new Ctor();
+			rec.continuous = false;
+			rec.interimResults = true;
+			rec.lang = document.documentElement.lang || navigator.language || 'en-US';
+			rec.onstart = () => {
+				voice.classList.add('is-active');
+				voice.dataset.listening = 'true';
+				voice.setAttribute('aria-pressed', 'true');
+			};
+			rec.onresult = (event) => {
+				let transcript = '';
+				for (let i = 0; i < event.results.length; i++) {
+					transcript += event.results[i][0]?.transcript || '';
+				}
+				input.value = (demoBase + transcript).trim();
+				syncVisual();
+			};
+			rec.onend = () => {
+				voice.classList.remove('is-active');
+				voice.dataset.listening = 'false';
+				voice.setAttribute('aria-pressed', 'false');
+				demoRec = null;
+			};
+			rec.onerror = () => {
+				voice.classList.remove('is-active');
+				voice.dataset.listening = 'false';
+				voice.setAttribute('aria-pressed', 'false');
+				demoRec = null;
+			};
+			demoRec = rec;
+			try { rec.start(); } catch { /* ignore */ }
 		});
 
 		input.addEventListener('keydown', (e) => {
