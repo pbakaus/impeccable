@@ -153,7 +153,6 @@
     if (savedY != null) {
       const apply = () => {
         if (Math.abs(window.scrollY - savedY) > 0.5) {
-          console.log('[impeccable.scroll] early restore', { from: window.scrollY, to: savedY });
           window.scrollTo(0, savedY);
         }
       };
@@ -3060,7 +3059,6 @@
     scrollLockTargetY = typeof initialTargetY === 'number' && isFinite(initialTargetY)
       ? initialTargetY
       : window.scrollY;
-    console.log('[impeccable.scroll] startScrollLock', { sessionId, scrollY: window.scrollY, targetY: scrollLockTargetY, initialOverride: initialTargetY });
 
     try { history.scrollRestoration = 'manual'; } catch {}
 
@@ -3075,11 +3073,9 @@
       const before = window.scrollY;
       const delta = before - scrollLockTargetY;
       if (Math.abs(delta) < 0.5) {
-        console.log('[impeccable.scroll] correct noop', { why, scrollY: before, targetY: scrollLockTargetY });
         return;
       }
       window.scrollTo({ top: scrollLockTargetY, left: window.scrollX, behavior: 'instant' });
-      console.log('[impeccable.scroll] corrected', { why, from: before, to: scrollLockTargetY, delta, nowAt: window.scrollY });
     };
     const schedule = (why) => {
       if (scrollLockRaf != null) return;
@@ -3089,14 +3085,11 @@
     scrollLockObserver = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.target?.closest?.('[data-impeccable-variants="' + sessionId + '"]')) {
-          const childAdds = Array.from(m.addedNodes).map(n => n.nodeType === 1 ? (n.tagName + (n.dataset?.impeccableVariant ? ('[variant=' + n.dataset.impeccableVariant + ']') : '')) : n.nodeType).join(',');
-          console.log('[impeccable.scroll] mutation inside wrapper', { type: m.type, target: m.target?.tagName, adds: childAdds, scrollYBefore: window.scrollY, targetY: scrollLockTargetY });
           schedule('mutation-in-wrapper');
           return;
         }
         for (const n of m.addedNodes) {
           if (n.nodeType === 1 && (n.matches?.('[data-impeccable-variants="' + sessionId + '"]') || n.querySelector?.('[data-impeccable-variants="' + sessionId + '"]'))) {
-            console.log('[impeccable.scroll] wrapper node added', { tag: n.tagName, scrollYBefore: window.scrollY, targetY: scrollLockTargetY });
             schedule('wrapper-added');
             return;
           }
@@ -3123,7 +3116,6 @@
       const prevTarget = scrollLockTargetY;
       scrollLockTargetY = window.scrollY;
       writeScrollY(scrollLockTargetY);
-      console.log('[impeccable.scroll] reanchor', { why, prevTarget, newTarget: scrollLockTargetY });
     };
     const markGesture = (why) => {
       userGestureAt = performance.now();
@@ -3140,17 +3132,11 @@
     // post-reload animated restore or some other script calling
     // scrollIntoView, we want to snap back immediately. Only skip if a
     // user gesture fired in the last 250ms.
-    let lastLoggedScrollY = window.scrollY;
     window.addEventListener('scroll', () => {
       const now = window.scrollY;
-      if (Math.abs(now - lastLoggedScrollY) > 5) {
-        console.log('[impeccable.scroll] scroll event', { from: lastLoggedScrollY, to: now, targetY: scrollLockTargetY });
-        lastLoggedScrollY = now;
-      }
       if (scrollLockTargetY == null) return;
       if (performance.now() - userGestureAt < USER_GESTURE_WINDOW_MS) return;
       if (Math.abs(now - scrollLockTargetY) < 0.5) return;
-      console.log('[impeccable.scroll] scroll-event snap', { from: now, to: scrollLockTargetY });
       window.scrollTo({ top: scrollLockTargetY, left: window.scrollX, behavior: 'instant' });
     }, { passive: true, ...sig });
 
@@ -3158,7 +3144,6 @@
     // restore or a smooth-scroll animation means we want to win now.
     if (Math.abs(window.scrollY - scrollLockTargetY) > 0.5) {
       window.scrollTo({ top: scrollLockTargetY, left: window.scrollX, behavior: 'instant' });
-      console.log('[impeccable.scroll] startScrollLock initial apply', { to: scrollLockTargetY });
     }
   }
 
@@ -3697,6 +3682,9 @@
 
     // Commit any pending pin edit BEFORE we snapshot annotations.
     if (annotEditing) finalizeEditingPin();
+    // Go captures page content, not manual-edit runtime state.
+    disableInlineEdit();
+    stripManualEditRuntimeState(selectedElement);
 
     currentSessionId = id8();
     expectedVariants = selectedCount;
@@ -3740,7 +3728,6 @@
     writeScrollY(window.scrollY);
     if (variantObserver) variantObserver.disconnect();
     variantObserver = startVariantObserver(currentSessionId);
-    console.log('[impeccable.scroll] Go pressed', { scrollY: window.scrollY, sessionId: currentSessionId });
     startScrollLock(currentSessionId);
 
     captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
@@ -3874,6 +3861,55 @@
     return '#ffffff';
   }
 
+  function shouldCaptureTextFromParent(el, snapshot) {
+    if (!el || !el.parentElement || el.parentElement === document.body) return false;
+    if (snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0)) return false;
+    if (own(el.parentElement)) return false;
+    const text = (el.textContent || '').trim();
+    if (!text) return false;
+    const hasElementChildren = Array.from(el.children || []).some((child) => !own(child));
+    if (hasElementChildren) return false;
+    const cs = getComputedStyle(el);
+    return parseFloat(cs.fontSize) >= 20;
+  }
+
+  async function cropBlobToRect(blob, sourceRect, targetRect, scale) {
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(blob);
+    } catch {
+      const imgUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      img.src = imgUrl;
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+      URL.revokeObjectURL(imgUrl);
+      bitmap = img;
+    }
+    const canvas = document.createElement('canvas');
+    const sx = Math.max(0, Math.round((targetRect.left - sourceRect.left) * scale));
+    const sy = Math.max(0, Math.round((targetRect.top - sourceRect.top) * scale));
+    const sw = Math.max(1, Math.round(targetRect.width * scale));
+    const sh = Math.max(1, Math.round(targetRect.height * scale));
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (bitmap.close) bitmap.close();
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((out) => out ? resolve(out) : reject(new Error('cropped capture failed')), 'image/png');
+    });
+  }
+
+  async function captureFromParentCrop(ms, el, options) {
+    const parent = el.parentElement;
+    const parentRect = parent.getBoundingClientRect();
+    const targetRect = el.getBoundingClientRect();
+    if (!parentRect.width || !parentRect.height) return null;
+    if (parentRect.width * parentRect.height > 4000000) return null;
+    const blob = await ms.domToBlob(parent, options);
+    return cropBlobToRect(blob, parentRect, targetRect, options.scale || 1);
+  }
+
   // Capture the element (with current annotations baked in) and return a PNG
   // Blob. Shared between the Go flow (uploads it to the server) and the
   // debug toggle (displays it as an overlay for side-by-side comparison).
@@ -3895,11 +3931,17 @@
       const ms = await loadModernScreenshot();
       const fontCssText = await collectFontCssText();
       const backgroundColor = resolveCanvasBackground(el);
-      return await ms.domToBlob(el, {
+      const options = {
         scale: Math.min(window.devicePixelRatio || 1, 2),
         font: fontCssText ? { cssText: fontCssText } : undefined,
+        onCloneNode: stripManualEditRuntimeState,
         ...(backgroundColor ? { backgroundColor } : {}),
-      });
+      };
+      if (shouldCaptureTextFromParent(el, snapshot)) {
+        const cropped = await captureFromParentCrop(ms, el, options).catch(() => null);
+        if (cropped) return cropped;
+      }
+      return await ms.domToBlob(el, options);
     } finally {
       if (annotNode) annotNode.remove();
       if (savedPosition !== null) el.style.position = savedPosition;
