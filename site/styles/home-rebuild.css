@@ -155,10 +155,11 @@
   transition: opacity 180ms var(--ks-ease), filter 180ms var(--ks-ease);
 }
 
-/* Pi's source asset reads darker than the others after the grayscale-invert
-   filter — bump its brightness/contrast specifically so it matches the row. */
+/* Pi's source SVG is already white-on-transparent, so the row's default
+   invert(1) filter would turn it black (invisible against the lacquer
+   hero). Skip the filter entirely; the asset is already on-brand. */
 .home-kinpaku .hero-rebuild-logo[data-tooltip="Pi"] img {
-  filter: grayscale(1) saturate(0) invert(1) brightness(1.6) contrast(0.92);
+  filter: none;
 }
 
 .home-kinpaku .hero-rebuild-logo:hover,
@@ -171,6 +172,17 @@
 .home-kinpaku .hero-rebuild-logo:focus-visible img {
   opacity: 1;
   filter: none;
+}
+
+/* VS Code Copilot and Codex CLI logos are dark monochrome glyphs. The row's
+   default invert filter makes them readable; removing it on hover would put
+   them back to dark-on-dark, which is invisible. Keep them inverted on
+   hover — they don't have a brand color to restore. */
+.home-kinpaku .hero-rebuild-logo[data-tooltip="VS Code Copilot"]:hover img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="VS Code Copilot"]:focus-visible img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:hover img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:focus-visible img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(1.18);
 }
 
 /* Right column hosts the existing split comparison */
@@ -1431,31 +1443,225 @@
 
 
 /* ============================================================================
-   SECTION 03 (Live Mode) — support cells as a standalone grid
-   The animated demo moved to the hero; this section keeps the four explainer
-   cells, laid out as cards instead of the old frame|support two-column split.
+   SECTION 03 (Live Mode) — how-it-works flow + audience tiles
+   The animated demo lives in the hero; this section explains how Live Mode wires
+   itself into your codebase, then sells it to each evaluator. Left-aligned blocks
+   below the (right-aligned) section header.
    ============================================================================ */
 
-.live-support-grid {
+/* --- How it works: 3 steps, each with a minimal glyph -------------------- */
+.live-how {
+  list-style: none;
+  margin: 48px 0 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 18px;
-  margin-top: 44px;
+  text-align: left;
 }
-.live-support-grid .live-demo-support-cell {
-  border-bottom: 0;
-  padding: 24px 22px;
-  border: 1px solid var(--ks-rule);
-  border-radius: 4px;
-  background: oklch(10% 0.006 95 / 0.6);
+/* No outer card — the mini-screen below is the only framed element, so the
+   step reads as one clean unit instead of a box-in-a-box. */
+.live-how-step {
+  display: grid;
   align-content: start;
+  gap: 13px;
+  padding: 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 6px;
+  background: oklch(10% 0.006 95 / 0.45);
+}
+.live-how-step .live-how-n { margin-top: 4px; }
+.live-how-n {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: var(--ks-kinpaku);
+}
+.live-how-title {
+  margin: 0;
+  font-family: var(--ks-font-display);
+  font-weight: 600;
+  font-size: 1.18rem;
+  color: var(--ks-champagne);
+}
+.live-how-copy {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-muted);
+}
+.live-how-copy code {
+  font-family: var(--ks-mono);
+  font-size: 0.85em;
+  color: var(--ks-kinpaku);
+}
+
+/* Each step's visual is a clean mini browser screen (chrome bar + screen),
+   echoing the picker still — not an abstract panel. */
+.live-how-glyph {
+  border-radius: 5px;
+  overflow: hidden;
+  background: oklch(6% 0.005 95);
+}
+.live-how-screen {
+  position: relative;
+  min-height: 104px;
+  padding: 16px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
   gap: 9px;
+}
+/* Step 1: terminal line + framework chips */
+.live-how-term {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-champagne);
+}
+.live-how-term-prompt { color: var(--ks-kinpaku); }
+.live-how-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.live-how-chips span {
+  font-family: var(--ks-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  color: var(--ks-muted);
+  padding: 2px 7px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+}
+.live-how-chips span:first-child {
+  color: var(--ks-kinpaku);
+  border-color: oklch(74% 0.09 82 / 0.55);
+}
+/* Step 2: an element with a pick outline + an attached comment, echoing the
+   on-canvas picker from the hero loop. */
+.live-how-screen--pick { justify-items: center; align-content: start; }
+.live-how-pick {
+  position: relative;
+  width: 122px;
+  height: 40px;
+  border-radius: 4px;
+  background: oklch(14% 0.006 95);
+  border: 2px solid var(--ks-kinpaku);
+  box-shadow: 0 0 0 4px oklch(78% 0.12 82 / 0.12);
+  display: grid;
+  place-items: center;
+}
+.live-how-pick-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  color: var(--ks-muted);
+}
+.live-how-pick-dot {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  border: 2px solid oklch(98% 0.005 95);
+}
+.live-how-note {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: -14px;
+  white-space: nowrap;
+  font-family: var(--ks-mono);
+  font-size: 0.6rem;
+  color: var(--ks-champagne);
+  background: oklch(13% 0.006 95);
+  border: 1px solid var(--ks-rule);
+  border-left: 2px solid var(--ks-kinpaku);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+.live-how-note-caret {
+  position: absolute;
+  top: -4px;
+  left: 13px;
+  width: 7px;
+  height: 7px;
+  background: oklch(13% 0.006 95);
+  border-left: 1px solid var(--ks-rule);
+  border-top: 1px solid var(--ks-rule);
+  transform: rotate(45deg);
+}
+/* Step 3: the floating contextual bar at accept, plus the source write. */
+.live-how-screen--accept { justify-items: center; gap: 12px; }
+.live-how-ctxbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: oklch(12% 0.006 95);
+  box-shadow: 0 6px 18px oklch(2% 0.004 95 / 0.45);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+}
+.live-how-ctx-nav { color: var(--ks-muted); }
+.live-how-ctx-count { color: var(--ks-champagne); }
+.live-how-ctx-div { width: 1px; height: 13px; background: var(--ks-rule); }
+.live-how-ctx-accept {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ks-kinpaku);
+  color: oklch(16% 0.02 90);
+  font-weight: 600;
+}
+.live-how-wrote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  color: var(--ks-patina);
+}
+.live-how-wrote-check { font-size: 0.7rem; }
+
+/* --- Who it's for: three role tiles -------------------------------------- */
+.live-audience-eyebrow {
+  margin: 52px 0 22px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--ks-patina);
+}
+.live-audience {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+  text-align: left;
+}
+.live-audience-tile {
+  padding: 16px 0 0;
+  border-top: 2px solid var(--ks-patina);
+}
+.live-audience-role {
+  display: block;
+  margin-bottom: 11px;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ks-patina);
+}
+.live-audience-tile p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-muted);
 }
 
 @media (max-width: 920px) {
-  .live-support-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 560px) {
-  .live-support-grid { grid-template-columns: 1fr; }
+  .live-how { grid-template-columns: 1fr; }
+  .live-audience { grid-template-columns: 1fr; }
 }
 

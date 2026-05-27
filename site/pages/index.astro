@@ -57,9 +57,9 @@ import '../styles/testimonials.css';
         <h1 class="hero-rebuild-title">Tune interfaces<br>while they run.</h1>
 
         <p class="hero-rebuild-body">
-          Impeccable is the design skill that lets your AI iterate live in your production codebase,
-          catch AI design slop before it ships, and steer with a real design vocabulary.
-          No canvas. No handoff. No translation.
+          Your AI ships generic frontend by default. Impeccable is an agent skill that teaches it
+          to design: a real visual vocabulary, slop detection, and live iteration in your production
+          codebase. A CLI and Chrome extension extend it into your CI and browser.
         </p>
 
         <div class="hero-rebuild-actions">
@@ -74,18 +74,13 @@ import '../styles/testimonials.css';
           <a href="#slop" class="ks-button ks-button-secondary">See the rules</a>
         </div>
 
-        <p class="hero-rebuild-meta">
-          Agent skill plus optional CLI and Chrome extension. Works with every major AI coding harness.
-        </p>
-
         <div class="hero-rebuild-logos" aria-label="AI coding harnesses Impeccable works with">
-          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Cursor"><img src="assets/cursor-logo.png" alt="Cursor" width="22" height="22" loading="lazy"></span>
-          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Claude Code"><img src="assets/claude-logo.png" alt="Claude Code" width="22" height="22" loading="lazy"></span>
-          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Gemini CLI"><img src="assets/gemini-logo.png" alt="Gemini CLI" width="20" height="20" loading="lazy"></span>
           <span class="hero-rebuild-logo has-tooltip" data-tooltip="Codex CLI"><img src="assets/openai-logo.png" alt="Codex CLI" width="20" height="20" loading="lazy"></span>
+          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Claude Code"><img src="assets/claude-logo.png" alt="Claude Code" width="22" height="22" loading="lazy"></span>
+          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Cursor"><img src="assets/cursor-logo.png" alt="Cursor" width="22" height="22" loading="lazy"></span>
+          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Gemini CLI"><img src="assets/gemini-logo.png" alt="Gemini CLI" width="20" height="20" loading="lazy"></span>
           <span class="hero-rebuild-logo has-tooltip" data-tooltip="VS Code Copilot"><img src="assets/github-logo.png" alt="VS Code Copilot" width="20" height="20" loading="lazy"></span>
           <span class="hero-rebuild-logo has-tooltip" data-tooltip="Antigravity"><img src="assets/antigravity-logo.png" alt="Antigravity" width="20" height="20" loading="lazy"></span>
-          <span class="hero-rebuild-logo has-tooltip" data-tooltip="Kiro"><img src="assets/kiro-logo.png" alt="Kiro" width="20" height="20" loading="lazy"></span>
           <span class="hero-rebuild-logo has-tooltip" data-tooltip="OpenCode"><img src="assets/opencode-logo.png" alt="OpenCode" width="20" height="20" loading="lazy"></span>
           <span class="hero-rebuild-logo has-tooltip" data-tooltip="Pi"><img src="assets/pi-logo.svg" alt="Pi" width="20" height="20" loading="lazy"></span>
         </div>
@@ -276,7 +271,7 @@ import '../styles/testimonials.css';
     <!-- 02. CATCH THE SLOP - Anti-pattern detector teaser -->
     <section class="slop-teaser-section" id="slop" aria-labelledby="slop-teaser-title">
       <div class="slop-teaser-head">
-        <h2 id="slop-teaser-title" class="slop-teaser-title">Deshittification</h2>
+        <h2 id="slop-teaser-title" class="slop-teaser-title">Desloppification</h2>
         <p class="slop-teaser-body">
           Skills can't make a model fundamentally better at design. What they can do is remove inherent bias: the AI slop tells, the bad defaults, across every design discipline. That's what Impeccable does.
         </p>
@@ -321,24 +316,72 @@ import '../styles/testimonials.css';
         <h2 class="section-title">Design in production <span class="beta-badge">ALPHA</span></h2>
       </div>
       <div class="live-content" data-reveal>
-        <p class="section-lead">Kill the handoff. Pick any element in the browser, on your real running app. Drop a comment or a stroke. Hit Go. Three production-quality variants swap in via your framework's HMR. Accept the one you want and it writes back to source. No canvas. No translation.</p>
+        <p class="section-lead">Live Mode turns your running app into the canvas. The skill reads your real codebase, drops a picker into the page, and iterates any element in place, then writes the result back to source.</p>
 
-        <div class="live-support-grid">
-          <div class="live-demo-support-cell">
-            <span class="live-demo-support-k">Start</span>
-            <span class="live-demo-support-v"><code>/impeccable live</code> to open, then stop live mode when you're done. That's the whole invocation.</span>
+        <!-- How it works: three steps, each with a minimal glyph that doubles as
+             a reminder of what Live Mode looks like for anyone who skimmed the hero. -->
+        <ol class="live-how" aria-label="How Live Mode works">
+          <li class="live-how-step">
+            <div class="live-how-glyph" aria-hidden="true">
+              <div class="live-how-screen">
+                <div class="live-how-term"><span class="live-how-term-prompt">&rsaquo;</span> /impeccable live</div>
+                <div class="live-how-chips">
+                  <span>Next</span><span>Vite</span><span>SvelteKit</span><span>Astro</span><span>Nuxt</span>
+                </div>
+              </div>
+            </div>
+            <span class="live-how-n">01</span>
+            <h3 class="live-how-title">Detect &amp; inject</h3>
+            <p class="live-how-copy"><code>/impeccable live</code> starts it. The skill detects your framework, finds your dev server, and injects the picker into your live app. No config, no browser extension.</p>
+          </li>
+          <li class="live-how-step">
+            <div class="live-how-glyph" aria-hidden="true">
+              <div class="live-how-screen live-how-screen--pick">
+                <div class="live-how-pick">
+                  <span class="live-how-pick-tag">section.hero</span>
+                  <span class="live-how-pick-dot"></span>
+                  <span class="live-how-note">make it elegant<span class="live-how-note-caret"></span></span>
+                </div>
+              </div>
+            </div>
+            <span class="live-how-n">02</span>
+            <h3 class="live-how-title">Point &amp; iterate</h3>
+            <p class="live-how-copy">Pick any element, leave a comment or circle it, hit Go. Your agent reads the surrounding code and hot-swaps production-quality variants in via your framework's HMR.</p>
+          </li>
+          <li class="live-how-step">
+            <div class="live-how-glyph" aria-hidden="true">
+              <div class="live-how-screen live-how-screen--accept">
+                <div class="live-how-ctxbar">
+                  <span class="live-how-ctx-nav">&lsaquo;</span>
+                  <span class="live-how-ctx-count">2 / 3</span>
+                  <span class="live-how-ctx-nav">&rsaquo;</span>
+                  <span class="live-how-ctx-div"></span>
+                  <span class="live-how-ctx-accept">Accept</span>
+                </div>
+                <span class="live-how-wrote"><span class="live-how-wrote-check">&#10003;</span> wrote Hero.astro</span>
+              </div>
+            </div>
+            <span class="live-how-n">03</span>
+            <h3 class="live-how-title">Accept writes to source</h3>
+            <p class="live-how-copy">Keep the one you want and it lands in your real file as an ordinary edit: a diff you can review, not a throwaway mock.</p>
+          </li>
+        </ol>
+
+        <!-- Who it's for: the same capability, framed for each evaluator. Set
+             apart from the steps with a verdigris-lined treatment, not cards. -->
+        <p class="live-audience-eyebrow">Who it's for</p>
+        <div class="live-audience">
+          <div class="live-audience-tile">
+            <span class="live-audience-role">For designers</span>
+            <p>Iterate on the real product, with real data, states, and type. Steer the way you think: circle it, comment on it. No redraw, no Figma round-trip.</p>
           </div>
-          <div class="live-demo-support-cell">
-            <span class="live-demo-support-k">Your agent, your code</span>
-            <span class="live-demo-support-v">The same AI you've been working with, reading your real project context. Variants are generated as actual edits, not mocks.</span>
+          <div class="live-audience-tile">
+            <span class="live-audience-role">For engineers</span>
+            <p>It's code, not a mockup. Variants are real edits in your framework; accept and review the diff. Lives in the agent and CLI you already run, no new tool to adopt.</p>
           </div>
-          <div class="live-demo-support-cell">
-            <span class="live-demo-support-k">Accept = write</span>
-            <span class="live-demo-support-v">An accepted variant lands in your source file. Canvas-like iteration, production output.</span>
-          </div>
-          <div class="live-demo-support-cell">
-            <span class="live-demo-support-k">Skill-native</span>
-            <span class="live-demo-support-v">No external tools or IDE extensions. Works across Claude Code, Cursor, Codex, Gemini, and every harness the skill targets.</span>
+          <div class="live-audience-tile">
+            <span class="live-audience-role">For product</span>
+            <p>Compare directions in the live product and decide in the medium customers actually get. Pick one and ship it, with no handoff and nothing lost in translation.</p>
           </div>
         </div>
       </div>
