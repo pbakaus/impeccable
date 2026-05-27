@@ -851,7 +851,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
             id: 'entry-a',
             ops: [
               { originalText: 'Old label', newText: 'New label' },
-              { originalText: '33', newText: '0033' },
+              { originalText: '33', newText: '0033', container: { textContent: 'Old label 33' } },
             ],
           },
         ],
@@ -860,8 +860,8 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
 
     assert.match(error, /leading zeros/);
     assert.match(error, /must not be normalized/);
-    assert.match(error, /must satisfy both changes at once/);
-    assert.match(error, /key "New label"/);
+    assert.match(error, /quoted display value/);
+    assert.match(error, /lookup\/map only when evidence shows/);
   });
 
   it('gives quoted-source guidance when non-numeric display copy is normalized away', () => {
@@ -884,7 +884,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
             id: 'entry-a',
             ops: [
               { originalText: 'Old label', newText: 'New label' },
-              { originalText: '23', newText: 'Label count' },
+              { originalText: '23', newText: 'Label count', container: { textContent: 'Old label 23' } },
             ],
           },
         ],
@@ -894,7 +894,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
     assert.match(error, /staged copy "Label count" exactly/);
     assert.match(error, /quoted source value/);
     assert.match(error, /bare identifier/);
-    assert.match(error, /key "New label"/);
+    assert.match(error, /lookup\/map only when evidence shows/);
   });
 
   it('rejects display text pasted raw into a data lookup replacement', () => {
@@ -1112,7 +1112,7 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
             id: 'entry-a',
             ops: [
               { ref: 'label', originalText: 'Old label', newText: 'New label' },
-              { ref: 'count', originalText: '33', newText: '0033' },
+              { ref: 'count', originalText: '33', newText: '0033', container: { textContent: 'Old label 33' } },
             ],
           },
         ],

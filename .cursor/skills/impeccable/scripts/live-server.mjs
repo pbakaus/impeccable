@@ -108,6 +108,7 @@ const MIN_MANUAL_EDIT_APPLY_CHUNK_SIZE = 1;
 const MAX_MANUAL_EDIT_APPLY_CHUNK_SIZE = 20;
 const MANUAL_APPLY_COMPACT_TEXT_LIMIT = 240;
 const MANUAL_APPLY_COMPACT_NEARBY_LIMIT = 4;
+const DEBUG_MANUAL_EDIT_EVENTS = /^(1|true|yes)$/i.test(process.env.IMPECCABLE_LIVE_DEBUG_EVENTS || '');
 
 function tombstoneTimedOutApplyId(eventId, details = {}) {
   if (!eventId) return;
@@ -158,15 +159,11 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null, repair = null) {
   recordManualEditActivity('manual_edit_apply_dispatched', {
     id: eventId,
     pageUrl,
-    evidencePath,
     chunk,
     repair,
-    entryIds: (batch.entries || []).map((entry) => entry.id).filter(Boolean),
+    entryCount: Array.isArray(batch.entries) ? batch.entries.length : 0,
     opCount: countManualApplyOps(batch),
-    files: collectManualApplyFiles(batch).slice(0, 20),
-    inlineCandidateCount: event.batch.candidates?.length || 0,
-    hardTimeoutMs: APPLY_EVENT_HARD_TIMEOUT_MS,
-    softDeadlineMs: APPLY_EVENT_SOFT_DEADLINE_MS,
+    fileCount: collectManualApplyFiles(batch).length,
   });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -178,7 +175,7 @@ function pushApplyEventAndWait(batch, pageUrl, chunk = null, repair = null) {
         id: eventId,
         pageUrl,
         chunk,
-        entryIds: (batch.entries || []).map((entry) => entry.id).filter(Boolean),
+        entryCount: Array.isArray(batch.entries) ? batch.entries.length : 0,
         opCount: countManualApplyOps(batch),
       });
       reject(new Error('chat_agent_timeout'));
@@ -1051,12 +1048,14 @@ function recordManualEditActivity(type, details = {}) {
     ...details,
   };
   state.manualEditActivity = entry;
-  try {
-    const filePath = path.join(getLiveDir(process.cwd()), 'manual-edit-events.jsonl');
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.appendFileSync(filePath, JSON.stringify(entry) + '\n');
-  } catch {
-    /* diagnostics are best-effort; never block live mode on observability */
+  if (DEBUG_MANUAL_EDIT_EVENTS) {
+    try {
+      const filePath = path.join(getLiveDir(process.cwd()), 'manual-edit-events.jsonl');
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.appendFileSync(filePath, JSON.stringify(entry) + '\n');
+    } catch {
+      /* diagnostics are best-effort; never block live mode on observability */
+    }
   }
   broadcast(entry);
   return entry;
@@ -1080,23 +1079,10 @@ function summarizePendingManualEditBatch(pageUrl = null) {
   try {
     const buffer = readManualEditsBuffer(process.cwd());
     const entries = (buffer.entries || [])
-      .filter((entry) => !pageUrl || entry.pageUrl === pageUrl)
-      .slice(0, 20);
+      .filter((entry) => !pageUrl || entry.pageUrl === pageUrl);
     return {
-      pendingEntryIds: entries.map((entry) => entry.id).filter(Boolean),
+      pendingEntryCount: entries.length,
       pendingOpCount: entries.reduce((sum, entry) => sum + (entry.ops?.length || 0), 0),
-      pendingEntries: entries.map((entry) => ({
-        id: entry.id,
-        pageUrl: entry.pageUrl,
-        opCount: entry.ops?.length || 0,
-        ops: (entry.ops || []).slice(0, 8).map((op) => ({
-          ref: compactManualLogText(op.ref, 180),
-          originalText: compactManualLogText(op.originalText, 180),
-          newText: compactManualLogText(op.newText, 180),
-          file: summarizeManualLogFile(op.sourceHint?.file),
-          line: op.sourceHint?.line || null,
-        })),
-      })),
     };
   } catch (err) {
     return { pendingSummaryError: err.message || String(err) };
@@ -1591,13 +1577,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           opCount: msg.ops.length,
           pendingCount,
           totalCount,
-          ops: (msg.ops || []).slice(0, 20).map((op) => ({
-            ref: compactManualLogText(op.ref, 180),
-            originalText: compactManualLogText(op.originalText, 180),
-            newText: compactManualLogText(op.newText, 180),
-            file: summarizeManualLogFile(op.sourceHint?.file),
-            line: op.sourceHint?.line || null,
-          })),
+          hintedFileCount: new Set((msg.ops || []).map((op) => summarizeManualLogFile(op.sourceHint?.file)).filter(Boolean)).size,
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
@@ -1643,7 +1623,6 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       });
       const before = getManualEditStatus();
       const pendingCount = pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount;
-      const commitStartedAt = Date.now();
       recordManualEditActivity('manual_edit_commit_started', {
         pageUrl,
         repairOnly,
@@ -1671,9 +1650,11 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         let result;
         let routedProvider = 'subprocess';
         let transaction = null;
+        let commitBatch = null;
         try {
           if (pendingCount > 0) {
             const transactionBatch = buildManualEditEvidence({ cwd: process.cwd(), pageUrl });
+            commitBatch = transactionBatch;
             if (!repairOnly && countManualApplyOps(transactionBatch) > 0) {
               transaction = writeManualApplyTransaction({
                 cwd: process.cwd(),
@@ -1700,6 +1681,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
               applyBatchToSource: (batch, context) => pushApplyBatchInChunksAndWait(batch, pageUrl, context),
               repairOnly,
               transactionId: transaction?.id || existingTransaction?.id || null,
+              batch: commitBatch,
             });
           } else {
             const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
@@ -1713,6 +1695,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
               chatAvailable: chatAgentLikelyActive,
               repairOnly,
               transactionId: transaction?.id || existingTransaction?.id || null,
+              batch: commitBatch,
             });
           }
         } catch (err) {
@@ -1729,7 +1712,6 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             provider: routedProvider,
             error: 'manual_edit_commit_failed',
             message,
-            durationMs: Date.now() - commitStartedAt,
             transactionId: transaction?.id || null,
           });
           if (!asyncMode) {
@@ -1751,7 +1733,6 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           recordManualEditActivity('manual_edit_repair_needs_decision', {
             pageUrl,
             provider: routedProvider,
-            durationMs: Date.now() - commitStartedAt,
             transactionId: transaction?.id || existingTransaction?.id || null,
             repair: result.repair || null,
             failed: summarizeManualApplyFailures(result.failed),
@@ -1763,7 +1744,6 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         recordManualEditActivity('manual_edit_commit_done', {
           pageUrl,
           provider: routedProvider,
-          durationMs: Date.now() - commitStartedAt,
           reason: result.reason || null,
           needsManualDecision: result.needsManualDecision === true,
           repair: result.repair || null,
@@ -1775,7 +1755,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           rolledBackFiles: Array.isArray(result.rolledBackFiles) ? result.rolledBackFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
           rollbackFailures: summarizeManualDiagnostics(result.rollbackFailures),
           unreportedFiles: Array.isArray(result.unreportedFiles) ? result.unreportedFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : undefined,
-          notes: Array.isArray(result.notes) ? result.notes.slice(0, 10).map((note) => compactManualLogText(note, 240)).filter(Boolean) : [],
+          noteCount: Array.isArray(result.notes) ? result.notes.length : 0,
           cleared: result.cleared || 0,
           remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
           totalCount,
@@ -2038,10 +2018,10 @@ function handlePollPost(req, res) {
         chunk: pendingApplyDeferred.event?.chunk || null,
         repair: pendingApplyDeferred.event?.repair || null,
         status: validation.result.status,
-        appliedEntryIds: validation.result.appliedEntryIds,
+        appliedCount: validation.result.appliedEntryIds.length,
         failed: summarizeManualApplyFailures(validation.result.failed),
-        files: validation.result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean),
-        notes: validation.result.notes.slice(0, 10).map((note) => compactManualLogText(note, 240)).filter(Boolean),
+        fileCount: validation.result.files.length,
+        noteCount: validation.result.notes.length,
       });
       resolveApplyDeferred(msg.id, validation.result);
       acknowledgePendingEvent(msg.id);
@@ -2052,6 +2032,11 @@ function handlePollPost(req, res) {
     }
     if (state.timedOutApplyIds.has(msg.id)) {
       const rollback = rollbackTimedOutApplyReply(msg);
+      recordManualEditActivity('manual_edit_apply_stale_reply_rejected', {
+        id: msg.id,
+        rolledBackFileCount: rollback.rolledBackFiles?.length || 0,
+        rollbackFailureCount: rollback.rollbackFailures?.length || 0,
+      });
       res.writeHead(409, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
       return;
@@ -2067,6 +2052,10 @@ function handlePollPost(req, res) {
       } catch { /* fall through and record the reply normally */ }
     }
     if (!acknowledgedEvent && !existingSession) {
+      recordManualEditActivity('manual_edit_poll_reply_unknown', {
+        id: msg.id || null,
+        type: msg.type || null,
+      });
       res.writeHead(msg.id ? 404 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         error: msg.id ? 'unknown_poll_reply_id' : 'missing_poll_reply_id',

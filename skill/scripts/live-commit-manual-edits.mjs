@@ -218,7 +218,6 @@ function sourceHintWindowFailure(cwd, op) {
   const lineText = lines[line - 1] || '';
   const start = Math.max(0, line - 5);
   const end = Math.min(lines.length, line + 4);
-  if (lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op))) return null;
   if (
     typeof op.originalText === 'string'
     && op.originalText
@@ -231,6 +230,7 @@ function sourceHintWindowFailure(cwd, op) {
       reason: 'source_hint_still_contains_original_text',
     };
   }
+  if (lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op))) return null;
   return null;
 }
 
@@ -355,9 +355,10 @@ function verificationTargetPasses(cwd, target, op) {
 function verificationTargetPassesLines(lines, target, op) {
   const line = lines[target.line - 1] || '';
   if (lineShowsAppliedOp(line, op)) return true;
+  const originalText = typeof op?.originalText === 'string' ? op.originalText : '';
+  if (originalText && line.includes(originalText)) return false;
   const kind = String(target.kind || '');
   const canSearchWindow = target.reported
-    || kind.includes('source_hint')
     || kind.includes('context_text_match')
     || kind.includes('object_key_match')
     || kind.includes('text_match');
@@ -519,9 +520,12 @@ function clearAppliedEntries(cwd, appliedEntryIds) {
   return cleared;
 }
 
-function snapshotRollbackFiles(cwd) {
+function snapshotRollbackFiles(cwd, files = null) {
   const snapshot = new Map();
-  for (const relativeFile of collectRollbackFiles(cwd)) {
+  const rollbackFiles = Array.isArray(files) && files.length > 0
+    ? uniqueStrings(files).map((file) => normalizeRollbackPath(cwd, file)).filter(Boolean)
+    : collectRollbackFiles(cwd);
+  for (const relativeFile of rollbackFiles) {
     const absolute = path.resolve(cwd, relativeFile);
     try {
       snapshot.set(relativeFile, {
@@ -571,10 +575,14 @@ function scanRollbackDir(dir, cwd, out, seenDirs, seenFiles, depth) {
   }
 }
 
-function changedFilesSinceSnapshot(cwd, snapshot) {
+function changedFilesSinceSnapshot(cwd, snapshot, scopeFiles = null) {
   const changed = new Map();
-  const currentFiles = new Set(collectRollbackFiles(cwd));
+  const scopedFiles = Array.isArray(scopeFiles) && scopeFiles.length > 0
+    ? scopeFiles.map((file) => normalizeRollbackPath(cwd, file)).filter(Boolean)
+    : null;
+  const currentFiles = new Set(scopedFiles || collectRollbackFiles(cwd));
   for (const [relativeFile, before] of snapshot.entries()) {
+    if (scopedFiles && !currentFiles.has(relativeFile)) continue;
     const absolute = path.resolve(cwd, relativeFile);
     if (!fs.existsSync(absolute)) {
       changed.set(relativeFile, { file: relativeFile, kind: 'deleted' });
@@ -595,13 +603,13 @@ function changedFilesSinceSnapshot(cwd, snapshot) {
 }
 
 function rollbackChangedFiles(cwd, snapshot, extraFiles = [], scopeFiles = []) {
-  const changed = changedFilesSinceSnapshot(cwd, snapshot);
-  const byFile = new Map(changed.map((item) => [item.file, item]));
   const scope = new Set(
     [...(scopeFiles || []), ...(extraFiles || [])]
       .map((file) => normalizeRollbackPath(cwd, file))
       .filter(Boolean),
   );
+  const changed = changedFilesSinceSnapshot(cwd, snapshot, [...scope]);
+  const byFile = new Map(changed.map((item) => [item.file, item]));
   for (const file of extraFiles || []) {
     const relative = normalizeRollbackPath(cwd, file);
     if (relative && !byFile.has(relative)) {
@@ -662,7 +670,7 @@ function unreportedChangedFiles(cwd, snapshot, reportedFiles, scopeFiles = []) {
       .map((file) => normalizeRollbackPath(cwd, file))
       .filter(Boolean),
   );
-  return changedFilesSinceSnapshot(cwd, snapshot)
+  return changedFilesSinceSnapshot(cwd, snapshot, [...scope])
     .map((item) => item.file)
     .filter((file) => scope.has(file))
     .filter((file) => !reported.has(file));
@@ -851,6 +859,7 @@ export async function commitManualEdits({
   chatAvailable = undefined,
   repairOnly = false,
   transactionId = null,
+  batch: providedBatch = null,
 } = {}) {
   try {
     readBufferStrict(cwd);
@@ -868,7 +877,7 @@ export async function commitManualEdits({
     };
   }
 
-  const batch = buildManualEditEvidence({ cwd, pageUrl });
+  const batch = providedBatch || buildManualEditEvidence({ cwd, pageUrl });
   const count = countOps(batch.entries);
   if (count === 0) {
     return {
@@ -883,8 +892,8 @@ export async function commitManualEdits({
     };
   }
 
-  const rollbackSnapshot = snapshotRollbackFiles(cwd);
   const baseRollbackScope = collectApplyOwnedFiles(batch, cwd);
+  const rollbackSnapshot = snapshotRollbackFiles(cwd, baseRollbackScope);
   let result;
   try {
     result = repairOnly

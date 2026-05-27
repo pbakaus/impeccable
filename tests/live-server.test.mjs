@@ -318,11 +318,6 @@ colors: {}
       assert.equal(statusBody.manualEdits.lastActivity.type, 'manual_edit_commit_done');
       assert.equal(statusBody.manualEdits.lastActivity.appliedCount, 1);
       assert.equal(statusBody.manualEdits.lastActivity.cleared, 1);
-
-      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
-      assert.match(events, /"type":"manual_edit_stashed"/);
-      assert.match(events, /"type":"manual_edit_commit_started"/);
-      assert.match(events, /"type":"manual_edit_commit_done"/);
     } finally {
       if (commitServer) {
         await stopServer(commitServer.port, commitServer.token);
@@ -503,10 +498,6 @@ colors: {}
       assert.match(readFileSync(sourcePath, 'utf-8'), /Hello/);
       assert.equal(existsSync(evidencePath), false, 'accepted chat Apply should clean up its evidence file');
       assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
-
-      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
-      assert.match(events, /"provider":"chat"/);
-      assert.match(events, /"type":"manual_edit_commit_done"/);
     } finally {
       if (chatServer) {
         await stopServer(chatServer.port, chatServer.token);
@@ -1656,9 +1647,11 @@ colors: {}
       assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), false);
       const buffer = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
       assert.equal(buffer.entries.length, 4);
-      const events = readFileSync(join(getLiveDir(tmp), 'manual-edit-events.jsonl'), 'utf-8');
-      assert.match(events, /manual_edit_transaction_rolled_back/);
-      assert.match(events, /manual_edit_server_start_recovered_abandoned_transaction/);
+      const status = await fetch(`http://localhost:${restarted.port}/status?token=${restarted.token}`);
+      assert.equal(status.status, 200);
+      const statusBody = await status.json();
+      assert.equal(statusBody.manualEdits.lastActivity.type, 'manual_edit_transaction_rolled_back');
+      assert.equal(statusBody.manualEdits.lastActivity.reason, 'manual_edit_server_start_recovered_abandoned_transaction');
     } finally {
       if (abandonedServer) {
         try { await stopServer(abandonedServer.port, abandonedServer.token); } catch {}

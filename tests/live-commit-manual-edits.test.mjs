@@ -345,12 +345,13 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'source_verification_failed');
-    assert.equal(result.failed[0].failures[0].detail, 'source_hint_still_contains_original_text');
+    assert.equal(result.failed[0].checks[0].failures[0].detail, 'source_hint_still_contains_original_text');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('rolls back source writes when source verification fails', () => {
+  it('keeps source writes for repair when source verification fails', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     const before = '<h1 class="hero">Welcome</h1>\n<p>Elsewhere</p>\n';
     fs.writeFileSync(file, before);
@@ -383,9 +384,10 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'source_verification_failed');
-    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(file, 'utf-8'), '<h1 class="hero">Welcome</h1>\n<p>Hello</p>\n');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
@@ -530,9 +532,10 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed.length, 1);
     assert.equal(result.failed[0].reason, 'source_verification_failed');
-    assert.equal(result.failed[0].failures[0].detail, 'originalText_still_present_in_plausible_source_location');
+    assert.equal(result.failed[0].checks[0].failures[0].detail, 'originalText_still_present_in_plausible_source_location');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
@@ -988,7 +991,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 0);
   });
 
-  it('rolls back when Apply coerces an integer source model into display text that crashes validation', () => {
+  it('keeps source for repair when Apply coerces an integer source model into display text that crashes validation', () => {
     const statsFile = path.join(tmpDir, 'src', 'stats.mjs');
     const before = "export const stats = { count: 7 };\n";
     fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({
@@ -1035,12 +1038,12 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(result.failed[0].checks.some((check) => check.reason === 'manual_edit_validation_failed'), true);
     assert.match(result.failed[0].checks.find((check) => check.reason === 'manual_edit_validation_failed').message, /stats\.count must stay integer/);
-    assert.deepEqual(result.rolledBackFiles, ['src/stats.mjs']);
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(statsFile, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(statsFile, 'utf-8'), "export const stats = { count: '7 seats' };\n");
     assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'typed-count');
   });
 
@@ -1069,7 +1072,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('rolls back invalid touched JSON before clearing staged edits', () => {
+  it('keeps invalid touched JSON for repair before clearing staged edits', () => {
     const file = path.join(tmpDir, 'src', 'data.json');
     const before = '{"title":"Old"}\n';
     fs.writeFileSync(file, before);
@@ -1092,14 +1095,15 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(result.failed[0].checks.some((check) => check.reason === 'invalid_json'), true);
-    assert.deepEqual(result.rolledBackFiles, ['src/data.json']);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(file, 'utf-8'), '{"title":"New",}\n');
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('rolls back invalid touched CJS before clearing staged edits', () => {
+  it('keeps invalid touched CJS for repair before clearing staged edits', () => {
     const file = path.join(tmpDir, 'src', 'config.cjs');
     const before = "module.exports = { title: 'Old' };\n";
     fs.writeFileSync(file, before);
@@ -1122,10 +1126,11 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(result.failed[0].checks.some((check) => check.reason === 'invalid_js'), true);
-    assert.deepEqual(result.rolledBackFiles, ['src/config.cjs']);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(file, 'utf-8'), "module.exports = { title: 'New', broken: };\n");
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
@@ -1193,7 +1198,7 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('rolls back touched source files when post-apply validation fails', () => {
+  it('keeps touched source files when post-apply validation needs repair', () => {
     const file = path.join(tmpDir, 'src', 'broken.js');
     const before = "const label = 'Old';\n";
     fs.writeFileSync(file, before);
@@ -1216,14 +1221,14 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
-    assert.deepEqual(result.rolledBackFiles, ['src/broken.js']);
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(file, 'utf-8'), "const label = 'New';\nconst answer = ;\n");
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
-  it('rolls back when Apply leaks edit-mode contenteditable attributes into source', () => {
+  it('keeps source for repair when Apply leaks edit-mode contenteditable attributes into source', () => {
     const file = path.join(tmpDir, 'src', 'App.jsx');
     const before = 'export default function App() { return <h1 className="hero">Old</h1>; }\n';
     fs.writeFileSync(file, before);
@@ -1249,15 +1254,15 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(result.failed[0].checks.some((check) => /data-impeccable-(editable|original-text)/.test(check.marker)), true);
-    assert.deepEqual(result.rolledBackFiles, ['src/App.jsx']);
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.match(fs.readFileSync(file, 'utf-8'), /contenteditable="true"/);
     assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'edit-ui');
   });
 
-  it('rolls back when Apply leaves carbonize or variant scaffolding in source', () => {
+  it('keeps source for repair when Apply leaves carbonize or variant scaffolding in source', () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     const before = '<h1 class="hero">Old</h1>\n';
     fs.writeFileSync(file, before);
@@ -1290,18 +1295,18 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
     assert.equal(
       result.failed[0].checks.some((check) => /impeccable-carbonize-start|data-impeccable-variant/.test(check.marker)),
       true,
     );
-    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(file, 'utf-8'), before);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.match(fs.readFileSync(file, 'utf-8'), /impeccable-carbonize-start/);
     assert.equal(readBuffer(tmpDir).entries.map((item) => item.id).join(','), 'variant-scaffold');
   });
 
-  it('rolls back the whole batch when one applied edit leaves UI scaffolding behind', () => {
+  it('keeps the whole batch for repair when one applied edit leaves UI scaffolding behind', () => {
     const pageFile = path.join(tmpDir, 'src', 'page.html');
     const cardFile = path.join(tmpDir, 'src', 'card.html');
     const beforePage = '<h1 class="hero">Old title</h1>\n';
@@ -1335,19 +1340,19 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.deepEqual(result.failed.map((item) => item.reason), [
       'post_apply_validation_failed',
       'post_apply_validation_failed',
     ]);
     assert.equal(result.failed[0].checks.some((check) => /data-impeccable-text-wrap/.test(check.marker)), true);
-    assert.deepEqual(new Set(result.rolledBackFiles), new Set(['src/page.html', 'src/card.html']));
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(pageFile, 'utf-8'), beforePage);
-    assert.equal(fs.readFileSync(cardFile, 'utf-8'), beforeCard);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), '<h1 class="hero">New title</h1>\n');
+    assert.match(fs.readFileSync(cardFile, 'utf-8'), /data-impeccable-text-wrap/);
     assert.deepEqual(readBuffer(tmpDir).entries.map((item) => item.id), ['title', 'card']);
   });
 
-  it('rolls back newly created files when post-apply validation fails', () => {
+  it('keeps newly created files for repair when post-apply validation fails', () => {
     const pageFile = path.join(tmpDir, 'src', 'page.html');
     const newFile = path.join(tmpDir, 'src', 'new-broken.js');
     const before = '<h1 class="hero">Old</h1>\n';
@@ -1372,11 +1377,11 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
 
     assert.equal(result.cleared, 0);
     assert.equal(result.applied.length, 0);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
     assert.equal(result.failed[0].reason, 'post_apply_validation_failed');
-    assert.deepEqual(new Set(result.rolledBackFiles), new Set(['src/page.html', 'src/new-broken.js']));
-    assert.deepEqual(result.rollbackFailures, []);
-    assert.equal(fs.readFileSync(pageFile, 'utf-8'), before);
-    assert.equal(fs.existsSync(newFile), false);
+    assert.equal(result.rolledBackFiles, undefined);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), '<h1 class="hero">New</h1>\n');
+    assert.equal(fs.existsSync(newFile), true);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 });

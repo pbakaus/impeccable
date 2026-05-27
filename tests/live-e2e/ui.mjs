@@ -436,6 +436,26 @@ export async function waitForApplyDockHidden(page, { timeout = 10_000 } = {}) {
   );
 }
 
+export async function assertApplyDockLoading(page, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    (dockSel) => {
+      const dock = document.querySelector(dockSel);
+      if (!dock || dock.style.display === 'none') return false;
+      const pill = [...dock.querySelectorAll('button')].find((btn) =>
+        /Apply copy edit|Applying|Verifying|Fixing apply issue/.test(btn.textContent || '')
+      );
+      if (!pill) return false;
+      const spinner = dock.querySelector('[aria-hidden="true"]');
+      return pill.disabled === true
+        || pill.getAttribute('aria-busy') === 'true'
+        || /Applying|Verifying|Fixing apply issue/.test(pill.textContent || '')
+        || spinner?.style?.display === 'inline-block';
+    },
+    PENDING_DOCK_ID,
+    { timeout },
+  );
+}
+
 export async function clickApplyEdits(page) {
   const dialog = page.waitForEvent('dialog', { timeout: 5_000 })
     .then((d) => d.accept())

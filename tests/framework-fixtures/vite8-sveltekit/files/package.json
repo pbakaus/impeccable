@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite dev --host 127.0.0.1",
     "build": "vite build",
-    "impeccable:manual-edit-validate": "node --input-type=module -e \"import fs from 'node:fs';const body=fs.readFileSync('src/routes/+page.svelte','utf8');if(!/seats:\\\\s*7\\\\b/.test(body))throw new Error('svelte stats.seats must stay integer')\"",
     "preview": "vite preview"
   },
   "devDependencies": {

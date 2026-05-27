@@ -3522,6 +3522,10 @@
         case 'manual_edit_stashed':
         case 'manual_edit_discarded':
         case 'manual_edit_commit_started':
+        case 'manual_edit_apply_reply_received':
+        case 'manual_edit_apply_dispatched':
+        case 'manual_edit_repair_needs_decision':
+        case 'manual_edit_repair_rollback_done':
         case 'manual_edit_commit_done':
         case 'manual_edit_commit_failed':
           handleManualEditActivity(msg);

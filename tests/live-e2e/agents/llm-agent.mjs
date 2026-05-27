@@ -114,6 +114,7 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   '- Preserve op.newText exactly, including leading zeros, punctuation, casing, spacing, and temporary-looking words.',
   '- Preserve numeric, boolean, array, and object model data. Use quoted display text only when the visible copy cannot remain a typed model value.',
   '- If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.',
+  '- Numeric display example: if source has typed data like `count: 7` and JSX renders `{String(model.count)}`, then op `7` -> `007 seats` should leave `count: 7` unchanged and replace `String(model.count)` with `"007 seats"` or an equivalent quoted JSX expression.',
   '- If op.newText looks numeric but is not a valid safe numeric literal for the current source language, represent it as display text. Leading-zero decimals and mixed alphanumeric counts must be quoted/escaped as strings in JS/TS data.',
   '- sourceContext is the current source after earlier chunks and retries. If batch evidence disagrees with sourceContext, sourceContext wins; sourceEdit.originalText must appear exactly in the current file.',
   '- In JSX/TSX, if originalText is rendered by an expression-only text node and newText is display copy, keep the replacement expression-shaped with a quoted expression such as {"7 seats"} rather than raw text.',
@@ -1016,27 +1017,11 @@ function validatePairedLookupCountEdit(entry, sourceEdits) {
 }
 
 function missingLeadingZeroCopyMessage(entry, op) {
-  const labelOp = (entry?.ops || []).find((candidate) => {
-    const original = normalizeManualEditText(candidate.originalText);
-    const next = normalizeManualEditText(candidate.newText);
-    return original && next && original !== next && !isIntegerLikeText(original) && !isIntegerLikeText(next);
-  });
-  const labelClause = labelOp
-    ? ` If this entry also renames ${JSON.stringify(labelOp.originalText)} to ${JSON.stringify(labelOp.newText)}, the corrected lookup/map sourceEdit must satisfy both changes at once: key ${JSON.stringify(labelOp.newText)} and quoted value ${JSON.stringify(op.newText)}.`
-    : '';
-  return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains exact staged copy ${JSON.stringify(op.newText)}; leading zeros are user-visible copy and must not be normalized, so replace the enclosing lookup/map entry with a quoted display value that literally contains ${JSON.stringify(op.newText)} instead of leaving or writing the typed number ${JSON.stringify(op.originalText)}.${labelClause}`;
+  return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains exact staged copy ${JSON.stringify(op.newText)}; leading zeros are user-visible copy and must not be normalized. If the source renders this value through an expression, replace that display expression with a quoted display value such as {"${op.newText}"} or a valid static text node while leaving typed model data unchanged; for example, replace source originalText like String(model.count) with source newText ${JSON.stringify(op.newText)}. Use a quoted source value in a lookup/map only when evidence shows this value is keyed by the edited label.`;
 }
 
 function missingNumericToTextCopyMessage(entry, op) {
-  const labelOp = (entry?.ops || []).find((candidate) => {
-    const original = normalizeManualEditText(candidate.originalText);
-    const next = normalizeManualEditText(candidate.newText);
-    return original && next && original !== next && !isIntegerLikeText(original) && !isIntegerLikeText(next);
-  });
-  const labelClause = labelOp
-    ? ` If this entry also renames ${JSON.stringify(labelOp.originalText)} to ${JSON.stringify(labelOp.newText)}, the corrected lookup/map sourceEdit must satisfy both changes at once: key ${JSON.stringify(labelOp.newText)} and quoted value ${JSON.stringify(op.newText)}.`
-    : '';
-  return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains staged copy ${JSON.stringify(op.newText)} exactly; ${JSON.stringify(op.newText)} is user-visible display text, so replace the enclosing lookup/map entry with a quoted source value that literally contains ${JSON.stringify(op.newText)} instead of leaving a numeric value or writing a bare identifier.${labelClause}`;
+  return `manual edit entry ${entry.id} is marked applied but no sourceEdit newText contains staged copy ${JSON.stringify(op.newText)} exactly; ${JSON.stringify(op.newText)} is user-visible display text. If the source renders this value through an expression, replace that display expression with a quoted display value such as {"${op.newText}"} or a valid static text node while leaving typed model data unchanged; for example, replace source originalText like String(model.count) with source newText ${JSON.stringify(op.newText)}. Use a quoted source value in a lookup/map only when evidence shows this value is keyed by the edited label; never write it as a bare identifier.`;
 }
 
 function validateCoupledSourceKeyEdit(entry, batch, sourceEdits) {

@@ -31,6 +31,7 @@ import { readCliOption } from './live-e2e/cli-options.mjs';
 import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
 import {
   assertApplyDockVisible,
+  assertApplyDockLoading,
   assertSourceApplied,
   clickAccept,
   clickApplyEdits,
@@ -694,6 +695,11 @@ async function runManualEditStage(page, stage, { t, fixture, session, agentMode,
 
   t.diagnostic('Manual scenario clicking Apply/commit');
   await clickApplyEdits(page);
+  if (stage.expectApplyLoading) {
+    await assertApplyDockLoading(page, {
+      timeout: agentMode === 'llm' ? 20_000 : 5_000,
+    });
+  }
   const applyTimeoutMs = stage.applyTimeoutMs || (agentMode === 'llm' ? 120_000 : 20_000);
   await waitForServerManualEditStashCount(session.live, 0, {
     timeout: applyTimeoutMs,
@@ -704,9 +710,17 @@ async function runManualEditStage(page, stage, { t, fixture, session, agentMode,
 
   for (const edit of stage.edits || []) {
     if (edit.expectedVisibleText) {
-      await assertVisibleText(page, edit.leafSelector, edit.expectedVisibleText, {
-        timeout: agentMode === 'llm' ? 60_000 : 20_000,
-      });
+      try {
+        await assertVisibleText(page, edit.leafSelector, edit.expectedVisibleText, {
+          timeout: agentMode === 'llm' ? 60_000 : 20_000,
+        });
+      } catch (err) {
+        if (edit.expectedSourceFile) {
+          t.diagnostic(`--- source ${edit.expectedSourceFile} after visible-text failure ---`);
+          t.diagnostic(readFileSync(join(tmp, edit.expectedSourceFile), 'utf-8'));
+        }
+        throw err;
+      }
     }
   }
 
@@ -721,8 +735,30 @@ async function runManualEditStage(page, stage, { t, fixture, session, agentMode,
       for (const snippet of edit.expectedSourceAlso || []) {
         assertSourceContains(tmp, edit.expectedSourceFile, snippet);
       }
+      for (const pattern of edit.expectedSourceRegex || []) {
+        assertSourceMatches(tmp, edit.expectedSourceFile, pattern);
+      }
       for (const snippet of edit.expectedSourceMissing || []) {
         assertSourceMissing(tmp, edit.expectedSourceFile, snippet);
+      }
+    }
+  }
+
+  if (stage.expectNoRollback) {
+    const status = await getServerManualEditStatus(session.live);
+    const rolledBackFiles = status.manualEdits?.lastActivity?.rolledBackFiles || [];
+    assert.deepEqual(rolledBackFiles, [], 'manual Apply should not report rolled-back files');
+    assert.notEqual(status.manualEdits?.lastActivity?.reason, 'manual_edit_repair_needs_decision');
+  }
+
+  if (stage.refreshAfterApply) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForHandshake(page);
+    for (const edit of stage.edits || []) {
+      if (edit.expectedVisibleText) {
+        await assertVisibleText(page, edit.leafSelector, edit.expectedVisibleText, {
+          timeout: agentMode === 'llm' ? 60_000 : 20_000,
+        });
       }
     }
   }
@@ -796,15 +832,31 @@ function assertSourceContains(tmp, file, text) {
   );
 }
 
-async function assertVisibleText(page, selector, text, { timeout = 20_000 } = {}) {
-  await page.waitForFunction(
-    ({ sel, expected }) => {
-      const el = document.querySelector(sel);
-      return Boolean(el && (el.textContent || '').includes(expected));
-    },
-    { sel: selector, expected: text },
-    { timeout },
+function assertSourceMatches(tmp, file, pattern) {
+  const full = join(tmp, file);
+  const body = readFileSync(full, 'utf-8');
+  const re = new RegExp(pattern);
+  assert.equal(
+    re.test(body),
+    true,
+    `source ${file} should match ${pattern}`,
   );
+}
+
+async function assertVisibleText(page, selector, text, { timeout = 20_000 } = {}) {
+  try {
+    await page.waitForFunction(
+      ({ sel, expected }) => {
+        const el = document.querySelector(sel);
+        return Boolean(el && (el.textContent || '').includes(expected));
+      },
+      { sel: selector, expected: text },
+      { timeout },
+    );
+  } catch (err) {
+    const actual = await page.evaluate((sel) => document.querySelector(sel)?.textContent || null, selector).catch(() => null);
+    throw new Error(`visible text ${selector} did not include ${JSON.stringify(text)}; actual=${JSON.stringify(actual)}; ${err.message}`);
+  }
 }
 
 async function getServerManualEditStashCount(live, pageUrl = '/') {
@@ -816,21 +868,40 @@ async function getServerManualEditStashCount(live, pageUrl = '/') {
   return body.count || 0;
 }
 
+async function getServerManualEditStatus(live) {
+  const res = await fetch(`http://localhost:${live.port}/status?token=${encodeURIComponent(live.token)}`);
+  if (!res.ok) throw new Error(`manual edit status failed: ${res.status}`);
+  return res.json();
+}
+
 async function waitForServerManualEditStashCount(live, expectedCount, { pageUrl = '/', timeout = 20_000 } = {}) {
   const start = Date.now();
   let last = null;
   let lastError = null;
+  let lastActivity = null;
+  let lastStatusCheck = 0;
   while (Date.now() - start < timeout) {
     try {
       last = await getServerManualEditStashCount(live, pageUrl);
       lastError = null;
       if (last === expectedCount) return;
+      if (expectedCount === 0 && Date.now() - lastStatusCheck > 1_000) {
+        lastStatusCheck = Date.now();
+        lastActivity = (await getServerManualEditStatus(live)).manualEdits?.lastActivity || null;
+        if (lastActivity?.type === 'manual_edit_repair_needs_decision') {
+          throw new Error(`manual edit Apply needs repair decision before stash cleared; last=${last}; lastActivity=${JSON.stringify(lastActivity)}`);
+        }
+      }
     } catch (err) {
       lastError = err;
+      if (/manual edit Apply needs repair decision/.test(err.message || '')) throw err;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`manual edit stash count did not reach ${expectedCount}; last=${last}; lastError=${lastError?.message || 'none'}`);
+  try {
+    lastActivity = (await getServerManualEditStatus(live)).manualEdits?.lastActivity || null;
+  } catch {}
+  throw new Error(`manual edit stash count did not reach ${expectedCount}; last=${last}; lastError=${lastError?.message || 'none'}; lastActivity=${JSON.stringify(lastActivity)}`);
 }
 
 async function clickPickToggle(page, selector) {

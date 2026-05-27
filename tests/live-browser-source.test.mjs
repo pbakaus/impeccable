@@ -122,6 +122,11 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
+      /case 'manual_edit_apply_reply_received':[\s\S]{0,220}?case 'manual_edit_repair_needs_decision':[\s\S]{0,160}?handleManualEditActivity\(msg\);/,
+      'Apply progress and repair SSE should reach the pending dock handler',
+    );
+    assert.match(
+      SOURCE,
       /function remainingManualEditCount\(payload\)[\s\S]*?payload\?\.perPage\?\.\[location\.pathname\][\s\S]*?payload\?\.remainingCount[\s\S]*?payload\?\.totalCount[\s\S]*?if \(totalCount === 0\) return 0;/,
       'Apply completion counts should honor page count first and still hide the dock when only totalCount is zero',
     );
