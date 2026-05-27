@@ -3329,9 +3329,12 @@ void main() {
   let steerLocked = false;
   let steerRequestId = null;
   let pageChatDotsEl = null;
-  let steerHandoffTimer = null;
+  let steerVoiceRecognition = null;
+  let steerVoiceListening = false;
+  let steerVoiceSuppressSubmit = false;
+  let steerVoiceInterimBase = '';
   const PAGE_CHAT_COLLAPSED_W = '88px';
-  const PAGE_CHAT_PROCESSING_W = '112px';
+  const PAGE_CHAT_PROCESSING_W = '76px';
   const PAGE_CHAT_EXPANDED_W = 'min(280px, 38vw)';
   const ICON_PAGE_CHAT =
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -3413,9 +3416,12 @@ void main() {
       ? P.patinaSoft
       : (pageChatExpanded ? P.accentSoft : P.hairline);
     if (pageChatHint) pageChatHint.style.color = steerLocked ? P.patinaPale : P.textDim;
+    const chatIcon = pageChatEl?.firstElementChild;
+    if (chatIcon) chatIcon.style.color = steerLocked ? P.patinaPale : P.textDim;
     if (pageChatInput) pageChatInput.style.color = P.text;
     if (pageChatVoiceBtn) {
-      pageChatVoiceBtn.style.color = pageChatVoiceBtn.dataset.active === 'true'
+      const listening = pageChatVoiceBtn.dataset.listening === 'true';
+      pageChatVoiceBtn.style.color = listening || pageChatVoiceBtn.dataset.active === 'true'
         ? P.accent
         : P.textDim;
     }
@@ -3541,15 +3547,19 @@ void main() {
   function buildSteerProcessingDots() {
     const P = pageChatPalette();
     const wrap = el('span', {
-      display: 'inline-flex', alignItems: 'center', gap: '3px',
-      marginLeft: '2px', flexShrink: '0', pointerEvents: 'none',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '5px', flex: '1', minWidth: '0',
+      padding: '0 12px 0 2px',
+      pointerEvents: 'none',
     });
+    wrap.setAttribute('aria-hidden', 'true');
     for (let i = 0; i < 3; i++) {
       wrap.appendChild(el('span', {
         display: 'inline-block',
-        width: '3px', height: '3px', borderRadius: '50%',
+        width: '4px', height: '4px', borderRadius: '50%',
         background: P.patinaPale,
-        animation: 'impeccable-steer-dot 1s ease-in-out ' + (i * 0.15) + 's infinite',
+        boxShadow: '0 0 6px ' + P.patinaSoft,
+        animation: 'impeccable-steer-dot 1.05s ease-in-out ' + (i * 0.14) + 's infinite',
       }));
     }
     return wrap;
@@ -3557,6 +3567,7 @@ void main() {
 
   function lockSteerChat() {
     if (!pageChatEl || !pageChatInput) return;
+    stopSteerVoice({ suppressSubmit: true });
     steerLocked = true;
     pageChatEl.dataset.processing = 'true';
     pageChatInput.disabled = true;
@@ -3575,29 +3586,26 @@ void main() {
     pageChatInput.style.opacity = '0';
     pageChatInput.style.pointerEvents = 'none';
     if (pageChatHint) {
-      pageChatHint.style.display = '';
-      pageChatHint.style.opacity = '1';
-      pageChatHint.style.visibility = 'visible';
-      pageChatHint.textContent = 'Handing off';
+      pageChatHint.style.display = 'none';
+      pageChatHint.style.visibility = 'hidden';
     }
+    pageChatEl.setAttribute('aria-busy', 'true');
+    pageChatEl.setAttribute('aria-label', 'Processing steer request');
     if (!pageChatDotsEl) {
       pageChatDotsEl = buildSteerProcessingDots();
       pageChatEl.appendChild(pageChatDotsEl);
     }
-    steerHandoffTimer = setTimeout(() => {
-      if (!steerLocked || !pageChatHint) return;
-      pageChatHint.textContent = 'Working';
-    }, 420);
     syncPageChatFocusRing();
     syncPageChatChrome();
   }
 
   function unlockSteerChat(opts) {
-    if (steerHandoffTimer) { clearTimeout(steerHandoffTimer); steerHandoffTimer = null; }
     steerLocked = false;
     steerRequestId = null;
     if (!pageChatEl) return;
     pageChatEl.dataset.processing = 'false';
+    pageChatEl.removeAttribute('aria-busy');
+    pageChatEl.setAttribute('aria-label', 'Steer the page');
     pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
     pageChatEl.style.cursor = 'pointer';
     if (pageChatInput) {
@@ -3608,7 +3616,11 @@ void main() {
       pageChatVoiceBtn.disabled = false;
       pageChatVoiceBtn.style.display = '';
     }
-    if (pageChatHint) pageChatHint.textContent = 'Steer';
+    if (pageChatHint) {
+      pageChatHint.textContent = 'Steer';
+      pageChatHint.style.display = '';
+      pageChatHint.style.visibility = '';
+    }
     if (pageChatDotsEl?.parentNode) {
       pageChatDotsEl.remove();
       pageChatDotsEl = null;
@@ -3620,7 +3632,168 @@ void main() {
     syncPageChatFocus('steer-unlock');
   }
 
+  function steerSpeechRecognitionCtor() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function isEmbeddedPreviewBrowser() {
+    const ua = navigator.userAgent || '';
+    if (/Electron/i.test(ua)) return true;
+    if (/Cursor/i.test(ua)) return true;
+    try {
+      return !!(window.cursor || window.__CURSOR__ || window.__GLASS_BROWSER__);
+    } catch { return false; }
+  }
+
+  function steerVoiceUnavailableMessage() {
+    return 'Voice input works in Chrome or Safari. Cursor\'s preview browser cannot reach speech services.';
+  }
+
+  function steerVoiceErrorMessage(code) {
+    switch (code) {
+      case 'not-allowed':
+        return 'Microphone access blocked';
+      case 'audio-capture':
+        return 'No microphone found';
+      case 'network':
+        return isEmbeddedPreviewBrowser()
+          ? steerVoiceUnavailableMessage()
+          : 'Voice input needs a network connection (browser speech uses a cloud service)';
+      case 'service-not-allowed':
+        return 'Voice input is not available in this browser tab';
+      case 'language-not-supported':
+        return 'Speech language not supported';
+      case 'no-speech':
+      case 'aborted':
+        return null;
+      default:
+        return 'Voice input failed (' + code + ')';
+    }
+  }
+
+  function syncSteerVoiceUi(listening) {
+    steerVoiceListening = !!listening;
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.dataset.active = listening ? 'true' : 'false';
+      pageChatVoiceBtn.dataset.listening = listening ? 'true' : 'false';
+      pageChatVoiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
+      pageChatVoiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+    }
+    if (pageChatEl) pageChatEl.dataset.voiceListening = listening ? 'true' : 'false';
+    syncPageChatChrome();
+  }
+
+  function releaseSteerVoiceEngine(opts) {
+    if (opts && opts.suppressSubmit) steerVoiceSuppressSubmit = true;
+    const rec = steerVoiceRecognition;
+    steerVoiceRecognition = null;
+    if (!rec) return;
+    rec.onstart = null;
+    rec.onresult = null;
+    rec.onerror = null;
+    rec.onend = null;
+    try {
+      if (opts && opts.abort) rec.abort();
+      else rec.stop();
+    } catch { /* already ended */ }
+  }
+
+  function stopSteerVoice(opts) {
+    releaseSteerVoiceEngine(opts);
+    syncSteerVoiceUi(false);
+    if (opts && opts.message) showToast(String(opts.message), opts.duration || 4000);
+  }
+
+  function finishSteerVoiceSession() {
+    steerVoiceRecognition = null;
+    syncSteerVoiceUi(false);
+    const suppress = steerVoiceSuppressSubmit;
+    steerVoiceSuppressSubmit = false;
+    const text = pageChatInput?.value.trim() || '';
+    if (!suppress && text && !steerLocked) submitSteerMessage();
+  }
+
+  function startSteerVoice() {
+    if (steerLocked || state === 'CONFIGURING' || steerVoiceListening) return;
+    const Ctor = steerSpeechRecognitionCtor();
+    if (!Ctor) {
+      showToast('Voice input needs Speech Recognition (Chrome, Safari, or Edge)', 4500);
+      return;
+    }
+    if (!window.isSecureContext) {
+      showToast('Voice input needs HTTPS or localhost', 4500);
+      return;
+    }
+    if (isEmbeddedPreviewBrowser()) {
+      showToast(steerVoiceUnavailableMessage(), 5200);
+      return;
+    }
+
+    releaseSteerVoiceEngine({ suppressSubmit: true, abort: true });
+    steerVoiceSuppressSubmit = false;
+    if (!pageChatExpanded) expandPageChat({ focus: false });
+
+    steerVoiceInterimBase = pageChatInput?.value.trim()
+      ? pageChatInput.value.trim() + ' '
+      : '';
+
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = document.documentElement.lang || navigator.language || 'en-US';
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      syncSteerVoiceUi(true);
+    };
+
+    rec.onresult = (event) => {
+      if (!pageChatInput) return;
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0]?.transcript || '';
+      }
+      pageChatInput.value = (steerVoiceInterimBase + transcript).trim();
+      syncPageChatVisual();
+    };
+
+    rec.onerror = (event) => {
+      const code = event.error || 'unknown';
+      console.warn('[impeccable.voice] recognition error:', code);
+      const message = steerVoiceErrorMessage(code);
+      stopSteerVoice({ suppressSubmit: true, message: message || undefined });
+    };
+
+    rec.onend = () => {
+      if (steerVoiceRecognition !== rec) return;
+      finishSteerVoiceSession();
+    };
+
+    steerVoiceRecognition = rec;
+    try {
+      rec.start();
+    } catch (err) {
+      console.warn('[impeccable.voice] start failed:', err);
+      stopSteerVoice({
+        suppressSubmit: true,
+        message: err?.message?.includes('already started')
+          ? 'Voice input already running'
+          : 'Could not start voice input',
+      });
+    }
+  }
+
+  function toggleSteerVoice() {
+    if (steerVoiceListening) {
+      steerVoiceSuppressSubmit = true;
+      stopSteerVoice({ suppressSubmit: true, abort: true });
+      return;
+    }
+    startSteerVoice();
+  }
+
   function submitSteerMessage() {
+    stopSteerVoice({ suppressSubmit: true });
     const text = pageChatInput?.value.trim();
     if (!text || steerLocked) return;
     const id = id8();
@@ -3671,6 +3844,7 @@ void main() {
 
   function collapsePageChat(opts) {
     const blur = opts && opts.blur === true;
+    if (steerVoiceListening) return;
     if (!pageChatEl || !pageChatInput) return;
     pageChatExpanded = false;
     pageChatEl.dataset.expanded = 'false';
@@ -3760,9 +3934,14 @@ void main() {
       const s = document.createElement('style');
       s.id = PREFIX + '-page-chat-style';
       s.textContent =
-        '@keyframes impeccable-steer-dot { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }' +
-        '@keyframes impeccable-steer-handoff { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }' +
-        '#' + PREFIX + '-page-chat[data-processing="true"] { animation: impeccable-steer-handoff 1.4s ease-in-out infinite; }' +
+        '@keyframes impeccable-steer-dot { 0%, 70%, 100% { opacity: 0.28; transform: scale(0.82); } 35% { opacity: 1; transform: scale(1); } }' +
+        '@keyframes impeccable-steer-processing { 0%, 100% { border-color: oklch(70% 0.12 188 / 0.28); box-shadow: 0 0 0 0 oklch(70% 0.12 188 / 0); } 50% { border-color: oklch(82% 0.07 188 / 0.55); box-shadow: 0 0 14px oklch(70% 0.12 188 / 0.18); } }' +
+        '@keyframes impeccable-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
+        '#' + PREFIX + '-page-chat[data-processing="true"] { animation: impeccable-steer-processing 1.6s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat[data-processing="true"] { animation: none; border-color: oklch(70% 0.12 188 / 0.45); } #' + PREFIX + '-page-chat[data-processing="true"] [aria-hidden="true"] span { animation: none; opacity: 0.85; } }' +
+        '#' + PREFIX + '-page-chat[data-voice-listening="true"] { border-color: oklch(70% 0.12 188 / 0.45); }' +
+        '#' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: impeccable-voice-pulse 1.1s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
         '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
         '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       document.head.appendChild(s);
@@ -3778,15 +3957,8 @@ void main() {
     pageChatVoiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     pageChatVoiceBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!pageChatExpanded) expandPageChat();
-      pageChatVoiceBtn.dataset.active = 'true';
-      syncPageChatChrome();
-      // Voice mode wiring lands in a follow-up; pulse the icon as affordance.
-      showToast('Voice mode coming soon', 2200);
-      setTimeout(() => {
-        if (pageChatVoiceBtn) pageChatVoiceBtn.dataset.active = 'false';
-        syncPageChatChrome();
-      }, 900);
+      if (steerLocked) return;
+      toggleSteerVoice();
     });
 
     pageChatInput.addEventListener('input', () => {
@@ -3800,7 +3972,7 @@ void main() {
     pageChatInput.addEventListener('blur', () => {
       syncPageChatFocusRing();
       setTimeout(() => {
-        if (state === 'CONFIGURING' || steerLocked) return;
+        if (state === 'CONFIGURING' || steerLocked || steerVoiceListening) return;
         if (pageChatEl?.contains(document.activeElement)) return;
         if (!pageChatInput.value.trim()) collapsePageChat();
         syncPageChatFocus('steer-blur-recover');
@@ -4142,6 +4314,7 @@ void main() {
 
   /** Full teardown: remove all UI, disconnect SSE, clean up. */
   function teardown() {
+    stopSteerVoice({ suppressSubmit: true });
     cleanup();
     hideBar();
     if (globalBarEl) {

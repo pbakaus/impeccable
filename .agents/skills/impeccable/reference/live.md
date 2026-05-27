@@ -442,7 +442,9 @@ Event: `{id, _acceptResult, _completionAck}`. The poll script already restored t
 
 ## Handle `steer`
 
-Event: `{id, message, pageUrl}`. The user typed into the global bar **Steer** control: page-level direction without picking an element or launching variant generation.
+Event: `{id, message, pageUrl}`. The user typed or spoke into the global bar **Steer** control: page-level direction without picking an element or launching variant generation.
+
+The mic button uses the browser **Web Speech API** (MVP): click to start, speak, stop automatically when the utterance ends, then the transcript submits as a steer event. Click again while listening to cancel without submitting.
 
 This is lighter than `generate`: no screenshot, no element context, no variant cycling. Read `message` and inspect the live page or project files as needed, then either make edits or answer in prose.
 

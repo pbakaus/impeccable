@@ -105,13 +105,43 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function submitSteerMessage\(\)[\s\S]{0,220}?type: 'steer'/,
+      /function submitSteerMessage\(\)[\s\S]{0,1200}?type: 'steer'/,
       'steer submit must post a steer event to the live poller',
     );
     assert.match(
       SOURCE,
       /case 'steer_done':[\s\S]{0,80}?maybeCompleteSteer\(msg\)/,
       'steer_done SSE must unlock the chat bar',
+    );
+    assert.match(
+      SOURCE,
+      /function toggleSteerVoice\(\)/,
+      'steer voice must toggle Web Speech recognition from the mic button',
+    );
+    assert.match(
+      SOURCE,
+      /webkitSpeechRecognition|SpeechRecognition/,
+      'steer voice must use the Web Speech API',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /Voice mode coming soon/,
+      'steer voice placeholder toast must not ship once voice is wired',
+    );
+    assert.match(
+      SOURCE,
+      /function isEmbeddedPreviewBrowser\(\)/,
+      'steer voice must detect embedded preview browsers (Cursor/Electron)',
+    );
+    assert.match(
+      SOURCE,
+      /steerVoiceUnavailableMessage\(\)/,
+      'steer voice must explain when preview browsers cannot reach speech services',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /Handing off|pageChatHint\.textContent = 'Working'/,
+      'steer processing state should use dots-only animation, not truncated text',
     );
   });
 
