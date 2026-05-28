@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildClaudeHooksManifest,
   buildCodexHooksManifest,
+  buildCursorHooksManifest,
   buildCodexPluginManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
@@ -151,11 +152,47 @@ describe('buildCodexPluginManifest()', () => {
   });
 });
 
+describe('buildCursorHooksManifest()', () => {
+  const m = buildCursorHooksManifest();
+
+  it('uses Cursor hooks.json schema (version 1, camelCase events)', () => {
+    assert.equal(m.version, 1);
+    assert.ok(Array.isArray(m.hooks.afterFileEdit));
+    assert.ok(Array.isArray(m.hooks.stop));
+    assert.ok(Array.isArray(m.hooks.sessionStart));
+    assert.equal(m.hooks.postToolUse, undefined);
+    assert.equal(m.hooks.PostToolUse, undefined);
+  });
+
+  it('afterFileEdit uses harness env + hook-after-edit.mjs', () => {
+    const handler = m.hooks.afterFileEdit[0];
+    assert.equal(handler.timeout, 5);
+    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-after-edit.mjs'));
+  });
+
+  it('stop uses hook-stop.mjs with loop_limit 1', () => {
+    const handler = m.hooks.stop[0];
+    assert.equal(handler.timeout, 5);
+    assert.equal(handler.loop_limit, 1);
+    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-stop.mjs'));
+  });
+
+  it('sessionStart uses the session script with harness env', () => {
+    const handler = m.hooks.sessionStart[0];
+    assert.equal(handler.timeout, 3);
+    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-session-start.mjs'));
+  });
+});
+
 describe('hooksJsonFor()', () => {
-  it('routes claude/codex; returns null for others', () => {
+  it('routes claude/codex/cursor; returns null for others', () => {
     assert.ok(hooksJsonFor('claude'));
     assert.ok(hooksJsonFor('codex'));
-    assert.equal(hooksJsonFor('cursor'), null);
+    assert.ok(hooksJsonFor('cursor'));
+    assert.equal(hooksJsonFor('gemini'), null);
   });
 });
 
@@ -163,6 +200,7 @@ describe('committed hook artifacts in repo', () => {
   for (const rel of [
     'plugin/hooks/hooks.json',
     '.agents/hooks/hooks.json',
+    '.cursor/hooks.json',
     '.codex-plugin/plugin.json',
   ]) {
     it(`${rel} exists and is valid JSON`, () => {
@@ -197,6 +235,16 @@ describe('committed hook artifacts in repo', () => {
       '${PLUGIN_ROOT}',
     );
     const bundledScript = path.join(REPO_ROOT, '.agents', scriptRel);
+    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+  });
+
+  it('.cursor/hooks.json references hook-after-edit.mjs bundled in .cursor/skills/', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.cursor/hooks.json'), 'utf-8'));
+    const command = manifest.hooks.afterFileEdit[0].command;
+    const match = command.match(/node "([^"]+)"/);
+    assert.ok(match, `expected quoted script path in command: ${command}`);
+    const scriptRel = match[1];
+    const bundledScript = path.join(REPO_ROOT, scriptRel);
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 

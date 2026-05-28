@@ -16,6 +16,9 @@ export const PROVIDERS = {
     configDir: '.cursor',
     displayName: 'Cursor',
     frontmatterFields: ['license', 'compatibility', 'metadata'],
+    emitHooks: 'cursor',
+    // Cursor reads `.cursor/hooks.json`, not `.cursor/hooks/hooks.json`.
+    hooksManifestRel: 'hooks.json',
   },
   'claude-code': {
     provider: 'claude-code',

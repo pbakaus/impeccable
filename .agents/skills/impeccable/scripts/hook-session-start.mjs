@@ -26,6 +26,8 @@ import {
   payload,
   truthy,
   writeAuditLog,
+  resolveHarness,
+  normalizeHookEvent,
 } from './hook-lib.mjs';
 
 const UI_DEPS = new Set([
@@ -79,7 +81,7 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
-const GREETING = `${ENVELOPE_PREFIX} Design hook is active. After every file edit the hook can see (Edit/Write/MultiEdit on Claude Code, apply_patch on Codex), the design detector scans the touched UI file and surfaces anti-patterns as developer context in your next turn — not as a visible chat message. When a finding appears, fix it before finalizing your reply and tell the user what you changed. Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, or a test fixture. Edits through shell, node-repl, or other tools without a file path are not scanned until the next direct edit. Disable per project: /impeccable hooks off. Disable globally: IMPECCABLE_HOOK_DISABLED=1.`;
+const GREETING = `${ENVELOPE_PREFIX} Design hook is active. After every file edit the hook can see (Edit/Write/MultiEdit on Claude Code, apply_patch on Codex, afterFileEdit on Cursor), the design detector scans the touched UI file. On Claude Code and Codex, findings land as developer context in your next turn. On Cursor, afterFileEdit queues findings and the stop hook auto-submits one corrective follow-up message at end of turn. When a finding appears, fix it before finalizing your reply and tell the user what you changed. Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, or a test fixture. Edits through shell, node-repl, or other tools without a file path are not scanned until the next direct edit. Disable per project: /impeccable hooks off. Disable globally: IMPECCABLE_HOOK_DISABLED=1.`;
 
 async function main() {
   const inheritedEnv = { ...process.env };
@@ -96,7 +98,12 @@ async function main() {
   } catch {
     /* parse errors swallowed, treat as missing event */
   }
-  const cwd = event?.cwd || process.cwd();
+  const cwd = event?.cwd
+    || (Array.isArray(event?.workspace_roots) && event.workspace_roots[0])
+    || process.env.CURSOR_PROJECT_DIR
+    || process.cwd();
+  const harness = resolveHarness(inheritedEnv, event);
+  event = normalizeHookEvent(event, cwd, harness);
 
   if (!projectIsScannable(cwd)) {
     writeAuditLog(process.env, {
@@ -126,7 +133,7 @@ async function main() {
     emitted: true,
   });
 
-  return done(0, payload(GREETING, 'SessionStart'));
+  return done(0, payload(GREETING, 'SessionStart', harness));
 }
 
 function done(code, out) {

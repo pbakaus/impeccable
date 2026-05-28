@@ -135,12 +135,52 @@ export function buildCodexPluginManifest(rootManifest) {
   };
 }
 
+// Cursor discovers `.cursor/hooks.json` at the project root (not
+// `.cursor/hooks/hooks.json`). Scripts live under `.cursor/skills/…` and
+// run with cwd = project root.
+//
+// Cursor 3.5.x discards postToolUse `additional_context` (confirmed bug).
+// Dynamic findings use afterFileEdit (record) + stop (followup_message).
+// sessionStart `additional_context` still works for the static greeting.
+const CURSOR_AFTER_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-after-edit.mjs';
+const CURSOR_STOP_SCRIPT = '.cursor/skills/impeccable/scripts/hook-stop.mjs';
+const CURSOR_SESSION_SCRIPT = '.cursor/skills/impeccable/scripts/hook-session-start.mjs';
+
+export function buildCursorHooksManifest() {
+  return {
+    version: 1,
+    hooks: {
+      afterFileEdit: [
+        {
+          command: `IMPECCABLE_HOOK_HARNESS=cursor node "${CURSOR_AFTER_EDIT_SCRIPT}"`,
+          timeout: 5,
+        },
+      ],
+      stop: [
+        {
+          command: `IMPECCABLE_HOOK_HARNESS=cursor node "${CURSOR_STOP_SCRIPT}"`,
+          timeout: 5,
+          loop_limit: 1,
+        },
+      ],
+      sessionStart: [
+        {
+          command: `IMPECCABLE_HOOK_HARNESS=cursor node "${CURSOR_SESSION_SCRIPT}"`,
+          timeout: 3,
+        },
+      ],
+    },
+  };
+}
+
 export function hooksJsonFor(provider) {
   switch (provider) {
     case 'claude':
       return buildClaudeHooksManifest();
     case 'codex':
       return buildCodexHooksManifest();
+    case 'cursor':
+      return buildCursorHooksManifest();
     default:
       return null;
   }

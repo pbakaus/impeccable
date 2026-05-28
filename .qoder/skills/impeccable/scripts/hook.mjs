@@ -2,7 +2,7 @@
 /**
  * Impeccable design hook — PostToolUse entry point.
  *
- * Reads the Claude Code / Codex hook event from stdin, runs the design
+ * Reads the Claude Code / Codex / Cursor hook event from stdin, runs the design
  * detector against the touched file, and emits a system reminder via
  * `hookSpecificOutput.additionalContext` when findings exist.
  *

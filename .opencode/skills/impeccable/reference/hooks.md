@@ -2,9 +2,13 @@
 
 Manage the **design detector hook** for the current project.
 
-The hook is a `PostToolUse` handler that runs the impeccable design detector after every `Edit`, `Write`, or `MultiEdit` on a design-relevant file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). When findings exist, it pushes a short system reminder into the agent's context so the next turn can course-correct. Silent on clean files. Never blocks an edit.
+The hook is a `PostToolUse` handler that runs the impeccable design detector after every direct file edit on a design-relevant file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). When findings exist, it pushes a short system reminder into the agent's context so the next turn can course-correct. Silent on clean files. Never blocks an edit.
 
 This command toggles the hook **per project** by editing `.impeccable/hook.json`. To disable globally, set `IMPECCABLE_HOOK_DISABLED=1` in your shell environment.
+
+Supported harnesses: Claude Code (plugin), Codex (plugin), Cursor (`.cursor/hooks.json` in the project).
+
+On **Cursor**, findings surface as a one-shot **`stop` followup message** at end of turn (not inline `additional_context`). The `afterFileEdit` hook records findings; `stop` auto-submits the corrective nudge once per turn (`loop_limit: 1`).
 
 ## Routing
 
@@ -35,9 +39,9 @@ The first argument is the action. Defaults to `status`.
 ## Constraints
 
 - Never modify `.impeccable/hook.json` by hand from this command. Always go through `hook-admin.mjs` so writes stay validated and the file shape stays consistent.
-- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-session-start.mjs`) from this flow. Those are skill plumbing.
+- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-session-start.mjs`, `hook-after-edit.mjs`, `hook-stop.mjs`) from this flow. Those are skill plumbing.
 - The hook never blocks edits, including when disabled is toggled. Disabling stops it from emitting findings; it does not interfere with the tool call that triggered it.
-- The hook is bundled with the Impeccable plugin on Claude Code and Codex. There is no install step beyond enabling the plugin. On Codex, the user must also enable `[features].hooks = true` in `~/.codex/config.toml` and approve the hook via `/hooks` the first time.
+- The hook is bundled with the Impeccable skill on Claude Code (plugin), Codex (plugin), and Cursor (`.cursor/hooks.json`). On Codex, the user must also enable `[features].hooks = true` in `~/.codex/config.toml` and approve the hook via `/hooks` the first time. On Cursor, confirm hooks are enabled under Settings → Hooks.
 
 ## Failure modes
 

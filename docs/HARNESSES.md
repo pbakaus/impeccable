@@ -61,6 +61,7 @@ Notes:
 |---------|:----------------:|:-----------------:|-------------------|-------|
 | Claude Code | Yes | Yes | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit\|apply_patch`. Extension filter in hook script (same as Codex). |
 | Codex CLI | Yes | Yes | `.codex-plugin/plugin.json` + `.agents/hooks/hooks.json` | Auto-discovered from `${PLUGIN_ROOT}`. Matcher: `Edit\|Write\|apply_patch`. Extension filter in hook script. macOS/Linux only. |
+| Cursor | Yes (afterFileEdit + stop) | Yes | `.cursor/hooks.json` | Project-level manifest. `afterFileEdit` records findings to `.impeccable/hook.pending.json`; `stop` emits a one-shot `followup_message` (`loop_limit: 1`). Cursor 3.5.x drops `postToolUse` `additional_context`, so findings reach the model via stop, not inline. `sessionStart` greeting unchanged. Reloads on save; restart Cursor if hooks do not pick up. |
 | All other harnesses | No | No | n/a | No documented hook surface today. Skill and commands still ship. |
 
 ## Skill Directory Structure

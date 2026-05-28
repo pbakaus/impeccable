@@ -309,8 +309,8 @@ export function createTransformer(config) {
     if (config.emitHooks) {
       const manifest = hooksJsonFor(config.emitHooks);
       if (manifest) {
-        const hooksDir = path.join(providerDir, configDir, 'hooks');
-        writeFile(path.join(hooksDir, 'hooks.json'), JSON.stringify(manifest, null, 2) + '\n');
+        const hooksRel = config.hooksManifestRel || path.join('hooks', 'hooks.json');
+        writeFile(path.join(providerDir, configDir, hooksRel), JSON.stringify(manifest, null, 2) + '\n');
         hooksEmitted = true;
       }
     }
@@ -319,7 +319,9 @@ export function createTransformer(config) {
     const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
     const scriptInfo = scriptCount > 0 ? ` (${scriptCount} script files)` : '';
     const agentInfo = agentCount > 0 ? ` (${agentCount} agent files)` : '';
-    const hooksInfo = hooksEmitted ? ` (hooks/hooks.json)` : '';
+    const hooksInfo = hooksEmitted
+      ? ` (${config.hooksManifestRel || path.join('hooks', 'hooks.json')})`
+      : '';
     console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}${hooksInfo}`);
   };
 }

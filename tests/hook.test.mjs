@@ -36,11 +36,18 @@ import {
   suppressionNotice,
   parseApplyPatchPaths,
   resolveTargetFiles,
+  resolveHarness,
+  normalizeHookEvent,
   expandScanTargets,
   parseStaticStyleImports,
   coLocatedStylesheets,
   runHook,
   payload,
+  appendPending,
+  drainPending,
+  clearPending,
+  renderCursorFollowup,
+  followupPayload,
 } from '../skill/scripts/hook-lib.mjs';
 
 function mkTmp() {
@@ -319,12 +326,18 @@ describe('writeAuditLog()', () => {
 });
 
 describe('payload()', () => {
-  it('produces the documented hookSpecificOutput shape', () => {
+  it('produces hookSpecificOutput for Claude/Codex', () => {
     const obj = JSON.parse(payload('hello'));
     assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
     const session = JSON.parse(payload('hi', 'SessionStart'));
     assert.equal(session.hookSpecificOutput.hookEventName, 'SessionStart');
+  });
+
+  it('produces additional_context for Cursor', () => {
+    const obj = JSON.parse(payload('hello', 'PostToolUse', 'cursor'));
+    assert.equal(obj.additional_context, 'hello');
+    assert.equal(obj.hookSpecificOutput, undefined);
   });
 });
 
@@ -648,6 +661,31 @@ describe('resolveTargetFiles()', () => {
     );
     assert.deepEqual(resolveTargetFiles({ tool_name: 'Bash', tool_input: { command: 'echo hi' } }, '/proj'), []);
   });
+
+  it('accepts Cursor Write/StrReplace path field and top-level file_path', () => {
+    assert.deepEqual(resolveTargetFiles({ tool_input: { path: '/a/b.tsx' } }, '/proj'), ['/a/b.tsx']);
+    assert.deepEqual(resolveTargetFiles({ file_path: '/a/c.css' }, '/proj'), ['/a/c.css']);
+  });
+});
+
+describe('resolveHarness() / normalizeHookEvent()', () => {
+  it('routes explicit env and Cursor conversation_id to cursor harness', () => {
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
+    assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
+    assert.equal(resolveHarness({}), 'claude');
+  });
+
+  it('maps Cursor postToolUse Write path into file_path + cwd', () => {
+    const normalized = normalizeHookEvent({
+      conversation_id: 'c1',
+      workspace_roots: ['/proj'],
+      tool_name: 'Write',
+      tool_input: { path: 'src/App.jsx' },
+    }, '/fallback', 'cursor');
+    assert.equal(normalized.session_id, 'c1');
+    assert.equal(normalized.cwd, '/proj');
+    assert.equal(normalized.tool_input.file_path, 'src/App.jsx');
+  });
 });
 
 describe('expandScanTargets()', () => {
@@ -743,5 +781,97 @@ describe('runHook() — events without file_path', () => {
     assert.equal(r.exitCode, 0);
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'no-file-path');
+  });
+});
+
+describe('appendPending() / drainPending() / clearPending()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('keys queue entries by conversation_id', () => {
+    appendPending(cwd, 'conv-a', { kind: 'fresh', file: 'src/a.css', findings: [finding('overused-font', 1)] });
+    appendPending(cwd, 'conv-b', { kind: 'fresh', file: 'src/b.css', findings: [finding('side-tab', 2)] });
+
+    const a = drainPending(cwd, 'conv-a');
+    assert.equal(a.length, 1);
+    assert.equal(a[0].file, 'src/a.css');
+
+    const b = drainPending(cwd, 'conv-b');
+    assert.equal(b.length, 1);
+    assert.equal(b[0].file, 'src/b.css');
+  });
+
+  it('falls back to _default bucket when conversation_id is absent', () => {
+    appendPending(cwd, null, { kind: 'pending', file: 'src/x.tsx', known: ['side-tab:3'] });
+    const items = drainPending(cwd, null);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].kind, 'pending');
+    assert.deepEqual(items[0].known, ['side-tab:3']);
+  });
+
+  it('drain clears the bucket; clearPending removes without returning', () => {
+    appendPending(cwd, 'conv-x', { kind: 'fresh', file: 'src/y.css', findings: [finding('overused-font', 4)] });
+    clearPending(cwd, 'conv-x');
+    const items = drainPending(cwd, 'conv-x');
+    assert.equal(items.length, 0);
+  });
+});
+
+describe('renderCursorFollowup()', () => {
+  it('renders fresh findings with envelope + directive footer', () => {
+    const text = renderCursorFollowup([
+      { kind: 'fresh', file: 'src/styles.css', findings: [finding('overused-font', 8, { name: 'Overused font' })] },
+    ], { cwd: '/proj' });
+    assert.match(text, new RegExp(`^${ENVELOPE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(text, /Required design corrections in src\/styles\.css/);
+    assert.match(text, /overused-font/);
+    assert.match(text, /Fix these in your next reply/);
+  });
+
+  it('includes pending reminders for queued known findings', () => {
+    const text = renderCursorFollowup([
+      { kind: 'pending', file: 'src/Card.tsx', known: ['side-tab:12', 'low-contrast:4'] },
+    ], { cwd: '/proj' });
+    assert.match(text, /Still pending in src\/Card\.tsx/);
+    assert.match(text, /side-tab:12/);
+  });
+});
+
+describe('followupPayload()', () => {
+  it('wraps text as Cursor stop followup_message JSON', () => {
+    const out = followupPayload('fix the font');
+    assert.deepEqual(JSON.parse(out), { followup_message: 'fix the font' });
+  });
+});
+
+describe('runHook() — emission enrichment', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function write(rel, content) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+    return abs;
+  }
+
+  it('returns emission.kind fresh with findings on new hits', async () => {
+    write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'emit-fresh',
+        cwd,
+        hook_event_name: 'afterFileEdit',
+        file_path: path.join(cwd, 'src/styles.css'),
+      }),
+      env: { IMPECCABLE_HOOK_HARNESS: 'cursor' },
+      cwd,
+      detector: fakeDetector([finding('overused-font', 8)]),
+    });
+    assert.equal(r.emission?.kind, 'fresh');
+    assert.ok(Array.isArray(r.emission?.findings));
+    assert.equal(r.emission.findings.length, 1);
   });
 });
