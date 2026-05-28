@@ -14,7 +14,8 @@
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
+import http from 'node:http';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -250,9 +251,9 @@ describe('context.mjs update check', () => {
   // Local version is pinned to 1.0.0; "newer" = 2.0.0, "older" = 0.0.1.
   const LOCAL_VERSION = '1.0.0';
 
-  // A fresh cache (lastCheck = now) skips the network poll, so these tests are
-  // hermetic: the directive is driven entirely by the seeded latestVersion.
-  function run(cacheObj, { disable = false } = {}) {
+  const cachePath = () => path.join(scratch, 'update-check.json');
+
+  function setup(cacheObj, { disable = false, host } = {}) {
     const skillScript = path.join(scratch, 'skill', 'scripts', 'context.mjs');
     fs.mkdirSync(path.dirname(skillScript), { recursive: true });
     fs.copyFileSync(SCRIPT_PATH, skillScript);
@@ -260,20 +261,41 @@ describe('context.mjs update check', () => {
       path.join(scratch, 'skill', 'SKILL.md'),
       `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,
     );
-    const cachePath = path.join(scratch, 'update-check.json');
-    fs.writeFileSync(cachePath, JSON.stringify(cacheObj));
+    fs.writeFileSync(cachePath(), JSON.stringify(cacheObj));
     const project = path.join(scratch, 'project');
     fs.mkdirSync(project, { recursive: true });
     fs.writeFileSync(path.join(project, 'PRODUCT.md'), '# Acme\n');
-    return spawnSync(process.execPath, [skillScript], {
-      cwd: project,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        IMPECCABLE_UPDATE_CACHE: cachePath,
-        IMPECCABLE_NO_UPDATE_CHECK: disable ? '1' : '',
-      },
+    const env = {
+      ...process.env,
+      IMPECCABLE_UPDATE_CACHE: cachePath(),
+      IMPECCABLE_NO_UPDATE_CHECK: disable ? '1' : '',
+      ...(host ? { IMPECCABLE_UPDATE_HOST: host } : {}),
+    };
+    return { skillScript, project, env };
+  }
+
+  // A fresh cache (lastCheck = now) skips the network poll, so cache-driven
+  // tests stay synchronous and hermetic.
+  function run(cacheObj, opts) {
+    const { skillScript, project, env } = setup(cacheObj, opts);
+    return spawnSync(process.execPath, [skillScript], { cwd: project, encoding: 'utf8', env });
+  }
+
+  // Async variant for the live-fetch tests: the stub server runs in THIS
+  // process, so the runner must not block the event loop (spawnSync would
+  // deadlock the loopback connection). spawn keeps the loop serving.
+  function runAsync(cacheObj, opts) {
+    const { skillScript, project, env } = setup(cacheObj, opts);
+    return new Promise((resolve) => {
+      const proc = spawn(process.execPath, [skillScript], { cwd: project, env });
+      let stdout = '';
+      proc.stdout.on('data', (d) => (stdout += d.toString()));
+      proc.on('exit', (status) => resolve({ status, stdout }));
     });
+  }
+
+  function readCache() {
+    return JSON.parse(fs.readFileSync(cachePath(), 'utf8'));
   }
 
   it('appends UPDATE_AVAILABLE when the cached latest version is newer', () => {
@@ -307,5 +329,58 @@ describe('context.mjs update check', () => {
     const res = run({ lastCheck: Date.now(), latestVersion: '2.0.0' }, { disable: true });
     assert.equal(res.status, 0);
     assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
+  });
+
+  // ─── live fetch path (against a localhost stub, never the real site) ──────
+  function startStub(body, { status = 200 } = {}) {
+    return new Promise((resolve) => {
+      const srv = http.createServer((req, res) => {
+        res.statusCode = status;
+        res.setHeader('content-type', 'application/json');
+        res.end(typeof body === 'string' ? body : JSON.stringify(body));
+      });
+      srv.listen(0, '127.0.0.1', () => resolve({ srv, host: `http://127.0.0.1:${srv.address().port}` }));
+    });
+  }
+
+  it('polls /api/version over the network and caches a newer version', async () => {
+    const { srv, host } = await startStub({ skills: '2.0.0' });
+    try {
+      const res = await runAsync({}, { host }); // empty cache forces the poll
+      assert.equal(res.status, 0);
+      assert.match(res.stdout, /UPDATE_AVAILABLE/);
+      assert.match(res.stdout, /installed v1\.0\.0, latest v2\.0\.0/);
+      const cache = readCache();
+      assert.equal(cache.latestVersion, '2.0.0');
+      assert.equal(typeof cache.lastCheck, 'number');
+    } finally {
+      srv.close();
+    }
+  });
+
+  it('stays silent when the network reports a same-or-older version', async () => {
+    const { srv, host } = await startStub({ skills: '1.0.0' });
+    try {
+      const res = await runAsync({}, { host });
+      assert.equal(res.status, 0);
+      assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
+      // The poll still happened, so lastCheck is stamped to throttle the next.
+      assert.equal(typeof readCache().lastCheck, 'number');
+    } finally {
+      srv.close();
+    }
+  });
+
+  it('fails silent and stamps lastCheck when the endpoint is unreachable', async () => {
+    // Bind then immediately close to obtain a port nothing is listening on.
+    const { srv, host } = await startStub({ skills: '2.0.0' });
+    await new Promise((r) => srv.close(r));
+    const res = run({}, { host });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
+    assert.match(res.stdout, /^# PRODUCT\.md/); // core output is unaffected
+    const cache = readCache();
+    assert.equal(typeof cache.lastCheck, 'number'); // stamped so we don't re-poll every boot
+    assert.equal(cache.latestVersion, undefined); // nothing learned
   });
 });

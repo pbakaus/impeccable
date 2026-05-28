@@ -68,11 +68,21 @@ export const SKILL_BODY = loadSkillBody();
  *   raw `{{placeholders}}`, but the assertions only check tool calls, not
  *   their content.
  * - `files` lets the test seed PRODUCT.md / DESIGN.md (or anything else).
+ * - `skillVersion` switches from symlink to a real COPY of the skill dir and
+ *   writes a `SKILL.md` carrying that version. context.mjs reads its own
+ *   version from that sibling file, so this is required for any scenario that
+ *   exercises the update-check path (the source dir has only SKILL.src.md).
  */
-export function prepareWorkspace({ files = {} } = {}) {
+export function prepareWorkspace({ files = {}, skillVersion = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-skill-test-'));
+  const skillDest = path.join(dir, '.claude', 'skills', 'impeccable');
   fs.mkdirSync(path.join(dir, '.claude', 'skills'), { recursive: true });
-  fs.symlinkSync(SKILL_SOURCE_DIR, path.join(dir, '.claude', 'skills', 'impeccable'), 'dir');
+  if (skillVersion) {
+    fs.cpSync(SKILL_SOURCE_DIR, skillDest, { recursive: true });
+    fs.writeFileSync(path.join(skillDest, 'SKILL.md'), `---\nname: impeccable\nversion: ${skillVersion}\n---\n\nbody\n`);
+  } else {
+    fs.symlinkSync(SKILL_SOURCE_DIR, skillDest, 'dir');
+  }
   for (const [name, contents] of Object.entries(files)) {
     const target = path.join(dir, name);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -104,9 +114,9 @@ function safeResolve(root, userPath) {
   return resolved;
 }
 
-function execBash(workspace, command, timeoutMs = 20_000) {
+function execBash(workspace, command, timeoutMs = 20_000, extraEnv = {}) {
   return new Promise((resolve) => {
-    const proc = spawn('bash', ['-lc', command], { cwd: workspace });
+    const proc = spawn('bash', ['-lc', command], { cwd: workspace, env: { ...process.env, ...extraEnv } });
     let stdout = '';
     let stderr = '';
     const truncatedFlag = { val: false };
@@ -149,10 +159,11 @@ function execBash(workspace, command, timeoutMs = 20_000) {
  * Build the workspace-scoped tool set + the trace it writes into.
  * Returns `{ tools, trace }`. The trace mutates in place as the agent runs.
  */
-export function makeTools(workspace) {
+export function makeTools(workspace, extraEnv = {}) {
   const trace = {
     toolCalls: [],
     bashCommands: [],
+    bashOutputs: [],
     readPaths: [],
     writePaths: [],
     listPaths: [],
@@ -173,10 +184,12 @@ export function makeTools(workspace) {
       }),
       execute: async ({ command }) => {
         record('bash', { command });
-        const res = await execBash(workspace, command);
+        const res = await execBash(workspace, command, 20_000, extraEnv);
         const head = `exit=${res.exitCode}`;
         const body = (res.stdout ? `stdout:\n${res.stdout}` : '') + (res.stderr ? `\nstderr:\n${res.stderr}` : '');
-        return `${head}\n${body}${res.truncated ? '\n[output truncated]' : ''}`;
+        const out = `${head}\n${body}${res.truncated ? '\n[output truncated]' : ''}`;
+        trace.bashOutputs.push(out);
+        return out;
       },
     }),
     read: tool({
@@ -238,8 +251,8 @@ export function makeTools(workspace) {
  * `priorMessages` lets multi-turn scenarios chain context from a previous
  * call (append `result.response.messages` between turns).
  */
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8 }) {
-  const { tools, trace } = makeTools(workspace);
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {} }) {
+  const { tools, trace } = makeTools(workspace, env);
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },

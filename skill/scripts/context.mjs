@@ -247,7 +247,20 @@ async function cli() {
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
 }
 
-const _running = process.argv[1];
-if (_running?.endsWith('context.mjs') || _running?.endsWith('context.mjs/')) {
+// Run cli() only when this module is the entry point. Compare realpaths
+// rather than endsWith(): a loose suffix match also fires for unrelated
+// scripts like `load-context.mjs`, and realpath tolerates symlinked
+// invocation (the test harness symlinks the skill dir).
+function invokedAsScript() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  try {
+    return fs.realpathSync(arg) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedAsScript()) {
   cli();
 }
