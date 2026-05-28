@@ -541,7 +541,6 @@ main#main {
   font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 2.75rem);
   font-weight: 500;
-  font-style: italic;
   color: var(--color-ink);
   letter-spacing: -0.02em;
   line-height: 1;
@@ -646,7 +645,6 @@ main#main {
   font-family: var(--font-display);
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 500;
-  font-style: italic;
   color: var(--color-ink);
   letter-spacing: -0.01em;
   line-height: 1.1;
@@ -1347,7 +1345,6 @@ main#main {
   font-size: 0.8125rem;
   color: var(--color-ash);
   margin-top: var(--spacing-sm);
-  font-style: italic;
   max-width: 60ch;
 }
 
@@ -1876,7 +1873,6 @@ main#main {
   text-transform: none;
   letter-spacing: 0;
   color: var(--color-ash);
-  font-style: italic;
   text-align: center;
   justify-self: center;
   /* Allow wrapping inside the middle column if the text is long. */
@@ -2115,7 +2111,6 @@ main#main {
 .skill-source-card-subtitle {
   font-size: 0.8125rem;
   color: var(--color-ash);
-  font-style: italic;
 }
 
 .skill-source-card-body {
@@ -2139,7 +2134,6 @@ main#main {
 .skill-references-heading {
   font-family: var(--font-display);
   font-size: 1.5rem;
-  font-style: italic;
   font-weight: 500;
   color: var(--color-ink);
   margin-bottom: var(--spacing-md);
@@ -2199,7 +2193,6 @@ main#main {
 .skill-reference-title {
   font-family: var(--font-display);
   font-size: 1.125rem;
-  font-style: italic;
   color: var(--color-ink);
 }
 
