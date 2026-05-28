@@ -11,6 +11,9 @@ import {
 
 const entries = await getCollection('skills');
 
+const tutorials = (await getCollection('tutorials'))
+  .sort((a, b) => a.data.order - b.data.order);
+
 const taglineFor = (slug: string) =>
   entries.find(e => e.id === slug)?.data.tagline ?? '';
 
@@ -63,6 +66,20 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="skills-sidebar-inner" id="skills-sidebar-inner">
+        <p class="skills-sidebar-label">Learn</p>
+        <div class="skills-sidebar-group">
+          <span class="skills-sidebar-category">Tutorials</span>
+          <ul class="skills-sidebar-list">
+            <li>
+              <a href="/tutorials"><span>All tutorials</span></a>
+            </li>
+            {tutorials.map(t => (
+              <li>
+                <a href={`/tutorials/${t.id}`}><span>{t.data.title}</span></a>
+              </li>
+            ))}
+          </ul>
+        </div>
         <p class="skills-sidebar-label">Commands</p>
         {CATEGORY_ORDER.map(cat => (
           <div class="skills-sidebar-group">
