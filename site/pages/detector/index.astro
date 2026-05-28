@@ -318,9 +318,14 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
   <section class="detector-workbench" aria-label="Detector fixture explorer">
     <aside class="detector-fixture-nav" aria-label="Fixture navigation">
       <div class="detector-nav-head">
-        <a class="detector-home-link" href="/" aria-label="Back to Impeccable">
-          <span>/</span>
-          <strong>Impeccable</strong>
+        <a class="detector-home-link ks-brand" href="/" aria-label="Back to Impeccable">
+          <span class="ks-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+              <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+            </svg>
+          </span>
+          <span class="ks-wordmark">Impeccable</span>
         </a>
         <h1>Detector Lab</h1>
         <p>Internal fixture browser and speed surface.</p>
@@ -685,10 +690,10 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
           position: absolute;
           z-index: 2147483646;
           box-sizing: border-box;
-          border: 2px solid oklch(65% 0.28 350);
-          border-radius: 6px;
-          background: color-mix(in oklch, oklch(65% 0.28 350), transparent 88%);
-          box-shadow: 0 0 0 1px rgb(255 255 255 / 0.92), 0 0 0 5px rgb(218 0 132 / 0.14);
+          border: 2px solid oklch(58% 0.15 35);
+          border-radius: 2px;
+          background: color-mix(in oklch, oklch(58% 0.15 35), transparent 88%);
+          box-shadow: 0 0 0 1px oklch(4% 0.004 95 / 0.7), 0 0 0 5px oklch(58% 0.15 35 / 0.16);
           pointer-events: none;
         }
         [data-impeccable-lab-overlay="label"] {
@@ -696,12 +701,12 @@ const dashboardJson = JSON.stringify(dashboardData).replace(/</g, '\\u003c');
           z-index: 2147483647;
           max-width: 260px;
           padding: 4px 7px;
-          border-radius: 6px;
-          background: oklch(42% 0.24 350);
-          color: white;
-          font: 700 11px/1.25 system-ui, sans-serif;
-          letter-spacing: 0;
-          box-shadow: 0 8px 20px rgb(0 0 0 / 0.22);
+          border-radius: 2px;
+          background: oklch(42% 0.13 35);
+          color: oklch(96% 0.02 82);
+          font: 600 11px/1.25 "Albert Sans", system-ui, sans-serif;
+          letter-spacing: 0.02em;
+          box-shadow: 0 8px 20px oklch(0% 0 0 / 0.32);
           pointer-events: none;
         }
       `;
