@@ -588,8 +588,8 @@ import '../styles/testimonials.css';
 
       <div class="downloads-rebuild-install">
         <div class="downloads-rebuild-cmd">
-          <code>npx skills add pbakaus/impeccable</code>
-          <button class="downloads-rebuild-copy" type="button" aria-label="Copy install command" data-copy="npx skills add pbakaus/impeccable">
+          <code>npx impeccable skills install</code>
+          <button class="downloads-rebuild-copy" type="button" aria-label="Copy install command" data-copy="npx impeccable skills install">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2"/>
               <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
@@ -597,7 +597,45 @@ import '../styles/testimonials.css';
             <span>Copy</span>
           </button>
         </div>
-        <p class="downloads-rebuild-note">Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other major AI coding harness.</p>
+        <p class="downloads-rebuild-note">Installs the build compiled for your harness. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other major AI coding harness.</p>
+
+        <details class="downloads-rebuild-alts">
+          <summary class="downloads-rebuild-alts-summary">
+            <svg class="downloads-rebuild-alts-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+            <span>Other install methods</span>
+          </summary>
+
+          <div class="downloads-rebuild-alt">
+            <span class="downloads-rebuild-alt-label">Claude Code plugin</span>
+            <div class="downloads-rebuild-cmd downloads-rebuild-cmd--alt">
+              <code>/plugin marketplace add pbakaus/impeccable</code>
+              <button class="downloads-rebuild-copy" type="button" aria-label="Copy Claude Code plugin command" data-copy="/plugin marketplace add pbakaus/impeccable">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <span class="downloads-rebuild-alt-note">Then open <code>/plugin</code> in Claude Code and install Impeccable from the list. Claude Code only.</span>
+          </div>
+
+          <div class="downloads-rebuild-alt">
+            <span class="downloads-rebuild-alt-label">npx skills</span>
+            <div class="downloads-rebuild-cmd downloads-rebuild-cmd--alt">
+              <code>npx skills add pbakaus/impeccable</code>
+              <button class="downloads-rebuild-copy" type="button" aria-label="Copy npx skills command" data-copy="npx skills add pbakaus/impeccable">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <span class="downloads-rebuild-alt-note">The general-purpose skills installer. For now it installs one shared build for all harnesses rather than the build compiled for yours. Prefer <code>npx impeccable skills install</code> above for the correct setup.</span>
+          </div>
+        </details>
+
         <p class="downloads-rebuild-secondary"><a href="/changelog">See what's new</a> &middot; <a href="/faq">Got questions?</a></p>
       </div>
 

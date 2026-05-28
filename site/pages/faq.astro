@@ -20,7 +20,7 @@ import '../styles/changelog-faq-kinpaku.css';
       <details id="install-location" class="cf-faq-item">
         <summary class="cf-faq-question">Where do I put the downloaded files?</summary>
         <div class="cf-faq-answer">
-          <p>The easiest way is <code>npx skills add pbakaus/impeccable</code>, which auto-detects your AI harness and places files correctly.</p>
+          <p>The easiest way is <code>npx impeccable skills install</code>, which detects your AI harness and installs the build compiled for it.</p>
           <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, <code>.agents/</code>, and <code>.github/</code>.</p>
           <p>Project-level installation takes precedence and lets you version control your skills.</p>
         </div>
@@ -31,8 +31,9 @@ import '../styles/changelog-faq-kinpaku.css';
         <div class="cf-faq-answer">
           <p>Run <code>npx impeccable skills update</code> from your project root. It downloads the latest skills, cleans up deprecated files, and preserves any prefix you use.</p>
           <ul>
-            <li><strong>Alternative:</strong> <code>npx skills add pbakaus/impeccable</code> re-installs from scratch.</li>
-            <li><strong>Claude Code plugin:</strong> Open <code>/plugin</code>, go to the Discover tab.</li>
+            <li><strong>Reinstall:</strong> <code>npx impeccable skills install --force</code> installs fresh.</li>
+            <li><strong>Claude Code plugin:</strong> Open <code>/plugin</code> in Claude Code.</li>
+            <li><strong>npx skills:</strong> <code>npx skills add pbakaus/impeccable</code> also works, but installs one shared build for all harnesses rather than the one compiled for yours.</li>
             <li><strong>Manual ZIP:</strong> Download from the homepage and extract to the project root.</li>
           </ul>
           <p>Your <code>PRODUCT.md</code> and <code>DESIGN.md</code> context files are never overwritten.</p>

@@ -689,6 +689,69 @@
   border-color: var(--card-copy-fg);
 }
 
+/* "Other install methods" — a quiet disclosure under the primary command.
+   Native <details> so it works without JS and stays accessible. */
+.downloads-rebuild-alts {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+}
+.downloads-rebuild-alts-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.84rem;
+  color: var(--ks-text-muted);
+  transition: color 160ms var(--ks-ease);
+}
+.downloads-rebuild-alts-summary::-webkit-details-marker { display: none; }
+.downloads-rebuild-alts-summary:hover { color: var(--ks-patina); }
+.downloads-rebuild-alts[open] > .downloads-rebuild-alts-summary {
+  color: var(--card-fg-strong);
+  margin-bottom: 18px;
+}
+.downloads-rebuild-alts-arrow {
+  flex: none;
+  transition: transform 180ms var(--ks-ease);
+}
+.downloads-rebuild-alts[open] > .downloads-rebuild-alts-summary .downloads-rebuild-alts-arrow {
+  transform: rotate(90deg);
+}
+
+.downloads-rebuild-alt + .downloads-rebuild-alt { margin-top: 18px; }
+.downloads-rebuild-alt-label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--card-fg-strong);
+}
+
+/* Smaller, quieter command box for the alternatives. */
+.home-kinpaku .downloads-rebuild-cmd--alt {
+  padding: 9px 9px 9px 18px;
+  gap: 12px;
+}
+.home-kinpaku .downloads-rebuild-cmd--alt > code { font-size: 0.98rem; }
+.home-kinpaku .downloads-rebuild-cmd--alt .downloads-rebuild-copy {
+  width: 34px;
+  height: 34px;
+}
+
+.downloads-rebuild-alt-note {
+  display: block;
+  margin-top: 7px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-alt-note code {
+  font-family: var(--ks-mono);
+  font-size: 0.9em;
+  color: var(--card-fg-muted);
+}
+
 .downloads-rebuild-note {
   grid-column: 1 / -1;
   margin: 0;
@@ -741,8 +804,10 @@
    gap moves to the top. */
 .downloads-rebuild-examples {
   list-style: none;
-  margin: 60px auto 0;
-  padding: 0;
+  margin: 48px auto 0;
+  padding: 48px 0 0;
+  /* Subtle hairline marking the "now use it" step after the setup block. */
+  border-top: 1px solid var(--ks-rule);
   display: grid;
   gap: 22px;
   max-width: 720px;
