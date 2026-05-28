@@ -149,6 +149,10 @@ function validateProse(rootDir) {
     'README.npm.md',
   ];
   const extensions = new Set(['.html', '.md', '.js', '.mjs', '.css', '.astro']);
+  // The slop catalog documents every antipattern by example, so it must
+  // contain em dashes, buzzwords, and the rest as specimens. Exempt it from
+  // the prose gate: its job is to show the slop, not to avoid it.
+  const excludedPrefixes = ['site/pages/slop'];
   const emDashPatterns = [/—/g, /&mdash;/gi, /&#8212;/gi, /&#x2014;/gi];
   // Phrase rules: { re, rationale }. Add to STYLE.md when adding here.
   const phraseRules = [
@@ -202,6 +206,7 @@ function validateProse(rootDir) {
   };
 
   const scan = (absPath, rel) => {
+    if (excludedPrefixes.some(p => rel === p || rel.startsWith(p + '/'))) return;
     const stat = fs.statSync(absPath);
     if (stat.isDirectory()) {
       for (const entry of fs.readdirSync(absPath)) {

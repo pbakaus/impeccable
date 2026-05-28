@@ -17,6 +17,7 @@ import {
   checkElementMotion,
   checkElementOversizedH1,
   checkElementQuality,
+  checkCreamPalette,
   checkHtmlPatterns,
   checkPageLayout,
   checkPageQualityFromDoc,
@@ -178,6 +179,9 @@ async function detectHtml(filePath, options = {}) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
     for (const f of runPageCheck('layout-rules', () => checkPageLayout(document, window))) {
+      findings.push(finding(f.id, filePath, f.snippet));
+    }
+    for (const f of runPageCheck('cream-palette', () => checkCreamPalette(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
     for (const f of runPageCheck('skipped-heading', () => checkPageQualityFromDoc(document))) {

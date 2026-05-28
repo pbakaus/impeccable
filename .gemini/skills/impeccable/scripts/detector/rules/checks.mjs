@@ -569,6 +569,18 @@ function checkHtmlPatterns(html) {
     findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
   }
 
+  // --- Provider tells (gated): "X theater" framing copy (GPT) ---
+  // Lives here (regex-on-HTML) rather than in the text-content analyzers so it
+  // runs in the bundled browser path too, not just the CLI/static path.
+  {
+    const bodyText = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    const tm = /\b(\w+)\s+theater\b/i.exec(bodyText);
+    if (tm) findings.push({ id: 'theater-slop-phrase', snippet: `"${tm[0].trim()}"` });
+  }
+
   // --- Provider tells (gated): image hover transform (Gemini) ---
   // A CSS `img...:hover { transform: ... }` rule, or a Tailwind hover:scale /
   // hover:rotate / hover:translate utility on an <img>. Each distinct
@@ -2024,48 +2036,88 @@ function checkPageLayout(doc, win) {
     }
   }
 
-  // Everything centered
-  const textEls = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, div, button');
-  let centeredCount = 0;
-  let totalText = 0;
-  for (const el of textEls) {
-    const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length >= 3);
-    if (!hasDirectText) continue;
-    totalText++;
+  return findings;
+}
 
-    let cur = el;
-    let isCentered = false;
-    while (cur && cur.nodeType === 1) {
-      const rawStyle = cur.getAttribute?.('style') || '';
-      const cls = cur.getAttribute?.('class') || '';
-      if (/text-align\s*:\s*center/i.test(rawStyle) || /\btext-center\b/.test(cls)) {
-        isCentered = true;
-        break;
-      }
-      if (cur.tagName === 'BODY') break;
-      cur = cur.parentElement;
+// ─── Cream / beige palette (the default "tasteful" AI surface) ────────────────
+// A warm, lightly-tinted off-white page background — light, with R≥G≥B and a
+// small warm tint (not white, not a strong color). The current reflex surface.
+function isCreamColor(rgb) {
+  if (!rgb) return false;
+  const { r, g, b } = rgb;
+  if (Math.min(r, g, b) < 209) return false;   // must be light
+  if (!(r >= g && g >= b)) return false;        // warm ordering
+  const warmth = r - b;
+  return warmth >= 6 && warmth <= 48;           // tinted, not white, not strong
+}
+
+// Tailwind background utilities that render as a warm off-white surface. The
+// static engine doesn't fetch Tailwind's CSS, so a `bg-amber-50` on <body>
+// resolves to nothing in computed style — catch it from the class list
+// instead. Candidate tokens map to their actual Tailwind hex and are still
+// filtered through isCreamColor, so neutral grays (stone) and over-saturated
+// shades drop out on their own.
+const TAILWIND_BG_HEX = {
+  'bg-amber-50': '#fffbeb', 'bg-amber-100': '#fef3c7',
+  'bg-orange-50': '#fff7ed', 'bg-orange-100': '#ffedd5',
+  'bg-yellow-50': '#fefce8',
+  'bg-stone-50': '#fafaf9', 'bg-stone-100': '#f5f5f4', 'bg-stone-200': '#e7e5e4',
+};
+
+function creamFromClassList(cls) {
+  if (!cls) return null;
+  // Arbitrary value: bg-[#f5f0e6] / bg-[rgb(245_240_230)] (underscores = spaces).
+  const arb = cls.match(/\bbg-\[([^\]]+)\]/);
+  if (arb && isCreamColor(parseAnyColor(arb[1].replace(/_/g, ' ')))) return `bg-[${arb[1]}]`;
+  // Named warm-light utilities.
+  for (const [tok, hex] of Object.entries(TAILWIND_BG_HEX)) {
+    if (new RegExp(`(^|\\s)${tok}($|\\s)`).test(cls) && isCreamColor(parseAnyColor(hex))) return tok;
+  }
+  return null;
+}
+
+function checkCreamPalette(doc, win) {
+  const findings = [];
+  const body = doc.body || (doc.querySelector ? doc.querySelector('body') : null);
+  if (!body) return findings;
+  const html = doc.documentElement;
+  const getCS = (el) => (win ? win.getComputedStyle(el) : getComputedStyle(el));
+
+  // 1. Computed background — covers inline / <style> / linked CSS, and Tailwind
+  //    once it's actually rendered (browser path).
+  let bg = readOwnBackgroundColor(body, getCS(body));
+  if (!bg || bg.a === 0) {
+    if (html) bg = readOwnBackgroundColor(html, getCS(html));
+  }
+  if (isCreamColor(bg)) {
+    findings.push({ id: 'cream-palette', snippet: `cream/beige page background rgb(${bg.r}, ${bg.g}, ${bg.b})` });
+    return findings;
+  }
+
+  // 2. Tailwind class fallback — for the static path, where utility classes
+  //    never resolve to computed CSS.
+  for (const el of [body, html]) {
+    const tok = creamFromClassList(el && el.getAttribute ? el.getAttribute('class') : '');
+    if (tok) {
+      findings.push({ id: 'cream-palette', snippet: `cream/beige page background (Tailwind ${tok})` });
+      break;
     }
-    if (isCentered) centeredCount++;
   }
-
-  if (totalText >= 5 && centeredCount / totalText > 0.7) {
-    findings.push({
-      id: 'everything-centered',
-      snippet: `${centeredCount}/${totalText} text elements centered (${Math.round(centeredCount / totalText * 100)}%)`,
-    });
-  }
-
   return findings;
 }
 
 // ─── Oversized hero headline ────────────────────────────────────────────────
-// Fires only when an h1 is comically large AND carries almost no copy — neither
-// huge-but-substantial nor small-and-terse alone fires.
+// Fires when a *long* headline is set at display size, so a full sentence ends
+// up dominating the viewport. A punchy one- or two-word headline at the same
+// size is a legitimate stylistic choice and must pass — length, not size
+// alone, is the tell.
+const OVERSIZED_H1_FONT_PX = 72;
+const OVERSIZED_H1_MIN_CHARS = 40;
 function checkOversizedH1({ tag, fontSize, headingText }) {
   if (tag !== 'h1') return [];
   const textLen = headingText.length;
-  if (fontSize >= 130 && textLen > 0 && textLen < 50) {
-    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1 "${headingText}"` }];
+  if (fontSize >= OVERSIZED_H1_FONT_PX && textLen >= OVERSIZED_H1_MIN_CHARS) {
+    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars "${headingText.slice(0, 60)}"` }];
   }
   return [];
 }
@@ -2248,6 +2300,8 @@ export {
   checkPageTypography,
   isCardLike,
   checkPageLayout,
+  isCreamColor,
+  checkCreamPalette,
   checkOversizedH1,
   checkElementOversizedH1,
   checkElementOversizedH1DOM,

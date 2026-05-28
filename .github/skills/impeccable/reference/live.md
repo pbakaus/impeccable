@@ -108,7 +108,7 @@ node .github/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVE
 - `--position` ← `event.insert.position` (`before` | `after`)
 - Anchor flags ← `event.insert.anchor` (same mapping as wrap: id, classes, tag, text)
 
-The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only — no action sub-command). Write all variants in one edit, then `--reply done`.
+The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Write all variants in one edit, then `--reply done`.
 
 On accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
 

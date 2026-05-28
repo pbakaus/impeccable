@@ -69,10 +69,10 @@ const REGEX_MATCHERS = [
     test: (m, line) => +m[1] >= 3 && hasBorderRadius(line),
     fmt: (m) => m[0] },
   // --- Overused font ---
-  { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans)\b/gi,
+  { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans|Instrument Serif)\b/gi,
     test: () => true,
     fmt: (m) => m[0] },
-  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Mona\+Sans|Geist)\b/gi,
+  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Instrument\+Serif|Mona\+Sans|Geist)\b/gi,
     test: () => true,
     fmt: (m) => `Google Fonts: ${m[1].replace(/\+/g, ' ')}` },
   // --- Gradient text ---
@@ -209,19 +209,6 @@ const REGEX_ANALYZERS = [
     const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
     return [finding('monotonous-spacing', filePath, `~${dominant}px used ${maxCount}/${rounded.length} times (${Math.round(pct * 100)}%)`)];
   },
-  // Everything centered (regex)
-  (content, filePath) => {
-    const lines = content.split('\n');
-    let centered = 0, total = 0;
-    for (const line of lines) {
-      if (/<(?:h[1-6]|p|div|li|button)\b[^>]*>/i.test(line) && line.trim().length > 20) {
-        total++;
-        if (/text-align\s*:\s*center/i.test(line) || /\btext-center\b/.test(line)) centered++;
-      }
-    }
-    if (total < 5 || centered / total <= 0.7) return [];
-    return [finding('everything-centered', filePath, `${centered}/${total} text elements centered (${Math.round(centered / total * 100)}%)`)];
-  },
   // Em-dash overuse: 5+ em-dashes or "--" in body text content
   // (occasional em-dash use in prose is fine; the pattern fires only
   // when count crosses into AI-cadence territory).
@@ -302,14 +289,6 @@ const REGEX_ANALYZERS = [
     }
     if (count < 3) return [];
     return [finding('aphoristic-cadence', filePath, `${count} aphoristic constructions: "${firstSample}"`)];
-  },
-  // Theater framing copy ("X theater") — gated GPT tell. Kept in the
-  // text-content cluster (indices 4-8) so detectHtml picks it up too.
-  (content, filePath) => {
-    const text = stripHtmlToText(content);
-    const m = /\b(\w+)\s+theater\b/i.exec(text);
-    if (!m) return [];
-    return [finding('theater-slop-phrase', filePath, `"${m[0].trim()}"`)];
   },
   // Dark glow (page-level: dark bg + colored box-shadow with blur)
   (content, filePath) => {
@@ -439,16 +418,15 @@ const TEXT_CONTENT_ANALYZER_IDS = [
   'marketing-buzzword',
   'numbered-section-markers',
   'aphoristic-cadence',
-  'theater-slop-phrase',
 ];
 
 function runTextContentAnalyzers(content, filePath, options = {}) {
   const profile = options?.profile;
   if (!isFullPage(content)) return [];
-  // The text-content analyzers are at indices 4-8 in REGEX_ANALYZERS.
+  // The 4 text-content analyzers are at indices 3-6 in REGEX_ANALYZERS.
   const findings = [];
   for (let i = 0; i < TEXT_CONTENT_ANALYZER_IDS.length; i++) {
-    const analyzer = REGEX_ANALYZERS[4 + i];
+    const analyzer = REGEX_ANALYZERS[3 + i];
     const ruleId = TEXT_CONTENT_ANALYZER_IDS[i];
     findings.push(...profileFindings(profile, {
       engine: 'regex',
@@ -525,12 +503,10 @@ function detectText(content, filePath, options = {}) {
       'single-font',
       'flat-type-hierarchy',
       'monotonous-spacing',
-      'everything-centered',
       'em-dash-overuse',
       'marketing-buzzword',
       'numbered-section-markers',
       'aphoristic-cadence',
-      'theater-slop-phrase',
       'dark-glow',
     ];
     for (let i = 0; i < REGEX_ANALYZERS.length; i++) {
