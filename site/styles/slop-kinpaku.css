@@ -732,7 +732,7 @@
    dark. Reads as a "specimen viewer" framed by the dark card. */
 .slop-kinpaku .rule-card-visual {
   height: 160px;
-  background: oklch(96% 0.008 82);
+  background: oklch(96% 0.003 255);
   border-bottom: 1px solid var(--ks-rule);
   position: relative;
   overflow: hidden;

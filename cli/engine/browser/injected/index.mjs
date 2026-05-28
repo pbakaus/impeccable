@@ -1335,6 +1335,14 @@ if (IS_BROWSER) {
       addBrowserFindings(groupMap, document.body, qualityFindings);
     }
 
+    const creamFindings = checkCreamPalette(document)
+      .map(f => ({ type: f.id, detail: f.snippet }))
+      .filter(f => _ruleOk(f.type));
+    if (creamFindings.length > 0) {
+      pageLevelFindings.push(...creamFindings);
+      addBrowserFindings(groupMap, document.body, creamFindings);
+    }
+
     // Regex-on-HTML checks (shared with Node)
     // Clone the document and strip impeccable-live overlay nodes before the
     // regex scan, so the inspector's own inline styles (transitions on top/

@@ -252,20 +252,6 @@ describe('detectHtml — layout', () => {
     expect(f.some(r => r.antipattern === 'monotonous-spacing')).toBe(true);
   });
 
-  test('detects everything centered via regex', () => {
-    const html = `<!DOCTYPE html><html><body>
-<h1 style="text-align: center;">Title</h1>
-<p style="text-align: center;">Paragraph one more text here</p>
-<p style="text-align: center;">Paragraph two more text here</p>
-<p style="text-align: center;">Paragraph three more text here</p>
-<p style="text-align: center;">Paragraph four more text here</p>
-<p style="text-align: center;">Paragraph five more text here</p>
-<p style="text-align: center;">Paragraph six more text here</p>
-</body></html>`;
-    const f = detectText(html, 'test.html');
-    expect(f.some(r => r.antipattern === 'everything-centered')).toBe(true);
-  });
-
 });
 
 // ---------------------------------------------------------------------------

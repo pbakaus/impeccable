@@ -561,6 +561,21 @@ describe('detectHtml — clipped-overflow-container', () => {
   });
 });
 
+describe('detectHtml — cream-palette', () => {
+  it('cream-palette: flags a warm cream/beige page background', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'cream-palette.html'));
+    assert.equal(
+      f.filter(r => r.antipattern === 'cream-palette').length, 1,
+      `expected one cream-palette finding, got: ${f.filter(r => r.antipattern === 'cream-palette').map(r => r.snippet).join('; ')}`,
+    );
+  });
+
+  it('cream-palette: does not fire on a neutral (non-cream) page', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
+    assert.equal(f.some(r => r.antipattern === 'cream-palette'), false, 'neutral page must not flag cream-palette');
+  });
+});
+
 describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
   const GPT_IDS = ['gpt-thin-border-wide-shadow', 'repeating-stripes-gradient', 'theater-slop-phrase'];
 

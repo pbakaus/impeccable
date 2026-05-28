@@ -64,6 +64,15 @@ const ANTIPATTERNS = [
     skillGuideline: 'AI color palette',
   },
   {
+    id: 'cream-palette',
+    category: 'slop',
+    name: 'Cream / beige palette',
+    description:
+      'A warm cream or beige page background has become the default "tasteful" AI surface, reached for by reflex. Choose a background that comes from a deliberate palette, not the safe warm off-white.',
+    skillSection: 'Color & Contrast',
+    skillGuideline: 'cream and beige as the default surface',
+  },
+  {
     id: 'nested-cards',
     category: 'slop',
     name: 'Nested cards',
@@ -80,15 +89,6 @@ const ANTIPATTERNS = [
       'The same spacing value used everywhere — no rhythm, no variation. Use tight groupings for related items and generous separations between sections.',
     skillSection: 'Layout & Space',
     skillGuideline: 'same spacing everywhere',
-  },
-  {
-    id: 'everything-centered',
-    category: 'slop',
-    name: 'Everything centered',
-    description:
-      'Every text element is center-aligned. Left-aligned text with asymmetric layouts feels more designed. Center only hero sections and CTAs.',
-    skillSection: 'Layout & Space',
-    skillGuideline: 'Center everything',
   },
   {
     id: 'bounce-easing',
