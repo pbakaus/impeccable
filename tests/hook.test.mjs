@@ -29,9 +29,16 @@ import {
   filterFindings,
   parseInlineIgnores,
   renderTemplate,
+  renderCleanAck,
+  renderPendingAck,
   matchesAnyGlob,
   writeAuditLog,
   suppressionNotice,
+  parseApplyPatchPaths,
+  resolveTargetFiles,
+  expandScanTargets,
+  parseStaticStyleImports,
+  coLocatedStylesheets,
   runHook,
   payload,
 } from '../skill/scripts/hook-lib.mjs';
@@ -248,12 +255,27 @@ describe('renderTemplate()', () => {
     const findings = Array.from({ length: 12 }, (_, i) =>
       finding('side-tab', i + 1, { name: `R${i}`, description: 'd' }));
     const text = renderTemplate(findings, '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' });
-    assert.ok(text.startsWith(`${ENVELOPE_PREFIX} Design detector flagged 12 issue(s) in Card.tsx:`));
+    assert.ok(text.startsWith(`${ENVELOPE_PREFIX} Required design corrections in Card.tsx (12 issue(s)):`));
     assert.match(text, /\.\.\. and 7 more \(see \/impeccable audit\)\./);
     // Exactly 5 finding lines.
     const lines = text.split('\n').filter((l) => l.startsWith('- '));
     assert.equal(lines.length, 5);
     assert.ok(text.length <= DEFAULT_CONFIG.limits.maxChars);
+  });
+
+  it('emits a directive footer (imperative + exception clause + ack)', () => {
+    // Steers the model: imperative "fix", explicit exception for
+    // intentional bad UI / fixtures, and "acknowledge" so the user
+    // sees the correction in the chat reply. See `directiveFooter()`
+    // in hook-lib.mjs for the rationale.
+    const text = renderTemplate(
+      [finding('side-tab', 1, { name: 'X' })],
+      '/x/Card.tsx', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    assert.match(text, /Fix these in your next reply/);
+    assert.match(text, /Acknowledge what you changed/);
+    assert.match(text, /intentionally bad UI|anti-pattern example|test fixture/);
+    assert.match(text, /\/impeccable audit/);
   });
 
   it('drops the L<line> prefix when line is 0', () => {
@@ -328,18 +350,71 @@ describe('runHook()', () => {
     return abs;
   }
 
-  it('emits payload on findings, silent on subsequent dedup hit', async () => {
+  it('emits findings on first fire, then a pending-ack on subsequent dedup hits', async () => {
+    // The "no silent fires" policy turns the previously-silent dedup hit
+    // into a pending re-nudge that keeps the unresolved finding in the
+    // model's context across turns. Findings emission still wins outright
+    // over the nudge (`renderTemplate` text), so r1 is unchanged from
+    // before. r2 is what changed: silent → pending ack.
     const file = writeFixture('src/Card.tsx', 'noop');
     const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
 
     const r1 = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
     assert.equal(r1.exitCode, 0);
     assert.ok(r1.stdout.includes(ENVELOPE_PREFIX));
+    assert.match(r1.stdout, /Required design corrections/);
     assert.equal(r1.audit.emitted, true);
 
     const r2 = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
-    assert.equal(r2.stdout, '');
-    assert.equal(r2.audit.emitted, false);
+    assert.equal(r2.exitCode, 0);
+    assert.ok(r2.stdout.includes(ENVELOPE_PREFIX));
+    assert.match(r2.stdout, /Still has 1 issue\(s\) flagged earlier this session/);
+    assert.match(r2.stdout, /side-tab:1/);
+    assert.equal(r2.audit.emitted, true);
+    assert.equal(r2.audit.kind, 'pending');
+  });
+
+  it('emits a clean ack when the file has zero findings', async () => {
+    // No-silent-fires policy: a successful scan that finds nothing still
+    // emits a short positive nudge so the hook stays a conversational
+    // presence on every fire.
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([]); // no findings
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.includes(ENVELOPE_PREFIX));
+    assert.match(r.stdout, /No anti-patterns/);
+    assert.match(r.stdout, /typography hierarchy, spacing rhythm, and color contrast/);
+    assert.equal(r.audit.emitted, true);
+    assert.equal(r.audit.kind, 'clean');
+  });
+
+  it('IMPECCABLE_HOOK_QUIET=1 suppresses clean and pending acks, keeps findings emission', async () => {
+    // The opt-out kill switch for users who want the old silent-on-clean
+    // behavior. Findings still emit because those are real signals; the
+    // QUIET switch only quiets the conversational acks.
+    const fileA = writeFixture('src/A.tsx', 'noop');
+    const fileB = writeFixture('src/B.tsx', 'noop');
+
+    // Clean file: silent under QUIET.
+    const detClean = fakeDetector([]);
+    const rClean = await runHook({
+      stdinJson: JSON.stringify(eventFor(fileA)),
+      env: { IMPECCABLE_HOOK_QUIET: '1' }, cwd, detector: detClean,
+    });
+    assert.equal(rClean.stdout, '');
+    assert.equal(rClean.audit.emitted, false);
+    assert.equal(rClean.audit.quiet, true);
+
+    // Findings file: still emits.
+    const detFindings = fakeDetector([finding('side-tab', 1)]);
+    const rFindings = await runHook({
+      stdinJson: JSON.stringify(eventFor(fileB)),
+      env: { IMPECCABLE_HOOK_QUIET: '1' }, cwd, detector: detFindings,
+    });
+    assert.ok(rFindings.stdout.includes(ENVELOPE_PREFIX));
+    assert.match(rFindings.stdout, /Required design corrections/);
+    assert.equal(rFindings.audit.emitted, true);
   });
 
   it('re-entrancy guard short-circuits when IMPECCABLE_HOOK_DEPTH is set', async () => {
@@ -470,6 +545,23 @@ describe('runHook()', () => {
     }
   });
 
+  it('parses Codex apply_patch command when file_path is omitted', async () => {
+    writeFixture('src/Card.tsx', '<div className="border-l-4" />');
+    const event = {
+      session_id: 'sid-codex-ap',
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'apply_patch',
+      tool_input: {
+        command: '*** Begin Patch\n*** Update File: src/Card.tsx\n*** End Patch',
+      },
+    };
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const r = await runHook({ stdinJson: JSON.stringify(event), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.match(r.stdout, /Required design corrections/);
+  });
+
   it('detector throw is swallowed; never breaks turn', async () => {
     const file = writeFixture('src/Card.tsx', 'noop');
     const det = { detectText: () => { throw new Error('boom'); } };
@@ -508,5 +600,148 @@ describe('ALLOWED_EXTS', () => {
     for (const ext of ['.md', '.py', '.go', '.json']) {
       assert.ok(!ALLOWED_EXTS.has(ext), `unexpected allowed: ${ext}`);
     }
+  });
+});
+
+describe('renderCleanAck() / renderPendingAck()', () => {
+  it('renderCleanAck stays short and ends with the steer line', () => {
+    const text = renderCleanAck('/x/src/App.jsx', { cwd: '/x' });
+    assert.match(text, /^\[impeccable@1\] Design hook scanned src\/App\.jsx\. No anti-patterns\./);
+    assert.match(text, /typography hierarchy, spacing rhythm, and color contrast/);
+    // Budget guard: should fit comfortably under a single context-message
+    // injection (~200 chars). Hard upper bound 240 chars.
+    assert.ok(text.length < 240, `clean ack too long: ${text.length} chars`);
+  });
+
+  it('renderPendingAck quotes up to 3 known findings and counts the rest', () => {
+    const known = ['side-tab:3', 'gradient-text:4', 'ai-color-palette:8', 'overused-font:12'];
+    const text = renderPendingAck('/x/src/SlopCard.jsx', known, { cwd: '/x' });
+    assert.match(text, /^\[impeccable@1\] Design hook scanned src\/SlopCard\.jsx\./);
+    assert.match(text, /Still has 4 issue\(s\) flagged earlier this session/);
+    assert.match(text, /side-tab:3, gradient-text:4, ai-color-palette:8/);
+    assert.match(text, /\+1 more/); // 4 total, 3 shown
+    assert.match(text, /Address them before finalizing/);
+  });
+
+  it('renderPendingAck omits the "+N more" suffix when ≤3 known findings', () => {
+    const text = renderPendingAck('/x/src/A.tsx', ['side-tab:1', 'gradient-text:2'], { cwd: '/x' });
+    assert.ok(!text.includes('+'), 'no overflow suffix expected');
+  });
+});
+
+describe('parseApplyPatchPaths()', () => {
+  it('extracts absolute and relative paths from patch bodies', () => {
+    const cwd = '/proj';
+    const rel = parseApplyPatchPaths('*** Update File: src/App.jsx\n', cwd);
+    assert.deepEqual(rel, ['/proj/src/App.jsx']);
+    const abs = parseApplyPatchPaths('*** Add File: /tmp/x.css\n*** Update File: src/y.html\n', cwd);
+    assert.deepEqual(abs, ['/tmp/x.css', '/proj/src/y.html']);
+  });
+});
+
+describe('resolveTargetFiles()', () => {
+  it('prefers file_path when present and falls back to apply_patch command', () => {
+    assert.deepEqual(resolveTargetFiles({ tool_input: { file_path: '/a/b.tsx' } }, '/proj'), ['/a/b.tsx']);
+    assert.deepEqual(
+      resolveTargetFiles({ tool_name: 'apply_patch', tool_input: { command: '*** Update File: src/x.css\n' } }, '/proj'),
+      ['/proj/src/x.css'],
+    );
+    assert.deepEqual(resolveTargetFiles({ tool_name: 'Bash', tool_input: { command: 'echo hi' } }, '/proj'), []);
+  });
+});
+
+describe('expandScanTargets()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function write(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('includes co-located styles.css when the primary edit is App.jsx', () => {
+    const app = write('src/App.jsx', 'export default function App() { return <main className="x" />; }');
+    write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    const expanded = expandScanTargets([app], cwd);
+    assert.deepEqual(expanded, [app, path.join(cwd, 'src/styles.css')]);
+  });
+
+  it('follows static stylesheet imports from the edited component', () => {
+    const card = write('src/Card.jsx', "import './Card.module.css';\nexport default function Card() { return null; }");
+    const mod = write('src/Card.module.css', '.card { border-left: 4px solid #3b82f6; }');
+    const expanded = expandScanTargets([card], cwd);
+    assert.ok(expanded.includes(mod));
+  });
+
+  it('does not expand when the primary target is already a stylesheet', () => {
+    const css = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    assert.deepEqual(expandScanTargets([css], cwd), [css]);
+  });
+});
+
+describe('runHook() — co-located stylesheet scan', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function write(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('flags slop in styles.css when only App.jsx was edited', async () => {
+    const app = write('src/App.jsx', 'export default function App() { return <main className="x" />; }');
+    write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    const det = {
+      detectText: (content, filePath) => (
+        filePath.endsWith('.css') ? [finding('overused-font', 8)] : []
+      ),
+      detectHtml: () => [],
+    };
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'co-scan',
+        cwd,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'apply_patch',
+        tool_input: { command: `*** Update File: ${app}\n` },
+      }),
+      env: {},
+      cwd,
+      detector: det,
+    });
+    assert.match(r.stdout, /Required design corrections/);
+    assert.match(r.stdout, /styles\.css/);
+  });
+});
+
+describe('runHook() — events without file_path', () => {
+  // The sweep fallback was removed in v5 (single-hook simplification).
+  // Code-execution tools that don't carry a `file_path` now hit a clean
+  // silent skip instead of running a git-status sweep. This keeps the
+  // single PostToolUse matcher (Edit/Write/MultiEdit/apply_patch) honest:
+  // anything else is a no-op.
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('returns silent skip with reason no-file-path', async () => {
+    const event = JSON.stringify({
+      session_id: 'sid-x',
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'mcp__node_repl__js',
+      tool_input: { title: 'do work', code: 'console.log(1)' },
+    });
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const r = await runHook({ stdinJson: event, env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.skipped, 'no-file-path');
   });
 });

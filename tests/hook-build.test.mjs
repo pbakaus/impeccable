@@ -32,29 +32,34 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 describe('buildClaudeHooksManifest()', () => {
   const m = buildClaudeHooksManifest();
 
-  it('declares PostToolUse with Edit|Write|MultiEdit matcher', () => {
+  it('declares a single PostToolUse matcher group for direct-edit tools', () => {
+    // Single matcher group covers Edit/Write/MultiEdit on Claude Code
+    // and apply_patch on Codex. Claude sends `tool_input.file_path`;
+    // Codex `apply_patch` sends the patch in `tool_input.command` (parsed
+    // in hook-lib.mjs). The earlier `mcp__node_repl__.*` sweep group was
+    // removed in v5: it required git-status fallback, only worked
+    // inside git repos, and emitted confusing "look at unrelated work"
+    // nudges when the model touched files outside the current task.
     const ptu = m.hooks.PostToolUse;
-    assert.ok(Array.isArray(ptu) && ptu.length === 1);
-    assert.equal(ptu[0].matcher, 'Edit|Write|MultiEdit');
+    assert.ok(Array.isArray(ptu) && ptu.length === 1, `expected 1 group, got ${ptu?.length}`);
+    assert.equal(ptu[0].matcher, 'Edit|Write|MultiEdit|apply_patch');
   });
 
-  it('uses exec form (command + args) — never shell form', () => {
+  it('uses shell-form command with quoted ${CLAUDE_PLUGIN_ROOT}', () => {
+    // Codex only substitutes `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}` inside
+    // the `command` string, not inside `args`. Exec form (command: "node" +
+    // args: [...]) ships the literal placeholder to Node and the hook fails
+    // with MODULE_NOT_FOUND. Every working hook in claude-plugins-official
+    // (posthog, hookify) uses shell form for this reason. Quotes protect
+    // plugin roots that contain spaces.
+    const expected = 'node "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"';
     const handler = m.hooks.PostToolUse[0].hooks[0];
     assert.equal(handler.type, 'command');
-    assert.equal(handler.command, 'node');
-    assert.ok(Array.isArray(handler.args) && handler.args.length === 1);
-    // Avoid bare-string `command: "node /path/script.mjs"` which breaks under
-    // Windows .cmd shims and tokenizes paths with spaces.
-    assert.ok(!('script' in handler));
+    assert.equal(handler.command, expected);
+    assert.ok(!('args' in handler), 'shell form must not also set args');
   });
 
-  it('points args at the bundled hook.mjs under ${CLAUDE_PLUGIN_ROOT}', () => {
-    const arg = m.hooks.PostToolUse[0].hooks[0].args[0];
-    assert.ok(arg.startsWith('${CLAUDE_PLUGIN_ROOT}/'), arg);
-    assert.ok(arg.endsWith('/skills/impeccable/scripts/hook.mjs'), arg);
-  });
-
-  it('declares the if: glob covering the documented extensions', () => {
+  it('declares the if: glob covering every design-relevant extension', () => {
     const ifGlob = m.hooks.PostToolUse[0].hooks[0].if;
     assert.ok(ifGlob.startsWith('Edit('));
     for (const ext of ['tsx', 'jsx', 'html', 'vue', 'svelte', 'astro', 'css', 'scss', 'less', 'ts', 'js']) {
@@ -62,37 +67,69 @@ describe('buildClaudeHooksManifest()', () => {
     }
   });
 
-  it('sets PostToolUse timeout 5s, SessionStart timeout 3s', () => {
+  it('sets timeouts: 5s PostToolUse, 3s SessionStart', () => {
     assert.equal(m.hooks.PostToolUse[0].hooks[0].timeout, 5);
     assert.equal(m.hooks.SessionStart[0].hooks[0].timeout, 3);
   });
 
-  it('declares a SessionStart greeting hook', () => {
-    const handler = m.hooks.SessionStart[0].hooks[0];
+  it('declares a SessionStart greeting hook using shell form', () => {
+    const group = m.hooks.SessionStart[0];
+    assert.equal(group.matcher, 'startup|resume');
+    const handler = group.hooks[0];
     assert.equal(handler.type, 'command');
-    assert.ok(handler.args[0].endsWith('/hook-session-start.mjs'));
+    assert.equal(
+      handler.command,
+      'node "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"',
+    );
+    assert.ok(!('args' in handler));
+    assert.equal(handler.statusMessage, 'Loading design hook');
   });
 });
 
 describe('buildCodexHooksManifest()', () => {
   const m = buildCodexHooksManifest();
 
-  it('uses Edit|Write|apply_patch matcher (Codex tool surface)', () => {
-    assert.equal(m.hooks.PostToolUse[0].matcher, 'Edit|Write|apply_patch');
+  it('declares a single PostToolUse matcher group (direct-edit only)', () => {
+    const ptu = m.hooks.PostToolUse;
+    assert.ok(Array.isArray(ptu) && ptu.length === 1);
+    // Codex's direct-edit equivalents. apply_patch is the channel
+    // Codex uses for almost all file mutations; Edit/Write are present
+    // for harness compatibility. The earlier `mcp__node_repl__.*`
+    // sweep group was pulled in v5 — see buildClaudeHooksManifest test
+    // above for rationale.
+    assert.equal(ptu[0].matcher, 'Edit|Write|apply_patch');
   });
 
-  it('uses ${PLUGIN_ROOT}, not ${CLAUDE_PLUGIN_ROOT}', () => {
-    const arg = m.hooks.PostToolUse[0].hooks[0].args[0];
-    assert.ok(arg.startsWith('${PLUGIN_ROOT}/'), arg);
-    assert.ok(!arg.includes('CLAUDE_PLUGIN_ROOT'));
+  it('uses shell-form command with ${PLUGIN_ROOT}, not ${CLAUDE_PLUGIN_ROOT}', () => {
+    const expected = 'node "${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"';
+    const handler = m.hooks.PostToolUse[0].hooks[0];
+    assert.equal(handler.type, 'command');
+    assert.equal(handler.command, expected);
+    assert.ok(!handler.command.includes('CLAUDE_PLUGIN_ROOT'));
+    assert.ok(!('args' in handler));
   });
 
   it('does not declare an if: glob (Codex has no analog)', () => {
     assert.equal(m.hooks.PostToolUse[0].hooks[0].if, undefined);
   });
 
-  it('does not declare SessionStart (kept Claude-only in v1)', () => {
-    assert.equal(m.hooks.SessionStart, undefined);
+  it('PostToolUse timeout is 5s and exposes statusMessage', () => {
+    const handler = m.hooks.PostToolUse[0].hooks[0];
+    assert.equal(handler.timeout, 5);
+    assert.equal(handler.statusMessage, 'Scanning design');
+  });
+
+  it('declares SessionStart with startup|resume matcher and PLUGIN_ROOT', () => {
+    const group = m.hooks.SessionStart[0];
+    assert.equal(group.matcher, 'startup|resume');
+    const handler = group.hooks[0];
+    assert.equal(handler.type, 'command');
+    assert.equal(
+      handler.command,
+      'node "${PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"',
+    );
+    assert.equal(handler.timeout, 3);
+    assert.equal(handler.statusMessage, 'Loading design hook');
   });
 });
 
@@ -139,19 +176,31 @@ describe('committed hook artifacts in repo', () => {
     });
   }
 
+  // Shell-form command shape: `node "${PLUGIN_ROOT}/skills/.../hook.mjs"`.
+  // Parse out the quoted path so we can verify the script exists on disk.
+  const extractScriptPath = (commandStr, rootPlaceholder) => {
+    const match = commandStr.match(/"([^"]+)"/);
+    assert.ok(match, `expected quoted script path in command: ${commandStr}`);
+    return match[1].replace(`${rootPlaceholder}/`, '');
+  };
+
   it('plugin/hooks/hooks.json references a hook.mjs that is bundled in plugin/skills/', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/hooks/hooks.json'), 'utf-8'));
-    const argPath = manifest.hooks.PostToolUse[0].hooks[0].args[0]
-      .replace('${CLAUDE_PLUGIN_ROOT}/', '');
-    const bundledScript = path.join(REPO_ROOT, 'plugin', argPath);
+    const scriptRel = extractScriptPath(
+      manifest.hooks.PostToolUse[0].hooks[0].command,
+      '${CLAUDE_PLUGIN_ROOT}',
+    );
+    const bundledScript = path.join(REPO_ROOT, 'plugin', scriptRel);
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 
   it('.agents/hooks/hooks.json references a hook.mjs that is bundled in .agents/skills/', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.agents/hooks/hooks.json'), 'utf-8'));
-    const argPath = manifest.hooks.PostToolUse[0].hooks[0].args[0]
-      .replace('${PLUGIN_ROOT}/', '');
-    const bundledScript = path.join(REPO_ROOT, '.agents', argPath);
+    const scriptRel = extractScriptPath(
+      manifest.hooks.PostToolUse[0].hooks[0].command,
+      '${PLUGIN_ROOT}',
+    );
+    const bundledScript = path.join(REPO_ROOT, '.agents', scriptRel);
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 

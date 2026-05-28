@@ -678,8 +678,15 @@ For the implementation branch, not this one.
 | 2026-05-28 | Bash-written files ignored in v1 (documented limitation) | Adding a `Bash` matcher means a `git status` shell-out per Bash call; defer the cost/benefit call until we have audit-log data. |
 | 2026-05-28 | Codex Mac/Linux only in v1 | Codex disables hooks on Windows; ship what works, document the gap. |
 | 2026-05-28 | NDJSON audit log opt-in, off by default | Disk-space safety; the failure mode it addresses ("hook silently stopped") matters enough to provide the option, not common enough to default on. |
+| 2026-05-28 | v2: add second PostToolUse matcher group with git-status sweep | The original `Edit|Write|MultiEdit|apply_patch` matcher missed Codex's normal edit path. Codex routes most file mutations through `mcp__node_repl__js` (and the related browser/repl tools), and those events do not include `tool_input.file_path`. Without a sweep group the hook is silent for Codex users with default MCP setups. Second group fires on the no-`file_path` branch, runs `git status --porcelain`, scans up to 5 changed UI files. 2-second per-session throttle absorbs chatty models. |
+| 2026-05-28 | v3: narrow sweep matcher from `Bash\|mcp__.*` to `mcp__node_repl__.*` | First v2 implementation matched every shell and MCP call. Real-session audit (`~/.codex/sessions/2026/05/28/`) showed 17 invocations producing 5 visible findings; the 12 silent fires were `ls`, `git status`, `npm run dev`, browser MCP tool calls, etc. None mutated UI files. Narrowing to `mcp__node_repl__.*` eliminates the silent-noise tax while keeping coverage for the one MCP family that actually changes source files in Codex. On Claude Code the matcher matches nothing in the native namespace, so the sweep group is a no-op there; direct-edit covers Claude's workload. |
+| 2026-05-28 | v4: no-silent-fires policy. Every successful scan emits something to the model | The original design returned empty stdout when `fresh.length === 0`. Real sessions showed the model losing track of unresolved findings after a few tool calls scrolled the prior reminder past the salient window. New three-state emission model: fresh findings → `Required design corrections...` (existing imperative); pending findings (filtered > 0, fresh === 0) → short `Still has N issue(s) flagged earlier this session...` re-nudge; truly clean (filtered === 0) → short positive ack `No anti-patterns. Keep typography, spacing, contrast intentional...`. Sweep variants mirrored the same three states. Detector crashes still stay silent because we can't honestly say "clean" when the scan failed. Opt-out via `IMPECCABLE_HOOK_QUIET=1` for users who want the v1 silent-on-clean behavior; findings emissions still fire under QUIET. |
+| 2026-05-28 | v5: remove the second PostToolUse group and the git-status sweep entirely | The sweep was added in v2 to catch Codex's `mcp__node_repl__*` edits (which carry no `file_path`). In practice the cost outweighed the benefit. v5 collapses back to a single PostToolUse group matching `Edit|Write|MultiEdit|apply_patch`. Events with no resolvable file path hit a silent skip with `reason: no-file-path`. |
+| 2026-05-28 | v6: parse Codex `apply_patch` paths from `tool_input.command` | Per [Codex hooks docs](https://developers.openai.com/codex/hooks), `apply_patch` exposes the patch in `tool_input.command`, not `file_path`. Our hook only read `file_path`, so every Codex PostToolUse fired but exited with empty stdout. Fix: `parseApplyPatchPaths()` + `resolveTargetFiles()`. |
+| 2026-05-28 | v7: Codex manifest parity + SessionStart matcher | Added SessionStart to the Codex `.agents` manifest (was Claude-only). Both manifests now use `matcher: startup|resume` on SessionStart per Codex docs. SessionStart greeting copy corrected (no Bash/MCP false claim). Optional `statusMessage` on handlers. |
+| 2026-05-28 | v8: co-scan stylesheets when a UI component is edited | PostToolUse only scanned the patched file. React/Vite apps often keep slop in sibling `styles.css` while JSX edits trigger the hook — so `App.jsx` came back clean while `styles.css` still had Inter/bounce/etc. Fix: after resolving the primary target(s), also scan static `import '…css'` dependencies plus co-located stylesheets (`styles.css`, `Component.module.css`, `globals.css`, …) in the same directory. Cap at 6 files per fire. Stylesheet-only edits unchanged. |
 | TBD | `/impeccable hooks` hidden vs visible | Open question 2. |
-| TBD | Bash blind spot policy | Open question 1. |
+| Resolved 2026-05-28 | Bash blind spot policy (open question 1) | v2 added a `Bash\|mcp__.*` sweep; v3 narrowed it to `mcp__node_repl__.*`; v5 removed the sweep group entirely. The conclusion is that Bash / MCP coverage isn't worth the always-on second code path. Pure `Bash` writes (via heredoc/redirect) and `mcp__node_repl__js` writes both go un-scanned at write time; the dedup cache catches them on the next direct edit. |
 | TBD | Output size policy under subagents | Open question 6. |
 | TBD | `effort`-aware suppression | Open question 8. |
 
@@ -743,14 +750,13 @@ The hook reads `file_path` and the **final** content from disk — not the indiv
   "tool_name": "apply_patch",
   "tool_use_id": "...",
   "tool_input": {
-    "file_path": "/Users/me/myapp/src/components/Card.tsx",
-    "command": "*** Update File: src/components/Card.tsx\n..."
+    "command": "*** Begin Patch\n*** Update File: src/components/Card.tsx\n..."
   },
   "tool_response": "Patched."
 }
 ```
 
-The hook script reads `tool_input.file_path` from all four shapes (`Edit`, `Write`, `MultiEdit`, `apply_patch`) identically.
+Per [Codex hooks docs](https://developers.openai.com/codex/hooks), `apply_patch` exposes the raw patch in `tool_input.command`, not `tool_input.file_path`. Claude Code may send both fields; the hook resolves paths from `file_path` when present and parses `*** Update File:` / `*** Add File:` lines from `command` otherwise.
 
 ### What we do NOT see: `Bash` write
 

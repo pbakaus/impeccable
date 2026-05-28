@@ -7,11 +7,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"
-            ],
-            "timeout": 5
+            "command": "node \"${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Scanning design"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Loading design hook"
           }
         ]
       }

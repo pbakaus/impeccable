@@ -17,32 +17,66 @@ const SESSION_SCRIPT_REL = 'skills/impeccable/scripts/hook-session-start.mjs';
 
 const FILE_EXT_GLOB = '*.{tsx,jsx,html,vue,svelte,astro,css,scss,less,ts,js}';
 
+// Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
+// shared marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex
+// installs the same plugin from our marketplace, so the manifest needs to be
+// portable across both harnesses.
+//
+// **Shell form, not exec form.** We use `command: "node \"…path…\""` with
+// the path embedded in the command string, not the exec form
+// `command: "node", args: ["…path…"]`. Codex only substitutes the
+// `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}` placeholders inside the
+// `command` string; placeholders in `args` are passed through literally,
+// which makes Node fail to resolve the script path. Every working hook in
+// `claude-plugins-official` (posthog, hookify, etc.) uses shell form for
+// exactly this reason. The quotes around the path keep us safe if the
+// plugin root contains spaces.
+//
+// **One matcher group, scoped to direct-edit tools.** Claude Code
+// Edit/Write/MultiEdit carry `tool_input.file_path`. Codex `apply_patch`
+// carries the patch in `tool_input.command` (see Codex hooks docs); the
+// hook script parses `*** Update File:` / `*** Add File:` lines from that
+// body. Codex's `mcp__node_repl__*` tools can also mutate files
+// (via fs.writeFileSync etc.), but they don't expose file paths, so the
+// only honest way to catch them was a git-status sweep. We pulled that
+// path: it created a second always-running code branch, depended on the
+// project being a git repo, and reading dirty trees produced confusing
+// "look at unrelated work" nudges. The cost is missing detector coverage
+// for `mcp__node_repl__` edits in Codex; the win is one simple code path
+// and zero invocations on tool calls that don't carry a file.
+//
+// Codex silently ignores the `if:` field (which is Claude-only); the hook
+// script does its own extension filter as a backstop, so unmatched
+// extensions on the Codex side are a cheap process-startup no-op.
 export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLUGIN_ROOT}' } = {}) {
   return {
-    description: 'Impeccable design detector: runs after Write/Edit/MultiEdit on UI files and surfaces findings as system reminders.',
+    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit/apply_patch on UI files and surfaces findings as system reminders.',
     hooks: {
       PostToolUse: [
         {
-          matcher: 'Edit|Write|MultiEdit',
+          matcher: 'Edit|Write|MultiEdit|apply_patch',
           hooks: [
             {
               type: 'command',
-              command: 'node',
-              args: [`${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}`],
+              command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
               if: `Edit(${FILE_EXT_GLOB})`,
               timeout: 5,
+              statusMessage: 'Scanning design',
             },
           ],
         },
       ],
       SessionStart: [
         {
+          // Codex docs: matcher filters `source` (startup, resume, clear, compact).
+          // Greet on fresh open and resume only — skip compact/clear churn.
+          matcher: 'startup|resume',
           hooks: [
             {
               type: 'command',
-              command: 'node',
-              args: [`${pluginRootPlaceholder}/${SESSION_SCRIPT_REL}`],
+              command: `node "${pluginRootPlaceholder}/${SESSION_SCRIPT_REL}"`,
               timeout: 3,
+              statusMessage: 'Loading design hook',
             },
           ],
         },
@@ -58,13 +92,27 @@ export function buildCodexHooksManifest({ pluginRootPlaceholder = '${PLUGIN_ROOT
       PostToolUse: [
         {
           // Codex parses the matcher as a regex; `|` works identically to Claude.
+          // `apply_patch` is the canonical Codex edit tool; Edit/Write are aliases.
           matcher: 'Edit|Write|apply_patch',
           hooks: [
             {
               type: 'command',
-              command: 'node',
-              args: [`${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}`],
+              command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
               timeout: 5,
+              statusMessage: 'Scanning design',
+            },
+          ],
+        },
+      ],
+      SessionStart: [
+        {
+          matcher: 'startup|resume',
+          hooks: [
+            {
+              type: 'command',
+              command: `node "${pluginRootPlaceholder}/${SESSION_SCRIPT_REL}"`,
+              timeout: 3,
+              statusMessage: 'Loading design hook',
             },
           ],
         },

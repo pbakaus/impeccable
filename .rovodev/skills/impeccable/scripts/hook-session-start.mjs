@@ -79,7 +79,7 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
-const GREETING = `${ENVELOPE_PREFIX} Design hook is active. Runs the design detector on .tsx/.jsx/.html/.css/etc. after every Write or Edit and reminds you (via system context) when known design anti-patterns appear. Disable per project: /impeccable hooks off. Disable globally: IMPECCABLE_HOOK_DISABLED=1.`;
+const GREETING = `${ENVELOPE_PREFIX} Design hook is active. After every file edit the hook can see (Edit/Write/MultiEdit on Claude Code, apply_patch on Codex), the design detector scans the touched UI file and surfaces anti-patterns as developer context in your next turn — not as a visible chat message. When a finding appears, fix it before finalizing your reply and tell the user what you changed. Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, or a test fixture. Edits through shell, node-repl, or other tools without a file path are not scanned until the next direct edit. Disable per project: /impeccable hooks off. Disable globally: IMPECCABLE_HOOK_DISABLED=1.`;
 
 async function main() {
   const inheritedEnv = { ...process.env };

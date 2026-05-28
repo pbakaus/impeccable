@@ -15,6 +15,7 @@
  *   filterFindings(findings, content, ext, config)
  *   dedupeAgainstCache(findings, cache, sessionId, filePath)
  *   renderTemplate(findings, filePath, config, opts)
+ *   renderCleanAck(filePath, opts) / renderPendingAck(filePath, known, opts)
  *   writeAuditLog(env, entry)
  *   loadDetector() -> Promise<{ detectText, detectHtml }>
  *   matchesAnyGlob(filePath, globs)
@@ -311,12 +312,12 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   const shown = findings.slice(0, cap);
   const remaining = total - shown.length;
 
-  const header = `${ENVELOPE_PREFIX} Design detector flagged ${total} issue(s) in ${display}:`;
+  const header = `${ENVELOPE_PREFIX} Required design corrections in ${display} (${total} issue(s)):`;
   const lines = shown.map((f) => formatFindingLine(f));
   const more = remaining > 0
     ? `... and ${remaining} more (see /impeccable audit).`
     : null;
-  const footer = 'Consider revising before continuing. Suppress with inline comments (e.g. `// impeccable: ignore <rule>`) or .impeccable/hook.json. Run /impeccable audit for full coverage.';
+  const footer = directiveFooter();
 
   const blocks = [header, ...lines];
   if (more) blocks.push(more);
@@ -373,6 +374,116 @@ function relativize(filePath, cwd) {
   }
 }
 
+// Codex `apply_patch` exposes the raw patch in `tool_input.command`, not
+// `tool_input.file_path`. Claude Code may send both; parse the patch body
+// so we can scan the file(s) the tool actually touched.
+// https://developers.openai.com/codex/hooks#posttooluse
+const APPLY_PATCH_FILE_RE = /^\*\*\* (?:Update|Add) File: (.+)$/gm;
+
+export function parseApplyPatchPaths(command, projectCwd) {
+  if (!command || typeof command !== 'string') return [];
+  const out = [];
+  for (const m of command.matchAll(APPLY_PATCH_FILE_RE)) {
+    let p = (m[1] || '').trim();
+    if (!p) continue;
+    if (!path.isAbsolute(p)) p = path.resolve(projectCwd, p);
+    out.push(p);
+  }
+  return out;
+}
+
+export function resolveTargetFiles(event, projectCwd) {
+  const ti = event?.tool_input;
+  if (ti && typeof ti.file_path === 'string' && ti.file_path) {
+    return [ti.file_path];
+  }
+  if (event?.tool_name === 'apply_patch' && ti && typeof ti.command === 'string') {
+    return parseApplyPatchPaths(ti.command, projectCwd);
+  }
+  return [];
+}
+
+// UI components often keep slop in a sibling/co-located stylesheet while the
+// JSX edit is what triggered PostToolUse. Scan those styles too so an App.jsx
+// patch doesn't report "clean" while styles.css still has Inter/bounce/etc.
+const UI_CODE_EXTS = new Set(['.jsx', '.tsx', '.vue', '.svelte', '.astro']);
+const STYLE_EXTS = new Set(['.css', '.scss', '.sass', '.less']);
+const CO_SCAN_STYLE_NAMES = [
+  'styles.css', 'styles.scss', 'styles.less',
+  'index.css', 'global.css', 'globals.css',
+];
+const MAX_SCAN_TARGETS = 6;
+
+const STATIC_STYLE_IMPORT_RE = /import\s+(?:[\w*{}\s,$]+\s+from\s+)?['"]([^'"]+\.(?:css|scss|sass|less))['"]/gi;
+
+export function parseStaticStyleImports(content, fromFile, projectCwd) {
+  if (!content || typeof content !== 'string') return [];
+  const dir = path.dirname(fromFile);
+  const out = [];
+  for (const m of content.matchAll(STATIC_STYLE_IMPORT_RE)) {
+    let p = (m[1] || '').trim();
+    if (!p) continue;
+    if (p.startsWith('.')) p = path.resolve(dir, p);
+    else if (!path.isAbsolute(p)) p = path.resolve(projectCwd, p);
+    out.push(p);
+  }
+  return out;
+}
+
+export function coLocatedStylesheets(filePath) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath, path.extname(filePath));
+  const candidates = new Set([
+    path.join(dir, `${base}.css`),
+    path.join(dir, `${base}.module.css`),
+    path.join(dir, `${base}.scss`),
+    path.join(dir, `${base}.module.scss`),
+    path.join(dir, `${base}.sass`),
+    path.join(dir, `${base}.less`),
+  ]);
+  for (const name of CO_SCAN_STYLE_NAMES) {
+    candidates.add(path.join(dir, name));
+  }
+  return [...candidates].filter((p) => fs.existsSync(p));
+}
+
+export function expandScanTargets(primaryTargets, projectCwd) {
+  if (!Array.isArray(primaryTargets) || primaryTargets.length === 0) return [];
+  const ordered = [];
+  const seen = new Set();
+  const add = (p) => {
+    if (ordered.length >= MAX_SCAN_TARGETS) return;
+    // Preserve literal `..` segments so downstream sensitive-path checks
+    // still fire. path.resolve would collapse `/foo/../etc/passwd`.
+    const abs = (typeof p === 'string' && p.includes('..')) ? p : path.resolve(p);
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    ordered.push(abs);
+  };
+
+  for (const p of primaryTargets) add(p);
+
+  for (const p of primaryTargets) {
+    if (ordered.length >= MAX_SCAN_TARGETS) break;
+    const ext = path.extname(p).toLowerCase();
+    if (STYLE_EXTS.has(ext) || !UI_CODE_EXTS.has(ext)) continue;
+
+    let content = '';
+    try { content = fs.readFileSync(p, 'utf-8'); } catch { /* unreadable primary */ }
+
+    for (const imp of parseStaticStyleImports(content, p, projectCwd)) {
+      add(imp);
+      if (ordered.length >= MAX_SCAN_TARGETS) break;
+    }
+    for (const col of coLocatedStylesheets(p)) {
+      add(col);
+      if (ordered.length >= MAX_SCAN_TARGETS) break;
+    }
+  }
+
+  return ordered;
+}
+
 export function writeAuditLog(env, entry) {
   const target = env?.IMPECCABLE_HOOK_LOG;
   if (!target || typeof target !== 'string') return false;
@@ -410,6 +521,73 @@ export function setDetectorForTesting(impl) {
   detectorCache = impl;
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Nudge/steer messages for the no-silent-fires policy.
+//
+// The hook is designed to be a conversational presence: every fire that
+// actually scans a file emits a developer-role message into the model's
+// next turn. Three states map to three templates:
+//
+//   1. **Fresh findings**  → `renderTemplate` (existing, imperative).
+//   2. **Pending findings** → `renderPendingAck` (re-nudge for issues the
+//                              model was already told about in this
+//                              session but hasn't fixed yet).
+//   3. **Truly clean**      → `renderCleanAck` (short positive nudge that
+//                              keeps the design discipline in context).
+//
+// All three are short (≤ ~40 tokens each) so the cumulative cost stays
+// bounded across a long active editing session. Users who explicitly want
+// silence-on-clean can set `IMPECCABLE_HOOK_QUIET=1` — runHook checks that
+// env before emitting #2 or #3.
+//
+// Why not stay silent on dedup-clean? Earlier versions did. The model
+// quickly forgets the prior reminder once tool output scrolls past it, so
+// re-nudging on the same file with a short "still pending" line keeps the
+// pressure on. The wording deliberately points back to "earlier this
+// session" so the model knows it's a re-mind, not a new finding.
+// ────────────────────────────────────────────────────────────────────────
+
+const STEER_LINE = 'Keep typography hierarchy, spacing rhythm, and color contrast intentional on the next change.';
+
+export function renderCleanAck(filePath, opts = {}) {
+  const cwd = opts.cwd || process.cwd();
+  const display = relativize(filePath, cwd);
+  return `${ENVELOPE_PREFIX} Design hook scanned ${display}. No anti-patterns. ${STEER_LINE}`;
+}
+
+export function renderPendingAck(filePath, knownFindings, opts = {}) {
+  const cwd = opts.cwd || process.cwd();
+  const display = relativize(filePath, cwd);
+  const count = knownFindings.length;
+  // `knownFindings` here are the cache strings like "side-tab:3".
+  const sample = knownFindings.slice(0, 3).join(', ');
+  const more = count > 3 ? `, +${count - 3} more` : '';
+  return `${ENVELOPE_PREFIX} Design hook scanned ${display}. Still has ${count} issue(s) flagged earlier this session (${sample}${more}). Address them before finalizing — the previous reminder still applies.`;
+}
+
+// The directive footer is the part of the hook output that steers model
+// behavior. Three intentional moves:
+//   1. **Imperative, not advisory.** "Fix these..." beats "Consider
+//      revising..." which the model treats as a soft suggestion it can
+//      override when the user asked for any kind of throwaway / demo UI.
+//   2. **Explicit exception clause.** Without it, the model will try to
+//      "fix" intentional bad fixtures, anti-pattern examples in docs, or
+//      test cases. Naming the exception inline beats hoping the model
+//      infers it from context.
+//   3. **Acknowledgement instruction.** Hook output is injected as
+//      developer-role context, not a chat turn, so the user never sees the
+//      raw envelope. Asking the model to surface the fix in its reply is
+//      the cheapest way to make the feedback loop visible to the user.
+function directiveFooter() {
+  return [
+    'Fix these in your next reply before finalizing. Acknowledge what you changed so the user sees the correction.',
+    '',
+    'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
+    '',
+    'Suppress permanently with `// impeccable: ignore <rule>` inline directives or .impeccable/hook.json. Run /impeccable audit for the full pass.',
+  ].join('\n');
+}
+
 /**
  * Run the hook with explicit dependencies. Returns a result object:
  *   { exitCode, stdout, audit, reason? }
@@ -442,95 +620,168 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ skipped: 'stdin-empty', durationMs: Date.now() - started });
     }
 
-    const filePath = event?.tool_input?.file_path;
-    if (!filePath || typeof filePath !== 'string') {
+    const projectCwd = event.cwd || cwd;
+    const targetFiles = expandScanTargets(resolveTargetFiles(event, projectCwd), projectCwd);
+    audit.session = event.session_id || null;
+    if (event.tool_name) audit.tool = event.tool_name;
+
+    if (targetFiles.length === 0) {
       return result({ skipped: 'no-file-path', durationMs: Date.now() - started });
     }
 
-    audit.file = filePath;
-    audit.session = event.session_id || null;
-
-    if (filePath.includes('..') || SENSITIVE_PATH.test(filePath)) {
-      return result({ skipped: 'sensitive', durationMs: Date.now() - started });
-    }
-    if (GENERATED_PATH.test(filePath)) {
-      return result({ skipped: 'generated', durationMs: Date.now() - started });
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    audit.ext = ext;
-    if (!ALLOWED_EXTS.has(ext)) {
-      return result({ skipped: 'extension', durationMs: Date.now() - started });
-    }
-
-    const projectCwd = event.cwd || cwd;
     const config = readConfig(projectCwd);
     if (config.enabled === false) {
       return result({ skipped: 'config-disabled', durationMs: Date.now() - started });
     }
-    // Globs in `.impeccable/hook.json` are project-relative by convention
-    // (matches gitignore). Match against both the relative and absolute path
-    // so absolute-glob escape hatches still work too.
-    const relForMatch = relativize(filePath, projectCwd);
-    if (matchesAnyGlob(relForMatch, config.ignoreFiles) || matchesAnyGlob(filePath, config.ignoreFiles)) {
-      return result({ skipped: 'config-ignore-file', durationMs: Date.now() - started });
-    }
-    if (!fs.existsSync(filePath)) {
-      return result({ skipped: 'file-missing', durationMs: Date.now() - started });
-    }
 
     const cache = readCache(projectCwd);
     const sessionId = event.session_id || 'unknown';
-    const editCount = bumpEditCount(cache, sessionId, filePath);
-    audit.editCount = editCount;
-
-    if (editCount > EDIT_COUNT_THRESHOLD) {
-      // Fire a one-shot notice the very turn we cross the threshold; silent after.
-      const wasJustCrossed = editCount === EDIT_COUNT_THRESHOLD + 1;
-      persistCache(projectCwd, cache);
-      if (wasJustCrossed) {
-        const text = suppressionNotice(relativize(filePath, projectCwd));
-        return {
-          exitCode: 0,
-          stdout: payload(text, 'PostToolUse'),
-          audit: { ...audit, suppressed: true, emitted: true, durationMs: Date.now() - started },
-        };
-      }
-      return result({ suppressed: true, emitted: false, durationMs: Date.now() - started });
-    }
-
     const det = detector || await loadDetector();
     if (!det || typeof det.detectText !== 'function') {
       persistCache(projectCwd, cache);
       return result({ skipped: 'detector-missing', durationMs: Date.now() - started });
     }
 
-    const content = fs.readFileSync(filePath, 'utf-8');
-    let findings;
-    if ((ext === '.html' || ext === '.htm') && typeof det.detectHtml === 'function') {
-      try { findings = det.detectHtml(filePath); } catch { findings = []; }
-    } else {
-      try { findings = det.detectText(content, filePath); } catch { findings = []; }
+    let pendingWinner = null;
+    let cleanWinner = null;
+    let detectorThrewAny = false;
+    let lastSkip = 'no-scannable-file';
+    let suppressedHit = false;
+
+    for (const filePath of targetFiles) {
+      audit.file = filePath;
+
+      if (filePath.includes('..') || SENSITIVE_PATH.test(filePath)) {
+        lastSkip = 'sensitive';
+        continue;
+      }
+      if (GENERATED_PATH.test(filePath)) {
+        lastSkip = 'generated';
+        continue;
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      audit.ext = ext;
+      if (!ALLOWED_EXTS.has(ext)) {
+        lastSkip = 'extension';
+        continue;
+      }
+
+      const relForMatch = relativize(filePath, projectCwd);
+      if (matchesAnyGlob(relForMatch, config.ignoreFiles) || matchesAnyGlob(filePath, config.ignoreFiles)) {
+        lastSkip = 'config-ignore-file';
+        continue;
+      }
+      if (!fs.existsSync(filePath)) {
+        lastSkip = 'file-missing';
+        continue;
+      }
+
+      const editCount = bumpEditCount(cache, sessionId, filePath);
+      audit.editCount = editCount;
+
+      if (editCount > EDIT_COUNT_THRESHOLD) {
+        const wasJustCrossed = editCount === EDIT_COUNT_THRESHOLD + 1;
+        persistCache(projectCwd, cache);
+        if (wasJustCrossed) {
+          const text = suppressionNotice(relativize(filePath, projectCwd));
+          return {
+            exitCode: 0,
+            stdout: payload(text, 'PostToolUse'),
+            audit: { ...audit, suppressed: true, emitted: true, durationMs: Date.now() - started },
+          };
+        }
+        lastSkip = 'suppressed';
+        suppressedHit = true;
+        continue;
+      }
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+      let findings;
+      let detectorThrew = false;
+      if ((ext === '.html' || ext === '.htm') && typeof det.detectHtml === 'function') {
+        try { findings = det.detectHtml(filePath); } catch { findings = []; detectorThrew = true; }
+      } else {
+        try { findings = det.detectText(content, filePath); } catch { findings = []; detectorThrew = true; }
+      }
+
+      const filtered = filterFindings(findings || [], content, ext, config);
+      const fresh = dedupeAgainstCache(filtered, cache, sessionId, filePath);
+      audit.findings = (findings || []).length;
+      audit.freshFindings = fresh.length;
+
+      if (fresh.length > 0) {
+        rememberFindings(cache, sessionId, filePath, fresh);
+        persistCache(projectCwd, cache);
+        const text = renderTemplate(fresh, filePath, config, { cwd: projectCwd });
+        return {
+          exitCode: 0,
+          stdout: payload(text, 'PostToolUse'),
+          audit: { ...audit, emitted: true, chars: text.length, durationMs: Date.now() - started },
+        };
+      }
+
+      if (detectorThrew) {
+        detectorThrewAny = true;
+        continue;
+      }
+
+      if (filtered.length > 0 && !pendingWinner) {
+        const known = (ensureFile(cache, sessionId, filePath).findings || []).slice();
+        pendingWinner = { filePath, known };
+      } else if (filtered.length === 0 && !cleanWinner) {
+        cleanWinner = { filePath };
+      }
     }
 
-    const filtered = filterFindings(findings || [], content, ext, config);
-    const fresh = dedupeAgainstCache(filtered, cache, sessionId, filePath);
-    audit.findings = (findings || []).length;
-    audit.freshFindings = fresh.length;
-
-    if (fresh.length === 0) {
-      persistCache(projectCwd, cache);
-      return result({ emitted: false, durationMs: Date.now() - started });
-    }
-
-    rememberFindings(cache, sessionId, filePath, fresh);
     persistCache(projectCwd, cache);
-    const text = renderTemplate(fresh, filePath, config, { cwd: projectCwd });
-    return {
-      exitCode: 0,
-      stdout: payload(text, 'PostToolUse'),
-      audit: { ...audit, emitted: true, chars: text.length, durationMs: Date.now() - started },
-    };
+
+    if (detectorThrewAny && !pendingWinner && !cleanWinner) {
+      return result({ emitted: false, error: 'detector-threw', durationMs: Date.now() - started });
+    }
+
+    if (truthy(env.IMPECCABLE_HOOK_QUIET)) {
+      return result({ emitted: false, quiet: true, durationMs: Date.now() - started });
+    }
+
+    if (pendingWinner) {
+      const text = renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd });
+      return {
+        exitCode: 0,
+        stdout: payload(text, 'PostToolUse'),
+        audit: {
+          ...audit,
+          file: pendingWinner.filePath,
+          emitted: true,
+          kind: 'pending',
+          pending: pendingWinner.known.length,
+          chars: text.length,
+          durationMs: Date.now() - started,
+        },
+      };
+    }
+
+    if (cleanWinner) {
+      const text = renderCleanAck(cleanWinner.filePath, { cwd: projectCwd });
+      return {
+        exitCode: 0,
+        stdout: payload(text, 'PostToolUse'),
+        audit: {
+          ...audit,
+          file: cleanWinner.filePath,
+          emitted: true,
+          kind: 'clean',
+          chars: text.length,
+          durationMs: Date.now() - started,
+        },
+      };
+    }
+
+    if (suppressedHit) {
+      return result({ suppressed: true, emitted: false, durationMs: Date.now() - started });
+    }
+
+    return result({ skipped: lastSkip, durationMs: Date.now() - started });
   } catch (err) {
     return {
       exitCode: 0,

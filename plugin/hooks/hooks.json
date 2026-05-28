@@ -1,32 +1,29 @@
 {
-  "description": "Impeccable design detector: runs after Write/Edit/MultiEdit on UI files and surfaces findings as system reminders.",
+  "description": "Impeccable design detector: runs after Edit/Write/MultiEdit/apply_patch on UI files and surfaces findings as system reminders.",
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"
-            ],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
             "if": "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,less,ts,js})",
-            "timeout": 5
+            "timeout": 5,
+            "statusMessage": "Scanning design"
           }
         ]
       }
     ],
     "SessionStart": [
       {
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"
-            ],
-            "timeout": 3
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs\"",
+            "timeout": 3,
+            "statusMessage": "Loading design hook"
           }
         ]
       }

@@ -251,18 +251,42 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 ## Design hook
 
-On Claude Code and Codex, Impeccable ships a `PostToolUse` hook that runs the design detector automatically after every `Edit`, `Write`, or `MultiEdit` on a UI file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). When findings exist, a short system reminder lands in the agent's next-turn context so it can course-correct. Silent on clean files. Never blocks an edit.
+On Claude Code and Codex, Impeccable installs two hooks that wrap the design detector around your edits.
 
-The hook is **on by default** after install on Claude Code. Codex needs two extra steps the first time:
+**`PostToolUse`** fires after `Edit`, `Write`, or `MultiEdit` on Claude Code and after `apply_patch` on Codex. The hook reads `tool_input.file_path` from the event and scans that single file. Fast path, sub-50ms per call. Restricted to UI extensions: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`. Tool calls without a `file_path` (Bash, `mcp__node_repl__*`, browser tools, anything else) are a clean silent skip.
 
-1. Add `[features]\nhooks = true` to `~/.codex/config.toml`.
-2. Run `/hooks` in `codex` and approve Impeccable's PostToolUse hook. Trust is revoked when the plugin updates; re-approve from `/hooks`.
+Every fire that actually scans something emits a developer-role system reminder so the hook stays a conversational presence the model can act on. Three emission states map to three message shapes:
 
-Codex hooks are disabled on Windows in current builds. The skill and commands still work there, just no hook. The Claude Code hook runs on macOS, Linux, and Windows.
+- **Fresh findings**: the imperative `Required design corrections in ...` template, with the directive footer asking the model to fix and acknowledge before finalizing.
+- **Pending findings**: the file still has issues we already told the model about in this session but it hasn't fixed yet. Short re-nudge listing the unresolved rules: `Still has N issue(s) flagged earlier this session (side-tab:3, ...). Address them before finalizing.`
+- **Truly clean**: detector returned zero. Short positive ack: `No anti-patterns. Keep typography hierarchy, spacing rhythm, and color contrast intentional on the next change.`
+
+Never blocks an edit. Never silent on a successful scan, with one exception: detector crashes stay silent because we don't know the truth. To restore the old silent-on-clean behavior set `IMPECCABLE_HOOK_QUIET=1` in your shell; findings emissions still fire under QUIET, only the pending and clean acks are suppressed.
+
+**`SessionStart`** is the orientation hook. It fires once when a new session opens, gated to projects that actually look like UI code (a known UI dep in `package.json` or a top-level `index.html`) and throttled to once every 30 days per project. It emits a single-line system reminder telling the model the hook is active and how to disable it. Skipped silently everywhere else.
+
+### Installing on Claude Code
+
+`npx skills add impeccable` installs the plugin and both hooks at once. They are on by default.
+
+### Installing on Codex
+
+Codex discovers hooks from registered plugins, not from project-local files, so it needs three commands the first time:
+
+```bash
+codex plugin marketplace add https://github.com/pbakaus/impeccable
+codex plugin add impeccable@impeccable
+# then inside an interactive Codex session:
+/hooks   # approve PostToolUse and SessionStart for Plugin · impeccable
+```
+
+You can also do the last step via Settings → Hooks and flip the toggles next to `Plugin · impeccable`. Codex tracks trust per `{plugin}@{marketplace}` identity in `~/.codex/config.toml`, so you re-approve from `/hooks` when the plugin updates. The `hooks` and `plugin_hooks` feature flags are stable and on by default in current Codex builds. Codex hooks are disabled on Windows; the skill and commands still work there. The Claude Code hook runs on macOS, Linux, and Windows.
 
 **Disable per project**: run `/impeccable hooks off`. Re-enable with `/impeccable hooks on`. Inspect with `/impeccable hooks status`. The toggle persists in `.impeccable/hook.json`, so check it in if a teammate set it.
 
 **Disable globally**: set `IMPECCABLE_HOOK_DISABLED=1` in your shell. For CI, this is the cleanest path.
+
+**Lower the chat noise without disabling**: set `IMPECCABLE_HOOK_QUIET=1` to suppress the pending and clean acks. Findings emissions still fire (they're the real signal). Use this if the conversational nudges feel like context bloat for your workflow.
 
 **Tune the hook**: `.impeccable/hook.json` supports `ignoreRules` (skip specific findings), `ignoreFiles` (project-relative globs), `minSeverity`, and `limits.maxFindings` / `limits.maxChars`. Inline suppression uses language-aware comments: `// impeccable: ignore <rule>` for JS/TS, `<!-- impeccable: ignore <rule> -->` for HTML/Vue/Svelte/Astro, `{/* impeccable: ignore <rule> */}` for JSX/TSX, `/* impeccable: ignore <rule> */` for CSS. `*` matches every rule. The directive applies to the next non-blank line. Same convention as ESLint, Stylelint, and Biome.
 
