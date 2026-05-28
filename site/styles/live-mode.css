@@ -251,43 +251,91 @@
   40% { transform: scale(0.78); }
 }
 
-/* Global bar — the persistent dark pill at the bottom of every session. */
+/* Global bar — mirrors live-browser.js initGlobalBar (brand + inner toggles). */
 .live-demo-gbar {
   position: absolute;
   bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  box-sizing: border-box;
   min-height: 36px;
-  padding: 0 4px;
+  padding: 0;
   background: oklch(14% 0 0);
   color: oklch(92% 0 0);
   border: 1px solid oklch(22% 0 0);
   border-radius: 10px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
   font-family: var(--font-body);
   font-size: 12px;
+  line-height: 1;
   box-shadow: 0 8px 24px oklch(0% 0 0 / 0.2);
   z-index: 4;
 }
 .live-demo-gbar-brand {
-  font-family: var(--font-display);
-  font-size: 16px;
-  color: var(--color-accent);
-  padding: 0 10px;
-}
-.live-demo-gbar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  justify-content: center;
+  align-self: stretch;
+  flex-shrink: 0;
+  padding: 0 6px 0 14px;
+  color: var(--color-accent);
+}
+.live-demo-gbar-brand-mark {
+  display: block;
+}
+.live-demo-gbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 4px 6px 4px 2px;
+}
+.live-demo-gbar-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 6px 8px;
   background: transparent;
   border: 0;
   border-radius: 7px;
   color: oklch(75% 0 0);
   font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.live-demo-gbar-btn svg {
+  flex-shrink: 0;
+}
+.live-demo-gbar-btn-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  margin-left: 0;
+  overflow: hidden;
+  transition:
+    max-width 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease,
+    margin-left 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.live-demo-gbar-btn-label--mono {
+  font-family: var(--font-mono);
+}
+.live-demo-gbar:hover .live-demo-gbar-btn:not(.is-active) .live-demo-gbar-btn-label,
+.live-demo-gbar-btn.is-active .live-demo-gbar-btn-label {
+  max-width: 120px;
+  opacity: 1;
+  margin-left: 6px;
 }
 .live-demo-gbar-btn.is-active {
   background: var(--color-accent-dim);
@@ -295,30 +343,40 @@
 }
 .live-demo-gbar-dmd {
   display: inline-grid;
-  grid-template: repeat(2, 1fr) / repeat(2, 1fr);
-  width: 12px;
-  height: 12px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
   border-radius: 3px;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);
 }
-.live-demo-gbar-dmd span:nth-child(1) { background: oklch(60% 0.25 350); }
-.live-demo-gbar-dmd span:nth-child(2) { background: oklch(60% 0.15 45); }
-.live-demo-gbar-dmd span:nth-child(3) { background: oklch(55% 0.12 250); }
-.live-demo-gbar-dmd span:nth-child(4) { background: oklch(30% 0 0); }
-.live-demo-gbar-divider {
-  width: 1px;
-  height: 18px;
-  background: oklch(28% 0 0);
-  margin: 0 4px;
-}
+.live-demo-gbar-dmd span:nth-child(1) { background: oklch(84% 0.19 80.46); }
+.live-demo-gbar-dmd span:nth-child(2) { background: oklch(70% 0.12 188); }
+.live-demo-gbar-dmd span:nth-child(3) { background: oklch(84% 0.035 82); }
+.live-demo-gbar-dmd span:nth-child(4) { background: oklch(34% 0.014 82); }
 .live-demo-gbar-x {
-  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   color: oklch(60% 0 0);
-  font-size: 13px;
+  font-size: 0;
+  line-height: 0;
   cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.live-demo-gbar-x:hover {
+  color: oklch(58% 0.15 35);
 }
 
 /* Contextual bar — LIGHT paper-backed pill that floats near the picked

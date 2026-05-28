@@ -9,18 +9,21 @@ A running dev server with hot module replacement (Vite, Next.js, Bun, etc.), OR 
 Execute in order. No step skipped, no step reordered.
 
 1. `live.mjs`: boot.
-2. Navigate to the URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). If you can't infer it confidently, tell the user once to open their dev/preview URL. Never use `serverPort` as that URL; it's the helper, not the app.
+2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
+
+The global bar **Impeccable mark** dims and shows a pulsing amber dot when no agent is long-polling `/poll`. Hover the mark for the hint; restart `live-poll.mjs` to reconnect.
 4. On `generate`: read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
-5. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
-6. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
-7. On `exit`: run the cleanup at the bottom.
+5. On `steer`: read the message and `pageUrl`; do the work (page edits, navigation help, or a short reply in the `--reply` message); `--reply steer_done`; poll again. No pickup ack. The Steer bar unlocks when `steer_done` arrives over SSE.
+6. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
+7. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
+8. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
-- **Cursor**: run the poll in the **foreground** (blocking shell; not a background terminal, not a subagent). Cursor background terminals and subagents do not reliably resume the chat with poll stdout.
+- **Cursor**: run **one-shot** poll in a **background terminal** with notify on `"type":"(steer|generate|accept|discard|exit)"`. After each event the poll exits; handle it, `--reply`, then start `live-poll.mjs` again. Do **not** use `--stream` on Cursor: incremental stdout notify is slower in practice than exit-based notify (~5s vs sub-second in testing).
 - **Codex**: run the poll in the **foreground** (blocking shell; not a background task, not a subagent). Codex background exec sessions do not reliably surface poll stdout back into the conversation at the moment events arrive, so a "fire-and-forget" background poll will stall live mode.
-- **Other harnesses**: foreground unless you know stdout reliably returns to this session.
+- **Other harnesses**: one-shot foreground unless you know stdout reliably returns to this session when a shell exits.
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
@@ -30,7 +33,7 @@ Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodi
 node .cursor/skills/impeccable/scripts/live.mjs
 ```
 
-Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath, migrated }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt. If `migrated: true`, the loader auto-renamed legacy `.impeccable.md` to `PRODUCT.md`; mention this once and suggest `/impeccable document` for the matching DESIGN.md.
+Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt.
 
 `serverPort` and `serverToken` belong to the small **Impeccable live helper** HTTP server (serves `/live.js`, SSE, and `/poll`). That port is **not** your dev server and is usually not the URL you open to view the app. The browser page is whatever origin serves one of the `pageFiles` entries (Vite / Next / Bun / tunnel / LAN hostname).
 
@@ -38,12 +41,15 @@ If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, 
 
 ## Poll loop
 
+**Default (portable, all harnesses):**
+
 ```
 LOOP:
   node .cursor/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
   "generate"  → Handle Generate; reply done; LOOP
+  "steer"     → Handle Steer; reply steer_done; LOOP
   "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
   "discard"   → Handle Discard; LOOP
   "prefetch"  → Handle Prefetch; LOOP
@@ -51,6 +57,16 @@ LOOP:
   "timeout"   → LOOP
   "exit"      → break → Cleanup
 ```
+
+**Stream mode (experimental, not for Cursor):**
+
+```
+node .cursor/skills/impeccable/scripts/live-poll.mjs --stream   # stays running; one JSON line per event
+  Handle event; run --reply in a separate command
+  Repeat until "exit" line → Cleanup
+```
+
+Stream keeps one process alive and waits for `--reply` ack before polling again. Useful only when the harness reads incremental stdout reliably and quickly. **Cursor is not one of those:** background pattern notify on a long-running shell was ~5s to pick up events vs sub-second for one-shot exit notify. Default to one-shot everywhere unless you have measured otherwise.
 
 ## Recovery commands
 
@@ -72,9 +88,32 @@ Server restart rule: start `live-server.mjs` again, then poll. Startup requeues 
 
 ## Handle `generate`
 
-Event: `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
+**Replace mode** (default): `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
 
-Speed matters; the user is watching a spinner. Minimize tool calls by using the `wrap` helper and writing all variants in a single edit.
+**Insert mode** (`event.mode === "insert"`): `{id, mode: "insert", count, pageUrl, insert: { position, anchor }, placeholder: { width, height }, freeformPrompt?, screenshotPath?, comments?, strokes?}`. No `action`. Requires a non-empty `freeformPrompt` **or** annotations. Screenshot is sent only when annotations exist (same rule as replace). Use `placeholder` dimensions as a soft size hint for net-new content.
+
+Speed matters; the user is watching a spinner. Minimize tool calls by using the wrap/insert helper and writing all variants in a single edit.
+
+### Insert mode branch
+
+When `event.mode === "insert"`:
+
+1. Read the screenshot if `event.screenshotPath` is present (annotations only).
+2. Run the insert helper instead of wrap:
+
+```bash
+node .cursor/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVENT_COUNT --position after \
+  --element-id "ANCHOR_ID" --classes "class1,class2" --tag "section" --text "ANCHOR_TEXT"
+```
+
+- `--position` ← `event.insert.position` (`before` | `after`)
+- Anchor flags ← `event.insert.anchor` (same mapping as wrap: id, classes, tag, text)
+
+The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Write all variants in one edit, then `--reply done`.
+
+On accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
+
+### Replace mode (default)
 
 ### 1. Read the screenshot (if present)
 
@@ -424,6 +463,28 @@ A background agent may be used for the rewrite, but the current thread is respon
 ## Handle `discard`
 
 Event: `{id, _acceptResult, _completionAck}`. The poll script already restored the original, removed all variant markers, and acknowledged `discarded` durable completion. Nothing to do unless `_completionAck.ok !== true`; in that case run `live-complete.mjs --id EVENT_ID --discarded`, then poll again.
+
+## Handle `steer`
+
+Event: `{id, message, pageUrl}`. The user typed or spoke into the global bar **Steer** control: page-level direction without picking an element or launching variant generation.
+
+The mic button uses the browser **Web Speech API** (MVP): click to start, speak, stop automatically when the utterance ends, then the transcript submits as a steer event. Click again while listening to cancel without submitting.
+
+This is lighter than `generate`: no screenshot, no element context, no variant cycling. Read `message` and inspect the live page or project files as needed, then either make edits or answer in prose.
+
+When finished:
+
+```bash
+node .cursor/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID steer_done ["Optional short note for a browser toast"]
+```
+
+On failure:
+
+```bash
+node .cursor/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "Short reason"
+```
+
+Then poll again immediately. Do not send a separate "picked up" reply. The Steer bar stays locked until `steer_done` or `error` arrives over SSE.
 
 ## Handle `prefetch`
 

@@ -24,7 +24,7 @@ const OVERUSED_FONTS = new Set([
   // Older monoculture (still ubiquitous):
   'inter', 'roboto', 'open sans', 'lato', 'montserrat', 'arial', 'helvetica',
   // Newer monoculture (the Anthropic-skill / Vercel / GitHub default wave):
-  'fraunces', 'instrument sans',
+  'fraunces', 'instrument sans', 'instrument serif',
   'geist', 'geist sans', 'geist mono',
   'mona sans',
   'plus jakarta sans', 'space grotesk', 'recoleta',

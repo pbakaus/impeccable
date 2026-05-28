@@ -33,6 +33,7 @@ export async function statusCli() {
       status: server.status,
       port: server.port,
       connectedClients: server.connectedClients,
+      agentPolling: server.agentPolling,
       pendingEvents: server.pendingEvents,
     } : null,
     activeSessions: server?.activeSessions || activeSessions,

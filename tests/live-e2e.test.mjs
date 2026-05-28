@@ -6,11 +6,12 @@
  *
  *   1. Stage → install → start live-server + dev server → inject script tag
  *   2. Open Playwright Chromium, assert the live handshake fires
- *   3. Spawn an agent polling loop in this same process
- *   4. Drive the bar UI: pick element → Go → wait CYCLING → cycle → Accept
- *   5. Assert source rewrite (variants block, then accepted-only after accept)
- *   6. Assert DOM reflects the accepted variant via getComputedStyle
- *   7. Tear down (browser, dev server, agent loop, live-server, tmp)
+ *   3. Spawn a deterministic fake-agent polling loop in this same process
+ *   4. Steer smoke: submit page-level chat → agent steer_done → bar unlocks
+ *   5. Drive the bar UI: pick element → Go → wait CYCLING → cycle → Accept
+ *   6. Assert source rewrite (variants block, then accepted-only after accept)
+ *   7. Assert DOM reflects the accepted variant via getComputedStyle
+ *   8. Tear down (browser, dev server, agent loop, live-server, tmp)
  *
  * The fake and LLM agents share one interface — see tests/live-e2e/agent.mjs
  * and tests/live-e2e/agents/llm-agent.mjs.
@@ -44,8 +45,11 @@ import {
   waitForApplyDockHidden,
   waitForBarHidden,
   waitForCycling,
+  runInsertFlow,
   waitForHandshake,
 } from './live-e2e/ui.mjs';
+import { runSteerSmoke } from './live-e2e/steer.mjs';
+import { runPreActions, waitForCyclingRobust } from './live-e2e/preactions.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -156,12 +160,25 @@ for (const { name, fixture } of fixtures) {
 
       const { page, tmp, consoleErrors, teardown } = session;
       const expectedCount = 3;
+      const isInsert = fixture.runtime.mode === 'insert';
+      const insertCfg = fixture.runtime.insert || {};
       const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+      const domSelector = isInsert
+        ? (insertCfg.expectSelector || '.inserted-strip')
+        : pickSelector;
 
       try {
         // 1. Handshake
         t.diagnostic('Waiting for live handshake');
         await waitForHandshake(page);
+
+        // 1b. Steer smoke — page-level chat before the heavier generate cycle.
+        if (fixture.runtime.steer !== false) {
+          const steerTimeouts = agentMode === 'llm'
+            ? { unlockTimeoutMs: 90_000, selectorTimeoutMs: 45_000, runPreActions }
+            : { runPreActions };
+          await runSteerSmoke(page, tmp, fixture, (m) => t.diagnostic(m), steerTimeouts);
+        }
 
         // 2. preActions — fixtures with hidden/conditional content (modals,
         //    tabs, routes) drive the page into the right state before pick.
@@ -170,21 +187,29 @@ for (const { name, fixture } of fixtures) {
           await runPreActions(page, fixture.runtime.preActions);
         }
 
-        // 3. Pick the target element
-        t.diagnostic(`Picking ${pickSelector}`);
-        await pickElement(page, pickSelector);
-
-        if (process.env.IMPECCABLE_E2E_DEBUG) {
-          const barText = await page.evaluate(() => {
-            const bar = document.querySelector('#impeccable-live-bar');
-            return bar ? { display: bar.style.display, text: bar.textContent || '', html: bar.innerHTML.slice(0, 500) } : null;
+        // 3. Start generate — replace picks an element; insert places a placeholder.
+        if (isInsert) {
+          t.diagnostic(`Insert after ${insertCfg.anchorSelector || 'anchor'}`);
+          await runInsertFlow(page, {
+            anchorSelector: insertCfg.anchorSelector || 'section#features',
+            position: insertCfg.position || 'after',
+            prompt: insertCfg.prompt || 'Add new content',
           });
-          t.diagnostic(`Bar after pick: ${JSON.stringify(barText)}`);
-        }
+        } else {
+          t.diagnostic(`Picking ${pickSelector}`);
+          await pickElement(page, pickSelector);
 
-        // 3. Click Go (default action 'impeccable', default count 3 — fixture-stable)
-        t.diagnostic('Clicking Go');
-        await clickGo(page);
+          if (process.env.IMPECCABLE_E2E_DEBUG) {
+            const barText = await page.evaluate(() => {
+              const bar = document.querySelector('#impeccable-live-bar');
+              return bar ? { display: bar.style.display, text: bar.textContent || '', html: bar.innerHTML.slice(0, 500) } : null;
+            });
+            t.diagnostic(`Bar after pick: ${JSON.stringify(barText)}`);
+          }
+
+          t.diagnostic('Clicking Go');
+          await clickGo(page);
+        }
 
         // 4. Wait for the agent's variants to land (HMR + MutationObserver).
         //    For fixtures whose picked element lives inside a conditional
@@ -201,53 +226,23 @@ for (const { name, fixture } of fixtures) {
         //    install pressure, so keep this gate patient enough that we do
         //    not retrace while the agent is still writing the variants.
         t.diagnostic(`Waiting for CYCLING state with ${expectedCount} variants`);
-        const firstPassTimeoutMs = agentMode === 'llm' ? 240_000 : 5_000;
-        let cyclingReached = false;
-        if (fixture.runtime.preActions) {
-          try {
-            await waitForCycling(page, expectedCount, { timeout: firstPassTimeoutMs });
-            cyclingReached = true;
-          } catch {
-            t.diagnostic(`Cycling not reached in ${firstPassTimeoutMs}ms — retracing preActions`);
-            await runPreActions(page, fixture.runtime.preActions);
-          }
-        }
-        try {
-          if (!cyclingReached) {
-            // Default 30s; LLM mode bumps higher to absorb API latency on
-            // top of HMR settle time.
-            const finalTimeoutMs = agentMode === 'llm' ? 240_000 : 30_000;
-            await waitForCycling(page, expectedCount, { timeout: finalTimeoutMs });
-          }
-        } catch (err) {
-          if (process.env.IMPECCABLE_E2E_DEBUG) {
-            const variantCount = await page.evaluate(() =>
-              document.querySelectorAll('[data-impeccable-variant]').length,
-            );
-            const barInfo = await page.evaluate(() => {
-              const bars = document.querySelectorAll('#impeccable-live-bar');
-              return {
-                count: bars.length,
-                bars: [...bars].map((bar) => ({
-                  display: bar.style.display,
-                  opacity: bar.style.opacity,
-                  text: bar.textContent || '',
-                  innerHtml: bar.innerHTML.slice(0, 600),
-                })),
-                __init: window.__IMPECCABLE_LIVE_INIT__,
-              };
-            });
-            t.diagnostic(`waitForCycling failed; variants in DOM: ${variantCount}`);
-            t.diagnostic(`Bar state: ${JSON.stringify(barInfo)}`);
-            t.diagnostic(`--- dev server tail ---\n${session.dev.log()}`);
-          }
-          throw err;
-        }
+        await waitForCyclingRobust(page, expectedCount, {
+          agentMode,
+          preActions: fixture.runtime.preActions,
+          log: (m) => t.diagnostic(m),
+        });
 
         // 5. Source-side check: wrapper + style + variants are present
         const sourceFile = await locateSessionFile(tmp);
         const after = readFileSync(sourceFile, 'utf-8');
         assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
+        if (isInsert) {
+          assert.match(after, /data-impeccable-mode="insert"/, 'insert mode wrapper');
+          assert.doesNotMatch(after, /data-impeccable-variant="original"/, 'insert has no original variant');
+          if (insertCfg.assertAnchorContains) {
+            assert.match(after, new RegExp(insertCfg.assertAnchorContains), 'anchor section untouched');
+          }
+        }
         if (sourceFile.endsWith('.astro')) {
           assert.match(after, /<style is:inline data-impeccable-css="/, 'Astro live CSS uses an inline compiler-bypassing style block');
           assert.match(
@@ -279,14 +274,17 @@ for (const { name, fixture } of fixtures) {
         const visible = await getVisibleVariant(page);
         assert.equal(visible, 2, 'variant 2 visible after one Next');
         if (agentMode === 'fake') {
-          await page.waitForFunction(() => {
-            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
-            return h1 && getComputedStyle(h1).fontWeight === '900';
-          }, null, { timeout: 5_000 }).catch(() => {});
-          const variantWeight = await page.evaluate(() => {
-            const h1 = document.querySelector('[data-impeccable-variant="2"] > h1');
-            return h1 ? getComputedStyle(h1).fontWeight : null;
-          });
+          const variantSel = isInsert
+            ? '[data-impeccable-variant="2"] .inserted-copy'
+            : '[data-impeccable-variant="2"] > h1';
+          await page.waitForFunction((sel) => {
+            const el = document.querySelector(sel);
+            return el && getComputedStyle(el).fontWeight === '900';
+          }, variantSel, { timeout: 5_000 }).catch(() => {});
+          const variantWeight = await page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            return el ? getComputedStyle(el).fontWeight : null;
+          }, variantSel);
           assert.equal(
             variantWeight,
             '900',
@@ -308,15 +306,18 @@ for (const { name, fixture } of fixtures) {
         assert.doesNotMatch(final, /impeccable-carbonize-start/,     'carbonize-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-end/,       'carbonize-end marker removed');
         assert.doesNotMatch(final, /data-impeccable-variant="/,      'no leftover variant scaffolding');
-        // Accept the original class as a substring of the className value so
-        // an LLM agent that adds classes around the original (e.g.
-        // class="hero-title bold red") still passes — only the literal
-        // class="hero-title" form would otherwise match.
-        assert.match(
-          final,
-          /<h1[^>]*(class|className)="[^"]*\bhero-title\b[^"]*"/,
-          'accepted h1 survives with hero-title class',
-        );
+        if (isInsert) {
+          assert.match(final, /inserted-strip/, 'accepted insert content survives');
+          if (insertCfg.assertAnchorContains) {
+            assert.match(final, new RegExp(insertCfg.assertAnchorContains), 'anchor section still in source');
+          }
+        } else {
+          assert.match(
+            final,
+            /<h1[^>]*(class|className)="[^"]*\bhero-title\b[^"]*"/,
+            'accepted h1 survives with hero-title class',
+          );
+        }
 
         // Optional fixture hook: assert that arbitrary strings survive the
         // wrap → accept → carbonize cycle. Used by repeated-branch fixtures
@@ -341,7 +342,7 @@ for (const { name, fixture } of fixtures) {
             }
             return true;
           },
-          pickSelector,
+          domSelector,
           { timeout: 20_000 },
         );
 
@@ -543,67 +544,6 @@ function extractClassAttr(outerHTML) {
   if (typeof outerHTML !== 'string') return '';
   const match = outerHTML.match(/\sclass=(["'])(.*?)\1/);
   return match ? match[2].trim().split(/\s+/).filter(Boolean).join(' ') : '';
-}
-
-/**
- * Drive a list of pre-pick / reload-probe actions. Used to set up tricky
- * scenarios: open a modal, switch tabs, navigate routes.
- *
- * Live mode's element picker intercepts every page click in capture phase
- * while `pickActive === true`, so any action that depends on the page's own
- * click handler (open a modal, switch a tab) gets swallowed. We bracket the
- * action sequence with two clicks of the global bar's pick toggle and leave
- * the picker in its original state once preActions complete.
- *
- * Supported action shapes:
- *   { "type": "click", "selector": "..." }
- *   { "type": "goto",  "path": "/about" }
- *   { "type": "wait",  "selector": "..." }
- */
-async function runPreActions(page, actions) {
-  const PICK_TOGGLE = '#impeccable-live-pick-toggle';
-  const pickerToggle = await page.$(PICK_TOGGLE);
-  const wasActive = pickerToggle
-    ? await pickerToggle.evaluate((el) => el.dataset.active === 'true')
-    : false;
-  if (wasActive) await clickPickToggle(page, PICK_TOGGLE);
-
-  try {
-    for (let i = 0; i < actions.length; i++) {
-      const a = actions[i];
-      if (a.type === 'click') {
-        const next = actions[i + 1];
-        if (next?.type === 'wait') {
-          const alreadyVisible = await page.locator(next.selector).first().isVisible().catch(() => false);
-          if (alreadyVisible) continue;
-        }
-        const loc = page.locator(a.selector);
-        await loc.first().waitFor({ state: 'visible', timeout: 20_000 });
-        await loc.first().click({ timeout: 10_000 });
-        continue;
-      }
-      if (a.type === 'goto') {
-        const target = new URL(a.path, page.url()).href;
-        await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 10_000 });
-        continue;
-      }
-      if (a.type === 'wait') {
-        await page.waitForSelector(a.selector, { timeout: 20_000 });
-        continue;
-      }
-      throw new Error(`unknown preAction type: ${a.type}`);
-    }
-  } finally {
-    if (wasActive) {
-      // Re-arm the picker. If the page navigated mid-action the toggle may
-      // belong to a freshly mounted bar — best-effort, no throw.
-      const after = await page.$(PICK_TOGGLE);
-      if (after) {
-        const isActive = await after.evaluate((el) => el.dataset.active === 'true');
-        if (!isActive) await clickPickToggle(page, PICK_TOGGLE);
-      }
-    }
-  }
 }
 
 async function runManualScenarioActions(page, actions, { t, fixture, session, defaultSelector, agentMode }) {

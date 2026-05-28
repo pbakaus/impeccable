@@ -4,6 +4,9 @@ export default defineConfig({
   srcDir: './site',
   publicDir: './site/public',
   output: 'static',
+  devToolbar: {
+    enabled: false,
+  },
   build: {
     format: 'directory',
   },

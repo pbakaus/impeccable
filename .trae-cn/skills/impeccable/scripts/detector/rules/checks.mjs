@@ -78,11 +78,6 @@ function checkColors(opts) {
   }
   const findings = [];
 
-  // Pure black background (only solid or near-solid, not semi-transparent overlays)
-  if (bgColor && bgColor.a >= 0.9 && bgColor.r === 0 && bgColor.g === 0 && bgColor.b === 0) {
-    findings.push({ id: 'pure-black-white', snippet: '#000000 background' });
-  }
-
   if (hasDirectText && textColor && !isEmojiOnly) {
     // Run background-dependent checks against either a solid bg or, if the
     // ancestor is a gradient, against every gradient stop (use the worst case).
@@ -138,9 +133,6 @@ function checkColors(opts) {
   // Tailwind class checks
   if (classList) {
     const classStr = typeof classList === 'string' ? classList : Array.from(classList).join(' ');
-    if (/\bbg-black\b(?!\/)/.test(classStr)) {
-      findings.push({ id: 'pure-black-white', snippet: 'bg-black' });
-    }
 
     const grayMatch = classStr.match(/\btext-(?:gray|slate|zinc|neutral|stone)-\d+\b/);
     const colorBgMatch = classStr.match(/\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/);
@@ -456,12 +448,6 @@ function checkHtmlPatterns(html) {
 
   // --- Color ---
 
-  // Pure black background
-  const pureBlackBgRe = /background(?:-color)?\s*:\s*(?:#000000|#000|rgb\(\s*0,\s*0,\s*0\s*\))\b/gi;
-  if (pureBlackBgRe.test(html)) {
-    findings.push({ id: 'pure-black-white', snippet: 'Pure #000 background' });
-  }
-
   // AI color palette: purple/violet
   const purpleHexRe = /#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b/gi;
   if (purpleHexRe.test(html)) {
@@ -575,6 +561,39 @@ function checkHtmlPatterns(html) {
         findings.push({ id: 'dark-glow', snippet: `Colored glow (rgb(${r},${g},${b})) on dark page` });
         break;
       }
+    }
+  }
+
+  // --- Provider tells (gated): repeating-gradient stripes (GPT) ---
+  if (/repeating-(?:linear|radial|conic)-gradient\s*\(/i.test(html)) {
+    findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
+  }
+
+  // --- Provider tells (gated): "X theater" framing copy (GPT) ---
+  // Lives here (regex-on-HTML) rather than in the text-content analyzers so it
+  // runs in the bundled browser path too, not just the CLI/static path.
+  {
+    const bodyText = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    const tm = /\b(\w+)\s+theater\b/i.exec(bodyText);
+    if (tm) findings.push({ id: 'theater-slop-phrase', snippet: `"${tm[0].trim()}"` });
+  }
+
+  // --- Provider tells (gated): image hover transform (Gemini) ---
+  // A CSS `img...:hover { transform: ... }` rule, or a Tailwind hover:scale /
+  // hover:rotate / hover:translate utility on an <img>. Each distinct
+  // mechanism is its own finding.
+  const imgHoverCss = /\bimg\b[^,{}]*:hover\b[^{}]*\{[^}]*\btransform\s*:\s*(?:scale|rotate|translate|matrix|skew)/i;
+  if (imgHoverCss.test(html)) {
+    findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule' });
+  }
+  const imgTagRe = /<img\b[^>]*\bclass\s*=\s*"([^"]*)"/gi;
+  let im;
+  while ((im = imgTagRe.exec(html)) !== null) {
+    if (/\bhover:(?:scale|rotate|translate|skew)-/.test(im[1])) {
+      findings.push({ id: 'image-hover-transform', snippet: 'Tailwind hover transform on <img>' });
     }
   }
 
@@ -1224,7 +1243,7 @@ function resolveLengthPx(value, fontSizePx) {
 // Both adapters resolve font-size, line-height and letter-spacing to pixels
 // before calling this so the pure function only deals with numbers.
 function checkQuality(opts) {
-  const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0 } = opts;
+  const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0, win = null } = opts;
   const findings = [];
   // Skip browser extension injected elements
   const elId = el.id || '';
@@ -1271,6 +1290,155 @@ function checkQuality(opts) {
         findings.push({ id: 'cramped-padding', snippet: `${vMin}px vertical padding (need ≥${vThresh.toFixed(1)}px for ${fontSize}px text)` });
       } else if (hMin < hThresh) {
         findings.push({ id: 'cramped-padding', snippet: `${hMin}px horizontal padding (need ≥${hThresh.toFixed(1)}px for ${fontSize}px text)` });
+      }
+    }
+  }
+
+  // --- Flush against a visible boundary ---
+  // Fires when a container has a visible boundary (border, outline, OR a
+  // non-transparent background) AND near-zero padding on the bounded
+  // side(s) AND text-bearing children land flush against the boundary.
+  //
+  // Distinct from cramped-padding: that rule needs the element itself to
+  // have direct text (hasDirectText). This rule targets the OPPOSITE
+  // shape — a container with NO direct text, only children — which is
+  // exactly what cramped-padding misses (a section wrapping a label +
+  // list lands a free pass).
+  //
+  // The classic shape: agent writes `padding: 28px 0 0` shorthand on a
+  // section that also has a border, zeroing horizontal padding so the
+  // text-bearing children touch the side borders. Background and
+  // outline count too: a colored card with zero padding has the same
+  // visual failure mode.
+  {
+    const FLUSH_SKIP_TAGS = new Set(['HTML', 'BODY', 'MAIN', 'HEADER', 'FOOTER', 'NAV', 'ARTICLE', 'ASIDE', 'BUTTON', 'A', 'LABEL', 'SUMMARY', 'CODE', 'PRE', 'INPUT', 'TEXTAREA', 'SELECT', 'FORM', 'FIGURE', 'TABLE', 'TBODY', 'THEAD', 'TR', 'TD', 'TH']);
+    const upperTag = tag ? tag.toUpperCase() : '';
+    const elPosition = style.position || '';
+    if (
+      !FLUSH_SKIP_TAGS.has(upperTag) &&
+      !hasDirectText &&
+      !['fixed', 'absolute'].includes(elPosition) &&
+      el.children && el.children.length > 0
+    ) {
+      const isTransparent = (c) =>
+        !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' ||
+        /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(c);
+
+      const borderW = {
+        top:    parseFloat(style.borderTopWidth)    || 0,
+        right:  parseFloat(style.borderRightWidth)  || 0,
+        bottom: parseFloat(style.borderBottomWidth) || 0,
+        left:   parseFloat(style.borderLeftWidth)   || 0,
+      };
+      const borderVisible = {
+        top:    borderW.top    > 0 && !isTransparent(style.borderTopColor),
+        right:  borderW.right  > 0 && !isTransparent(style.borderRightColor),
+        bottom: borderW.bottom > 0 && !isTransparent(style.borderBottomColor),
+        left:   borderW.left   > 0 && !isTransparent(style.borderLeftColor),
+      };
+      // Outline detection. jsdom decomposes `border` shorthand into
+      // border{Top,…}Width/Color but does NOT decompose `outline` —
+      // the longhands come back empty when the value was set via the
+      // shorthand. Fall back to parsing `style.outline` ourselves.
+      let outlineW = parseFloat(style.outlineWidth) || 0;
+      let outlineStyleVal = style.outlineStyle || '';
+      let outlineColorVal = style.outlineColor || '';
+      if (!outlineW && style.outline) {
+        const wMatch = style.outline.match(/(\d+(?:\.\d+)?)\s*px/);
+        if (wMatch) outlineW = parseFloat(wMatch[1]) || 0;
+        if (!outlineStyleVal) {
+          outlineStyleVal = /\b(solid|dashed|dotted|double|groove|ridge|inset|outset)\b/.test(style.outline) ? 'solid' : '';
+        }
+        if (!outlineColorVal) {
+          const cMatch = style.outline.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\s*$/);
+          if (cMatch) outlineColorVal = cMatch[1];
+        }
+      }
+      const outlineVisible = outlineW > 0 && !isTransparent(outlineColorVal) && outlineStyleVal && outlineStyleVal !== 'none';
+      const bgVisible = !isTransparent(style.backgroundColor);
+
+      const anyVisible = borderVisible.top || borderVisible.right || borderVisible.bottom || borderVisible.left || outlineVisible || bgVisible;
+      if (anyVisible) {
+        // Resolve padding to px (jsdom returns raw "1.5rem" etc., not the
+        // computed px value; parseFloat would strip the unit and treat
+        // 1.5rem as 1.5px, false-flagging legitimate insets).
+        const pad = {
+          top:    resolveLengthPx(style.paddingTop,    fontSize) ?? 0,
+          right:  resolveLengthPx(style.paddingRight,  fontSize) ?? 0,
+          bottom: resolveLengthPx(style.paddingBottom, fontSize) ?? 0,
+          left:   resolveLengthPx(style.paddingLeft,   fontSize) ?? 0,
+        };
+        const PAD_THRESHOLD = 2;
+        // Children-insulate-this-side: a side is insulated if ANY direct
+        // child has its own padding ≥ 4px on that side. Rationale: in
+        // typical flow, only the first/last (or leftmost/rightmost)
+        // children actually sit at the parent's edges. If even one of
+        // them has its own padding, the visual flush is broken on that
+        // side. Classic example: a column-flow card frame where the
+        // top child (header) has padding-top:12 and the bottom child
+        // (footer) has padding-bottom:8 — the parent's padding:0 doesn't
+        // matter; nothing is actually flush. The `any-child-insulates`
+        // heuristic accepts some false negatives (a card with one heavily
+        // padded middle child won't flag) for far fewer false positives.
+        const CHILD_INSULATE_THRESHOLD = 4;
+        const childrenInsulate = { top: false, right: false, bottom: false, left: false };
+        for (const child of el.children) {
+          let childStyle = null;
+          if (win && typeof win.getComputedStyle === 'function') {
+            try { childStyle = win.getComputedStyle(child); } catch {}
+          }
+          if (!childStyle && typeof getComputedStyle === 'function') {
+            try { childStyle = getComputedStyle(child); } catch {}
+          }
+          if (!childStyle) continue;
+          const childPad = {
+            top:    resolveLengthPx(childStyle.paddingTop,    fontSize) ?? 0,
+            right:  resolveLengthPx(childStyle.paddingRight,  fontSize) ?? 0,
+            bottom: resolveLengthPx(childStyle.paddingBottom, fontSize) ?? 0,
+            left:   resolveLengthPx(childStyle.paddingLeft,   fontSize) ?? 0,
+          };
+          for (const s of ['top', 'right', 'bottom', 'left']) {
+            if (childPad[s] >= CHILD_INSULATE_THRESHOLD) childrenInsulate[s] = true;
+          }
+        }
+
+        const flushSides = [];
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+          const sideBounded = borderVisible[side] || outlineVisible || bgVisible;
+          if (sideBounded && pad[side] <= PAD_THRESHOLD && !childrenInsulate[side]) {
+            flushSides.push(side);
+          }
+        }
+
+        if (flushSides.length > 0) {
+          // Confirm at least one direct child has substantial text content
+          // (> 4 chars). Without this, the flush is harmless: e.g. an
+          // image-only card.
+          let hasTextChild = false;
+          for (const child of el.children) {
+            const childText = (child.textContent || '').trim();
+            if (childText.length > 4) { hasTextChild = true; break; }
+          }
+          if (hasTextChild) {
+            const cls = (typeof el.className === 'string' && el.className.trim())
+              ? el.className.trim().split(/\s+/)[0]
+              : '';
+            const boundaryParts = [];
+            const borderSidesVisible = ['top', 'right', 'bottom', 'left'].filter(s => borderVisible[s]);
+            if (borderSidesVisible.length === 4) boundaryParts.push('border');
+            else if (borderSidesVisible.length > 0) boundaryParts.push(`border-${borderSidesVisible.join('/')}`);
+            if (outlineVisible) boundaryParts.push('outline');
+            if (bgVisible) boundaryParts.push('bg');
+            const sidesLabel = flushSides.length === 4 ? 'all sides' : flushSides.join('/');
+            const ident = cls
+              ? `<${tag.toLowerCase()}> "${cls}"`
+              : `<${tag.toLowerCase()}>`;
+            findings.push({
+              id: 'cramped-padding',
+              snippet: `${ident}: children flush against ${boundaryParts.join('+')} on ${sidesLabel} (no inset)`,
+            });
+          }
+        }
       }
     }
   }
@@ -1355,6 +1523,20 @@ function checkQuality(opts) {
     }
   }
 
+  // --- Crushed letter spacing (mirror of wide-tracking) ---
+  // Tracking pulled tighter than ~-0.05em crushes characters into each other.
+  // Optical tightening that display type legitimately wants (around -0.02em)
+  // stays well above this floor.
+  if (hasDirectText && textLen > 20 && fontSize > 0) {
+    if (letterSpacingPx != null && letterSpacingPx < 0) {
+      const trackingEm = letterSpacingPx / fontSize;
+      if (trackingEm <= -0.05) {
+        const excerpt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+        findings.push({ id: 'extreme-negative-tracking', snippet: `letter-spacing: ${trackingEm.toFixed(2)}em — "${excerpt}"` });
+      }
+    }
+  }
+
   return findings;
 }
 
@@ -1371,7 +1553,7 @@ function checkElementQualityDOM(el) {
   const rect = el.getBoundingClientRect();
   const lineMax = (typeof window !== 'undefined' && window.__IMPECCABLE_CONFIG__?.lineLengthMax) || 80;
   const viewportWidth = (typeof window !== 'undefined' ? window.innerWidth : 0) || 0;
-  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax, viewportWidth });
+  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax, viewportWidth, win: typeof window !== 'undefined' ? window : null });
 }
 
 // Pure page-level skipped-heading walk. Takes a Document so it works in both
@@ -1413,7 +1595,7 @@ function checkElementQuality(el, style, tag, window) {
   const fontSize = resolveFontSizePx(el, window);
   const lineHeightPx = resolveLengthPx(style.lineHeight, fontSize);
   const letterSpacingPx = resolveLengthPx(style.letterSpacing, fontSize);
-  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect: null });
+  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect: null, win: window });
 }
 
 function checkElementBorders(tag, style, overrides, resolvedRadius) {
@@ -1854,38 +2036,211 @@ function checkPageLayout(doc, win) {
     }
   }
 
-  // Everything centered
-  const textEls = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, div, button');
-  let centeredCount = 0;
-  let totalText = 0;
-  for (const el of textEls) {
-    const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length >= 3);
-    if (!hasDirectText) continue;
-    totalText++;
-
-    let cur = el;
-    let isCentered = false;
-    while (cur && cur.nodeType === 1) {
-      const rawStyle = cur.getAttribute?.('style') || '';
-      const cls = cur.getAttribute?.('class') || '';
-      if (/text-align\s*:\s*center/i.test(rawStyle) || /\btext-center\b/.test(cls)) {
-        isCentered = true;
-        break;
-      }
-      if (cur.tagName === 'BODY') break;
-      cur = cur.parentElement;
-    }
-    if (isCentered) centeredCount++;
-  }
-
-  if (totalText >= 5 && centeredCount / totalText > 0.7) {
-    findings.push({
-      id: 'everything-centered',
-      snippet: `${centeredCount}/${totalText} text elements centered (${Math.round(centeredCount / totalText * 100)}%)`,
-    });
-  }
-
   return findings;
+}
+
+// ─── Cream / beige palette (the default "tasteful" AI surface) ────────────────
+// A warm, lightly-tinted off-white page background — light, with R≥G≥B and a
+// small warm tint (not white, not a strong color). The current reflex surface.
+function isCreamColor(rgb) {
+  if (!rgb) return false;
+  const { r, g, b } = rgb;
+  if (Math.min(r, g, b) < 209) return false;   // must be light
+  if (!(r >= g && g >= b)) return false;        // warm ordering
+  const warmth = r - b;
+  return warmth >= 6 && warmth <= 48;           // tinted, not white, not strong
+}
+
+// Tailwind background utilities that render as a warm off-white surface. The
+// static engine doesn't fetch Tailwind's CSS, so a `bg-amber-50` on <body>
+// resolves to nothing in computed style — catch it from the class list
+// instead. Candidate tokens map to their actual Tailwind hex and are still
+// filtered through isCreamColor, so neutral grays (stone) and over-saturated
+// shades drop out on their own.
+const TAILWIND_BG_HEX = {
+  'bg-amber-50': '#fffbeb', 'bg-amber-100': '#fef3c7',
+  'bg-orange-50': '#fff7ed', 'bg-orange-100': '#ffedd5',
+  'bg-yellow-50': '#fefce8',
+  'bg-stone-50': '#fafaf9', 'bg-stone-100': '#f5f5f4', 'bg-stone-200': '#e7e5e4',
+};
+
+function creamFromClassList(cls) {
+  if (!cls) return null;
+  // Arbitrary value: bg-[#f5f0e6] / bg-[rgb(245_240_230)] (underscores = spaces).
+  const arb = cls.match(/\bbg-\[([^\]]+)\]/);
+  if (arb && isCreamColor(parseAnyColor(arb[1].replace(/_/g, ' ')))) return `bg-[${arb[1]}]`;
+  // Named warm-light utilities.
+  for (const [tok, hex] of Object.entries(TAILWIND_BG_HEX)) {
+    if (new RegExp(`(^|\\s)${tok}($|\\s)`).test(cls) && isCreamColor(parseAnyColor(hex))) return tok;
+  }
+  return null;
+}
+
+function checkCreamPalette(doc, win) {
+  const findings = [];
+  const body = doc.body || (doc.querySelector ? doc.querySelector('body') : null);
+  if (!body) return findings;
+  const html = doc.documentElement;
+  const getCS = (el) => (win ? win.getComputedStyle(el) : getComputedStyle(el));
+
+  // 1. Computed background — covers inline / <style> / linked CSS, and Tailwind
+  //    once it's actually rendered (browser path).
+  let bg = readOwnBackgroundColor(body, getCS(body));
+  if (!bg || bg.a === 0) {
+    if (html) bg = readOwnBackgroundColor(html, getCS(html));
+  }
+  if (isCreamColor(bg)) {
+    findings.push({ id: 'cream-palette', snippet: `cream/beige page background rgb(${bg.r}, ${bg.g}, ${bg.b})` });
+    return findings;
+  }
+
+  // 2. Tailwind class fallback — for the static path, where utility classes
+  //    never resolve to computed CSS.
+  for (const el of [body, html]) {
+    const tok = creamFromClassList(el && el.getAttribute ? el.getAttribute('class') : '');
+    if (tok) {
+      findings.push({ id: 'cream-palette', snippet: `cream/beige page background (Tailwind ${tok})` });
+      break;
+    }
+  }
+  return findings;
+}
+
+// ─── Oversized hero headline ────────────────────────────────────────────────
+// Fires when a *long* headline is set at display size, so a full sentence ends
+// up dominating the viewport. A punchy one- or two-word headline at the same
+// size is a legitimate stylistic choice and must pass — length, not size
+// alone, is the tell.
+const OVERSIZED_H1_FONT_PX = 72;
+const OVERSIZED_H1_MIN_CHARS = 40;
+function checkOversizedH1({ tag, fontSize, headingText }) {
+  if (tag !== 'h1') return [];
+  const textLen = headingText.length;
+  if (fontSize >= OVERSIZED_H1_FONT_PX && textLen >= OVERSIZED_H1_MIN_CHARS) {
+    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars "${headingText.slice(0, 60)}"` }];
+  }
+  return [];
+}
+
+function checkElementOversizedH1(el, style, tag, window) {
+  if (tag !== 'h1') return [];
+  const fontSize = resolveFontSizePx(el, window);
+  const headingText = (el.textContent || '').trim().replace(/\s+/g, ' ');
+  return checkOversizedH1({ tag, fontSize, headingText });
+}
+
+function checkElementOversizedH1DOM(el) {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'h1') return [];
+  const style = getComputedStyle(el);
+  const fontSize = parseFloat(style.fontSize) || 0;
+  const headingText = (el.textContent || '').trim().replace(/\s+/g, ' ');
+  return checkOversizedH1({ tag, fontSize, headingText });
+}
+
+// ─── GPT tell: hairline border + wide diffuse shadow (gated --gpt) ────────────
+function shadowMaxBlurPx(boxShadow) {
+  if (!boxShadow || boxShadow === 'none') return 0;
+  let maxBlur = 0;
+  // Split into layers on commas not inside parentheses (rgba(...) etc.).
+  for (const layer of boxShadow.split(/,(?![^()]*\))/)) {
+    // Strip colors and keywords (rgba()/hsl()/hex/named/inset/px), leaving the
+    // ordered length tokens: offsetX offsetY blur [spread]. Static jsdom keeps
+    // unitless zeros ("0 0 24px"); browsers normalize to px ("0px 0px 24px") —
+    // both reduce to the same numbers here.
+    const cleaned = layer.replace(/rgba?\([^)]*\)|hsla?\([^)]*\)|#[0-9a-f]+|\b[a-z]+\b/gi, ' ');
+    const nums = [...cleaned.matchAll(/-?\d*\.?\d+/g)].map(m => parseFloat(m[0]));
+    if (nums.length >= 3) maxBlur = Math.max(maxBlur, nums[2]);
+  }
+  return maxBlur;
+}
+
+function checkGptThinBorderWideShadow({ borderWidths, boxShadow }) {
+  const maxBorder = Math.max(0, ...borderWidths);
+  const hasThinBorder = maxBorder > 0 && maxBorder <= 1.5;
+  const blur = shadowMaxBlurPx(boxShadow);
+  if (hasThinBorder && blur >= 16) {
+    return [{ id: 'gpt-thin-border-wide-shadow', snippet: `${maxBorder}px border + ${Math.round(blur)}px shadow blur` }];
+  }
+  return [];
+}
+
+function borderWidthsFromStyle(style) {
+  return [
+    parseFloat(style.borderTopWidth) || 0,
+    parseFloat(style.borderRightWidth) || 0,
+    parseFloat(style.borderBottomWidth) || 0,
+    parseFloat(style.borderLeftWidth) || 0,
+  ];
+}
+
+function checkElementGptBorderShadow(el, style) {
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+}
+
+function checkElementGptBorderShadowDOM(el) {
+  const style = getComputedStyle(el);
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+}
+
+// ─── Clipped overflow container ───────────────────────────────────────────────
+// A clipping container (overflow hidden/clip, not a scroll region) wrapping an
+// absolutely/fixed-positioned descendant clips popovers/menus that must escape.
+function classSelector(el) {
+  const cls = (el.getAttribute ? el.getAttribute('class') : el.className) || '';
+  const tokens = String(cls).trim().split(/\s+/).filter(Boolean);
+  const tag = el.tagName ? el.tagName.toLowerCase() : 'el';
+  return tokens.length ? `${tag}.${tokens.join('.')}` : tag;
+}
+
+function checkClippedOverflow(el, style, getStyle) {
+  const clips = (v) => v === 'hidden' || v === 'clip';
+  const scrolls = (v) => v === 'auto' || v === 'scroll';
+  const ox = style.overflowX || '', oy = style.overflowY || '', ov = style.overflow || '';
+  const anyClip = clips(ox) || clips(oy) || clips(ov);
+  const anyScroll = scrolls(ox) || scrolls(oy) || scrolls(ov);
+  if (!anyClip || anyScroll) return [];
+  if (!el.querySelectorAll) return [];
+  for (const child of el.querySelectorAll('*')) {
+    const pos = (getStyle(child).position) || '';
+    if (pos === 'absolute' || pos === 'fixed') {
+      return [{ id: 'clipped-overflow-container', snippet: `${classSelector(el)} clips a positioned child` }];
+    }
+  }
+  return [];
+}
+
+function checkElementClippedOverflow(el, style, tag, window) {
+  return checkClippedOverflow(el, style, (n) => window.getComputedStyle(n));
+}
+
+function checkElementClippedOverflowDOM(el) {
+  const style = getComputedStyle(el);
+  return checkClippedOverflow(el, style, (n) => getComputedStyle(n));
+}
+
+// ─── Text overflow (browser-only: needs scrollWidth/clientWidth) ──────────────
+const TEXT_OVERFLOW_SKIP_TAGS = new Set(['pre', 'code', 'textarea', 'svg', 'canvas', 'select', 'option', 'marquee']);
+
+function checkElementTextOverflowDOM(el) {
+  const tag = el.tagName.toLowerCase();
+  if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
+  // Only the element that actually owns overflowing text — not its ancestors,
+  // which inherit a wider scrollWidth from the spilling descendant.
+  const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
+  if (!hasDirectText) return [];
+  const style = getComputedStyle(el);
+  const isScrollRegion = (s) => /(auto|scroll)/.test(s.overflowX || '') || /(auto|scroll)/.test(s.overflow || '');
+  if (isScrollRegion(style)) return [];
+  // A scrollable ancestor means this overflow is intentional and scrollable.
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (isScrollRegion(getComputedStyle(p))) return [];
+  }
+  const delta = el.scrollWidth - el.clientWidth;
+  if (el.clientWidth > 0 && delta >= 16) {
+    return [{ id: 'text-overflow', snippet: `${classSelector(el)} overflows its box by ${Math.round(delta)}px` }];
+  }
+  return [];
 }
 
 export {
@@ -1945,4 +2300,17 @@ export {
   checkPageTypography,
   isCardLike,
   checkPageLayout,
+  isCreamColor,
+  checkCreamPalette,
+  checkOversizedH1,
+  checkElementOversizedH1,
+  checkElementOversizedH1DOM,
+  shadowMaxBlurPx,
+  checkGptThinBorderWideShadow,
+  checkElementGptBorderShadow,
+  checkElementGptBorderShadowDOM,
+  checkClippedOverflow,
+  checkElementClippedOverflow,
+  checkElementClippedOverflowDOM,
+  checkElementTextOverflowDOM,
 };

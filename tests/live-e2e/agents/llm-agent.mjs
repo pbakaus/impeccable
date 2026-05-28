@@ -1,12 +1,13 @@
 /**
- * LLM-backed VariantAgent for the live-mode E2E suite.
+ * LLM-backed LiveAgent for the live-mode E2E suite.
  *
  * Implements the same interface as createFakeAgent() in
  * tests/live-e2e/agent.mjs: generateVariants(event, context) returns
  * { scopedCss, variants[] }, and applyManualEdits(event, context) returns the
- * production manual-edit Apply result shape after applying sourceEdits in the
- * fixture workspace. The orchestrator handles wrap, write, accept, and
- * carbonize cleanup deterministically.
+ * production manual-edit Apply result shape. It also implements
+ * handleSteer(event, context) for page-level Steer bar messages. The
+ * orchestrator handles wrap, write, accept, and carbonize cleanup
+ * deterministically.
  *
  * Primary provider/model: Anthropic + Claude Haiku 4.5. DeepSeek V4 Flash is
  * a secondary cheap fallback used only when ANTHROPIC_API_KEY is absent and
@@ -29,6 +30,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { applyManualEditBatchToSource, loadManualEditEventBatch } from '../agent.mjs';
+import { applySteerEdits } from '../agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
@@ -155,6 +157,29 @@ export const MANUAL_EDIT_SYSTEM_INSTRUCTIONS = [
   'CONTEXT — full live-mode skill spec follows. Use it as the source of truth for the manual_edit_apply flow.',
 ].join('\n');
 
+const STEER_SYSTEM_INSTRUCTIONS = [
+  'You are an automated subagent inside Impeccable\'s live-mode test harness.',
+  'The user sent a Steer message from the global live bar: page-level direction without element picking or variant generation.',
+  '',
+  'OUTPUT CONTRACT — return ONLY a JSON object with this exact shape. No prose, no code fences, no commentary:',
+  '',
+  '{',
+  '  "file": "relative/path/from/fixture/root",',
+  '  "edits": [{ "find": "exact substring in file", "replace": "replacement substring" }],',
+  '  "message": "optional short toast for the browser (<= 80 chars)"',
+  '}',
+  '',
+  'REQUIREMENTS',
+  '- Perform the user message by editing the indicated source file.',
+  '- context.requiredMarker MUST appear verbatim in at least one edits[].replace string. The harness asserts this attribute in DOM + source after HMR.',
+  '- Use exact find strings copied from context.sourceExcerpt or context.tagLine. Do not guess whitespace.',
+  '- Prefer a single edit on the hero opening tag (h1 with the hero class). Preserve all existing classes and inner content.',
+  '- file must match context.targetFile unless the excerpt clearly shows a different path is wrong.',
+  '- edits must be non-empty; find must match exactly once in the file.',
+  '',
+  'CONTEXT — live-mode skill spec follows for steer semantics (Handle steer section).',
+].join('\n');
+
 /**
  * @typedef {object} LlmAgentOptions
  * @property {'anthropic' | 'deepseek'=} provider Override IMPECCABLE_E2E_LLM_PROVIDER.
@@ -201,7 +226,7 @@ function resolveProvider(opts, env) {
 
 /**
  * @param {LlmAgentOptions} [opts]
- * @returns {Promise<{generateVariants: (event: object, context: object) => Promise<{scopedCss: string, variants: object[]}>, applyManualEdits: (event: object, context: object) => Promise<object>} | null>}
+ * @returns {Promise<{generateVariants: Function, handleSteer: Function, applyManualEdits: Function} | null>}
  */
 export async function createLlmAgent(opts = {}) {
   const config = opts.config || resolveLlmAgentConfig(opts);
@@ -487,6 +512,74 @@ export async function createLlmAgent(opts = {}) {
       }
 
       throw new Error('LLM agent: manual edit apply failed');
+    },
+
+    async handleSteer(event, context = {}) {
+      const userMessage = [
+        'Handle the following steer event. Reply with the JSON object only — no prose.',
+        '',
+        '```json',
+        JSON.stringify(
+          {
+            id: event.id,
+            message: event.message,
+            pageUrl: event.pageUrl,
+            targetFile: context.targetFile,
+            target: context.target,
+            tagLine: context.tagLine,
+            requiredMarker: context.requiredMarker,
+            sourceExcerpt: context.sourceExcerpt,
+          },
+          null,
+          2,
+        ),
+        '```',
+      ].join('\n');
+
+      const response = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        system: [
+          { type: 'text', text: STEER_SYSTEM_INSTRUCTIONS },
+          { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
+        ],
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const cacheRead = response.usage?.cache_read_input_tokens ?? 0;
+      const inputTokens = response.usage?.input_tokens ?? 0;
+      const outputTokens = response.usage?.output_tokens ?? 0;
+      log(`steer model=${model} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead}`);
+
+      const text = response.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      const cleaned = stripCodeFence(text.trim());
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (err) {
+        throw new Error(
+          `LLM steer: response was not valid JSON (${err.message}). First 500 chars:\n${cleaned.slice(0, 500)}`,
+        );
+      }
+
+      if (typeof parsed.file !== 'string' || !parsed.file.trim()) {
+        throw new Error('LLM steer: missing or empty file in response');
+      }
+      if (!Array.isArray(parsed.edits) || parsed.edits.length === 0) {
+        throw new Error('LLM steer: edits must be a non-empty array');
+      }
+      const marker = context.requiredMarker;
+      const markerPresent = parsed.edits.some((e) => typeof e.replace === 'string' && e.replace.includes(marker));
+      if (!markerPresent) {
+        throw new Error(`LLM steer: edits must include required marker ${JSON.stringify(marker)}`);
+      }
+
+      await applySteerEdits(context.tmp, { file: parsed.file, edits: parsed.edits });
+      return { message: parsed.message || 'Steer applied' };
     },
   };
 }

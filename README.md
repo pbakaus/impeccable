@@ -19,7 +19,7 @@ Impeccable adds:
 
 ### The Skill: impeccable
 
-A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.md)):
+A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.src.md)):
 
 | Reference | Covers |
 |-----------|--------|
@@ -38,7 +38,7 @@ All commands are accessed through `/impeccable`:
 | Command | What it does |
 |---------|--------------|
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
-| `/impeccable teach` | One-time setup: gather design context, write root PRODUCT.md and DESIGN.md |
+| `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
 | `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
 | `/impeccable shape` | Plan UX/UI before writing code |
@@ -93,11 +93,23 @@ Visit [impeccable.style](https://impeccable.style#casestudies) to see before/aft
 
 ## Installation
 
-### Option 1: Download from Website (Recommended)
+### Option 1: CLI installer (Recommended)
+
+From the root of your project, run:
+
+```bash
+npx impeccable skills install
+```
+
+This auto-detects your harness and writes the build compiled for it to the right location (`.claude/skills/`, `.cursor/skills/`, etc.). Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+
+Claude Code users can alternatively install the plugin with `/plugin marketplace add pbakaus/impeccable`. The general-purpose `npx skills add pbakaus/impeccable` also works, though it installs one shared build for all harnesses rather than the one compiled for yours.
+
+### Option 2: Download from Website
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 2: Copy from Repository
+### Option 3: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -195,21 +207,25 @@ cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 
 ## Usage
 
-Once installed, use commands in your AI harness:
+Once installed, every command runs through the single `/impeccable` skill:
 
 ```
-/audit           # Find issues
-/normalize       # Fix inconsistencies
-/polish          # Final cleanup
-/distill         # Remove complexity
+/impeccable audit        # Find issues
+/impeccable polish       # Final cleanup
+/impeccable distill      # Remove complexity
+/impeccable critique     # Full design review
 ```
+
+Type `/impeccable` alone to see the full command list.
 
 Most commands accept an optional argument to focus on a specific area:
 
 ```
-/audit header
-/polish checkout-form
+/impeccable audit the header
+/impeccable polish the checkout form
 ```
+
+If you reach for one command often, pin it with `/impeccable pin audit` to get `/audit` as a standalone shortcut.
 
 **Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
 

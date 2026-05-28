@@ -12,7 +12,7 @@ const tutorials = (await getCollection('tutorials'))
   description="Step-by-step guides for getting started with Impeccable, from first install to live browser iteration."
   activeNav="docs"
   canonicalPath="/tutorials"
-  bodyClass="sub-page"
+  bodyClass="sub-page kinpaku-chrome kinpaku-surface"
 >
   <div class="tutorials-index">
     <header class="tutorials-index-header">
@@ -45,7 +45,7 @@ const tutorials = (await getCollection('tutorials'))
     }
     .tutorial-card:hover { border-color: var(--color-accent); }
     .tutorial-card-num { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--color-ash); flex-shrink: 0; padding-top: 0.125rem; }
-    .tutorial-card-title { font-size: 1.125rem; font-weight: 600; margin: 0 0 0.25rem; }
+    .tutorial-card-title { font-family: var(--font-body); font-style: normal; font-size: 1.125rem; font-weight: 600; margin: 0 0 0.25rem; color: var(--color-ink); }
     .tutorial-card-desc { font-size: 0.875rem; color: var(--color-ash); margin: 0; line-height: 1.5; }
   </style>
 </Base>

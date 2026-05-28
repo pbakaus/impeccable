@@ -89,7 +89,7 @@ function renderDesktopLayout(container, commands) {
         'refine': ['typeset', 'layout', 'colorize', 'animate', 'delight', 'bolder', 'quieter', 'overdrive'],
         'simplify': ['distill', 'clarify', 'adapt'],
         'harden': ['polish', 'optimize', 'harden'],
-        'system': ['teach', 'extract']
+        'system': ['init', 'extract']
     };
     const grouped = {};
     filteredCommands.forEach(cmd => {
@@ -135,12 +135,8 @@ function renderDesktopLayout(container, commands) {
     const fisheyeHTML = filteredCommands.map((cmd, i) => {
         const cat = commandCategories[cmd.id] || 'other';
         const isAlpha = alphaCommands.includes(cmd.id);
-        // The root skill is shown as "/impeccable", everything else is a sub-command
-        // displayed without a slash (invocation is /impeccable <name>)
-        const isRoot = cmd.id === 'impeccable';
-        const label = isRoot
-            ? `<span class="fisheye-slash">/</span>impeccable`
-            : cmd.id;
+        // The command palette lists command names, not raw invocations.
+        const label = cmd.id;
         return `<button class="fisheye-item${i === startIndex ? ' is-active' : ''}" data-index="${i}" data-id="${cmd.id}" data-cat="${cat}">${label}${isAlpha ? '<span class="fisheye-beta">ALPHA</span>' : ''}</button>`;
     }).join('');
 
@@ -201,12 +197,12 @@ function renderSpread(cmd, index, isActive) {
         }
     }
 
-    // The root skill is rendered as /impeccable; sub-commands are rendered as
+    // The root skill is rendered as impeccable; sub-commands are rendered as
     // /impeccable on a smaller line above the command name, so the command name
     // stays the visual anchor at full display size.
     const isRoot = cmd.id === 'impeccable';
     const nameHTML = isRoot
-        ? `<span class="spread-slash">/</span>impeccable`
+        ? 'impeccable'
         : `<span class="spread-namespace"><span class="spread-slash">/</span>impeccable</span>${cmd.id}`;
 
     return `
@@ -251,7 +247,8 @@ function initSpreadDemo(index) {
     const splitComparison = demoArea.querySelector('.demo-split-comparison');
     if (splitComparison) {
         currentSplitInstance = initSplitCompare(splitComparison, {
-            defaultPosition: 50
+            defaultPosition: 50,
+            skewAngle: 0
         });
     }
     initCommandDemo(cmd.id, demoArea);
@@ -547,6 +544,7 @@ function setupMobileInteractions(commands) {
     if (initialSplit) {
         currentSplitInstance = initSplitCompare(initialSplit, {
             defaultPosition: 50,
+            skewAngle: 0,
             minPosition: 10,
             maxPosition: 90
         });
@@ -587,7 +585,8 @@ function setupMobileInteractions(commands) {
             const splitComparison = demoArea.querySelector('.demo-split-comparison');
             if (splitComparison) {
                 currentSplitInstance = initSplitCompare(splitComparison, {
-                    defaultPosition: 50
+                    defaultPosition: 50,
+                    skewAngle: 0
                 });
             }
             initCommandDemo(cmdId, demoArea);
@@ -664,4 +663,3 @@ async function updateSourceContent(cmdId) {
         contentEl.innerHTML = '<span class="source-loading">Source not available</span>';
     }
 }
-

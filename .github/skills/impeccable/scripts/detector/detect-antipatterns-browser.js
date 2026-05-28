@@ -38,7 +38,7 @@ const OVERUSED_FONTS = new Set([
   // Older monoculture (still ubiquitous):
   'inter', 'roboto', 'open sans', 'lato', 'montserrat', 'arial', 'helvetica',
   // Newer monoculture (the Anthropic-skill / Vercel / GitHub default wave):
-  'fraunces', 'instrument sans',
+  'fraunces', 'instrument sans', 'instrument serif',
   'geist', 'geist sans', 'geist mono',
   'mona sans',
   'plus jakarta sans', 'space grotesk', 'recoleta',
@@ -166,6 +166,15 @@ const ANTIPATTERNS = [
     skillGuideline: 'AI color palette',
   },
   {
+    id: 'cream-palette',
+    category: 'slop',
+    name: 'Cream / beige palette',
+    description:
+      'A warm cream or beige page background has become the default "tasteful" AI surface, reached for by reflex. Choose a background that comes from a deliberate palette, not the safe warm off-white.',
+    skillSection: 'Color & Contrast',
+    skillGuideline: 'cream and beige as the default surface',
+  },
+  {
     id: 'nested-cards',
     category: 'slop',
     name: 'Nested cards',
@@ -182,15 +191,6 @@ const ANTIPATTERNS = [
       'The same spacing value used everywhere — no rhythm, no variation. Use tight groupings for related items and generous separations between sections.',
     skillSection: 'Layout & Space',
     skillGuideline: 'same spacing everywhere',
-  },
-  {
-    id: 'everything-centered',
-    category: 'slop',
-    name: 'Everything centered',
-    description:
-      'Every text element is center-aligned. Left-aligned text with asymmetric layouts feels more designed. Center only hero sections and CTAs.',
-    skillSection: 'Layout & Space',
-    skillGuideline: 'Center everything',
   },
   {
     id: 'bounce-easing',
@@ -247,17 +247,72 @@ const ANTIPATTERNS = [
     skillSection: 'Typography',
     skillGuideline: 'repeated eyebrow or kicker labels as section scaffolding',
   },
+  {
+    id: 'numbered-section-markers',
+    category: 'slop',
+    severity: 'advisory',
+    name: 'Numbered section markers (01 / 02 / 03)',
+    description:
+      'Numbered display markers as section labels (01, 02, 03) are the AI editorial scaffold one tier deeper than tracked eyebrow chips. If you find yourself reaching for them, choose a different section cadence.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'numbered section markers',
+  },
+  {
+    id: 'em-dash-overuse',
+    category: 'slop',
+    name: 'Em-dash overuse',
+    description:
+      'More than two em-dashes (— or --) in body copy is an AI cadence tell. Use commas, colons, periods, or parentheses instead.',
+    skillSection: 'Copy',
+    skillGuideline: 'no em dashes',
+  },
+  {
+    id: 'marketing-buzzword',
+    category: 'slop',
+    name: 'Marketing buzzword',
+    description:
+      'Generic SaaS phrases (streamline / empower / supercharge / world-class / enterprise-grade / next-generation / cutting-edge / etc) are instant AI tells. Pick a specific verb and noun that says what the product literally does.',
+    skillSection: 'Copy',
+    skillGuideline: 'marketing buzzwords',
+  },
+  {
+    id: 'aphoristic-cadence',
+    category: 'slop',
+    name: 'Aphoristic-cadence copy',
+    description:
+      'Three or more sections landing on a short rebuttal sentence ("X. No Y." / "X. Just Y.") or a manufactured-contrast aphorism ("Not a feature. A platform.") reads as AI cadence, not voice. Once is fine; the pattern is the tell.',
+    skillSection: 'Copy',
+    skillGuideline: 'aphoristic cadence',
+  },
+  {
+    id: 'oversized-h1',
+    category: 'slop',
+    name: 'Oversized hero headline',
+    description:
+      'A full-sentence headline set at display size ends up dominating the viewport, leaving no room for anything else above the fold. A punchy one- or two-word headline at that size is fine — the problem is a long headline blown up too large. Set long headlines smaller, or tighten the copy.',
+    skillSection: 'Typography',
+    skillGuideline: 'long headline set at display size',
+  },
+  {
+    id: 'extreme-negative-tracking',
+    category: 'slop',
+    name: 'Crushed letter spacing',
+    description:
+      'Letter-spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.',
+    skillSection: 'Typography',
+    skillGuideline: 'letter spacing crushed past legibility',
+  },
+  {
+    id: 'broken-image',
+    category: 'quality',
+    name: 'Broken or placeholder image',
+    description:
+      '<img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.',
+    skillSection: 'Imagery',
+    skillGuideline: 'broken image references',
+  },
 
   // ── Quality: general design and accessibility issues ──
-  {
-    id: 'pure-black-white',
-    category: 'quality',
-    name: 'Pure black background',
-    description:
-      'Pure #000000 as a background color looks harsh and unnatural. Tint it slightly toward your brand hue (e.g., oklch(12% 0.01 250)) for a more refined feel.',
-    skillSection: 'Color & Contrast',
-    skillGuideline: 'pure black (#000)',
-  },
   {
     id: 'gray-on-color',
     category: 'quality',
@@ -297,7 +352,9 @@ const ANTIPATTERNS = [
     category: 'quality',
     name: 'Cramped padding',
     description:
-      'Text is too close to the edge of its container. Add at least 8px (ideally 12-16px) of padding inside bordered or colored containers.',
+      'Text is too close to the edge of its container. Two shapes: (1) an element with its own text where the padding is too low for the font size, and (2) a wrapper with text-bearing children and near-zero padding against a visible boundary (border, outline, or non-transparent background) — children land flush against the boundary line. Add at least 8px (ideally 12–16px) of padding inside bordered, outlined, or colored containers.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'inside bordered or colored containers',
   },
   {
     id: 'body-text-viewport-edge',
@@ -349,6 +406,70 @@ const ANTIPATTERNS = [
     name: 'Wide letter spacing on body text',
     description:
       'Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.',
+  },
+  {
+    id: 'text-overflow',
+    category: 'quality',
+    name: 'Content overflowing its container',
+    description:
+      'Content renders wider than its container, spilling out or forcing a horizontal scrollbar. Let text wrap, constrain widths, or give the region a deliberate scroll affordance.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'content wider than its container',
+  },
+  {
+    id: 'clipped-overflow-container',
+    category: 'quality',
+    name: 'Positioned child clipped by overflow container',
+    description:
+      'A clipping container (overflow hidden or clip) wrapping an absolutely-positioned child cuts off tooltips, menus, and popovers that need to escape. Let the overflow be visible, or move the positioned layer out of the clip.',
+    skillSection: 'Layout & Space',
+    skillGuideline: 'overflow container clipping positioned children',
+  },
+
+  // ── Provider tells: opt-in via --gpt / --gemini (gated off by default) ──
+  {
+    id: 'gpt-thin-border-wide-shadow',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Hairline border with wide shadow',
+    description:
+      'A hairline border paired with a wide, diffuse shadow is a recurring generated-UI signature. Commit to one — a defined edge or a soft elevation — rather than both at once.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'hairline border plus wide diffuse shadow',
+  },
+  {
+    id: 'repeating-stripes-gradient',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Repeating-gradient stripes',
+    description:
+      'Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture or leave the surface plain.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'repeating-gradient decorative stripes',
+  },
+  {
+    id: 'theater-slop-phrase',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Theater framing copy',
+    description:
+      'Dismissing something as "theater" is a recurring generated-copy tic. Say plainly what the thing does or does not do.',
+    skillSection: 'Copy',
+    skillGuideline: 'theater framing copy',
+  },
+  {
+    id: 'image-hover-transform',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gemini',
+    name: 'Image hover transform',
+    description:
+      'Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.',
+    skillSection: 'Motion',
+    skillGuideline: 'image scale or rotate on hover',
   },
 ];
 
@@ -527,11 +648,6 @@ function checkColors(opts) {
   }
   const findings = [];
 
-  // Pure black background (only solid or near-solid, not semi-transparent overlays)
-  if (bgColor && bgColor.a >= 0.9 && bgColor.r === 0 && bgColor.g === 0 && bgColor.b === 0) {
-    findings.push({ id: 'pure-black-white', snippet: '#000000 background' });
-  }
-
   if (hasDirectText && textColor && !isEmojiOnly) {
     // Run background-dependent checks against either a solid bg or, if the
     // ancestor is a gradient, against every gradient stop (use the worst case).
@@ -587,9 +703,6 @@ function checkColors(opts) {
   // Tailwind class checks
   if (classList) {
     const classStr = typeof classList === 'string' ? classList : Array.from(classList).join(' ');
-    if (/\bbg-black\b(?!\/)/.test(classStr)) {
-      findings.push({ id: 'pure-black-white', snippet: 'bg-black' });
-    }
 
     const grayMatch = classStr.match(/\btext-(?:gray|slate|zinc|neutral|stone)-\d+\b/);
     const colorBgMatch = classStr.match(/\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/);
@@ -905,12 +1018,6 @@ function checkHtmlPatterns(html) {
 
   // --- Color ---
 
-  // Pure black background
-  const pureBlackBgRe = /background(?:-color)?\s*:\s*(?:#000000|#000|rgb\(\s*0,\s*0,\s*0\s*\))\b/gi;
-  if (pureBlackBgRe.test(html)) {
-    findings.push({ id: 'pure-black-white', snippet: 'Pure #000 background' });
-  }
-
   // AI color palette: purple/violet
   const purpleHexRe = /#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b/gi;
   if (purpleHexRe.test(html)) {
@@ -1024,6 +1131,39 @@ function checkHtmlPatterns(html) {
         findings.push({ id: 'dark-glow', snippet: `Colored glow (rgb(${r},${g},${b})) on dark page` });
         break;
       }
+    }
+  }
+
+  // --- Provider tells (gated): repeating-gradient stripes (GPT) ---
+  if (/repeating-(?:linear|radial|conic)-gradient\s*\(/i.test(html)) {
+    findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
+  }
+
+  // --- Provider tells (gated): "X theater" framing copy (GPT) ---
+  // Lives here (regex-on-HTML) rather than in the text-content analyzers so it
+  // runs in the bundled browser path too, not just the CLI/static path.
+  {
+    const bodyText = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    const tm = /\b(\w+)\s+theater\b/i.exec(bodyText);
+    if (tm) findings.push({ id: 'theater-slop-phrase', snippet: `"${tm[0].trim()}"` });
+  }
+
+  // --- Provider tells (gated): image hover transform (Gemini) ---
+  // A CSS `img...:hover { transform: ... }` rule, or a Tailwind hover:scale /
+  // hover:rotate / hover:translate utility on an <img>. Each distinct
+  // mechanism is its own finding.
+  const imgHoverCss = /\bimg\b[^,{}]*:hover\b[^{}]*\{[^}]*\btransform\s*:\s*(?:scale|rotate|translate|matrix|skew)/i;
+  if (imgHoverCss.test(html)) {
+    findings.push({ id: 'image-hover-transform', snippet: 'img:hover { transform } rule' });
+  }
+  const imgTagRe = /<img\b[^>]*\bclass\s*=\s*"([^"]*)"/gi;
+  let im;
+  while ((im = imgTagRe.exec(html)) !== null) {
+    if (/\bhover:(?:scale|rotate|translate|skew)-/.test(im[1])) {
+      findings.push({ id: 'image-hover-transform', snippet: 'Tailwind hover transform on <img>' });
     }
   }
 
@@ -1673,7 +1813,7 @@ function resolveLengthPx(value, fontSizePx) {
 // Both adapters resolve font-size, line-height and letter-spacing to pixels
 // before calling this so the pure function only deals with numbers.
 function checkQuality(opts) {
-  const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0 } = opts;
+  const { el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax = 80, viewportWidth = 0, win = null } = opts;
   const findings = [];
   // Skip browser extension injected elements
   const elId = el.id || '';
@@ -1720,6 +1860,155 @@ function checkQuality(opts) {
         findings.push({ id: 'cramped-padding', snippet: `${vMin}px vertical padding (need ≥${vThresh.toFixed(1)}px for ${fontSize}px text)` });
       } else if (hMin < hThresh) {
         findings.push({ id: 'cramped-padding', snippet: `${hMin}px horizontal padding (need ≥${hThresh.toFixed(1)}px for ${fontSize}px text)` });
+      }
+    }
+  }
+
+  // --- Flush against a visible boundary ---
+  // Fires when a container has a visible boundary (border, outline, OR a
+  // non-transparent background) AND near-zero padding on the bounded
+  // side(s) AND text-bearing children land flush against the boundary.
+  //
+  // Distinct from cramped-padding: that rule needs the element itself to
+  // have direct text (hasDirectText). This rule targets the OPPOSITE
+  // shape — a container with NO direct text, only children — which is
+  // exactly what cramped-padding misses (a section wrapping a label +
+  // list lands a free pass).
+  //
+  // The classic shape: agent writes `padding: 28px 0 0` shorthand on a
+  // section that also has a border, zeroing horizontal padding so the
+  // text-bearing children touch the side borders. Background and
+  // outline count too: a colored card with zero padding has the same
+  // visual failure mode.
+  {
+    const FLUSH_SKIP_TAGS = new Set(['HTML', 'BODY', 'MAIN', 'HEADER', 'FOOTER', 'NAV', 'ARTICLE', 'ASIDE', 'BUTTON', 'A', 'LABEL', 'SUMMARY', 'CODE', 'PRE', 'INPUT', 'TEXTAREA', 'SELECT', 'FORM', 'FIGURE', 'TABLE', 'TBODY', 'THEAD', 'TR', 'TD', 'TH']);
+    const upperTag = tag ? tag.toUpperCase() : '';
+    const elPosition = style.position || '';
+    if (
+      !FLUSH_SKIP_TAGS.has(upperTag) &&
+      !hasDirectText &&
+      !['fixed', 'absolute'].includes(elPosition) &&
+      el.children && el.children.length > 0
+    ) {
+      const isTransparent = (c) =>
+        !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' ||
+        /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(c);
+
+      const borderW = {
+        top:    parseFloat(style.borderTopWidth)    || 0,
+        right:  parseFloat(style.borderRightWidth)  || 0,
+        bottom: parseFloat(style.borderBottomWidth) || 0,
+        left:   parseFloat(style.borderLeftWidth)   || 0,
+      };
+      const borderVisible = {
+        top:    borderW.top    > 0 && !isTransparent(style.borderTopColor),
+        right:  borderW.right  > 0 && !isTransparent(style.borderRightColor),
+        bottom: borderW.bottom > 0 && !isTransparent(style.borderBottomColor),
+        left:   borderW.left   > 0 && !isTransparent(style.borderLeftColor),
+      };
+      // Outline detection. jsdom decomposes `border` shorthand into
+      // border{Top,…}Width/Color but does NOT decompose `outline` —
+      // the longhands come back empty when the value was set via the
+      // shorthand. Fall back to parsing `style.outline` ourselves.
+      let outlineW = parseFloat(style.outlineWidth) || 0;
+      let outlineStyleVal = style.outlineStyle || '';
+      let outlineColorVal = style.outlineColor || '';
+      if (!outlineW && style.outline) {
+        const wMatch = style.outline.match(/(\d+(?:\.\d+)?)\s*px/);
+        if (wMatch) outlineW = parseFloat(wMatch[1]) || 0;
+        if (!outlineStyleVal) {
+          outlineStyleVal = /\b(solid|dashed|dotted|double|groove|ridge|inset|outset)\b/.test(style.outline) ? 'solid' : '';
+        }
+        if (!outlineColorVal) {
+          const cMatch = style.outline.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-zA-Z]+)\s*$/);
+          if (cMatch) outlineColorVal = cMatch[1];
+        }
+      }
+      const outlineVisible = outlineW > 0 && !isTransparent(outlineColorVal) && outlineStyleVal && outlineStyleVal !== 'none';
+      const bgVisible = !isTransparent(style.backgroundColor);
+
+      const anyVisible = borderVisible.top || borderVisible.right || borderVisible.bottom || borderVisible.left || outlineVisible || bgVisible;
+      if (anyVisible) {
+        // Resolve padding to px (jsdom returns raw "1.5rem" etc., not the
+        // computed px value; parseFloat would strip the unit and treat
+        // 1.5rem as 1.5px, false-flagging legitimate insets).
+        const pad = {
+          top:    resolveLengthPx(style.paddingTop,    fontSize) ?? 0,
+          right:  resolveLengthPx(style.paddingRight,  fontSize) ?? 0,
+          bottom: resolveLengthPx(style.paddingBottom, fontSize) ?? 0,
+          left:   resolveLengthPx(style.paddingLeft,   fontSize) ?? 0,
+        };
+        const PAD_THRESHOLD = 2;
+        // Children-insulate-this-side: a side is insulated if ANY direct
+        // child has its own padding ≥ 4px on that side. Rationale: in
+        // typical flow, only the first/last (or leftmost/rightmost)
+        // children actually sit at the parent's edges. If even one of
+        // them has its own padding, the visual flush is broken on that
+        // side. Classic example: a column-flow card frame where the
+        // top child (header) has padding-top:12 and the bottom child
+        // (footer) has padding-bottom:8 — the parent's padding:0 doesn't
+        // matter; nothing is actually flush. The `any-child-insulates`
+        // heuristic accepts some false negatives (a card with one heavily
+        // padded middle child won't flag) for far fewer false positives.
+        const CHILD_INSULATE_THRESHOLD = 4;
+        const childrenInsulate = { top: false, right: false, bottom: false, left: false };
+        for (const child of el.children) {
+          let childStyle = null;
+          if (win && typeof win.getComputedStyle === 'function') {
+            try { childStyle = win.getComputedStyle(child); } catch {}
+          }
+          if (!childStyle && typeof getComputedStyle === 'function') {
+            try { childStyle = getComputedStyle(child); } catch {}
+          }
+          if (!childStyle) continue;
+          const childPad = {
+            top:    resolveLengthPx(childStyle.paddingTop,    fontSize) ?? 0,
+            right:  resolveLengthPx(childStyle.paddingRight,  fontSize) ?? 0,
+            bottom: resolveLengthPx(childStyle.paddingBottom, fontSize) ?? 0,
+            left:   resolveLengthPx(childStyle.paddingLeft,   fontSize) ?? 0,
+          };
+          for (const s of ['top', 'right', 'bottom', 'left']) {
+            if (childPad[s] >= CHILD_INSULATE_THRESHOLD) childrenInsulate[s] = true;
+          }
+        }
+
+        const flushSides = [];
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+          const sideBounded = borderVisible[side] || outlineVisible || bgVisible;
+          if (sideBounded && pad[side] <= PAD_THRESHOLD && !childrenInsulate[side]) {
+            flushSides.push(side);
+          }
+        }
+
+        if (flushSides.length > 0) {
+          // Confirm at least one direct child has substantial text content
+          // (> 4 chars). Without this, the flush is harmless: e.g. an
+          // image-only card.
+          let hasTextChild = false;
+          for (const child of el.children) {
+            const childText = (child.textContent || '').trim();
+            if (childText.length > 4) { hasTextChild = true; break; }
+          }
+          if (hasTextChild) {
+            const cls = (typeof el.className === 'string' && el.className.trim())
+              ? el.className.trim().split(/\s+/)[0]
+              : '';
+            const boundaryParts = [];
+            const borderSidesVisible = ['top', 'right', 'bottom', 'left'].filter(s => borderVisible[s]);
+            if (borderSidesVisible.length === 4) boundaryParts.push('border');
+            else if (borderSidesVisible.length > 0) boundaryParts.push(`border-${borderSidesVisible.join('/')}`);
+            if (outlineVisible) boundaryParts.push('outline');
+            if (bgVisible) boundaryParts.push('bg');
+            const sidesLabel = flushSides.length === 4 ? 'all sides' : flushSides.join('/');
+            const ident = cls
+              ? `<${tag.toLowerCase()}> "${cls}"`
+              : `<${tag.toLowerCase()}>`;
+            findings.push({
+              id: 'cramped-padding',
+              snippet: `${ident}: children flush against ${boundaryParts.join('+')} on ${sidesLabel} (no inset)`,
+            });
+          }
+        }
       }
     }
   }
@@ -1804,6 +2093,20 @@ function checkQuality(opts) {
     }
   }
 
+  // --- Crushed letter spacing (mirror of wide-tracking) ---
+  // Tracking pulled tighter than ~-0.05em crushes characters into each other.
+  // Optical tightening that display type legitimately wants (around -0.02em)
+  // stays well above this floor.
+  if (hasDirectText && textLen > 20 && fontSize > 0) {
+    if (letterSpacingPx != null && letterSpacingPx < 0) {
+      const trackingEm = letterSpacingPx / fontSize;
+      if (trackingEm <= -0.05) {
+        const excerpt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+        findings.push({ id: 'extreme-negative-tracking', snippet: `letter-spacing: ${trackingEm.toFixed(2)}em — "${excerpt}"` });
+      }
+    }
+  }
+
   return findings;
 }
 
@@ -1820,7 +2123,7 @@ function checkElementQualityDOM(el) {
   const rect = el.getBoundingClientRect();
   const lineMax = (typeof window !== 'undefined' && window.__IMPECCABLE_CONFIG__?.lineLengthMax) || 80;
   const viewportWidth = (typeof window !== 'undefined' ? window.innerWidth : 0) || 0;
-  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax, viewportWidth });
+  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax, viewportWidth, win: typeof window !== 'undefined' ? window : null });
 }
 
 // Pure page-level skipped-heading walk. Takes a Document so it works in both
@@ -1862,7 +2165,7 @@ function checkElementQuality(el, style, tag, window) {
   const fontSize = resolveFontSizePx(el, window);
   const lineHeightPx = resolveLengthPx(style.lineHeight, fontSize);
   const letterSpacingPx = resolveLengthPx(style.letterSpacing, fontSize);
-  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect: null });
+  return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect: null, win: window });
 }
 
 function checkElementBorders(tag, style, overrides, resolvedRadius) {
@@ -2303,38 +2606,211 @@ function checkPageLayout(doc, win) {
     }
   }
 
-  // Everything centered
-  const textEls = doc.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, div, button');
-  let centeredCount = 0;
-  let totalText = 0;
-  for (const el of textEls) {
-    const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length >= 3);
-    if (!hasDirectText) continue;
-    totalText++;
-
-    let cur = el;
-    let isCentered = false;
-    while (cur && cur.nodeType === 1) {
-      const rawStyle = cur.getAttribute?.('style') || '';
-      const cls = cur.getAttribute?.('class') || '';
-      if (/text-align\s*:\s*center/i.test(rawStyle) || /\btext-center\b/.test(cls)) {
-        isCentered = true;
-        break;
-      }
-      if (cur.tagName === 'BODY') break;
-      cur = cur.parentElement;
-    }
-    if (isCentered) centeredCount++;
-  }
-
-  if (totalText >= 5 && centeredCount / totalText > 0.7) {
-    findings.push({
-      id: 'everything-centered',
-      snippet: `${centeredCount}/${totalText} text elements centered (${Math.round(centeredCount / totalText * 100)}%)`,
-    });
-  }
-
   return findings;
+}
+
+// ─── Cream / beige palette (the default "tasteful" AI surface) ────────────────
+// A warm, lightly-tinted off-white page background — light, with R≥G≥B and a
+// small warm tint (not white, not a strong color). The current reflex surface.
+function isCreamColor(rgb) {
+  if (!rgb) return false;
+  const { r, g, b } = rgb;
+  if (Math.min(r, g, b) < 209) return false;   // must be light
+  if (!(r >= g && g >= b)) return false;        // warm ordering
+  const warmth = r - b;
+  return warmth >= 6 && warmth <= 48;           // tinted, not white, not strong
+}
+
+// Tailwind background utilities that render as a warm off-white surface. The
+// static engine doesn't fetch Tailwind's CSS, so a `bg-amber-50` on <body>
+// resolves to nothing in computed style — catch it from the class list
+// instead. Candidate tokens map to their actual Tailwind hex and are still
+// filtered through isCreamColor, so neutral grays (stone) and over-saturated
+// shades drop out on their own.
+const TAILWIND_BG_HEX = {
+  'bg-amber-50': '#fffbeb', 'bg-amber-100': '#fef3c7',
+  'bg-orange-50': '#fff7ed', 'bg-orange-100': '#ffedd5',
+  'bg-yellow-50': '#fefce8',
+  'bg-stone-50': '#fafaf9', 'bg-stone-100': '#f5f5f4', 'bg-stone-200': '#e7e5e4',
+};
+
+function creamFromClassList(cls) {
+  if (!cls) return null;
+  // Arbitrary value: bg-[#f5f0e6] / bg-[rgb(245_240_230)] (underscores = spaces).
+  const arb = cls.match(/\bbg-\[([^\]]+)\]/);
+  if (arb && isCreamColor(parseAnyColor(arb[1].replace(/_/g, ' ')))) return `bg-[${arb[1]}]`;
+  // Named warm-light utilities.
+  for (const [tok, hex] of Object.entries(TAILWIND_BG_HEX)) {
+    if (new RegExp(`(^|\\s)${tok}($|\\s)`).test(cls) && isCreamColor(parseAnyColor(hex))) return tok;
+  }
+  return null;
+}
+
+function checkCreamPalette(doc, win) {
+  const findings = [];
+  const body = doc.body || (doc.querySelector ? doc.querySelector('body') : null);
+  if (!body) return findings;
+  const html = doc.documentElement;
+  const getCS = (el) => (win ? win.getComputedStyle(el) : getComputedStyle(el));
+
+  // 1. Computed background — covers inline / <style> / linked CSS, and Tailwind
+  //    once it's actually rendered (browser path).
+  let bg = readOwnBackgroundColor(body, getCS(body));
+  if (!bg || bg.a === 0) {
+    if (html) bg = readOwnBackgroundColor(html, getCS(html));
+  }
+  if (isCreamColor(bg)) {
+    findings.push({ id: 'cream-palette', snippet: `cream/beige page background rgb(${bg.r}, ${bg.g}, ${bg.b})` });
+    return findings;
+  }
+
+  // 2. Tailwind class fallback — for the static path, where utility classes
+  //    never resolve to computed CSS.
+  for (const el of [body, html]) {
+    const tok = creamFromClassList(el && el.getAttribute ? el.getAttribute('class') : '');
+    if (tok) {
+      findings.push({ id: 'cream-palette', snippet: `cream/beige page background (Tailwind ${tok})` });
+      break;
+    }
+  }
+  return findings;
+}
+
+// ─── Oversized hero headline ────────────────────────────────────────────────
+// Fires when a *long* headline is set at display size, so a full sentence ends
+// up dominating the viewport. A punchy one- or two-word headline at the same
+// size is a legitimate stylistic choice and must pass — length, not size
+// alone, is the tell.
+const OVERSIZED_H1_FONT_PX = 72;
+const OVERSIZED_H1_MIN_CHARS = 40;
+function checkOversizedH1({ tag, fontSize, headingText }) {
+  if (tag !== 'h1') return [];
+  const textLen = headingText.length;
+  if (fontSize >= OVERSIZED_H1_FONT_PX && textLen >= OVERSIZED_H1_MIN_CHARS) {
+    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars "${headingText.slice(0, 60)}"` }];
+  }
+  return [];
+}
+
+function checkElementOversizedH1(el, style, tag, window) {
+  if (tag !== 'h1') return [];
+  const fontSize = resolveFontSizePx(el, window);
+  const headingText = (el.textContent || '').trim().replace(/\s+/g, ' ');
+  return checkOversizedH1({ tag, fontSize, headingText });
+}
+
+function checkElementOversizedH1DOM(el) {
+  const tag = el.tagName.toLowerCase();
+  if (tag !== 'h1') return [];
+  const style = getComputedStyle(el);
+  const fontSize = parseFloat(style.fontSize) || 0;
+  const headingText = (el.textContent || '').trim().replace(/\s+/g, ' ');
+  return checkOversizedH1({ tag, fontSize, headingText });
+}
+
+// ─── GPT tell: hairline border + wide diffuse shadow (gated --gpt) ────────────
+function shadowMaxBlurPx(boxShadow) {
+  if (!boxShadow || boxShadow === 'none') return 0;
+  let maxBlur = 0;
+  // Split into layers on commas not inside parentheses (rgba(...) etc.).
+  for (const layer of boxShadow.split(/,(?![^()]*\))/)) {
+    // Strip colors and keywords (rgba()/hsl()/hex/named/inset/px), leaving the
+    // ordered length tokens: offsetX offsetY blur [spread]. Static jsdom keeps
+    // unitless zeros ("0 0 24px"); browsers normalize to px ("0px 0px 24px") —
+    // both reduce to the same numbers here.
+    const cleaned = layer.replace(/rgba?\([^)]*\)|hsla?\([^)]*\)|#[0-9a-f]+|\b[a-z]+\b/gi, ' ');
+    const nums = [...cleaned.matchAll(/-?\d*\.?\d+/g)].map(m => parseFloat(m[0]));
+    if (nums.length >= 3) maxBlur = Math.max(maxBlur, nums[2]);
+  }
+  return maxBlur;
+}
+
+function checkGptThinBorderWideShadow({ borderWidths, boxShadow }) {
+  const maxBorder = Math.max(0, ...borderWidths);
+  const hasThinBorder = maxBorder > 0 && maxBorder <= 1.5;
+  const blur = shadowMaxBlurPx(boxShadow);
+  if (hasThinBorder && blur >= 16) {
+    return [{ id: 'gpt-thin-border-wide-shadow', snippet: `${maxBorder}px border + ${Math.round(blur)}px shadow blur` }];
+  }
+  return [];
+}
+
+function borderWidthsFromStyle(style) {
+  return [
+    parseFloat(style.borderTopWidth) || 0,
+    parseFloat(style.borderRightWidth) || 0,
+    parseFloat(style.borderBottomWidth) || 0,
+    parseFloat(style.borderLeftWidth) || 0,
+  ];
+}
+
+function checkElementGptBorderShadow(el, style) {
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+}
+
+function checkElementGptBorderShadowDOM(el) {
+  const style = getComputedStyle(el);
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+}
+
+// ─── Clipped overflow container ───────────────────────────────────────────────
+// A clipping container (overflow hidden/clip, not a scroll region) wrapping an
+// absolutely/fixed-positioned descendant clips popovers/menus that must escape.
+function classSelector(el) {
+  const cls = (el.getAttribute ? el.getAttribute('class') : el.className) || '';
+  const tokens = String(cls).trim().split(/\s+/).filter(Boolean);
+  const tag = el.tagName ? el.tagName.toLowerCase() : 'el';
+  return tokens.length ? `${tag}.${tokens.join('.')}` : tag;
+}
+
+function checkClippedOverflow(el, style, getStyle) {
+  const clips = (v) => v === 'hidden' || v === 'clip';
+  const scrolls = (v) => v === 'auto' || v === 'scroll';
+  const ox = style.overflowX || '', oy = style.overflowY || '', ov = style.overflow || '';
+  const anyClip = clips(ox) || clips(oy) || clips(ov);
+  const anyScroll = scrolls(ox) || scrolls(oy) || scrolls(ov);
+  if (!anyClip || anyScroll) return [];
+  if (!el.querySelectorAll) return [];
+  for (const child of el.querySelectorAll('*')) {
+    const pos = (getStyle(child).position) || '';
+    if (pos === 'absolute' || pos === 'fixed') {
+      return [{ id: 'clipped-overflow-container', snippet: `${classSelector(el)} clips a positioned child` }];
+    }
+  }
+  return [];
+}
+
+function checkElementClippedOverflow(el, style, tag, window) {
+  return checkClippedOverflow(el, style, (n) => window.getComputedStyle(n));
+}
+
+function checkElementClippedOverflowDOM(el) {
+  const style = getComputedStyle(el);
+  return checkClippedOverflow(el, style, (n) => getComputedStyle(n));
+}
+
+// ─── Text overflow (browser-only: needs scrollWidth/clientWidth) ──────────────
+const TEXT_OVERFLOW_SKIP_TAGS = new Set(['pre', 'code', 'textarea', 'svg', 'canvas', 'select', 'option', 'marquee']);
+
+function checkElementTextOverflowDOM(el) {
+  const tag = el.tagName.toLowerCase();
+  if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
+  // Only the element that actually owns overflowing text — not its ancestors,
+  // which inherit a wider scrollWidth from the spilling descendant.
+  const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
+  if (!hasDirectText) return [];
+  const style = getComputedStyle(el);
+  const isScrollRegion = (s) => /(auto|scroll)/.test(s.overflowX || '') || /(auto|scroll)/.test(s.overflow || '');
+  if (isScrollRegion(style)) return [];
+  // A scrollable ancestor means this overflow is intentional and scrollable.
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (isScrollRegion(getComputedStyle(p))) return [];
+  }
+  const delta = el.scrollWidth - el.clientWidth;
+  if (el.clientWidth > 0 && delta >= 16) {
+    return [{ id: 'text-overflow', snippet: `${classSelector(el)} overflows its box by ${Math.round(delta)}px` }];
+  }
+  return [];
 }
 
 // --- cli/engine/browser/injected/index.mjs ---
@@ -2349,8 +2825,21 @@ if (IS_BROWSER) {
   const EXTENSION_MODE = (_myScript && _myScript.dataset.impeccableExtension === 'true')
     || document.documentElement.dataset.impeccableExtension === 'true';
 
-  const BRAND_COLOR = 'oklch(55% 0.25 350)';
-  const BRAND_COLOR_HOVER = 'oklch(45% 0.25 350)';
+  // Kinpaku gold — pinned to the site's brand token (see
+  // site/styles/kinpaku-tokens.css --ks-kinpaku). Keep this in sync with
+  // the picker's C.brand in skill/scripts/live-browser.js and the kit's
+  // picker section in site/styles/kinpaku-kit.css.
+  //
+  // One color across both light and dark host pages. The outline is a
+  // 2px gesture pointing at an element + a labeled tag — it's a marker,
+  // not body text, so it doesn't need WCAG AA against the page. The
+  // label text inside the gold tag is dark (LABEL_INK) which has ~16:1
+  // against the leaf gold, so reading the rule name is solid in both
+  // modes. Hover deepens the gold (preserves chroma — never drops it,
+  // dropping chroma washes the gold into a sand/olive tone).
+  const BRAND_COLOR = 'oklch(84% 0.19 80.46)';
+  const BRAND_COLOR_HOVER = 'oklch(74% 0.18 80)';
+  const LABEL_INK = 'oklch(4% 0.004 95)';
   const LABEL_BG = BRAND_COLOR;
   const OUTLINE_COLOR = BRAND_COLOR;
 
@@ -2618,7 +3107,7 @@ if (IS_BROWSER) {
       display: 'flex', alignItems: 'center',
       whiteSpace: 'nowrap',
       fontSize: '11px', fontWeight: '600', letterSpacing: '0.02em',
-      color: 'white', lineHeight: '14px',
+      color: LABEL_INK, lineHeight: '14px',
       background: LABEL_BG,
       fontFamily: 'system-ui, sans-serif',
       borderRadius: '4px 4px 0 0',
@@ -2738,7 +3227,7 @@ if (IS_BROWSER) {
     banner.className = 'impeccable-overlay impeccable-banner';
     Object.assign(banner.style, {
       position: 'fixed', top: '0', left: '0', right: '0', zIndex: '100000',
-      background: LABEL_BG, color: 'white',
+      background: LABEL_BG, color: LABEL_INK,
       fontFamily: 'system-ui, sans-serif', fontSize: '13px',
       display: 'flex', alignItems: 'center', pointerEvents: 'auto',
       height: '36px', overflow: 'hidden', maxWidth: '100vw',
@@ -3563,12 +4052,12 @@ if (IS_BROWSER) {
     }
     console.group(
       `%c[impeccable] ${allFindings.length} anti-pattern${allFindings.length === 1 ? '' : 's'} found`,
-      'color: oklch(60% 0.25 350); font-weight: bold'
+      'color: oklch(84% 0.19 80.46); font-weight: bold'
     );
     for (const { el, findings } of allFindings) {
       for (const f of findings) {
         console.log(`%c${f.type || f.id}%c ${f.detail || f.snippet}`,
-          'color: oklch(55% 0.25 350); font-weight: bold', 'color: inherit', el);
+          'color: oklch(84% 0.19 80.46); font-weight: bold', 'color: inherit', el);
       }
     }
     console.groupEnd();
@@ -3589,6 +4078,10 @@ if (IS_BROWSER) {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
     const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
+    // Note: provider-gated rules (--gpt / --gemini) are NOT filtered here. In a
+    // real browser env (detector page, live overlay, extension) running every
+    // check is free, so we always surface them; the gating is purely a CLI
+    // output concern, applied in the Node engines' detect* return paths.
 
     for (const el of document.querySelectorAll('*')) {
       // Skip impeccable's own elements and any descendants (overlays, labels, banner, nav buttons)
@@ -3610,11 +4103,23 @@ if (IS_BROWSER) {
         ...checkElementAIPaletteDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementIconTileDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementItalicSerifDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
-        ...checkElementHeroEyebrowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
         ...checkElementQualityDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementOversizedH1DOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementClippedOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementGptBorderShadowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
+        ...checkElementTextOverflowDOM(el).map(f => ({ type: f.id, detail: f.snippet })),
       ].filter(f => _ruleOk(f.type));
 
       addBrowserFindings(groupMap, el, findings);
+
+      // Hero eyebrow: the offending element is the eyebrow above the heading,
+      // not the heading itself — highlight the previous sibling instead.
+      const eyebrowFindings = checkElementHeroEyebrowDOM(el)
+        .map(f => ({ type: f.id, detail: f.snippet }))
+        .filter(f => _ruleOk(f.type));
+      if (eyebrowFindings.length > 0 && el.previousElementSibling) {
+        addBrowserFindings(groupMap, el.previousElementSibling, eyebrowFindings);
+      }
     }
 
     const pageLevelFindings = [];
@@ -3644,6 +4149,14 @@ if (IS_BROWSER) {
     if (qualityFindings.length > 0) {
       pageLevelFindings.push(...qualityFindings);
       addBrowserFindings(groupMap, document.body, qualityFindings);
+    }
+
+    const creamFindings = checkCreamPalette(document)
+      .map(f => ({ type: f.id, detail: f.snippet }))
+      .filter(f => _ruleOk(f.type));
+    if (creamFindings.length > 0) {
+      pageLevelFindings.push(...creamFindings);
+      addBrowserFindings(groupMap, document.body, creamFindings);
     }
 
     // Regex-on-HTML checks (shared with Node)

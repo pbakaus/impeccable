@@ -23,8 +23,8 @@ Before generating anything, run a brief direction conversation grounded in the s
 
 Ask **2-3 targeted questions** about visual lane, color strategy, atmosphere, and named anchor references. Don't enumerate generic menus; tie each question to the shape brief's answers. Example shape-grounded questions:
 
-- "Brief says 'editorial restraint, Klim-adjacent.' Are we closer to a quiet specimen page or a magazine-spread feel with hero imagery?"
-- "Palette strategy from shape was 'Committed.' Want it warm-grounded (deep oxblood + cream) or cool-grounded (slate + paper white)?"
+- "Brief says 'specimen-page restraint.' Are we closer to a quiet typographic page or a wider editorial spread with hero imagery?"
+- "Palette strategy from shape was 'Committed.' Which one color carries the surface (a brand-driven pick rather than a default warm-or-cool framing)? (And no, the answer isn't a cream/sand body bg; that's the saturated AI default.)"
 
 **STOP and wait for answers.** These pin the palette before any pixel gets generated. Do not proceed to Step B until the user has responded.
 

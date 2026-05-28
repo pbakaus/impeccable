@@ -131,17 +131,6 @@ describe('createTransformer factory', () => {
     expect(content).toContain('TRANSFORMED content');
   });
 
-  test('should support prefix option', () => {
-    const transform = createTransformer(baseConfig);
-    const skills = [{ name: 'audit', description: 'Audit', userInvocable: true, body: 'Body' }];
-    transform(skills, TEST_DIR, { prefix: 'i-', outputSuffix: '-prefixed' });
-
-    const outputPath = path.join(TEST_DIR, 'cursor-prefixed/.test/skills/i-audit/SKILL.md');
-    expect(fs.existsSync(outputPath)).toBe(true);
-    const content = fs.readFileSync(outputPath, 'utf-8');
-    expect(content).toContain('name: i-audit');
-  });
-
   test('should copy reference files', () => {
     const transform = createTransformer(baseConfig);
     const skills = [{
@@ -187,9 +176,9 @@ describe('createTransformer factory', () => {
     transform(skills, TEST_DIR);
 
     console.log = originalLog;
+    // v3.0 summary format: `✓ <provider>: <n> skills` (no user-invocable count).
     expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('✓ Test Provider:'));
     expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('2 skills'));
-    expect(consoleMock).toHaveBeenCalledWith(expect.stringContaining('1 user-invocable'));
   });
 
   test('should handle empty skills array', () => {

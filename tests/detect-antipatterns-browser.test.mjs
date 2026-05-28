@@ -150,6 +150,27 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(edges.length, 3, `expected 3 body-text-viewport-edge findings, got ${edges.length}: ${JSON.stringify(edges.map(e => e.snippet))}`);
   });
 
+  it('text-overflow: flags content wider than its box, skips real scroll regions', async () => {
+    // Browser-only: needs scrollWidth vs clientWidth from real layout.
+    // Flag column: a nowrap line and an unbreakable token spilling past a
+    // fixed-width box (overflow visible). Pass column: a genuine
+    // overflow-x:auto scroll region, a <pre>, normally wrapping text, and a
+    // long line living inside a scroll ancestor.
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/text-overflow.html`);
+    const hits = f.filter(r => r.antipattern === 'text-overflow');
+    const flagged = new Set();
+    for (const r of hits) {
+      const m = (r.snippet || '').match(/\.(flag-[\w-]+|pass-[\w-]+)/);
+      if (m) flagged.add(m[1]);
+    }
+    assert.ok(flagged.has('flag-nowrap'), 'expected the nowrap overflow case to flag');
+    assert.ok(flagged.has('flag-longword'), 'expected the unbreakable-token overflow case to flag');
+    for (const cls of ['pass-scroll', 'pass-pre', 'pass-wrap', 'pass-inside-scroll']) {
+      assert.ok(!flagged.has(cls), `".${cls}" should NOT be flagged as text-overflow`);
+    }
+    assert.equal(hits.length, 2, `expected exactly 2 text-overflow findings, got ${hits.length}: ${JSON.stringify(hits.map(h => h.snippet))}`);
+  });
+
   it('visual contrast: browser fallback catches low contrast on image backgrounds', async () => {
     const analyticOnly = await detectUrl(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, {
       waitUntil: 'load',

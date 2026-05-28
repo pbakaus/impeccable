@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
+const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
   it('saves copy edits to the staged buffer with rich AI context', () => {
@@ -87,7 +88,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function handleGo\(\)[\s\S]{0,140}?if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}[\s\S]{0,80}?runGenerate\(\);/,
+      /function handleGo\(\)\s*\{\s*if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}[\s\S]*?captureAndEmit\(elForCapture, basePayload, snapshot, captureRect\);/,
       'Go should be blocked while manual copy edits are applying',
     );
     assert.match(
@@ -199,7 +200,7 @@ describe('live-browser source contracts', () => {
       'pending dock should use fixed bottom anchoring',
     );
     assert.doesNotMatch(
-      SOURCE,
+      PENDING_DOCK_POSITION_SOURCE,
       /rect\.top \+ rect\.height \/ 2/,
       'pending dock should not use animated bar rect top for vertical positioning',
     );

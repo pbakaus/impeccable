@@ -56,15 +56,15 @@ If the harness has native image generation (Codex), a compact shape's "confirm o
 
 Based on the design brief's "Recommended References" section, consult the relevant impeccable reference files. At minimum, always consult:
 
-- [spatial-design.md](spatial-design.md) for layout and spacing
-- [typography.md](typography.md) for type hierarchy
+- [layout.md](layout.md) for layout, spacing, grid, container queries, optical adjustments
+- [typeset.md](typeset.md) for type hierarchy, font selection, web font loading, OpenType features (Reference Material section)
 
 Then add references based on the brief's needs:
 - Complex interactions or forms? Consult [interaction-design.md](interaction-design.md)
-- Animation or transitions? Consult [motion-design.md](motion-design.md)
-- Color-heavy or themed? Consult [color-and-contrast.md](color-and-contrast.md)
-- Responsive requirements? Consult [responsive-design.md](responsive-design.md)
-- Heavy on copy, labels, or errors? Consult [ux-writing.md](ux-writing.md)
+- Animation or transitions? Consult [animate.md](animate.md) (Reference Material covers motion materials, durations, easing, perceived performance)
+- Color-heavy or themed? Consult [colorize.md](colorize.md) (Reference Material covers OKLCH, palette structure, dark mode, contrast)
+- Responsive requirements? Consult [adapt.md](adapt.md) (Reference Material covers breakpoints, input methods, safe areas, responsive images)
+- Heavy on copy, labels, or errors? Consult [clarify.md](clarify.md) (Reference Material covers button labels, error formula, voice/tone, translation)
 
 ## Step 3: Visual Direction & Assets (Harness-Gated)
 

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flush Against Border; Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for the flush-against-border rule.
+
+       The rule is more general than its name suggests: it fires when a
+       container has any visible boundary (border, outline, OR a
+       non-transparent background) AND zero inline padding on the
+       bounded side, AND text-bearing children land flush against that
+       boundary.
+
+       Distinct from cramped-padding (which fires when an element has
+       its OWN direct text and the padding/font-size ratio is wrong).
+       Here the container has NO direct text; only children; so
+       cramped-padding gives it a pass. */
+
+    body { font-family: system-ui, sans-serif; background: #fafafa; padding: 24px; margin: 0; color: #0f172a; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1400px; margin: 0 auto; }
+    .col h2 { font-size: 22px; font-weight: 700; margin: 0 0 16px; color: #0f172a; line-height: 1.2; }
+    .col h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin: 28px 0 10px; color: #64748b; }
+    .case { margin-bottom: 14px; }
+    .case-label { display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-style: italic; max-width: 60ch; }
+
+    /* ────────────────────────────────────────────────────────────
+       SHOULD FLAG
+       ──────────────────────────────────────────────────────────── */
+
+    /* ── FLAG: the /live-mode-frameworks bug; border + zero side-padding ── */
+    .flag-frameworks {
+      padding: 28px 0 0;
+      background: #fffbe6;
+      border: 1px solid #d4a017;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .flag-frameworks-label {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #8b6914;
+    }
+    .flag-frameworks-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .flag-frameworks-list li {
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      padding: 6px 12px;
+      background: #fef3c7;
+      border: 1px solid #d4a017;
+      border-radius: 4px;
+      color: #78350f;
+    }
+
+    /* ── FLAG: child text flush against the four borders of a card ── */
+    .flag-card-borders {
+      padding: 0;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+    .flag-card-borders h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .flag-card-borders p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ── FLAG: non-transparent background, zero padding ── */
+    .flag-bg-only {
+      padding: 0;
+      background: #fde68a;
+      border-radius: 6px;
+      border: 0;
+    }
+    .flag-bg-only h4 { margin: 0; font-size: 14px; color: #78350f; }
+    .flag-bg-only p { margin: 4px 0 0; font-size: 13px; color: #78350f; }
+
+    /* ── FLAG: outline (no border), zero padding ── */
+    .flag-outline-only {
+      padding: 0;
+      background: transparent;
+      border: 0;
+      outline: 2px solid #94a3b8;
+      outline-offset: 0;
+    }
+    .flag-outline-only h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .flag-outline-only p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ── FLAG: border-left + zero left-padding, other sides fine ── */
+    .flag-asym-leftflush {
+      padding: 12px 16px 12px 0;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+    }
+    .flag-asym-leftflush h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .flag-asym-leftflush p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ────────────────────────────────────────────────────────────
+       SHOULD PASS
+       ──────────────────────────────────────────────────────────── */
+
+    /* ── PASS: no boundary at all (no bg, no border, no outline) ── */
+    .pass-no-boundary {
+      padding: 0;
+      background: transparent;
+      border: 0;
+      outline: 0;
+    }
+    .pass-no-boundary-label {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 10px;
+    }
+    .pass-no-boundary-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .pass-no-boundary-list li {
+      font-size: 13px;
+      padding: 6px 12px;
+      background: #f5f5f7;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      color: #0f172a;
+    }
+
+    /* ── PASS: top-only border, no left/right border, padding-top fine ── */
+    .pass-top-rule {
+      padding: 24px 0 0;
+      background: transparent;
+      border: 0;
+      border-top: 1px solid #cbd5e1;
+    }
+    .pass-top-rule-label {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 10px;
+    }
+    .pass-top-rule-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .pass-top-rule-list li {
+      font-size: 13px;
+      padding: 6px 12px;
+      background: #f5f5f7;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      color: #0f172a;
+    }
+
+    /* ── PASS: bordered card with comfortable inset on all sides ── */
+    .pass-bordered-padded {
+      padding: 18px 20px;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+    .pass-bordered-padded h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .pass-bordered-padded p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ── PASS: background card with comfortable inset ── */
+    .pass-bg-padded {
+      padding: 14px 18px;
+      background: #fde68a;
+      border-radius: 6px;
+      border: 0;
+    }
+    .pass-bg-padded h4 { margin: 0; font-size: 14px; color: #78350f; }
+    .pass-bg-padded p { margin: 4px 0 0; font-size: 13px; color: #78350f; }
+
+    /* ── PASS: outline with comfortable inset ── */
+    .pass-outline-padded {
+      padding: 14px 18px;
+      outline: 2px solid #94a3b8;
+      outline-offset: 0;
+      border: 0;
+      background: transparent;
+    }
+    .pass-outline-padded h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .pass-outline-padded p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ── PASS: image-only container, no text means no flush issue ── */
+    .pass-image-only {
+      padding: 0;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      width: 200px;
+      overflow: hidden;
+    }
+    .pass-image-only .placeholder-img {
+      width: 100%;
+      height: 80px;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+    }
+  </style>
+</head>
+<body>
+  <div class="grid">
+
+    <!-- ════════════════════════════════════════════════════════════
+         LEFT COLUMN: should flag
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="col" data-col="flag">
+      <h2>Should flag</h2>
+
+      <h3>Border + zero side-padding</h3>
+      <div class="case">
+        <span class="case-label">section: full border, padding 28px 0 0; label and pills touch the left/right border lines.</span>
+        <section class="flag-frameworks">
+          <span class="flag-frameworks-label">Supported dev servers</span>
+          <ul class="flag-frameworks-list">
+            <li>Vite</li>
+            <li>Next.js</li>
+            <li>SvelteKit</li>
+            <li>Astro</li>
+          </ul>
+        </section>
+      </div>
+
+      <h3>All sides flush against a border</h3>
+      <div class="case">
+        <span class="case-label">card: 1px border on all sides, padding 0; heading and body touch every side.</span>
+        <div class="flag-card-borders">
+          <h4>Card flush against the borders</h4>
+          <p>Body copy sits flush against every visible border line.</p>
+        </div>
+      </div>
+
+      <h3>Background color, zero padding</h3>
+      <div class="case">
+        <span class="case-label">no border, but a non-transparent bg; text flush against the bg's edge counts too.</span>
+        <div class="flag-bg-only">
+          <h4>Title flush against the bg edge</h4>
+          <p>Body copy with zero padding around a colored fill.</p>
+        </div>
+      </div>
+
+      <h3>Outline (not border), zero padding</h3>
+      <div class="case">
+        <span class="case-label">outline draws outside the box; content at the box edge sits next to the outline.</span>
+        <div class="flag-outline-only">
+          <h4>Title flush against the outline</h4>
+          <p>The outline counts as a visible boundary too.</p>
+        </div>
+      </div>
+
+      <h3>Left-side flush, other sides fine</h3>
+      <div class="case">
+        <span class="case-label">card: padding 12px 16px 12px 0; text touches the left border, other sides are inset.</span>
+        <div class="flag-asym-leftflush">
+          <h4>Title flush only on the left</h4>
+          <p>Padding-left zero with a full border.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         RIGHT COLUMN: should pass
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="col" data-col="pass">
+      <h2>Should pass</h2>
+
+      <h3>No boundary at all</h3>
+      <div class="case">
+        <span class="case-label">no bg, no border, no outline; zero padding is fine.</span>
+        <section class="pass-no-boundary">
+          <span class="pass-no-boundary-label">Supported dev servers</span>
+          <ul class="pass-no-boundary-list">
+            <li>Vite</li>
+            <li>Next.js</li>
+            <li>SvelteKit</li>
+          </ul>
+        </section>
+      </div>
+
+      <h3>Top-only border, no side borders</h3>
+      <div class="case">
+        <span class="case-label">border-top only, padding-top 24px; no left/right border to be flush against.</span>
+        <section class="pass-top-rule">
+          <span class="pass-top-rule-label">Supported dev servers</span>
+          <ul class="pass-top-rule-list">
+            <li>Vite</li>
+            <li>Next.js</li>
+            <li>SvelteKit</li>
+          </ul>
+        </section>
+      </div>
+
+      <h3>Bordered card with proper inset</h3>
+      <div class="case">
+        <span class="case-label">card: 1px border + padding 18px 20px; comfortable inset on every side.</span>
+        <div class="pass-bordered-padded">
+          <h4>Card with proper inset</h4>
+          <p>Body copy sits comfortably away from the borders.</p>
+        </div>
+      </div>
+
+      <h3>Background card with proper inset</h3>
+      <div class="case">
+        <span class="case-label">non-transparent bg + padding 14px 18px; content has room to breathe.</span>
+        <div class="pass-bg-padded">
+          <h4>Title with inset on bg</h4>
+          <p>Body copy is comfortably inset from the bg edge.</p>
+        </div>
+      </div>
+
+      <h3>Outline with proper inset</h3>
+      <div class="case">
+        <span class="case-label">outline + padding 14px 18px; content is comfortably inside.</span>
+        <div class="pass-outline-padded">
+          <h4>Title with inset and outline</h4>
+          <p>Outline boundary with proper inset works.</p>
+        </div>
+      </div>
+
+      <h3>Image-only container, no text</h3>
+      <div class="case">
+        <span class="case-label">card: padding 0, border all sides; no text means nothing can be flush.</span>
+        <div class="pass-image-only">
+          <div class="placeholder-img"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

@@ -392,7 +392,6 @@ code {
   font-family: var(--font-display);
   font-size: clamp(2.5rem, 7vw, 4.5rem);
   font-weight: 300;
-  font-style: italic;
   line-height: 1;
   letter-spacing: -0.02em;
   margin: 0;
@@ -403,7 +402,6 @@ code {
   font-family: var(--font-display);
   font-size: clamp(1.125rem, 2.5vw, 1.75rem);
   font-weight: 400;
-  font-style: italic;
   line-height: 1.3;
   margin: 0;
   color: var(--color-charcoal);
@@ -807,7 +805,6 @@ code {
   font-family: var(--font-display);
   font-size: 1.75rem;
   font-weight: 300;
-  font-style: italic;
   color: var(--color-ink);
   margin-bottom: var(--spacing-sm);
   line-height: 1.1;
@@ -1552,7 +1549,6 @@ code {
   padding: var(--spacing-xl);
   text-align: center;
   color: var(--color-ash);
-  font-style: italic;
 }
 
 /* ============================================
@@ -2828,7 +2824,6 @@ code {
 
 .install-primary-howto .install-path-desc em {
   font-family: var(--font-display);
-  font-style: italic;
   font-weight: 500;
   color: var(--color-accent);
 }
@@ -2905,7 +2900,6 @@ code {
   font-family: var(--font-display);
   font-size: 1.75rem;
   font-weight: 400;
-  font-style: italic;
   color: var(--color-accent);
   line-height: 1;
   letter-spacing: -0.02em;
@@ -3320,7 +3314,6 @@ code {
   font-size: 0.8125rem;
   color: var(--color-ash);
   margin: 0 0 var(--spacing-sm);
-  font-style: italic;
 }
 
 .install-path-title {
@@ -4130,7 +4123,6 @@ a.install-updated-ref:hover {
 .consulting-title {
   font-size: clamp(1.5rem, 4vw, 2rem);
   font-weight: 300;
-  font-style: italic;
   margin: 0 0 var(--spacing-sm) 0;
 }
 

@@ -103,6 +103,17 @@ it('gitignores local manual Apply runtime artifacts', () => {
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
 });
 
+async function readSseUntil(reader, decoder, needle, maxReads = 12) {
+  let text = '';
+  for (let i = 0; i < maxReads; i++) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+    if (text.includes(needle)) return text;
+  }
+  return text;
+}
+
 // ---------------------------------------------------------------------------
 // Server integration tests
 // ---------------------------------------------------------------------------
@@ -168,6 +179,30 @@ describe('live-server integration', () => {
     assert.equal(data.pendingEvents.some((e) => e.id === 'a1b2c3d5' && e.type === 'generate'), true);
 
     await drainPolls(server);
+  });
+
+  it('/status reports agentPolling from active poll leases', async () => {
+    await drainPolls(server);
+    let res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    let data = await res.json();
+    assert.equal(data.agentPolling, false);
+
+    const controller = new AbortController();
+    const pollPromise = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=5000`,
+      { signal: controller.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, true);
+
+    controller.abort();
+    await pollPromise.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, false);
   });
 
   it('/live.js serves script with token injected', async () => {
@@ -2440,6 +2475,78 @@ colors: {}
     assert.equal(written.length, png.length);
   });
 
+  it('POST /events rejects steer with empty message', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'steer',
+        id: 'a1b2c3de',
+        message: '   ',
+        pageUrl: 'http://localhost:3000/',
+      }),
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.ok(data.error.includes('message'));
+  });
+
+  it('steer events flow from browser POST to agent poll and steer_done via SSE', async () => {
+    await drainPolls(server);
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    assert.equal(sseRes.status, 200);
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const pollPromise = fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=5000`)
+      .then(r => r.json());
+
+    await new Promise(r => setTimeout(r, 100));
+
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'steer',
+        id: 'b2c3d4e5',
+        message: 'Make the hero quieter',
+        pageUrl: 'http://localhost:3000/',
+      }),
+    });
+    assert.equal(postRes.status, 200);
+
+    const event = await pollPromise;
+    assert.equal(event.type, 'steer');
+    assert.equal(event.id, 'b2c3d4e5');
+    assert.equal(event.message, 'Make the hero quieter');
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'b2c3d4e5',
+        type: 'steer_done',
+        message: 'Hero spacing tightened',
+      }),
+    });
+
+    const text = await readSseUntil(reader, decoder, '"steer_done"');
+    assert.ok(text.includes('"steer_done"'));
+    assert.ok(text.includes('b2c3d4e5'));
+    assert.ok(text.includes('Hero spacing tightened'));
+
+    controller.abort();
+  });
+
   it('POST /events accepts generate with optional annotation fields', async () => {
     // Drain any queued events from previous tests
     let drained;
@@ -2482,5 +2589,56 @@ colors: {}
     assert.equal(postRes.status, 400);
     const data = await postRes.json();
     assert.ok(data.error.includes('comments'));
+  });
+
+  it('POST /events accepts insert-mode generate with prompt only', async () => {
+    await drainPolls(server);
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'aa22bb33',
+        mode: 'insert',
+        count: 3,
+        pageUrl: '/',
+        insert: {
+          position: 'after',
+          anchor: { tagName: 'section', classes: ['hero'] },
+        },
+        placeholder: { width: 320, height: 80 },
+        freeformPrompt: 'Add testimonials',
+      }),
+    });
+    assert.equal(postRes.status, 200);
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=2000`).then(r => r.json());
+    assert.equal(polled.id, 'aa22bb33');
+    assert.equal(polled.mode, 'insert');
+    assert.equal(polled.freeformPrompt, 'Add testimonials');
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: 'aa22bb33', type: 'done' }),
+    });
+  });
+
+  it('POST /events rejects insert-mode generate without prompt or annotations', async () => {
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'bb33cc44',
+        mode: 'insert',
+        count: 2,
+        insert: { position: 'before', anchor: { tagName: 'div', classes: ['x'] } },
+        placeholder: { width: 200, height: 80 },
+      }),
+    });
+    assert.equal(postRes.status, 400);
+    const data = await postRes.json();
+    assert.match(data.error, /freeformPrompt or annotations/i);
   });
 });

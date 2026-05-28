@@ -1,7 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPollReplyPayload, manualApplyPollBanner, parseReplyArgs } from '../skill/scripts/live-poll.mjs';
+import {
+  buildPollReplyPayload,
+  isEventPending,
+  manualApplyPollBanner,
+  parseReplyArgs,
+  requiresAgentReply,
+} from '../skill/scripts/live-poll.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -26,7 +32,7 @@ describe('live-poll manual Apply guidance', () => {
     assert.match(banner, /Manual Apply action required/);
     assert.match(banner, /--reply b79a4167 done --data '<json>'/);
     assert.match(banner, /status, appliedEntryIds, failed, files, and notes/);
-    assert.match(banner, /summary counters are rejected/);
+    assert.match(banner, /summary counters are only a recovery fallback/);
     assert.match(banner, /Do not run live-commit-manual-edits\.mjs/);
     assert.match(banner, /Do not poll again before replying/);
     assert.doesNotMatch(banner, /\{/);
@@ -105,5 +111,27 @@ describe('live-poll --reply arg parsing', () => {
     assert.equal(reply.file, 'src/App.tsx');
     assert.deepEqual(reply.data, { status: 'done' });
     assert.equal(reply.message, undefined);
+  });
+});
+
+describe('live-poll stream helpers', () => {
+  it('requiresAgentReply is true for work items that need agent acknowledgement', () => {
+    assert.equal(requiresAgentReply({ type: 'generate' }), true);
+    assert.equal(requiresAgentReply({ type: 'steer' }), true);
+    assert.equal(requiresAgentReply({ type: 'manual_edit_apply' }), true);
+    assert.equal(requiresAgentReply({ type: 'prefetch' }), false);
+    assert.equal(requiresAgentReply({ type: 'accept' }), false);
+    assert.equal(requiresAgentReply({ type: 'timeout' }), false);
+  });
+
+  it('isEventPending matches pendingEvents by id', () => {
+    const status = {
+      pendingEvents: [
+        { id: 'abc12345', type: 'steer', leased: true },
+        { id: 'deadbeef', type: 'generate', leased: false },
+      ],
+    };
+    assert.equal(isEventPending(status, 'abc12345'), true);
+    assert.equal(isEventPending(status, '00000000'), false);
   });
 });

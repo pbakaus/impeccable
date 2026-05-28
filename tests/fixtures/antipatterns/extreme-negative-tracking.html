@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Extreme negative tracking fixture</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    p, h2 { margin: 0 0 20px; }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: tracking crushed past the point of legibility -->
+    <section class="col flag">
+      <p style="letter-spacing: -0.06em">Tracking crushed em paragraph copy that should still read as a sentence.</p>
+      <p style="letter-spacing: -4px; font-size: 64px">Tracking crushed pixels heading line</p>
+      <h2 style="letter-spacing: -0.07em">Tracking crushed heading variant text</h2>
+    </section>
+
+    <!-- PASS column: optical tightening that display type legitimately wants -->
+    <section class="col pass">
+      <h1 style="letter-spacing: -0.02em; font-size: 72px">Optical tighten display</h1>
+      <p style="letter-spacing: normal">Plain paragraph copy with default tracking that reads comfortably.</p>
+    </section>
+  </div>
+</body>
+</html>

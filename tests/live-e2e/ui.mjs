@@ -16,9 +16,17 @@ import { join } from 'node:path';
 const BAR_ID = '#impeccable-live-bar';
 const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
-const PICK_TOGGLE_ID = '#impeccable-live-pick-toggle';
 const EDIT_BADGE_ID = '#impeccable-live-edit-badge';
 const PENDING_DOCK_ID = '#impeccable-live-pending-dock';
+const STEER_CHAT_ID = '#impeccable-live-page-chat';
+const STEER_INPUT_ID = '#impeccable-live-page-chat-input';
+const PICK_TOGGLE = '#impeccable-live-pick-toggle';
+// Alias kept so references introduced via origin/main (PICK_TOGGLE_ID)
+// continue to resolve to the same selector as the older PICK_TOGGLE name.
+const PICK_TOGGLE_ID = PICK_TOGGLE;
+const INSERT_TOGGLE = '#impeccable-live-insert-toggle';
+const INSERT_INPUT_ID = '#impeccable-live-insert-input';
+const INSERT_CREATE_ID = '#impeccable-live-insert-create';
 
 /**
  * Wait for the live handshake to complete:
@@ -43,13 +51,13 @@ export async function waitForHandshake(page, { timeout = 20_000 } = {}) {
 
 /**
  * Click an in-page element to select it. live-browser.js's picker only acts
- * when state === 'PICKING' AND pickActive is true; pickActive starts true on
- * connect. The handler reads the hovered element from `mousemove`, so we
- * dispatch a hover before the click.
+ * when state === 'PICKING' AND pickActive is true. Both interaction toggles
+ * default off on a fresh page — enable pick mode before hovering.
  */
 export async function pickElement(page, selector, opts = {}) {
   const position = opts.position || null;
   if (opts.resetPickMode) await resetPickMode(page);
+  else await enablePickMode(page);
   for (let attempt = 0; attempt < 3; attempt++) {
     const el = await page.waitForSelector(selector, { timeout: 5_000 });
     await ensurePickerActive(page);
@@ -486,4 +494,168 @@ export async function waitForBarHidden(page, { timeout = 10_000 } = {}) {
     BAR_ID,
     { timeout },
   );
+}
+
+/**
+ * Dismiss dev-tool overlays that intercept clicks on the live bar (Astro, etc.).
+ * @param {import('playwright').Page} page
+ */
+export async function preparePageForBarInteraction(page) {
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll('astro-dev-toolbar')) {
+      el.style.setProperty('display', 'none', 'important');
+      el.style.setProperty('pointer-events', 'none', 'important');
+    }
+  });
+}
+
+async function focusSteerInput(page) {
+  return page.evaluate(({ chatSel, inputSel }) => {
+    const chat = document.querySelector(chatSel);
+    const input = document.querySelector(inputSel);
+    if (!chat || !input) return false;
+    chat.dataset.expanded = 'true';
+    chat.style.width = 'min(280px, 38vw)';
+    chat.style.cursor = 'text';
+    input.disabled = false;
+    input.style.pointerEvents = 'auto';
+    input.style.opacity = '1';
+    input.style.width = 'auto';
+    input.style.padding = '0 6px';
+    try { window.focus(); } catch { /* embed may block */ }
+    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+    return document.activeElement === input;
+  }, { chatSel: STEER_CHAT_ID, inputSel: STEER_INPUT_ID });
+}
+
+/**
+ * Expand the Steer pill, type a message, and submit with Enter.
+ * Uses a normal click when possible; falls back to direct focus when overlays
+ * (e.g. Astro dev toolbar) intercept pointer events — same outcome as keyboard focus.
+ */
+export async function submitSteer(page, message) {
+  await preparePageForBarInteraction(page);
+  await page.locator(STEER_CHAT_ID).waitFor({ state: 'visible', timeout: 5_000 });
+
+  try {
+    await page.locator(STEER_CHAT_ID).click({ timeout: 2_500 });
+  } catch {
+    await focusSteerInput(page);
+  }
+  if (!(await focusSteerInput(page))) {
+    await page.locator(STEER_CHAT_ID).click({ force: true, timeout: 2_500 }).catch(() => {});
+    await focusSteerInput(page);
+  }
+
+  const input = page.locator(STEER_INPUT_ID);
+  await input.fill(message, { timeout: 5_000 });
+  await input.press('Enter');
+}
+
+/**
+ * Poll until a marked hero is visible. Uses Playwright's visible check so
+ * elements inside closed modals/tabs do not satisfy the assertion.
+ */
+export async function waitForSteerDomMarker(page, selector, { timeout = 20_000 } = {}) {
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: 'visible', timeout });
+}
+
+/**
+ * Steer bar enters processing mode after submit (handing off / working).
+ */
+export async function waitForSteerLocked(page, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel)?.dataset.processing === 'true',
+    STEER_CHAT_ID,
+    { timeout },
+  );
+}
+
+/**
+ * Steer bar unlocks after the agent replies steer_done over SSE.
+ */
+export async function waitForSteerUnlocked(page, { timeout = 15_000 } = {}) {
+  await page.waitForFunction(
+    (sel) => {
+      const chat = document.querySelector(sel);
+      const input = document.querySelector('#impeccable-live-page-chat-input');
+      return chat?.dataset.processing !== 'true' && input && !input.disabled;
+    },
+    STEER_CHAT_ID,
+    { timeout },
+  );
+}
+
+async function ensureToggleActive(page, selector, shouldBeActive) {
+  const isActive = await page.locator(selector).evaluate((el) => el?.dataset.active === 'true');
+  if (isActive === shouldBeActive) return;
+  await page.locator(selector).click({ timeout: 5_000 });
+  await page.waitForFunction(
+    ({ sel, active }) => document.querySelector(sel)?.dataset.active === (active ? 'true' : 'false'),
+    { sel: selector, active: shouldBeActive },
+    { timeout: 5_000 },
+  );
+}
+
+/** Turn on Pick mode (and off Insert — they are mutually exclusive). */
+export async function enablePickMode(page) {
+  await ensureToggleActive(page, PICK_TOGGLE, true);
+}
+
+/** Turn on Insert mode (and off Pick — they are mutually exclusive). */
+export async function enableInsertMode(page) {
+  await ensureToggleActive(page, INSERT_TOGGLE, true);
+}
+
+/**
+ * Insert flow: hover an anchor at before/after edge, click to place the
+ * resizable placeholder, describe the new element, and click Create.
+ */
+export async function runInsertFlow(page, {
+  anchorSelector,
+  position = 'after',
+  prompt = 'Add a testimonial strip',
+} = {}) {
+  await enableInsertMode(page);
+  const anchor = await page.waitForSelector(anchorSelector, { timeout: 5_000 });
+  const box = await anchor.boundingBox();
+  if (!box) throw new Error(`anchor ${anchorSelector} has no layout box`);
+
+  const x = box.x + box.width / 2;
+  const y = position === 'before' ? box.y + 4 : box.y + box.height - 4;
+  await page.mouse.move(x, y);
+  await page.waitForFunction(() => {
+    const line = document.getElementById('impeccable-live-insert-line');
+    return line && line.style.display !== 'none';
+  }, { timeout: 5_000 });
+  await page.mouse.click(x, y);
+
+  await page.waitForSelector(INSERT_INPUT_ID, { state: 'visible', timeout: 5_000 });
+  await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 });
+
+  await page.evaluate(({ sel, value }) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { sel: INSERT_INPUT_ID, value: prompt });
+
+  await page.waitForFunction(
+    (sel) => {
+      const btn = document.querySelector(sel);
+      return btn && !btn.disabled;
+    },
+    INSERT_CREATE_ID,
+    { timeout: 5_000 },
+  );
+  const clicked = await page.evaluate((sel) => {
+    const btn = document.querySelector(sel);
+    if (!btn || btn.disabled) return false;
+    btn.click();
+    return true;
+  }, INSERT_CREATE_ID);
+  if (!clicked) {
+    await page.locator(INSERT_CREATE_ID).click({ force: true, timeout: 5_000 });
+  }
 }

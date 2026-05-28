@@ -24,6 +24,12 @@
       "expectLiveInit": true,
       "expectConsoleClean": true
     },
+    "steer": {
+      "message": "steer-e2e mark hero",
+      "expectSelector": "h1.hero-title[data-impeccable-steer=\"e2e\"]",
+      "expectSourceContains": "data-impeccable-steer=\"e2e\"",
+      "sourceFile": "src/App.jsx"
+    },
     "manualEditScenarios": [
       {
         "name": "React headless manual Apply hard batch",

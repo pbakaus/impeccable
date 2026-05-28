@@ -2,13 +2,12 @@ import {
 	initGlassTerminal,
 	renderTerminalLayout,
 } from "./components/glass-terminal.js";
-import { initLensEffect } from "./components/lens.js";
 import { initFrameworkViz } from "./components/framework-viz.js";
 import { initScrollReveal } from "./utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./utils/scroll.js";
 import { initSectionNav } from "./components/section-nav.js";
 import { initFoundationGrid } from "./components/foundation-grid.js";
-import { initLiveDemo } from "./components/live-demo.js";
+import { initLiveDemo, initGbarPageChat } from "./components/live-demo.js";
 
 // ============================================
 // STATE
@@ -236,10 +235,33 @@ document.addEventListener("click", (e) => {
 // STARTUP
 // ============================================
 
+// Fade the header's glass background in px-by-px as the user scrolls off the
+// hero, by writing scroll progress (0 → 1 over RANGE px) to a --hp custom
+// property the CSS interpolates against.
+function initHeaderScroll() {
+	const header = document.querySelector("[data-site-header]");
+	if (!header) return;
+	const RANGE = 200;
+	let ticking = false;
+	const apply = () => {
+		const p = Math.min(1, window.scrollY / RANGE);
+		header.style.setProperty("--hp", p.toFixed(4));
+		ticking = false;
+	};
+	const onScroll = () => {
+		if (!ticking) {
+			ticking = true;
+			requestAnimationFrame(apply);
+		}
+	};
+	apply();
+	window.addEventListener("scroll", onScroll, { passive: true });
+}
+
 function init() {
 	initAnchorScroll();
 	initHashTracking();
-	initLensEffect();
+	initHeaderScroll();
 	initScrollReveal();
 	initGlassTerminal();
 	initFrameworkViz();
@@ -248,6 +270,7 @@ function init() {
 	initWhyTabs();
 	initLanguageTabs();
 	initLiveDemo();
+	initGbarPageChat();
 	loadContent();
 
 	document.body.classList.add("loaded");

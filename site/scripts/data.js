@@ -30,6 +30,20 @@ export const skillFocusAreas = {
   ]
 };
 
+// Slop tells we prevent in each discipline. Same seven categories, but the
+// detail line communicates what bad-default we catch — not what we teach.
+export const slopFocusAreas = {
+  'impeccable': [
+    { area: 'Typography', detail: 'No Inter monoculture. No flat hierarchy. No all-caps body.' },
+    { area: 'Color & Contrast', detail: 'No purple gradients. No sub-WCAG text. No washed pastels.' },
+    { area: 'Spatial Design', detail: 'No cards in cards. No identical grids. No template layouts.' },
+    { area: 'Responsive', detail: 'No stiff breakpoints. No mobile-as-afterthought.' },
+    { area: 'Interaction', detail: 'No modal abuse. No generic CTAs. No gradient text.' },
+    { area: 'Motion', detail: 'No bouncy easing. No decorative fades. No spring overshoot.' },
+    { area: 'UX Writing', detail: 'No "Welcome to our platform." No em dashes. No "let\'s dive in".' }
+  ]
+};
+
 // Guideline counts per dimension (verified from reference files)
 export const dimensionGuidelineCounts = {
   'Typography': 33,
@@ -73,7 +87,7 @@ export const commandProcessSteps = {
   'optimize': ['Profile', 'Identify', 'Improve', 'Measure'],
   'harden': ['Assess', 'Implement', 'Test', 'Verify'],
   'onboard': ['Identify', 'Design', 'Guide', 'Measure'],
-  'teach': ['Explore', 'Interview', 'Synthesize', 'Save'],
+  'init': ['Explore', 'Interview', 'Configure', 'Recommend'],
   'document': ['Scan', 'Extract', 'Describe', 'Write'],
   'extract': ['Identify', 'Abstract', 'Migrate', 'Document'],
   'live': ['Start', 'Select', 'Generate', 'Accept']
@@ -106,7 +120,7 @@ export const commandCategories = {
   'harden': 'harden',
   'onboard': 'harden',
   // SYSTEM - setup and tooling
-  'teach': 'system',
+  'init': 'system',
   'document': 'system',
   'extract': 'system',
   'live': 'system'
@@ -142,7 +156,7 @@ export const commandRelationships = {
   'optimize': { flow: 'Harden: Performance improvements' },
   'harden': { combinesWith: ['optimize'], flow: 'Harden: Edge cases, error handling, and i18n' },
   'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Harden: First-run experiences and empty states' },
-  'teach': { flow: 'System: One-time project design context setup' },
+  'init': { flow: 'System: One-time project setup. Context, live config, next steps' },
   'extract': { flow: 'System: Extract design system components and tokens' },
   'live': { flow: 'System: Visual variant mode in the browser' }
 };

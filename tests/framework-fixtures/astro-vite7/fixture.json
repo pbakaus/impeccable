@@ -23,6 +23,9 @@
     "probe": {
       "expectLiveInit": true,
       "expectConsoleClean": true
+    },
+    "steer": {
+      "sourceFile": "src/pages/index.astro"
     }
   }
 }
