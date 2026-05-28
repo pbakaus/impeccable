@@ -8,7 +8,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
-            "if": "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,less,ts,js})",
             "timeout": 5,
             "statusMessage": "Scanning design"
           }

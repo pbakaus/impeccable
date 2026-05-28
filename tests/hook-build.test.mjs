@@ -59,12 +59,8 @@ describe('buildClaudeHooksManifest()', () => {
     assert.ok(!('args' in handler), 'shell form must not also set args');
   });
 
-  it('declares the if: glob covering every design-relevant extension', () => {
-    const ifGlob = m.hooks.PostToolUse[0].hooks[0].if;
-    assert.ok(ifGlob.startsWith('Edit('));
-    for (const ext of ['tsx', 'jsx', 'html', 'vue', 'svelte', 'astro', 'css', 'scss', 'less', 'ts', 'js']) {
-      assert.ok(ifGlob.includes(ext), `if: glob missing ${ext}`);
-    }
+  it('does not declare an if: glob (script filters; Edit-only if would skip Write/MultiEdit)', () => {
+    assert.equal(m.hooks.PostToolUse[0].hooks[0].if, undefined);
   });
 
   it('sets timeouts: 5s PostToolUse, 3s SessionStart', () => {

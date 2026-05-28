@@ -62,10 +62,8 @@ The hook is **on by default after install**, in **advisory mode only**. This was
 ### Trigger surface
 
 - Event: `PostToolUse`.
-- Tool matcher: `Edit | Write | MultiEdit` (Claude Code uses the literal `|`-separated form; Codex parses the same string as a regex).
-- File filter: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`.
-  - Claude Code: native `if: "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,ts,js})"` glob on the handler. The handler never spawns for non-matching files.
-  - Codex: no `if:` analog. The hook script inspects the resolved file path and short-circuits before invoking the detector. Slightly more wasted process startups but fundamentally the same outcome.
+- Tool matcher: `Edit | Write | MultiEdit | apply_patch` on Claude Code; `Edit | Write | apply_patch` on Codex (Codex has no `MultiEdit` tool).
+- File filter: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`. Both harnesses filter in the hook script. Claude's native `if: "Edit(*.{…})"` permission rule binds to one tool name only, so it would skip `Write` and `MultiEdit`; we do not use `if:` on either side.
 
 ### Silent pass
 
@@ -685,6 +683,7 @@ For the implementation branch, not this one.
 | 2026-05-28 | v6: parse Codex `apply_patch` paths from `tool_input.command` | Per [Codex hooks docs](https://developers.openai.com/codex/hooks), `apply_patch` exposes the patch in `tool_input.command`, not `file_path`. Our hook only read `file_path`, so every Codex PostToolUse fired but exited with empty stdout. Fix: `parseApplyPatchPaths()` + `resolveTargetFiles()`. |
 | 2026-05-28 | v7: Codex manifest parity + SessionStart matcher | Added SessionStart to the Codex `.agents` manifest (was Claude-only). Both manifests now use `matcher: startup|resume` on SessionStart per Codex docs. SessionStart greeting copy corrected (no Bash/MCP false claim). Optional `statusMessage` on handlers. |
 | 2026-05-28 | v8: co-scan stylesheets when a UI component is edited | PostToolUse only scanned the patched file. React/Vite apps often keep slop in sibling `styles.css` while JSX edits trigger the hook — so `App.jsx` came back clean while `styles.css` still had Inter/bounce/etc. Fix: after resolving the primary target(s), also scan static `import '…css'` dependencies plus co-located stylesheets (`styles.css`, `Component.module.css`, `globals.css`, …) in the same directory. Cap at 6 files per fire. Stylesheet-only edits unchanged. |
+| 2026-05-28 | v9: drop Claude `if: Edit(*.{…})` — script filters on both harnesses | Claude's `if` field is one permission rule per handler; `Edit(*.tsx)` never matches `Write` or `MultiEdit`, so most Claude edits never spawned the hook despite the group matcher. Codex never had `if:`. Extension filter now lives only in `hook-lib.mjs` on both sides. |
 | TBD | `/impeccable hooks` hidden vs visible | Open question 2. |
 | Resolved 2026-05-28 | Bash blind spot policy (open question 1) | v2 added a `Bash\|mcp__.*` sweep; v3 narrowed it to `mcp__node_repl__.*`; v5 removed the sweep group entirely. The conclusion is that Bash / MCP coverage isn't worth the always-on second code path. Pure `Bash` writes (via heredoc/redirect) and `mcp__node_repl__js` writes both go un-scanned at write time; the dedup cache catches them on the next direct edit. |
 | TBD | Output size policy under subagents | Open question 6. |

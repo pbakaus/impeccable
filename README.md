@@ -253,7 +253,7 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 On Claude Code and Codex, Impeccable installs two hooks that wrap the design detector around your edits.
 
-**`PostToolUse`** fires after `Edit`, `Write`, or `MultiEdit` on Claude Code and after `apply_patch` on Codex. The hook reads `tool_input.file_path` from the event and scans that single file. Fast path, sub-50ms per call. Restricted to UI extensions: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`. Tool calls without a `file_path` (Bash, `mcp__node_repl__*`, browser tools, anything else) are a clean silent skip.
+**`PostToolUse`** fires after `Edit`, `Write`, `MultiEdit`, or `apply_patch` on UI files. Claude Code sends `tool_input.file_path` on Edit/Write/MultiEdit; Codex `apply_patch` sends the patch in `tool_input.command` (the hook parses `*** Update File:` / `*** Add File:` lines). When you edit a component (`.tsx`, `.jsx`, etc.), the hook also scans static CSS it imports and co-located stylesheets (`styles.css`, `*.module.css`, same basename). Restricted to UI extensions: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`. Tool calls with no resolvable path (Bash, `mcp__node_repl__*`, browser tools) are a silent skip.
 
 Every fire that actually scans something emits a developer-role system reminder so the hook stays a conversational presence the model can act on. Three emission states map to three message shapes:
 
@@ -263,7 +263,7 @@ Every fire that actually scans something emits a developer-role system reminder 
 
 Never blocks an edit. Never silent on a successful scan, with one exception: detector crashes stay silent because we don't know the truth. To restore the old silent-on-clean behavior set `IMPECCABLE_HOOK_QUIET=1` in your shell; findings emissions still fire under QUIET, only the pending and clean acks are suppressed.
 
-**`SessionStart`** is the orientation hook. It fires once when a new session opens, gated to projects that actually look like UI code (a known UI dep in `package.json` or a top-level `index.html`) and throttled to once every 30 days per project. It emits a single-line system reminder telling the model the hook is active and how to disable it. Skipped silently everywhere else.
+**`SessionStart`** is the orientation hook. It fires on session startup and resume (not on compact/clear), gated to projects that look like UI code (a known UI dep in `package.json` or a top-level `index.html`) and throttled to once every 30 days per project. It emits a single-line system reminder telling the model the hook is active and how to disable it. Skipped silently everywhere else.
 
 ### Installing on Claude Code
 

@@ -59,8 +59,8 @@ Notes:
 
 | Harness | PostToolUse hook | SessionStart hook | Manifest location | Notes |
 |---------|:----------------:|:-----------------:|-------------------|-------|
-| Claude Code | Yes | Yes | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit`. `if:` glob filters to UI extensions before spawning Node. |
-| Codex CLI | Yes | No | `.codex-plugin/plugin.json` + `.agents/hooks/hooks.json` | Auto-discovered from `${PLUGIN_ROOT}`. Matcher: `Edit\|Write\|apply_patch`. No `if:` analog; the hook script does the extension filter. macOS/Linux only. |
+| Claude Code | Yes | Yes | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit\|apply_patch`. Extension filter in hook script (same as Codex). |
+| Codex CLI | Yes | Yes | `.codex-plugin/plugin.json` + `.agents/hooks/hooks.json` | Auto-discovered from `${PLUGIN_ROOT}`. Matcher: `Edit\|Write\|apply_patch`. Extension filter in hook script. macOS/Linux only. |
 | All other harnesses | No | No | n/a | No documented hook surface today. Skill and commands still ship. |
 
 ## Skill Directory Structure

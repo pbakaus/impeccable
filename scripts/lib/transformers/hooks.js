@@ -2,9 +2,11 @@
  * Build-pipeline emitters for the Impeccable design hook.
  *
  * Two artifacts:
- *   1. hooks.json — per-provider hook manifest. Shape differs slightly between
- *      Claude Code (supports `if:` glob) and Codex (no `if:` analog, hook
- *      script does its own extension filter).
+ *   1. hooks.json — per-provider hook manifest. PostToolUse shape is the same
+ *      on both harnesses: one matcher group, no `if:` field. Claude's `if:`
+ *      permission rule binds to a single tool name (`Edit(*.tsx)` never
+ *      matches Write or MultiEdit), so extension filtering lives in the hook
+ *      script on both sides.
  *   2. .codex-plugin/plugin.json — net-new Codex plugin manifest. Codex
  *      auto-discovers `hooks/hooks.json` from the plugin root, so the manifest
  *      itself is intentionally tiny (no `hooks` field — listing it there would
@@ -14,8 +16,6 @@
 
 const HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
 const SESSION_SCRIPT_REL = 'skills/impeccable/scripts/hook-session-start.mjs';
-
-const FILE_EXT_GLOB = '*.{tsx,jsx,html,vue,svelte,astro,css,scss,less,ts,js}';
 
 // Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
 // shared marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex
@@ -45,9 +45,10 @@ const FILE_EXT_GLOB = '*.{tsx,jsx,html,vue,svelte,astro,css,scss,less,ts,js}';
 // for `mcp__node_repl__` edits in Codex; the win is one simple code path
 // and zero invocations on tool calls that don't carry a file.
 //
-// Codex silently ignores the `if:` field (which is Claude-only); the hook
-// script does its own extension filter as a backstop, so unmatched
-// extensions on the Codex side are a cheap process-startup no-op.
+// No `if:` on either harness. Claude's `if` field holds one permission rule
+// tied to a tool name; `Edit(*.{tsx,...})` would skip Write and MultiEdit
+// even when the group matcher includes them. The hook script already filters
+// by extension before running the detector.
 export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLUGIN_ROOT}' } = {}) {
   return {
     description: 'Impeccable design detector: runs after Edit/Write/MultiEdit/apply_patch on UI files and surfaces findings as system reminders.',
@@ -59,7 +60,6 @@ export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLU
             {
               type: 'command',
               command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
-              if: `Edit(${FILE_EXT_GLOB})`,
               timeout: 5,
               statusMessage: 'Scanning design',
             },
