@@ -14,6 +14,7 @@
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -184,7 +185,7 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
 describe('context.mjs CLI', () => {
   it('emits NO_PRODUCT_MD directive when no PRODUCT.md is found', async () => {
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^NO_PRODUCT_MD:/);
     assert.match(res.stdout, /reference\/init\.md/);
@@ -193,7 +194,7 @@ describe('context.mjs CLI', () => {
   it('prints a PRODUCT.md markdown block when only PRODUCT.md exists', async () => {
     write('PRODUCT.md', '# Acme\n\nbody\n');
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /# Acme/);
@@ -206,7 +207,7 @@ describe('context.mjs CLI', () => {
     write('PRODUCT.md', '# Acme product\n');
     write('DESIGN.md', '# Acme design\n');
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /\n---\n/);
@@ -217,7 +218,7 @@ describe('context.mjs CLI', () => {
   it('reads from a fallback dir when cwd is clean', async () => {
     write('.agents/context/PRODUCT.md', '# fallback product\n');
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /# fallback product/);
@@ -226,7 +227,7 @@ describe('context.mjs CLI', () => {
   it('names the register-specific reference when PRODUCT.md declares one', async () => {
     write('PRODUCT.md', '# Acme\n\n## Register\n\nbrand\n');
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /NEXT STEP: This project's register is `brand`\./);
     assert.match(res.stdout, /read `reference\/brand\.md`/);
@@ -235,9 +236,76 @@ describe('context.mjs CLI', () => {
   it('falls back to a generic register directive when no register field is present', async () => {
     write('PRODUCT.md', '# Acme\n\n(no register field)\n');
     const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /NEXT STEP: You MUST now read the matching register reference/);
     assert.match(res.stdout, /reference\/brand\.md.*reference\/product\.md/);
+  });
+});
+
+describe('context.mjs update check', () => {
+  // The script reads its own version from a sibling SKILL.md (resolved via
+  // import.meta.url, not cwd). The source tree has no SKILL.md, so we copy the
+  // script into a scratch skill dir with a controlled version and run that.
+  // Local version is pinned to 1.0.0; "newer" = 2.0.0, "older" = 0.0.1.
+  const LOCAL_VERSION = '1.0.0';
+
+  // A fresh cache (lastCheck = now) skips the network poll, so these tests are
+  // hermetic: the directive is driven entirely by the seeded latestVersion.
+  function run(cacheObj, { disable = false } = {}) {
+    const skillScript = path.join(scratch, 'skill', 'scripts', 'context.mjs');
+    fs.mkdirSync(path.dirname(skillScript), { recursive: true });
+    fs.copyFileSync(SCRIPT_PATH, skillScript);
+    fs.writeFileSync(
+      path.join(scratch, 'skill', 'SKILL.md'),
+      `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,
+    );
+    const cachePath = path.join(scratch, 'update-check.json');
+    fs.writeFileSync(cachePath, JSON.stringify(cacheObj));
+    const project = path.join(scratch, 'project');
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'PRODUCT.md'), '# Acme\n');
+    return spawnSync(process.execPath, [skillScript], {
+      cwd: project,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        IMPECCABLE_UPDATE_CACHE: cachePath,
+        IMPECCABLE_NO_UPDATE_CHECK: disable ? '1' : '',
+      },
+    });
+  }
+
+  it('appends UPDATE_AVAILABLE when the cached latest version is newer', () => {
+    const res = run({ lastCheck: Date.now(), latestVersion: '2.0.0' });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /UPDATE_AVAILABLE: A newer Impeccable skill is available/);
+    assert.match(res.stdout, /installed v1\.0\.0, latest v2\.0\.0/);
+    assert.match(res.stdout, /npx impeccable skills update/);
+    // It must come after the real context, never replace it.
+    assert.match(res.stdout, /^# PRODUCT\.md/);
+  });
+
+  it('stays silent when the cached latest version is not newer', () => {
+    const res = run({ lastCheck: Date.now(), latestVersion: '0.0.1' });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
+  });
+
+  it('does not re-surface a version notified within the last week', () => {
+    const res = run({
+      lastCheck: Date.now(),
+      latestVersion: '2.0.0',
+      notifiedVersion: '2.0.0',
+      notifiedAt: Date.now(),
+    });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
+  });
+
+  it('respects IMPECCABLE_NO_UPDATE_CHECK', () => {
+    const res = run({ lastCheck: Date.now(), latestVersion: '2.0.0' }, { disable: true });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('UPDATE_AVAILABLE'), false);
   });
 });

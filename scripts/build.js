@@ -525,6 +525,15 @@ function generateApiData(buildDir, skills, patterns) {
   // patterns.json
   fs.writeFileSync(path.join(apiDir, 'patterns.json'), JSON.stringify(patterns));
 
+  // version.json - a tiny endpoint the installed skill polls on boot
+  // (skill/scripts/context.mjs) to nudge users toward `npx impeccable skills
+  // update`. Kept deliberately small so the boot-time check is cheap, unlike
+  // the full bundle download `skills check` performs. The skills version is
+  // the canonical one in the Claude plugin manifest.
+  const pluginManifestPath = path.join(ROOT_DIR, '.claude-plugin/plugin.json');
+  const skillsVersion = JSON.parse(fs.readFileSync(pluginManifestPath, 'utf-8')).version;
+  fs.writeFileSync(path.join(apiDir, 'version.json'), JSON.stringify({ skills: skillsVersion }));
+
   // command-source/{id}.json (one per skill)
   const cmdSourceDir = path.join(apiDir, 'command-source');
   fs.mkdirSync(cmdSourceDir, { recursive: true });
@@ -611,6 +620,7 @@ function generateCFConfig(buildDir) {
   // Plus permanent redirects for legacy URLs.
   const redirects = `/api/skills /_data/api/skills.json 200
 /api/commands /_data/api/commands.json 200
+/api/version /_data/api/version.json 200
 /api/patterns /_data/api/patterns.json 200
 /api/command-source/:id /_data/api/command-source/:id.json 200
 /gallery /slop#try-it-live 301
