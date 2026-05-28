@@ -3811,7 +3811,7 @@
     if (!selectedElement || !editBadgeEl || editBadgeEl.style.display === 'none') return;
     const r = selectedElement.getBoundingClientRect();
     const bw = editBadgeEl.offsetWidth;
-    editBadgeEl.style.top = Math.max(4, r.top - 26) + 'px';
+    editBadgeEl.style.top = Math.max(4, r.top - 28) + 'px';
     editBadgeEl.style.left = Math.min(window.innerWidth - bw - 4, r.right - bw) + 'px';
   }
 
@@ -3868,8 +3868,8 @@
       const cancel = document.createElement('button');
       cancel.textContent = 'Cancel';
       Object.assign(cancel.style, calloutStyle(MUTED, HAIRLINE));
-      cancel.addEventListener('mouseenter', () => { cancel.style.background = P.patinaSoft; cancel.style.color = P.text; cancel.style.borderColor = P.patina; });
-      cancel.addEventListener('mouseleave', () => { cancel.style.background = SURFACE; cancel.style.color = MUTED; cancel.style.borderColor = HAIRLINE; });
+      cancel.addEventListener('mouseenter', () => { cancel.style.color = P.text; });
+      cancel.addEventListener('mouseleave', () => { cancel.style.color = P.textDim; });
       cancel.onclick = cancelEditing;
       const save = document.createElement('button');
       save.textContent = 'Save';
