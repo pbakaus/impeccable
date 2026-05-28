@@ -152,12 +152,12 @@ Adding a new fixture is a matter of cloning a directory under `tests/framework-f
 `tests/skill-behavior/scenarios.test.mjs` is the LLM-backed safety net for edits to `skill/SKILL.src.md` and the Setup-adjacent reference files (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). It inlines the source `skill/SKILL.src.md` into the system prompt of a real LLM, gives the agent `bash` / `read` / `write` / `list` tools scoped to a temp workspace, and asserts on the tool-call trace — not on the model's free-form output. The trace is the source of truth.
 
 ```bash
-bun run test:skill-behavior                                              # full suite (24 tests, ~5 min, ~$0.10 across providers)
+bun run test:skill-behavior                                              # full suite (24 tests, ~5 min, ~$0.50-1.50 across providers)
 IMPECCABLE_SKILL_BEHAVIOR_MODELS=gemini-3.1-flash-lite bun run test:skill-behavior   # scope to one provider
 IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump per-scenario trace JSON to stderr (use when iterating)
 ```
 
-**Three providers per run, every run.** The suite always exercises `claude-haiku-4-5`, `gpt-5.4-mini`, and `gemini-3.1-flash-lite` — the cheapest tier of each major coding-agent provider. The point of running the cheap tier is to catch instruction-following weaknesses early. If a SKILL.md edit relies on a tightening that only Sonnet / GPT-5.5 / Gemini Pro can follow, the cheap tier will flag it. **Don't substitute Claude alone** — many of the most useful findings come from divergence between providers.
+**Three providers per run, every run.** The suite always exercises `claude-sonnet-4-6`, `gpt-5.5`, and `gemini-3.1-flash-lite`. Sonnet and GPT-5.5 are production-tier, matching what users actually run, so the pass/fail signal reflects real agent behavior rather than a cheap proxy; gemini stays on the flash-lite tier. **Don't substitute Claude alone**: many of the most useful findings come from divergence between providers.
 
 **Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
 
@@ -171,9 +171,9 @@ IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump 
 7. `/impeccable audit` → loads `reference/audit.md`
 8. existing SvelteKit project → agent reads at least one project code file
 
-**Baseline** (post-refactor): 21-22 / 24. Stable failures live on gpt-5.4-mini scenarios 6 and 7 — it just doesn't load sub-command references regardless of MUST language. Captured in `tests/skill-behavior/README.md` as a known weakness.
+**Baseline.** The 21-22 / 24 baseline (with stable gpt scenario 6/7 failures) was measured on the old cheap tier (`claude-haiku-4-5` / `gpt-5.4-mini`). It needs re-measuring on the current `claude-sonnet-4-6` / `gpt-5.5` lineup; the production-tier models are expected to do better on the sub-command routing scenarios the old gpt tier failed. See `tests/skill-behavior/README.md`.
 
-**Cost.** Each run is real LLM calls, billed to the keys in `.env`. ~$0.05-0.15 per full sweep. Keep it out of CI unless you really want it there.
+**Cost.** Each run is real LLM calls, billed to the keys in `.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
 
 **Adding a scenario.** Write the fixture in `tests/skill-behavior/fixtures.mjs`, add the `it()` block in `scenarios.test.mjs` (the harness uses the source `skill/` dir via a symlink, so no rebuild needed), and update the baseline table in the suite's README. The harness's `fileLoaded(trace, filename)` helper checks both `read` and bash `cat` — different models prefer different tools.
 

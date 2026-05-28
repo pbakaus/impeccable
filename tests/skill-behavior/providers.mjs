@@ -1,9 +1,11 @@
 /**
  * Multi-provider model factory for the skill-behavior test harness.
  *
- * The user explicitly asked for the cheapest tier of each major provider to
- * keep CI cost in the cents-per-run range while still exercising real LLM
- * decision-making against the skill body.
+ * The lineup runs production-tier models on Anthropic and OpenAI
+ * (claude-sonnet-4-6, gpt-5.5) so the suite reflects what users actually
+ * run, not a cheap proxy. Google stays on gemini-3.1-flash-lite. Costlier
+ * per run than the old cheap tier, but the pass/fail signal is more
+ * representative of real agent behavior against the skill body.
  *
  * Anthropic and OpenAI use the Vercel AI SDK providers. Google uses
  * @ai-sdk/google for the same reason — uniform tool-use semantics across all
@@ -76,11 +78,12 @@ export function getModel(modelId) {
 }
 
 /**
- * Default model lineup. Cheapest tier per provider — the test is about
- * routing/loading behavior, not design output quality, so cheap is fine.
+ * Default model lineup. Production-tier on Anthropic and OpenAI to match what
+ * users actually run; gemini stays on the flash-lite tier. The test is about
+ * routing/loading behavior, not design output quality.
  * Override with IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-foo,gpt-bar.
  */
-export const DEFAULT_MODELS = ['claude-haiku-4-5', 'gpt-5.4-mini', 'gemini-3.1-flash-lite'];
+export const DEFAULT_MODELS = ['claude-sonnet-4-6', 'gpt-5.5', 'gemini-3.1-flash-lite'];
 
 export function resolveModelList() {
   const override = process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS;

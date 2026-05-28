@@ -14,7 +14,7 @@ contract.
 ```bash
 bun run test:skill-behavior
 IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior   # dump per-scenario traces
-IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-haiku-4-5 bun run test:skill-behavior   # scope to one model
+IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-4-6 bun run test:skill-behavior   # scope to one model
 ```
 
 Requires `.env` at repo root with at least one of `ANTHROPIC_API_KEY`,
@@ -50,7 +50,15 @@ The trace is the source of truth, not the model's free-form reply.
 | 7 | same fixture; prompt is `/impeccable audit` | loads `reference/audit.md` |
 | 8 | PRODUCT.md + DESIGN.md + a SvelteKit scaffold (`src/app.css`, components, `+page.svelte`); prompt is `/impeccable polish src/routes/+page.svelte` | reads at least one project code file (CSS / component / page) — not just the skill's reference files |
 
-## Baseline state (2026-05-20)
+## Baseline state (2026-05-20, previous cheap tier)
+
+> **Lineup changed.** The default models are now `claude-sonnet-4-6`,
+> `gpt-5.5`, and `gemini-3.1-flash-lite` (production-tier on Anthropic and
+> OpenAI). The table below was measured on the *old* cheap tier
+> (`claude-haiku-4-5` / `gpt-5.4-mini`) and is kept as the historical record.
+> Re-measure on the current lineup and update this section; the stronger
+> models are expected to clear the scenario 6/7 routing failures that the old
+> gpt tier showed.
 
 Captured after moving sub-command reference loading from step 4 to step 2
 of Setup (so the agent loads `reference/<command>.md` right after
