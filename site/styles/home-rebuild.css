@@ -59,7 +59,7 @@
      legible over the bright kintsugi gold, fading out before the hero copy. */
   background:
     linear-gradient(180deg, oklch(7% 0.006 95 / 0.9) 0%, oklch(7% 0.006 95 / 0.5) 8%, transparent 18%),
-    url("/assets/neo-kinpaku/kintsugi-hero-v3.png") center / cover no-repeat;
+    url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png") center / cover no-repeat;
   filter: saturate(1.2) contrast(1.08);
 }
 
@@ -885,9 +885,9 @@
 
 .hero-live-demo .live-demo-frame {
   aspect-ratio: auto;
-  /* Cap to the viewport so the whole demo stays on screen below the header
-     (the hero's 113px top padding already clears the 97px fixed header). */
-  height: min(640px, calc(100svh - 140px));
+  /* Height follows content — fixed min was leaving ivory gap under clipped suites. */
+  height: auto;
+  max-height: min(540px, calc(100svh - 140px));
   max-width: 100%;
 }
 
@@ -895,6 +895,17 @@
 .hero-live-demo .live-demo-stage {
   display: block;
   padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Default .hotel-site is position:absolute; inset:0, which stretches to the tall
+   stage and paints ivory in the gap below clipped suites. */
+.hero-live-demo .hotel-site {
+  position: relative;
+  inset: auto;
+  height: auto;
 }
 
 /* The picked element is the hero — a single, full-width, one-of-a-kind block.
@@ -915,7 +926,13 @@
   height: 100%;
   box-sizing: border-box;
 }
-/* The suites below are context only (all elegant), cut off by the frame. */
+/* Suite cards run to the frame bottom; the gbar overlaps their lower edge. */
+.hero-live-demo .hotel-suites {
+  flex: none;
+  max-height: 132px;
+  padding: 10px 0 0 22px;
+  overflow: hidden;
+}
 .hero-live-demo .hotel-suites-row > .hotel-card {
   width: 198px;
   height: 226px;

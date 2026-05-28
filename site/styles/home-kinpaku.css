@@ -1645,6 +1645,253 @@
   color: var(--ks-champagne);
 }
 
+/* ============================================================
+   T7 Live Mode visual — condensed picker + steer bar mock.
+   The full demo lives on /live-mode; this tile shows the
+   essential beat (pick + comment + steer bar) in one glance.
+   ============================================================ */
+
+.home-kinpaku .why-panel-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 8px;
+  border: 1px solid oklch(78% 0.12 82 / 0.4);
+  border-radius: 3px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  color: var(--ks-kinpaku);
+  vertical-align: middle;
+  transform: translateY(-3px);
+}
+
+.home-kinpaku .why-visual--live {
+  padding: 0;
+  overflow: hidden;
+  min-height: 240px;
+  background:
+    linear-gradient(90deg, oklch(78% 0.12 82 / 0.018) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(78% 0.12 82 / 0.015) 1px, transparent 1px),
+    radial-gradient(circle at 18% 100%, oklch(78% 0.12 82 / 0.07), transparent 16rem),
+    oklch(5% 0.004 95 / 0.92);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+}
+
+.home-kinpaku .why-live-frame {
+  position: relative;
+  margin: 24px clamp(20px, 3vw, 32px) 0;
+  border: 1px solid oklch(78% 0.12 82 / 0.22);
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, oklch(100% 0 0 / 0.025), transparent 38%),
+    oklch(4% 0.004 95 / 0.94);
+  box-shadow:
+    inset 0 0 0 1px oklch(100% 0 0 / 0.02),
+    0 18px 50px oklch(2% 0.004 95 / 0.32);
+  overflow: hidden;
+}
+
+.home-kinpaku .why-live-chrome {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: oklch(13% 0.006 95);
+}
+.home-kinpaku .why-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: oklch(58% 0.018 82);
+  opacity: 0.55;
+}
+.home-kinpaku .why-live-dot:nth-child(1) { background: var(--ks-kinpaku-deep); }
+.home-kinpaku .why-live-dot:nth-child(2) { background: var(--ks-patina-deep); }
+.home-kinpaku .why-live-url {
+  margin-left: 12px;
+  padding: 3px 10px;
+  background: oklch(8% 0.006 95);
+  border: 1px solid oklch(78% 0.12 82 / 0.14);
+  border-radius: 3px;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+}
+
+.home-kinpaku .why-live-stage {
+  position: relative;
+  min-height: 130px;
+  padding: 24px;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 9px, oklch(100% 0 0 / 0.012) 9px 10px),
+    oklch(8% 0.006 95);
+}
+
+.home-kinpaku .why-live-pick {
+  position: relative;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  padding: 18px 22px;
+  margin: 12px auto 4px;
+  border: 2px solid var(--ks-kinpaku);
+  border-radius: 3px;
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.05), transparent 60%),
+    oklch(10% 0.006 95 / 0.7);
+  box-shadow:
+    0 0 0 1px oklch(78% 0.12 82 / 0.18),
+    0 0 24px oklch(78% 0.12 82 / 0.18);
+}
+.home-kinpaku .why-live-pick-tag {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--ks-kinpaku);
+}
+.home-kinpaku .why-live-pick-note {
+  position: absolute;
+  top: -14px;
+  right: -18px;
+  padding: 5px 10px;
+  background: var(--ks-kinpaku);
+  border-radius: 2px;
+  color: oklch(8% 0.006 95);
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px oklch(78% 0.12 82 / 0.25);
+}
+.home-kinpaku .why-live-pick-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 0.85em;
+  margin-left: 3px;
+  background: oklch(8% 0.006 95);
+  vertical-align: middle;
+  animation: why-live-caret 1s steps(2, end) infinite;
+}
+@keyframes why-live-caret {
+  50% { opacity: 0; }
+}
+
+.home-kinpaku .why-live-gbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--ks-rule);
+  background: oklch(13% 0.006 95);
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+}
+.home-kinpaku .why-live-gbar-brand {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ks-kinpaku);
+  color: oklch(8% 0.006 95);
+  border-radius: 3px;
+  font-weight: 600;
+}
+.home-kinpaku .why-live-gbar-cmd {
+  padding: 3px 10px;
+  border: 1px solid oklch(78% 0.12 82 / 0.3);
+  border-radius: 3px;
+  color: var(--ks-kinpaku);
+}
+.home-kinpaku .why-live-gbar-count {
+  padding: 3px 8px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 3px;
+  color: var(--ks-text-muted);
+}
+.home-kinpaku .why-live-gbar-go {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: var(--ks-kinpaku);
+  color: oklch(8% 0.006 95);
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+/* ============================================================
+   T8 Writes-to-source visual — file write + small diff.
+   The "Accept" beat made visible: not a mock, a real edit.
+   ============================================================ */
+
+.home-kinpaku .why-visual--writes {
+  padding: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 80% 14%, oklch(78% 0.12 82 / 0.05), transparent 14rem),
+    oklch(5% 0.004 95 / 0.92);
+}
+
+.home-kinpaku .why-writes-card {
+  margin: 24px;
+  border: 1px solid oklch(78% 0.12 82 / 0.22);
+  border-radius: 5px;
+  overflow: hidden;
+  background: oklch(4% 0.004 95 / 0.94);
+  box-shadow: 0 14px 40px oklch(2% 0.004 95 / 0.32);
+}
+
+.home-kinpaku .why-writes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  background: oklch(13% 0.006 95);
+  border-bottom: 1px solid var(--ks-rule);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+}
+.home-kinpaku .why-writes-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--ks-kinpaku);
+  color: oklch(8% 0.006 95);
+  border-radius: 50%;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.home-kinpaku .why-writes-label {
+  color: var(--ks-text-muted);
+  letter-spacing: 0.04em;
+}
+.home-kinpaku .why-writes-file {
+  color: var(--ks-champagne);
+  letter-spacing: 0.01em;
+}
+
+.home-kinpaku .why-writes-diff {
+  padding: 14px 14px 16px;
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+  line-height: 1.75;
+}
+.home-kinpaku .why-writes-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-kinpaku .why-writes-line--del {
+  color: oklch(62% 0.13 30);
+  background: oklch(62% 0.13 30 / 0.06);
+}
+.home-kinpaku .why-writes-line--add {
+  color: var(--ks-kinpaku);
+  background: oklch(78% 0.12 82 / 0.07);
+}
+
 .home-kinpaku .why-visual--extension {
   min-height: 332px;
   padding: 0;

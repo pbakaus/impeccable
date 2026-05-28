@@ -1,5 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
+import LiveDemoGbar from '../../components/LiveDemoGbar.astro';
 import '../../styles/sub-pages.css';
 import '../../styles/live-mode.css';
 import '../../styles/live-mode-kinpaku.css';
@@ -18,7 +19,6 @@ import '../../styles/live-mode-kinpaku.css';
     <p class="live-mode-page-eyebrow">New in v3.0 <span class="live-mode-page-eyebrow-badge">Alpha</span></p>
     <h1 class="live-mode-page-title">Live Mode</h1>
     <p class="live-mode-page-lede">Pick any element in the browser. Drop a comment or a stroke. Three production-quality variants swap in via your framework's HMR. Accept the one you want and it writes back to source.</p>
-    <p class="live-mode-page-alpha-note"><strong>Why alpha:</strong> Live Mode works end-to-end and is ready to try, but it still needs more testing against real-world repos and framework configs. Expect rough edges on uncommon setups, and please report what breaks.</p>
     <div class="live-mode-start" aria-label="Start live mode command">
       <span class="live-mode-start-prompt">$</span>
       <code class="live-mode-start-cmd">/impeccable live</code>
@@ -29,6 +29,7 @@ import '../../styles/live-mode-kinpaku.css';
         </svg>
       </button>
     </div>
+    <p class="live-mode-page-alpha-note"><strong>Why alpha:</strong> works end-to-end and is ready to try, but still needs more testing on uncommon framework setups. Please report what breaks.</p>
   </header>
 
   <section class="live-mode-demo-wrap" aria-label="Live Mode interactive demo">
@@ -136,32 +137,8 @@ import '../../styles/live-mode-kinpaku.css';
           </div>
         </div>
 
-        <div class="live-demo-gbar" data-demo-gbar>
-          <span class="live-demo-gbar-brand">/</span>
-          <button type="button" class="live-demo-gbar-btn is-active" data-demo-gbar-pick>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
-            <span>Pick</span>
-          </button>
-          <button type="button" class="live-demo-gbar-btn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button type="button" class="live-demo-gbar-btn">
-            <span class="live-demo-gbar-dmd" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-          </button>
-          <div class="live-demo-gbar-chat" data-demo-gbar-chat data-expanded="false" title="Steer the page">
-            <span class="live-demo-gbar-chat-icon" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </span>
-            <span class="live-demo-gbar-chat-hint">Steer</span>
-            <input class="live-demo-gbar-chat-input" type="text" placeholder="Steer the page…" aria-label="Steer the page" tabindex="-1" />
-            <button type="button" class="live-demo-gbar-chat-voice" aria-label="Voice input">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            </button>
-          </div>
-          <button type="button" class="live-demo-gbar-x" aria-label="Exit live mode">&times;</button>
-        </div>
+        <LiveDemoGbar />
       </div></div>
-    </div>
     <p class="live-mode-demo-caption">Click the frame or scroll it into view to start the loop. Respects <code>prefers-reduced-motion</code>.</p>
   </section>
 

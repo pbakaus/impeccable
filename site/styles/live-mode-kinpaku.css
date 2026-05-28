@@ -58,7 +58,9 @@
 .live-mode-kinpaku .live-mode-page {
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(48px, 6vw, 96px) clamp(22px, 4vw, 56px) clamp(80px, 10vw, 140px);
+  /* Tighter top so the auto-playing demo lands closer to the fold — the
+     demo is the page's main asset; preamble shouldn't push it away. */
+  padding: clamp(32px, 4vw, 64px) clamp(22px, 4vw, 56px) clamp(80px, 10vw, 140px);
 }
 
 
@@ -68,7 +70,9 @@
 
 .live-mode-kinpaku .live-mode-page-header {
   max-width: 760px;
-  margin: 0 0 clamp(64px, 8vw, 96px);
+  /* Pulled in from clamp(64px, 8vw, 96px). The demo viewport carries its
+     own margin-bottom; we don't need a big gap on both sides. */
+  margin: 0 0 clamp(32px, 4vw, 48px);
 }
 
 .live-mode-kinpaku .live-mode-page-eyebrow {
@@ -117,23 +121,25 @@
   max-width: 56ch;
 }
 
-/* Alpha note — patina-tinted callout. Not a side-stripe; full border, full
-   surface, so it doesn't trip the side-tab antipattern. */
+/* Alpha note — quiet inline footnote below the command pill, not a card.
+   Previously a bordered callout, but it ate vertical space above the
+   demo without earning it. Compact form keeps the disclaimer honest
+   without blocking the demo. */
 .live-mode-kinpaku .live-mode-page-alpha-note {
-  margin: 0 0 28px;
-  padding: 14px 18px;
-  background: oklch(70% 0.12 188 / 0.08);
-  border: 1px solid oklch(70% 0.12 188 / 0.30);
-  border-radius: 2px;
-  font-size: 0.94rem;
-  line-height: 1.55;
-  color: var(--ks-text);
+  margin: 14px 0 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
   max-width: 60ch;
 }
 
 .live-mode-kinpaku .live-mode-page-alpha-note strong {
   color: var(--ks-patina);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Start command pill — terminal-style, kinpaku-tinted. */

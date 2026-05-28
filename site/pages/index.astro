@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Testimonials from '../components/Testimonials.astro';
+import LiveDemoGbar from '../components/LiveDemoGbar.astro';
 import '../styles/main.css';
 import '../styles/sub-pages.css';
 import '../styles/home-kinpaku.css';
@@ -12,9 +13,8 @@ import '../styles/testimonials.css';
 // switcher panel below the hero lets you cycle through them and pick one;
 // selection persists in localStorage. Remove the switcher block + this loader
 // once the hero is locked in.
-// Hero is /assets/neo-kinpaku/kintsugi-hero-v3.png (referenced from CSS).
-// A second cleared finalist is reserved at /assets/neo-kinpaku/candidates/
-// finalists/m-01-v2-01.png for use on a future page (do not delete).
+// Hero is /assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png (referenced from CSS).
+// Previous hero: /assets/neo-kinpaku/kintsugi-hero-v3.png
 ---
 
 <Base
@@ -71,7 +71,7 @@ import '../styles/testimonials.css';
               </svg>
             </span>
           </a>
-          <a href="#slop" class="ks-button ks-button-secondary">See the rules</a>
+          <a href="/designing" class="ks-button ks-button-secondary">How it works</a>
         </div>
 
         <div class="hero-rebuild-logos" aria-label="AI coding harnesses Impeccable works with">
@@ -231,30 +231,7 @@ import '../styles/testimonials.css';
               </div>
             </div>
 
-            <div class="live-demo-gbar" data-demo-gbar>
-              <span class="live-demo-gbar-brand">/</span>
-              <button type="button" class="live-demo-gbar-btn is-active" data-demo-gbar-pick>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
-                <span>Pick</span>
-              </button>
-              <button type="button" class="live-demo-gbar-btn">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-              <button type="button" class="live-demo-gbar-btn">
-                <span class="live-demo-gbar-dmd" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-              </button>
-              <div class="live-demo-gbar-chat" data-demo-gbar-chat data-expanded="false" title="Steer the page">
-                <span class="live-demo-gbar-chat-icon" aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                </span>
-                <span class="live-demo-gbar-chat-hint">Steer</span>
-                <input class="live-demo-gbar-chat-input" type="text" placeholder="Steer the page…" aria-label="Steer the page" tabindex="-1" />
-                <button type="button" class="live-demo-gbar-chat-voice" aria-label="Voice input">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                </button>
-              </div>
-              <button type="button" class="live-demo-gbar-x" aria-label="Exit live mode">✕</button>
-            </div>
+            <LiveDemoGbar />
           </div></div>
         </div>
       </div>
@@ -310,82 +287,10 @@ import '../styles/testimonials.css';
       })();
     </script>
 
-    <!-- 03. KILL THE HANDOFF (Live Mode) -->
-    <section class="live-section" id="live-mode">
-      <div class="section-header" data-reveal>
-        <h2 class="section-title">Design in production <span class="beta-badge">ALPHA</span></h2>
-      </div>
-      <div class="live-content" data-reveal>
-        <p class="section-lead">Live Mode turns your running app into the canvas. The skill reads your real codebase, drops a picker into the page, and iterates any element in place, then writes the result back to source.</p>
-
-        <!-- How it works: three steps, each with a minimal glyph that doubles as
-             a reminder of what Live Mode looks like for anyone who skimmed the hero. -->
-        <ol class="live-how" aria-label="How Live Mode works">
-          <li class="live-how-step">
-            <div class="live-how-glyph" aria-hidden="true">
-              <div class="live-how-screen">
-                <div class="live-how-term"><span class="live-how-term-prompt">&rsaquo;</span> /impeccable live</div>
-                <div class="live-how-chips">
-                  <span>Next</span><span>Vite</span><span>SvelteKit</span><span>Astro</span><span>Nuxt</span>
-                </div>
-              </div>
-            </div>
-            <span class="live-how-n">01</span>
-            <h3 class="live-how-title">Detect &amp; inject</h3>
-            <p class="live-how-copy"><code>/impeccable live</code> starts it. The skill detects your framework, finds your dev server, and injects the picker into your live app. No config, no browser extension.</p>
-          </li>
-          <li class="live-how-step">
-            <div class="live-how-glyph" aria-hidden="true">
-              <div class="live-how-screen live-how-screen--pick">
-                <div class="live-how-pick">
-                  <span class="live-how-pick-tag">section.hero</span>
-                  <span class="live-how-pick-dot"></span>
-                  <span class="live-how-note">make it elegant<span class="live-how-note-caret"></span></span>
-                </div>
-              </div>
-            </div>
-            <span class="live-how-n">02</span>
-            <h3 class="live-how-title">Point &amp; iterate</h3>
-            <p class="live-how-copy">Pick any element, leave a comment or circle it, hit Go. Your agent reads the surrounding code and hot-swaps production-quality variants in via your framework's HMR.</p>
-          </li>
-          <li class="live-how-step">
-            <div class="live-how-glyph" aria-hidden="true">
-              <div class="live-how-screen live-how-screen--accept">
-                <div class="live-how-ctxbar">
-                  <span class="live-how-ctx-nav">&lsaquo;</span>
-                  <span class="live-how-ctx-count">2 / 3</span>
-                  <span class="live-how-ctx-nav">&rsaquo;</span>
-                  <span class="live-how-ctx-div"></span>
-                  <span class="live-how-ctx-accept">Accept</span>
-                </div>
-                <span class="live-how-wrote"><span class="live-how-wrote-check">&#10003;</span> wrote Hero.astro</span>
-              </div>
-            </div>
-            <span class="live-how-n">03</span>
-            <h3 class="live-how-title">Accept writes to source</h3>
-            <p class="live-how-copy">Keep the one you want and it lands in your real file as an ordinary edit: a diff you can review, not a throwaway mock.</p>
-          </li>
-        </ol>
-
-        <!-- Who it's for: the same capability, framed for each evaluator. Set
-             apart from the steps with a verdigris-lined treatment, not cards. -->
-        <p class="live-audience-eyebrow">Who it's for</p>
-        <div class="live-audience">
-          <div class="live-audience-tile">
-            <span class="live-audience-role">For designers</span>
-            <p>Iterate on the real product, with real data, states, and type. Steer the way you think: circle it, comment on it. No redraw, no Figma round-trip.</p>
-          </div>
-          <div class="live-audience-tile">
-            <span class="live-audience-role">For engineers</span>
-            <p>It's code, not a mockup. Variants are real edits in your framework; accept and review the diff. Lives in the agent and CLI you already run, no new tool to adopt.</p>
-          </div>
-          <div class="live-audience-tile">
-            <span class="live-audience-role">For product</span>
-            <p>Compare directions in the live product and decide in the medium customers actually get. Pick one and ship it, with no handoff and nothing lost in translation.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- (The standalone "Design in production" section was removed. Its
+         narrative now lives in the bento (T7 + T8 below) plus the full
+         /live-mode page; the homepage hero's auto-playing demo is the
+         in-place proof.) -->
 
     <!-- 02. THE LANGUAGE - Commands vocabulary + demos -->
     <section class="language-section" id="language">
@@ -616,6 +521,58 @@ import '../styles/testimonials.css';
                   </div>
                 </div>
               </div>
+          </article>
+
+          <!-- T7: wide. Live Mode showcase. The old standalone "Design in
+               production" section collapsed into this bento beat. -->
+          <article class="ks-bento-tile ks-bento-tile--span-8" id="why-live">
+            <span class="ks-bento-num" data-color="kinpaku">07</span>
+            <h3 class="why-panel-title">Iterate in your live app. <span class="why-panel-badge">ALPHA</span></h3>
+            <p class="why-panel-body">Pick any element in your running dev server, leave a comment or a stroke, hit Go. Three production-quality variants swap in via your framework's HMR.</p>
+            <div class="why-visual why-visual--live">
+              <div class="why-live-frame">
+                <div class="why-live-chrome">
+                  <span class="why-live-dot"></span><span class="why-live-dot"></span><span class="why-live-dot"></span>
+                  <span class="why-live-url">localhost:3000</span>
+                </div>
+                <div class="why-live-stage">
+                  <div class="why-live-pick">
+                    <span class="why-live-pick-tag">section.hero</span>
+                    <span class="why-live-pick-note">more elegant<span class="why-live-pick-caret"></span></span>
+                  </div>
+                </div>
+                <div class="why-live-gbar">
+                  <span class="why-live-gbar-brand">/</span>
+                  <span class="why-live-gbar-cmd">bolder</span>
+                  <span class="why-live-gbar-count">&times;3</span>
+                  <span class="why-live-gbar-go">Go &rarr;</span>
+                </div>
+              </div>
+            </div>
+            <p class="why-panel-meta"><a href="/live-mode">See how Live Mode works &rarr;</a></p>
+          </article>
+
+          <!-- T8: narrow. Accept writes to source. Pairs with T7 — the
+               "writes back" beat that separates Live Mode from a mock. -->
+          <article class="ks-bento-tile ks-bento-tile--span-4" id="why-writes">
+            <span class="ks-bento-num" data-color="patina">08</span>
+            <h3 class="why-panel-title">Accept writes to source.</h3>
+            <p class="why-panel-body">Variants land in your real file as an ordinary edit, not a throwaway mock. A diff you can review, commit, or undo.</p>
+            <div class="why-visual why-visual--writes">
+              <div class="why-writes-card">
+                <div class="why-writes-head">
+                  <span class="why-writes-check">&check;</span>
+                  <span class="why-writes-label">Wrote</span>
+                  <span class="why-writes-file">src/Hero.astro</span>
+                </div>
+                <div class="why-writes-diff">
+                  <div class="why-writes-line why-writes-line--del">- "Welcome to Our Hotel"</div>
+                  <div class="why-writes-line why-writes-line--add">+ "Where the coast forgets time"</div>
+                  <div class="why-writes-line why-writes-line--del">- "Book Now"</div>
+                  <div class="why-writes-line why-writes-line--add">+ "Reserve your stay"</div>
+                </div>
+              </div>
+            </div>
           </article>
 
         </div>

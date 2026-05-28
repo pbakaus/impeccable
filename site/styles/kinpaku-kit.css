@@ -1094,6 +1094,7 @@
 .home-kinpaku .live-demo-gbar-brand,
 .live-mode-kinpaku .live-demo-gbar-brand {
   color: var(--ks-kinpaku);
+  background: transparent;
 }
 
 .home-kinpaku .live-demo-gbar-btn,
@@ -1118,7 +1119,7 @@
   align-items: center;
   height: 28px;
   width: 88px;
-  margin: 0 4px 0 2px;
+  margin: 0 4px 0 6px;
   border-radius: 7px;
   background: var(--ks-graphite);
   border: 1px solid var(--ks-rule);
