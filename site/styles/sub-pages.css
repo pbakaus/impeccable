@@ -2231,8 +2231,8 @@ main#main {
   margin-bottom: 0.6em;
 }
 
-.prose h1 { font-family: var(--font-display); font-size: 1.875rem; font-weight: 500; font-style: italic; }
-.prose h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; font-style: italic; margin-top: 2.2em; }
+.prose h1 { font-family: var(--font-display); font-size: 1.875rem; font-weight: 500; }
+.prose h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 500; margin-top: 2.2em; }
 .prose h3 { font-size: 1.125rem; margin-top: 1.8em; }
 .prose h4 { font-size: 1rem; }
 
