@@ -2051,18 +2051,57 @@ function isCreamColor(rgb) {
   return warmth >= 6 && warmth <= 48;           // tinted, not white, not strong
 }
 
+// Tailwind background utilities that render as a warm off-white surface. The
+// static engine doesn't fetch Tailwind's CSS, so a `bg-amber-50` on <body>
+// resolves to nothing in computed style — catch it from the class list
+// instead. Candidate tokens map to their actual Tailwind hex and are still
+// filtered through isCreamColor, so neutral grays (stone) and over-saturated
+// shades drop out on their own.
+const TAILWIND_BG_HEX = {
+  'bg-amber-50': '#fffbeb', 'bg-amber-100': '#fef3c7',
+  'bg-orange-50': '#fff7ed', 'bg-orange-100': '#ffedd5',
+  'bg-yellow-50': '#fefce8',
+  'bg-stone-50': '#fafaf9', 'bg-stone-100': '#f5f5f4', 'bg-stone-200': '#e7e5e4',
+};
+
+function creamFromClassList(cls) {
+  if (!cls) return null;
+  // Arbitrary value: bg-[#f5f0e6] / bg-[rgb(245_240_230)] (underscores = spaces).
+  const arb = cls.match(/\bbg-\[([^\]]+)\]/);
+  if (arb && isCreamColor(parseAnyColor(arb[1].replace(/_/g, ' ')))) return `bg-[${arb[1]}]`;
+  // Named warm-light utilities.
+  for (const [tok, hex] of Object.entries(TAILWIND_BG_HEX)) {
+    if (new RegExp(`(^|\\s)${tok}($|\\s)`).test(cls) && isCreamColor(parseAnyColor(hex))) return tok;
+  }
+  return null;
+}
+
 function checkCreamPalette(doc, win) {
   const findings = [];
   const body = doc.body || (doc.querySelector ? doc.querySelector('body') : null);
   if (!body) return findings;
+  const html = doc.documentElement;
   const getCS = (el) => (win ? win.getComputedStyle(el) : getComputedStyle(el));
+
+  // 1. Computed background — covers inline / <style> / linked CSS, and Tailwind
+  //    once it's actually rendered (browser path).
   let bg = readOwnBackgroundColor(body, getCS(body));
   if (!bg || bg.a === 0) {
-    const html = doc.documentElement;
     if (html) bg = readOwnBackgroundColor(html, getCS(html));
   }
   if (isCreamColor(bg)) {
     findings.push({ id: 'cream-palette', snippet: `cream/beige page background rgb(${bg.r}, ${bg.g}, ${bg.b})` });
+    return findings;
+  }
+
+  // 2. Tailwind class fallback — for the static path, where utility classes
+  //    never resolve to computed CSS.
+  for (const el of [body, html]) {
+    const tok = creamFromClassList(el && el.getAttribute ? el.getAttribute('class') : '');
+    if (tok) {
+      findings.push({ id: 'cream-palette', snippet: `cream/beige page background (Tailwind ${tok})` });
+      break;
+    }
   }
   return findings;
 }

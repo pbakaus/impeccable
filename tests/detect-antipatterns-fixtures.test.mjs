@@ -574,6 +574,16 @@ describe('detectHtml — cream-palette', () => {
     const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
     assert.equal(f.some(r => r.antipattern === 'cream-palette'), false, 'neutral page must not flag cream-palette');
   });
+
+  it('cream-palette: catches a Tailwind warm-light bg utility on body', async () => {
+    // No inline/<style> background — only a `bg-amber-50` class, which the
+    // static engine can't resolve to computed CSS. The class-list fallback
+    // must still flag it.
+    const f = await detectHtml(path.join(FIXTURES, 'cream-palette-tailwind.html'));
+    const hits = f.filter(r => r.antipattern === 'cream-palette');
+    assert.equal(hits.length, 1, `expected one cream-palette finding, got: ${hits.map(r => r.snippet).join('; ')}`);
+    assert.match(hits[0].snippet, /amber-50/, 'snippet should name the Tailwind utility');
+  });
 });
 
 describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
