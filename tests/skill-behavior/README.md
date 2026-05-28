@@ -41,7 +41,7 @@ The trace is the source of truth, not the model's free-form reply.
 
 | # | Setup | Assertion |
 |---|---|---|
-| 1 | empty workspace | runs `context.mjs` (which prints a `NO_PRODUCT_MD` directive); agent then loads `reference/teach.md` via Read or `cat`; does **not** start writing HTML/CSS |
+| 1 | empty workspace | runs `context.mjs` (which prints a `NO_PRODUCT_MD` directive); agent then loads `reference/init.md` via Read or `cat`; does **not** start writing HTML/CSS |
 | 2 | PRODUCT.md only (with `## Register: brand`) | runs `context.mjs` 1-3 times; loads `reference/brand.md` |
 | 3 | PRODUCT.md + DESIGN.md (brand register) | runs `context.mjs` 1-3 times; loads `reference/brand.md`; consults the design system (DESIGN.md bundled in output, but CSS / tokens / directory listing also count) |
 | 4 | PRODUCT.md + DESIGN.md, context already loaded in turn 1 | turn 2 does **not** re-run `context.mjs`; `reference/brand.md` is loaded across turns 1+2 |
@@ -61,7 +61,7 @@ a regression is "more failures than baseline", not "any failures at all".
 
 | Scenario | claude-haiku-4-5 | gpt-5.4-mini | gemini-3.1-flash-lite |
 |---|---|---|---|
-| 1 (no context) | pass (rare flake — agent stops after `context.mjs` without loading `teach.md`) | pass | pass |
+| 1 (no context) | pass (rare flake — agent stops after `context.mjs` without loading `init.md`) | pass | pass |
 | 2 (product only) | pass | pass | pass |
 | 3 (product + design) | pass | pass | pass (rare flake — sub-command ref loads but register ref doesn't) |
 | 4 (already loaded) | pass | pass | pass |

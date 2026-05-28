@@ -491,7 +491,7 @@ async function install(flags) {
     // Cleanup script not available -- skip
   }
 
-  console.log(`\nDone! Run /${prefix}impeccable teach in your AI harness to set up design context.\n`);
+  console.log(`\nDone! Run /${prefix}impeccable init in your AI harness to set up design context.\n`);
 }
 
 /** Detect prefix by looking for the 'impeccable' skill (or legacy 'teach-impeccable') */

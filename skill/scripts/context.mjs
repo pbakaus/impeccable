@@ -2,7 +2,7 @@
  * Context loader: prints PRODUCT.md (and DESIGN.md if present) as one
  * markdown block on stdout, or exits with empty stdout when no PRODUCT.md
  * is found anywhere. The skill keys off "empty stdout" to branch into the
- * teach flow.
+ * init flow.
  *
  * Path resolution (first match wins):
  *   1. cwd, if PRODUCT.md or DESIGN.md is there
@@ -102,7 +102,7 @@ function cli() {
     // — cheap models miss the empty case more often than the explicit one.
     process.stdout.write(
       'NO_PRODUCT_MD: This project has no PRODUCT.md yet. ' +
-      'Stop the current task, load reference/teach.md, and follow its ' +
+      'Stop the current task, load reference/init.md, and follow its ' +
       'instructions to write PRODUCT.md before resuming.\n',
     );
     process.exit(0);

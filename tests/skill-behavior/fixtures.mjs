@@ -2,7 +2,7 @@
  * Realistic-looking PRODUCT.md / DESIGN.md fixtures.
  *
  * Long enough to clear the "<200 chars / placeholder" heuristic the loader
- * uses to decide whether to gate on `teach`. Plausible enough that the agent
+ * uses to decide whether to gate on `init`. Plausible enough that the agent
  * treats them as real context rather than test scaffolding.
  */
 export const PRODUCT_MD_SAMPLE = `# Acme Notes

@@ -42,10 +42,10 @@ export function renderCommandDemo(commandId) {
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; gap: 8px; align-items: baseline;">
-                    <code style="font-size: 12px; color: var(--spread-accent, var(--color-accent)); font-weight: 600; white-space: nowrap;">/impeccable teach</code>
+                    <code style="font-size: 12px; color: var(--spread-accent, var(--color-accent)); font-weight: 600; white-space: nowrap;">/impeccable init</code>
                     <span style="opacity: 0.4; font-size: 11px;">one-time setup</span>
                   </div>
-                  <span style="padding-left: 0; opacity: 0.8;">Scans your codebase, interviews you about brand and audience, then saves a Design Context that all other commands use automatically.</span>
+                  <span style="padding-left: 0; opacity: 0.8;">Scans your codebase, interviews you about brand and audience, saves a Design Context all other commands use, configures live mode, and points you at what to run next.</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; gap: 8px; align-items: baseline;">
@@ -55,7 +55,7 @@ export function renderCommandDemo(commandId) {
                   <span style="padding-left: 0; opacity: 0.8;">Runs /shape to plan UX first, loads the right references, then builds and iterates visually until the result delights.</span>
                 </div>
               </div>
-              <div style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">Start with <code style="font-size: 11px;">/impeccable teach</code> once per project. Then use the other modes as needed.</div>
+              <div style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">Start with <code style="font-size: 11px;">/impeccable init</code> once per project. Then use the other modes as needed.</div>
             </div>
           </div>
         </div>
@@ -100,8 +100,8 @@ export function renderCommandDemo(commandId) {
         </div>
       `;
     }
-    // teach sets up the project's design context, show the flow
-    if (commandId === 'teach') {
+    // init sets up the project's design context, show the flow
+    if (commandId === 'init') {
       return `
         <div class="demo-container">
           <div class="demo-viewport" style="padding: var(--spacing-lg); font-size: 13px; line-height: 1.6;">
@@ -122,9 +122,15 @@ export function renderCommandDemo(commandId) {
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; gap: 8px; align-items: baseline;">
-                    <span style="color: var(--spread-accent, var(--color-accent)); font-weight: 600; font-size: 12px;">3. Save</span>
+                    <span style="color: var(--spread-accent, var(--color-accent)); font-weight: 600; font-size: 12px;">3. Configure</span>
                   </div>
-                  <span style="opacity: 0.8;">Writes a <code style="font-size: 11px;">PRODUCT.md</code> file with users, brand, aesthetic direction, and design principles. Every future command reads it automatically.</span>
+                  <span style="opacity: 0.8;">Writes <code style="font-size: 11px;">PRODUCT.md</code> with users, brand, and design principles, optionally a <code style="font-size: 11px;">DESIGN.md</code> visual spec, and sets up live mode so it just works.</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; gap: 8px; align-items: baseline;">
+                    <span style="color: var(--spread-accent, var(--color-accent)); font-weight: 600; font-size: 12px;">4. Recommend</span>
+                  </div>
+                  <span style="opacity: 0.8;">Points you at the best commands to run next, picked from what the scan found. No more guessing where to start.</span>
                 </div>
               </div>
               <div style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">Run once per project. Then forget it exists.</div>

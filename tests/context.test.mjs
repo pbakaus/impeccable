@@ -187,7 +187,7 @@ describe('context.mjs CLI', () => {
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8' });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^NO_PRODUCT_MD:/);
-    assert.match(res.stdout, /reference\/teach\.md/);
+    assert.match(res.stdout, /reference\/init\.md/);
   });
 
   it('prints a PRODUCT.md markdown block when only PRODUCT.md exists', async () => {

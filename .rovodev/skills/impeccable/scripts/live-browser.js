@@ -3125,7 +3125,7 @@
       switch (msg.type) {
         case 'connected':
           hasProjectContext = !!msg.hasProjectContext;
-          if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable teach to generate one.', 7000);
+          if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable init to generate one.', 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();

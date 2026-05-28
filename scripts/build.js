@@ -616,7 +616,9 @@ function generateCFConfig(buildDir) {
 /gallery /slop#try-it-live 301
 /cheatsheet /docs 301
 /skills /docs 301
+/skills/teach /docs/init 301
 /skills/:id /docs/:id 301
+/docs/teach /docs/init 301
 /anti-patterns /slop#catalog 301
 /visual-mode /slop#see-it 301
 /neon-mirai /neo-mirai/ 301

@@ -37,6 +37,6 @@ Expected diff:
 
 ## Pitfalls
 
-- **Asking for a new font without context.** Typeset will pick based on the `PRODUCT.md` brand voice. If you have not run `/impeccable teach`, the suggestion will be generic.
+- **Asking for a new font without context.** Typeset will pick based on the `PRODUCT.md` brand voice. If you have not run `/impeccable init`, the suggestion will be generic.
 - **Reaching for typeset when the issue is layout.** If paragraphs are fine but the page feels cramped, you want `/impeccable layout`.
 - **Expecting fluid clamp scales on app UIs.** Typeset uses fixed rem scales for app interfaces. Fluid typography is for marketing and content pages where line length varies dramatically.

@@ -68,20 +68,20 @@ for (const modelId of resolveModelList()) {
         });
         logTrace('S1', 'no-context', modelId, trace, { textSample: text.slice(0, 400) });
         // Agent runs context.mjs, sees NO_PRODUCT_MD directive, loads
-        // teach.md and follows it. Accept either Read or bash `cat` for
-        // the teach.md load — different models pick different tools.
+        // init.md and follows it. Accept either Read or bash `cat` for
+        // the init.md load — different models pick different tools.
         const loadCalls = bashCommandsMatching(trace, 'context.mjs');
         assert.ok(
           loadCalls.length >= 1,
           `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
-        const teachLoaded =
-          readsMatching(trace, 'teach.md').length > 0 ||
-          bashCommandsMatching(trace, 'teach.md').length > 0;
+        const initLoaded =
+          readsMatching(trace, 'init.md').length > 0 ||
+          bashCommandsMatching(trace, 'init.md').length > 0;
         assert.ok(
-          teachLoaded,
-          `expected agent to load teach.md (via Read or bash cat) after context.mjs reported NO_PRODUCT_MD.\n` +
+          initLoaded,
+          `expected agent to load init.md (via Read or bash cat) after context.mjs reported NO_PRODUCT_MD.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // We do NOT want it to silently barrel into design work.

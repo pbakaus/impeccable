@@ -61,7 +61,7 @@ Optional evocative subtitles are allowed in the form `## 2. Colors: The [Name] P
 
 ## When to run
 
-- The user just ran `/impeccable teach` and needs the visual side documented.
+- The user just ran `/impeccable init` and needs the visual side documented.
 - The skill noticed no `DESIGN.md` exists and nudged the user to create one.
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
@@ -71,7 +71,7 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 ## Two paths
 
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
-- **Seed mode**: the project is pre-implementation (fresh teach, nothing built yet). Interview for five high-level answers, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
+- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Interview for five high-level answers, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
 
 Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` forces seed mode regardless of code presence.
 

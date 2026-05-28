@@ -89,7 +89,7 @@ function renderDesktopLayout(container, commands) {
         'refine': ['typeset', 'layout', 'colorize', 'animate', 'delight', 'bolder', 'quieter', 'overdrive'],
         'simplify': ['distill', 'clarify', 'adapt'],
         'harden': ['polish', 'optimize', 'harden'],
-        'system': ['teach', 'extract']
+        'system': ['init', 'extract']
     };
     const grouped = {};
     filteredCommands.forEach(cmd => {

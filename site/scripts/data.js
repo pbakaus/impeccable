@@ -87,7 +87,7 @@ export const commandProcessSteps = {
   'optimize': ['Profile', 'Identify', 'Improve', 'Measure'],
   'harden': ['Assess', 'Implement', 'Test', 'Verify'],
   'onboard': ['Identify', 'Design', 'Guide', 'Measure'],
-  'teach': ['Explore', 'Interview', 'Synthesize', 'Save'],
+  'init': ['Explore', 'Interview', 'Configure', 'Recommend'],
   'document': ['Scan', 'Extract', 'Describe', 'Write'],
   'extract': ['Identify', 'Abstract', 'Migrate', 'Document'],
   'live': ['Start', 'Select', 'Generate', 'Accept']
@@ -120,7 +120,7 @@ export const commandCategories = {
   'harden': 'harden',
   'onboard': 'harden',
   // SYSTEM - setup and tooling
-  'teach': 'system',
+  'init': 'system',
   'document': 'system',
   'extract': 'system',
   'live': 'system'
@@ -156,7 +156,7 @@ export const commandRelationships = {
   'optimize': { flow: 'Harden: Performance improvements' },
   'harden': { combinesWith: ['optimize'], flow: 'Harden: Edge cases, error handling, and i18n' },
   'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Harden: First-run experiences and empty states' },
-  'teach': { flow: 'System: One-time project design context setup' },
+  'init': { flow: 'System: One-time project setup. Context, live config, next steps' },
   'extract': { flow: 'System: Extract design system components and tokens' },
   'live': { flow: 'System: Visual variant mode in the browser' }
 };

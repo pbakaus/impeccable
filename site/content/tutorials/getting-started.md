@@ -2,7 +2,7 @@
 title: Getting started
 tagline: "From zero to your first polish pass in five minutes."
 order: 1
-description: "Install Impeccable, run /impeccable teach once to establish project context, and run /impeccable polish on something that already exists. The fastest path to seeing what Impeccable changes about AI-generated design."
+description: "Install Impeccable, run /impeccable init once to establish project context, and run /impeccable polish on something that already exists. The fastest path to seeing what Impeccable changes about AI-generated design."
 ---
 
 ## What you'll build
@@ -31,22 +31,24 @@ If you use a command often, pin it with `/impeccable pin <command>` to create a 
 From the root of your project, run:
 
 ```
-npx skills add pbakaus/impeccable
+npx impeccable skills install
 ```
 
-This auto-detects your harness and writes the skill files to the right location (e.g., `.claude/skills/`, `.cursor/skills/`). Reload your harness and type `/`. You should see `/impeccable` in the autocomplete. Type it and the skill's argument hint will show all available commands.
+This auto-detects your harness and writes the build compiled for it to the right location (e.g., `.claude/skills/`, `.cursor/skills/`). It works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other major harness. Reload your harness and type `/`. You should see `/impeccable` in the autocomplete. Type it and the skill's argument hint will show all available commands.
 
-## Step 2. Teach Impeccable about your project
+Prefer a different setup? Claude Code users can install the plugin with `/plugin marketplace add pbakaus/impeccable`, and the general-purpose `npx skills add pbakaus/impeccable` still works (though it installs one shared build for all harnesses rather than the one compiled for yours).
 
-This is the most important step. Design without context produces generic output. The `/impeccable teach` command runs a short discovery interview and writes a `PRODUCT.md` file at the root of your project.
+## Step 2. Set up Impeccable for your project
+
+This is the most important step. Design without context produces generic output. The `/impeccable init` command runs a short discovery interview and writes a `PRODUCT.md` file at the root of your project.
 
 Run:
 
 ```
-/impeccable teach
+/impeccable init
 ```
 
-The first question is about **register**: is this a brand surface (marketing site, landing page, portfolio, where design IS the product) or a product surface (app UI, dashboard, tools, where design SERVES the product)? Register shapes every downstream default, from type lanes to motion energy. See [brand vs product](/tutorials/brand-vs-product) for how the two diverge. Teach will form a hypothesis from your codebase and ask you to confirm, rather than starting cold.
+The first question is about **register**: is this a brand surface (marketing site, landing page, portfolio, where design IS the product) or a product surface (app UI, dashboard, tools, where design SERVES the product)? Register shapes every downstream default, from type lanes to motion energy. See [brand vs product](/tutorials/brand-vs-product) for how the two diverge. Init will form a hypothesis from your codebase and ask you to confirm, rather than starting cold.
 
 Then a handful of shorter questions:
 
@@ -61,7 +63,7 @@ Open `PRODUCT.md` and read what it wrote. Edit anything that does not feel right
 
 ## Step 2.5. Capture the visual system
 
-At the end of `/impeccable teach`, the skill offers to run `/impeccable document` for you. Say yes. It scans your tokens (CSS custom properties, Tailwind config, CSS-in-JS themes), extracts colors and typography, asks one grouped question for the parts that need creative input (a Creative North Star, descriptive color names), and writes a `DESIGN.md` that follows the [Google Stitch DESIGN.md format](https://stitch.withgoogle.com/docs/design-md/format/).
+At the end of `/impeccable init`, the skill offers to run `/impeccable document` for you. Say yes. It scans your tokens (CSS custom properties, Tailwind config, CSS-in-JS themes), extracts colors and typography, asks one grouped question for the parts that need creative input (a Creative North Star, descriptive color names), and writes a `DESIGN.md` that follows the [Google Stitch DESIGN.md format](https://stitch.withgoogle.com/docs/design-md/format/).
 
 On a fresh project with no tokens yet, document runs in seed mode: five quick questions about color strategy, type direction, and motion energy, and writes a scaffold you can refresh once there is code.
 
@@ -101,6 +103,6 @@ Review the diff. If something does not feel right, ask the model to explain the 
 
 ## Common issues
 
-- **The skill says "no design context found"**. You skipped step 2. Run `/impeccable teach` first.
+- **The skill says "no design context found"**. You skipped step 2. Run `/impeccable init` first.
 - **Commands do not appear in the harness**. Reload the harness after installing. If they still do not appear, check that the installer wrote files into the expected location (`.claude/skills/`, `.cursor/skills/`, etc.) and that your harness is picking up that directory.
 - **The polish pass rewrote something you liked**. Say so. Revert the change, tell the model which specific edit to undo, and continue from there.
