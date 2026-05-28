@@ -207,21 +207,25 @@ cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 
 ## Usage
 
-Once installed, use commands in your AI harness:
+Once installed, every command runs through the single `/impeccable` skill:
 
 ```
-/audit           # Find issues
-/normalize       # Fix inconsistencies
-/polish          # Final cleanup
-/distill         # Remove complexity
+/impeccable audit        # Find issues
+/impeccable polish       # Final cleanup
+/impeccable distill      # Remove complexity
+/impeccable critique     # Full design review
 ```
+
+Type `/impeccable` alone to see the full command list.
 
 Most commands accept an optional argument to focus on a specific area:
 
 ```
-/audit header
-/polish checkout-form
+/impeccable audit the header
+/impeccable polish the checkout form
 ```
+
+If you reach for one command often, pin it with `/impeccable pin audit` to get `/audit` as a standalone shortcut.
 
 **Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
 
