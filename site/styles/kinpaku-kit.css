@@ -704,25 +704,27 @@
 
 
 /* ============================================================
-   Site header (kinpaku theme)
+   Site chrome (kinpaku theme) — shared header AND footer
 
-   Shared header styling for every kinpaku-themed page. Scoped to a
-   selector list rather than the bare `.site-header` element so legacy
-   light-theme pages (if any remain) don't accidentally inherit the
-   dark-lacquer chrome. Add new kinpaku pages to the selector list as
-   they ship.
+   One definition for every kinpaku page, keyed off a single
+   `.kinpaku-chrome` body class instead of a per-page selector list. A
+   page opts into the dark-lacquer header + footer by adding
+   `kinpaku-chrome` to its bodyClass (alongside any page-specific class);
+   genuinely light pages (privacy, tutorials) simply omit it.
+
+   This is the reusable unit: the header markup is Header.astro, the
+   footer markup is Footer.astro, and everything visual lives here. Don't
+   re-declare header/footer chrome in per-page stylesheets — the only
+   legitimate per-page override is a deliberate brand moment (e.g. the
+   home page's textured `body.home-kinpaku .site-footer`).
 
    Brand mark + wordmark mirror /design-system's .ks-brand / .ks-mark /
-   .ks-wordmark exactly, so the header is internally consistent across
-   pages. Update the kit values together, not page-by-page.
+   .ks-wordmark exactly, so the header is internally consistent. The
+   github pill and footer treatment used to be home-only / copy-pasted
+   per page; they now live here so every kinpaku page matches.
    ============================================================ */
 
-.home-kinpaku .site-header,
-.designing-kinpaku .site-header,
-.docs-kinpaku .site-header,
-.slop-kinpaku .site-header,
-.live-mode-kinpaku .site-header,
-.neon-case-page .site-header {
+.kinpaku-chrome .site-header {
   padding: 28px clamp(22px, 4vw, 56px);
   background: linear-gradient(180deg, oklch(5% 0.004 95 / 0.92), oklch(5% 0.004 95 / 0.68));
   border-bottom: 1px solid oklch(78% 0.12 82 / 0.18);
@@ -771,12 +773,7 @@
    header into a vertical panel that's hidden by default and revealed when
    the hamburger toggles data-nav-open="true" on the header. */
 @media (max-width: 760px) {
-  .home-kinpaku .site-header,
-  .designing-kinpaku .site-header,
-  .docs-kinpaku .site-header,
-  .slop-kinpaku .site-header,
-  .live-mode-kinpaku .site-header,
-  .neon-case-page .site-header {
+  .kinpaku-chrome .site-header {
     flex-wrap: wrap;
     padding: 16px clamp(16px, 4vw, 24px);
     row-gap: 12px;
@@ -807,12 +804,7 @@
     display: flex;
   }
 
-  .home-kinpaku .site-header-nav,
-  .designing-kinpaku .site-header-nav,
-  .docs-kinpaku .site-header-nav,
-  .slop-kinpaku .site-header-nav,
-  .live-mode-kinpaku .site-header-nav,
-  .neon-case-page .site-header-nav {
+  .kinpaku-chrome .site-header-nav {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -840,12 +832,7 @@
     display: block;
   }
 
-  .home-kinpaku .site-header-github,
-  .designing-kinpaku .site-header-github,
-  .docs-kinpaku .site-header-github,
-  .slop-kinpaku .site-header-github,
-  .live-mode-kinpaku .site-header-github,
-  .neon-case-page .site-header-github {
+  .kinpaku-chrome .site-header-github {
     align-self: flex-start;
     margin: 12px clamp(16px, 4vw, 24px) 6px;
   }
@@ -857,12 +844,7 @@
   }
 }
 
-.home-kinpaku .site-header-brand,
-.designing-kinpaku .site-header-brand,
-.docs-kinpaku .site-header-brand,
-.slop-kinpaku .site-header-brand,
-.live-mode-kinpaku .site-header-brand,
-.neon-case-page .site-header-brand {
+.kinpaku-chrome .site-header-brand {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -871,12 +853,7 @@
   text-decoration: none;
 }
 
-.home-kinpaku .site-header-brand-logo,
-.designing-kinpaku .site-header-brand-logo,
-.docs-kinpaku .site-header-brand-logo,
-.slop-kinpaku .site-header-brand-logo,
-.live-mode-kinpaku .site-header-brand-logo,
-.neon-case-page .site-header-brand-logo {
+.kinpaku-chrome .site-header-brand-logo {
   width: 38px;
   height: 38px;
   display: grid;
@@ -886,28 +863,13 @@
   box-shadow: none;
 }
 
-.home-kinpaku .site-header-brand-logo svg,
-.designing-kinpaku .site-header-brand-logo svg,
-.docs-kinpaku .site-header-brand-logo svg,
-.slop-kinpaku .site-header-brand-logo svg,
-.live-mode-kinpaku .site-header-brand-logo svg,
-.neon-case-page .site-header-brand-logo svg {
+.kinpaku-chrome .site-header-brand-logo svg {
   width: 32px;
   height: 32px;
 }
 
-.home-kinpaku .site-header-brand-name,
-.home-kinpaku .footer-logo,
-.designing-kinpaku .site-header-brand-name,
-.designing-kinpaku .footer-logo,
-.docs-kinpaku .site-header-brand-name,
-.docs-kinpaku .footer-logo,
-.slop-kinpaku .site-header-brand-name,
-.slop-kinpaku .footer-logo,
-.live-mode-kinpaku .site-header-brand-name,
-.live-mode-kinpaku .footer-logo,
-.neon-case-page .site-header-brand-name,
-.neon-case-page .footer-logo {
+.kinpaku-chrome .site-header-brand-name,
+.kinpaku-chrome .footer-logo {
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 500;
@@ -923,41 +885,65 @@
   -moz-osx-font-smoothing: auto;
 }
 
-.home-kinpaku .site-header-nav,
-.designing-kinpaku .site-header-nav,
-.docs-kinpaku .site-header-nav,
-.slop-kinpaku .site-header-nav,
-.live-mode-kinpaku .site-header-nav,
-.neon-case-page .site-header-nav {
+.kinpaku-chrome .site-header-nav {
   gap: clamp(22px, 3vw, 48px);
   font-family: var(--ks-font);
   font-size: 0.95rem;
   font-weight: 400;
 }
 
-.home-kinpaku .site-header-nav a,
-.home-kinpaku .site-header-github,
-.designing-kinpaku .site-header-nav a,
-.designing-kinpaku .site-header-github,
-.docs-kinpaku .site-header-nav a,
-.docs-kinpaku .site-header-github,
-.slop-kinpaku .site-header-nav a,
-.slop-kinpaku .site-header-github,
-.live-mode-kinpaku .site-header-nav a,
-.live-mode-kinpaku .site-header-github,
-.neon-case-page .site-header-nav a,
-.neon-case-page .site-header-github {
+.kinpaku-chrome .site-header-nav a,
+.kinpaku-chrome .site-header-github {
   color: var(--ks-champagne);
 }
 
-.docs-kinpaku .site-header-nav a:hover,
-.docs-kinpaku .site-header-nav a[aria-current="page"],
-.slop-kinpaku .site-header-nav a:hover,
-.slop-kinpaku .site-header-nav a[aria-current="page"],
-.live-mode-kinpaku .site-header-nav a:hover,
-.live-mode-kinpaku .site-header-nav a[aria-current="page"],
-.neon-case-page .site-header-nav a:hover,
-.neon-case-page .site-header-nav a[aria-current="page"] {
+.kinpaku-chrome .site-header-nav a:hover,
+.kinpaku-chrome .site-header-nav a[aria-current="page"] {
+  color: var(--ks-kinpaku);
+}
+
+/* GitHub star pill. Previously home-only; now every kinpaku page gets it. */
+.kinpaku-chrome .site-header-github {
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: oklch(10% 0.006 95 / 0.74);
+}
+
+.kinpaku-chrome .site-header-github:hover {
+  color: var(--ks-patina);
+  border-color: var(--ks-patina);
+  background: oklch(70% 0.105 190 / 0.08);
+}
+
+.kinpaku-chrome .site-header-github-star {
+  color: var(--ks-kinpaku);
+}
+
+/* ============================================================
+   Site footer (kinpaku theme) — the default dark footer for every
+   kinpaku page. Was copy-pasted identically into slop/docs/designing/
+   live-mode stylesheets; lives here once now. The home page layers a
+   textured verdigris divider on top via `body.home-kinpaku .site-footer`
+   (higher specificity, so it wins regardless of import order).
+   ============================================================ */
+.kinpaku-chrome .site-footer {
+  background: oklch(4% 0.004 95);
+  border-top: 1px solid var(--ks-rule);
+}
+
+.kinpaku-chrome .footer-links a,
+.kinpaku-chrome .footer-credit,
+.kinpaku-chrome .footer-social-link {
+  color: var(--ks-text-muted);
+}
+
+.kinpaku-chrome .footer-credit a {
+  color: var(--ks-champagne);
+}
+
+.kinpaku-chrome .footer-links a:hover,
+.kinpaku-chrome .footer-credit a:hover,
+.kinpaku-chrome .footer-social-link:hover {
   color: var(--ks-kinpaku);
 }
 

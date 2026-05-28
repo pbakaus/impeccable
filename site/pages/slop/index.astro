@@ -6,10 +6,10 @@ import '../../styles/slop-kinpaku.css';
 
 <Base
   title="Slop | Impeccable"
-  description="37 patterns that mark an interface as AI-generated, plus the live detection overlay that catches them in place. The rule catalog behind npx impeccable detect, the browser extension, and /impeccable critique."
+  description="46 patterns that mark an interface as AI-generated, plus the live detection overlay that catches them in place. The rule catalog behind npx impeccable detect, the browser extension, and /impeccable critique."
   activeNav="slop"
   canonicalPath="/slop"
-  bodyClass="sub-page skills-layout-page slop-page slop-kinpaku"
+  bodyClass="sub-page skills-layout-page slop-page slop-kinpaku kinpaku-chrome"
 >
 
 <div class="skills-layout">
@@ -26,16 +26,16 @@ import '../../styles/slop-kinpaku.css';
         <li><a href="#see-it"><span>See it</span></a></li>
         <li><a href="#try-it-live"><span>Try it live</span><span class="anti-patterns-sidebar-count">11</span></a></li>
         <li>
-          <a href="#catalog"><span>The catalog</span><span class="anti-patterns-sidebar-count">37</span></a>
+          <a href="#catalog"><span>The catalog</span><span class="anti-patterns-sidebar-count">46</span></a>
           <ul class="slop-sidebar-sublist">
-            <li><a href="#section-visual-details"><span>Visual Details</span><span class="anti-patterns-sidebar-count">6</span></a></li>
-            <li><a href="#section-typography"><span>Typography</span><span class="anti-patterns-sidebar-count">6</span></a></li>
-            <li><a href="#section-color-contrast"><span>Color &amp; Contrast</span><span class="anti-patterns-sidebar-count">6</span></a></li>
-            <li><a href="#section-layout-space"><span>Layout &amp; Space</span><span class="anti-patterns-sidebar-count">7</span></a></li>
-            <li><a href="#section-motion"><span>Motion</span><span class="anti-patterns-sidebar-count">2</span></a></li>
-            <li><a href="#section-interaction"><span>Interaction</span><span class="anti-patterns-sidebar-count">2</span></a></li>
-            <li><a href="#section-responsive"><span>Responsive</span><span class="anti-patterns-sidebar-count">1</span></a></li>
-            <li><a href="#section-general-quality"><span>General quality</span><span class="anti-patterns-sidebar-count">7</span></a></li>
+            <li><a href="#section-visual-details"><span>Visual Details</span><span class="anti-patterns-sidebar-count">7</span></a></li>
+            <li><a href="#section-typography"><span>Typography</span><span class="anti-patterns-sidebar-count">10</span></a></li>
+            <li><a href="#section-color-contrast"><span>Color &amp; Contrast</span><span class="anti-patterns-sidebar-count">4</span></a></li>
+            <li><a href="#section-layout-space"><span>Layout &amp; Space</span><span class="anti-patterns-sidebar-count">9</span></a></li>
+            <li><a href="#section-motion"><span>Motion</span><span class="anti-patterns-sidebar-count">3</span></a></li>
+            <li><a href="#section-copy"><span>Copy</span><span class="anti-patterns-sidebar-count">4</span></a></li>
+            <li><a href="#section-imagery"><span>Imagery</span><span class="anti-patterns-sidebar-count">1</span></a></li>
+            <li><a href="#section-general-quality"><span>General quality</span><span class="anti-patterns-sidebar-count">8</span></a></li>
           </ul>
         </li>
         <li><a href="#run-it"><span>Run it yourself</span></a></li>
@@ -49,7 +49,7 @@ import '../../styles/slop-kinpaku.css';
   <header class="anti-patterns-header slop-header">
     <p class="sub-page-eyebrow">The visible tells of AI design</p>
     <h1 class="sub-page-title">Slop</h1>
-    <p class="sub-page-lede">37 patterns that mark an interface as AI-generated, and the detection overlay that catches them in place. Watch it flag them live, try it on 11 synthetic specimens, or browse the full catalog. 25 rules run deterministically (<code>npx impeccable detect</code> or the browser extension); 12 need <a href="/docs/critique">/impeccable critique</a>'s LLM review pass.</p>
+    <p class="sub-page-lede">46 patterns that mark an interface as AI-generated, and the detection overlay that catches them in place. Watch it flag them live, try it on 11 synthetic specimens, or browse the full catalog. 41 rules run deterministically (<code>npx impeccable detect</code> or the browser extension), 4 of them opt-in provider tells behind <code>--gpt</code> / <code>--gemini</code>; 5 need <a href="/docs/critique">/impeccable critique</a>'s LLM review pass.</p>
   </header>
 
   <section class="slop-section slop-then-now" id="see-it" aria-label="Detection overlay demo">
@@ -210,6 +210,7 @@ import '../../styles/slop-kinpaku.css';
           <div><dt><span class="rule-card-layer" data-layer="cli">CLI</span></dt><dd>Deterministic. Runs from <code>npx impeccable detect</code> on files, no browser required.</dd></div>
           <div><dt><span class="rule-card-layer" data-layer="browser">Browser</span></dt><dd>Deterministic, but needs real browser layout. Runs via the browser extension or Puppeteer, not the plain CLI.</dd></div>
           <div><dt><span class="rule-card-layer" data-layer="llm">LLM only</span></dt><dd>No deterministic detector. Caught by <a href="/docs/critique">/impeccable critique</a> during its LLM design review.</dd></div>
+          <div><dt><span class="rule-card-layer" data-layer="optin">opt-in</span></dt><dd>Deterministic, but a provider-specific tell that is off by default. Enable with <code>--gpt</code> or <code>--gemini</code>.</dd></div>
         </dl>
       </div>
     </details>
@@ -219,7 +220,7 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-visual-details">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Visual Details</h3>
-          <p class="anti-patterns-section-count">6 rules</p>
+          <p class="anti-patterns-section-count">7 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -249,32 +250,6 @@ import '../../styles/slop-kinpaku.css';
       </div>
     </article>
 
-    <article class="rule-card" id="rule-modal-reflex" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="position: relative; width: 100%; height: 100%; background: #f5f3ef; border-radius: 8px; overflow: hidden;"><div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35);"></div><div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; border-radius: 8px; padding: 14px 18px; width: 200px; font-family: system-ui, sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.2);"><div style="font-size: 13px; font-weight: 600; color: #111; margin-bottom: 4px;">Are you sure?</div><div style="font-size: 11px; color: #666; margin-bottom: 8px;">Really, truly sure about this?</div><div style="display: flex; gap: 6px; justify-content: flex-end;"><div style="background: #eee; color: #555; padding: 4px 8px; border-radius: 4px; font-size: 10px;">Cancel</div><div style="background: oklch(60% 0.22 265); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 10px;">OK</div></div></div></div></div></div>
-      <div class="rule-card-body">
-        <div class="rule-card-head">
-          <span class="rule-card-category" data-category="slop">AI slop</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
-        </div>
-        <h3 class="rule-card-name">Reaching for modals by reflex</h3>
-        <p class="rule-card-desc">Modals interrupt the user and are lazy as a design default. Use them only when there is truly no better place for the interaction.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
-      </div>
-    </article>
-
-    <article class="rule-card" id="rule-generic-drop-shadows" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="display: flex; gap: 10px;"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 10px; width: 70px; height: 70px; box-shadow: 0 10px 30px rgba(0,0,0,0.08);"></div><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 10px; width: 70px; height: 70px; box-shadow: 0 10px 30px rgba(0,0,0,0.08);"></div><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 10px; width: 70px; height: 70px; box-shadow: 0 10px 30px rgba(0,0,0,0.08);"></div></div></div></div>
-      <div class="rule-card-body">
-        <div class="rule-card-head">
-          <span class="rule-card-category" data-category="slop">AI slop</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
-        </div>
-        <h3 class="rule-card-name">Rounded rectangles with generic drop shadows</h3>
-        <p class="rule-card-desc">The safest, most forgettable shape on the web. Could be the output of any AI. Commit to a stronger visual treatment.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
-      </div>
-    </article>
-
     <article class="rule-card" id="rule-side-tab" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 1px solid #e8e4df; border-left: 4px solid oklch(60% 0.22 265); border-radius: 6px; padding: 14px 16px; width: 220px; font-family: system-ui, sans-serif; font-size: 13px; color: #111;"><div style="font-weight: 600; margin-bottom: 4px;">Alert title</div><div style="color: #666; font-size: 12px;">Thick colored stripe on one side.</div></div></div></div>
       <div class="rule-card-body">
@@ -288,15 +263,56 @@ import '../../styles/slop-kinpaku.css';
       </div>
     </article>
 
-    <article class="rule-card" id="rule-sparkline-decoration" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 8px; padding: 14px 16px; width: 220px; font-family: system-ui, sans-serif;"><div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;"><div><div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.08em;">Revenue</div><div style="font-size: 20px; font-weight: 700; color: #111;">$42.1k</div></div><svg width="60" height="28" viewBox="0 0 60 28" style="flex-shrink: 0;"><polyline points="0,20 10,18 20,22 30,10 40,14 50,6 60,12" stroke="oklch(62% 0.22 265)" stroke-width="2" fill="none"/></svg></div><div style="font-size: 10px; color: #888;">Tiny chart, no real information.</div></div></div></div>
+    <article class="rule-card" id="rule-gpt-thin-border-wide-shadow" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 10px; padding: 14px 18px; width: 200px; box-shadow: 0 0 28px rgba(0,0,0,0.16); font-family: system-ui, sans-serif;"><div style="font-weight: 600; font-size: 13px; color: #111;">Ghost card</div><div style="font-size: 11px; color: #888;">1px hairline plus a wide soft shadow.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+          <span class="rule-card-layer" data-layer="optin" title="Off by default. Enable with --gpt.">opt-in</span>
+        </div>
+        <h3 class="rule-card-name">Hairline border with wide shadow</h3>
+        <p class="rule-card-desc">A hairline border paired with a wide, diffuse shadow is a recurring generated-UI signature. Commit to one: a defined edge or a soft elevation, not both at once.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-repeating-stripes-gradient" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="width: 100%; height: 90px; border-radius: 10px; background: repeating-linear-gradient(45deg, oklch(93% 0.02 80), oklch(93% 0.02 80) 10px, oklch(88% 0.04 80) 10px, oklch(88% 0.04 80) 20px);"></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+          <span class="rule-card-layer" data-layer="optin" title="Off by default. Enable with --gpt.">opt-in</span>
+        </div>
+        <h3 class="rule-card-name">Repeating-gradient stripes</h3>
+        <p class="rule-card-desc">Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture, or leave the surface plain.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-over-round" data-layer="llm">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 44px; padding: 18px 24px; width: 200px; font-family: system-ui, sans-serif;"><div style="font-weight: 600; font-size: 13px; color: #111;">44px radius</div><div style="font-size: 11px; color: #888;">A small card rounded into a blob.</div></div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
           <span class="rule-card-category" data-category="slop">AI slop</span>
           <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
         </div>
-        <h3 class="rule-card-name">Sparklines as decoration</h3>
-        <p class="rule-card-desc">Tiny charts that look sophisticated but convey no meaningful information. If the data matters, give it room.</p>
+        <h3 class="rule-card-name">Extreme border-radius on cards</h3>
+        <p class="rule-card-desc">Over-rounding cards, sections, and inputs (24px and up on a small card) rounds everything into the same soft blob. Cards top out around 12 to 16px; reserve full-pill for tags and buttons.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-sketchy-svg" data-layer="llm">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 6px;"><svg width="110" height="70" viewBox="0 0 110 70" fill="none" stroke="#bbb" stroke-width="2" stroke-linecap="round"><path d="M22 56 q6 -34 32 -32 q26 2 30 30"/><circle cx="44" cy="30" r="3" fill="#bbb" stroke="none"/><circle cx="62" cy="29" r="3" fill="#bbb" stroke="none"/><path d="M46 40 q8 6 16 0"/><path d="M30 60 l-6 8 M78 58 l7 9"/></svg><div style="font-size: 10px; color: #888;">A crude hand-coded mascot.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+        </div>
+        <h3 class="rule-card-name">Amateurish hand-drawn SVG</h3>
+        <p class="rule-card-desc">Hand-coded SVG illustrations of scenes or mascots read as amateur doodles, not whimsy. If you cannot render it with real assets, ship no illustration rather than a sketchy fallback.</p>
         <a class="rule-card-skill-link" href="/docs/impeccable#visual-details">See in /impeccable</a>
       </div>
     </article>
@@ -305,7 +321,7 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-typography">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Typography</h3>
-          <p class="anti-patterns-section-count">6 rules</p>
+          <p class="anti-patterns-section-count">10 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -335,15 +351,67 @@ import '../../styles/slop-kinpaku.css';
       </div>
     </article>
 
-    <article class="rule-card" id="rule-monospace-as-technical" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: 'Courier New', monospace; color: #111;"><div style="font-size: 18px; font-weight: 700; margin-bottom: 6px;">TECHNICAL_TOOL</div><div style="font-size: 11px; color: #555;">Mono for "developer" vibes. Lazy.</div></div></div></div>
+    <article class="rule-card" id="rule-italic-serif-display" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 32px; font-weight: 500; color: #111; line-height: 1.05;">Beautifully<br>Crafted</div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
           <span class="rule-card-category" data-category="slop">AI slop</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
         </div>
-        <h3 class="rule-card-name">Monospace as &quot;technical&quot; shorthand</h3>
-        <p class="rule-card-desc">Using a monospace typeface to signal &quot;developer / technical&quot; vibes. Reach for real type choices instead of a lazy stereotype.</p>
+        <h3 class="rule-card-name">Italic serif display headline</h3>
+        <p class="rule-card-desc">Oversized italic serif as the primary hero headline reads as taste in isolation but has become the universal AI-startup landing page hero. Set it roman, or move to a non-serif display face. Editorial registers may legitimately want it; judge by context.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#typography">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-hero-eyebrow-chip" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111;"><div style="display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: oklch(60% 0.18 265); background: oklch(60% 0.18 265 / 0.12); padding: 3px 8px; border-radius: 999px; margin-bottom: 8px;">Introducing</div><div style="font-size: 22px; font-weight: 700;">The hero headline</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+        </div>
+        <h3 class="rule-card-name">Hero eyebrow / pill chip</h3>
+        <p class="rule-card-desc">A tiny uppercase letter-spaced label sitting immediately above an oversized hero headline, or the same shape rendered as a pill chip, is the default AI SaaS hero. Drop the eyebrow, fold the kicker into the headline, or run it as a breadcrumb instead.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#typography">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-repeated-section-kickers" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111; display: flex; flex-direction: column; gap: 10px;"><div><div style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: #999;">Features</div><div style="font-size: 14px; font-weight: 600;">What you get</div></div><div><div style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: #999;">Pricing</div><div style="font-size: 14px; font-weight: 600;">Simple plans</div></div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+        </div>
+        <h3 class="rule-card-name">Repeated section kicker labels</h3>
+        <p class="rule-card-desc">Repeating tiny uppercase tracked labels above section headings turns a brand page into AI editorial scaffolding. Replace them with stronger structure, artifacts, imagery, or a deliberate brand system.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#typography">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-oversized-h1" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; font-size: 30px; font-weight: 800; color: #111; line-height: 1.0;">Everything your team needs to ship faster</div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+        </div>
+        <h3 class="rule-card-name">Oversized hero headline</h3>
+        <p class="rule-card-desc">A full-sentence headline set at display size dominates the viewport, leaving no room for anything else above the fold. A punchy one or two-word headline at that size is fine; the problem is a long headline blown up too large. Set long headlines smaller, or tighten the copy.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#typography">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-extreme-negative-tracking" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; font-size: 30px; font-weight: 700; color: #111; letter-spacing: -0.07em; line-height: 1.1;">Crushed Together</div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+        </div>
+        <h3 class="rule-card-name">Crushed letter spacing</h3>
+        <p class="rule-card-desc">Letter spacing pulled tighter than the point where characters keep their own shapes costs legibility. Tighten display type optically, not destructively.</p>
         <a class="rule-card-skill-link" href="/docs/impeccable#typography">See in /impeccable</a>
       </div>
     </article>
@@ -391,7 +459,7 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-color-contrast">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Color &amp; Contrast</h3>
-          <p class="anti-patterns-section-count">6 rules</p>
+          <p class="anti-patterns-section-count">4 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -417,19 +485,6 @@ import '../../styles/slop-kinpaku.css';
         </div>
         <h3 class="rule-card-name">Dark mode with glowing accents</h3>
         <p class="rule-card-desc">Dark backgrounds with colored box-shadow glows are the default &quot;cool&quot; look of AI-generated UIs. Use subtle, purposeful lighting instead, or skip the dark theme entirely.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#color-contrast">See in /impeccable</a>
-      </div>
-    </article>
-
-    <article class="rule-card" id="rule-dark-mode-default" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #0f1117; padding: 18px; border-radius: 8px; font-family: system-ui, sans-serif;"><div style="color: #e5e7eb; font-size: 14px; font-weight: 600; margin-bottom: 4px;">Dark by default</div><div style="color: #9ca3af; font-size: 11px;">Defaulting to dark is a retreat from a decision.</div></div></div></div>
-      <div class="rule-card-body">
-        <div class="rule-card-head">
-          <span class="rule-card-category" data-category="slop">AI slop</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
-        </div>
-        <h3 class="rule-card-name">Defaulting to dark mode for &quot;safety&quot;</h3>
-        <p class="rule-card-desc">Defaulting to light mode to be safe is the inverse of defaulting to dark mode to look cool. Either way you are retreating from a decision.</p>
         <a class="rule-card-skill-link" href="/docs/impeccable#color-contrast">See in /impeccable</a>
       </div>
     </article>
@@ -460,24 +515,12 @@ import '../../styles/slop-kinpaku.css';
       </div>
     </article>
 
-    <article class="rule-card" id="rule-pure-black-white" data-layer="cli">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #ffffff; padding: 16px 18px; color: #000000; font-family: system-ui, sans-serif; font-size: 14px;"><div style="font-weight: 600; margin-bottom: 4px;">Pure black on pure white</div><div style="font-size: 12px; color: #000;">Neither exists in nature. Always tint.</div></div></div></div>
-      <div class="rule-card-body">
-        <div class="rule-card-head">
-          <span class="rule-card-category" data-category="quality">Quality</span>
-          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
-        </div>
-        <h3 class="rule-card-name">Pure black background</h3>
-        <p class="rule-card-desc">Pure #000000 as a background color looks harsh and unnatural. Tint it slightly toward your brand hue (e.g., oklch(12% 0.01 250)) for a more refined feel.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#color-contrast">See in /impeccable</a>
-      </div>
-    </article>
         </div>
       </section>
       <section class="anti-patterns-section" id="section-layout-space">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Layout &amp; Space</h3>
-          <p class="anti-patterns-section-count">7 rules</p>
+          <p class="anti-patterns-section-count">9 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -546,15 +589,15 @@ import '../../styles/slop-kinpaku.css';
       </div>
     </article>
 
-    <article class="rule-card" id="rule-everything-in-cards" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 8px; padding: 10px;"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 6px; padding: 8px; font-family: system-ui, sans-serif; font-size: 12px; color: #111;"><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 4px; padding: 6px;">Title</div></div><div style="background: #fff; border: 1px solid #e8e4df; border-radius: 6px; padding: 8px; margin-top: 6px; font-family: system-ui, sans-serif; font-size: 11px; color: #555;">Card around every single thing.</div></div></div></div>
+    <article class="rule-card" id="rule-numbered-section-markers" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111; display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 800; color: oklch(60% 0.18 265);">01</span><span style="font-size: 13px; font-weight: 600;">About</span></div><div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 800; color: oklch(60% 0.18 265);">02</span><span style="font-size: 13px; font-weight: 600;">Process</span></div><div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-size: 16px; font-weight: 800; color: oklch(60% 0.18 265);">03</span><span style="font-size: 13px; font-weight: 600;">Pricing</span></div></div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
           <span class="rule-card-category" data-category="slop">AI slop</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
         </div>
-        <h3 class="rule-card-name">Wrapping everything in cards</h3>
-        <p class="rule-card-desc">Not every piece of content needs a bordered container. Spacing and alignment create visual grouping without the overhead of a card.</p>
+        <h3 class="rule-card-name">Numbered section markers (01 / 02 / 03)</h3>
+        <p class="rule-card-desc">Numbered display markers as section labels are the AI editorial scaffold one tier deeper than tracked eyebrow chips. Numbers earn their place only when the section actually is a sequence.</p>
         <a class="rule-card-skill-link" href="/docs/impeccable#layout-space">See in /impeccable</a>
       </div>
     </article>
@@ -571,12 +614,38 @@ import '../../styles/slop-kinpaku.css';
         <a class="rule-card-skill-link" href="/docs/impeccable#layout-space">See in /impeccable</a>
       </div>
     </article>
+
+    <article class="rule-card" id="rule-text-overflow" data-layer="browser">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="width: 150px; border: 1px solid #e8e4df; border-radius: 6px; padding: 8px 10px; font-family: system-ui, sans-serif; font-size: 12px; color: #111; white-space: nowrap;">A long line of text that refuses to wrap and spills past its box</div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="quality">Quality</span>
+          <span class="rule-card-layer" data-layer="browser" title="Deterministic, but needs real browser layout. Runs via the browser extension or Puppeteer, not the plain CLI.">Browser</span>
+        </div>
+        <h3 class="rule-card-name">Content overflowing its container</h3>
+        <p class="rule-card-desc">Content renders wider than its container, spilling out or forcing a horizontal scrollbar. Let text wrap, constrain widths, or give the region a deliberate scroll affordance.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#layout-space">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-clipped-overflow-container" data-layer="browser">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="position: relative; width: 150px; height: 64px; border: 1px solid #e8e4df; border-radius: 6px; overflow: hidden; font-family: system-ui, sans-serif;"><div style="padding: 8px 10px; font-size: 11px; font-weight: 600; color: #111;">Menu</div><div style="position: absolute; top: 38px; left: 10px; width: 150px; background: #1a1a1a; color: #fff; font-size: 10px; padding: 6px 8px; border-radius: 4px;">Dropdown clipped by the box</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="quality">Quality</span>
+          <span class="rule-card-layer" data-layer="browser" title="Deterministic, but needs real browser layout. Runs via the browser extension or Puppeteer, not the plain CLI.">Browser</span>
+        </div>
+        <h3 class="rule-card-name">Positioned child clipped by overflow container</h3>
+        <p class="rule-card-desc">A clipping container (overflow hidden or clip) wrapping an absolutely-positioned child cuts off tooltips, menus, and popovers that need to escape. Let the overflow be visible, or move the positioned layer out of the clip.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#layout-space">See in /impeccable</a>
+      </div>
+    </article>
         </div>
       </section>
       <section class="anti-patterns-section" id="section-motion">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Motion</h3>
-          <p class="anti-patterns-section-count">2 rules</p>
+          <p class="anti-patterns-section-count">3 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -605,59 +674,100 @@ import '../../styles/slop-kinpaku.css';
         <a class="rule-card-skill-link" href="/docs/impeccable#motion">See in /impeccable</a>
       </div>
     </article>
+
+    <article class="rule-card" id="rule-image-hover-transform" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="display: flex; align-items: center; gap: 10px; font-family: system-ui, sans-serif;"><div style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, oklch(72% 0.10 80), oklch(64% 0.12 60)); transform: scale(1.12);"></div><div style="font-size: 11px; color: #888;">Image scales up on hover.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+          <span class="rule-card-layer" data-layer="optin" title="Off by default. Enable with --gemini.">opt-in</span>
+        </div>
+        <h3 class="rule-card-name">Image hover transform</h3>
+        <p class="rule-card-desc">Scaling or rotating an image on hover is a recurring generated-UI signature. Let imagery sit still, or use a subtler, purposeful interaction.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#motion">See in /impeccable</a>
+      </div>
+    </article>
         </div>
       </section>
-      <section class="anti-patterns-section" id="section-interaction">
+      <section class="anti-patterns-section" id="section-copy">
         <header class="anti-patterns-section-header">
-          <h3 class="anti-patterns-section-title">Interaction</h3>
-          <p class="anti-patterns-section-count">2 rules</p>
+          <h3 class="anti-patterns-section-title">Copy</h3>
+          <p class="anti-patterns-section-count">4 rules</p>
         </header>
         <div class="rule-card-grid">
 
-    <article class="rule-card" id="rule-every-button-primary" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="display: flex; flex-direction: column; gap: 6px; font-family: system-ui, sans-serif;"><div style="display: flex; gap: 6px;"><button style="background: oklch(60% 0.22 265); color: #fff; border: none; border-radius: 5px; padding: 6px 12px; font-size: 11px; font-weight: 600;">Save</button><button style="background: oklch(60% 0.22 265); color: #fff; border: none; border-radius: 5px; padding: 6px 12px; font-size: 11px; font-weight: 600;">Cancel</button><button style="background: oklch(60% 0.22 265); color: #fff; border: none; border-radius: 5px; padding: 6px 12px; font-size: 11px; font-weight: 600;">Delete</button></div><div style="font-size: 10px; color: #888;">Every action shouts equally.</div></div></div></div>
+    <article class="rule-card" id="rule-em-dash-overuse" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: Georgia, serif; font-size: 13px; color: #111; line-height: 1.6; max-width: 230px;">It works <span style="color: oklch(58% 0.15 35);">&mdash;</span> really well <span style="color: oklch(58% 0.15 35);">&mdash;</span> for teams <span style="color: oklch(58% 0.15 35);">&mdash;</span> of any size <span style="color: oklch(58% 0.15 35);">&mdash;</span> anywhere.</div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
-          <span class="rule-card-category" data-category="quality">Quality</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
         </div>
-        <h3 class="rule-card-name">Every button is a primary button</h3>
-        <p class="rule-card-desc">When every button looks equally important, nothing reads as the primary action. Use ghost buttons, text links, and secondary styles to build hierarchy.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#interaction">See in /impeccable</a>
+        <h3 class="rule-card-name">Em-dash overuse</h3>
+        <p class="rule-card-desc">More than a couple of em-dashes in body copy is an AI cadence tell. Use commas, colons, periods, or parentheses instead.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#copy">See in /impeccable</a>
       </div>
     </article>
 
-    <article class="rule-card" id="rule-redundant-headers" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111; max-width: 230px;"><div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">Overview</div><div style="font-size: 11px; color: #555; line-height: 1.5;">This is the overview section, which provides an overview of the overview.</div></div></div></div>
+    <article class="rule-card" id="rule-marketing-buzzword" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111; line-height: 1.5;"><div style="font-size: 16px; font-weight: 700;">Supercharge your workflow</div><div style="font-size: 11px; color: #888;">World-class, enterprise-grade, next-generation.</div></div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
-          <span class="rule-card-category" data-category="quality">Quality</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
         </div>
-        <h3 class="rule-card-name">Redundant information</h3>
-        <p class="rule-card-desc">Intros that restate the heading. Section labels that repeat the page title. Cards that echo their own caption. Make every word earn its place.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#interaction">See in /impeccable</a>
+        <h3 class="rule-card-name">Marketing buzzword</h3>
+        <p class="rule-card-desc">Generic SaaS phrases (streamline, empower, supercharge, world-class, enterprise-grade) are instant AI tells. Pick a specific verb and noun that says what the product literally does.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#copy">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-aphoristic-cadence" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: Georgia, serif; color: #111; line-height: 1.4;"><div style="font-size: 15px; font-weight: 600;">Not a feature.</div><div style="font-size: 15px; font-weight: 600;">A platform.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+        </div>
+        <h3 class="rule-card-name">Aphoristic-cadence copy</h3>
+        <p class="rule-card-desc">Sections landing on a short rebuttal or a manufactured-contrast aphorism read as AI cadence, not voice. Once is fine; the repeated pattern is the tell.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#copy">See in /impeccable</a>
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-theater-slop-phrase" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; color: #111; line-height: 1.5;"><div style="font-size: 15px; font-weight: 700;">We killed the growth <span style="color: oklch(58% 0.15 35);">theater</span>.</div><div style="font-size: 11px; color: #888;">Dismissing things as performative.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="slop">AI slop</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
+          <span class="rule-card-layer" data-layer="optin" title="Off by default. Enable with --gpt.">opt-in</span>
+        </div>
+        <h3 class="rule-card-name">Theater framing copy</h3>
+        <p class="rule-card-desc">Dismissing something as &quot;theater&quot; is a recurring generated-copy tic. Say plainly what the thing does or does not do.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#copy">See in /impeccable</a>
       </div>
     </article>
         </div>
       </section>
-      <section class="anti-patterns-section" id="section-responsive">
+      <section class="anti-patterns-section" id="section-imagery">
         <header class="anti-patterns-section-header">
-          <h3 class="anti-patterns-section-title">Responsive</h3>
+          <h3 class="anti-patterns-section-title">Imagery</h3>
           <p class="anti-patterns-section-count">1 rule</p>
         </header>
         <div class="rule-card-grid">
 
-    <article class="rule-card" id="rule-mobile-amputation" data-layer="llm">
-      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif;"><div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fff; border: 1px solid #e8e4df; border-radius: 6px; margin-bottom: 4px; font-size: 12px; color: #999; text-decoration: line-through;"><span>Export to CSV</span></div><div style="font-size: 10px; color: #888; margin-top: 4px;">"Not available on mobile."</div></div></div></div>
+    <article class="rule-card" id="rule-broken-image" data-layer="cli">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif;"><div style="width: 120px; height: 80px; border: 1px solid #d8d4cc; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: #f5f3ef; color: #b3ada3;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><path d="M3 21L21 3"/></svg></div><div style="font-size: 10px; color: #888; margin-top: 6px;">Empty or missing src ships broken.</div></div></div></div>
       <div class="rule-card-body">
         <div class="rule-card-head">
           <span class="rule-card-category" data-category="quality">Quality</span>
-          <span class="rule-card-layer" data-layer="llm" title="Not caught by any deterministic detector. Flagged by /impeccable critique during its LLM design review.">LLM only</span>
+          <span class="rule-card-layer" data-layer="cli" title="Deterministic. Runs from `npx impeccable detect` on files, no browser required.">CLI</span>
         </div>
-        <h3 class="rule-card-name">Amputating features on mobile</h3>
-        <p class="rule-card-desc">Hiding critical functionality on mobile because it is inconvenient. Adapt the interface to the context, do not strip it.</p>
-        <a class="rule-card-skill-link" href="/docs/impeccable#responsive">See in /impeccable</a>
+        <h3 class="rule-card-name">Broken or placeholder image</h3>
+        <p class="rule-card-desc">&lt;img&gt; tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.</p>
+        <a class="rule-card-skill-link" href="/docs/impeccable#imagery">See in /impeccable</a>
       </div>
     </article>
         </div>
@@ -665,7 +775,7 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-general-quality">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">General quality</h3>
-          <p class="anti-patterns-section-count">7 rules</p>
+          <p class="anti-patterns-section-count">8 rules</p>
         </header>
         <div class="rule-card-grid">
 
@@ -678,7 +788,20 @@ import '../../styles/slop-kinpaku.css';
         </div>
         <h3 class="rule-card-name">Cramped padding</h3>
         <p class="rule-card-desc">Text is too close to the edge of its container. Add at least 8px (ideally 12-16px) of padding inside bordered or colored containers.</p>
-        
+
+      </div>
+    </article>
+
+    <article class="rule-card" id="rule-body-text-viewport-edge" data-layer="browser">
+      <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="border: 1px dashed #d8d4cc; border-radius: 6px; overflow: hidden;"><div style="font-family: system-ui, sans-serif; font-size: 11px; color: #111; line-height: 1.5;">Body text running flush against the very edge of the viewport with no container padding to hold it in.</div></div></div></div>
+      <div class="rule-card-body">
+        <div class="rule-card-head">
+          <span class="rule-card-category" data-category="quality">Quality</span>
+          <span class="rule-card-layer" data-layer="browser" title="Deterministic, but needs real browser layout. Runs via the browser extension or Puppeteer, not the plain CLI.">Browser</span>
+        </div>
+        <h3 class="rule-card-name">Body text touching viewport edge</h3>
+        <p class="rule-card-desc">Body paragraphs render flush against the left or right viewport edge with no container padding. Wrap content in a container with at least 16px of horizontal padding, or apply max-width with mx-auto.</p>
+
       </div>
     </article>
 

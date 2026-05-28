@@ -656,7 +656,4 @@
    7. FOOTER on dark surface
    ============================================================================ */
 
-.live-mode-kinpaku .site-footer {
-  background: oklch(4% 0.004 95);
-  border-top: 1px solid var(--ks-rule);
-}
+/* Footer chrome moved to kinpaku-kit.css (.kinpaku-chrome .site-footer). */

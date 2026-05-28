@@ -160,21 +160,8 @@
   border-radius: 0;
 }
 
-.home-kinpaku .site-header-github {
-  border: 1px solid var(--ks-rule);
-  border-radius: 999px;
-  background: oklch(10% 0.006 95 / 0.74);
-}
-
-.home-kinpaku .site-header-github:hover {
-  color: var(--ks-patina);
-  border-color: var(--ks-patina);
-  background: oklch(70% 0.105 190 / 0.08);
-}
-
-.home-kinpaku .site-header-github-star {
-  color: var(--ks-kinpaku);
-}
+/* GitHub star pill + star-gold now live in kinpaku-kit.css under
+   .kinpaku-chrome so every kinpaku page matches. Don't re-declare here. */
 
 .home-kinpaku h1,
 .home-kinpaku h2,
@@ -2705,11 +2692,11 @@
   color: var(--ks-patina);
 }
 
-.home-kinpaku .site-footer {
+/* The home footer layers a textured verdigris divider over the shared
+   kinpaku footer. `body.` prefix raises specificity above
+   .kinpaku-chrome .site-footer so this wins regardless of import order. */
+body.home-kinpaku .site-footer {
   position: relative;
-  /* Was: 1px hairline. Replaced with the D3 dots verdigris divider via
-     ::after below — same registration-field pattern that opens the page on
-     Hero → Slop, but in the patina tone to close it. */
   border-top: 0;
   background:
     linear-gradient(180deg, oklch(5% 0.004 95 / 0.92), oklch(3% 0.004 95)),
@@ -2722,7 +2709,7 @@
 /* D3 dot grid masked over the verdigris-patina texture — the same tex-patina
    variant from /design-system. Each dot is a tiny window of the patina image
    so the row reads as oxidized copper rather than flat green-blue. */
-.home-kinpaku .site-footer::after {
+body.home-kinpaku .site-footer::after {
   content: "";
   position: absolute;
   top: 0;
@@ -2751,16 +2738,16 @@
   z-index: 1;
 }
 
-.home-kinpaku .footer-links a,
-.home-kinpaku .footer-credit,
-.home-kinpaku .footer-credit a,
-.home-kinpaku .footer-social-link {
+body.home-kinpaku .footer-links a,
+body.home-kinpaku .footer-credit,
+body.home-kinpaku .footer-credit a,
+body.home-kinpaku .footer-social-link {
   color: var(--ks-muted);
 }
 
-.home-kinpaku .footer-links a:hover,
-.home-kinpaku .footer-credit a:hover,
-.home-kinpaku .footer-social-link:hover {
+body.home-kinpaku .footer-links a:hover,
+body.home-kinpaku .footer-credit a:hover,
+body.home-kinpaku .footer-social-link:hover {
   color: var(--ks-patina);
 }
 

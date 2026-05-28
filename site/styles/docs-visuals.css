@@ -3078,9 +3078,11 @@
 }
 
 .neon-case {
-  width: min(100% - 32px, 1360px);
+  width: min(100%, 1392px);
   margin: 0 auto;
-  padding: clamp(4rem, 8vw, 6.5rem) 0 clamp(4rem, 8vw, 7rem);
+  /* Horizontal gutters mirror the site header's padding so the page edge
+     aligns with the header, instead of bleeding to the viewport. */
+  padding: clamp(4rem, 8vw, 6.5rem) clamp(22px, 4vw, 56px) clamp(4rem, 8vw, 7rem);
 }
 
 .neon-case-hero {
@@ -3390,10 +3392,6 @@
 }
 
 @media (max-width: 640px) {
-  .neon-case {
-    width: min(100% - 24px, 1360px);
-  }
-
   .neon-case-actions {
     flex-direction: column;
   }
