@@ -55,7 +55,7 @@ TDD order is non-negotiable:
 3. Add the rule entry to the `ANTIPATTERNS` array (`id`, `category` = `slop` or `quality`, `name`, `description`, optional `skillSection` / `skillGuideline`).
 4. Implement a pure `checkXxx(opts)` returning `[{ id, snippet }]` — no DOM access inside.
 5. Add two adapters that wrap the pure check: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** adapters into **both** element loops in `cli/engine/detect-antipatterns.mjs` (browser loop ~line 1837, jsdom loop in `detectHtml` ~line 2058). Forgetting one is the most common mistake.
-6. Verify on a live page at `http://localhost:3000/fixtures/antipatterns/{rule-id}.html` and on the homepage. The two adapter paths can disagree.
+6. Verify on a live page at `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and on the homepage. The two adapter paths can disagree.
 
 Conventions: wrap the identifying heading text in straight double quotes inside snippets so the fixture test can extract it. jsdom-specific helpers `resolveBackground()`, `resolveGradientStops()`, and `parseGradientColors()` exist because `background:` shorthand isn't decomposed and computed colors aren't normalized in jsdom — use them. Reference rules to copy from: `side-tab` (border), `low-contrast` (color+gradient), `icon-tile-stack` (sibling relationship), `flat-type-hierarchy` (page-level).
 

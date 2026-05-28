@@ -72,7 +72,7 @@ Skill editorials and tutorials are read by `scripts/build.js` (for taglines and 
 ## Development Server
 
 ```bash
-bun run dev        # Bun dev server at http://localhost:3000
+bun run dev        # Bun dev server at http://localhost:4321
 bun run preview    # Build + Cloudflare Pages local preview
 ```
 
@@ -306,7 +306,7 @@ bun run build && bun run build:browser && bun run build:extension && bun run tes
 3. **Rule entry** in the `ANTIPATTERNS` array: `id`, `category` (`slop` for AI tells, `quality` for real design or a11y issues), `name`, `description`, optional `skillSection` and `skillGuideline`.
 4. **Pure check function** `checkXxx(opts)` returning `[{ id, snippet }]`. No DOM access in the pure function.
 5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `cli/engine/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
-6. **Verify on a live page**: `http://localhost:3000/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
+6. **Verify on a live page**: `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
 
 ### Conventions and jsdom gotchas
 
