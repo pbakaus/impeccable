@@ -27,32 +27,12 @@
    ============================================================================ */
 
 .designing-kinpaku {
-  /* Lacquer surfaces, muted text, and the doctrinal rule alpha all live in
-     kinpaku-tokens.css at :root now — no redeclaration needed. The only
-     intentional alias is --ks-muted, kept for compatibility with rules
-     that still read the old name. */
+  /* Surfaces, text, accent, and fonts now default to kinpaku at :root
+     (tokens.css remaps the legacy --color-* / --font-* names), so the
+     docs-visuals.css rules this page reuses inherit the dark theme with no
+     per-page remap. Only the --ks-muted alias (still read by name here) and
+     the page shell remain. */
   --ks-muted: var(--ks-text-muted);
-
-  /* Remap docs-visuals.css's generic font tokens to the kinpaku stack —
-     many of its .designing-* rules read var(--font-body) directly, which
-     tokens.css otherwise resolves to Instrument Sans. Without this,
-     ~31% of the page's text leaks the wrong typeface (caught by detect.mjs). */
-  --font-body: var(--ks-font);
-  --font-display: var(--ks-font-display);
-  --font-mono: var(--ks-mono);
-
-  /* Remap the generic light-mode tokens used throughout docs-visuals.css to
-     kinpaku surfaces, so any rule that references them inherits the dark
-     theme without per-rule overrides. */
-  --color-paper: oklch(7% 0.006 95);
-  --color-cream: oklch(9% 0.006 95);
-  --color-bg: oklch(11% 0.006 95);
-  --color-mist: oklch(58% 0.065 82 / 0.22);
-  --color-charcoal: oklch(72% 0.025 82);
-  --color-ash: oklch(60% 0.018 82);
-  --color-ink: var(--ks-champagne);
-  --color-accent: var(--ks-kinpaku);
-  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
 
   background:
     linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));

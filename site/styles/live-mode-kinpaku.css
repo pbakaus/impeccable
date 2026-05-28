@@ -26,23 +26,9 @@
    ============================================================================ */
 
 .live-mode-kinpaku {
+  /* Surface/text/accent/font tokens default to kinpaku at :root now; only
+     the --ks-muted alias and the page shell remain here. */
   --ks-muted: var(--ks-text-muted);
-
-  --font-body: var(--ks-font);
-  --font-display: var(--ks-font-display);
-  --font-mono: var(--ks-mono);
-
-  --color-paper: oklch(7% 0.006 95);
-  --color-cream: oklch(9% 0.006 95);
-  --color-bg: oklch(11% 0.006 95);
-  --color-mist: oklch(58% 0.065 82 / 0.22);
-  --color-charcoal: oklch(72% 0.025 82);
-  --color-ash: oklch(60% 0.018 82);
-  --color-ink: var(--ks-champagne);
-  --color-accent: var(--ks-kinpaku);
-  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
-  --color-accent-hover: var(--ks-kinpaku-pale);
-  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
 
   background:
     linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));

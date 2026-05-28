@@ -24,26 +24,11 @@
    ============================================================================ */
 
 .docs-kinpaku {
+  /* Surface/text/accent/font tokens default to kinpaku at :root now
+     (tokens.css), so the embedded docs-viz visualizations inherit dark
+     surfaces without a per-page remap. Only the --ks-muted alias (read by
+     name in this file) and the page shell remain. */
   --ks-muted: var(--ks-text-muted);
-
-  /* Match designing-kinpaku so embedded docs-viz visualizations inherit
-     dark surfaces without per-rule overrides. */
-  --font-body: var(--ks-font);
-  --font-display: var(--ks-font-display);
-  --font-mono: var(--ks-mono);
-
-  --color-paper: oklch(7% 0.006 95);
-  --color-cream: oklch(9% 0.006 95);
-  --color-bg: oklch(11% 0.006 95);
-  --color-mist: oklch(58% 0.065 82 / 0.22);
-  --color-charcoal: oklch(72% 0.025 82);
-  --color-ash: oklch(60% 0.018 82);
-  --color-ink: var(--ks-champagne);
-  --color-accent: var(--ks-kinpaku);
-  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
-  /* Old branding's magenta leaked through these two; remap to kinpaku. */
-  --color-accent-hover: var(--ks-kinpaku-pale);
-  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
 
   background:
     linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
