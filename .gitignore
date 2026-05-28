@@ -103,3 +103,6 @@ site/public/js/generated/
 !.codex/agents/
 !.codex/agents/**
 .astro/
+
+# Local-only scratch for exploratory scripts, parked pages, and unused asset candidates.
+tmp/

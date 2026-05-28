@@ -696,6 +696,25 @@
   font-size: 0.88rem;
 }
 
+/* Quieter than the note — the changelog + FAQ hints sit just under the
+   primary "works with" line. Patina links so they read as related but
+   distinct from the kinpaku primary CTA above. */
+.downloads-rebuild-secondary {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: 0.84rem;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-secondary a {
+  color: var(--ks-patina);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(70% 0.12 188 / 0.35);
+}
+.downloads-rebuild-secondary a:hover {
+  color: var(--ks-patina-pale);
+  border-bottom-color: var(--ks-patina-pale);
+}
+
 /* Center-aligned examples: each row is a vertical stack — the command line
    on top, the description below, both centered horizontally. */
 .downloads-rebuild-examples {
