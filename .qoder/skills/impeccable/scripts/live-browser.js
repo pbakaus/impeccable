@@ -3838,7 +3838,7 @@
       background: SURFACE,
       padding: '2px 8px',
       border: '1px solid ' + (borderColor || color),
-      borderRadius: '999px',
+      borderRadius: '6px',
       whiteSpace: 'nowrap',
       boxShadow: '0 4px 16px oklch(0% 0 0 / 0.16), 0 1px 3px oklch(0% 0 0 / 0.08)',
       cursor: 'pointer',
@@ -5176,6 +5176,7 @@
     let node = el.parentElement;
     while (node) {
       const cs = getComputedStyle(node);
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
       if (!isTransparentColor(cs.backgroundColor)) return cs.backgroundColor;
       node = node.parentElement;
     }
@@ -5196,7 +5197,10 @@
     if (own(el.parentElement)) return false;
     const text = (el.textContent || '').trim();
     if (!text) return false;
-    const hasElementChildren = Array.from(el.children || []).some((child) => !own(child));
+    const hasElementChildren = Array.from(el.children || []).some((child) => {
+      const tag = child.tagName?.toLowerCase();
+      return tag !== 'br' && tag !== 'wbr' && !own(child);
+    });
     if (hasElementChildren) return false;
     const cs = getComputedStyle(el);
     return parseFloat(cs.fontSize) >= 20;
@@ -5362,7 +5366,8 @@ void main() {
   vec2 cellId = floor(gridUv);
   vec2 cellUv = fract(gridUv) - 0.5;
   vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
-  vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
+  vec4 cellTex = texture2D(u_texture, sampleCenter);
+  vec3 cellImg = mix(vec3(1.0), cellTex.rgb, cellTex.a);
   float luma = dot(cellImg, vec3(0.299, 0.587, 0.114));
   // Darker cells → bigger kinpaku dots (classic risograph halftone curve).
   float radius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
@@ -5370,10 +5375,12 @@ void main() {
   vec3 paper = vec3(0.975, 0.965, 0.955);
   vec3 dotLayer = mix(paper, u_accent, dotMask);
 
-  // Blend the halftone layer in where the roller is passing; leave the
-  // element pristine elsewhere.
-  vec3 base = texture2D(u_texture, uv).rgb;
-  gl_FragColor = vec4(mix(base, dotLayer, band), 1.0);
+  // Blend the halftone layer in where the roller is passing. Transparent
+  // capture pixels get a faint band so the loading state is visible over
+  // image/gradient backdrops without becoming an opaque block.
+  vec4 tex = texture2D(u_texture, uv);
+  float bandAlpha = band * 0.18;
+  gl_FragColor = vec4(mix(tex.rgb, dotLayer, band), max(tex.a, bandAlpha));
 }`;
 
   // Kinpaku gold converted to approximate sRGB 0-1 (matches oklch(84% 0.19 80.46))

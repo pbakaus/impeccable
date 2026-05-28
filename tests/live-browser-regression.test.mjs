@@ -44,6 +44,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('shader loading capture preserves transparent pixels over image backgrounds', () => {
+    assert.match(
+      SOURCE,
+      /while \(node\) \{[\s\S]{0,220}?backgroundImage[\s\S]{0,80}?return null/,
+      'transparent text over a background image/gradient should not be captured on a fake white rectangle',
+    );
+    assert.match(
+      SOURCE,
+      /float bandAlpha = band \* 0\.18;[\s\S]{0,120}?gl_FragColor = vec4\(mix\(tex\.rgb, dotLayer, band\), max\(tex\.a, bandAlpha\)\)/,
+      'shader overlay must preserve texture alpha while keeping a faint loading band visible over transparent capture pixels',
+    );
+  });
+
   it('detectPageTheme honors alpha when reading body / html backgroundColor', () => {
     // Equivalent trap: `rgba(0, 0, 0, 0)` parsed naively as `(0,0,0)` makes
     // a perfectly white default page register as "dark," which flips the
@@ -53,6 +66,14 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function detectPageTheme\b[\s\S]{0,1500}?function readOpaque\b/,
       'detectPageTheme must keep its readOpaque helper that filters out fully-transparent backgrounds before computing luminance',
+    );
+  });
+
+  it('large text capture treats line-break elements as text flow', () => {
+    assert.match(
+      SOURCE,
+      /function shouldCaptureTextFromParent\b[\s\S]{0,700}?tag !== 'br' && tag !== 'wbr'/,
+      'large text elements with <br>/<wbr> children must still use the parent-crop screenshot path; direct modern-screenshot capture shifts/crops multi-line display text during the loading shader',
     );
   });
 
