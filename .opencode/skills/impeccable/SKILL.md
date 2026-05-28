@@ -57,7 +57,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - Ease out with exponential curves (ease-out-quart / quint / expo). No bounce, no elastic.
 - Use libraries for more advanced motion needs (e.g. motion, gsap, anime.js, lenis etc)
 - Reduced motion is not optional. Every animation needs a `@media (prefers-reduced-motion: reduce)` alternative: typically a crossfade or instant transition.
-- Sibling stagger on a list (cards, list items) is legitimate. Whole-section fade-on-scroll on every scrolled section is not a list; it's the saturated AI motion reflex.
+- Staggering the items within one list is legitimate. The tell is the uniform reflex (one identical entrance applied to every section), not motion itself; each reveal should fit what it reveals. Suppressing the reflex is never a reason to ship a page with no motion at all.
 - Reveal animations must enhance an already-visible default. Don't gate content visibility on a class-triggered transition; transitions pause on hidden tabs and headless renderers, so the reveal never fires and the section ships blank.
 - Premium motion materials are not just transform/opacity. Blur, backdrop-filter, clip-path, mask, and shadow/glow are part of the palette when they materially improve the effect and stay smooth.
 
