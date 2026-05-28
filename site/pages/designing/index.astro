@@ -16,7 +16,7 @@ import '../../styles/designing-kinpaku.css';
   <section class="designing-hero">
     <header class="designing-page-header">
       <h1 class="designing-page-title">Designing <em>with Impeccable</em></h1>
-      <p class="designing-page-lede">Shipping a real interface is a loop. Four phases, each with one place to begin.</p>
+      <p class="designing-page-lede">Most of the work isn't the blank page. It's everything after: refine, polish, pay down the drift. Four phases, one place to begin in each.</p>
     </header>
 
     <div class="designing-loop-wrap" aria-label="The four-phase loop">
@@ -71,10 +71,18 @@ import '../../styles/designing-kinpaku.css';
     </div>
   </section>
 
+  <div class="designing-loop-track">
+  <nav class="designing-phasenav" aria-label="Loop phases">
+    <a class="designing-phasenav-link" href="#start">Start</a>
+    <a class="designing-phasenav-link" href="#iterate">Iterate</a>
+    <a class="designing-phasenav-link" href="#polish">Polish</a>
+    <a class="designing-phasenav-link" href="#maintain">Maintain</a>
+  </nav>
+
   <section class="ks-section designing-phase" id="start">
     <header class="ks-section-head designing-phase-head">
-      <h2 class="designing-phase-title">From a blank file to a designed feature.</h2>
-      <p class="ks-section-sub designing-phase-sub">Three commands, one arc. <code>/impeccable teach</code> writes the brief, once per project. <code>/impeccable shape</code> drafts a reference you can look at. <code>/impeccable craft</code> codes toward what you can see. Words, then pictures, then code.</p>
+      <h2 class="designing-phase-title">Net-new is the hard mode.</h2>
+      <p class="ks-section-sub designing-phase-sub">From a blank file is where coding agents are weakest, Impeccable included. It can start cold, but it works better reacting to something real, so start from a picture, not a paragraph. Bring a direction from Figma, a phone photo of a sketch, or Google Stitch, or let <code>/impeccable craft</code> generate the mock with GPT Image 2 (sharpest in Codex). <code>/impeccable teach</code> writes the brief first either way.</p>
       <div class="designing-phase-commands">
         <a class="designing-phase-cmd" href="/docs/teach">/impeccable teach</a>
         <a class="designing-phase-cmd" href="/docs/shape">/impeccable shape</a>
@@ -175,7 +183,7 @@ import '../../styles/designing-kinpaku.css';
 
         <div class="designing-iterate-col">
           <h3 class="designing-iterate-name">When the edit is easier to point at.</h3>
-          <p class="designing-iterate-when">Pick any element in the browser, draw, type, hit Go. Three production-quality variants. Accept one and it writes to source.</p>
+          <p class="designing-iterate-when">Run <code>/impeccable live</code> in your AI tool and it drops this picker onto your running dev server. Point at any element, draw or type what you want, hit Go. Three production-quality variants; accept one and it writes back to source.</p>
           <div class="designing-iterate-live" aria-hidden="true">
             <div class="docs-viz-live-frame" style="max-width:100%">
               <div class="docs-viz-live-chrome">
@@ -196,13 +204,33 @@ import '../../styles/designing-kinpaku.css';
                   <span class="docs-viz-live-ctx-counter">2 / 3</span>
                   <button class="docs-viz-live-ctx-nav" type="button">&#x203A;</button>
                   <span class="docs-viz-live-ctx-divider"></span>
+                  <button class="docs-viz-live-ctx-discard" type="button">&#x2715;</button>
                   <button class="docs-viz-live-ctx-accept" type="button">Accept</button>
                 </div>
                 <div class="docs-viz-live-gbar">
-                  <span class="docs-viz-live-gbar-brand">/</span>
-                  <span class="docs-viz-live-gbar-btn is-active">Pick</span>
+                  <span class="docs-viz-live-gbar-mark">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>
+                  </span>
+                  <span class="docs-viz-live-gbar-btn is-active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+                    <span>Pick</span>
+                  </span>
+                  <span class="docs-viz-live-gbar-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    <span>Insert</span>
+                  </span>
+                  <span class="docs-viz-live-gbar-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Detect</span>
+                  </span>
+                  <span class="docs-viz-live-gbar-btn">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1" opacity="0.5"/></svg>
+                    <span class="docs-viz-live-gbar-btn-mono">DESIGN.md</span>
+                  </span>
                   <span class="docs-viz-live-gbar-divider"></span>
-                  <span class="docs-viz-live-gbar-x">&#x2715;</span>
+                  <span class="docs-viz-live-gbar-x">
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>
+                  </span>
                 </div>
               </div>
             </div>
@@ -241,7 +269,7 @@ import '../../styles/designing-kinpaku.css';
   <section class="ks-section designing-phase" id="polish">
     <header class="ks-section-head designing-phase-head">
       <h2 class="designing-phase-title">The pre-ship gauntlet.</h2>
-      <p class="ks-section-sub designing-phase-sub">Three commands in sequence before anything ships. They don't redesign; they find what still needs to change.</p>
+      <p class="ks-section-sub designing-phase-sub">Three commands before anything ships. They don't redesign, they find what's left to fix. Point them at a narrow target: one section reviewed closely beats a whole page reviewed at a glance, the way a lens sharpens as it tightens.</p>
     </header>
 
     <div class="designing-phase-body">
@@ -314,7 +342,41 @@ import '../../styles/designing-kinpaku.css';
             </div>
           </div>
           <h3 class="designing-maintain-name">Re-capture the system.</h3>
-          <p class="designing-maintain-desc">Scans tokens, components, and rendered output. Writes a spec-compliant DESIGN.md.</p>
+          <p class="designing-maintain-desc">Scans your tokens, components, and rendered routes, then writes a DESIGN.md in the Stitch format. The more it points at your real components and live routes, the closer Impeccable reads your design language instead of guessing at it.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  </div>
+
+  <section class="ks-section designing-phase designing-phase--appendix" aria-label="Where Impeccable runs">
+    <header class="ks-section-head designing-phase-head">
+      <h2 class="designing-phase-title">Mostly, you're in the skill.</h2>
+      <p class="ks-section-sub designing-phase-sub">The 23 commands run inside your AI coding tool: Cursor, Claude Code, Codex, Gemini CLI, Copilot. That's where everything on this page happens. The same anti-pattern detector also runs in two places outside the chat.</p>
+    </header>
+
+    <div class="designing-phase-body">
+      <div class="ks-bento designing-surfaces">
+        <article class="ks-bento-tile ks-bento-tile--span-6">
+          <span class="designing-maintain-label">Command line</span>
+          <h3 class="designing-maintain-name">In CI, as a gate.</h3>
+          <div class="designing-surface-cmd">
+            <span class="designing-surface-cmd-prompt">$</span>
+            <span>npx impeccable detect src/</span>
+          </div>
+          <p class="designing-maintain-desc">Point it at a directory, a file, or a URL. Deterministic rules and JSON output, with an exit code that fails the build when slop slips into a pull request.</p>
+        </article>
+        <article class="ks-bento-tile ks-bento-tile--span-6">
+          <span class="designing-maintain-label">Chrome extension</span>
+          <h3 class="designing-maintain-name">On any page, live.</h3>
+          <div class="designing-surface-cmd designing-surface-cmd--chrome">
+            <span class="docs-viz-live-dot"></span>
+            <span class="docs-viz-live-dot"></span>
+            <span class="docs-viz-live-dot"></span>
+            <span class="designing-surface-cmd-url">a-competitor.com</span>
+          </div>
+          <p class="designing-maintain-desc">The same checks as a browser overlay, on anything live: your staging build, a competitor, a page you'll never get into an editor.</p>
         </article>
       </div>
     </div>
@@ -343,7 +405,6 @@ import '../../styles/designing-kinpaku.css';
           </div>
         </article>
       </div>
-      <a class="designing-lane-link" href="/tutorials/brand-vs-product">Read the brand-vs-product tutorial &rarr;</a>
     </div>
   </section>
 
@@ -387,19 +448,38 @@ import '../../styles/designing-kinpaku.css';
     </div>
   </section>
 
-  <nav class="ks-bento designing-cta" aria-label="Where to go next">
-    <a class="ks-bento-tile ks-bento-tile--span-6 designing-cta-card" href="/docs/teach">
+  <nav class="designing-cta" aria-label="Where to go next">
+    <a class="designing-cta-card" href="/docs/teach">
       <h2 class="designing-cta-card-title">Start with <em>teach</em></h2>
       <p class="designing-cta-card-desc">Five minutes of discovery, one PRODUCT.md, one DESIGN.md. Every command downstream gets sharper from here.</p>
     </a>
-    <a class="ks-bento-tile ks-bento-tile--span-6 designing-cta-card" href="/tutorials">
+    <a class="designing-cta-card" href="/tutorials">
       <h2 class="designing-cta-card-title">Open a <em>tutorial</em></h2>
-      <p class="designing-cta-card-desc">Four short walkthroughs: getting started, Live Mode, critique with the overlay, brand vs product.</p>
+      <p class="designing-cta-card-desc">Three short walkthroughs: getting started, Live Mode, and critique with the overlay.</p>
     </a>
   </nav>
 </div>
 
 <script is:inline>
+  // Phase scroll-spy: highlight the active loop phase in the sticky nav as
+  // the reader scrolls. The active section is the one occupying the band just
+  // under the sticky header + nav (rootMargin clears ~150px at the top).
+  (function initPhaseNav() {
+    const nav = document.querySelector('.designing-phasenav');
+    if (!nav || !('IntersectionObserver' in window)) return;
+    const links = [...nav.querySelectorAll('.designing-phasenav-link')];
+    const setActive = (id) => links.forEach((a) =>
+      a.classList.toggle('is-active', a.getAttribute('href') === '#' + id));
+    const sections = links
+      .map((a) => document.getElementById(a.getAttribute('href').slice(1)))
+      .filter(Boolean);
+    if (!sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) setActive(e.target.id); });
+    }, { rootMargin: '-150px 0px -55% 0px', threshold: 0 });
+    sections.forEach((s) => observer.observe(s));
+  })();
+
   // Copy buttons on rendered code blocks
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-copy]');

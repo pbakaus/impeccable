@@ -350,6 +350,90 @@
 }
 
 /* ============================================================================
+   3b. LOOP TRACK + STICKY PHASE NAV
+
+   The four phase sections (#start/#iterate/#polish/#maintain) are wrapped in
+   .designing-loop-track. A slim phase nav pins under the 95px sticky site
+   header for the duration of the track, scroll-spying the active phase. This
+   gives the compass-driven loop a persistent wayfinder without hiding any
+   content behind tabs (the page stays a scrollable editorial walkthrough).
+   ============================================================================ */
+
+.designing-kinpaku .designing-loop-track {
+  position: relative;
+}
+
+.designing-kinpaku .designing-phasenav {
+  position: sticky;
+  top: 95px; /* sits directly under the sticky .site-header (95px, z 100) */
+  z-index: 40; /* above page content, below the header */
+  display: flex;
+  justify-content: center;
+  gap: clamp(1.25rem, 5vw, 3.5rem);
+  padding: 15px 24px;
+  /* Opaque lacquer, not glass — DESIGN.md No-Glass rule. */
+  background: oklch(6% 0.006 95);
+  border-top: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.designing-kinpaku .designing-phasenav-link {
+  position: relative;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ks-muted);
+  text-decoration: none;
+  padding: 2px 0;
+  transition: color 180ms var(--ks-ease);
+}
+.designing-kinpaku .designing-phasenav-link:hover {
+  color: var(--ks-champagne);
+}
+.designing-kinpaku .designing-phasenav-link.is-active {
+  color: var(--ks-kinpaku);
+}
+.designing-kinpaku .designing-phasenav-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -16px; /* reaches the nav's bottom hairline (15px pad + 1px border) */
+  height: 2px;
+  background: var(--ks-kinpaku);
+}
+
+@media (max-width: 600px) {
+  .designing-kinpaku .designing-phasenav {
+    gap: 0.7rem;
+    padding: 12px 14px;
+  }
+  .designing-kinpaku .designing-phasenav-link {
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* The nav's bottom hairline is the divider into #start; drop the section's
+   own top border so the seam isn't doubled. */
+.designing-kinpaku .designing-phasenav + .designing-phase {
+  border-top: 0;
+}
+
+/* Anchor jumps (compass nodes + phase nav) must clear the sticky header +
+   nav. The base .designing-phase scroll-margin (80px) is too short here. */
+.designing-kinpaku .designing-loop-track .designing-phase {
+  scroll-margin-top: 152px;
+}
+
+/* One deliberate, consistent break between the loop spine and the context
+   tail (replaces the old maintain->appendix adjacency that fired unevenly). */
+.designing-kinpaku .designing-loop-track + .designing-phase--appendix {
+  margin-top: 80px;
+}
+
+/* ============================================================================
    4. PHASE SCAFFOLDING — command chips only
 
    Section container, header, title, and subtitle now come from
@@ -394,7 +478,7 @@
    ============================================================================ */
 
 .designing-kinpaku .designing-start-step {
-  margin-bottom: 56px;
+  margin-bottom: 40px;
 }
 .designing-kinpaku .designing-start-step:last-child { margin-bottom: 0; }
 
@@ -514,7 +598,7 @@
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   overflow: hidden;
-  height: 320px;
+  height: 188px;
   transition: border-color 200ms var(--ks-ease), transform 200ms var(--ks-ease);
 }
 .designing-kinpaku .designing-visualize-plate:hover .designing-visualize-plate-frame {
@@ -558,7 +642,7 @@
   text-underline-offset: 3px;
 }
 .designing-kinpaku .designing-visualize-foot {
-  margin: 40px 0 0;
+  margin: 28px 0 0;
   color: var(--ks-muted);
   font-size: 0.88rem;
   max-width: 64ch;
@@ -573,26 +657,43 @@
    6. ITERATE PHASE (terminal + live + table)
    ============================================================================ */
 
+/* Three shared row tracks (name / paragraph / box) so the two columns align
+   via subgrid: both mock boxes start on the same line regardless of how many
+   lines each intro paragraph wraps to. Without this, a taller paragraph pushes
+   one box down and the pair looks broken. */
 .designing-kinpaku .designing-iterate-split {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 36px;
+  grid-template-rows: auto auto auto;
+  column-gap: 40px;
+  row-gap: 18px;
   margin-bottom: 56px;
 }
 @media (max-width: 900px) {
-  .designing-kinpaku .designing-iterate-split { grid-template-columns: 1fr; }
+  .designing-kinpaku .designing-iterate-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
 }
 
 /* No card chrome on the iterate col — the inner terminal / browser mock IS
    the card. Two cards stacked would be a nesting violation. */
 .designing-kinpaku .designing-iterate-col {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 18px;
   padding: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
+}
+@media (max-width: 900px) {
+  .designing-kinpaku .designing-iterate-col {
+    grid-row: auto;
+    grid-template-rows: none;
+    gap: 16px;
+  }
 }
 
 .designing-kinpaku .designing-iterate-kind {
@@ -607,12 +708,16 @@
   color: var(--ks-kinpaku);
 }
 
+/* Subsection h3s use Albert Sans, not the Pinstripe display face. DESIGN.md
+   reserves the display face for the hero h1 and section h2s; at h3 sizes the
+   thin Pinstripe loses its identity and reads as a broken render. */
 .designing-kinpaku .designing-iterate-name {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-weight: 300;
-  font-size: 1.5rem;
-  line-height: 1.2;
+  font-family: var(--ks-font);
+  font-weight: 600;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   margin: 0;
   text-wrap: balance;
 }
@@ -622,20 +727,31 @@
   font-size: 0.96rem;
   line-height: 1.6;
   margin: 0;
+  /* Base docs-visuals caps this at 36ch (~348px), which crams the paragraph
+     into many short lines inside a 480px+ column. Let it breathe. */
+  max-width: 52ch;
 }
 
-/* Terminal mock */
+/* Terminal mock. The base rule (docs-visuals.css) is a flex column with
+   justify-content: center for vertical centering; switching to grid here made
+   that declaration center the lines horizontally. justify-items: start pins
+   the lines flush-left like a real terminal; align-content: center keeps the
+   block vertically centered in the column when it stretches to match the live
+   frame opposite it. */
 .designing-kinpaku .designing-iterate-terminal {
-  margin-top: 6px;
-  padding: 18px 20px;
+  padding: 20px 22px;
   background: oklch(13% 0.006 95);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   font-family: var(--ks-mono);
   font-size: 0.86rem;
+  line-height: 1.7;
   color: var(--ks-champagne);
   display: grid;
-  gap: 6px;
+  gap: 10px;
+  justify-content: start;
+  justify-items: start;
+  align-content: center;
 }
 .designing-kinpaku .designing-iterate-terminal-line {
   display: flex;
@@ -672,10 +788,14 @@
   font-family: var(--ks-mono);
   font-size: 0.74rem;
 }
+/* The stage reserves an 88px band at the bottom (padding-bottom) for the two
+   stacked picker bars. Absolutely-positioned children offset from the padding
+   box, so a larger padding-bottom pushes the target up out of the bar band
+   while the bars (positioned from the bottom) float clear of it. */
 .designing-kinpaku .docs-viz-live-stage {
   position: relative;
-  padding: 24px;
-  min-height: 220px;
+  padding: 24px 24px 108px;
+  min-height: 292px;
   background:
     linear-gradient(90deg, oklch(78% 0.12 82 / 0.035) 1px, transparent 1px),
     linear-gradient(180deg, oklch(78% 0.12 82 / 0.028) 1px, transparent 1px),
@@ -683,6 +803,7 @@
   background-size: 28px 28px;
 }
 .designing-kinpaku .docs-viz-live-target {
+  width: 100%;
   background: oklch(11% 0.006 95);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
@@ -700,6 +821,7 @@
 .designing-kinpaku .docs-viz-live-title {
   color: var(--ks-champagne);
   font-family: var(--ks-font);
+  font-style: normal;
   font-weight: 400;
   font-size: 1.1rem;
   margin: 0;
@@ -718,23 +840,29 @@
   font-size: 0.88rem;
   cursor: pointer;
 }
+/* Outline hugs the target region (above the 88px bar band), with a faint
+   kinpaku halo so it reads as the picker's selection highlight. */
 .designing-kinpaku .docs-viz-live-outline {
   position: absolute;
-  inset: 14px;
+  inset: 14px 14px 108px;
   border: 1.5px solid var(--ks-kinpaku);
   border-radius: 4px;
+  box-shadow: 0 0 0 4px oklch(78% 0.12 82 / 0.1);
   pointer-events: none;
 }
+/* top: auto is required — the base/legacy rule sets top: 16px, and leaving it
+   set alongside bottom stretches the bar into a tall box over the target. */
 .designing-kinpaku .docs-viz-live-ctx {
   position: absolute;
-  bottom: 56px;
+  top: auto;
+  bottom: 62px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px;
-  background: oklch(11% 0.006 95);
+  background: var(--ks-lacquer-deep);
   border: 1.5px solid var(--ks-kinpaku);
   border-radius: 6px;
   box-shadow:
@@ -742,6 +870,7 @@
     0 6px 18px oklch(0% 0 0 / 0.4);
 }
 .designing-kinpaku .docs-viz-live-ctx-nav,
+.designing-kinpaku .docs-viz-live-ctx-discard,
 .designing-kinpaku .docs-viz-live-ctx-accept {
   padding: 4px 10px;
   background: transparent;
@@ -750,6 +879,10 @@
   font-family: var(--ks-font);
   font-size: 0.78rem;
   cursor: pointer;
+}
+.designing-kinpaku .docs-viz-live-ctx-discard {
+  color: var(--ks-muted);
+  padding: 4px 6px;
 }
 .designing-kinpaku .docs-viz-live-ctx-accept {
   background: var(--ks-kinpaku-pale);
@@ -769,45 +902,71 @@
   background: var(--ks-rule);
   margin: 0 4px;
 }
+/* Global picker bar — mirrors the real Impeccable live bar: carved-tile mark,
+   Pick/Insert/Detect/DESIGN.md controls, exit. Lacquer-deep fill + 1.5px gold
+   border + halo per DESIGN.md's "Picker Is Brand" rule. */
 .designing-kinpaku .docs-viz-live-gbar {
   position: absolute;
-  bottom: 12px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  background: oklch(11% 0.006 95);
+  gap: 2px;
+  padding: 5px 7px;
+  max-width: calc(100% - 24px);
+  background: var(--ks-lacquer-deep);
   border: 1.5px solid var(--ks-kinpaku);
-  border-radius: 8px;
+  border-radius: 9px;
+  box-shadow:
+    0 0 0 1px oklch(78% 0.12 82 / 0.18),
+    0 10px 28px oklch(0% 0 0 / 0.28);
 }
-.designing-kinpaku .docs-viz-live-gbar-brand {
+.designing-kinpaku .docs-viz-live-gbar-mark {
+  display: inline-flex;
   color: var(--ks-kinpaku);
-  font-family: var(--ks-mono);
-  font-size: 0.9rem;
-  padding: 0 6px;
+  padding: 0 5px;
 }
 .designing-kinpaku .docs-viz-live-gbar-btn {
-  padding: 4px 8px;
-  font-family: var(--ks-mono);
-  font-size: 0.72rem;
-  color: var(--ks-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-font);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+.designing-kinpaku .docs-viz-live-gbar-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .designing-kinpaku .docs-viz-live-gbar-btn.is-active {
+  background: oklch(78% 0.12 82 / 0.18);
   color: var(--ks-kinpaku);
+}
+.designing-kinpaku .docs-viz-live-gbar-btn-mono {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
 }
 .designing-kinpaku .docs-viz-live-gbar-divider {
   width: 1px;
-  height: 12px;
+  height: 16px;
   background: var(--ks-rule);
   margin: 0 4px;
 }
 .designing-kinpaku .docs-viz-live-gbar-x {
-  color: var(--ks-muted);
-  font-family: var(--ks-mono);
-  font-size: 0.78rem;
-  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ks-text-muted);
+  padding: 5px 6px;
+}
+.designing-kinpaku .docs-viz-live-gbar-x svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* When-to-reach-for-which table */
@@ -928,10 +1087,11 @@
 }
 .designing-kinpaku .designing-polish-name {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-weight: 300;
-  font-size: 1.4rem;
-  line-height: 1.2;
+  font-family: var(--ks-font);
+  font-weight: 600;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   margin: 0;
   text-wrap: balance;
 }
@@ -956,9 +1116,37 @@
    conflicts with the kit tile's vertical-stack flex column. */
 .designing-kinpaku .ks-bento.designing-maintain,
 .designing-kinpaku .ks-bento.designing-lanes,
+.designing-kinpaku .ks-bento.designing-surfaces,
 .designing-kinpaku .ks-bento.designing-cta {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 8px;
+}
+
+/* Surfaces grounding (skill / CLI / extension). Each tile carries a small
+   mono identifier line: a terminal command for the CLI, a browser address
+   for the extension. */
+.designing-kinpaku .designing-surface-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  padding: 11px 14px;
+  background: oklch(13% 0.006 95);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  font-family: var(--ks-mono);
+  font-size: 0.84rem;
+  color: var(--ks-champagne);
+}
+.designing-kinpaku .designing-surface-cmd-prompt {
+  color: var(--ks-kinpaku);
+}
+.designing-kinpaku .designing-surface-cmd--chrome {
+  gap: 7px;
+}
+.designing-kinpaku .designing-surface-cmd-url {
+  margin-left: 6px;
+  color: var(--ks-muted);
 }
 
 .designing-kinpaku .designing-maintain-stage {
@@ -991,9 +1179,11 @@
 }
 .designing-kinpaku .designing-maintain-name {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-weight: 300;
-  font-size: 1.4rem;
+  font-family: var(--ks-font);
+  font-weight: 600;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 .designing-kinpaku .designing-maintain-desc {
@@ -1193,20 +1383,31 @@
    11. CTA CARDS
    ============================================================================ */
 
-/* .designing-cta grid + tile chrome now come from .ks-bento + .ks-bento-tile.
-   The bento gives identical 12-column grid behavior and the same dark-plinth
-   background. Only the hover lift, eyebrow text color, and content typography
-   stay scoped here. */
+/* Two standalone destination cards — no bento plinth (the plinth-on-tile
+   nesting read as a box-in-a-box). Raised lacquer panels with a gold hairline
+   that snaps to kinpaku on hover, matching the card vocabulary used elsewhere
+   on the page: small radius, flat, sharply bounded. */
 .designing-kinpaku .designing-cta {
-  margin-top: 64px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 72px;
+}
+@media (max-width: 720px) {
+  .designing-kinpaku .designing-cta {
+    grid-template-columns: 1fr;
+  }
 }
 
-/* Border starts transparent so the kit tile's surface still reads cleanly,
-   then snaps to kinpaku on hover as the affordance. The kit base sets
-   border: 0; the page selector wins via specificity (0,2,0 vs 0,1,0). */
 .designing-kinpaku .designing-cta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 40px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
   text-decoration: none;
-  border: 1px solid transparent;
   transition: border-color 200ms var(--ks-ease), transform 200ms var(--ks-ease);
 }
 .designing-kinpaku .designing-cta-card:hover {
