@@ -24,6 +24,7 @@ export const PROVIDERS = {
     displayName: 'Claude Code',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
     agentFormat: 'claude-md',
+    emitHooks: 'claude',
   },
   gemini: {
     provider: 'gemini',
@@ -43,6 +44,7 @@ export const PROVIDERS = {
     // No agentFormat: the Codex subagent ships nested inside the skill's own
     // agents/ folder (see CODEX_SKILL_PROVIDERS in factory.js), which Codex
     // auto-discovers on install. No top-level .codex/agents/ sidecar is emitted.
+    emitCodexPlugin: true,
   },
   agents: {
     provider: 'agents',
@@ -53,6 +55,7 @@ export const PROVIDERS = {
     frontmatterFields: [],
     includeVersion: false,
     writeOpenAIMetadata: true,
+    emitHooks: 'codex',
   },
   github: {
     provider: 'github',

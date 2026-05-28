@@ -249,6 +249,27 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 **Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
 
+## Design hook
+
+On Claude Code and Codex, Impeccable ships a `PostToolUse` hook that runs the design detector automatically after every `Edit`, `Write`, or `MultiEdit` on a UI file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). When findings exist, a short system reminder lands in the agent's next-turn context so it can course-correct. Silent on clean files. Never blocks an edit.
+
+The hook is **on by default** after install on Claude Code. Codex needs two extra steps the first time:
+
+1. Add `[features]\nhooks = true` to `~/.codex/config.toml`.
+2. Run `/hooks` in `codex` and approve Impeccable's PostToolUse hook. Trust is revoked when the plugin updates; re-approve from `/hooks`.
+
+Codex hooks are disabled on Windows in current builds. The skill and commands still work there, just no hook. The Claude Code hook runs on macOS, Linux, and Windows.
+
+**Disable per project**: run `/impeccable hooks off`. Re-enable with `/impeccable hooks on`. Inspect with `/impeccable hooks status`. The toggle persists in `.impeccable/hook.json`, so check it in if a teammate set it.
+
+**Disable globally**: set `IMPECCABLE_HOOK_DISABLED=1` in your shell. For CI, this is the cleanest path.
+
+**Tune the hook**: `.impeccable/hook.json` supports `ignoreRules` (skip specific findings), `ignoreFiles` (project-relative globs), `minSeverity`, and `limits.maxFindings` / `limits.maxChars`. Inline suppression uses language-aware comments: `// impeccable: ignore <rule>` for JS/TS, `<!-- impeccable: ignore <rule> -->` for HTML/Vue/Svelte/Astro, `{/* impeccable: ignore <rule> */}` for JSX/TSX, `/* impeccable: ignore <rule> */` for CSS. `*` matches every rule. The directive applies to the next non-blank line. Same convention as ESLint, Stylelint, and Biome.
+
+**Debug**: set `IMPECCABLE_HOOK_LOG=$HOME/.impeccable/hook.ndjson` to get one NDJSON line per fire (event, file, findings count, durationMs, skip reason). Off by default.
+
+The hook covers roughly the slop half of the detector ruleset: anything the regex engine catches without needing a rendered DOM. Layout and a11y rules require running the full audit. `/impeccable audit` is the deeper review; the hook is the always-on first line of defense.
+
 ## CLI
 
 Impeccable includes a standalone CLI for detecting anti-patterns without an AI harness:

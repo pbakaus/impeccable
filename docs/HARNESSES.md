@@ -46,13 +46,22 @@ Fields marked with * are spec-standard. Others are provider extensions.
 | `effort` | Yes | No | No | No | No | No | No | No | No | No |
 | `context` | Yes | No | No | No | No | No | No | No | No | No |
 | `agent` | Yes | No | No | No | No | No | Yes | No | No | No |
-| `hooks` | Yes | No | No | No | No | No | No | No | No | No |
+| `hooks` | Yes | No | No | Yes | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
 - Codex CLI uses a separate `agents/openai.yaml` sidecar for skill metadata (icons, branding, MCP tools, invocation control). Codex also auto-discovers subagents bundled inside an installed skill's `agents/` folder (TOML), which is how Impeccable ships its asset-producer. Standalone custom agents can still live under `.codex/agents/` or `~/.codex/agents/`, but Impeccable no longer installs anything there.
+- Codex CLI hooks ship under `[features].hooks = true` (still flagged), require `/hooks` trust ceremony per-update, and are disabled on Windows.
 - Kiro recognizes `user-invocable` and `disable-model-invocation` per community reports but does not formally document them.
 - Unknown fields are silently ignored by all harnesses.
+
+## Hook surface used by Impeccable
+
+| Harness | PostToolUse hook | SessionStart hook | Manifest location | Notes |
+|---------|:----------------:|:-----------------:|-------------------|-------|
+| Claude Code | Yes | Yes | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit`. `if:` glob filters to UI extensions before spawning Node. |
+| Codex CLI | Yes | No | `.codex-plugin/plugin.json` + `.agents/hooks/hooks.json` | Auto-discovered from `${PLUGIN_ROOT}`. Matcher: `Edit\|Write\|apply_patch`. No `if:` analog; the hook script does the extension filter. macOS/Linux only. |
+| All other harnesses | No | No | n/a | No documented hook surface today. Skill and commands still ship. |
 
 ## Skill Directory Structure
 

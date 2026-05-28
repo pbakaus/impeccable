@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
+import { buildCodexPluginManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -710,6 +711,21 @@ async function build() {
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
+  }
+
+  // Build the Codex plugin subtree at ./.codex-plugin/. Net-new directory for
+  // v1; Codex auto-discovers `hooks/hooks.json` from the plugin root, so the
+  // manifest itself stays small. The matching hooks/ tree is the same one we
+  // already sync to .agents/hooks above, so we just write the manifest.
+  if (Object.values(PROVIDERS).some(p => p.emitCodexPlugin)) {
+    const codexPluginDir = path.join(ROOT_DIR, '.codex-plugin');
+    fs.mkdirSync(codexPluginDir, { recursive: true });
+    const codexManifest = buildCodexPluginManifest(rootManifest);
+    fs.writeFileSync(
+      path.join(codexPluginDir, 'plugin.json'),
+      JSON.stringify(codexManifest, null, 2) + '\n',
+    );
+    console.log('📦 Wrote Codex plugin manifest at ./.codex-plugin/plugin.json');
   }
 
   // Generate authoritative counts and validate references

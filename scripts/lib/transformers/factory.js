@@ -10,6 +10,7 @@ import {
   stripRuleMarkers,
 } from '../utils.js';
 import { SKILL_CATEGORIES, CATEGORY_ORDER } from '../sub-pages-data.js';
+import { hooksJsonFor } from './hooks.js';
 
 /**
  * Map from frontmatter field name to extraction spec.
@@ -300,10 +301,25 @@ export function createTransformer(config) {
       }
     }
 
+    // Emit hooks/hooks.json next to the skills tree when the provider opts in.
+    // Claude Code auto-discovers this file from the plugin root and Codex
+    // auto-discovers it from the plugin (or `.agents/`) root. Listing it in
+    // any `plugin.json` would trigger a "duplicate hooks file" error.
+    let hooksEmitted = false;
+    if (config.emitHooks) {
+      const manifest = hooksJsonFor(config.emitHooks);
+      if (manifest) {
+        const hooksDir = path.join(providerDir, configDir, 'hooks');
+        writeFile(path.join(hooksDir, 'hooks.json'), JSON.stringify(manifest, null, 2) + '\n');
+        hooksEmitted = true;
+      }
+    }
+
     const skillWord = skills.length === 1 ? 'skill' : 'skills';
     const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
     const scriptInfo = scriptCount > 0 ? ` (${scriptCount} script files)` : '';
     const agentInfo = agentCount > 0 ? ` (${agentCount} agent files)` : '';
-    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}`);
+    const hooksInfo = hooksEmitted ? ` (hooks/hooks.json)` : '';
+    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}${hooksInfo}`);
   };
 }
