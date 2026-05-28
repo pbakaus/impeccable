@@ -2,7 +2,7 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back. Skip it silently and proceed with the task.
+If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.src.md` on every `bun run build`, so any deletion churns back. Skip it silently and proceed with the task.
 
 ## Project Structure & Module Organization
 
@@ -42,7 +42,7 @@ For changes to `skill/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e`
 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for an API-backed one (`tests/live-e2e/agents/llm-agent.mjs`). Claude Haiku 4.5 is the primary path whenever `ANTHROPIC_API_KEY` is set. DeepSeek V4 Flash is the secondary cheap fallback when only `DEEPSEEK_API_KEY` is set, and can be forced with `IMPECCABLE_E2E_LLM_PROVIDER=deepseek` or `bun run test:live-e2e -- --llm-provider=deepseek`; override either model via `IMPECCABLE_E2E_LLM_MODEL` or `--llm-model=<model>`. Tests skip cleanly when the selected provider key is unset. This path hits the API — use it for verification, not CI.
 
-For changes to `skill/SKILL.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference file (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns real LLMs (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — all three, every run) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline (21-22/24) and per-scenario assertions live in `tests/skill-behavior/README.md`.
+For changes to `skill/SKILL.src.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference file (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs), also run `bun run test:skill-behavior`. The suite spawns real LLMs (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — all three, every run) with the source SKILL.md inlined as system prompt and a workspace-scoped tool set, then asserts on the tool-call trace. Provider keys live in repo-root `.env`; missing keys skip cleanly. Scope to one provider with `IMPECCABLE_SKILL_BEHAVIOR_MODELS=<id>`; add `IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1` to dump per-scenario traces. Baseline (21-22/24) and per-scenario assertions live in `tests/skill-behavior/README.md`.
 
 ## Anti-pattern detection rules
 

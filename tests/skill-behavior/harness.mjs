@@ -36,7 +36,7 @@ const MAX_BASH_OUTPUT_BYTES = 200_000;
  * is provider-neutral when inlined.
  */
 function loadSkillBody() {
-  let md = fs.readFileSync(path.join(SKILL_SOURCE_DIR, 'SKILL.md'), 'utf8');
+  let md = fs.readFileSync(path.join(SKILL_SOURCE_DIR, 'SKILL.src.md'), 'utf8');
   // Strip frontmatter.
   if (md.startsWith('---')) {
     const end = md.indexOf('\n---', 3);

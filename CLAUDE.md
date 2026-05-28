@@ -2,7 +2,7 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
+The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.src.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
 
 Same rule for AGENTS.md and every other harness-specific instruction file: treat post-update-cleanup as a no-op in this repo.
 
@@ -149,7 +149,7 @@ Adding a new fixture is a matter of cloning a directory under `tests/framework-f
 
 ### Skill-behavior tests
 
-`tests/skill-behavior/scenarios.test.mjs` is the LLM-backed safety net for edits to `skill/SKILL.md` and the Setup-adjacent reference files (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). It inlines the source `skill/SKILL.md` into the system prompt of a real LLM, gives the agent `bash` / `read` / `write` / `list` tools scoped to a temp workspace, and asserts on the tool-call trace — not on the model's free-form output. The trace is the source of truth.
+`tests/skill-behavior/scenarios.test.mjs` is the LLM-backed safety net for edits to `skill/SKILL.src.md` and the Setup-adjacent reference files (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). It inlines the source `skill/SKILL.src.md` into the system prompt of a real LLM, gives the agent `bash` / `read` / `write` / `list` tools scoped to a temp workspace, and asserts on the tool-call trace — not on the model's free-form output. The trace is the source of truth.
 
 ```bash
 bun run test:skill-behavior                                              # full suite (24 tests, ~5 min, ~$0.10 across providers)
@@ -245,7 +245,7 @@ If you need to fix release notes after the fact (typo, missing thank-you, format
 All commands live under `/impeccable`. To add a new one:
 
 1. Create `skill/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
-2. Add a row to the **Sub-command reference table** in `skill/SKILL.md`
+2. Add a row to the **Sub-command reference table** in `skill/SKILL.src.md`
 3. Add an entry to the **Command menu** section in the same file
 4. Add the command name to `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`
 5. Add it to `VALID_COMMANDS` in `skill/scripts/pin.mjs`
@@ -291,7 +291,7 @@ Every command should have an editorial file eventually, but the build does not r
 | `cli/engine/detect-antipatterns-browser.js` | `bun run build:browser` |
 | `extension/detector/detect.js` + `extension/detector/antipatterns.json` | `bun run build:extension` |
 | `site/public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
-| `skill/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
+| `skill/SKILL.src.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
 Always run all three builds and the test suite after a rule change:
 

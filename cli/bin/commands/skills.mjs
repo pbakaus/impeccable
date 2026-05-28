@@ -3,7 +3,7 @@
  *
  * Usage:
  *   impeccable skills help      Show all available skills and commands
- *   impeccable skills install   Install skills via npx skills add
+ *   impeccable skills install   Install compiled skills from the universal bundle
  *   impeccable skills update    Update skills to latest version
  */
 
@@ -14,13 +14,30 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
 const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn'];
+
+// When a project has no harness folder yet, infer the target from globally
+// installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
+// .agents/skills, so ~/.codex maps to the .agents bundle variant.
+const GLOBAL_HARNESS_HINTS = [
+  { home: '.claude', provider: '.claude' },
+  { home: '.codex', provider: '.agents' },
+  { home: '.cursor', provider: '.cursor' },
+  { home: '.gemini', provider: '.gemini' },
+  { home: '.kiro', provider: '.kiro' },
+  { home: '.opencode', provider: '.opencode' },
+  { home: '.qoder', provider: '.qoder' },
+];
+
+// Last-resort default when nothing is detected: Claude Code + the universal
+// (.agents, also Codex) folder, which covers the most common setups.
+const DEFAULT_TARGETS = ['.claude', '.agents'];
 
 function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -321,10 +338,71 @@ function renameSkillsWithPrefix(root, prefix) {
   return count;
 }
 
+/**
+ * Decide which provider folders to install into.
+ *  1. An explicit --providers=.claude,.cursor list wins.
+ *  2. Otherwise, harness folders already present in the project.
+ *  3. Otherwise, infer from globally installed harnesses (~/.claude, ~/.codex).
+ *  4. Otherwise, a sensible default (.claude + .agents).
+ */
+function resolveInstallTargets(root, providersValue) {
+  if (providersValue) {
+    const wanted = providersValue
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => (s.startsWith('.') ? s : `.${s}`))
+      .filter(p => PROVIDER_DIRS.includes(p));
+    return [...new Set(wanted)];
+  }
+
+  const inProject = PROVIDER_DIRS.filter(d => existsSync(join(root, d)));
+  if (inProject.length > 0) return inProject;
+
+  const home = homedir();
+  const inferred = [];
+  for (const { home: h, provider } of GLOBAL_HARNESS_HINTS) {
+    if (existsSync(join(home, h)) && !inferred.includes(provider)) inferred.push(provider);
+  }
+  if (inferred.length > 0) return inferred;
+
+  return [...DEFAULT_TARGETS];
+}
+
+/**
+ * Copy each target provider's compiled skill variant from an extracted bundle
+ * into the project. Writes real directories (copy, never symlink) so every
+ * harness keeps the build that was compiled for it. Returns skills written.
+ */
+function copyProviderSkills(bundleDir, root, targets) {
+  let written = 0;
+  for (const provider of targets) {
+    const srcDir = join(bundleDir, provider, 'skills');
+    if (!existsSync(srcDir)) continue;
+    const localSkillsDir = join(root, provider, 'skills');
+    // A previous `npx skills` install may have left this provider's skills dir
+    // as a symlink to another provider's canonical copy. Drop the link so we
+    // write a real, provider-specific directory instead of writing through it.
+    try {
+      if (lstatSync(localSkillsDir).isSymbolicLink()) unlinkSync(localSkillsDir);
+    } catch {}
+    for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
+      if (!skill.isDirectory()) continue;
+      const src = join(srcDir, skill.name);
+      const dest = join(localSkillsDir, skill.name);
+      rmSync(dest, { recursive: true, force: true });
+      copyDirSync(src, dest);
+      written++;
+    }
+  }
+  return written;
+}
+
 async function install(flags) {
   const force = flags.includes('--force');
   const yes = flags.includes('-y') || flags.includes('--yes');
   const prefixFlag = flags.find(f => f.startsWith('--prefix='));
+  const providersFlag = flags.find(f => f.startsWith('--providers='));
   const root = findProjectRoot();
   const existing = isAlreadyInstalled(root);
 
@@ -334,17 +412,51 @@ async function install(flags) {
     process.exit(0);
   }
 
-  console.log('Installing impeccable skills via npx skills...\n');
-  try {
-    // --copy forces npx skills to install each provider's variant separately
-    // instead of symlinking .claude/skills/ to .agents/skills/. The two
-    // directories have meaningfully different per-provider content (frontmatter,
-    // command prefix, paths), and the default symlink also fails silently when
-    // .claude/ doesn't exist yet or on Windows without elevated privileges (#140).
-    execSync(`npx skills add pbakaus/impeccable --copy${yes ? ' -y' : ''}`, { stdio: 'inherit' });
-  } catch (e) {
-    process.exit(e.status ?? 1);
+  // Decide which harness folders to install into, then copy each harness's own
+  // compiled variant from the universal bundle. We deliberately do NOT shell out
+  // to `npx skills add`: its name-based discovery can install the uncompiled
+  // source, and its symlink default points every harness at one shared variant.
+  // Copying per-provider variants is the only correct install for this skill.
+  const targets = resolveInstallTargets(root, providersFlag ? providersFlag.split('=')[1] : null);
+  if (targets.length === 0) {
+    console.error('Could not determine a target harness folder.');
+    console.error('Pass one explicitly, e.g. --providers=.claude,.cursor');
+    process.exit(1);
   }
+
+  if (!yes) {
+    console.log(`Target harness folder(s): ${targets.join(', ')}`);
+    const ans = await ask(`Install impeccable skills into ${targets.length} folder(s)? (Y/n) `);
+    if (ans === 'n' || ans === 'no') {
+      console.log('Aborted. Re-run with --providers=<dirs> to choose explicitly (e.g. --providers=.claude,.cursor).');
+      process.exit(0);
+    }
+  }
+
+  console.log('\nDownloading impeccable skills...');
+  let bundleDir;
+  try {
+    bundleDir = await downloadAndExtractBundle();
+  } catch (e) {
+    console.error(`Download failed: ${e.message}`);
+    process.exit(1);
+  }
+
+  let written = 0;
+  try {
+    written = copyProviderSkills(bundleDir, root, targets);
+  } catch (e) {
+    rmSync(bundleDir, { recursive: true, force: true });
+    console.error(`Install failed: ${e.message}`);
+    process.exit(1);
+  }
+  rmSync(bundleDir, { recursive: true, force: true });
+
+  if (written === 0) {
+    console.error(`Nothing was installed: the bundle had no variants for ${targets.join(', ')}.`);
+    process.exit(1);
+  }
+  console.log(`Installed impeccable into: ${targets.join(', ')}`);
 
   // Ask about prefixing (skip in CI mode unless --prefix= is set)
   let prefix = '';

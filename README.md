@@ -19,7 +19,7 @@ Impeccable adds:
 
 ### The Skill: impeccable
 
-A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.md)):
+A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.src.md)):
 
 | Reference | Covers |
 |-----------|--------|

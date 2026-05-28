@@ -3,7 +3,7 @@
  * generators.
  *
  * Single source of truth:
- * - skill/SKILL.md                       → skill frontmatter + body
+ * - skill/SKILL.src.md                       → skill frontmatter + body
  * - skill/reference/*.md                  → skill reference files
  * - cli/engine/registry/antipatterns.mjs         → ANTIPATTERNS registry
  * - site/content/skills/{id}.md           → optional editorial wrapper

@@ -184,12 +184,19 @@ export function readFilesRecursive(dir, fileList = []) {
  * Read and parse the impeccable skill source.
  * After v3.0 the repo holds exactly one user-invocable skill, flat at skill/.
  * Returns { skills: [oneEntry] } so downstream array-shaped consumers stay happy.
+ *
+ * The source manifest is `SKILL.src.md`, NOT `SKILL.md`, on purpose: the
+ * `vercel-labs/skills` CLI discovers a skill by finding a literal `SKILL.md`
+ * and copies that directory verbatim. If `skill/SKILL.md` existed, `npx skills`
+ * would install the UNCOMPILED source (unresolved `{{placeholders}}`, no vendored
+ * detector). Naming it `SKILL.src.md` hides it from discovery so the CLI falls
+ * through to a compiled harness dir (`.agents/skills/impeccable`) instead.
  */
 export function readSourceFiles(rootDir) {
   const skillDir = path.join(rootDir, 'skill');
   const skills = [];
 
-  const skillMdPath = path.join(skillDir, 'SKILL.md');
+  const skillMdPath = path.join(skillDir, 'SKILL.src.md');
   if (!fs.existsSync(skillMdPath)) {
     return { skills };
   }
@@ -419,7 +426,7 @@ export function readPatterns(_rootDir, _relativePath) {
 
 // Previous SKILL.md parser retained below but disabled; kept as a
 // reference for how prefix-style extraction used to work.
-function _legacyReadPatterns(rootDir, relativePath = 'skill/SKILL.md') {
+function _legacyReadPatterns(rootDir, relativePath = 'skill/SKILL.src.md') {
   const skillPath = path.join(rootDir, relativePath);
 
   if (!fs.existsSync(skillPath)) {

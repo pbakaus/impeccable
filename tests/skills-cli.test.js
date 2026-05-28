@@ -2,7 +2,11 @@
  * End-to-end tests for `impeccable skills` subcommands.
  *
  * Creates real temp directories, runs the CLI, and verifies results.
- * Tests that require `npx skills` are skipped if it's not available.
+ *
+ * Pure blocks (already-installed detection, prefix rename/round-trip) run in the
+ * default `bun run test`. Network blocks that download the universal bundle use
+ * `describeNet` and run only under `bun run test:cli-e2e` (IMPECCABLE_CLI_E2E=1),
+ * skipping gracefully when impeccable.style is unreachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync } from 'child_process';
@@ -40,6 +44,20 @@ function createFakeSkills(root, skills = ['audit', 'polish', 'impeccable'], prov
 }
 
 // ─── Already-installed detection ─────────────────────────────────────────────
+
+// Network e2e blocks (real bundle downloads from impeccable.style) run only
+// under `bun run test:cli-e2e` (IMPECCABLE_CLI_E2E=1). The default `bun run test`
+// skips them so it stays fast and works offline; when opted in they still skip
+// gracefully if the bundle endpoint is unreachable.
+const WANT_CLI_E2E = process.env.IMPECCABLE_CLI_E2E === '1';
+let bundleReachable = false;
+if (WANT_CLI_E2E) {
+  try {
+    execSync('curl -sfIL --max-time 10 https://impeccable.style/api/download/bundle/universal -o /dev/null', { stdio: 'pipe' });
+    bundleReachable = true;
+  } catch {}
+}
+const describeNet = (WANT_CLI_E2E && bundleReachable) ? describe : describe.skip;
 
 describe('skills install: already-installed detection', () => {
   test('detects impeccable sentinel and bails', () => {
@@ -170,40 +188,38 @@ console.log(JSON.stringify({ count }));
 
 // ─── Update fallback (direct download) ───────────────────────────────────────
 
-describe('skills update: direct download fallback', () => {
+describeNet('skills update: refreshes from the universal bundle', () => {
   let tmp;
 
   beforeAll(() => {
     tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-'));
     execSync('git init', { cwd: tmp });
 
-    // Create stale skills that the update should overwrite
-    for (const skill of ['audit', 'impeccable']) {
-      const skillDir = join(tmp, '.claude', 'skills', skill);
-      mkdirSync(skillDir, { recursive: true });
-      writeFileSync(join(skillDir, 'SKILL.md'), `---\nname: ${skill}\nstale: true\n---\nOld content.\n`);
-    }
+    // Stale impeccable skill that the update should overwrite with fresh,
+    // compiled content. v3.0 ships a single `impeccable` skill (with
+    // sub-commands), so it is the one the bundle refreshes.
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nstale: true\n---\nOld content.\n');
   });
 
   afterAll(() => {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   });
 
-  test('downloads universal bundle and updates skills', () => {
+  test('downloads the bundle and refreshes the impeccable skill', () => {
     const output = run('skills update -y', { cwd: tmp });
-    expect(output).toContain('direct download');
     expect(output).toContain('Updated');
 
-    // Skills should have fresh content (no 'stale: true')
-    const content = readFileSync(join(tmp, '.claude', 'skills', 'audit', 'SKILL.md'), 'utf8');
+    // The skill now carries fresh, compiled content (no 'stale: true').
+    const content = readFileSync(join(tmp, '.claude', 'skills', 'impeccable', 'SKILL.md'), 'utf8');
     expect(content).not.toContain('stale: true');
     expect(content).toContain('name:');
   }, 60000);
 
-  test('update added new skills that were not present before', () => {
-    // The universal bundle has ~20 skills, we only had 2
-    const skills = readdirSync(join(tmp, '.claude', 'skills'));
-    expect(skills.length).toBeGreaterThan(5);
+  test('refreshed skill ships its compiled scripts directory', () => {
+    // The compiled variant bundles scripts/ (context loader, detector shim, ...).
+    expect(existsSync(join(tmp, '.claude', 'skills', 'impeccable', 'scripts'))).toBe(true);
   });
 });
 
@@ -363,17 +379,9 @@ console.log(JSON.stringify(readdirSync(skillsDir)));
   });
 });
 
-// ─── Full install e2e (with real npx skills) ─────────────────────────────────
+// ─── Full install e2e (downloads the universal bundle) ───────────────────────
 
-let hasNpxSkills = false;
-try {
-  execSync('npx skills --version', { encoding: 'utf8', timeout: 15000, stdio: 'pipe' });
-  hasNpxSkills = true;
-} catch {}
-
-const describeNpx = hasNpxSkills ? describe : describe.skip;
-
-describeNpx('skills install: full e2e with npx skills', () => {
+describeNet('skills install: full e2e (universal bundle download)', () => {
   let tmp;
 
   beforeAll(() => {

@@ -500,7 +500,7 @@ function generateApiData(buildDir, skills, patterns) {
   }
   const impeccable = skills.find(s => s.name === 'impeccable');
   if (!impeccable) {
-    throw new Error('impeccable skill not found at skill/SKILL.md. The build system expects exactly one skill at that path.');
+    throw new Error('impeccable skill not found at skill/SKILL.src.md. The build system expects exactly one skill at that path.');
   }
 
   const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));

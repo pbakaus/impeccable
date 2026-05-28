@@ -10,7 +10,7 @@ For detailed harness capabilities (which frontmatter fields each supports, place
 
 ## Source Format
 
-### Skill (`skill/SKILL.md`)
+### Skill (`skill/SKILL.src.md`)
 
 ```yaml
 ---
@@ -127,7 +127,7 @@ scripts/
 
 - `createTransformer(config)`: Factory that returns a transformer function from a provider config
 - `parseFrontmatter()`: Extracts YAML frontmatter and body from SKILL.md files
-- `readSourceFiles()`: Reads `skill/SKILL.md` plus its `reference/` and `scripts/` siblings
+- `readSourceFiles()`: Reads `skill/SKILL.src.md` plus its `reference/` and `scripts/` siblings
 - `replacePlaceholders()`: Substitutes `{{model}}`, `{{config_file}}`, etc. per provider
 - `generateYamlFrontmatter()`: Serializes objects to YAML frontmatter (auto-quotes values starting with `[` or `{`)
 
@@ -139,7 +139,7 @@ bun run test:live-e2e         # Opt-in — full-cycle live-mode E2E across frame
 bun run test:skill-behavior   # Opt-in — LLM-backed checks that the SKILL.md Setup flow actually drives the agent (~5 min, costs cents, needs `.env`)
 ```
 
-The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — the cheapest tier of each, every run) with the source `skill/SKILL.md` inlined as the system prompt and a workspace-scoped `bash`/`read`/`write`/`list` tool set. It then asserts on the tool-call trace, not on free-form output. Use it whenever you edit `skill/SKILL.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). Per-scenario assertions and the current baseline (21-22/24) live in `tests/skill-behavior/README.md`. Provider keys live in repo-root `.env` (gitignored); missing keys skip cleanly.
+The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — the cheapest tier of each, every run) with the source `skill/SKILL.src.md` inlined as the system prompt and a workspace-scoped `bash`/`read`/`write`/`list` tool set. It then asserts on the tool-call trace, not on free-form output. Use it whenever you edit `skill/SKILL.src.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). Per-scenario assertions and the current baseline (21-22/24) live in `tests/skill-behavior/README.md`. Provider keys live in repo-root `.env` (gitignored); missing keys skip cleanly.
 
 ## Best Practices
 
