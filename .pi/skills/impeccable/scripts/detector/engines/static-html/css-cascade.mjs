@@ -241,6 +241,9 @@ const STATIC_DEFAULT_STYLE = {
   borderBottomColor: 'rgb(0, 0, 0)',
   borderLeftColor: 'rgb(0, 0, 0)',
   borderRadius: '0px',
+  outlineWidth: '0px',
+  outlineColor: 'rgb(0, 0, 0)',
+  outlineStyle: 'none',
   boxShadow: 'none',
   fontFamily: '',
   fontSize: '16px',
@@ -266,6 +269,9 @@ const STATIC_DEFAULT_STYLE = {
   paddingLeft: '0px',
   position: 'static',
   display: '',
+  overflow: 'visible',
+  overflowX: 'visible',
+  overflowY: 'visible',
 };
 
 const STATIC_PROP_MAP = {
@@ -282,6 +288,9 @@ const STATIC_PROP_MAP = {
   'border-right-color': 'borderRightColor',
   'border-bottom-color': 'borderBottomColor',
   'border-left-color': 'borderLeftColor',
+  'outline-width': 'outlineWidth',
+  'outline-color': 'outlineColor',
+  'outline-style': 'outlineStyle',
   'box-shadow': 'boxShadow',
   'font-family': 'fontFamily',
   'font-size': 'fontSize',
@@ -305,6 +314,9 @@ const STATIC_PROP_MAP = {
   'padding-left': 'paddingLeft',
   'position': 'position',
   'display': 'display',
+  'overflow': 'overflow',
+  'overflow-x': 'overflowX',
+  'overflow-y': 'overflowY',
 };
 
 const STATIC_NAMED_COLORS = {
@@ -508,6 +520,26 @@ function expandStaticDeclaration(prop, value) {
     for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
       if (parsed.width) out.push([`border${side}Width`, parsed.width]);
       if (parsed.color) out.push([`border${side}Color`, parsed.color]);
+    }
+    return out;
+  }
+  if (p === 'outline') {
+    // `outline` shorthand: width | style | color, in any order. Reuse the
+    // border parser for width + color, then sniff a style keyword from the
+    // tokens (solid|dashed|...). `outline: 0` (single-token zero) zeros
+    // the width and effectively hides the outline.
+    const tokens = splitCssTokens(v);
+    const parsed = parseStaticBorder(v);
+    const styleToken = tokens.find(t =>
+      /^(none|hidden|solid|dashed|dotted|double|groove|ridge|inset|outset)$/i.test(t)
+    );
+    const out = [];
+    if (parsed.width) out.push(['outlineWidth', parsed.width]);
+    if (parsed.color) out.push(['outlineColor', parsed.color]);
+    if (styleToken) out.push(['outlineStyle', styleToken.toLowerCase()]);
+    // `outline: 0` with no other tokens: explicit zero width.
+    if (!parsed.width && /^0(?:px|rem|em|%)?$/.test(v.trim())) {
+      out.push(['outlineWidth', '0px']);
     }
     return out;
   }

@@ -2,10 +2,38 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { compileProviderBlocks } from '../scripts/lib/utils.js';
 
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
+  it('keeps Codex sandbox guidance Codex-only', () => {
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+    const codexLiveMd = compileProviderBlocks(liveMd, ['codex']);
+    const claudeLiveMd = compileProviderBlocks(liveMd, ['claude-code', 'claude']);
+
+    assert.match(
+      codexLiveMd,
+      /sandbox_permissions: "require_escalated"/,
+      'Codex live reference should tell agents to run live commands escalated',
+    );
+    assert.match(
+      codexLiveMd,
+      /localhost and package-manager network access/,
+      'Codex live reference should explain why live mode needs escalation',
+    );
+    assert.doesNotMatch(
+      codexLiveMd,
+      /<\/?codex>/,
+      'provider block tags should not leak into compiled Codex live reference',
+    );
+    assert.doesNotMatch(
+      claudeLiveMd,
+      /sandbox_permissions: "require_escalated"/,
+      'Codex-only sandbox guidance should not appear in Claude live reference',
+    );
+  });
+
   it('keeps live preview CSS guidance capability-mode driven', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 

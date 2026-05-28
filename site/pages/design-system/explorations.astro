@@ -1,0 +1,342 @@
+---
+import Base from '../../layouts/Base.astro';
+import '../../styles/design-system.css';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const candidateRoot = path.resolve(process.cwd(), 'site/public/assets/neo-kinpaku/candidates');
+function listCandidates(subdir) {
+  const dir = path.join(candidateRoot, subdir);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.png'))
+    .sort()
+    .map((file) => {
+      const base = file.replace(/\.png$/, '');
+      const kept = base.startsWith('keep-');
+      const id = kept ? base.replace('keep-', '') : base;
+      return { src: `/assets/neo-kinpaku/candidates/${subdir}/${file}`, id, kept };
+    });
+}
+const solidCandidates = listCandidates('solid');
+const keyedCandidates = listCandidates('keyed');
+const i2iCandidates = listCandidates('i2i');
+const mockupCandidates = listCandidates('mockups');
+---
+
+<Base
+  title="Impeccable Design System · Explorations"
+  description="Visual studies kept for reference: hero candidates and icon iteration anchors. Not the canonical system. See /design-system for what ships."
+  canonicalPath="/design-system/explorations"
+  bodyClass="kinpaku-system-page"
+  mainId="design-system-explorations"
+  mainClass="kinpaku-system"
+  hideHeader={true}
+  hideFooter={true}
+  noIndex={true}
+>
+  <!-- ============================================================
+       Exploration intro
+       ============================================================ -->
+  <section class="ks-section" id="explorations-intro" aria-labelledby="explorations-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Explorations</p>
+      <h2 id="explorations-title">Visual studies. Kept for reference, not for production.</h2>
+      <p class="ks-section-sub">Hero candidate sets and the wider icon-mark exploration anchors. The canonical system lives at <a href="/design-system" style="color: var(--ks-kinpaku); border-bottom: 1px solid currentColor;">/design-system</a>. If you arrived here looking for what ships, that's the page.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Logo direction: roster test
+       Three directions for a stronger mark, each shown (a) at size in
+       gold and (b) dropped into a monochrome partner-roster strip, the
+       exact context where the current ε7 placeholder dies.
+       ============================================================ -->
+  <section class="ks-section logo-dir" id="logo-direction" aria-labelledby="logo-direction-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Logo direction</p>
+      <h2 id="logo-direction-title">Three marks with mass. Tested in a partner roster.</h2>
+      <p class="ks-section-sub">The current placeholder (ε0) is a hairline box around a thin slash: empty negative space, a wordmark too light to hold its own. Each direction below adds mass and an idea, then sits in a monochrome roster strip (white on black, no gold to lean on) next to the kind of neighbors it has to survive.</p>
+    </div>
+
+    {[
+      {
+        id: 'ε0', name: 'Current placeholder',
+        idea: 'Hairline box, thin slash, light wordmark. Shown for contrast.',
+        baseline: true,
+        mark: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" d="M14.5 7 L9 17"/><path fill="currentColor" d="M14.8 4.6 L17.8 4.1 L18.1 7.1 L15.1 7.6 Z"/></svg>',
+        wordWeight: 300, wordTrack: '0.42em',
+      },
+      {
+        id: 'A', name: 'Brushstroke slash + flake',
+        idea: 'The slash kept from ε0, but solid and tapered like a kintsugi stroke. The flake is the gold leaf breaking off: the trace of refinement. Keeps the slash-command DNA, gains mass.',
+        mark: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.4 4.4 L18.6 5.1 L8.9 21 L5.7 20.2 Z"/><path d="M16.9 0.7 L20.5 0 L21 3.5 L17.4 4.3 Z"/></svg>',
+        wordWeight: 500, wordTrack: '0.2em',
+      },
+      {
+        id: 'B', name: 'Carved tile',
+        idea: 'A solid tile split by a diagonal slash cut clean through it. Maximum mass for a roster; the slash now reads as negative space instead of a thin line. The split halves nod to before / after.',
+        mark: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 2.5 L13.4 2.5 L5.6 21.5 L2.5 21.5 Z"/><path d="M16.6 2.5 L21.5 2.5 L21.5 21.5 L8.4 21.5 Z"/></svg>',
+        wordWeight: 500, wordTrack: '0.2em',
+      },
+      {
+        id: 'C', name: 'Convergence',
+        idea: 'Three chevrons narrowing to a single point: iterative passes closing in on done. Departs from the slash, leans hardest into the iterative-refinement story.',
+        mark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 5 L11 12 L3.6 19"/><path d="M9.6 6.9 L14.7 12 L9.6 17.1"/><path d="M15.6 9.3 L18.2 12 L15.6 14.7"/></svg>',
+        wordWeight: 500, wordTrack: '0.2em',
+      },
+    ].map((c) => (
+      <div class={`logo-dir-row ${c.baseline ? 'is-baseline' : ''}`}>
+        <div class="logo-dir-head">
+          <span class="logo-dir-id">{c.id}</span>
+          <div>
+            <h3 class="logo-dir-name">{c.name}</h3>
+            <p class="logo-dir-idea">{c.idea}</p>
+          </div>
+        </div>
+
+        <div class="logo-dir-specimens">
+          <div class="logo-dir-specimen">
+            <span class="logo-dir-mark logo-dir-mark-lg" aria-hidden="true" set:html={c.mark}></span>
+            <span class="logo-dir-cap">mark · 48px gold</span>
+          </div>
+          <div class="logo-dir-specimen">
+            <span class="logo-dir-lockup" aria-hidden="true">
+              <span class="logo-dir-mark" set:html={c.mark}></span>
+              <span class="logo-dir-word" style={`font-weight:${c.wordWeight};letter-spacing:${c.wordTrack};`}>IMPECCABLE</span>
+            </span>
+            <span class="logo-dir-cap">lockup · gold</span>
+          </div>
+        </div>
+
+        <div class="logo-dir-roster" aria-label={`${c.name} in a monochrome partner roster`}>
+          <span class="logo-dir-roster-eyebrow">Supporting partners</span>
+          <div class="logo-dir-roster-strip">
+            <span class="logo-dir-peer">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3 L22 20 L2 20 Z"/></svg>
+              Vercel
+            </span>
+            <span class="logo-dir-peer">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="6" height="6"/><rect x="11" y="2" width="6" height="6"/><rect x="2" y="11" width="6" height="6"/><rect x="11" y="11" width="6" height="6"/></svg>
+              block
+            </span>
+            <span class="logo-dir-peer logo-dir-peer-ours">
+              <span class="logo-dir-mark" set:html={c.mark}></span>
+              <span class="logo-dir-word logo-dir-word-mono" style={`font-weight:${c.wordWeight};letter-spacing:${c.wordTrack};`}>IMPECCABLE</span>
+            </span>
+            <span class="logo-dir-peer">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="5" width="18" height="2.4"/><rect x="3" y="11" width="18" height="2.4"/><rect x="3" y="17" width="18" height="2.4"/></svg>
+              humanlayer
+            </span>
+            <span class="logo-dir-peer">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M9 8 L17 12 L9 16 Z" fill="#000"/></svg>
+              YouTube
+            </span>
+          </div>
+        </div>
+      </div>
+    ))}
+  </section>
+
+  <!-- ============================================================
+       Hero candidates (gallery for review)
+       ============================================================ -->
+  <section class="ks-section" id="candidates" aria-labelledby="candidates-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Hero candidates</p>
+      <h2 id="candidates-title">Pick a hero. Neo kinpaku set, generated in batch.</h2>
+      <p class="ks-section-sub">Image-to-image variants based on the kinpaku_5 and kinpaku_8 inspo. The R-NN set targets restraint: single streak, mostly empty slate. Call out the ones you want kept.</p>
+    </div>
+
+    {mockupCandidates.length > 0 && (
+      <div class="ks-subsection">
+        <span class="ks-subsection-label">Full hero mockups · UI baked in (text gets stripped in a second pass)</span>
+        <div class="ks-candidate-grid">
+          {mockupCandidates.map((c) => (
+            <figure class="ks-candidate">
+              <img src={c.src} alt={`Hero mockup ${c.id}`} loading="lazy" />
+              <figcaption>{c.id}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {i2iCandidates.length > 0 && (
+      <div class="ks-subsection">
+        <span class="ks-subsection-label">Image-to-image · based on kinpaku_5 + kinpaku_8 inspo</span>
+        <div class="ks-candidate-grid">
+          {i2iCandidates.map((c) => (
+            <figure class="ks-candidate">
+              <img src={c.src} alt={`I2I candidate ${c.id}`} loading="lazy" />
+              <figcaption>{c.id}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Solid · flat kinpaku, right-weighted</span>
+      <div class="ks-candidate-grid">
+        {solidCandidates.map((c) => (
+          <figure class={`ks-candidate ${c.kept ? 'is-kept' : ''}`}>
+            <img src={c.src} alt={`Hero candidate ${c.id}`} loading="lazy" />
+            <figcaption>{c.kept ? `#${c.id} · kept` : `#${c.id}`}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Transparent · isolated gold elements, chroma-keyed</span>
+      <div class="ks-candidate-grid">
+        {keyedCandidates.map((c) => (
+          <figure class={`ks-candidate ks-candidate-keyed ${c.kept ? 'is-kept' : ''}`}>
+            <div class="ks-candidate-keyed-stack" aria-hidden="true">
+              <img src={c.src} alt={`Transparent candidate ${c.id}`} loading="lazy" />
+              <span class="ks-candidate-keyed-checker"></span>
+            </div>
+            <figcaption>{c.kept ? `#${c.id} · kept · transparent` : `#${c.id} · transparent`}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Icon-mark survivors (iteration anchors)
+       ============================================================ -->
+  <section class="ks-section" id="icon-survivors" aria-labelledby="icon-survivors-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Icon-mark survivors</p>
+      <h2 id="icon-survivors-title">Iteration anchors for the next pass.</h2>
+      <p class="ks-section-sub">Earlier shapes kept because they each carry a property worth iterating on: stacked planes, three-flake scatter, reverse fill, three-layer fade. The current production placeholder (ε7) and its near-neighbors live on <a href="/design-system#mark" style="color: var(--ks-kinpaku); border-bottom: 1px solid currentColor;">/design-system</a>.</p>
+    </div>
+
+    <div class="ks-icon-concepts">
+      {[
+        { id: 'v2-b1', label: 'B1 · Outline + fill', svg: '<svg viewBox="0 0 14 22"><path fill="none" stroke="currentColor" stroke-width="0.8" d="M3 5 L8 4 L9 14 L4 15 Z"/><path fill="currentColor" d="M6 8 L11 6.5 L11.5 17 L6.5 18 Z"/></svg>' },
+        { id: 'v2-b2', label: 'B2 · Both filled, opacity', svg: '<svg viewBox="0 0 14 22" fill="currentColor"><path d="M3 5 L7.5 4 L7.8 13 L3.3 14 Z" opacity="0.55"/><path d="M6 8.5 L10.8 7 L11.2 16.5 L6.5 17.8 Z"/></svg>' },
+        { id: 'v2-c1', label: 'C1 · Three-flake scatter', svg: '<svg viewBox="0 0 14 22" fill="currentColor"><path d="M3 4 L6.5 3.5 L7 8 L3.5 8.5 Z"/><path d="M7.5 8.5 L10 8 L10.3 12 L7.8 12.5 Z"/><path d="M4 14 L6 13.5 L6.2 16.5 L4.2 17 Z"/></svg>' },
+        { id: 'v3-a6', label: 'α6 · Reverse fill/outline', svg: '<svg viewBox="0 0 14 22"><path fill="currentColor" d="M3 4 L9 3 L9.5 14 L3.5 15 Z"/><path fill="none" stroke="currentColor" stroke-width="0.8" d="M6 8 L11 6.5 L11.5 17 L6.5 18 Z"/></svg>' },
+        { id: 'v3-b6', label: 'β6 · Three-layer fade', svg: '<svg viewBox="0 0 14 22" fill="currentColor"><path opacity="0.25" d="M3 5 L6.5 4.5 L7 11 L3.5 11.5 Z"/><path opacity="0.6" d="M5 7 L9 6 L9.5 14 L5.5 15 Z"/><path d="M7 10 L11 9 L11.3 18 L7.3 19 Z"/></svg>' },
+      ].map((c) => (
+        <figure class="ks-icon-concept">
+          <span class="ks-icon-concept-box" aria-hidden="true" set:html={c.svg}></span>
+          <figcaption>{c.label}</figcaption>
+        </figure>
+      ))}
+    </div>
+  </section>
+</Base>
+
+<style>
+  .logo-dir-row {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) auto;
+    grid-template-areas: "head specimens" "roster roster";
+    gap: 36px 56px;
+    align-items: start;
+    padding: 40px 0;
+    border-top: 1px solid var(--ks-gold-hairline, oklch(58% 0.065 82 / 0.32));
+  }
+  .logo-dir-row.is-baseline { opacity: 0.72; }
+
+  .logo-dir-head { grid-area: head; display: flex; gap: 18px; }
+  .logo-dir-id {
+    flex: none;
+    font-family: var(--ks-font-mono, monospace);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    color: var(--ks-kinpaku);
+    width: 2.4em;
+    padding-top: 2px;
+  }
+  .logo-dir-name {
+    margin: 0 0 8px;
+    font-family: var(--ks-font-display);
+    font-weight: 600;
+    font-size: 1.4rem;
+    color: var(--ks-champagne, oklch(84% 0.035 82));
+  }
+  .logo-dir-idea {
+    margin: 0;
+    max-width: 42ch;
+    color: var(--ks-text-muted, oklch(63% 0.024 82));
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .logo-dir-specimens { grid-area: specimens; display: flex; gap: 40px; align-items: flex-start; }
+  .logo-dir-specimen { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .logo-dir-mark { display: inline-grid; place-items: center; color: var(--ks-kinpaku); }
+  .logo-dir-mark :global(svg) { width: 28px; height: 28px; display: block; }
+  .logo-dir-mark-lg :global(svg) { width: 48px; height: 48px; }
+  .logo-dir-cap {
+    font-family: var(--ks-font-mono, monospace);
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ks-text-faint, oklch(52% 0.018 82));
+  }
+  .logo-dir-lockup { display: inline-flex; align-items: center; gap: 14px; }
+  .logo-dir-word {
+    color: var(--ks-kinpaku);
+    font-family: var(--ks-font-display);
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    line-height: 1;
+    -webkit-font-smoothing: auto;
+  }
+
+  .logo-dir-roster {
+    grid-area: roster;
+    background: #000;
+    border-radius: 6px;
+    padding: 28px 32px 30px;
+    border: 1px solid oklch(100% 0 0 / 0.08);
+  }
+  .logo-dir-roster-eyebrow {
+    display: block;
+    text-align: center;
+    font-family: var(--ks-font-mono, monospace);
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: oklch(100% 0 0 / 0.55);
+    margin-bottom: 22px;
+  }
+  .logo-dir-roster-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 36px;
+  }
+  .logo-dir-peer {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: #fff;
+    font-family: var(--ks-font, system-ui, sans-serif);
+    font-weight: 600;
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+  .logo-dir-peer svg { width: 24px; height: 24px; display: block; }
+  .logo-dir-peer-ours { gap: 13px; }
+  /* Our mark + wordmark render monochrome white inside the roster, like a
+     real partner wall; no gold to lean on. */
+  .logo-dir-peer-ours .logo-dir-mark { color: #fff; }
+  .logo-dir-word-mono { color: #fff; font-size: 1.15rem; }
+
+  @media (max-width: 880px) {
+    .logo-dir-row {
+      grid-template-columns: 1fr;
+      grid-template-areas: "head" "specimens" "roster";
+      gap: 28px;
+    }
+    .logo-dir-specimens { justify-content: flex-start; }
+  }
+</style>

@@ -3,7 +3,7 @@
  * generators.
  *
  * Single source of truth:
- * - skill/SKILL.md                       → skill frontmatter + body
+ * - skill/SKILL.src.md                       → skill frontmatter + body
  * - skill/reference/*.md                  → skill reference files
  * - cli/engine/registry/antipatterns.mjs         → ANTIPATTERNS registry
  * - site/content/skills/{id}.md           → optional editorial wrapper
@@ -34,7 +34,7 @@ export {
  */
 const EXCLUDED_SKILLS = new Set([
   'frontend-design',   // deprecated, renamed to impeccable
-  'teach-impeccable',  // deprecated, folded into /impeccable teach
+  'teach-impeccable',  // deprecated, folded into /impeccable init
   'arrange',           // renamed to layout
   'normalize',         // merged into /polish
 ]);
@@ -71,7 +71,7 @@ export const SKILL_CATEGORIES = {
   harden: 'harden',
   onboard: 'harden',
   // SYSTEM - setup and tooling
-  teach: 'system',
+  init: 'system',
   document: 'system',
   extract: 'system',
   live: 'system',
@@ -131,8 +131,8 @@ export const COMMAND_RELATIONSHIPS = {
   harden: { combinesWith: ['optimize'] },
   onboard: { combinesWith: ['clarify', 'delight'] },
   // System
-  teach: { combinesWith: ['document'] },
-  document: { combinesWith: ['teach', 'extract'] },
+  init: { combinesWith: ['document'] },
+  document: { combinesWith: ['init', 'extract'] },
   extract: { combinesWith: ['document'] },
   live: {},
 };

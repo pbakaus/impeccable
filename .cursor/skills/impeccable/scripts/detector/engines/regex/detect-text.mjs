@@ -1,6 +1,7 @@
 import { GENERIC_FONTS } from '../../shared/constants.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
+import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { profileFindings, profileStep } from '../../profile/profiler.mjs';
 
 // ---------------------------------------------------------------------------
@@ -10,6 +11,17 @@ import { profileFindings, profileStep } from '../../profile/profiler.mjs';
 const hasRounded = (line) => /\brounded(?:-\w+)?\b/.test(line);
 const hasBorderRadius = (line) => /border-radius/i.test(line);
 const isSafeElement = (line) => /<(?:blockquote|nav[\s>]|pre[\s>]|code[\s>]|a\s|input[\s>]|span[\s>])/i.test(line);
+
+/** Strip HTML to plain text — drops script/style/comments/tags so
+ *  content-text analyzers don't false-positive on code or CSS. */
+function stripHtmlToText(html) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ');
+}
 
 function isNeutralBorderColor(str) {
   const m = str.match(/solid\s+(#[0-9a-f]{3,8}|rgba?\([^)]+\)|\w+)/i);
@@ -57,16 +69,12 @@ const REGEX_MATCHERS = [
     test: (m, line) => +m[1] >= 3 && hasBorderRadius(line),
     fmt: (m) => m[0] },
   // --- Overused font ---
-  { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans)\b/gi,
+  { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans|Instrument Serif)\b/gi,
     test: () => true,
     fmt: (m) => m[0] },
-  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Mona\+Sans|Geist)\b/gi,
+  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Instrument\+Serif|Mona\+Sans|Geist)\b/gi,
     test: () => true,
     fmt: (m) => `Google Fonts: ${m[1].replace(/\+/g, ' ')}` },
-  // --- Pure black background ---
-  { id: 'pure-black-white', regex: /background(?:-color)?\s*:\s*(#000000|#000|rgb\(0,\s*0,\s*0\))\b/gi,
-    test: () => true,
-    fmt: (m) => m[0] },
   // --- Gradient text ---
   { id: 'gradient-text', regex: /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/gi,
     test: (m, line) => /gradient/i.test(line),
@@ -75,10 +83,6 @@ const REGEX_MATCHERS = [
   { id: 'gradient-text', regex: /\bbg-clip-text\b/g,
     test: (m, line) => /\bbg-gradient-to-/i.test(line),
     fmt: () => 'bg-clip-text + bg-gradient' },
-  // --- Tailwind pure black background ---
-  { id: 'pure-black-white', regex: /\bbg-black\b/g,
-    test: () => true,
-    fmt: (m) => m[0] },
   // --- Tailwind gray on colored bg ---
   { id: 'gray-on-color', regex: /\btext-(?:gray|slate|zinc|neutral|stone)-(\d+)\b/g,
     test: (m, line) => /\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/.test(line),
@@ -124,6 +128,14 @@ const REGEX_MATCHERS = [
       const found = m[1].match(/\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/gi);
       return `transition-property: ${found ? found.join(', ') : m[1].trim()}`;
     } },
+  // --- Broken image: src="" or src="#" or src=" " ---
+  { id: 'broken-image', regex: /<img\b[^>]*?\bsrc\s*=\s*(?:""|''|"\s+"|'\s+'|"#"|'#')/gi,
+    test: () => true,
+    fmt: (m) => m[0].slice(0, 100) },
+  // --- Broken image: <img> with no src attribute at all ---
+  { id: 'broken-image', regex: /<img\b(?:(?!\bsrc\s*=)[^>])*>/gi,
+    test: (m) => !/\bsrc\s*=/i.test(m[0]),
+    fmt: (m) => m[0].slice(0, 100) },
 ];
 
 const REGEX_ANALYZERS = [
@@ -197,18 +209,86 @@ const REGEX_ANALYZERS = [
     const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
     return [finding('monotonous-spacing', filePath, `~${dominant}px used ${maxCount}/${rounded.length} times (${Math.round(pct * 100)}%)`)];
   },
-  // Everything centered (regex)
+  // Em-dash overuse: 5+ em-dashes or "--" in body text content
+  // (occasional em-dash use in prose is fine; the pattern fires only
+  // when count crosses into AI-cadence territory).
   (content, filePath) => {
-    const lines = content.split('\n');
-    let centered = 0, total = 0;
-    for (const line of lines) {
-      if (/<(?:h[1-6]|p|div|li|button)\b[^>]*>/i.test(line) && line.trim().length > 20) {
-        total++;
-        if (/text-align\s*:\s*center/i.test(line) || /\btext-center\b/.test(line)) centered++;
+    const text = stripHtmlToText(content);
+    let count = 0;
+    const re = /[—]|--(?=\S)/g;
+    while (re.exec(text) !== null) count++;
+    if (count < 5) return [];
+    return [finding('em-dash-overuse', filePath, `${count} em-dashes in body text`)];
+  },
+  // Marketing buzzwords: SaaS phrase list
+  (content, filePath) => {
+    const text = stripHtmlToText(content);
+    const lower = text.toLowerCase();
+    const BUZZWORDS = [
+      'streamline your', 'empower your', 'supercharge your',
+      'unleash your', 'unleash the power', 'leverage the power',
+      'built for the modern', 'trusted by leading', 'trusted by the world',
+      'best-in-class', 'industry-leading', 'world-class', 'enterprise-grade',
+      'next-generation', 'cutting-edge', 'transform your business',
+      'revolutionize', 'game-changer', 'game changing',
+      'mission-critical', 'best of breed', 'future-proof', 'future proof',
+      'seamless experience', 'seamlessly integrate',
+      'drive engagement', 'drive growth', 'drive results',
+      'harness the power',
+    ];
+    let count = 0;
+    let firstSample = '';
+    for (const phrase of BUZZWORDS) {
+      let from = 0;
+      while (true) {
+        const idx = lower.indexOf(phrase, from);
+        if (idx === -1) break;
+        count++;
+        if (!firstSample) {
+          firstSample = text.slice(Math.max(0, idx - 12), Math.min(text.length, idx + phrase.length + 12)).trim();
+        }
+        from = idx + phrase.length;
       }
     }
-    if (total < 5 || centered / total <= 0.7) return [];
-    return [finding('everything-centered', filePath, `${centered}/${total} text elements centered (${Math.round(centered / total * 100)}%)`)];
+    if (count === 0) return [];
+    return [finding('marketing-buzzword', filePath, `${count} buzzword phrase${count === 1 ? '' : 's'}: "${firstSample}"`)];
+  },
+  // Numbered section markers (01 / 02 / 03 ...)
+  (content, filePath) => {
+    const text = stripHtmlToText(content);
+    const re = /\b(0[1-9]|1[0-2])\b/g;
+    const seen = new Set();
+    let m;
+    while ((m = re.exec(text)) !== null) seen.add(m[1]);
+    if (seen.size < 3) return [];
+    const sorted = [...seen].sort();
+    let sequential = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      if (parseInt(sorted[i], 10) === parseInt(sorted[i - 1], 10) + 1) sequential++;
+    }
+    if (sequential < 2) return [];
+    return [finding('numbered-section-markers', filePath, `Sequence: ${sorted.slice(0, 6).join(', ')}`)];
+  },
+  // Aphoristic cadence: manufactured-contrast + short-rebuttal
+  (content, filePath) => {
+    const text = stripHtmlToText(content);
+    const NOT_A_RE = /\bNot an? [a-z][^.!?]{1,40}[.!]\s+[A-Z][^.!?]{1,60}[.!]/g;
+    const SHORT_REBUTTAL_RE = /\b[A-Z][^.!?]{4,80}[.!]\s+(No|Just)\s+[a-z][^.!?]{2,60}[.!]/g;
+    let count = 0;
+    let firstSample = '';
+    let m;
+    NOT_A_RE.lastIndex = 0;
+    while ((m = NOT_A_RE.exec(text)) !== null) {
+      count++;
+      if (!firstSample) firstSample = m[0].trim().slice(0, 80);
+    }
+    SHORT_REBUTTAL_RE.lastIndex = 0;
+    while ((m = SHORT_REBUTTAL_RE.exec(text)) !== null) {
+      count++;
+      if (!firstSample) firstSample = m[0].trim().slice(0, 80);
+    }
+    if (count < 3) return [];
+    return [finding('aphoristic-cadence', filePath, `${count} aphoristic constructions: "${firstSample}"`)];
   },
   // Dark glow (page-level: dark bg + colored box-shadow with blur)
   (content, filePath) => {
@@ -328,6 +408,36 @@ function runRegexMatchers(lines, filePath, lineOffset = 0, blockContext = null, 
   return findings;
 }
 
+/** Page-level analyzers that scan rendered text content (em-dash use,
+ *  buzzword phrases, numbered section markers, aphoristic cadence).
+ *  These are detector-agnostic — they work on any HTML/text source
+ *  and don't need a parsed DOM. Exported so detectHtml can call them
+ *  for `.html` files (which otherwise skip the regex engine). */
+const TEXT_CONTENT_ANALYZER_IDS = [
+  'em-dash-overuse',
+  'marketing-buzzword',
+  'numbered-section-markers',
+  'aphoristic-cadence',
+];
+
+function runTextContentAnalyzers(content, filePath, options = {}) {
+  const profile = options?.profile;
+  if (!isFullPage(content)) return [];
+  // The 4 text-content analyzers are at indices 3-6 in REGEX_ANALYZERS.
+  const findings = [];
+  for (let i = 0; i < TEXT_CONTENT_ANALYZER_IDS.length; i++) {
+    const analyzer = REGEX_ANALYZERS[3 + i];
+    const ruleId = TEXT_CONTENT_ANALYZER_IDS[i];
+    findings.push(...profileFindings(profile, {
+      engine: 'regex',
+      phase: 'text-content',
+      ruleId,
+      target: filePath,
+    }, () => analyzer(content, filePath)));
+  }
+  return findings;
+}
+
 function detectText(content, filePath, options = {}) {
   const profile = options?.profile;
   const findings = [];
@@ -393,7 +503,10 @@ function detectText(content, filePath, options = {}) {
       'single-font',
       'flat-type-hierarchy',
       'monotonous-spacing',
-      'everything-centered',
+      'em-dash-overuse',
+      'marketing-buzzword',
+      'numbered-section-markers',
+      'aphoristic-cadence',
       'dark-glow',
     ];
     for (let i = 0; i < REGEX_ANALYZERS.length; i++) {
@@ -407,14 +520,16 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
-  return deduped;
+  return filterByProviders(deduped, options?.providers);
 }
 
 export {
   REGEX_MATCHERS,
   REGEX_ANALYZERS,
+  TEXT_CONTENT_ANALYZER_IDS,
   extractStyleBlocks,
   extractCSSinJS,
   runRegexMatchers,
+  runTextContentAnalyzers,
   detectText,
 };

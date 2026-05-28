@@ -12,7 +12,7 @@ Reach for `/impeccable` directly when:
 - **The work spans multiple disciplines.** "Redo this hero section" touches layout, type, color, and motion. One command cannot own that.
 - **You want the full design intelligence without constraints.** Every reference file loaded, every anti-pattern checked, no pre-set workflow.
 
-For structured flows, reach for the specialized commands in the sidebar. Run `/impeccable teach` first on any new project to establish PRODUCT.md and DESIGN.md. `/impeccable craft` chains a discovery interview into a full build with live visual iteration. `/impeccable shape` produces a design brief without touching code. `/impeccable live` gives you a browser picker with three variants per element. The evaluation and refinement commands (`audit`, `critique`, `polish`, `typeset`, `layout`, `colorize`, and the rest) each own a specific slice of the work.
+For structured flows, reach for the specialized commands in the sidebar. Run `/impeccable init` first on any new project to establish PRODUCT.md and DESIGN.md. `/impeccable craft` chains a discovery interview into a full build with live visual iteration. `/impeccable shape` produces a design brief without touching code. `/impeccable live` gives you a browser picker with three variants per element. The evaluation and refinement commands (`audit`, `critique`, `polish`, `typeset`, `layout`, `colorize`, and the rest) each own a specific slice of the work.
 
 ## How it works
 
@@ -25,7 +25,7 @@ Two files at your project root shape everything the skill does:
 
 Every command reads both files before generating. **Register** decides which defaults load. Brand (marketing, landing, portfolio, where design IS the product) and product (app UI, dashboards, tools, where design SERVES the product) have different defaults for type, motion, color, and density. Specifying it once in PRODUCT.md means `/impeccable typeset` will not push editorial-magazine fonts on a dashboard, and will not push product-fluent defaults on a campaign page. See the [brand vs product tutorial](/tutorials/brand-vs-product) for how the two diverge.
 
-On first use in a project, the skill runs the `teach` flow automatically: a short interview that writes PRODUCT.md and then delegates to `/impeccable document` for DESIGN.md. Future commands read the files without asking again.
+On first use in a project, the skill runs the `init` flow automatically: a short interview that writes PRODUCT.md and then delegates to `/impeccable document` for DESIGN.md. Future commands read the files without asking again.
 
 ## Try it
 
@@ -70,5 +70,5 @@ To remove: `/impeccable unpin critique`. Pins live as directories prefixed with 
 
 - **Treating it like a style guide.** It is an opinionated design partner, not a linter. The defaults exist to raise the floor, not to overrule your judgment. If you have a real reason to push back (brand guideline, accessibility constraint, user research), push back and explain why. The skill will work with you. What produces worse output is ignoring the opinion without a reason.
 - **Expecting it to fix existing code.** `/impeccable` is for creation. For refinement, reach for `/impeccable polish`, `/impeccable distill`, or `/impeccable critique` instead.
-- **Running it before `teach` has had a chance to save context.** On a fresh project it will interview you mid-flight, which is fine but slower. Running `/impeccable teach` explicitly as your very first command is a tiny bit smoother.
-- **Skipping the register question.** Brand and product defaults diverge enough that running on the wrong register produces subtly off output. If `PRODUCT.md` has no `## Register` field (legacy), run `/impeccable teach` to add it.
+- **Running it before `init` has had a chance to save context.** On a fresh project it will interview you mid-flight, which is fine but slower. Running `/impeccable init` explicitly as your very first command is a tiny bit smoother.
+- **Skipping the register question.** Brand and product defaults diverge enough that running on the wrong register produces subtly off output. If `PRODUCT.md` has no `## Register` field (legacy), run `/impeccable init` to add it.

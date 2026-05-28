@@ -1,91 +1,179 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
 import '../../styles/sub-pages.css';
+import '../../styles/docs-kinpaku.css';
 import {
   SKILL_CATEGORIES,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
-  CATEGORY_DESCRIPTIONS,
 } from '../../data/sub-pages-data';
 
 const entries = await getCollection('skills');
 
-const grouped: Record<string, typeof entries> = {};
+const tutorials = (await getCollection('tutorials'))
+  .sort((a, b) => a.data.order - b.data.order);
+
+const taglineFor = (slug: string) =>
+  entries.find(e => e.id === slug)?.data.tagline ?? '';
+
+const grouped: Record<string, { slug: string; tagline: string }[]> = {};
 for (const cat of CATEGORY_ORDER) {
   grouped[cat] = entries
     .filter(e => SKILL_CATEGORIES[e.id] === cat)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(e => ({ slug: e.id, tagline: e.data.tagline }));
 }
 
-const allCommands = entries.map(e => ({
-  slug: e.id,
-  category: SKILL_CATEGORIES[e.id] || 'system',
-}));
+const session = [
+  { slug: 'shape', verb: 'Plan' },
+  { slug: 'craft', verb: 'Build' },
+  { slug: 'critique', verb: 'Review' },
+  { slug: 'polish', verb: 'Refine' },
+];
 
-const sidebarGroups: Record<string, { slug: string }[]> = {};
-for (const cat of CATEGORY_ORDER) {
-  sidebarGroups[cat] = allCommands
-    .filter(c => c.category === cat)
-    .sort((a, b) => a.slug.localeCompare(b.slug));
-}
+const chains: { id: string; a: string; b: string; arrow: string; line: string }[] = [
+  { id: 'bolder-quieter', a: 'bolder', b: 'quieter', arrow: '↔', line: 'Two halves of voice. Loud or restrained, never neutral.' },
+  { id: 'audit-harden', a: 'audit', b: 'harden', arrow: '→', line: 'Find the technical issues. Then fix them.' },
+  { id: 'critique-polish', a: 'critique', b: 'polish', arrow: '→', line: 'Review the work. Then refine it.' },
+  { id: 'shape-craft', a: 'shape', b: 'craft', arrow: '→', line: 'Plan the feature. Then build the plan.' },
+];
 ---
 
 <Base
   title="Docs | Impeccable"
-  description="23 commands for design fluency. Browse the full reference for every /impeccable sub-command."
+  description="How to invoke /impeccable. Live picker, workflow chains, and the full command reference."
   activeNav="docs"
   canonicalPath="/docs"
-  bodyClass="sub-page skills-layout-page"
+  bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
 >
   <div class="skills-layout">
-    <aside class="skills-sidebar" aria-label="Commands">
-      <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
-        <span class="skills-sidebar-toggle-label">Commands</span>
-        <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <div class="skills-sidebar-inner" id="skills-sidebar-inner">
-        <p class="skills-sidebar-label">Commands</p>
-        {CATEGORY_ORDER.map(cat => (
-          <div class="skills-sidebar-group">
-            <span class="skills-sidebar-category">{CATEGORY_LABELS[cat]}</span>
-            <ul class="skills-sidebar-list">
-              {sidebarGroups[cat].map(cmd => (
-                <li>
-                  <a href={`/docs/${cmd.slug}`}>
-                    <span>{cmd.slug}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </aside>
+    <DocsSidebar />
 
     <div class="skills-main">
       <div class="docs-index">
+
         <header class="docs-index-header">
-          <h1 class="sub-page-title">Commands</h1>
-          <p class="sub-page-lede">23 commands for design fluency. One skill, six categories, from shaping a new feature to hardening it for production.</p>
+          <h1 class="docs-index-title">How you invoke <span class="docs-index-mark">/impeccable</span>.</h1>
+          <p class="docs-index-lede">A loop, not a list. Run one sub-command in a chat, chain a few in a session, or open the live picker and iterate on the surface in your browser.</p>
         </header>
 
-        {CATEGORY_ORDER.map(cat => (
-          <section class="docs-category-section" id={`category-${cat}`}>
-            <header class="docs-category-header">
-              <h2 class="docs-category-title">{CATEGORY_LABELS[cat]}</h2>
-              <p class="docs-category-desc">{CATEGORY_DESCRIPTIONS[cat]}</p>
-            </header>
-            <div class="docs-card-grid">
-              {grouped[cat].map(entry => (
-                <a href={`/docs/${entry.id}`} class="docs-command-card">
-                  <h3 class="docs-command-name">/impeccable {entry.id}</h3>
-                  <p class="docs-command-tagline">{entry.data.tagline}</p>
-                </a>
-              ))}
+        <!-- Live mode: the headliner -->
+        <section class="docs-live" aria-labelledby="docs-live-h">
+          <div class="docs-live-copy">
+            <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it.</h2>
+            <p class="docs-live-lede">Click an element in the running app. Pick a sub-command, optionally annotate, hit Go. Impeccable wraps the element, writes two or three variants into the source, and HMR cycles them in front of you. Accept the one you want. The rest are removed.</p>
+            <p class="docs-live-cta">
+              <a class="ks-button ks-button-primary" href="/docs/live">
+                Read the live spec
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M0 4h14M10 0l4 4-4 4"/></svg>
+                </span>
+              </a>
+            </p>
+          </div>
+
+          <figure class="docs-live-figure" aria-hidden="true">
+            <div class="docs-live-frame">
+              <div class="docs-live-chrome">
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-url">localhost:4321</span>
+              </div>
+              <div class="docs-live-stage">
+                <div class="docs-live-target">
+                  <div class="docs-live-target-title">Hero headline</div>
+                  <div class="docs-live-target-sub">Variant 2 of 3</div>
+                </div>
+                <div class="docs-live-bar">
+                  <span class="docs-live-bar-prev">Prev</span>
+                  <span class="docs-live-bar-counter">2 / 3</span>
+                  <span class="docs-live-bar-next">Next</span>
+                  <span class="docs-live-bar-divider"></span>
+                  <span class="docs-live-bar-accept">Accept</span>
+                </div>
+              </div>
             </div>
-          </section>
-        ))}
+          </figure>
+        </section>
+
+        <!-- A typical session: linear workflow -->
+        <section class="docs-flow-section">
+          <header class="docs-flow-head">
+            <h2 class="docs-flow-title">Plan, build, review, refine.</h2>
+            <p class="docs-flow-sub">One canonical shape. Each step is a sub-command you invoke in chat.</p>
+          </header>
+
+          <ol class="docs-flow" aria-label="Typical session">
+            {session.map((step, i) => (
+              <li class="docs-flow-step">
+                <a class="docs-flow-link" href={`/docs/${step.slug}`}>
+                  <span class="docs-flow-verb">{step.verb}</span>
+                  <span class="docs-flow-cmd">/impeccable {step.slug}</span>
+                  <span class="docs-flow-tag">{taglineFor(step.slug)}</span>
+                </a>
+                {i < session.length - 1 && (
+                  <span class="docs-flow-arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 8" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 4h22M18 0l4 4-4 4"/></svg>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+
+          <p class="docs-flow-alt">
+            Already shipped? Skip ahead with <a href="/docs/live">/impeccable live</a> on the page that needs work, or <a href="/docs/audit">/impeccable audit</a> for a technical pass.
+          </p>
+        </section>
+
+        <!-- Pairs and chains: the schema -->
+        <section class="docs-chains-section">
+          <header class="docs-chains-head">
+            <h2 class="docs-chains-title">How commands imply each other.</h2>
+            <p class="docs-chains-sub">Four shapes that show up across most sessions. Learn these and the rest is filling in detail.</p>
+          </header>
+
+          <div class="docs-chains-grid">
+            {chains.map(chain => (
+              <article class="docs-chain">
+                <p class="docs-chain-formula">
+                  <a class="docs-chain-cmd" href={`/docs/${chain.a}`}>{chain.a}</a>
+                  <span class="docs-chain-arrow" aria-hidden="true">{chain.arrow}</span>
+                  <a class="docs-chain-cmd" href={`/docs/${chain.b}`}>{chain.b}</a>
+                </p>
+                <p class="docs-chain-line">{chain.line}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <!-- Full reference: the cheatsheet -->
+        <section class="docs-reference-section" aria-labelledby="docs-reference-h">
+          <header class="docs-reference-head">
+            <h2 class="docs-reference-title" id="docs-reference-h">Every sub-command, by lifecycle phase.</h2>
+          </header>
+
+          <div class="docs-reference">
+            {CATEGORY_ORDER.map(cat => (
+              <div class="docs-reference-group" id={`category-${cat}`}>
+                <p class="docs-reference-cat">{CATEGORY_LABELS[cat]} <span class="docs-reference-count">{grouped[cat].length}</span></p>
+                <ul class="docs-reference-list">
+                  {grouped[cat].map(entry => (
+                    <li>
+                      <a class="docs-reference-row" href={`/docs/${entry.slug}`}>
+                        <span class="docs-reference-name">{entry.slug}</span>
+                        <span class="docs-reference-line">{entry.tagline}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+
       </div>
     </div>
   </div>
@@ -98,22 +186,4 @@ for (const cat of CATEGORY_ORDER) {
       toggle.setAttribute('aria-expanded', String(!expanded));
     });
   </script>
-
-  <style>
-    .docs-index { padding: 2rem 0 4rem; }
-    .docs-index-header { margin-bottom: 3rem; }
-    .docs-category-section { margin-bottom: 2.5rem; }
-    .docs-category-header { margin-bottom: 1rem; }
-    .docs-category-title { font-family: var(--font-display); font-size: 1.5rem; margin: 0 0 0.25rem; }
-    .docs-category-desc { color: var(--color-ash); font-size: 0.9375rem; margin: 0; }
-    .docs-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
-    .docs-command-card {
-      display: block; padding: 1.25rem; border-radius: 8px;
-      border: 1px solid var(--color-mist); text-decoration: none; color: inherit;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .docs-command-card:hover { border-color: var(--color-accent); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-    .docs-command-name { font-family: var(--font-mono); font-size: 0.9375rem; font-weight: 600; margin: 0 0 0.375rem; }
-    .docs-command-tagline { font-size: 0.8125rem; color: var(--color-ash); margin: 0; line-height: 1.5; }
-  </style>
 </Base>

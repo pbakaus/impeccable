@@ -1,0 +1,965 @@
+/* ============================================================================
+   /slop — Neo Kinpaku redesign
+
+   Re-skins the /slop page (anti-pattern catalog + detection overlay demo) on
+   the dark lacquer kinpaku surface. Same scoping pattern as docs-kinpaku.css:
+   a body class (.slop-kinpaku) remaps the generic light tokens so embedded
+   visualizations inherit dark surfaces, then per-component styles use the
+   kinpaku tokens directly.
+
+   The page shows AI antipattern specimens (purple gradients, etc.) — those
+   previews must stay light/colorful because that IS the demonstration. Only
+   the page chrome around them flips to lacquer.
+
+   Sections of this file mirror the page:
+     1. Page scope + base
+     2. Sidebar
+     3. Hero
+     4. Shared section scaffolding (eyebrows, h2s)
+     5. See it (era toggle + iframe demo)
+     6. Try it live (specimen gallery)
+     7. The catalog (37 rules in 8 categories, plinth-of-tiles per category)
+     8. Run it yourself (3-up methods)
+     9. Footer
+   ============================================================================ */
+
+@import "./kinpaku-tokens.css";
+
+
+/* ============================================================================
+   1. PAGE SCOPE + BASE
+   ============================================================================ */
+
+.slop-kinpaku {
+  /* Surface/text/accent/font tokens default to kinpaku at :root now; only
+     the --ks-muted alias and the page shell remain here. The AI-slop
+     specimens keep their own explicit light/colorful styling — that's the
+     demonstration, and it's unaffected by the token default. */
+  --ks-muted: var(--ks-text-muted);
+
+  background:
+    linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  min-height: 100vh;
+}
+
+.slop-kinpaku a {
+  color: inherit;
+}
+
+/* The skills-layout container is shared with /docs. Re-declare the kinpaku
+   layout to match: 240px sidebar + flexible main, max-width 1500, centered. */
+.slop-kinpaku.skills-layout-page main#main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.slop-kinpaku .skills-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: clamp(40px, 4vw, 72px);
+  padding: 0 clamp(22px, 4vw, 56px);
+  align-items: start;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .slop-kinpaku .skills-layout {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+
+.slop-kinpaku .skills-main {
+  min-width: 0;
+  padding: 48px 0 clamp(80px, 10vw, 140px);
+}
+
+.slop-kinpaku .anti-patterns-content {
+  max-width: none;
+}
+
+
+/* ============================================================================
+   2. SIDEBAR
+   ============================================================================ */
+
+.slop-kinpaku .skills-sidebar {
+  position: sticky;
+  top: 86px;
+  align-self: start;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
+  padding: 48px 0 64px;
+  border-right: 1px solid var(--ks-rule);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ks-rule) transparent;
+}
+
+@media (min-width: 961px) {
+  .slop-kinpaku .skills-sidebar {
+    min-height: calc(100vh - 86px);
+  }
+}
+
+.slop-kinpaku .skills-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.slop-kinpaku .skills-sidebar::-webkit-scrollbar-thumb {
+  background: var(--ks-rule);
+  border-radius: 3px;
+}
+
+.slop-kinpaku .skills-sidebar-inner {
+  padding-right: 22px;
+}
+
+.slop-kinpaku .skills-sidebar-toggle {
+  display: none;
+}
+
+.slop-kinpaku .skills-sidebar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.slop-kinpaku .skills-sidebar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.slop-kinpaku .skills-sidebar-list a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0 5px 12px;
+  border-left: 2px solid transparent;
+  font-family: var(--ks-mono);
+  font-size: 0.86rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ks-text);
+  text-decoration: none;
+  transition: color 160ms var(--ks-ease),
+              border-color 160ms var(--ks-ease);
+}
+
+.slop-kinpaku .skills-sidebar-list a:hover {
+  color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .skills-sidebar-list a[aria-current="true"] {
+  color: var(--ks-kinpaku);
+  border-left-color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .anti-patterns-sidebar-count {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-text-faint);
+}
+
+.slop-kinpaku .slop-sidebar-sublist {
+  list-style: none;
+  padding: 4px 0 0 14px;
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.slop-kinpaku .slop-sidebar-sublist a {
+  font-size: 0.8rem;
+  padding-left: 10px;
+  color: var(--ks-text-muted);
+}
+
+@media (max-width: 960px) {
+  .slop-kinpaku .skills-sidebar {
+    position: static;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    padding: 18px 0 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--ks-rule);
+  }
+
+  .slop-kinpaku .skills-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 14px 0;
+    background: transparent;
+    border: 0;
+    color: var(--ks-champagne);
+    font-family: var(--ks-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .slop-kinpaku .skills-sidebar-toggle-chevron {
+    transition: transform 220ms var(--ks-ease);
+    color: var(--ks-kinpaku);
+    flex-shrink: 0;
+  }
+
+  .slop-kinpaku .skills-sidebar-toggle[aria-expanded="true"] .skills-sidebar-toggle-chevron {
+    transform: rotate(180deg);
+  }
+
+  .slop-kinpaku .skills-sidebar-inner {
+    display: none;
+    padding: 14px 0 24px;
+  }
+
+  .slop-kinpaku .skills-sidebar-toggle[aria-expanded="true"] + .skills-sidebar-inner {
+    display: block;
+  }
+}
+
+
+/* ============================================================================
+   3. HERO
+   ============================================================================ */
+
+.slop-kinpaku .slop-header {
+  margin-bottom: clamp(72px, 9vw, 110px);
+  max-width: 760px;
+}
+
+.slop-kinpaku .sub-page-eyebrow {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  letter-spacing: var(--ks-type-eyebrow-track);
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin: 0 0 18px;
+}
+
+/* Hero h1 follows the Weight-Inversion Rule: display scale at weight 300. */
+.slop-kinpaku .sub-page-title {
+  font-family: var(--ks-font-display);
+  font-style: normal;
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-display-size);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  color: var(--ks-champagne);
+  margin: 0 0 22px;
+  text-wrap: balance;
+}
+
+.slop-kinpaku .sub-page-lede {
+  font-size: 1.1rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 60ch;
+}
+
+.slop-kinpaku .sub-page-lede code {
+  font-family: var(--ks-mono);
+  font-size: 0.86em;
+  color: var(--ks-champagne);
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  padding: 1px 7px;
+  border-radius: 2px;
+}
+
+.slop-kinpaku .sub-page-lede a {
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.4);
+  transition: text-decoration-color 160ms var(--ks-ease);
+}
+
+.slop-kinpaku .sub-page-lede a:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+
+/* ============================================================================
+   4. SHARED SECTION SCAFFOLDING
+   ============================================================================ */
+
+.slop-kinpaku .slop-section {
+  margin-bottom: clamp(72px, 9vw, 120px);
+}
+
+.slop-kinpaku .slop-section:last-child {
+  margin-bottom: 0;
+}
+
+.slop-kinpaku .slop-section-heading {
+  font-family: var(--ks-font-display);
+  font-style: normal;
+  font-weight: var(--ks-type-headline-weight);
+  font-size: var(--ks-type-headline-size);
+  line-height: var(--ks-type-headline-line);
+  letter-spacing: -0.005em;
+  color: var(--ks-champagne);
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  text-wrap: balance;
+}
+
+
+/* ============================================================================
+   5. SEE IT — era toggle + iframe demo
+   ============================================================================ */
+
+.slop-kinpaku .slop-then-now-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(24px, 4vw, 56px);
+  margin: 0 0 22px;
+}
+
+@media (max-width: 720px) {
+  .slop-kinpaku .slop-then-now-intro {
+    flex-direction: column;
+    gap: 18px;
+  }
+}
+
+.slop-kinpaku .slop-then-now-lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* Era toggle — segmented control. Kinpaku-active, graphite-rest. */
+.slop-kinpaku .slop-era-toggle {
+  display: inline-flex;
+  padding: 4px;
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.slop-kinpaku .slop-era-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 160ms var(--ks-ease),
+              color 160ms var(--ks-ease);
+}
+
+.slop-kinpaku .slop-era-tab:hover {
+  color: var(--ks-champagne);
+}
+
+.slop-kinpaku .slop-era-tab.is-active {
+  background: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+}
+
+/* Browser frame mock around the iframe. Lacquer-deep shell with kinpaku
+   chrome bar, matching the docs-kinpaku live-mode mock vocabulary. */
+.slop-kinpaku .visual-mode-preview {
+  background: var(--ks-lacquer-deep);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px oklch(2% 0.004 95 / 0.55);
+}
+
+.slop-kinpaku .visual-mode-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--ks-graphite);
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.slop-kinpaku .visual-mode-preview-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: oklch(28% 0.01 95);
+}
+
+.slop-kinpaku .visual-mode-preview-title {
+  margin-left: auto;
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.slop-kinpaku .visual-mode-frame {
+  width: 100%;
+  height: 720px;
+  border: 0;
+  display: block;
+  background: var(--ks-lacquer-deep);
+}
+
+.slop-kinpaku .visual-mode-demo-caption {
+  margin: 14px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ks-text-muted);
+}
+
+
+/* ============================================================================
+   6. TRY IT LIVE — 11 specimen gallery on a tinted plinth
+   ============================================================================ */
+
+.slop-kinpaku .visual-mode-gallery-header {
+  margin-bottom: 22px;
+}
+
+.slop-kinpaku .visual-mode-gallery-lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 60ch;
+}
+
+/* Gallery — auto-fill grid of standalone specimen cards. No wrapping
+   plinth: the specimens are independent items, not a unified composition,
+   so each card carries its own edge via a hairline border on a lifted
+   lacquer-raised surface. */
+.slop-kinpaku .gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.slop-kinpaku .gallery-card {
+  display: grid;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 180ms var(--ks-ease),
+              background 180ms var(--ks-ease);
+}
+
+.slop-kinpaku .gallery-card:hover {
+  border-color: var(--ks-kinpaku);
+  background: oklch(13% 0.012 82);
+}
+
+/* Specimen images are 2560×1600 (16:10) screenshots of landing-page
+   slop. The thumb was 1:1, which forced object-fit: cover to chop half
+   the screenshot AND made every card stupidly tall. Match the source
+   aspect so the full screenshot fits without cropping and the card
+   becomes a sensible thumbnail height. */
+.slop-kinpaku .gallery-card-thumb {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: oklch(4% 0.004 95);
+}
+
+.slop-kinpaku .gallery-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+  filter: saturate(1.05);
+  transition: transform 320ms var(--ks-ease);
+}
+
+.slop-kinpaku .gallery-card:hover .gallery-card-thumb img {
+  transform: scale(1.04);
+}
+
+.slop-kinpaku .gallery-card-body {
+  display: grid;
+  gap: 8px;
+  padding: 18px 20px 22px;
+}
+
+.slop-kinpaku .gallery-card-title {
+  font-family: var(--ks-font);
+  font-style: normal;
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ks-champagne);
+  margin: 0;
+}
+
+.slop-kinpaku .gallery-card-desc {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+  margin: 0;
+}
+
+
+/* ============================================================================
+   7. THE CATALOG — 8 categories, each a plinth of rule tiles
+   ============================================================================ */
+
+.slop-kinpaku .slop-catalog-header {
+  margin-bottom: 22px;
+}
+
+.slop-kinpaku .slop-catalog-lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ks-text);
+  margin: 0;
+  max-width: 64ch;
+}
+
+.slop-kinpaku .slop-catalog-lede strong {
+  color: var(--ks-champagne);
+  font-weight: 600;
+}
+
+.slop-kinpaku .slop-catalog-lede a {
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.4);
+}
+
+.slop-kinpaku .slop-catalog-lede a:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+/* Legend — collapsible. Champagne body, kinpaku layer chips. */
+.slop-kinpaku .anti-patterns-legend {
+  margin: 22px 0 32px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.slop-kinpaku .anti-patterns-legend-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.slop-kinpaku .anti-patterns-legend-summary::-webkit-details-marker {
+  display: none;
+}
+
+.slop-kinpaku .anti-patterns-legend-title {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .anti-patterns-legend-chevron {
+  transition: transform 220ms var(--ks-ease);
+  color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .anti-patterns-legend[open] .anti-patterns-legend-chevron {
+  transform: rotate(180deg);
+}
+
+.slop-kinpaku .anti-patterns-legend-body {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.slop-kinpaku .anti-patterns-legend-body p {
+  margin: 16px 0;
+  color: var(--ks-text);
+  font-size: 0.94rem;
+}
+
+.slop-kinpaku .anti-patterns-legend-body a {
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.4);
+}
+
+.slop-kinpaku .anti-patterns-legend-body a:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .anti-patterns-legend-body code {
+  font-family: var(--ks-mono);
+  font-size: 0.86em;
+  color: var(--ks-champagne);
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+
+.slop-kinpaku .anti-patterns-legend-layers {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.slop-kinpaku .anti-patterns-legend-layers > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.slop-kinpaku .anti-patterns-legend-layers dt {
+  margin: 0;
+}
+
+.slop-kinpaku .anti-patterns-legend-layers dd {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Per-category section. Header + plinth of rule tiles. */
+.slop-kinpaku .anti-patterns-sections {
+  display: grid;
+  gap: clamp(36px, 4vw, 56px);
+}
+
+.slop-kinpaku .anti-patterns-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.slop-kinpaku .anti-patterns-section-title {
+  font-family: var(--ks-font);
+  font-size: 1.04rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ks-champagne);
+  margin: 0;
+}
+
+.slop-kinpaku .anti-patterns-section-count {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ks-text-faint);
+  margin: 0;
+}
+
+/* Rule cards — independent specimens per category. Each card is
+   self-contained; no wrapping plinth. The category section header above
+   provides all the grouping context the cards need. */
+.slop-kinpaku .rule-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.slop-kinpaku .rule-card {
+  display: grid;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+  transition: border-color 180ms var(--ks-ease),
+              background 180ms var(--ks-ease);
+}
+
+.slop-kinpaku .rule-card:hover {
+  border-color: var(--ks-kinpaku);
+  background: oklch(13% 0.012 82);
+}
+
+/* Visual preview — the actual bad-pattern demo. The inline styles in the
+   markdown were authored against a light cream ground (#fff cards, #0a0b14
+   dark-mode demos, #f5f3ef paper, gray text on cream, etc.); putting them
+   on lacquer-deep would erase the dark-on-dark specimens. So this band
+   keeps a light cream surface — the kinpaku card chrome around it stays
+   dark. Reads as a "specimen viewer" framed by the dark card. */
+.slop-kinpaku .rule-card-visual {
+  height: 160px;
+  background: oklch(96% 0.003 255);
+  border-bottom: 1px solid var(--ks-rule);
+  position: relative;
+  overflow: hidden;
+}
+
+.slop-kinpaku .rule-card-visual-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* For full-bleed inline previews (width:100% in the markdown) — kill
+   their inline border-radius so the preview meets the card edges
+   sharply, instead of leaving a dark sliver around rounded corners.
+   Fixed-width inline previews are unaffected (they sit centered in the
+   visual band and intentionally show the lacquer frame around them). */
+.slop-kinpaku .rule-card-visual-inner > div[style*="100%"] {
+  border-radius: 0 !important;
+}
+
+.slop-kinpaku .rule-card-body {
+  display: grid;
+  gap: 8px;
+  padding: 16px 18px 20px;
+}
+
+.slop-kinpaku .rule-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+/* Chips. Both .rule-card-category and .rule-card-layer share the same
+   shape so they line up cleanly in the meta row. sub-pages.css sets
+   per-variant background-color and border-color via element selectors
+   (specificity 0,2,1) — match that level here so the kinpaku theme wins
+   on the cascade for both bg and border, not just color. */
+.slop-kinpaku .rule-card-category,
+.slop-kinpaku .rule-card-layer {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  line-height: 1.4;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.slop-kinpaku .rule-card-category[data-category="slop"] {
+  color: var(--ks-vermilion);
+  background: oklch(58% 0.15 35 / 0.14);
+  border-color: oklch(58% 0.15 35 / 0.32);
+}
+
+.slop-kinpaku .rule-card-category[data-category="quality"] {
+  color: var(--ks-patina);
+  background: oklch(70% 0.12 188 / 0.12);
+  border-color: oklch(70% 0.12 188 / 0.30);
+}
+
+.slop-kinpaku .rule-card-layer[data-layer="cli"] {
+  color: var(--ks-kinpaku);
+  background: oklch(78% 0.12 82 / 0.10);
+  border-color: oklch(78% 0.12 82 / 0.34);
+}
+
+.slop-kinpaku .rule-card-layer[data-layer="browser"] {
+  color: var(--ks-patina);
+  background: oklch(70% 0.12 188 / 0.10);
+  border-color: oklch(70% 0.12 188 / 0.30);
+}
+
+.slop-kinpaku .rule-card-layer[data-layer="llm"] {
+  color: var(--ks-text-muted);
+  background: var(--ks-graphite);
+  border-color: var(--ks-rule);
+}
+
+/* Opt-in provider tells: deterministic but off by default (--gpt / --gemini). */
+.slop-kinpaku .rule-card-layer[data-layer="optin"] {
+  color: var(--ks-vermilion);
+  background: oklch(58% 0.15 35 / 0.10);
+  border-color: oklch(58% 0.15 35 / 0.30);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.slop-kinpaku .rule-card-name {
+  font-family: var(--ks-font);
+  font-style: normal;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ks-champagne);
+  margin: 0;
+}
+
+.slop-kinpaku .rule-card-desc {
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+  margin: 0;
+}
+
+/* "See in /impeccable" link. The parent .rule-card-body is display: grid,
+   so a block-level <a> would stretch the full grid-cell width and the
+   border-bottom would draw across the whole card. justify-self: start
+   constrains the link to its content width on the inline axis. */
+.slop-kinpaku .rule-card-skill-link {
+  margin-top: 4px;
+  justify-self: start;
+  font-family: var(--ks-mono);
+  font-size: 0.74rem;
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.32);
+  transition: text-decoration-color 160ms var(--ks-ease);
+}
+
+.slop-kinpaku .rule-card-skill-link:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .rule-card-skill-link::after {
+  content: " →";
+  text-decoration: none;
+}
+
+
+/* ============================================================================
+   8. RUN IT YOURSELF — 3-up methods on a plinth
+   ============================================================================ */
+
+/* Run-it methods — three independent install paths. Standalone cards,
+   not a unified bento. */
+.slop-kinpaku .visual-mode-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 880px) {
+  .slop-kinpaku .visual-mode-methods-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.slop-kinpaku .visual-mode-method {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 28px 28px 32px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+}
+
+.slop-kinpaku .visual-mode-method-label {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin: 0;
+}
+
+.slop-kinpaku .visual-mode-method-name {
+  font-family: var(--ks-font);
+  font-style: normal;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ks-champagne);
+  margin: 0;
+}
+
+.slop-kinpaku .visual-mode-method-name a {
+  color: var(--ks-kinpaku);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(78% 0.12 82 / 0.32);
+  transition: border-color 160ms var(--ks-ease);
+}
+
+.slop-kinpaku .visual-mode-method-name a:hover {
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.slop-kinpaku .visual-mode-method-name code {
+  font-family: var(--ks-mono);
+  font-size: 0.92em;
+  color: var(--ks-champagne);
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  padding: 1px 8px;
+  border-radius: 2px;
+}
+
+.slop-kinpaku .visual-mode-method-desc {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-text);
+  margin: 0;
+}
+
+.slop-kinpaku .visual-mode-method-desc code {
+  font-family: var(--ks-mono);
+  font-size: 0.86em;
+  color: var(--ks-champagne);
+  background: var(--ks-graphite-2);
+  border: 1px solid var(--ks-rule);
+  padding: 1px 6px;
+  border-radius: 2px;
+}
+
+.slop-kinpaku .visual-mode-method-desc a {
+  color: var(--ks-kinpaku);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: oklch(78% 0.12 82 / 0.4);
+}
+
+.slop-kinpaku .visual-mode-method-desc a:hover {
+  text-decoration-color: var(--ks-kinpaku);
+}
+
+
+/* ============================================================================
+   9. FOOTER on dark surface
+   ============================================================================ */
+
+/* Footer chrome moved to kinpaku-kit.css (.kinpaku-chrome .site-footer). */

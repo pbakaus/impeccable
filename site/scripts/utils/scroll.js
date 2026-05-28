@@ -2,22 +2,34 @@
 // `behavior: 'instant'` explicitly overrides any CSS `scroll-behavior: smooth`
 // from a stylesheet we don't own; `behavior: 'auto'` would defer to CSS.
 export function initAnchorScroll() {
+	const getAnchorOffset = () => {
+		const header = document.querySelector('[data-site-header]');
+		return (header?.getBoundingClientRect().height || 0) + 28;
+	};
+
 	document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
 		anchor.addEventListener("click", (e) => {
 			e.preventDefault();
 			const target = document.querySelector(anchor.getAttribute("href"));
 			if (target) {
-				const offset = 40;
+				const offset = getAnchorOffset();
 				const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
 				window.scrollTo({ top: targetPosition, behavior: 'instant' });
 			}
 		});
 	});
+
+	return getAnchorOffset;
 }
 
 export function initHashTracking() {
 	const sections = document.querySelectorAll('section[id]');
 	if (!sections.length) return;
+
+	const getAnchorOffset = () => {
+		const header = document.querySelector('[data-site-header]');
+		return (header?.getBoundingClientRect().height || 0) + 28;
+	};
 
 	let currentHash = window.location.hash.slice(1) || '';
 	let ticking = false;
@@ -88,7 +100,7 @@ export function initHashTracking() {
 			currentHash = hash;
 			let clicked = false;
 			const jump = () => {
-				const offset = 40;
+				const offset = getAnchorOffset();
 				const targetPosition = target.getBoundingClientRect().top + window.scrollY - offset;
 				window.scrollTo({ top: targetPosition, behavior: 'instant' });
 				if (!clicked && hash.startsWith('cmd-') && target.classList.contains('manual-entry')) {
@@ -104,4 +116,3 @@ export function initHashTracking() {
 		// No hash — don't set one on initial load
 	}
 }
-

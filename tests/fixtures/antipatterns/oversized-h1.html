@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Oversized H1 fixture</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    h1 { margin: 0 0 24px; line-height: 1.05; }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: a long headline set at display size, dominating the viewport -->
+    <section class="col flag">
+      <h1 style="font-size: 96px">A sweeping product headline that runs on far too long to sit at this size</h1>
+      <h1 style="font-size: 80px">Everything your whole team needs to launch quickly and finally rest at night</h1>
+    </section>
+
+    <!-- PASS column: punchy short headlines at display size (a valid choice), and a long headline at a sane size -->
+    <section class="col pass">
+      <h1 style="font-size: 168px">Bold.</h1>
+      <h1 style="font-size: 120px">Ship faster</h1>
+      <h1 style="font-size: 40px">A perfectly ordinary headline that is reasonably long but set at a sane, readable size</h1>
+    </section>
+  </div>
+</body>
+</html>

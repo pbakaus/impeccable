@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Gemini provider-tell fixture (gated --gemini)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    img { display: block; width: 160px; height: 120px; margin: 0 0 24px; background: #ddd; }
+    .flag-css-hover img { transition: transform 0.3s; }
+    .flag-css-hover img:hover { transform: scale(1.05); }
+    .card:hover { transform: translateY(-4px); }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: image hover-zoom (only surfaced under --gemini) -->
+    <section class="col flag">
+      <div class="flag-css-hover">
+        <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='160'%20height='120'%3E%3Crect%20width='160'%20height='120'%20fill='%23c9b89a'/%3E%3C/svg%3E" alt="CSS hover-zoom image" />
+      </div>
+      <img class="flag-tw-hover hover:scale-105 transition-transform" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='160'%20height='120'%3E%3Crect%20width='160'%20height='120'%20fill='%23a89c86'/%3E%3C/svg%3E" alt="Tailwind hover-zoom image" />
+    </section>
+
+    <!-- PASS column: static images, and hover transforms on non-image elements -->
+    <section class="col pass">
+      <img class="pass-static" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='160'%20height='120'%3E%3Crect%20width='160'%20height='120'%20fill='%23ddd6c8'/%3E%3C/svg%3E" alt="Static image with no hover transform" />
+      <div class="card pass-non-img-hover">A card that lifts on hover, which is fine because it is not an image.</div>
+    </section>
+  </div>
+</body>
+</html>

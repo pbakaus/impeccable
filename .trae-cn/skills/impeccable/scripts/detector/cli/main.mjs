@@ -41,7 +41,7 @@ function formatFindings(findings, jsonMode) {
 // Stdin handling
 // ---------------------------------------------------------------------------
 
-async function handleStdin() {
+async function handleStdin(options = {}) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = Buffer.concat(chunks).toString('utf-8');
@@ -50,10 +50,10 @@ async function handleStdin() {
     const fp = parsed?.tool_input?.file_path;
     if (fp && fs.existsSync(fp)) {
       return HTML_EXTENSIONS.has(path.extname(fp).toLowerCase())
-        ? detectHtml(fp) : detectText(fs.readFileSync(fp, 'utf-8'), fp);
+        ? detectHtml(fp, options) : detectText(fs.readFileSync(fp, 'utf-8'), fp, options);
     }
   } catch { /* not JSON */ }
-  return detectText(input, '<stdin>');
+  return detectText(input, '<stdin>', options);
 }
 
 
@@ -81,6 +81,8 @@ Scan files or URLs for UI anti-patterns and design quality issues.
 Options:
   --fast    Regex-only mode (skip static HTML/CSS analysis, faster but misses linked stylesheets)
   --json    Output results as JSON
+  --gpt     Also report GPT-specific provider tells (off by default)
+  --gemini  Also report Gemini-specific provider tells (off by default)
   --help    Show this help message
 
 Detection modes:
@@ -106,6 +108,10 @@ async function detectCli() {
   const jsonMode = args.includes('--json');
   const helpMode = args.includes('--help');
   const fastMode = args.includes('--fast');
+  const providers = [];
+  if (args.includes('--gpt')) providers.push('gpt');
+  if (args.includes('--gemini')) providers.push('gemini');
+  const scanOptions = { providers };
   const targets = args.filter(a => !a.startsWith('--'));
 
   if (helpMode) { printUsage(); process.exit(0); }
@@ -113,7 +119,7 @@ async function detectCli() {
   let allFindings = [];
 
   if (!process.stdin.isTTY && targets.length === 0) {
-    allFindings = await handleStdin();
+    allFindings = await handleStdin(scanOptions);
   } else {
     const paths = targets.length > 0 ? targets : [process.cwd()];
     const urlTargetCount = paths.filter(target => /^https?:\/\//i.test(target)).length;
@@ -124,8 +130,8 @@ async function detectCli() {
         if (/^https?:\/\//i.test(target)) {
           try {
             const scanner = browserDetector
-              ? (url) => browserDetector.detectUrl(url)
-              : (url) => detectUrl(url);
+              ? (url) => browserDetector.detectUrl(url, scanOptions)
+              : (url) => detectUrl(url, scanOptions);
             allFindings.push(...await scanner(target));
           } catch (e) { process.stderr.write(`Error: ${e.message}\n`); }
           continue;
@@ -192,9 +198,9 @@ async function detectCli() {
             const ext = path.extname(file).toLowerCase();
             let fileFindings;
             if (!fastMode && HTML_EXTENSIONS.has(ext)) {
-              fileFindings = await detectHtml(file);
+              fileFindings = await detectHtml(file, scanOptions);
             } else {
-              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file);
+              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, scanOptions);
             }
             // Annotate findings with import context
             const importers = importedByMap.get(file);
@@ -209,9 +215,9 @@ async function detectCli() {
         } else if (stat.isFile()) {
           const ext = path.extname(resolved).toLowerCase();
           if (!fastMode && HTML_EXTENSIONS.has(ext)) {
-            allFindings.push(...await detectHtml(resolved));
+            allFindings.push(...await detectHtml(resolved, scanOptions));
           } else {
-            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved));
+            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved, scanOptions));
           }
         }
       }

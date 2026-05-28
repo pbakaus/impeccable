@@ -7,6 +7,7 @@ import {
   generateYamlDocument,
   replacePlaceholders,
   compileProviderBlocks,
+  stripRuleMarkers,
 } from '../utils.js';
 import { SKILL_CATEGORIES, CATEGORY_ORDER } from '../sub-pages-data.js';
 
@@ -220,6 +221,7 @@ export function createTransformer(config) {
       // Build body
       let skillBody = compileProviderBlocks(skill.body, providerTags);
       skillBody = replacePlaceholders(skillBody, placeholderKey, commandNames, allSkillNames);
+      skillBody = stripRuleMarkers(skillBody);
 
       // Replace {{scripts_path}} with provider-aware path to skill's scripts directory
       const scriptsPath = `${configDir}/skills/${skillName}/scripts`;
@@ -241,6 +243,7 @@ export function createTransformer(config) {
         for (const ref of skill.references) {
           let refContent = compileProviderBlocks(ref.content, providerTags);
           refContent = replacePlaceholders(refContent, placeholderKey, [], allSkillNames);
+          refContent = stripRuleMarkers(refContent);
           refContent = refContent.replace(/\{\{scripts_path\}\}/g, scriptsPath);
           writeFile(path.join(refDir, `${ref.name}.md`), refContent);
           refCount++;

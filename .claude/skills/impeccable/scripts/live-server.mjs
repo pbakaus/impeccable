@@ -21,8 +21,9 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
-import { resolveContextDir } from './load-context.mjs';
+import { resolveContextDir } from './context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
+import { validateEvent } from './live-event-validation.mjs';
 import {
   getDesignSidecarPath,
   getLiveAnnotationsDir,
@@ -33,7 +34,7 @@ import {
 } from './impeccable-paths.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
+// PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
 const CONTEXT_DIR = resolveContextDir(process.cwd());
@@ -65,6 +66,7 @@ const state = {
   sseClients: new Set(),   // SSE response objects (server→browser push)
   pendingEvents: [],        // browser events waiting for agent ack ({ event, leaseUntil })
   pendingPolls: [],         // agent poll callbacks waiting for browser events
+  lastAgentPollingBroadcast: null,
   exitTimer: null,
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
@@ -130,16 +132,31 @@ function scheduleLeaseFlush() {
 }
 
 function flushPendingPolls() {
+  let changed = false;
   while (state.pendingPolls.length > 0) {
     const entry = findAvailablePendingEvent();
     if (!entry) {
       scheduleLeaseFlush();
+      broadcastAgentPollingIfChanged();
       return;
     }
     const poll = state.pendingPolls.shift();
     poll.resolve(leaseEvent(entry, poll.leaseMs));
+    changed = true;
   }
   scheduleLeaseFlush();
+  if (changed) broadcastAgentPollingIfChanged();
+}
+
+function agentPollingConnected() {
+  return state.pendingPolls.length > 0;
+}
+
+function broadcastAgentPollingIfChanged() {
+  const connected = agentPollingConnected();
+  if (state.lastAgentPollingBroadcast === connected) return;
+  state.lastAgentPollingBroadcast = connected;
+  broadcast({ type: 'agent_polling', connected });
 }
 
 /** Push a message to all connected SSE clients. */
@@ -187,8 +204,7 @@ function loadBrowserScripts() {
 function hasProjectContext() {
   // PRODUCT.md carries brand voice / anti-references — that's what determines
   // whether variants are brand-aware. DESIGN.md (visual tokens) is a separate
-  // concern, surfaced by the design panel's own empty state. Legacy
-  // .impeccable.md is auto-migrated to PRODUCT.md by load-context.mjs.
+  // concern, surfaced by the design panel's own empty state.
   try {
     fs.accessSync(path.join(CONTEXT_DIR, 'PRODUCT.md'), fs.constants.R_OK);
     return true;
@@ -197,66 +213,6 @@ function hasProjectContext() {
 
 function statOrNull(filePath) {
   try { return fs.statSync(filePath); } catch { return null; }
-}
-
-// ---------------------------------------------------------------------------
-// Validation (inline — no external import needed for self-contained script)
-// ---------------------------------------------------------------------------
-
-const VISUAL_ACTIONS = [
-  'impeccable', 'bolder', 'quieter', 'distill', 'polish', 'typeset',
-  'colorize', 'layout', 'adapt', 'animate', 'delight', 'overdrive',
-];
-
-// Browser generates ids via crypto.randomUUID().slice(0, 8) (8 hex chars)
-// and variantIds via String(small integer). Restrict to those shapes so
-// any value that reaches a downstream child_process or DOM selector is
-// inert by construction.
-const ID_PATTERN = /^[0-9a-f]{8}$/;
-const VARIANT_ID_PATTERN = /^[0-9]{1,3}$/;
-
-function isValidId(v) { return typeof v === 'string' && ID_PATTERN.test(v); }
-function isValidVariantId(v) { return typeof v === 'string' && VARIANT_ID_PATTERN.test(v); }
-
-function validateEvent(msg) {
-  if (!msg || typeof msg !== 'object' || !msg.type) return 'Missing or invalid message';
-  switch (msg.type) {
-    case 'generate':
-      if (!isValidId(msg.id)) return 'generate: missing or malformed id';
-      if (!msg.action || !VISUAL_ACTIONS.includes(msg.action)) return 'generate: invalid action';
-      if (!Number.isInteger(msg.count) || msg.count < 1 || msg.count > 8) return 'generate: count must be 1-8';
-      if (!msg.element || !msg.element.outerHTML) return 'generate: missing element context';
-      // Optional annotation fields (all-or-nothing: if any present, all must be well-formed).
-      if (msg.screenshotPath !== undefined && typeof msg.screenshotPath !== 'string') return 'generate: screenshotPath must be string';
-      if (msg.comments !== undefined && !Array.isArray(msg.comments)) return 'generate: comments must be array';
-      if (msg.strokes !== undefined && !Array.isArray(msg.strokes)) return 'generate: strokes must be array';
-      return null;
-    case 'accept':
-      if (!isValidId(msg.id)) return 'accept: missing or malformed id';
-      if (!isValidVariantId(msg.variantId)) return 'accept: missing or malformed variantId';
-      if (msg.paramValues !== undefined) {
-        if (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues)) {
-          return 'accept: paramValues must be an object';
-        }
-      }
-      return null;
-    case 'discard':
-      return isValidId(msg.id) ? null : 'discard: missing or malformed id';
-    case 'checkpoint':
-      if (!isValidId(msg.id)) return 'checkpoint: missing or malformed id';
-      if (!Number.isInteger(msg.revision) || msg.revision < 0) return 'checkpoint: revision must be a non-negative integer';
-      if (msg.paramValues !== undefined && (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues))) {
-        return 'checkpoint: paramValues must be an object';
-      }
-      return null;
-    case 'exit':
-      return null;
-    case 'prefetch':
-      if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
-      return null;
-    default:
-      return 'Unknown event type: ' + msg.type;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +352,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         status: 'ok',
         port: state.port,
         connectedClients: state.sseClients.size,
+        agentPolling: agentPollingConnected(),
         pendingEvents: state.pendingEvents.map((entry) => ({
           id: entry.event?.id,
           type: entry.event?.type,
@@ -506,6 +463,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       res.write('data: ' + JSON.stringify({
         type: 'connected',
         hasProjectContext: hasProjectContext(),
+        agentPolling: agentPollingConnected(),
       }) + '\n\n');
 
       state.sseClients.add(res);
@@ -614,6 +572,7 @@ function handlePollGet(req, res, url) {
   const timer = setTimeout(() => {
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ type: 'timeout' }));
   }, timeout);
@@ -623,11 +582,13 @@ function handlePollGet(req, res, url) {
     res.end(JSON.stringify(event));
   }
   state.pendingPolls.push(poll);
+  broadcastAgentPollingIfChanged();
   scheduleLeaseFlush();
   req.on('close', () => {
     clearTimeout(timer);
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
   });
 }
 
@@ -649,13 +610,15 @@ function handlePollPost(req, res) {
     acknowledgePendingEvent(msg.id);
     if (state.sessionStore && msg.id) {
       try {
-        const eventType = msg.type === 'discard' || msg.type === 'discarded'
-          ? 'discarded'
-          : msg.type === 'complete'
-            ? 'complete'
-            : msg.type === 'error'
-              ? 'agent_error'
-              : 'agent_done';
+        const eventType = msg.type === 'steer_done'
+          ? 'steer_done'
+          : msg.type === 'discard' || msg.type === 'discarded'
+            ? 'discarded'
+            : msg.type === 'complete'
+              ? 'complete'
+              : msg.type === 'error'
+                ? 'agent_error'
+                : 'agent_done';
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,

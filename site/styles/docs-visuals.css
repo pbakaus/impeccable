@@ -3064,15 +3064,25 @@
 }
 
 .neon-case-page {
-  background:
-    radial-gradient(circle at 84% 8%, var(--color-accent-dim), transparent 22rem),
-    var(--color-cream);
+  background: var(--ks-lacquer);
+}
+
+/* Kinpaku eyebrow/labels override the color from the shared craft+neon rule
+   above (which keeps its legacy accent for the craft-case component). */
+.neon-case-eyebrow,
+.neon-case-section-label,
+.neon-case-strip figure > span {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  letter-spacing: 0.2em;
 }
 
 .neon-case {
-  width: min(100% - 32px, 1360px);
+  width: min(100%, 1392px);
   margin: 0 auto;
-  padding: clamp(4rem, 8vw, 6.5rem) 0 clamp(4rem, 8vw, 7rem);
+  /* Horizontal gutters mirror the site header's padding so the page edge
+     aligns with the header, instead of bleeding to the viewport. */
+  padding: clamp(4rem, 8vw, 6.5rem) clamp(22px, 4vw, 56px) clamp(4rem, 8vw, 7rem);
 }
 
 .neon-case-hero {
@@ -3085,37 +3095,38 @@
 .neon-case-back {
   display: inline-block;
   margin-bottom: clamp(2rem, 5vw, 4rem);
-  font-family: var(--font-body);
+  font-family: var(--ks-font);
   font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-ash);
+  font-weight: 500;
+  color: var(--ks-text-muted);
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ks-ease);
 }
 
 .neon-case-back:hover {
-  color: var(--color-accent);
+  color: var(--ks-kinpaku);
 }
 
 .neon-case-hero h1 {
   margin: 0.8rem 0 1.5rem;
-  font-family: var(--font-display);
-  font-size: clamp(2.8rem, 5vw, 4.9rem);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.045em;
-  line-height: 0.96;
-  color: var(--color-ink);
+  font-family: var(--ks-font-display);
+  font-size: var(--ks-type-display-size);
+  font-weight: var(--ks-type-display-weight);
+  letter-spacing: var(--ks-type-display-track);
+  line-height: var(--ks-type-display-line);
+  color: var(--ks-champagne);
   max-width: 15ch;
+  text-wrap: balance;
 }
 
 .neon-case-hero p,
 .neon-case-command p {
   max-width: 58ch;
   margin: 0;
-  font-family: var(--font-body);
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
-  line-height: 1.65;
-  color: var(--color-charcoal);
+  font-family: var(--ks-font);
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
+  line-height: 1.75;
+  color: var(--ks-text);
 }
 
 .neon-case-actions {
@@ -3129,23 +3140,26 @@
 .neon-case-secondary {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  padding: 0.85rem 1.15rem;
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 700;
+  min-height: 48px;
+  padding: 0 1.4rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-family: var(--ks-font);
+  font-size: 0.9rem;
+  font-weight: 500;
   text-decoration: none;
-  transition: transform var(--duration-base) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration-base) var(--ks-ease), background var(--duration-fast) var(--ks-ease), color var(--duration-fast) var(--ks-ease), border-color var(--duration-fast) var(--ks-ease);
 }
 
 .neon-case-primary {
-  color: var(--color-paper);
-  background: var(--color-ink);
+  color: var(--ks-lacquer-deep);
+  background: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku);
 }
 
 .neon-case-secondary {
-  color: var(--color-ink);
-  border: 1px solid var(--color-mist);
+  color: var(--ks-kinpaku);
+  border-color: var(--ks-rule-strong);
 }
 
 .neon-case-primary:hover,
@@ -3154,26 +3168,27 @@
 }
 
 .neon-case-primary:hover {
-  background: var(--color-accent);
+  background: var(--ks-kinpaku-pale);
+  border-color: var(--ks-kinpaku-pale);
 }
 
 .neon-case-secondary:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  background: oklch(77% 0.14 82 / 0.1);
+  border-color: var(--ks-kinpaku);
 }
 
 .neon-case-hero-shot {
   display: block;
   margin: 0;
-  border: 1px solid var(--color-mist);
-  background: var(--color-paper);
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-raised);
   overflow: hidden;
-  transition: transform var(--duration-base) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration-base) var(--ks-ease), border-color var(--duration-fast) var(--ks-ease);
 }
 
 .neon-case-hero-shot:hover {
   transform: translateY(-3px);
-  border-color: var(--color-accent);
+  border-color: var(--ks-rule-strong);
 }
 
 .neon-case-hero-shot img {
@@ -3199,8 +3214,8 @@
 .neon-case-details img {
   display: block;
   width: 100%;
-  border: 1px solid var(--color-mist);
-  background: var(--color-paper);
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-raised);
 }
 
 .neon-case-strip a,
@@ -3225,10 +3240,10 @@
 .neon-case-strip figcaption,
 .neon-case-details figcaption {
   margin-top: 0.9rem;
-  font-family: var(--font-body);
+  font-family: var(--ks-font);
   font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--color-charcoal);
+  line-height: 1.65;
+  color: var(--ks-text-muted);
 }
 
 .neon-case-body {
@@ -3236,47 +3251,48 @@
   grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
   gap: clamp(2rem, 6vw, 5rem);
   padding: clamp(3rem, 6vw, 5rem) 0;
-  border-top: 1px solid var(--color-mist);
-  border-bottom: 1px solid var(--color-mist);
+  border-top: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
 }
 
 .neon-case-body h2,
 .neon-case-command h2 {
   margin: 0.8rem 0 0;
-  font-family: var(--font-display);
-  font-size: clamp(2.25rem, 5vw, 4.6rem);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.035em;
-  line-height: 0.98;
-  color: var(--color-ink);
+  font-family: var(--ks-font-display);
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  font-weight: var(--ks-type-headline-weight);
+  letter-spacing: -0.005em;
+  line-height: var(--ks-type-headline-line);
+  color: var(--ks-champagne);
+  text-wrap: balance;
 }
 
 .neon-case-notes {
   display: grid;
   gap: 1px;
-  background: var(--color-mist);
-  border: 1px solid var(--color-mist);
+  background: var(--ks-rule);
+  border: 1px solid var(--ks-rule);
 }
 
 .neon-case-notes article {
   padding: clamp(1.25rem, 3vw, 2rem);
-  background: var(--color-cream);
+  background: var(--ks-lacquer-raised);
 }
 
 .neon-case-notes h3 {
   margin: 0 0 0.6rem;
-  font-family: var(--font-body);
-  font-size: 1rem;
-  color: var(--color-ink);
+  font-family: var(--ks-font);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ks-champagne);
 }
 
 .neon-case-notes p {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: 0.9375rem;
-  line-height: 1.65;
-  color: var(--color-charcoal);
+  font-family: var(--ks-font);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--ks-text);
 }
 
 .neon-case-details {
@@ -3296,8 +3312,8 @@
 .neon-case-details figcaption span {
   display: block;
   margin-bottom: 0.25rem;
-  font-weight: 700;
-  color: var(--color-ink);
+  font-weight: 600;
+  color: var(--ks-champagne);
 }
 
 .neon-case-command {
@@ -3306,19 +3322,18 @@
   gap: clamp(2rem, 5vw, 4rem);
   align-items: end;
   padding: clamp(2rem, 5vw, 4rem);
-  color: var(--color-paper);
-  background: var(--color-ink);
+  background: var(--ks-lacquer-deep);
+  border: 1px solid var(--ks-rule-strong);
+  border-radius: 2px;
 }
 
-.neon-case-command h2,
-.neon-case-command p,
-.neon-case-command .neon-case-section-label {
-  color: inherit;
+.neon-case-command h2 {
+  color: var(--ks-champagne);
 }
 
 .neon-case-command p {
   margin-top: 1.1rem;
-  color: oklch(90% 0.005 350);
+  color: var(--ks-text-muted);
 }
 
 .neon-case-command code {
@@ -3327,6 +3342,33 @@
 
 .neon-case-command .code-block-wrap {
   margin: 0;
+}
+
+.neon-case-command .code-block {
+  margin: 0;
+  padding: var(--spacing-md);
+  background: var(--ks-lacquer);
+  color: var(--ks-champagne);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow-x: auto;
+  font-family: var(--ks-mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.neon-case-command .code-block code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.neon-case-command .code-block-copy.is-copied {
+  background: var(--ks-kinpaku);
+  color: var(--ks-lacquer-deep);
+  border-color: var(--ks-kinpaku);
 }
 
 @media (max-width: 980px) {
@@ -3350,10 +3392,6 @@
 }
 
 @media (max-width: 640px) {
-  .neon-case {
-    width: min(100% - 24px, 1360px);
-  }
-
   .neon-case-actions {
     flex-direction: column;
   }

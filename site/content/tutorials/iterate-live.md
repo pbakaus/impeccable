@@ -13,7 +13,7 @@ Total time: about ten minutes. Most of that is picking what to iterate on.
 
 ## Prerequisites
 
-- Impeccable installed (see [getting started](/tutorials/getting-started) if you have not). Run `/impeccable teach` first if you haven't yet: variants lean on `PRODUCT.md` and `DESIGN.md` for brand fit.
+- Impeccable installed (see [getting started](/tutorials/getting-started) if you have not). Run `/impeccable init` first if you haven't yet: variants lean on `PRODUCT.md` and `DESIGN.md` for brand fit.
 - A running dev server with HMR (Vite, Next.js, SvelteKit, Astro, Nuxt, Bun) OR a static HTML file open in a browser.
 - A page with at least one piece of UI you'd like to iterate on. A newsletter card, a hero, a pricing tier, something small enough to hold in your head.
 
@@ -119,5 +119,5 @@ The stop also strips the `<script>` tag from your dev entry and stops the helper
 
 - **The picker never appears on the page.** Either the helper did not start (look for errors in the terminal) or CSP is blocking the inject. Re-run `/impeccable live` and let it re-check CSP. If you declined the patch on first run, delete the `cspChecked` line in `.impeccable/live/config.json` and re-run.
 - **"element lives in a generated file"** on Go. Live detected that the picked element is in a compiled output, not a source file. It routes the accept through a fallback path so the variant still lands in true source. Follow the hint; don't force-accept into the generated file.
-- **Variants don't feel brand-aligned.** Check that `PRODUCT.md` and `DESIGN.md` exist at the project root. Without them, live leans toward generic defaults. Run `/impeccable teach` and `/impeccable document` first.
+- **Variants don't feel brand-aligned.** Check that `PRODUCT.md` and `DESIGN.md` exist at the project root. Without them, live leans toward generic defaults. Run `/impeccable init` and `/impeccable document` first.
 - **The helper port is in use.** Another live session left its server running. `npx impeccable live stop` releases the port.

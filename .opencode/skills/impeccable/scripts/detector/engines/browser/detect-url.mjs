@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { finding } from '../../findings.mjs';
+import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { profileFindingsAsync, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import { captureVisualContrastCandidate } from '../visual/screenshot-contrast.mjs';
 
@@ -212,7 +213,7 @@ async function detectUrl(url, options = {}) {
       }, () => browser.close());
     }
   }
-  return results.map(f => finding(f.id, url, f.snippet));
+  return filterByProviders(results.map(f => finding(f.id, url, f.snippet)), options.providers);
 }
 
 async function createBrowserDetector(options = {}) {

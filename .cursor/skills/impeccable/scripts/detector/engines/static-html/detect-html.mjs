@@ -7,13 +7,17 @@ import { finding } from '../../findings.mjs';
 import { profileFindings, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import {
   checkElementBorders,
+  checkElementClippedOverflow,
   checkElementColors,
   checkElementGlow,
+  checkElementGptBorderShadow,
   checkElementHeroEyebrow,
   checkElementIconTile,
   checkElementItalicSerif,
   checkElementMotion,
+  checkElementOversizedH1,
   checkElementQuality,
+  checkCreamPalette,
   checkHtmlPatterns,
   checkPageLayout,
   checkPageQualityFromDoc,
@@ -21,7 +25,8 @@ import {
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
-import { detectText } from '../regex/detect-text.mjs';
+import { filterByProviders } from '../../registry/antipatterns.mjs';
+import { detectText, runTextContentAnalyzers } from '../regex/detect-text.mjs';
 import {
   StaticDocument,
   buildStaticStyleMap,
@@ -64,6 +69,20 @@ function checkStaticPageTypography(document, window) {
   return findings;
 }
 
+function checkElementBrokenImage(el) {
+  const src = (el.getAttribute && el.getAttribute('src')) ?? el.attribs?.src;
+  // Missing src attribute entirely
+  if (src === undefined || src === null) {
+    return [{ id: 'broken-image', snippet: '<img> with no src attribute' }];
+  }
+  const trimmed = String(src).trim();
+  // Empty or placeholder-only src values
+  if (trimmed === '' || trimmed === '#') {
+    return [{ id: 'broken-image', snippet: `<img src="${src}">` }];
+  }
+  return [];
+}
+
 const STATIC_ELEMENT_RULES = [
   { id: 'border-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementBorders(tag, style, null, resolveBorderRadiusPx(el, style, parseFloat(style.width) || 0, window)) },
   { id: 'color-rules', selector: '*', run: (el, tag, style, window, customPropMap) => checkElementColors(el, style, tag, window, customPropMap, false) },
@@ -72,7 +91,11 @@ const STATIC_ELEMENT_RULES = [
   { id: 'icon-tile-stack', selector: 'h1,h2,h3,h4,h5,h6', run: (el, tag, _style, window) => checkElementIconTile(el, tag, window) },
   { id: 'italic-serif-display', selector: 'h1,h2', run: (el, tag, style) => checkElementItalicSerif(el, style, tag) },
   { id: 'hero-eyebrow-chip', selector: 'h1', run: (el, tag, style, window, customPropMap) => checkElementHeroEyebrow(el, style, tag, window, customPropMap) },
+  { id: 'broken-image', selector: 'img', run: (el) => checkElementBrokenImage(el) },
   { id: 'quality-rules', selector: '*', run: (el, tag, style, window) => checkElementQuality(el, style, tag, window) },
+  { id: 'oversized-h1', selector: 'h1', run: (el, tag, style, window) => checkElementOversizedH1(el, style, tag, window) },
+  { id: 'clipped-overflow-container', selector: '*', run: (el, tag, style, window) => checkElementClippedOverflow(el, style, tag, window) },
+  { id: 'gpt-thin-border-wide-shadow', selector: '*', run: (el, tag, style) => checkElementGptBorderShadow(el, style) },
 ];
 
 async function detectHtml(filePath, options = {}) {
@@ -158,6 +181,9 @@ async function detectHtml(filePath, options = {}) {
     for (const f of runPageCheck('layout-rules', () => checkPageLayout(document, window))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
+    for (const f of runPageCheck('cream-palette', () => checkCreamPalette(document, window))) {
+      findings.push(finding(f.id, filePath, f.snippet));
+    }
     for (const f of runPageCheck('skipped-heading', () => checkPageQualityFromDoc(document))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
@@ -166,9 +192,17 @@ async function detectHtml(filePath, options = {}) {
     ))) {
       findings.push(finding(f.id, filePath, f.snippet));
     }
+    // Text-content analyzers (em-dash overuse, marketing buzzwords,
+    // numbered section markers, aphoristic cadence) live in the regex
+    // engine. Call them from here so .html files get the same coverage
+    // as .css/.tsx files. These are scoped to text content only and
+    // don't overlap with static-html's element/page rules.
+    for (const f of runPageCheck('text-content', () => runTextContentAnalyzers(html, filePath, options))) {
+      findings.push(finding(f.antipattern, filePath, f.snippet));
+    }
   }
 
-  return findings;
+  return filterByProviders(findings, options.providers);
 }
 
 export { checkStaticPageTypography, STATIC_ELEMENT_RULES, detectHtml };

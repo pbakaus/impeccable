@@ -1,5 +1,5 @@
 ---
-tagline: "Shape the design, then build it, all in one flow."
+tagline: "Design it, then build it, all in one flow."
 ---
 
 <div class="docs-viz-hero">

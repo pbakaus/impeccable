@@ -75,12 +75,12 @@ Run `/impeccable document` once you have enough of a visual system to document: 
 
 Reach for it when:
 
-- **You just ran `/impeccable teach`** and `PRODUCT.md` now exists. Document is the matching visual-side file.
+- **You just ran `/impeccable init`** and `PRODUCT.md` now exists. Document is the matching visual-side file.
 - **A command nudged you toward it.** Live, craft, and polish all read DESIGN.md. If it is missing, the skill suggests running document first.
 - **The design has drifted** from an older DESIGN.md and the file no longer describes the live system.
 - **Before a large redesign**, to capture current state as a reference for the next direction.
 
-For projects with no code yet (fresh `teach` run, nothing built), there is a seed mode: `/impeccable document --seed` asks five quick strategic questions (color strategy, type direction, motion energy, references, anti-references) and writes a scaffold. Re-run in scan mode once there is code.
+For projects with no code yet (fresh `init` run, nothing built), there is a seed mode: `/impeccable document --seed` asks five quick strategic questions (color strategy, type direction, motion energy, references, anti-references) and writes a scaffold. Re-run in scan mode once there is code.
 
 ## How it works
 

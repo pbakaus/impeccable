@@ -30,20 +30,25 @@
   // Design tokens
   // ---------------------------------------------------------------------------
 
-  // Brand magenta is pinned to the site token (--color-accent in main.css)
-  // so Accept / knobs / cycle-dots match the site's accent, not a washed
-  // theme-adjusted one.
+  // Brand kinpaku (gold) is pinned to the site's neo-kinpaku tokens
+  // (see site/styles/kinpaku-tokens.css) so Accept / knobs / cycle-dots /
+  // the selection outline / the comment tag all match the site's accent,
+  // not a washed theme-adjusted one. These mirror the kit's picker
+  // colors in site/styles/kinpaku-kit.css; keep them in sync by hand.
   const C = {
-    brand:     'oklch(60% 0.25 350)',
-    brandHov:  'oklch(52% 0.25 350)',
-    brandSoft: 'oklch(60% 0.25 350 / 0.15)',
-    ink:       'oklch(15% 0.01 350)',
-    ash:       'oklch(55% 0 0)',
-    paper:     'oklch(98% 0.005 350 / 0.92)',
-    paperSolid:'oklch(98% 0.005 350)',
-    mist:      'oklch(90% 0.01 350 / 0.6)',
+    brand:     'oklch(84% 0.19 80.46)',         // kinpaku gold
+    brandHov:  'oklch(86% 0.07 84)',            // kinpaku-pale (hover lift)
+    brandSoft: 'oklch(84% 0.19 80.46 / 0.18)',  // kinpaku-dim
+    ink:       'oklch(4% 0.004 95)',            // lacquer-deep
+    ash:       'oklch(55% 0.018 82)',           // warm muted text
+    paper:     'oklch(98% 0.005 95 / 0.92)',    // light overlay on user pages
+    paperSolid:'oklch(98% 0.005 95)',
+    mist:      'oklch(90% 0.008 82 / 0.6)',     // light hairline
     white:     'oklch(99% 0 0)',
   };
+  // Picker bar chrome — mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css
+  const PICKER_SHADOW =
+    '0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28)';
   const FONT = 'system-ui, -apple-system, sans-serif';
   const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
   // z-index: detect overlays use 99999, so our UI must be above them
@@ -269,6 +274,7 @@
 
   function showHighlight(el) {
     if (!el || !highlightEl) return;
+    if (el.hasAttribute?.('data-impeccable-insert-placeholder')) return;
     const r = el.getBoundingClientRect();
     const top = (r.top - 2) + 'px', left = (r.left - 2) + 'px';
     const width = (r.width + 4) + 'px', height = (r.height + 4) + 'px';
@@ -301,11 +307,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Annotation overlay (comment pins + magenta strokes)
+  // Annotation overlay (comment pins + kinpaku strokes)
   //
   // Active while state === 'CONFIGURING'. The overlay is a fixed-positioned
   // sibling of <body> mirroring selectedElement's bounding rect. Click (no
-  // drag) drops a comment pin; drag paints a magenta SVG stroke. All coords
+  // drag) drops a comment pin; drag paints a kinpaku SVG stroke. All coords
   // are stored in element-local CSS px so they survive scroll / resize and
   // correlate directly with the captured PNG.
   // ---------------------------------------------------------------------------
@@ -324,6 +330,8 @@
   let annotPointer = null;
   let annotEditing = null;        // { idx, input, wrapEl }
   let annotLastPinClick = { idx: -1, time: 0 }; // for click-click-to-delete
+  let placeholderResizeLayerEl = null;
+  let placeholderResizeDrag = null;
 
   function initAnnotOverlay() {
     annotOverlayEl = document.createElement('div');
@@ -370,6 +378,17 @@
     });
     annotOverlayEl.appendChild(annotClearChipEl);
 
+    placeholderResizeLayerEl = document.createElement('div');
+    placeholderResizeLayerEl.id = PREFIX + '-placeholder-resize';
+    Object.assign(placeholderResizeLayerEl.style, {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      display: 'none',
+      zIndex: '2',
+    });
+    annotOverlayEl.appendChild(placeholderResizeLayerEl);
+
     annotOverlayEl.addEventListener('pointerdown', onAnnotDown);
     annotOverlayEl.addEventListener('pointermove', onAnnotMove);
     annotOverlayEl.addEventListener('pointerup', onAnnotUp);
@@ -393,11 +412,14 @@
     annotActive = true;
     positionAnnotOverlay(el);
     annotOverlayEl.style.display = 'block';
+    syncPlaceholderResizeHandles();
   }
 
   function hideAnnotOverlay() {
     annotActive = false;
+    placeholderResizeDrag = null;
     if (annotOverlayEl) annotOverlayEl.style.display = 'none';
+    syncPlaceholderResizeHandles();
     // Drop any in-progress edit without touching annotState — clearAnnotations
     // (if the caller is exiting configure mode) handles state reset.
     annotEditing = null;
@@ -411,6 +433,7 @@
       width: r.width + 'px', height: r.height + 'px',
     });
     annotSvgEl.setAttribute('viewBox', '0 0 ' + r.width + ' ' + r.height);
+    syncPlaceholderResizeHandles();
   }
 
   function clearAnnotations() {
@@ -425,7 +448,7 @@
   }
 
   // Rebuild the SVG layer. Each stroke gets a wider invisible hit path
-  // beneath the visible magenta path so clicks register on thin lines.
+  // beneath the visible kinpaku path so clicks register on thin lines.
   function redrawStrokes() {
     while (annotSvgEl.firstChild) annotSvgEl.removeChild(annotSvgEl.firstChild);
     annotState.strokes.forEach((s, idx) => {
@@ -461,6 +484,13 @@
 
   function onAnnotDown(e) {
     if (!annotActive) return;
+
+    // 0) Insert placeholder edge resize — wins over draw / pins.
+    const resizeEdge = e.target.closest?.('[data-impeccable-placeholder-resize]')?.dataset.impeccablePlaceholderResize;
+    if (resizeEdge && configureKind === 'insert' && placeholderElement) {
+      startPlaceholderEdgeResize(resizeEdge, e);
+      return;
+    }
 
     // 1) Clear chip → wipe all annotations
     if (e.target.closest?.('[data-annot-clear]')) {
@@ -531,7 +561,23 @@
   }
 
   function onAnnotMove(e) {
-    if (!annotActive || !annotPointer) return;
+    if (!annotActive) return;
+
+    if (placeholderResizeDrag) {
+      const d = placeholderResizeDrag;
+      const next = resizePlaceholderFromEdge(
+        d.start,
+        d.edge,
+        e.clientX - d.startX,
+        e.clientY - d.startY,
+        d.parentWidth,
+      );
+      applyPlaceholderDimensions(next);
+      e.stopPropagation();
+      return;
+    }
+
+    if (!annotPointer) return;
     const p = localCoords(e);
 
     if (annotPointer.kind === 'pin') {
@@ -571,7 +617,22 @@
     e.stopPropagation();
   }
 
+  function pointsToPath(points) {
+    if (!points || points.length === 0) return '';
+    let d = 'M' + points[0][0].toFixed(1) + ' ' + points[0][1].toFixed(1);
+    for (let i = 1; i < points.length; i++) {
+      d += ' L' + points[i][0].toFixed(1) + ' ' + points[i][1].toFixed(1);
+    }
+    return d;
+  }
+
   function onAnnotUp(e) {
+    if (placeholderResizeDrag) {
+      try { annotOverlayEl.releasePointerCapture(e.pointerId); } catch {}
+      placeholderResizeDrag = null;
+      e.stopPropagation();
+      return;
+    }
     if (!annotActive || !annotPointer) return;
 
     if (annotPointer.kind === 'pin') {
@@ -604,16 +665,8 @@
     }
     try { annotOverlayEl.releasePointerCapture(e.pointerId); } catch {}
     annotPointer = null;
+    if (configureKind === 'insert') syncInsertCreateButton();
     e.stopPropagation();
-  }
-
-  function pointsToPath(points) {
-    if (!points || points.length === 0) return '';
-    let d = 'M' + points[0][0].toFixed(1) + ' ' + points[0][1].toFixed(1);
-    for (let i = 1; i < points.length; i++) {
-      d += ' L' + points[i][0].toFixed(1) + ' ' + points[i][1].toFixed(1);
-    }
-    return d;
   }
 
   function renderAllPins() {
@@ -845,10 +898,9 @@
       transform: 'translateY(6px)',
       transition: 'opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       background: BP.surface,
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid ' + BP.hairline,
+      border: '1.5px solid ' + BP.border,
       borderRadius: '10px',
-      boxShadow: BAR_SHADOW_DEFAULT,
+      boxShadow: BP.shadow,
       transition: 'box-shadow 0.2s ease, opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       fontFamily: FONT, fontSize: '13px', color: BP.text,
       padding: '6px',
@@ -859,8 +911,10 @@
   }
 
   function positionBar() {
-    if (!barEl || !selectedElement) return;
-    const r = selectedElement.getBoundingClientRect();
+    if (!barEl) return;
+    const anchor = resolveBarAnchor();
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
     const barH = barEl.offsetHeight || 44;
     const barW = barEl.offsetWidth || 380;
     const GLOBAL_BAR_RESERVE = 64; // global bar height + bottom margin + breathing room
@@ -888,19 +942,24 @@
 
   function showBar(mode) {
     barEl.innerHTML = '';
-    if (mode === 'configure') barEl.appendChild(buildConfigureRow());
-    else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
+    if (mode === 'configure') {
+      barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
+      if (configureKind === 'insert') syncInsertCreateButton();
+    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
     else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
     barEl.style.display = 'block';
     positionBar();
     requestAnimationFrame(() => {
       barEl.style.opacity = '1';
       barEl.style.transform = 'translateY(0)';
+      syncPageChatFocus('show-bar');
     });
   }
 
   function hideBar() {
     if (!barEl) return;
+    stopVoice({ suppressSubmit: true });
+    if (configureKind === 'insert') clearInsertPicking();
     barEl.style.opacity = '0';
     barEl.style.transform = 'translateY(6px)';
     setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
@@ -911,11 +970,14 @@
   function updateBarContent(mode) {
     if (!barEl || barEl.style.display === 'none') return;
     barEl.innerHTML = '';
-    // Reset bar styling to the theme-aware palette
+    // Reset bar styling to the kinpaku picker palette
     barEl.style.background = BP.surface;
-    barEl.style.border = '1px solid ' + BP.hairline;
-    if (mode === 'configure') barEl.appendChild(buildConfigureRow());
-    else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
+    barEl.style.border = '1.5px solid ' + BP.border;
+    barEl.style.boxShadow = BP.shadow;
+    if (mode === 'configure') {
+      barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
+      if (configureKind === 'insert') syncInsertCreateButton();
+    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
     else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
     else if (mode === 'saving') barEl.appendChild(buildSavingRow());
     else if (mode === 'confirmed') {
@@ -923,76 +985,770 @@
       barEl.style.background = 'oklch(95% 0.05 145)';
       barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
     }
+    syncPageChatFocus('update-bar-content');
   }
 
   // --- Configure row ---
 
+  function syncConfigureInputChrome() {
+    const wrap = document.getElementById(PREFIX + '-configure-input-wrap');
+    const input = document.getElementById(PREFIX + '-input');
+    if (!wrap || !input) return;
+    const focused = document.activeElement === input;
+    wrap.dataset.inputFocused = focused ? 'true' : 'false';
+    wrap.dataset.voiceListening = (voiceListening && voiceCtx?.mode === 'configure') ? 'true' : 'false';
+    wrap.style.borderColor = (voiceListening && voiceCtx?.mode === 'configure')
+      ? BP.patinaSoft
+      : (focused ? BP.accentSoft : BP.hairline);
+  }
+
+  // --- Insert mode helpers (mirrors skill/scripts/live-insert-ui.mjs) ---
+
+  function detectInsertAxisFromStyle(style) {
+    const display = style?.display || 'block';
+    if (display.includes('flex')) {
+      const dir = style.flexDirection || 'row';
+      return dir.startsWith('row') ? 'row' : 'column';
+    }
+    if (display === 'grid' || display === 'inline-grid') {
+      const flow = style.gridAutoFlow || 'row';
+      if (flow.includes('column')) return 'column';
+      const cols = (style.gridTemplateColumns || '').trim();
+      if (cols && cols !== 'none') {
+        const colCount = cols.split(/\s+/).filter(Boolean).length;
+        if (colCount > 1) return 'row';
+      }
+      return 'row';
+    }
+    return 'column';
+  }
+
+  function detectInsertAxis(parent) {
+    if (!parent || parent.nodeType !== 1) return 'column';
+    const st = getComputedStyle(parent);
+    return detectInsertAxisFromStyle({
+      display: st.display,
+      flexDirection: st.flexDirection,
+      gridTemplateColumns: st.gridTemplateColumns,
+      gridAutoFlow: st.gridAutoFlow,
+    });
+  }
+
+  function layoutFlowChildren(parent) {
+    if (!parent) return [];
+    return [...parent.children]
+      .filter(pickable)
+      .map((el) => ({ el, rect: el.getBoundingClientRect() }));
+  }
+
+  function computeInsertPosition(clientX, clientY, rect, axis) {
+    axis = axis || 'column';
+    if (!rect) return 'after';
+    if (axis === 'row') {
+      if (!Number.isFinite(rect.width) || rect.width <= 0) return 'after';
+      return clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+    }
+    if (!Number.isFinite(rect.height) || rect.height <= 0) return 'after';
+    return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  }
+
+  function groupSiblingRows(siblings, rowThreshold) {
+    rowThreshold = rowThreshold ?? 8;
+    const sorted = [...siblings].sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    const rows = [];
+    for (const entry of sorted) {
+      let placed = false;
+      for (const row of rows) {
+        if (Math.abs(entry.rect.top - row[0].rect.top) <= rowThreshold) {
+          row.push(entry);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) rows.push([entry]);
+    }
+    return rows;
+  }
+
+  function horizontalOverlap(a, b) {
+    const left = Math.max(a.left, b.left);
+    const right = Math.min(a.right, b.right);
+    return Math.max(0, right - left);
+  }
+
+  function hitSiblingInsertGap(clientX, clientY, siblings, opts) {
+    opts = opts || {};
+    if (!siblings || siblings.length < 2) return null;
+    const slop = opts.slop ?? 12;
+    const minOverlap = opts.minOverlap ?? 0.25;
+
+    for (const row of groupSiblingRows(siblings)) {
+      if (row.length < 2) continue;
+      const sorted = [...row].sort((a, b) => a.rect.left - b.rect.left);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        const aRight = a.rect.right;
+        const bLeft = b.rect.left;
+        if (bLeft <= aRight) continue;
+        const top = Math.max(a.rect.top, b.rect.top);
+        const bottom = Math.min(a.rect.bottom, b.rect.bottom);
+        const span = bottom - top;
+        const minH = Math.min(a.rect.height, b.rect.height);
+        if (span < minH * minOverlap) continue;
+        const inX = clientX >= aRight - slop && clientX <= bLeft + slop;
+        const inY = clientY >= top - slop && clientY <= bottom + slop;
+        if (!inX || !inY) continue;
+        return {
+          anchor: b.el,
+          position: 'before',
+          axis: 'row',
+          line: { axis: 'row', left: (aRight + bLeft) / 2, top, width: 0, height: span },
+        };
+      }
+    }
+
+    const sortedCol = [...siblings].sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    for (let i = 0; i < sortedCol.length - 1; i++) {
+      const a = sortedCol[i];
+      const b = sortedCol[i + 1];
+      const overlap = horizontalOverlap(a.rect, b.rect);
+      const minW = Math.min(a.rect.width, b.rect.width);
+      if (overlap < minW * minOverlap) continue;
+      const gapTop = a.rect.bottom;
+      const gapBottom = b.rect.top;
+      if (gapBottom <= gapTop) continue;
+      const overlapLeft = Math.max(a.rect.left, b.rect.left);
+      const overlapRight = Math.min(a.rect.right, b.rect.right);
+      const inY = clientY >= gapTop - slop && clientY <= gapBottom + slop;
+      const inX = clientX >= overlapLeft - slop && clientX <= overlapRight + slop;
+      if (!inY || !inX) continue;
+      return {
+        anchor: b.el,
+        position: 'before',
+        axis: 'column',
+        line: { axis: 'column', top: (gapTop + gapBottom) / 2, left: overlapLeft, width: overlap, height: 0 },
+      };
+    }
+    return null;
+  }
+
+  function insertLineCoords(rect, position, axis) {
+    axis = axis || 'column';
+    if (axis === 'row') {
+      const x = position === 'before' ? rect.left - 2 : rect.right + 2;
+      return { axis: 'row', top: rect.top, left: x, width: 0, height: rect.height };
+    }
+    const y = position === 'before' ? rect.top - 2 : rect.bottom + 2;
+    return { axis: 'column', top: y, left: rect.left, width: rect.width, height: 0 };
+  }
+
+  function resolveInsertHover({ clientX, clientY, target, rect, axis, siblings }) {
+    const gap = hitSiblingInsertGap(clientX, clientY, siblings);
+    if (gap) return gap;
+    const position = computeInsertPosition(clientX, clientY, rect, axis);
+    const line = insertLineCoords(rect, position, axis);
+    return { anchor: target, position, axis, line };
+  }
+
+  function cursorForInsertAxis(axis) {
+    return axis === 'row' ? 'ew-resize' : 'ns-resize';
+  }
+
+  function placeholderSizing({ axis, parentDisplay, parentWidth, anchorFlex }) {
+    const display = parentDisplay || 'block';
+    const w = Number.isFinite(parentWidth) ? parentWidth : 0;
+    if (axis === 'row') {
+      if (display.includes('flex')) {
+        const flex = anchorFlex && anchorFlex !== 'none' && anchorFlex !== '0 1 auto'
+          ? anchorFlex
+          : '1 1 0';
+        return { kind: 'flex', flex, minWidth: 0 };
+      }
+      if (display === 'grid' || display === 'inline-grid') return { kind: 'auto' };
+    }
+    if (w >= PLACEHOLDER_MIN_WIDTH) return { kind: 'percent' };
+    return {
+      kind: 'explicit',
+      width: Math.max(PLACEHOLDER_MIN_WIDTH, w || PLACEHOLDER_MIN_WIDTH),
+    };
+  }
+
+  function placeholderWidthIsImplicit(kind) {
+    return kind === 'flex' || kind === 'percent' || kind === 'auto';
+  }
+
+  function applyPlaceholderSizingStyles(placeholder, sizing) {
+    placeholder.dataset.impeccablePlaceholderWidth = sizing.kind;
+    placeholder.style.flex = '';
+    placeholder.style.minWidth = '';
+    placeholder.style.maxWidth = '';
+    placeholder.style.width = '';
+    if (sizing.kind === 'flex') {
+      placeholder.style.flex = sizing.flex;
+      placeholder.style.minWidth = sizing.minWidth + 'px';
+    } else if (sizing.kind === 'percent') {
+      placeholder.style.width = '100%';
+      placeholder.style.maxWidth = '100%';
+    } else if (sizing.kind === 'explicit') {
+      placeholder.style.width = sizing.width + 'px';
+    }
+  }
+
+  function materializePlaceholderWidth(placeholder) {
+    if (!placeholder) return;
+    const kind = placeholder.dataset.impeccablePlaceholderWidth;
+    if (!placeholderWidthIsImplicit(kind)) return;
+    const w = Math.max(PLACEHOLDER_MIN_WIDTH, Math.round(placeholder.offsetWidth));
+    placeholder.style.flex = '';
+    placeholder.style.minWidth = '';
+    placeholder.style.maxWidth = '';
+    placeholder.style.width = w + 'px';
+    placeholder.dataset.impeccablePlaceholderWidth = 'explicit';
+  }
+
+  function canCreateInsert({ prompt, comments, strokes }) {
+    const hasPrompt = typeof prompt === 'string' && prompt.trim().length > 0;
+    const hasComments = Array.isArray(comments) && comments.length > 0;
+    const hasStrokes = Array.isArray(strokes) && strokes.some(
+      (s) => Array.isArray(s?.points) && s.points.length >= 2,
+    );
+    return hasPrompt || hasComments || hasStrokes;
+  }
+
+  function insertCreateDisabledReason({ prompt, comments, strokes }) {
+    if (canCreateInsert({ prompt, comments, strokes })) return null;
+    return 'Add a prompt or annotate the placeholder to create';
+  }
+
+  function clampPlaceholderSize(width, height, parentWidth) {
+    const maxW = Math.max(PLACEHOLDER_MIN_WIDTH, parentWidth || PLACEHOLDER_MIN_WIDTH);
+    return {
+      width: Math.min(maxW, Math.max(PLACEHOLDER_MIN_WIDTH, Math.round(width))),
+      height: Math.max(PLACEHOLDER_MIN_HEIGHT, Math.round(height)),
+    };
+  }
+
+  function cursorForPlaceholderEdge(edge) {
+    if (edge === 'n' || edge === 's') return 'ns-resize';
+    if (edge === 'e' || edge === 'w') return 'ew-resize';
+    return 'default';
+  }
+
+  function resizePlaceholderFromEdge(start, edge, dx, dy, parentWidth) {
+    const base = {
+      width: start.width,
+      height: start.height,
+      marginLeft: start.marginLeft ?? 0,
+      marginTop: start.marginTop ?? 0,
+    };
+    if (edge === 'e') base.width = start.width + dx;
+    else if (edge === 'w') {
+      base.width = start.width - dx;
+      base.marginLeft = start.marginLeft + dx;
+    } else if (edge === 's') base.height = start.height + dy;
+    else if (edge === 'n') {
+      base.height = start.height - dy;
+      base.marginTop = start.marginTop + dy;
+    }
+    const clamped = clampPlaceholderSize(base.width, base.height, parentWidth);
+    if (edge === 'w') base.marginLeft = start.marginLeft + start.width - clamped.width;
+    else if (edge === 'n') base.marginTop = start.marginTop + start.height - clamped.height;
+    return {
+      width: clamped.width,
+      height: clamped.height,
+      marginLeft: Math.round(base.marginLeft),
+      marginTop: Math.round(base.marginTop),
+    };
+  }
+
+  function ensureInsertLine() {
+    if (insertLineEl) return insertLineEl;
+    insertLineEl = document.createElement('div');
+    insertLineEl.id = PREFIX + '-insert-line';
+    Object.assign(insertLineEl.style, {
+      position: 'fixed',
+      zIndex: String(Z.highlight),
+      height: '0',
+      borderTop: '2px dotted ' + C.brand,
+      pointerEvents: 'none',
+      display: 'none',
+      opacity: '0.9',
+    });
+    document.body.appendChild(insertLineEl);
+    defangOutsideHandlers(insertLineEl);
+    return insertLineEl;
+  }
+
+  function showInsertLine(resolved) {
+    if (!resolved?.anchor || !resolved.line) return;
+    const line = ensureInsertLine();
+    const coords = resolved.line;
+    if (coords.axis === 'row') {
+      Object.assign(line.style, {
+        display: 'block',
+        top: coords.top + 'px',
+        left: coords.left + 'px',
+        width: '0',
+        height: coords.height + 'px',
+        borderTop: 'none',
+        borderLeft: '2px dotted ' + C.brand,
+      });
+    } else {
+      Object.assign(line.style, {
+        display: 'block',
+        top: coords.top + 'px',
+        left: coords.left + 'px',
+        width: coords.width + 'px',
+        height: '0',
+        borderLeft: 'none',
+        borderTop: '2px dotted ' + C.brand,
+      });
+    }
+    insertHoverAnchor = resolved.anchor;
+    insertHoverPosition = resolved.position;
+    insertHoverAxis = resolved.axis || 'column';
+  }
+
+  function hideInsertLine() {
+    if (!insertLineEl) return;
+    insertLineEl.style.display = 'none';
+    insertHoverAnchor = null;
+    insertHoverPosition = null;
+    insertHoverAxis = null;
+    syncPageInteractionCursor();
+  }
+
+  let pageInteractionCursorActive = false;
+
+  /** Page-level cursor while insert mode is choosing a before/after edge. */
+  function syncPageInteractionCursor() {
+    let next = '';
+    if (state === 'PICKING' && insertActive) {
+      next = insertHoverAnchor ? cursorForInsertAxis(insertHoverAxis || 'column') : '';
+    }
+    if (next) {
+      document.documentElement.style.cursor = next;
+      pageInteractionCursorActive = true;
+    } else if (pageInteractionCursorActive) {
+      document.documentElement.style.cursor = '';
+      pageInteractionCursorActive = false;
+    }
+  }
+
+  /** Element used to position the floating bar / shader during a session. */
+  function resolveBarAnchor() {
+    if (currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
+      const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+      if (wrapper) {
+        const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
+        if (variantCount > 0 && visibleVariant > 0) {
+          const visEl = pickVariantContent(wrapper, visibleVariant);
+          if (visEl) return visEl;
+        }
+        if (state === 'GENERATING') {
+          const ph = ensureInsertPlaceholder();
+          if (ph) return ph;
+          if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+        }
+      }
+    }
+    if (selectedElement && document.body.contains(selectedElement)) return selectedElement;
+    if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
+    if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+    return null;
+  }
+
+  function removeInsertPlaceholderDom() {
+    if (placeholderElement) {
+      placeholderElement.remove();
+      placeholderElement = null;
+    }
+    placeholderResizeDrag = null;
+    syncPlaceholderResizeHandles();
+  }
+
+  function finalizeInsertSession() {
+    removeInsertPlaceholderDom();
+    insertAnchorElement = null;
+    insertAnchorPosition = null;
+    insertAnchorLayoutAxis = null;
+    insertPlaceholderSnapshot = null;
+    if (configureKind === 'insert') configureKind = 'replace';
+  }
+
+  function buildInsertPlaceholderSnapshotFromDom(anchor, placeholder) {
+    return {
+      width: Math.round(placeholder.offsetWidth || 0),
+      height: Math.round(placeholder.offsetHeight || PLACEHOLDER_DEFAULT_HEIGHT),
+      marginLeft: parseFloat(placeholder.style.marginLeft) || 0,
+      marginTop: parseFloat(placeholder.style.marginTop) || 0,
+      position: insertAnchorPosition || 'before',
+      layoutAxis: insertAnchorLayoutAxis || 'column',
+      anchorTag: anchor.tagName || 'DIV',
+      anchorClasses: anchor.className || '',
+      anchorText: (anchor.textContent || '').trim().slice(0, 120),
+    };
+  }
+
+  function findInsertAnchorInDom() {
+    if (insertAnchorElement && document.body.contains(insertAnchorElement)) return insertAnchorElement;
+    const snap = insertPlaceholderSnapshot;
+    if (!snap) return null;
+    const tag = (snap.anchorTag || 'div').toLowerCase();
+    const cls = (snap.anchorClasses || '').split(/\s+/).filter(Boolean)[0];
+    const needle = snap.anchorText || '';
+    const sel = cls ? tag + '.' + cls : tag;
+    const candidates = document.querySelectorAll(sel);
+    for (const candidate of candidates) {
+      if (own(candidate)) continue;
+      if (needle && !(candidate.textContent || '').includes(needle.slice(0, 40))) continue;
+      return candidate;
+    }
+    return null;
+  }
+
+  function isInsertGeneratingSession() {
+    if (state !== 'GENERATING' || !currentSessionId) return false;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    return !!wrapper && wrapper.dataset.impeccableMode === 'insert';
+  }
+
+  /** Recreate the dotted placeholder if Astro/Vite HMR removed it mid-generation. */
+  function ensureInsertPlaceholder() {
+    if (!isInsertGeneratingSession()) return placeholderElement;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    const variantCount = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
+    if (variantCount > 0) return placeholderElement;
+    if (placeholderElement && document.body.contains(placeholderElement)) return placeholderElement;
+
+    const anchor = findInsertAnchorInDom();
+    if (!anchor) return null;
+
+    insertAnchorElement = anchor;
+    const position = insertPlaceholderSnapshot?.position || insertAnchorPosition || 'before';
+    const axis = insertPlaceholderSnapshot?.layoutAxis || insertAnchorLayoutAxis;
+    const ph = createInsertPlaceholder(anchor, position, axis);
+    if (!ph) return null;
+
+    if (insertPlaceholderSnapshot) {
+      applyPlaceholderDimensions({
+        width: insertPlaceholderSnapshot.width,
+        height: insertPlaceholderSnapshot.height,
+        marginLeft: insertPlaceholderSnapshot.marginLeft,
+        marginTop: insertPlaceholderSnapshot.marginTop,
+      });
+    }
+    selectedElement = ph;
+    return ph;
+  }
+
+  function applyPlaceholderDimensions({ width, height, marginLeft, marginTop }) {
+    const ph = placeholderElement;
+    if (!ph) return;
+    materializePlaceholderWidth(ph);
+    ph.style.width = width + 'px';
+    ph.style.height = height + 'px';
+    ph.style.marginLeft = marginLeft ? marginLeft + 'px' : '';
+    ph.style.marginTop = marginTop ? marginTop + 'px' : '';
+    positionAnnotOverlay(ph);
+    positionBar();
+  }
+
+  function buildPlaceholderResizeHandles() {
+    if (!placeholderResizeLayerEl) return;
+    placeholderResizeLayerEl.innerHTML = '';
+    const hit = 10;
+    const half = hit / 2;
+    const specs = [
+      { edge: 'n', top: -half, left: 0, right: 0, height: hit },
+      { edge: 's', bottom: -half, left: 0, right: 0, height: hit },
+      { edge: 'e', top: 0, bottom: 0, right: -half, width: hit },
+      { edge: 'w', top: 0, bottom: 0, left: -half, width: hit },
+    ];
+    for (const spec of specs) {
+      const handle = el('div', {
+        position: 'absolute',
+        pointerEvents: 'auto',
+        cursor: cursorForPlaceholderEdge(spec.edge),
+      });
+      if (spec.top != null) handle.style.top = spec.top + 'px';
+      if (spec.bottom != null) handle.style.bottom = spec.bottom + 'px';
+      if (spec.left != null) handle.style.left = spec.left + 'px';
+      if (spec.right != null) handle.style.right = spec.right + 'px';
+      if (spec.width != null) handle.style.width = spec.width + 'px';
+      if (spec.height != null) handle.style.height = spec.height + 'px';
+      handle.dataset.impeccablePlaceholderResize = spec.edge;
+      handle.setAttribute('aria-label', 'Resize placeholder');
+      handle.title = 'Drag to resize';
+      placeholderResizeLayerEl.appendChild(handle);
+    }
+  }
+
+  function syncPlaceholderResizeHandles() {
+    if (!placeholderResizeLayerEl) return;
+    const show = configureKind === 'insert' && annotActive && !!placeholderElement && state === 'CONFIGURING';
+    placeholderResizeLayerEl.style.display = show ? 'block' : 'none';
+    if (!show) {
+      placeholderResizeLayerEl.innerHTML = '';
+      return;
+    }
+    if (!placeholderResizeLayerEl.childElementCount) buildPlaceholderResizeHandles();
+  }
+
+  function startPlaceholderEdgeResize(edge, e) {
+    const ph = placeholderElement;
+    if (!ph || configureKind !== 'insert') return;
+    materializePlaceholderWidth(ph);
+    placeholderResizeDrag = {
+      edge,
+      startX: e.clientX,
+      startY: e.clientY,
+      start: {
+        width: ph.offsetWidth,
+        height: ph.offsetHeight,
+        marginLeft: parseFloat(ph.style.marginLeft) || 0,
+        marginTop: parseFloat(ph.style.marginTop) || 0,
+      },
+      parentWidth: ph.parentNode?.getBoundingClientRect().width || PLACEHOLDER_MIN_WIDTH,
+      pointerId: e.pointerId,
+    };
+    try { annotOverlayEl.setPointerCapture(e.pointerId); } catch {}
+    e.stopPropagation();
+    e.preventDefault();
+  }
+
+  function createInsertPlaceholder(anchor, position, layoutAxis) {
+    removeInsertPlaceholderDom();
+    const parent = anchor.parentNode;
+    if (!parent) return null;
+    const axis = layoutAxis || detectInsertAxis(parent);
+    const pst = getComputedStyle(parent);
+    const ast = getComputedStyle(anchor);
+    const sizing = placeholderSizing({
+      axis,
+      parentDisplay: pst.display,
+      parentWidth: parent.getBoundingClientRect().width,
+      anchorFlex: ast.flex,
+    });
+    const placeholder = document.createElement('div');
+    placeholder.id = PREFIX + '-insert-placeholder';
+    placeholder.setAttribute('data-impeccable-insert-placeholder', 'true');
+    placeholder.setAttribute('aria-hidden', 'true');
+    Object.assign(placeholder.style, {
+      boxSizing: 'border-box',
+      height: PLACEHOLDER_DEFAULT_HEIGHT + 'px',
+      minHeight: PLACEHOLDER_MIN_HEIGHT + 'px',
+      border: '2px dotted ' + BP.accent,
+      borderRadius: '0',
+      background: 'transparent',
+      opacity: '1',
+      position: 'relative',
+      marginLeft: '',
+      marginTop: '',
+    });
+    applyPlaceholderSizingStyles(placeholder, sizing);
+    if (position === 'before') parent.insertBefore(placeholder, anchor);
+    else parent.insertBefore(placeholder, anchor.nextSibling);
+    placeholderElement = placeholder;
+    insertAnchorElement = anchor;
+    insertAnchorPosition = position;
+    insertAnchorLayoutAxis = axis;
+    return placeholder;
+  }
+
+  function clearInsertPicking() {
+    hideInsertLine();
+    finalizeInsertSession();
+  }
+
+  function isInsertCreateEnabled(btn) {
+    btn = btn || document.getElementById(PREFIX + '-insert-create');
+    return !!btn && btn.getAttribute('aria-disabled') !== 'true';
+  }
+
+  let insertCreateTooltipEl = null;
+
+  function ensureInsertCreateTooltip() {
+    if (insertCreateTooltipEl) return insertCreateTooltipEl;
+    insertCreateTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      zIndex: String(Z.bar + 7),
+      pointerEvents: 'none',
+      maxWidth: '240px',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      boxShadow: BP.shadow,
+      color: BP.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+    });
+    insertCreateTooltipEl.id = PREFIX + '-insert-create-tooltip';
+    document.body.appendChild(insertCreateTooltipEl);
+    return insertCreateTooltipEl;
+  }
+
+  function showInsertCreateTooltip(anchor, message) {
+    if (!anchor || !message) return;
+    const tip = ensureInsertCreateTooltip();
+    tip.textContent = message;
+    tip.style.display = 'block';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideInsertCreateTooltip() {
+    if (!insertCreateTooltipEl) return;
+    insertCreateTooltipEl.style.display = 'none';
+  }
+
+  function insertCreateGateState(input) {
+    return {
+      prompt: input?.value ?? '',
+      comments: annotState.comments,
+      strokes: annotState.strokes,
+    };
+  }
+
+  function syncInsertCreateButton(btn, input) {
+    btn = btn || document.getElementById(PREFIX + '-insert-create');
+    input = input || document.getElementById(PREFIX + '-insert-input');
+    if (!btn || !input) return;
+    const gate = insertCreateGateState(input);
+    const ok = canCreateInsert(gate);
+    const reason = ok ? 'Create variants' : insertCreateDisabledReason(gate);
+    btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    btn.setAttribute('aria-label', reason);
+    if (ok) {
+      hideInsertCreateTooltip();
+      btn.style.background = BP.accent;
+      btn.style.color = C.ink;
+      btn.style.border = 'none';
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = BP.textDim;
+      btn.style.border = '1px solid ' + BP.hairline;
+      btn.style.opacity = '0.72';
+      btn.style.cursor = 'not-allowed';
+    }
+  }
+
   function buildConfigureRow() {
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '4px',
+      display: 'flex', alignItems: 'center', gap: '6px',
     });
 
-    // Action pill
+    // Action pill — dark graphite chip (matches kinpaku-kit .live-demo-ctx-pill)
     const pill = el('button', {
       display: 'inline-flex', alignItems: 'center', gap: '4px',
       padding: '5px 10px', borderRadius: '6px',
-      background: BP.mark, color: BP.markText,
+      background: BP.chatSurface, color: BP.text,
       fontFamily: FONT, fontSize: '12px', fontWeight: '500',
-      border: 'none', cursor: 'pointer',
-      transition: 'background 0.12s ease, transform 0.1s ease',
+      border: '1px solid ' + BP.hairline, cursor: 'pointer',
+      transition: 'background 0.12s ease, border-color 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap', flexShrink: '0',
     });
     pill.textContent = actionLabel() + ' \u25BE';
-    pill.addEventListener('mouseenter', () => pill.style.background = BP.accent);
-    pill.addEventListener('mouseleave', () => pill.style.background = BP.mark);
+    pill.addEventListener('mouseenter', () => {
+      pill.style.background = BP.accentSoft;
+      pill.style.borderColor = BP.accent;
+    });
+    pill.addEventListener('mouseleave', () => {
+      pill.style.background = BP.chatSurface;
+      pill.style.borderColor = BP.hairline;
+    });
     pill.addEventListener('mousedown', () => pill.style.transform = 'scale(0.97)');
     pill.addEventListener('mouseup', () => pill.style.transform = 'scale(1)');
     pill.addEventListener('click', (e) => { e.stopPropagation(); toggleActionPicker(); });
     row.appendChild(pill);
 
-    // Freeform input. Focus state shows an accent-colored border only —
-    // an earlier version tinted the background with `BP.accentSoft`, which
-    // composited against the dark bar surface to a murky purple where the
-    // browser's default placeholder gray was unreadable. Placeholder color
-    // is set explicitly via a one-shot stylesheet keyed off this input's id
-    // so it picks up the bar's `textDim` token in both themes.
+    // Prompt field — same chat-surface chrome as the bottom Steer bar
+    const inputWrap = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      flex: '1', minWidth: '0', height: '28px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      overflow: 'hidden',
+      transition: 'border-color 0.15s ease',
+    });
+    inputWrap.id = PREFIX + '-configure-input-wrap';
+
     const input = document.createElement('input');
     input.id = PREFIX + '-input';
     input.type = 'text';
-    input.placeholder = selectedAction === 'impeccable' ? 'describe what you want...' : 'refine further (optional)...';
+    input.placeholder = selectedAction === 'impeccable' ? 'describe what you want…' : 'refine further (optional)…';
+    input.setAttribute('aria-label', 'Describe the change');
     Object.assign(input.style, {
-      flex: '1', minWidth: '0',
-      padding: '5px 8px', borderRadius: '6px',
-      border: '1px solid transparent', background: 'transparent',
-      fontFamily: FONT, fontSize: '12px', color: BP.text,
+      flex: '1', minWidth: '0', width: '100%',
+      padding: '0 6px', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
       outline: 'none',
-      transition: 'border-color 0.15s ease',
     });
-    if (!document.getElementById(PREFIX + '-input-style')) {
+
+    const voiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: BP.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    voiceBtn.id = PREFIX + '-configure-voice';
+    voiceBtn.type = 'button';
+    voiceBtn.setAttribute('aria-label', 'Voice input');
+    voiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    if (!document.getElementById(PREFIX + '-configure-input-style')) {
       const s = document.createElement('style');
-      s.id = PREFIX + '-input-style';
+      s.id = PREFIX + '-configure-input-style';
       s.textContent =
-        '#' + PREFIX + '-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }';
+        '@keyframes impeccable-configure-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
+        '#' + PREFIX + '-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
+        '#' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
+        '#' + PREFIX + '-configure-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       document.head.appendChild(s);
     }
-    input.addEventListener('focus', () => {
-      input.style.borderColor = BP.accent;
-    });
-    input.addEventListener('blur', () => {
-      input.style.borderColor = 'transparent';
-    });
+
+    input.addEventListener('focus', () => syncConfigureInputChrome());
+    input.addEventListener('blur', () => syncConfigureInputChrome());
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); e.preventDefault(); handleGo(); return; }
-      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; return; }
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); input.blur(); hideBar(); state = 'PICKING'; syncPageChatFocus('configure-input-escape'); return; }
       // Let arrow keys pass through to the element picker when the input is empty
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
     });
-    row.appendChild(input);
+
+    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    voiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConfigureVoice();
+    });
+
+    inputWrap.appendChild(input);
+    inputWrap.appendChild(voiceBtn);
+    row.appendChild(inputWrap);
+    syncConfigureInputChrome();
 
     // Variant count toggle
     const count = el('button', {
-      padding: '4px 6px', borderRadius: '5px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 6px',
+      borderRadius: '5px',
       border: '1px solid ' + BP.hairline, background: 'transparent',
       fontFamily: MONO, fontSize: '11px', fontWeight: '600',
       color: BP.textDim, cursor: 'pointer',
@@ -1012,8 +1768,10 @@
 
     // Go button
     const go = el('button', {
-      padding: '5px 12px', borderRadius: '6px',
-      border: 'none', background: BP.accent, color: BP.mark,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 12px',
+      borderRadius: '6px',
+      border: 'none', background: BP.accent, color: C.ink,
       fontFamily: FONT, fontSize: '12px', fontWeight: '600',
       cursor: 'pointer',
       transition: 'filter 0.12s ease, transform 0.1s ease',
@@ -1027,8 +1785,114 @@
     go.addEventListener('click', (e) => { e.stopPropagation(); handleGo(); });
     row.appendChild(go);
 
-    // Auto-focus input after a beat
-    setTimeout(() => input.focus(), 60);
+    return row;
+  }
+
+  function buildInsertConfigureRow() {
+    const row = el('div', {
+      display: 'flex', alignItems: 'center', gap: '6px',
+    });
+
+    const inputWrap = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      flex: '1', minWidth: '0', height: '28px',
+      borderRadius: '7px',
+      background: BP.chatSurface,
+      border: '1px solid ' + BP.hairline,
+      overflow: 'hidden',
+      transition: 'border-color 0.15s ease',
+    });
+    inputWrap.id = PREFIX + '-insert-input-wrap';
+
+    const input = document.createElement('input');
+    input.id = PREFIX + '-insert-input';
+    input.type = 'text';
+    input.placeholder = 'describe what to insert…';
+    input.setAttribute('aria-label', 'Describe the new element');
+    Object.assign(input.style, {
+      flex: '1', minWidth: '0', width: '100%',
+      padding: '0 6px', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
+      outline: 'none',
+    });
+
+    const voiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: BP.textDim, cursor: 'pointer',
+    });
+    voiceBtn.id = PREFIX + '-insert-voice';
+    voiceBtn.type = 'button';
+    voiceBtn.setAttribute('aria-label', 'Voice input');
+    voiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    input.addEventListener('input', () => syncInsertCreateButton());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.stopPropagation(); e.preventDefault();
+        if (isInsertCreateEnabled()) handleInsertCreate();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation(); e.preventDefault();
+        cancelInsertConfigure();
+        return;
+      }
+      e.stopPropagation();
+    });
+    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    voiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleConfigureVoice();
+    });
+
+    inputWrap.appendChild(input);
+    inputWrap.appendChild(voiceBtn);
+    row.appendChild(inputWrap);
+
+    const count = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 6px',
+      borderRadius: '5px',
+      border: '1px solid ' + BP.hairline, background: 'transparent',
+      fontFamily: MONO, fontSize: '11px', fontWeight: '600',
+      color: BP.textDim, cursor: 'pointer', flexShrink: '0', whiteSpace: 'nowrap',
+    });
+    count.textContent = '\u00D7' + selectedCount;
+    count.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
+      count.textContent = '\u00D7' + selectedCount;
+    });
+    row.appendChild(count);
+
+    const create = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', height: '28px', padding: '0 12px',
+      borderRadius: '6px',
+      border: 'none', background: BP.accent, color: C.ink,
+      fontFamily: FONT, fontSize: '12px', fontWeight: '600',
+      flexShrink: '0', whiteSpace: 'nowrap',
+    });
+    create.id = PREFIX + '-insert-create';
+    create.textContent = 'Create \u2192';
+    create.addEventListener('mouseenter', () => {
+      if (isInsertCreateEnabled(create)) {
+        hideInsertCreateTooltip();
+        return;
+      }
+      showInsertCreateTooltip(create, insertCreateDisabledReason(insertCreateGateState(input)));
+    });
+    create.addEventListener('mouseleave', hideInsertCreateTooltip);
+    create.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!isInsertCreateEnabled(create)) return;
+      handleInsertCreate();
+    });
+    row.appendChild(create);
+    syncInsertCreateButton(create, input);
     return row;
   }
 
@@ -1045,7 +1909,7 @@
       fontWeight: '600', fontSize: '12px', color: BP.text,
       flexShrink: '0', whiteSpace: 'nowrap',
     });
-    label.textContent = actionLabel();
+    label.textContent = configureKind === 'insert' ? 'Insert' : actionLabel();
     row.appendChild(label);
 
     // Dots
@@ -1146,11 +2010,10 @@
     // Spacer
     row.appendChild(el('div', { flex: '1' }));
 
-    // Accept — primary action, uses the site's saturated brand magenta
-    // with paper-white text, not the theme-muted BP.accent.
+    // Accept — primary action, kinpaku gold + lacquer-deep (matches demo .live-demo-ctx-accept)
     const accept = el('button', {
       padding: '5px 14px', borderRadius: '5px',
-      border: 'none', background: C.brand, color: 'oklch(98% 0 0)',
+      border: 'none', background: C.brand, color: C.ink,
       fontFamily: FONT, fontSize: '11px', fontWeight: '600',
       cursor: 'pointer', transition: 'filter 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap',
@@ -1244,10 +2107,10 @@
     for (let i = 1; i <= expectedVariants; i++) {
       const arrived = i <= arrivedVariants;
       const active = i === visibleVariant;
-      // active: solid site-brand magenta dot. arrived+inactive: muted neutral.
+      // active: solid site-brand kinpaku dot. arrived+inactive: muted neutral.
       // pending (not yet arrived): faint outline ring. No borders on arrived
       // dots — the previous "accent ring + ash fill" combo read as noisy
-      // magenta chips, especially when all variants had arrived and every
+      // kinpaku chips, especially when all variants had arrived and every
       // dot wore an accent ring.
       const dotBg = active ? C.brand
         : arrived ? BP.textDim
@@ -1321,13 +2184,11 @@
       transformOrigin: 'bottom left',
       transition: 'opacity 0.18s ' + EASE + ', transform 0.2s ' + EASE,
       background: P.surface,
-      border: '1px solid ' + P.hairline,
+      border: '1.5px solid ' + P.border,
       borderRadius: '10px',
-      boxShadow: '0 8px 30px oklch(0% 0 0 / 0.10), 0 2px 6px oklch(0% 0 0 / 0.06)',
+      boxShadow: P.shadow,
       padding: '6px',
       fontFamily: FONT,
-      backdropFilter: 'blur(10px)',
-      WebkitBackdropFilter: 'blur(10px)',
     });
 
     // Build the chip grid
@@ -1467,7 +2328,6 @@
       boxSizing: 'border-box',
       borderRadius: '0 0 10px 10px',
       pointerEvents: 'none',
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
 
       // clip-path is the same conceptual reveal as mask but with rock-solid
       // transition support across engines. Closed state clips from the far
@@ -1817,13 +2677,31 @@
   // Variant cycling in DOM
   // ---------------------------------------------------------------------------
 
+  function isVariantShown(el) {
+    if (!el) return false;
+    if (el.hidden) return false;
+    if (el.style?.display === 'none') return false;
+    return true;
+  }
+
+  function setVariantShown(el, shown) {
+    if (!el) return;
+    if (shown) {
+      el.removeAttribute('hidden');
+      el.style.display = '';
+    } else {
+      el.setAttribute('hidden', '');
+      el.style.display = 'none';
+    }
+  }
+
   function showVariantInDOM(sessionId, num) {
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
     if (!wrapper) return;
     for (const child of wrapper.children) {
       const v = child.dataset ? child.dataset.impeccableVariant : null;
       if (!v) continue;
-      child.style.display = (v === String(num)) ? '' : 'none';
+      setVariantShown(child, v === String(num));
     }
     // Unconditional refresh — covers first-reveal (no-op if state isn't
     // CYCLING yet, the subsequent CYCLING transition triggers its own
@@ -1841,45 +2719,54 @@
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
       .then(html => {
-        // Parse the raw source HTML
         const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        let srcWrapper = null;
+
+        // Full-file parse works for HTML/JSX; Astro/Vue sources need marker extraction.
+        const startMark = '<!-- impeccable-variants-start ' + sessionId + ' -->';
+        const endMark = '<!-- impeccable-variants-end ' + sessionId + ' -->';
+        const startIdx = html.indexOf(startMark);
+        const endIdx = html.indexOf(endMark);
+        const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
+          ? html.slice(startIdx + startMark.length, endIdx).trim()
+          : html;
+        const doc = parser.parseFromString(block, 'text/html');
+        srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
           console.error('[impeccable] Variant wrapper not found in source file.');
           return;
         }
 
-        // Find the original element in the live DOM.
-        // The original is inside the wrapper in the source. We find the
-        // corresponding element in the live DOM by matching the first child's
-        // tag + classes from the original snapshot.
-        const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
-        if (!origContent) return;
-
-        const tag = origContent.tagName.toLowerCase();
-        const cls = origContent.className;
-        let liveEl = null;
-        if (origContent.id) {
-          liveEl = document.getElementById(origContent.id);
-        } else if (cls) {
-          // Find by tag + exact class match
-          const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
-          for (const c of candidates) {
-            if (c.className === cls && !own(c)) { liveEl = c; break; }
-          }
-        }
-
-        if (!liveEl) {
-          console.error('[impeccable] Could not find original element in live DOM.');
-          return;
-        }
-
         const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
-
-        // Replace the live element with the full wrapper from source
         const wrapper = srcWrapper.cloneNode(true);
-        liveEl.parentElement.replaceChild(wrapper, liveEl);
+
+        // Wrapper already in DOM (wrap HMR landed, variant insert did not).
+        const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+        if (existingWrapper) {
+          existingWrapper.parentElement.replaceChild(wrapper, existingWrapper);
+        } else {
+          const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
+          if (!origContent) return;
+
+          const tag = origContent.tagName.toLowerCase();
+          const cls = origContent.className;
+          let liveEl = null;
+          if (origContent.id) {
+            liveEl = document.getElementById(origContent.id);
+          } else if (cls) {
+            const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
+            for (const c of candidates) {
+              if (c.className === cls && !own(c)) { liveEl = c; break; }
+            }
+          }
+
+          if (!liveEl) {
+            console.error('[impeccable] Could not find original element in live DOM.');
+            return;
+          }
+
+          liveEl.parentElement.replaceChild(wrapper, liveEl);
+        }
 
         // Update state: count variants, preserving the user's current variant
         // when a late HMR/source reinjection lands after they have cycled.
@@ -1900,6 +2787,7 @@
         hideShaderOverlay();
         updateBarContent('cycling');
         refreshParamsPanel();
+        positionBar();
         saveSession();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
       })
@@ -1916,6 +2804,7 @@
     showVariantInDOM(currentSessionId, next); // calls refreshParamsPanel itself
     updateSelectedElement();
     updateBarContent('cycling');
+    positionBar();
     saveSession();
     queueCheckpoint('variant_changed');
   }
@@ -1933,7 +2822,7 @@
     if (!wrapper) return 0;
     const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
     for (const variant of variants) {
-      if (variant.style.display === 'none') continue;
+      if (!isVariantShown(variant)) continue;
       const idx = parseInt(variant.dataset.impeccableVariant || '0', 10);
       if (idx > 0) return idx;
     }
@@ -2114,15 +3003,32 @@
       const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (!wrapper) return;
 
+      const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+      const count = variants.length;
+
       // Re-anchor selectedElement if it was detached by live-wrap's HMR swap.
       // Without this, the shader / highlight / bar track a zero-rect phantom
       // and the overlay appears frozen.
       if (selectedElement && !document.body.contains(selectedElement)) {
-        selectedElement = pickVariantContent(wrapper, 'original') || wrapper;
+        const isInsert = wrapper.dataset.impeccableMode === 'insert';
+        if (isInsert) {
+          const visEl = count > 0 ? pickVariantContent(wrapper, visibleVariant || 1) : null;
+          if (visEl) {
+            selectedElement = visEl;
+            if (count > 0) removeInsertPlaceholderDom();
+          } else {
+            const ph = ensureInsertPlaceholder();
+            if (ph) selectedElement = ph;
+            else if (insertAnchorElement && document.body.contains(insertAnchorElement)) {
+              selectedElement = insertAnchorElement;
+            }
+          }
+        } else {
+          selectedElement = pickVariantContent(wrapper, 'original') || wrapper;
+        }
+      } else if (isInsertGeneratingSession() && count === 0) {
+        ensureInsertPlaceholder();
       }
-
-      const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
-      const count = variants.length;
 
       // Nothing new
       if (count <= arrivedVariants) return;
@@ -2147,8 +3053,11 @@
       if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
         state = 'CYCLING';
         hideShaderOverlay();
+        if (wrapper.dataset.impeccableMode === 'insert') finalizeInsertSession();
+        updateSelectedElement();
         updateBarContent('cycling');
         refreshParamsPanel();
+        positionBar();
       } else if (state === 'GENERATING') {
         updateBarContent('generating');
       }
@@ -2168,11 +3077,20 @@
   function startScrollTracking() {
     function tick() {
       if (state === 'CONFIGURING' || state === 'GENERATING' || state === 'CYCLING') {
+        if (isInsertGeneratingSession()) ensureInsertPlaceholder();
         positionBar();
-        showHighlight(selectedElement);
+        const hiTarget = resolveBarAnchor();
+        if (hiTarget && !hiTarget.hasAttribute?.('data-impeccable-insert-placeholder')) {
+          showHighlight(hiTarget);
+        } else {
+          hideHighlight();
+        }
         if (tuneOpen) positionParamsPanel();
       }
-      if (annotActive) positionAnnotOverlay(selectedElement);
+      if (annotActive) {
+        const annotTarget = resolveBarAnchor();
+        if (annotTarget) positionAnnotOverlay(annotTarget);
+      }
       // Shader overlay (via debug P toggle or generation) is repositioned
       // by its own branch below; debug no longer has a separate overlay.
       if (shaderState) positionShaderOverlay();
@@ -2207,11 +3125,21 @@
       switch (msg.type) {
         case 'connected':
           hasProjectContext = !!msg.hasProjectContext;
-          if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable teach to generate one.', 7000);
+          if (!hasProjectContext) showToast('No PRODUCT.md found. Variants will be brand-agnostic. Run /impeccable init to generate one.', 7000);
           console.log('[impeccable] Live mode connected.');
-          if (state === 'IDLE') state = 'PICKING';
+          syncAgentPollingUi(!!msg.agentPolling);
+          startAgentStatusPoll();
+          if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
+          syncPageChatFocus('sse-connected');
+          break;
+        case 'agent_polling':
+          syncAgentPollingUi(!!msg.connected);
+          break;
+        case 'steer_done':
+          maybeCompleteSteer(msg);
           break;
         case 'done':
+          if (maybeCompleteSteer(msg)) break;
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
@@ -2219,6 +3147,11 @@
               updateBarContent('cycling');
               refreshParamsPanel();
             }
+            break;
+          }
+          // Source fallback when HMR did not land variants in this tab.
+          if (msg.file && msg.id && state === 'GENERATING' && msg.id === currentSessionId) {
+            injectVariantsFromSource(msg.file, msg.id);
             break;
           }
           // Variants are in source but not in the DOM yet. Common when the
@@ -2238,6 +3171,7 @@
           }, 2000);
           break;
         case 'error':
+          if (maybeCompleteSteer(msg)) break;
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
           hideBar();
@@ -2335,6 +3269,34 @@
   // ---------------------------------------------------------------------------
 
   function handleMouseMove(e) {
+    if (state === 'PICKING' && insertActive) {
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (!target || own(target) || !pickable(target)) {
+        hideInsertLine();
+        return;
+      }
+      const parent = target.parentElement;
+      const axis = detectInsertAxis(parent);
+      const siblings = layoutFlowChildren(parent);
+      const rect = target.getBoundingClientRect();
+      const resolved = resolveInsertHover({
+        clientX: e.clientX,
+        clientY: e.clientY,
+        target,
+        rect,
+        axis,
+        siblings,
+      });
+      if (
+        resolved.anchor !== insertHoverAnchor
+        || resolved.position !== insertHoverPosition
+        || resolved.axis !== insertHoverAxis
+      ) {
+        showInsertLine(resolved);
+      }
+      syncPageInteractionCursor();
+      return;
+    }
     if (state !== 'PICKING' || !pickActive) return;
     const target = document.elementFromPoint(e.clientX, e.clientY);
     if (!target || !pickable(target) || target === hoveredElement) return;
@@ -2351,8 +3313,9 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
-    // In CONFIGURING: click outside the bar and selected element returns to PICKING
+    // In CONFIGURING: click outside the bar and selected element returns to picking
     if (state === 'CONFIGURING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
+      if (configureKind === 'insert') { cancelInsertConfigure(); return; }
       hideBar();
       stopScrollTracking();
       hideAnnotOverlay();
@@ -2360,10 +3323,38 @@
       state = 'PICKING';
       hoveredElement = null;
       hideHighlight();
+      syncPageChatFocus('configure-outside-click');
+      return;
+    }
+    if (state === 'PICKING' && insertActive) {
+      if (own(e.target)) return;
+      if (!insertHoverAnchor || !insertHoverPosition) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const placeholder = createInsertPlaceholder(
+        insertHoverAnchor,
+        insertHoverPosition,
+        insertHoverAxis,
+      );
+      if (!placeholder) return;
+      hideInsertLine();
+      configureKind = 'insert';
+      selectedElement = placeholder;
+      state = 'CONFIGURING';
+      hideHighlight();
+      clearAnnotations();
+      showAnnotOverlay(placeholder);
+      showBar('configure');
+      startScrollTracking();
+      syncPageInteractionCursor();
       return;
     }
     if (state !== 'PICKING' || !pickActive) return;
     if (own(e.target)) return;
+    if (pagePickSkipClick || pageHasHostTextSelection()) {
+      pagePickSkipClick = false;
+      return;
+    }
     if (!hoveredElement || !pickable(hoveredElement)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -2458,13 +3449,15 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       if (pickerEl?.style.display !== 'none') { hideActionPicker(); return; }
-      if (state === 'CONFIGURING') { hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; return; }
+      if (state === 'CONFIGURING') {
+        if (configureKind === 'insert') { cancelInsertConfigure(); return; }
+        hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return;
+      }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
       if (state === 'PICKING') {
-        // Use togglePick so the "Pick" button in the global bar also flips
-        // off, otherwise the bar stays lit while nothing else is active.
-        if (pickActive) togglePick();
+        if (insertActive) toggleInsert();
+        else if (pickActive) togglePick();
         else { hideHighlight(); state = 'IDLE'; }
         return;
       }
@@ -2524,6 +3517,7 @@
 
   function handleGo() {
     if (!selectedElement || state !== 'CONFIGURING') return;
+    stopVoice({ suppressSubmit: true });
     const input = document.getElementById(PREFIX + '-input');
     const prompt = input ? input.value.trim() : '';
 
@@ -2570,6 +3564,74 @@
     console.log('[impeccable.scroll] Go pressed', { scrollY: window.scrollY, sessionId: currentSessionId });
     startScrollLock(currentSessionId);
 
+    captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
+  }
+
+  function cancelInsertConfigure() {
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    clearInsertPicking();
+    configureKind = 'replace';
+    selectedElement = null;
+    state = insertActive ? 'PICKING' : 'IDLE';
+    hideHighlight();
+    syncPageChatFocus('insert-configure-cancel');
+  }
+
+  function handleInsertCreate() {
+    if (!placeholderElement || !insertAnchorElement || state !== 'CONFIGURING' || configureKind !== 'insert') return;
+    const input = document.getElementById(PREFIX + '-insert-input');
+    const prompt = input ? input.value.trim() : '';
+    if (annotEditing) finalizeEditingPin();
+    const snapshot = {
+      comments: annotState.comments.map(c => ({ x: c.x, y: c.y, text: c.text })),
+      strokes: annotState.strokes.map(s => ({ points: s.points.map(p => [p[0], p[1]]) })),
+    };
+    if (!canCreateInsert({ prompt, comments: snapshot.comments, strokes: snapshot.strokes })) return;
+
+    stopVoice({ suppressSubmit: true });
+    currentSessionId = id8();
+    expectedVariants = selectedCount;
+    arrivedVariants = 0;
+    visibleVariant = 0;
+    selectedElement = placeholderElement;
+    insertPlaceholderSnapshot = buildInsertPlaceholderSnapshotFromDom(insertAnchorElement, placeholderElement);
+
+    const elForCapture = placeholderElement;
+    const captureRect = elForCapture.getBoundingClientRect();
+    const basePayload = {
+      type: 'generate',
+      mode: 'insert',
+      id: currentSessionId,
+      count: selectedCount,
+      pageUrl: location.pathname,
+      insert: {
+        position: insertAnchorPosition,
+        anchor: extractContext(insertAnchorElement),
+      },
+      placeholder: {
+        width: Math.round(captureRect.width),
+        height: Math.round(captureRect.height),
+      },
+      freeformPrompt: prompt || undefined,
+    };
+    if (snapshot.comments.length > 0) basePayload.comments = snapshot.comments;
+    if (snapshot.strokes.length > 0) basePayload.strokes = snapshot.strokes;
+
+    hideAnnotOverlay();
+    clearAnnotations();
+
+    state = 'GENERATING';
+    showBar('generating');
+    startScrollTracking();
+    saveSession();
+    sendCheckpoint('generate_started');
+    writeScrollY(window.scrollY);
+    if (variantObserver) variantObserver.disconnect();
+    variantObserver = startVariantObserver(currentSessionId);
+    startScrollLock(currentSessionId);
     captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
   }
 
@@ -2774,7 +3836,7 @@
   // ---------------------------------------------------------------------------
   // Shader overlay — renders the captured screenshot as a WebGL texture and
   // runs an editorial "ink-wash" fragment shader over it during generation.
-  // A single rolling band sweeps top-to-bottom, desaturating + tinting magenta
+  // A single rolling band sweeps top-to-bottom, desaturating + tinting kinpaku
   // and leaving a soft trail. Makes the wait feel like a letterpress scan
   // instead of a dead spinner.
   // ---------------------------------------------------------------------------
@@ -2820,7 +3882,7 @@ void main() {
   vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
   vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
   float luma = dot(cellImg, vec3(0.299, 0.587, 0.114));
-  // Darker cells → bigger magenta dots (classic risograph halftone curve).
+  // Darker cells → bigger kinpaku dots (classic risograph halftone curve).
   float radius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
   float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
   vec3 paper = vec3(0.975, 0.965, 0.955);
@@ -2832,8 +3894,8 @@ void main() {
   gl_FragColor = vec4(mix(base, dotLayer, band), 1.0);
 }`;
 
-  // Editorial Magenta converted to approximate sRGB 0-1 (matches oklch(60% 0.25 350))
-  const SHADER_ACCENT = [0.82, 0.16, 0.47];
+  // Kinpaku gold converted to approximate sRGB 0-1 (matches oklch(84% 0.19 80.46))
+  const SHADER_ACCENT = [1.0, 0.78, 0.31];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
 
   function compileShader(gl, type, source) {
@@ -2849,8 +3911,10 @@ void main() {
   }
 
   function positionShaderOverlay() {
-    if (!shaderState || !selectedElement) return;
-    const r = selectedElement.getBoundingClientRect();
+    if (!shaderState) return;
+    const anchor = resolveBarAnchor();
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
     Object.assign(shaderState.canvas.style, {
       top: r.top + 'px', left: r.left + 'px',
       width: r.width + 'px', height: r.height + 'px',
@@ -3084,6 +4148,7 @@ void main() {
       expected: expectedVariants,
       arrived: arrivedVariants,
       visible: visibleVariant,
+      insertPlaceholder: insertPlaceholderSnapshot || undefined,
     });
   }
 
@@ -3143,6 +4208,7 @@ void main() {
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     stopScrollLock();
     clearScrollY();
+    finalizeInsertSession();
     clearSession();
     selectedElement = null;
     currentSessionId = null;
@@ -3221,16 +4287,26 @@ void main() {
       visibleVariant = arrivedVariants > 0 ? 1 : 0;
     }
 
+    if (saved && saved.id === sessionId && saved.insertPlaceholder) {
+      insertPlaceholderSnapshot = saved.insertPlaceholder;
+    }
+
+    const resumedState = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
+
     // Find the visible variant's content element for highlight positioning.
-    // Try the visible variant first, fall back to the original's content.
+    const isInsert = wrapper.dataset.impeccableMode === 'insert';
     const visEl = visibleVariant > 0 ? pickVariantContent(wrapper, visibleVariant) : null;
     const origEl = pickVariantContent(wrapper, 'original');
-    selectedElement = visEl || origEl || wrapper.parentElement;
+    state = resumedState;
+    if (isInsert && resumedState === 'GENERATING' && arrivedVariants === 0) {
+      selectedElement = ensureInsertPlaceholder() || findInsertAnchorInDom() || wrapper;
+    } else {
+      selectedElement = visEl || origEl || (isInsert ? findInsertAnchorInDom() : null) || wrapper.parentElement;
+    }
 
     // Set display state BEFORE starting observer (avoid triggering it)
     if (visibleVariant > 0) showVariantInDOM(currentSessionId, visibleVariant);
 
-    state = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
     showBar(state === 'CYCLING' ? 'cycling' : 'generating');
     startScrollTracking();
     // Build the params panel for the restored visible variant. Previously
@@ -3252,19 +4328,24 @@ void main() {
     // If we reloaded mid-generation (Bun's HTML HMR destroys the shader
     // canvas), re-capture the original's content and restart the shader so
     // the wait doesn't go dead.
-    if (state === 'GENERATING' && origEl) {
-      (async () => {
-        try {
-          const rect = origEl.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) return;
-          const blob = await captureElementToBlob(origEl, null, rect);
-          if (blob && state === 'GENERATING') {
-            showShaderOverlay(origEl, blob, rect);
+    if (state === 'GENERATING') {
+      const shaderTarget = isInsert
+        ? (ensureInsertPlaceholder() || findInsertAnchorInDom())
+        : origEl;
+      if (shaderTarget) {
+        (async () => {
+          try {
+            const rect = shaderTarget.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+            const blob = await captureElementToBlob(shaderTarget, null, rect);
+            if (blob && state === 'GENERATING') {
+              showShaderOverlay(shaderTarget, blob, rect);
+            }
+          } catch (err) {
+            console.warn('[impeccable] shader resume failed:', err);
           }
-        } catch (err) {
-          console.warn('[impeccable] shader resume failed:', err);
-        }
-      })();
+        })();
+      }
     }
     return true;
   }
@@ -3274,10 +4355,101 @@ void main() {
   // ---------------------------------------------------------------------------
 
   let globalBarEl = null;
+  let globalBarBrandEl = null;
+  let agentPollTooltipEl = null;
+  let agentPollingConnected = false;
+  let agentStatusPollTimer = null;
+  let steerFocusSuspended = false;
+  let steerFocusPauseUntil = 0;
+  let pagePointerGesture = null;
+  let pagePickSkipClick = false;
+  let steerFocusRecoverTimer = null;
+  const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
-  let pickActive = true;
+  const PICK_PREFS_KEY = 'impeccable-live-pick';
+  const INTERACTION_PREFS_KEY = 'impeccable-live-interaction';
+  const PLACEHOLDER_DEFAULT_HEIGHT = 80;
+  const PLACEHOLDER_MIN_HEIGHT = 48;
+  const PLACEHOLDER_MIN_WIDTH = 120;
+
+  function loadInteractionPrefs() {
+    try {
+      const raw = localStorage.getItem(INTERACTION_PREFS_KEY);
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        return {
+          pickActive: !!prefs.pickActive,
+          insertActive: !!prefs.insertActive,
+        };
+      }
+      const legacy = localStorage.getItem(PICK_PREFS_KEY);
+      if (legacy) {
+        const prefs = JSON.parse(legacy);
+        return { pickActive: !!prefs.pickActive, insertActive: false };
+      }
+    } catch { /* ignore */ }
+    return { pickActive: false, insertActive: false };
+  }
+
+  function saveInteractionPrefs() {
+    try {
+      localStorage.setItem(INTERACTION_PREFS_KEY, JSON.stringify({ pickActive, insertActive }));
+    } catch { /* ignore */ }
+  }
+
+  function loadPickPref() {
+    return loadInteractionPrefs().pickActive;
+  }
+
+  function savePickPref() {
+    saveInteractionPrefs();
+  }
+
+  let pickActive = loadInteractionPrefs().pickActive;
+  let insertActive = loadInteractionPrefs().insertActive;
+  let configureKind = 'replace';
+  let insertLineEl = null;
+  let insertHoverAnchor = null;
+  let insertHoverPosition = null;
+  let insertHoverAxis = null;
+  let insertAnchorElement = null;
+  let insertAnchorPosition = null;
+  let insertAnchorLayoutAxis = null;
+  let insertPlaceholderSnapshot = null;
+  let placeholderElement = null;
   let detectCount = 0;
   let detectScriptLoaded = false;
+
+  // Steer — collapsed pill in the global bar; expands while typing for page-level chat.
+  let pageChatEl = null;
+  let pageChatInput = null;
+  let pageChatHint = null;
+  let pageChatVoiceBtn = null;
+  let pageChatExpanded = false;
+  let steerLocked = false;
+  let steerRequestId = null;
+  let pageChatDotsEl = null;
+  let steerAwaitTimer = null;
+  let voiceRecognition = null;
+  let voiceListening = false;
+  let voiceSuppressSubmit = false;
+  let voiceInterimBase = '';
+  /** @type {{ mode: 'steer'|'configure', input: HTMLInputElement, submit: () => void, beforeStart?: () => void } | null} */
+  let voiceCtx = null;
+  const PAGE_CHAT_COLLAPSED_W = '88px';
+  const PAGE_CHAT_PROCESSING_W = '76px';
+  const STEER_AWAIT_TIMEOUT_MS = 120000;
+  const AGENT_STATUS_POLL_MS = 5000;
+  const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected — run live-poll.mjs to connect';
+  const GLOBAL_BAR_SECTION_GAP = 8;
+  const GLOBAL_BAR_INNER_GAP = 2;
+  const GLOBAL_BAR_INNER_PAD_LEFT = 2;
+  const PAGE_CHAT_EXPANDED_W = 'min(280px, 38vw)';
+  const ICON_PAGE_CHAT =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const ICON_PAGE_VOICE =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
 
   // Theme-aware color palette for the global bar. We detect the page's
   // ambient background and invert — dark bar on light pages, light bar on
@@ -3320,44 +4492,889 @@ void main() {
     } catch { return 'light'; }
   }
 
-  function barPaletteForTheme(theme) {
-    if (theme === 'dark') {
-      // Light bar on dark page
-      return {
-        surface: 'oklch(98% 0 0 / 0.92)',
-        surfaceDeep: 'oklch(92% 0.005 60 / 0.96)', // slightly deeper, faint warm
-        hairline: 'oklch(70% 0 0 / 0.35)',
-        text: 'oklch(15% 0 0)',
-        textDim: 'oklch(45% 0 0)',
-        accent: 'oklch(60% 0.25 350)',
-        accentSoft: 'oklch(60% 0.25 350 / 0.18)',
-        mark: 'oklch(98% 0 0)',      // logo mark fill
-        markText: 'oklch(15% 0 0)',  // logo "/" color
-        exitHover: 'oklch(85% 0 0 / 0.5)',
-      };
-    }
-    // Dark bar on light page. Bar is a warm charcoal, logo slab is much
-    // deeper so the rounded-right shape reads as a clear sculpted mark.
+  function barPaletteForTheme(_theme) {
+    // Picker chrome always uses neo-kinpaku styling (homepage /live-mode demo
+    // bars in kinpaku-kit.css), regardless of host page light/dark theme.
     return {
-      surface: 'oklch(26% 0 0 / 0.94)',
-      surfaceDeep: 'oklch(18% 0 0 / 0.96)', // darker sand for Tune popover
-      hairline: 'oklch(42% 0 0 / 0.5)',
-      text: 'oklch(96% 0 0)',
-      textDim: 'oklch(72% 0 0)',
-      accent: 'oklch(72% 0.22 350)',
-      accentSoft: 'oklch(72% 0.22 350 / 0.22)',
-      mark: 'oklch(8% 0 0)',
-      markText: 'oklch(96% 0 0)',
-      exitHover: 'oklch(36% 0 0 / 0.6)',
+      surface: C.ink,
+      surfaceDeep: C.ink,
+      border: C.brand,
+      hairline: 'oklch(58% 0.065 82 / 0.48)',
+      text: 'oklch(84% 0.035 82)',
+      textDim: 'oklch(63% 0.024 82)',
+      accent: C.brand,
+      accentSoft: C.brandSoft,
+      exitHover: 'oklch(58% 0.15 35 / 0.18)',
+      shadow: PICKER_SHADOW,
+      chatSurface: 'oklch(22% 0.012 82)',
+      // Verdigris patina — secondary state (see site/styles/kinpaku-tokens.css)
+      patina: 'oklch(70% 0.12 188)',
+      patinaPale: 'oklch(82% 0.07 188)',
+      patinaSoft: 'oklch(70% 0.12 188 / 0.28)',
     };
   }
 
-  // Impeccable logo mark — matches the site-header SVG (rounded square + "/").
-  function brandMarkSvg(fill, ink, size = 18) {
-    return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="${fill}"/>
-      <text x="16" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="${ink}" text-anchor="middle">/</text>
+  function pageChatPalette() {
+    return barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+  }
+
+  function syncPageChatChrome() {
+    if (!pageChatEl) return;
+    const P = pageChatPalette();
+    pageChatEl.style.background = P.chatSurface;
+    pageChatEl.style.borderColor = steerLocked
+      ? P.patinaSoft
+      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    if (pageChatHint) pageChatHint.style.color = steerLocked ? P.patinaPale : P.textDim;
+    const chatIcon = pageChatEl?.firstElementChild;
+    if (chatIcon) chatIcon.style.color = steerLocked ? P.patinaPale : P.textDim;
+    if (pageChatInput) pageChatInput.style.color = P.text;
+    if (pageChatVoiceBtn) {
+      const listening = pageChatVoiceBtn.dataset.listening === 'true';
+      pageChatVoiceBtn.style.color = listening || pageChatVoiceBtn.dataset.active === 'true'
+        ? P.accent
+        : P.textDim;
+    }
+  }
+
+  function syncPageChatVisual() {
+    if (!pageChatInput || steerLocked) return;
+    const hasText = pageChatInput.value.length > 0;
+    if (hasText && !pageChatExpanded) expandPageChat({ focus: false });
+    else if (!hasText && pageChatExpanded) collapsePageChat();
+  }
+
+  function shouldFocusSteerChat() {
+    return state !== 'CONFIGURING' && !steerLocked;
+  }
+
+  function pageHasHostTextSelection() {
+    const sel = window.getSelection?.();
+    if (!sel || sel.isCollapsed) return false;
+    if (!(sel.toString() || '').trim()) return false;
+    const node = sel.anchorNode;
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (el && own(el)) return false;
+    return true;
+  }
+
+  function shouldSteerAutoFocus() {
+    return shouldFocusSteerChat()
+      && !steerFocusSuspended
+      && performance.now() >= steerFocusPauseUntil;
+  }
+
+  function clearSteerFocusRecoverTimer() {
+    if (steerFocusRecoverTimer) {
+      clearTimeout(steerFocusRecoverTimer);
+      steerFocusRecoverTimer = null;
+    }
+  }
+
+  function scheduleSteerFocusRecover(reason) {
+    clearSteerFocusRecoverTimer();
+    const attempt = () => {
+      steerFocusRecoverTimer = null;
+      if (state === 'CONFIGURING' || steerLocked || voiceListening) return;
+      if (pageChatEl?.contains(document.activeElement)) return;
+      if (pageHasHostTextSelection()) {
+        steerFocusRecoverTimer = setTimeout(attempt, 120);
+        return;
+      }
+      const pauseLeft = steerFocusPauseUntil - performance.now();
+      if (pauseLeft > 0) {
+        steerFocusRecoverTimer = setTimeout(attempt, pauseLeft);
+        return;
+      }
+      if (!shouldFocusSteerChat()) return;
+      syncPageChatFocus(reason);
+    };
+    steerFocusRecoverTimer = setTimeout(attempt, 0);
+  }
+
+  function notePagePointerDown(e) {
+    if (!shouldFocusSteerChat() || own(e.target)) return;
+    steerFocusSuspended = true;
+    steerFocusPauseUntil = performance.now() + STEER_PAGE_FOCUS_PAUSE_MS;
+    pagePointerGesture = { x: e.clientX, y: e.clientY, dragged: false };
+    if (pageChatInput && document.activeElement === pageChatInput) {
+      pageChatInput.blur();
+    }
+  }
+
+  function attachSteerFocusGuard() {
+    if (window.__IMPECCABLE_STEER_FOCUS_GUARD__) return;
+    window.__IMPECCABLE_STEER_FOCUS_GUARD__ = true;
+
+    document.addEventListener('mousedown', (e) => {
+      notePagePointerDown(e);
+    }, true);
+
+    document.addEventListener('mousemove', (e) => {
+      if (!pagePointerGesture || pagePointerGesture.dragged) return;
+      const dx = e.clientX - pagePointerGesture.x;
+      const dy = e.clientY - pagePointerGesture.y;
+      if (Math.hypot(dx, dy) > 4) pagePointerGesture.dragged = true;
+    }, true);
+
+    document.addEventListener('mouseup', () => {
+      if (!shouldFocusSteerChat()) return;
+      pagePickSkipClick = !!(pagePointerGesture?.dragged || pageHasHostTextSelection());
+      if (pageHasHostTextSelection()) {
+        steerFocusSuspended = true;
+      } else {
+        steerFocusSuspended = false;
+        scheduleSteerFocusRecover('page-mouseup-recover');
+      }
+      pagePointerGesture = null;
+    }, true);
+
+    document.addEventListener('selectionchange', () => {
+      if (!shouldFocusSteerChat()) return;
+      const wasSuspended = steerFocusSuspended;
+      steerFocusSuspended = pageHasHostTextSelection();
+      if (wasSuspended && !steerFocusSuspended) {
+        scheduleSteerFocusRecover('selection-cleared');
+      }
+    });
+  }
+
+  function steerFocusTargetLabel(el) {
+    if (!el || el === document.body) return 'body';
+    if (el === document.documentElement) return 'html';
+    if (el.id) return el.tagName.toLowerCase() + '#' + el.id;
+    return el.tagName?.toLowerCase() || String(el);
+  }
+
+  function steerFocusDebugEnabled() {
+    try { return localStorage.getItem('impeccable-steer-debug') === '1'; } catch { return false; }
+  }
+
+  function steerFocusLog(reason, extra) {
+    if (!steerFocusDebugEnabled()) return;
+    console.log('[impeccable.steer]', reason, {
+      state,
+      pickActive,
+      pageChatReady: !!pageChatInput,
+      pageChatExpanded,
+      active: steerFocusTargetLabel(document.activeElement),
+      shouldSteer: shouldFocusSteerChat(),
+      ...(extra || {}),
+    });
+  }
+
+  function attachSteerFocusDebug() {
+    if (!steerFocusDebugEnabled()) return;
+    if (window.__IMPECCABLE_STEER_FOCUS_DEBUG__) return;
+    window.__IMPECCABLE_STEER_FOCUS_DEBUG__ = true;
+    document.addEventListener('focusin', (e) => {
+      if (!pageChatInput) return;
+      steerFocusLog('focusin', { target: steerFocusTargetLabel(e.target) });
+    }, true);
+  }
+
+  function focusConfigureInput(reason) {
+    steerFocusLog('focusConfigureInput', { reason });
+    const inputId = configureKind === 'insert' ? PREFIX + '-insert-input' : PREFIX + '-input';
+    const input = document.getElementById(inputId);
+    if (!input) {
+      steerFocusLog('focusConfigureInput missing', { reason });
+      return;
+    }
+    setTimeout(() => {
+      const before = document.activeElement;
+      input.focus();
+      steerFocusLog('focusConfigureInput result', {
+        reason,
+        before: steerFocusTargetLabel(before),
+        after: steerFocusTargetLabel(document.activeElement),
+        stuck: document.activeElement !== input,
+      });
+    }, 60);
+  }
+
+  function syncPageChatFocusRing() {
+    if (!pageChatEl || !pageChatInput) return;
+    const focused = document.activeElement === pageChatInput;
+    pageChatEl.dataset.inputFocused = focused ? 'true' : 'false';
+    const P = pageChatPalette();
+    pageChatEl.style.borderColor = steerLocked
+      ? P.patinaSoft
+      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    pageChatEl.style.boxShadow = 'none';
+    if (pageChatHint) {
+      pageChatHint.style.color = steerLocked
+        ? P.patinaPale
+        : ((!pageChatExpanded && focused) ? P.patinaPale : P.textDim);
+    }
+    if (!pageChatExpanded) {
+      pageChatInput.style.width = '0';
+      pageChatInput.style.padding = '0';
+      pageChatInput.style.opacity = '0';
+      pageChatInput.style.pointerEvents = focused ? 'auto' : 'none';
+      if (pageChatHint) pageChatHint.style.visibility = '';
+    }
+  }
+
+  function focusSteerChat(reason) {
+    steerFocusLog('focusSteerChat called', { reason });
+    if (!pageChatInput || !shouldSteerAutoFocus()) {
+      steerFocusLog('focusSteerChat skipped', {
+        reason,
+        hasInput: !!pageChatInput,
+        shouldSteer: shouldFocusSteerChat(),
+        suspended: steerFocusSuspended,
+      });
+      return;
+    }
+    syncPageChatVisual();
+    pageChatInput.style.pointerEvents = 'auto';
+    const before = document.activeElement;
+    try { window.focus(); } catch { /* embed may block */ }
+    try { pageChatInput.focus({ preventScroll: true }); } catch { pageChatInput.focus(); }
+    syncPageChatFocusRing();
+    steerFocusLog('focusSteerChat result', {
+      reason,
+      before: steerFocusTargetLabel(before),
+      after: steerFocusTargetLabel(document.activeElement),
+      stuck: document.activeElement !== pageChatInput,
+    });
+  }
+
+  function syncPageChatFocus(reason) {
+    steerFocusLog('syncPageChatFocus', { reason });
+    if (state === 'CONFIGURING') focusConfigureInput(reason);
+    else if (shouldSteerAutoFocus()) focusSteerChat(reason);
+  }
+
+  function buildSteerProcessingDots() {
+    const P = pageChatPalette();
+    const wrap = el('span', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '5px', flex: '1', minWidth: '0',
+      padding: '0 12px 0 2px',
+      pointerEvents: 'none',
+    });
+    wrap.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 3; i++) {
+      wrap.appendChild(el('span', {
+        display: 'inline-block',
+        width: '4px', height: '4px', borderRadius: '50%',
+        background: P.patinaPale,
+        boxShadow: '0 0 6px ' + P.patinaSoft,
+        animation: 'impeccable-steer-dot 1.05s ease-in-out ' + (i * 0.14) + 's infinite',
+      }));
+    }
+    return wrap;
+  }
+
+  function clearSteerAwaitTimer() {
+    if (steerAwaitTimer) {
+      clearTimeout(steerAwaitTimer);
+      steerAwaitTimer = null;
+    }
+  }
+
+  function scheduleSteerAwaitTimeout(id) {
+    clearSteerAwaitTimer();
+    steerAwaitTimer = setTimeout(() => {
+      if (!steerLocked || steerRequestId !== id) return;
+      unlockSteerChat({
+        error: 'Steer timed out waiting for the agent. Check that live-poll is running and replies with steer_done.',
+      });
+    }, STEER_AWAIT_TIMEOUT_MS);
+  }
+
+  function lockSteerChat() {
+    if (!pageChatEl || !pageChatInput) return;
+    stopVoice({ suppressSubmit: true });
+    steerLocked = true;
+    pageChatEl.dataset.processing = 'true';
+    pageChatInput.disabled = true;
+    pageChatInput.value = '';
+    pageChatInput.blur();
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.disabled = true;
+      pageChatVoiceBtn.style.display = 'none';
+    }
+    pageChatExpanded = false;
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.style.width = PAGE_CHAT_PROCESSING_W;
+    pageChatEl.style.cursor = 'default';
+    pageChatInput.style.width = '0';
+    pageChatInput.style.padding = '0';
+    pageChatInput.style.opacity = '0';
+    pageChatInput.style.pointerEvents = 'none';
+    if (pageChatHint) {
+      pageChatHint.style.display = 'none';
+      pageChatHint.style.visibility = 'hidden';
+    }
+    pageChatEl.setAttribute('aria-busy', 'true');
+    pageChatEl.setAttribute('aria-label', 'Processing steer request');
+    if (!pageChatDotsEl) {
+      pageChatDotsEl = buildSteerProcessingDots();
+      pageChatEl.appendChild(pageChatDotsEl);
+    }
+    syncPageChatFocusRing();
+    syncPageChatChrome();
+  }
+
+  function unlockSteerChat(opts) {
+    clearSteerAwaitTimer();
+    steerLocked = false;
+    steerRequestId = null;
+    if (!pageChatEl) return;
+    pageChatEl.dataset.processing = 'false';
+    pageChatEl.removeAttribute('aria-busy');
+    pageChatEl.setAttribute('aria-label', 'Steer the page');
+    pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
+    pageChatEl.style.cursor = 'pointer';
+    if (pageChatInput) {
+      pageChatInput.disabled = false;
+      pageChatInput.value = '';
+    }
+    if (pageChatVoiceBtn) {
+      pageChatVoiceBtn.disabled = false;
+      pageChatVoiceBtn.style.display = '';
+    }
+    if (pageChatHint) {
+      pageChatHint.textContent = 'Steer';
+      pageChatHint.style.display = '';
+      pageChatHint.style.visibility = '';
+    }
+    if (pageChatDotsEl?.parentNode) {
+      pageChatDotsEl.remove();
+      pageChatDotsEl = null;
+    }
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+    if (opts?.error) showToast(String(opts.error), 5000);
+    else if (opts?.message) showToast(String(opts.message), 4000);
+    syncPageChatFocus('steer-unlock');
+  }
+
+  function steerSpeechRecognitionCtor() {
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function isEmbeddedPreviewBrowser() {
+    const ua = navigator.userAgent || '';
+    if (/Electron/i.test(ua)) return true;
+    if (/Cursor/i.test(ua)) return true;
+    try {
+      return !!(window.cursor || window.__CURSOR__ || window.__GLASS_BROWSER__);
+    } catch { return false; }
+  }
+
+  function steerVoiceUnavailableMessage() {
+    return 'Voice input works in Chrome or Safari. Cursor\'s preview browser cannot reach speech services.';
+  }
+
+  function steerVoiceErrorMessage(code) {
+    switch (code) {
+      case 'not-allowed':
+        return 'Microphone access blocked';
+      case 'audio-capture':
+        return 'No microphone found';
+      case 'network':
+        return isEmbeddedPreviewBrowser()
+          ? steerVoiceUnavailableMessage()
+          : 'Voice input needs a network connection (browser speech uses a cloud service)';
+      case 'service-not-allowed':
+        return 'Voice input is not available in this browser tab';
+      case 'language-not-supported':
+        return 'Speech language not supported';
+      case 'no-speech':
+      case 'aborted':
+        return null;
+      default:
+        return 'Voice input failed (' + code + ')';
+    }
+  }
+
+  function syncVoiceUi(listening) {
+    voiceListening = !!listening;
+    if (voiceCtx?.mode === 'steer') {
+      if (pageChatVoiceBtn) {
+        pageChatVoiceBtn.dataset.active = listening ? 'true' : 'false';
+        pageChatVoiceBtn.dataset.listening = listening ? 'true' : 'false';
+        pageChatVoiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
+        pageChatVoiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+      }
+      if (pageChatEl) pageChatEl.dataset.voiceListening = listening ? 'true' : 'false';
+      syncPageChatChrome();
+    } else if (voiceCtx?.mode === 'configure') {
+      const voiceBtn = document.getElementById(PREFIX + '-configure-voice');
+      if (voiceBtn) {
+        voiceBtn.dataset.active = listening ? 'true' : 'false';
+        voiceBtn.dataset.listening = listening ? 'true' : 'false';
+        voiceBtn.setAttribute('aria-label', listening ? 'Stop voice input' : 'Voice input');
+        voiceBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+      }
+      syncConfigureInputChrome();
+    }
+  }
+
+  function releaseVoiceEngine(opts) {
+    if (opts && opts.suppressSubmit) voiceSuppressSubmit = true;
+    const rec = voiceRecognition;
+    voiceRecognition = null;
+    if (!rec) return;
+    rec.onstart = null;
+    rec.onresult = null;
+    rec.onerror = null;
+    rec.onend = null;
+    try {
+      if (opts && opts.abort) rec.abort();
+      else rec.stop();
+    } catch { /* already ended */ }
+  }
+
+  function stopVoice(opts) {
+    releaseVoiceEngine(opts);
+    syncVoiceUi(false);
+    voiceCtx = null;
+    if (opts && opts.message) showToast(String(opts.message), opts.duration || 4000);
+  }
+
+  function finishVoiceSession() {
+    voiceRecognition = null;
+    const ctx = voiceCtx;
+    syncVoiceUi(false);
+    const suppress = voiceSuppressSubmit;
+    voiceSuppressSubmit = false;
+    voiceCtx = null;
+    const input = ctx?.input;
+    const text = input?.value.trim() || '';
+    if (suppress || !text || !ctx) return;
+    if (ctx.mode === 'steer' && !steerLocked) ctx.submit();
+    else if (ctx.mode === 'configure' && state === 'CONFIGURING') ctx.submit();
+  }
+
+  function startVoice(ctx) {
+    if (!ctx?.input || voiceListening) return;
+    if (ctx.mode === 'steer' && (steerLocked || state === 'CONFIGURING')) return;
+    if (ctx.mode === 'configure' && state !== 'CONFIGURING') return;
+    const Ctor = steerSpeechRecognitionCtor();
+    if (!Ctor) {
+      showToast('Voice input needs Speech Recognition (Chrome, Safari, or Edge)', 4500);
+      return;
+    }
+    if (!window.isSecureContext) {
+      showToast('Voice input needs HTTPS or localhost', 4500);
+      return;
+    }
+    if (isEmbeddedPreviewBrowser()) {
+      showToast(steerVoiceUnavailableMessage(), 5200);
+      return;
+    }
+
+    releaseVoiceEngine({ suppressSubmit: true, abort: true });
+    voiceSuppressSubmit = false;
+    voiceCtx = ctx;
+    if (ctx.beforeStart) ctx.beforeStart();
+
+    voiceInterimBase = ctx.input.value.trim()
+      ? ctx.input.value.trim() + ' '
+      : '';
+
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = document.documentElement.lang || navigator.language || 'en-US';
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      syncVoiceUi(true);
+    };
+
+    rec.onresult = (event) => {
+      if (!voiceCtx?.input) return;
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0]?.transcript || '';
+      }
+      voiceCtx.input.value = (voiceInterimBase + transcript).trim();
+      if (voiceCtx.mode === 'steer') syncPageChatVisual();
+      else syncConfigureInputChrome();
+    };
+
+    rec.onerror = (event) => {
+      const code = event.error || 'unknown';
+      console.warn('[impeccable.voice] recognition error:', code);
+      const message = steerVoiceErrorMessage(code);
+      stopVoice({ suppressSubmit: true, message: message || undefined });
+    };
+
+    rec.onend = () => {
+      if (voiceRecognition !== rec) return;
+      finishVoiceSession();
+    };
+
+    voiceRecognition = rec;
+    try {
+      rec.start();
+    } catch (err) {
+      console.warn('[impeccable.voice] start failed:', err);
+      stopVoice({
+        suppressSubmit: true,
+        message: err?.message?.includes('already started')
+          ? 'Voice input already running'
+          : 'Could not start voice input',
+      });
+    }
+  }
+
+  function steerVoiceContext() {
+    return {
+      mode: 'steer',
+      input: pageChatInput,
+      beforeStart: () => {
+        if (!pageChatExpanded) expandPageChat({ focus: false });
+      },
+      submit: submitSteerMessage,
+    };
+  }
+
+  function configureVoiceContext() {
+    const input = document.getElementById(
+      configureKind === 'insert' ? PREFIX + '-insert-input' : PREFIX + '-input',
+    );
+    return {
+      mode: 'configure',
+      input,
+      beforeStart: () => { input?.focus(); },
+      submit: configureKind === 'insert' ? handleInsertCreate : handleGo,
+    };
+  }
+
+  function toggleSteerVoice() {
+    if (voiceListening && voiceCtx?.mode === 'steer') {
+      voiceSuppressSubmit = true;
+      stopVoice({ suppressSubmit: true, abort: true });
+      return;
+    }
+    startVoice(steerVoiceContext());
+  }
+
+  function toggleConfigureVoice() {
+    if (voiceListening && voiceCtx?.mode === 'configure') {
+      voiceSuppressSubmit = true;
+      stopVoice({ suppressSubmit: true, abort: true });
+      return;
+    }
+    startVoice(configureVoiceContext());
+  }
+
+  function submitSteerMessage() {
+    stopVoice({ suppressSubmit: true });
+    const text = pageChatInput?.value.trim();
+    if (!text || steerLocked) return;
+    const id = id8();
+    steerRequestId = id;
+    lockSteerChat();
+    scheduleSteerAwaitTimeout(id);
+    sendEvent({
+      type: 'steer',
+      id,
+      message: text,
+      pageUrl: location.href,
+    }).then((res) => {
+      if (!res) unlockSteerChat({ error: 'Could not reach live server' });
+    });
+  }
+
+  function maybeCompleteSteer(msg) {
+    if (!steerRequestId || msg.id !== steerRequestId) return false;
+    if (msg.type === 'steer_done') {
+      unlockSteerChat({ message: msg.message });
+      return true;
+    }
+    if (msg.type === 'error') {
+      unlockSteerChat({ error: msg.message || 'Steer failed' });
+      return true;
+    }
+    return false;
+  }
+
+  function expandPageChat(opts) {
+    const focus = !opts || opts.focus !== false;
+    if (!pageChatEl || !pageChatInput || steerLocked) return;
+    pageChatExpanded = true;
+    pageChatEl.dataset.expanded = 'true';
+    pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
+    pageChatEl.style.cursor = 'text';
+    if (pageChatHint) {
+      pageChatHint.style.display = 'none';
+      pageChatHint.style.opacity = '0';
+    }
+    pageChatInput.style.width = '';
+    pageChatInput.style.padding = '0 6px';
+    pageChatInput.style.opacity = '1';
+    pageChatInput.style.pointerEvents = 'auto';
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+    if (focus) pageChatInput.focus();
+  }
+
+  function collapsePageChat(opts) {
+    const blur = opts && opts.blur === true;
+    if (voiceListening) return;
+    if (!pageChatEl || !pageChatInput) return;
+    pageChatExpanded = false;
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
+    pageChatEl.style.cursor = 'pointer';
+    if (blur) {
+      pageChatInput.blur();
+      pageChatInput.style.pointerEvents = 'none';
+    } else {
+      pageChatInput.style.pointerEvents = 'auto';
+    }
+    if (pageChatHint && document.activeElement !== pageChatInput) {
+      pageChatHint.style.display = '';
+      pageChatHint.style.opacity = '1';
+    }
+    if (pageChatVoiceBtn) pageChatVoiceBtn.dataset.active = 'false';
+    syncPageChatChrome();
+    syncPageChatFocusRing();
+  }
+
+  function initPageChat(parent, P) {
+    pageChatEl = el('div', {
+      display: 'inline-flex', alignItems: 'center',
+      height: '28px', margin: '0 4px 0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_GAP) + 'px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      overflow: 'hidden',
+      cursor: 'pointer',
+      flexShrink: '0',
+      width: PAGE_CHAT_COLLAPSED_W,
+      transition: 'width 0.28s ' + EASE + ', border-color 0.15s ease',
+    });
+    pageChatEl.id = PREFIX + '-page-chat';
+    pageChatEl.dataset.expanded = 'false';
+    pageChatEl.title = 'Steer the page';
+
+    const chatIcon = el('span', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: '28px', height: '28px', flexShrink: '0',
+      color: P.textDim, pointerEvents: 'none',
+    });
+    chatIcon.innerHTML = ICON_PAGE_CHAT;
+
+    pageChatHint = el('span', {
+      fontSize: '11.5px', fontWeight: '500',
+      color: P.textDim,
+      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      flex: '1', minWidth: '0',
+      pointerEvents: 'none',
+      transition: 'opacity 0.15s ease',
+    });
+    pageChatHint.textContent = 'Steer';
+
+    pageChatInput = document.createElement('input');
+    pageChatInput.id = PREFIX + '-page-chat-input';
+    pageChatInput.type = 'text';
+    pageChatInput.placeholder = 'Steer the page…';
+    pageChatInput.setAttribute('aria-label', 'Steer the page');
+    Object.assign(pageChatInput.style, {
+      flex: '1', minWidth: '0', width: '0',
+      padding: '0', border: 'none', background: 'transparent',
+      fontFamily: FONT, fontSize: '11.5px', color: P.text,
+      outline: 'none', opacity: '0', pointerEvents: 'none',
+      transition: 'opacity 0.15s ease',
+    });
+
+    pageChatVoiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0', boxSizing: 'border-box',
+      width: '28px', height: '28px', flexShrink: '0',
+      border: 'none', background: 'transparent',
+      color: P.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    pageChatVoiceBtn.id = PREFIX + '-page-chat-voice';
+    pageChatVoiceBtn.type = 'button';
+    pageChatVoiceBtn.setAttribute('aria-label', 'Voice input');
+    pageChatVoiceBtn.innerHTML = ICON_PAGE_VOICE;
+
+    pageChatEl.appendChild(chatIcon);
+    pageChatEl.appendChild(pageChatHint);
+    pageChatEl.appendChild(pageChatInput);
+    pageChatEl.appendChild(pageChatVoiceBtn);
+
+    if (!document.getElementById(PREFIX + '-page-chat-style')) {
+      const s = document.createElement('style');
+      s.id = PREFIX + '-page-chat-style';
+      s.textContent =
+        '@keyframes impeccable-steer-dot { 0%, 70%, 100% { opacity: 0.28; transform: scale(0.82); } 35% { opacity: 1; transform: scale(1); } }' +
+        '@keyframes impeccable-steer-processing { 0%, 100% { border-color: oklch(70% 0.12 188 / 0.28); box-shadow: 0 0 0 0 oklch(70% 0.12 188 / 0); } 50% { border-color: oklch(82% 0.07 188 / 0.55); box-shadow: 0 0 14px oklch(70% 0.12 188 / 0.18); } }' +
+        '@keyframes impeccable-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
+        '#' + PREFIX + '-page-chat[data-processing="true"] { animation: impeccable-steer-processing 1.6s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat[data-processing="true"] { animation: none; border-color: oklch(70% 0.12 188 / 0.45); } #' + PREFIX + '-page-chat[data-processing="true"] [aria-hidden="true"] span { animation: none; opacity: 0.85; } }' +
+        '#' + PREFIX + '-page-chat[data-voice-listening="true"] { border-color: oklch(70% 0.12 188 / 0.45); }' +
+        '#' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: impeccable-voice-pulse 1.1s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
+        '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
+        '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
+      document.head.appendChild(s);
+    }
+
+    pageChatEl.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatEl.addEventListener('click', (e) => {
+      if (steerLocked) return;
+      if (pageChatVoiceBtn.contains(e.target)) return;
+      expandPageChat();
+    });
+
+    pageChatVoiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatVoiceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (steerLocked) return;
+      toggleSteerVoice();
+    });
+
+    pageChatInput.addEventListener('input', () => {
+      syncPageChatVisual();
+    });
+
+    pageChatInput.addEventListener('focus', () => {
+      syncPageChatFocusRing();
+    });
+
+    pageChatInput.addEventListener('blur', () => {
+      syncPageChatFocusRing();
+      setTimeout(() => {
+        if (state === 'CONFIGURING' || steerLocked || voiceListening) return;
+        if (pageChatEl?.contains(document.activeElement)) return;
+        if (!pageChatInput.value.trim()) collapsePageChat();
+        scheduleSteerFocusRecover('steer-blur-recover');
+      }, 120);
+    });
+
+    pageChatInput.addEventListener('keydown', (e) => {
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !pageChatInput.value) return;
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (pageChatInput.value) {
+          pageChatInput.value = '';
+          syncPageChatVisual();
+        } else {
+          collapsePageChat();
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitSteerMessage();
+      }
+    });
+
+    parent.appendChild(pageChatEl);
+    steerFocusLog('page-chat-mounted', {});
+  }
+
+  // Impeccable mark — same paths as site/components/Header.astro + favicon.svg.
+  function brandMarkSvg(color = C.brand, size = 18) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${color}" aria-hidden="true">
+      <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+      <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
     </svg>`;
+  }
+
+  function syncAgentPollingUi(connected) {
+    agentPollingConnected = !!connected;
+    if (!globalBarBrandEl) return;
+    const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+    globalBarBrandEl.dataset.agentConnected = connected ? 'true' : 'false';
+    globalBarBrandEl.setAttribute('aria-label', connected
+      ? 'Impeccable live mode'
+      : 'Impeccable live mode — agent not polling');
+    globalBarBrandEl.removeAttribute('title');
+    globalBarBrandEl.style.cursor = connected ? 'default' : 'help';
+    const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
+    if (mark) {
+      mark.innerHTML = brandMarkSvg(connected ? P.accent : AGENT_DISCONNECTED_MARK, 18);
+      mark.style.opacity = '1';
+    }
+    const dot = globalBarBrandEl.querySelector('[data-agent-dot]');
+    if (dot) dot.style.display = connected ? 'none' : 'block';
+    if (connected) hideAgentPollTooltip();
+  }
+
+  function ensureAgentPollTooltip() {
+    if (agentPollTooltipEl) return agentPollTooltipEl;
+    const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
+    agentPollTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      opacity: '0',
+      zIndex: String(Z.bar + 6),
+      pointerEvents: 'none',
+      maxWidth: '220px',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      boxShadow: P.shadow,
+      color: P.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+      letterSpacing: '0.01em',
+      whiteSpace: 'normal',
+    });
+    agentPollTooltipEl.id = PREFIX + '-agent-poll-tooltip';
+    agentPollTooltipEl.textContent = AGENT_DISCONNECTED_TIP;
+    document.body.appendChild(agentPollTooltipEl);
+    return agentPollTooltipEl;
+  }
+
+  function showAgentPollTooltip(anchor) {
+    if (agentPollingConnected || !anchor) return;
+    const tip = ensureAgentPollTooltip();
+    tip.style.transition = 'none';
+    tip.style.display = 'block';
+    tip.style.opacity = '1';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideAgentPollTooltip() {
+    if (!agentPollTooltipEl) return;
+    agentPollTooltipEl.style.display = 'none';
+    agentPollTooltipEl.style.opacity = '0';
+  }
+
+  function stopAgentStatusPoll() {
+    if (agentStatusPollTimer) {
+      clearInterval(agentStatusPollTimer);
+      agentStatusPollTimer = null;
+    }
+  }
+
+  function fetchAgentPollingStatus() {
+    fetch('http://localhost:' + PORT + '/status?token=' + TOKEN, { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.agentPolling === 'boolean') syncAgentPollingUi(data.agentPolling);
+      })
+      .catch(() => { /* server loss handled elsewhere */ });
+  }
+
+  function startAgentStatusPoll() {
+    stopAgentStatusPoll();
+    fetchAgentPollingStatus();
+    agentStatusPollTimer = setInterval(fetchAgentPollingStatus, AGENT_STATUS_POLL_MS);
   }
 
   function initGlobalBar() {
@@ -3375,7 +5392,10 @@ void main() {
         '#' + PREFIX + '-global-bar button:focus-visible {' +
         '  outline: none;' +
         '  box-shadow: 0 0 0 2px ' + P.accentSoft + ', 0 0 0 3px ' + P.accent + ';' +
-        '}';
+        '}' +
+        '@keyframes impeccable-agent-dot { 0%, 100% { opacity: 0.45; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1); } }' +
+        '#' + PREFIX + '-global-bar-brand[data-agent-connected="false"] [data-agent-dot] { animation: impeccable-agent-dot 1.4s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-global-bar-brand[data-agent-connected="false"] [data-agent-dot] { animation: none; opacity: 0.9; } }';
       document.head.appendChild(s);
     }
 
@@ -3384,12 +5404,11 @@ void main() {
       transform: 'translateX(-50%) translateY(20px)',
       zIndex: Z.bar + 5,
       display: 'flex', alignItems: 'stretch',
-      gap: '2px',
+      gap: '0',
       background: P.surface,
-      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid ' + P.hairline,
+      border: '1.5px solid ' + P.border,
       borderRadius: '10px',
-      boxShadow: '0 4px 20px oklch(0% 0 0 / 0.12), 0 1px 3px oklch(0% 0 0 / 0.08)',
+      boxShadow: P.shadow,
       fontFamily: FONT, fontSize: '12px', lineHeight: '1',
       opacity: '0',
       overflow: 'hidden',          // clip the full-bleed brand mark to the bar radius
@@ -3398,27 +5417,49 @@ void main() {
     globalBarEl.id = PREFIX + '-global-bar';
     globalBarEl.dataset.theme = theme;
 
-    // Brand mark — fills bar height on the left. Left side inherits the bar's
-    // rounded corner via overflow:hidden; right side is a clean hard edge since
-    // the near-black/charcoal contrast does the shape-defining work.
+    // Brand mark — kinpaku Impeccable icon (site header / favicon paths).
     const brand = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      alignSelf: 'stretch',
-      padding: '0 12px 0 14px',
-      background: P.mark,
-      color: P.markText,
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontWeight: '500',
-      fontSize: '18px', lineHeight: '1',
+      alignSelf: 'stretch', position: 'relative',
+      padding: '0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_PAD_LEFT) + 'px 0 14px',
+      background: 'transparent',
+      color: P.accent,
+      flexShrink: '0',
     });
-    brand.textContent = '/';
-    brand.title = 'Impeccable';
+    brand.id = PREFIX + '-global-bar-brand';
+    brand.dataset.agentConnected = 'false';
+    brand.setAttribute('role', 'img');
+    brand.setAttribute('aria-label', 'Impeccable live mode — agent not polling');
+
+    const brandMark = el('span', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      position: 'relative',
+    });
+    brandMark.dataset.brandMark = 'true';
+    brandMark.innerHTML = brandMarkSvg(P.accent, 18);
+
+    const agentDot = el('span', {
+      position: 'absolute', right: '-1px', bottom: '7px',
+      width: '6px', height: '6px', borderRadius: '50%',
+      background: 'oklch(78% 0.14 75)',
+      boxShadow: '0 0 0 2px ' + P.surface,
+      display: 'none', pointerEvents: 'none',
+    });
+    agentDot.dataset.agentDot = 'true';
+    agentDot.setAttribute('aria-hidden', 'true');
+
+    brandMark.appendChild(agentDot);
+    brand.appendChild(brandMark);
+    brand.addEventListener('mouseenter', () => showAgentPollTooltip(brand));
+    brand.addEventListener('mouseleave', hideAgentPollTooltip);
+    globalBarBrandEl = brand;
     globalBarEl.appendChild(brand);
+    syncAgentPollingUi(false);
 
     // Inner wrapper: holds the toggles with normal bar padding.
     const inner = el('div', {
       display: 'flex', alignItems: 'center',
-      padding: '4px 5px', gap: '2px',
+      padding: '4px 5px 4px ' + GLOBAL_BAR_INNER_PAD_LEFT + 'px', gap: GLOBAL_BAR_INNER_GAP + 'px',
     });
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
@@ -3462,7 +5503,7 @@ void main() {
       return b;
     }
 
-    // Pick toggle — starts active (primary intent when entering live mode).
+    // Pick toggle — restored from localStorage; both pick and insert may be off.
     const pickBtn = makeIconBtn({
       id: PREFIX + '-pick-toggle',
       svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>',
@@ -3470,11 +5511,16 @@ void main() {
       ariaLabel: 'Pick element',
       onClick: () => togglePick(),
     });
-    pickBtn.style.background = P.accentSoft;
-    pickBtn.style.color = P.accent;
-    pickBtn.dataset.active = 'true';
-    pickBtn._expandLabel();
     inner.appendChild(pickBtn);
+
+    const insertBtn = makeIconBtn({
+      id: PREFIX + '-insert-toggle',
+      svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+      label: 'Insert',
+      ariaLabel: 'Insert new element',
+      onClick: () => toggleInsert(),
+    });
+    inner.appendChild(insertBtn);
 
     // Detect toggle
     const detectBtn = makeIconBtn({
@@ -3487,7 +5533,7 @@ void main() {
     const detectBadge = el('span', {
       fontSize: '10px', fontWeight: '600',
       padding: '0px 5px', borderRadius: '7px', lineHeight: '16px',
-      background: P.accent, color: P.surface.includes('18%') ? 'oklch(18% 0 0)' : 'oklch(98% 0 0)',
+      background: P.accent, color: C.ink,
       display: 'none', fontFamily: MONO, marginLeft: '4px',
     });
     detectBadge.id = PREFIX + '-detect-badge';
@@ -3497,11 +5543,11 @@ void main() {
     // DESIGN.md panel toggle — quartet of color squares as the mark.
     const designBtn = makeIconBtn({
       id: PREFIX + '-design-toggle',
-      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px ${P.hairline};flex-shrink:0">
-        <span style="background:oklch(60% 0.25 350)"></span>
-        <span style="background:oklch(60% 0.15 45)"></span>
-        <span style="background:oklch(55% 0.12 250)"></span>
-        <span style="background:oklch(30% 0 0)"></span>
+      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);flex-shrink:0">
+        <span style="background:oklch(84% 0.19 80.46)"></span>
+        <span style="background:oklch(70% 0.12 188)"></span>
+        <span style="background:oklch(84% 0.035 82)"></span>
+        <span style="background:oklch(34% 0.014 82)"></span>
       </span>`,
       label: 'DESIGN.md',
       ariaLabel: 'Toggle DESIGN.md panel',
@@ -3510,13 +5556,7 @@ void main() {
     });
     inner.appendChild(designBtn);
 
-    // Thin divider before the exit button
-    const divider = el('span', {
-      width: '1px', height: '18px',
-      background: P.hairline,
-      margin: '0 4px 0 2px',
-    });
-    inner.appendChild(divider);
+    initPageChat(inner, P);
 
     // Exit × on the right — intentionally subtle (textDim at rest, text on
     // hover) so it sits behind the active toggles in visual hierarchy.
@@ -3537,20 +5577,23 @@ void main() {
     });
     exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
     exitBtn.title = 'Exit live mode';
-    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = P.text; exitBtn.style.background = P.exitHover; });
+    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
     exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
     exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
     inner.appendChild(exitBtn);
 
     // Bar-level hover: expand every toggle's label at once; collapse on leave.
     // Buttons with dataset.active="true" ignore collapse (their label stays).
-    const toggles = [pickBtn, detectBtn, designBtn];
+    const toggles = [pickBtn, insertBtn, detectBtn, designBtn];
     globalBarEl.addEventListener('mouseenter', () => {
       toggles.forEach((t) => t._expandLabel && t._expandLabel());
     });
     globalBarEl.addEventListener('mouseleave', () => {
       toggles.forEach((t) => t._collapseLabel && t._collapseLabel());
     });
+    globalBarEl.addEventListener('pointerdown', () => {
+      try { window.focus(); } catch { /* in-app preview may block */ }
+    }, true);
 
     document.body.appendChild(globalBarEl);
     defangOutsideHandlers(globalBarEl);
@@ -3558,16 +5601,19 @@ void main() {
     requestAnimationFrame(() => {
       globalBarEl.style.opacity = '1';
       globalBarEl.style.transform = 'translateX(-50%) translateY(0)';
+      syncPageChatFocus('global-bar-visible');
     });
 
     // Listen for detection results AND ready signal
     window.addEventListener('message', onDetectMessage);
+    updateGlobalBarState();
   }
 
   function updateGlobalBarState() {
     const detectToggle = document.getElementById(PREFIX + '-detect-toggle');
     const detectBadge = document.getElementById(PREFIX + '-detect-badge');
     const pickToggle = document.getElementById(PREFIX + '-pick-toggle');
+    const insertToggle = document.getElementById(PREFIX + '-insert-toggle');
     const designToggle = document.getElementById(PREFIX + '-design-toggle');
     const theme = globalBarEl?.dataset.theme || 'light';
     const P = barPaletteForTheme(theme);
@@ -3582,6 +5628,7 @@ void main() {
       else if (!active && btn._collapseLabel) btn._collapseLabel();
     }
     sync(pickToggle, pickActive);
+    sync(insertToggle, insertActive);
     sync(detectToggle, detectActive);
     sync(designToggle, designState.open);
 
@@ -3589,7 +5636,7 @@ void main() {
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
     if (globalBarEl && globalBarEl.matches(':hover')) {
-      [pickToggle, detectToggle, designToggle].forEach((t) => t?._expandLabel?.());
+      [pickToggle, insertToggle, detectToggle, designToggle].forEach((t) => t?._expandLabel?.());
     }
 
     if (detectBadge) {
@@ -3597,10 +5644,11 @@ void main() {
       detectBadge.textContent = detectCount;
     }
 
-    // When pick is active, make detect overlays click-through so the picker works
+    // When pick/insert is active, make detect overlays click-through
     document.querySelectorAll('.impeccable-overlay').forEach(o => {
-      o.style.pointerEvents = pickActive ? 'none' : '';
+      o.style.pointerEvents = (pickActive || insertActive) ? 'none' : '';
     });
+    syncPageInteractionCursor();
   }
 
   let detectReady = false; // true once detect script posts 'impeccable-ready'
@@ -3628,20 +5676,48 @@ void main() {
 
   function togglePick() {
     pickActive = !pickActive;
+    if (pickActive) {
+      insertActive = false;
+      clearInsertPicking();
+    }
+    saveInteractionPrefs();
     updateGlobalBarState();
 
     if (!pickActive) {
-      // Disabling pick clears any in-flight selection and UI: highlight,
-      // contextual bar, selectedElement. Otherwise a stale selection sits
-      // on screen with no obvious way to dismiss.
+      if (configureKind === 'insert' && state === 'CONFIGURING') {
+        cancelInsertConfigure();
+        return;
+      }
       hideHighlight();
       hideBar();
       hideActionPicker();
       selectedElement = null;
+      configureKind = 'replace';
       if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
     } else {
       if (state === 'IDLE') state = 'PICKING';
     }
+    syncPageChatFocus('toggle-pick');
+  }
+
+  function toggleInsert() {
+    insertActive = !insertActive;
+    if (insertActive) {
+      pickActive = false;
+      hideHighlight();
+      hideBar();
+      hideActionPicker();
+      selectedElement = null;
+      configureKind = 'replace';
+      if (state === 'CONFIGURING') cancelInsertConfigure();
+      else if (state === 'IDLE' || state === 'PICKING') state = 'PICKING';
+    } else {
+      clearInsertPicking();
+      if (state === 'PICKING' && !pickActive) state = 'IDLE';
+    }
+    saveInteractionPrefs();
+    updateGlobalBarState();
+    syncPageChatFocus('toggle-insert');
   }
 
   function loadDetectScript() {
@@ -3672,12 +5748,30 @@ void main() {
 
   /** Full teardown: remove all UI, disconnect SSE, clean up. */
   function teardown() {
+    stopAgentStatusPoll();
+    hideAgentPollTooltip();
+    if (agentPollTooltipEl) {
+      agentPollTooltipEl.remove();
+      agentPollTooltipEl = null;
+    }
+    stopVoice({ suppressSubmit: true });
+    clearSteerFocusRecoverTimer();
+    steerFocusSuspended = false;
+    steerFocusPauseUntil = 0;
+    pagePointerGesture = null;
+    pagePickSkipClick = false;
     cleanup();
     hideBar();
     if (globalBarEl) {
       globalBarEl.style.transform = 'translateY(100%)';
       setTimeout(() => { if (globalBarEl) globalBarEl.remove(); globalBarEl = null; }, 300);
     }
+    pageChatEl = null;
+    pageChatInput = null;
+    pageChatHint = null;
+    pageChatVoiceBtn = null;
+    pageChatExpanded = false;
+    if (insertCreateTooltipEl) { insertCreateTooltipEl.remove(); insertCreateTooltipEl = null; }
     if (highlightEl) { highlightEl.remove(); highlightEl = null; }
     if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
     if (barEl) { barEl.remove(); barEl = null; }
@@ -3812,10 +5906,9 @@ void main() {
         position: fixed; top: 12px; bottom: 72px; right: 12px;
         width: ${DESIGN_PANEL_WIDTH}px; max-width: calc(100vw - 24px);
         background: ${BP.surface};
-        border: 1px solid ${BP.hairline};
+        border: 1.5px solid ${BP.border};
         border-radius: 14px;
-        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-        box-shadow: 0 20px 60px oklch(0% 0 0 / 0.18), 0 4px 12px oklch(0% 0 0 / 0.08);
+        box-shadow: ${BP.shadow};
         display: flex; flex-direction: column;
         transform: translateX(calc(100% + 24px));
         opacity: 0;
@@ -4267,7 +6360,7 @@ void main() {
       return {
         role: m.role || humanizeKey(key),
         name: m.displayName || humanizeKey(key),
-        value: value,
+        value: normalizeCssColor(m.canonical || value),
         canonical: m.canonical || null,
         description: m.description || findProseDescription(proseColors, key, m.displayName),
         tonalRamp: m.tonalRamp || null,
@@ -4358,7 +6451,7 @@ void main() {
 
       const hero = document.createElement('div');
       hero.className = 'c-hero';
-      hero.style.background = c.value;
+      hero.style.background = cssSafe(c.value || '');
       tile.appendChild(hero);
 
       const ramp = synthesizeRamp(c);
@@ -4681,6 +6774,18 @@ void main() {
     return String(v).replace(/[<>"'`\n]/g, '');
   }
 
+  function normalizeCssColor(v) {
+    if (!v || typeof v !== 'string') return v;
+    const s = v.trim();
+    const oklch = s.match(/oklch\([^)]+\)/i);
+    if (oklch) return oklch[0];
+    const hex = s.match(/#[0-9a-fA-F]{3,8}\b/);
+    if (hex) return hex[0];
+    const rgb = s.match(/rgba?\([^)]+\)/i);
+    if (rgb) return rgb[0];
+    return s.replace(/\s+#.*$/, '').trim();
+  }
+
   // --- Raw tab: minimal markdown renderer (subset) --------------------------
 
   function renderRawTab(body, md) {
@@ -4826,6 +6931,8 @@ void main() {
     initActionPicker();
     initParamsPanel();
     initGlobalBar();
+    attachSteerFocusDebug();
+    attachSteerFocusGuard();
     initDesignPanel();
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
@@ -4850,6 +6957,8 @@ void main() {
     } else {
       console.log('[impeccable] Resumed active variant session ' + currentSessionId + ' (' + arrivedVariants + '/' + expectedVariants + ' variants).');
     }
+
+    syncPageChatFocus('init-complete');
   }
 
   if (document.readyState === 'loading') {

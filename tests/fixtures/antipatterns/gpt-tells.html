@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GPT provider-tell fixture (gated --gpt)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    .card { padding: 24px; margin: 0 0 24px; border-radius: 12px; }
+    .stripes { height: 80px; margin: 0 0 24px; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: GPT idioms (only surfaced under --gpt) -->
+    <section class="col flag">
+      <div class="card flag-thin-border-wide-shadow" style="border: 1px solid #e5e7eb; box-shadow: 0 0 24px rgba(0,0,0,0.18)">
+        Thin hairline border paired with a wide diffuse shadow.
+      </div>
+      <div class="stripes flag-repeating-stripes" style="background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fafafa 10px, #fafafa 20px)"></div>
+      <p class="flag-theater">We retired the growth theater and shipped something that actually works.</p>
+    </section>
+
+    <!-- PASS column: the legitimate, non-tell versions -->
+    <section class="col pass">
+      <div class="card pass-tight-shadow" style="border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.08)">
+        Hairline border with a tight, purposeful shadow.
+      </div>
+      <div class="stripes pass-plain-gradient" style="background: linear-gradient(180deg, #f3f4f6, #ffffff)"></div>
+      <p class="pass-no-theater">We measured real outcomes for the people who use this every day.</p>
+    </section>
+  </div>
+</body>
+</html>

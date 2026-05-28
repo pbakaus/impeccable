@@ -365,6 +365,13 @@
   min-height: auto;
 }
 
+.demo-placeholder {
+  padding: var(--spacing-lg);
+  color: var(--color-ash);
+  font-style: italic;
+  text-align: center;
+}
+
 /* (nav moved to fisheye list) */
 
 /* ============================================

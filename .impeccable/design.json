@@ -1,281 +1,253 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-04-23T00:00:00Z",
+  "generatedAt": "2026-05-26T00:00:00Z",
   "title": "Design System: Impeccable",
   "extensions": {
     "colorMeta": {
-      "editorial-magenta": {
+      "kinpaku-gold": {
         "role": "primary",
-        "displayName": "Editorial Magenta",
-        "description": "The one vibrant voice. Primary CTAs, active navigation, live-state indicators. Rarity is the design choice.",
+        "displayName": "Kinpaku Gold",
+        "canonical": "oklch(84% 0.19 80.46)",
+        "description": "Primary accent. CTAs, wordmark, active state, live picker borders, key rules.",
         "tonalRamp": [
-          "oklch(22% 0.12 350)",
-          "oklch(32% 0.18 350)",
-          "oklch(42% 0.22 350)",
-          "oklch(52% 0.25 350)",
-          "oklch(60% 0.25 350)",
-          "oklch(72% 0.18 350)",
-          "oklch(84% 0.10 350)",
-          "oklch(94% 0.04 350)"
+          "oklch(18% 0.04 78)",
+          "oklch(28% 0.07 79)",
+          "oklch(38% 0.10 80)",
+          "oklch(48% 0.12 80)",
+          "oklch(58% 0.14 80)",
+          "oklch(68% 0.16 80)",
+          "oklch(78% 0.18 80)",
+          "oklch(88% 0.12 82)"
         ]
       },
-      "editorial-magenta-deep": {
-        "role": "accent",
-        "displayName": "Editorial Magenta Deep",
-        "description": "Hover/active state for Editorial Magenta. Small darkening, confirms interaction without shouting."
-      },
-      "warm-ash-cream": {
-        "role": "neutral",
-        "displayName": "Warm Ash Cream",
-        "description": "Primary page background. Almost-imperceptible magenta tint that creates subconscious cohesion with the accent.",
+      "verdigris-patina": {
+        "role": "secondary",
+        "displayName": "Verdigris Patina",
+        "canonical": "oklch(70% 0.12 188)",
+        "description": "Secondary accent. Improved states, live indicators, focus rings, contrast against gold.",
         "tonalRamp": [
-          "oklch(15% 0.005 350)",
-          "oklch(25% 0.005 350)",
-          "oklch(40% 0.005 350)",
-          "oklch(55% 0.005 350)",
-          "oklch(70% 0.005 350)",
-          "oklch(82% 0.005 350)",
-          "oklch(92% 0.005 350)",
-          "oklch(96% 0.005 350)"
+          "oklch(18% 0.04 188)",
+          "oklch(28% 0.06 188)",
+          "oklch(38% 0.08 188)",
+          "oklch(48% 0.09 188)",
+          "oklch(58% 0.10 188)",
+          "oklch(68% 0.11 188)",
+          "oklch(78% 0.10 188)",
+          "oklch(88% 0.06 188)"
         ]
       },
-      "crisp-paper-white": {
+      "lacquer-black": {
         "role": "neutral",
-        "displayName": "Crisp Paper White",
-        "description": "Pure background for inverted text moments (white-on-dark CTAs) and maximum-contrast surfaces."
-      },
-      "deep-graphite": {
-        "role": "neutral",
-        "displayName": "Deep Graphite",
-        "description": "Primary text and primary-CTA background. Softer than pure black, reads as confident-but-not-aggressive on warm paper.",
+        "displayName": "Lacquer Black",
+        "canonical": "oklch(7% 0.006 95)",
+        "description": "Default page ground. Warm mineral black, never pure #000.",
         "tonalRamp": [
-          "oklch(10% 0 0)",
-          "oklch(25% 0 0)",
-          "oklch(40% 0 0)",
-          "oklch(55% 0 0)",
-          "oklch(70% 0 0)",
-          "oklch(85% 0 0)",
-          "oklch(92% 0 0)",
-          "oklch(98% 0 0)"
+          "oklch(4% 0.004 95)",
+          "oklch(7% 0.006 95)",
+          "oklch(11% 0.006 95)",
+          "oklch(15% 0.008 95)",
+          "oklch(19% 0.008 95)",
+          "oklch(28% 0.010 95)",
+          "oklch(40% 0.012 82)",
+          "oklch(55% 0.014 82)"
         ]
       },
-      "soft-charcoal": {
+      "lacquer-deep": {
         "role": "neutral",
-        "displayName": "Soft Charcoal",
-        "description": "Secondary text — taglines, hook paragraphs, supporting copy."
+        "displayName": "Lacquer Deep",
+        "canonical": "oklch(4% 0.004 95)",
+        "description": "Deepest inset surfaces, live picker bar fill, CTA text on gold."
       },
-      "mid-ash": {
+      "raised-lacquer": {
         "role": "neutral",
-        "displayName": "Mid Ash",
-        "description": "Tertiary text — micro-labels, captions, meta lines. Reads as intentionally recessed metadata."
+        "displayName": "Raised Lacquer",
+        "canonical": "oklch(11% 0.006 95)",
+        "description": "Panels, cards, inputs, demo frames."
       },
-      "paper-mist": {
+      "champagne": {
         "role": "neutral",
-        "displayName": "Paper Mist",
-        "description": "Hairline borders, section dividers, barely-visible structural seams."
+        "displayName": "Champagne",
+        "canonical": "oklch(84% 0.035 82)",
+        "description": "Headlines, strong labels, picker bar default text."
       },
-      "magenta-whisper": {
-        "role": "accent",
-        "displayName": "Magenta Whisper",
-        "description": "Diffuse glow backdrop under accent elements on hover; subtle selection highlights."
+      "text-warm": {
+        "role": "neutral",
+        "displayName": "Warm Text",
+        "canonical": "oklch(81% 0.03 82)",
+        "description": "Body copy on dark lacquer surfaces."
       },
-      "magenta-veil": {
-        "role": "accent",
-        "displayName": "Magenta Veil",
-        "description": "Stronger translucent tint for focus rings and emphasis shells."
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "canonical": "oklch(63% 0.024 82)",
+        "description": "Captions, meta, inactive picker controls."
+      },
+      "vermilion-warning": {
+        "role": "state",
+        "displayName": "Vermilion Warning",
+        "canonical": "oklch(58% 0.15 35)",
+        "description": "Errors, anti-pattern warnings, live picker exit hover."
       }
     },
     "typographyMeta": {
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "IMPECCABLE lockup only. Solid Alumni Sans, not pinstripe."
+      },
       "display": {
         "displayName": "Display",
-        "purpose": "Hero title only. Light italic for an author-signature feel.",
-        "style": "italic"
+        "purpose": "Hero h1. Alumni Sans Pinstripe, weight 300."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Section headings. Larger editorial moments."
+        "purpose": "Section h2. Pinstripe at weight 600, heavier than display."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Hero tagline / section leads. A quieter second display voice.",
-        "style": "italic"
+        "purpose": "Panel and card headings (h3). Albert Sans."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Paragraph copy. Capped at 65–75ch for readability."
+        "purpose": "Long copy. Albert Sans, line-height 1.8, max 65–75ch."
       },
-      "body-lead": {
-        "displayName": "Body Lead",
-        "purpose": "The one or two lead paragraphs on each page. Slightly relaxed leading."
-      },
-      "supporting": {
-        "displayName": "Supporting",
-        "purpose": "Captions, footnotes, supporting context."
-      },
-      "label": {
-        "displayName": "Label",
-        "purpose": "CTA labels. Short, declarative. Uppercase, letter-tracked."
-      },
-      "micro-label": {
-        "displayName": "Micro-Label",
-        "purpose": "\"Works with\", \"What's included\", \"v3.0 Changelog\"."
+      "eyebrow": {
+        "displayName": "Eyebrow",
+        "purpose": "Short mono labels above titles. Uppercase, tracked."
       },
       "mono": {
-        "displayName": "Monospace Meta",
-        "purpose": "Command names in inline prose, periodic-table tile labels."
+        "displayName": "Mono Label",
+        "purpose": "Command names, audit lines, table headers."
       }
     },
     "shadows": [
       {
-        "name": "Soft Hover Lift",
-        "value": "0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06)",
-        "purpose": "Default hover response on cards and interactive surfaces."
+        "name": "Panel Setback",
+        "value": "0 24px 70px oklch(2% 0.004 95 / 0.42)",
+        "purpose": "Large framed modules only."
       },
       {
-        "name": "Lifted Card",
-        "value": "0 20px 40px rgba(0,0,0,0.08)",
-        "purpose": "Deliberately elevated content (featured cards, install blocks)."
+        "name": "CTA Lift",
+        "value": "0 18px 48px oklch(2% 0.004 95 / 0.4)",
+        "purpose": "Primary button hover lift on large CTAs."
       },
       {
-        "name": "Accent Glow",
-        "value": "0 20px 60px oklch(60% 0.25 350 / 0.15)",
-        "purpose": "Magenta-tinted ambient shadow under the rare magnetic moment. Used sparingly."
+        "name": "Patina Glow",
+        "value": "0 0 22px oklch(70% 0.105 190 / 0.24)",
+        "purpose": "Tiny live indicators only."
+      },
+      {
+        "name": "Picker Halo",
+        "value": "0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28)",
+        "purpose": "Live mode global and contextual picker bars."
       }
     ],
     "motion": [
       {
-        "name": "ease-out",
-        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Primary curve. Expo-out feel — objects decelerate smoothly."
-      },
-      {
-        "name": "ease-out-quint",
-        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
-        "purpose": "Slightly sharper alternative. Use for transforms on compact elements."
-      },
-      {
-        "name": "duration-fast",
-        "value": "0.15s",
-        "purpose": "State transitions (color, opacity)."
-      },
-      {
-        "name": "duration-base",
-        "value": "0.3s",
-        "purpose": "Default for transforms and non-color changes."
-      },
-      {
-        "name": "duration-slow",
-        "value": "0.6s",
-        "purpose": "Orchestrated entrances."
+        "name": "ks-ease",
+        "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "Default kit easing for color, border, and transform transitions."
       }
     ],
-    "breakpoints": []
+    "breakpoints": [
+      { "name": "md", "value": "980px" },
+      { "name": "lg", "value": "1080px" }
+    ]
   },
   "components": [
     {
-      "name": "Primary CTA",
+      "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Sharp, squared, uppercase. The editorial signature.",
-      "html": "<button class=\"ds-btn-primary\">GET STARTED</button>",
-      "css": ".ds-btn-primary { display: inline-block; padding: 16px 48px; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 0.9rem; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: oklch(98% 0 0); background: oklch(10% 0 0); border: none; border-radius: 0; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease; } .ds-btn-primary:hover { transform: translateY(-2px); background: oklch(60% 0.25 350); }"
+      "description": "Filled kinpaku CTA on lacquer. Both .ks-button and .ks-button-primary required.",
+      "html": "<button type=\"button\" class=\"ds-btn-primary\">Get started</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.96rem; font-weight: 500; line-height: 1; color: oklch(4% 0.004 95); background: oklch(84% 0.19 80.46); border: 1px solid oklch(84% 0.19 80.46); border-radius: 2px; cursor: pointer; transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-btn-primary:hover { background: oklch(86% 0.07 84); border-color: oklch(86% 0.07 84); transform: translateY(-1px); } .ds-btn-primary:active { transform: translateY(0); background: oklch(77% 0.13 82); border-color: oklch(77% 0.13 82); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 3px; }"
     },
     {
-      "name": "Inline Text Link",
+      "name": "Secondary Button",
       "kind": "button",
-      "description": "Secondary action. No boxed secondary button exists in the system.",
-      "html": "<a href=\"#\" class=\"ds-link\">Read the docs</a>",
-      "css": ".ds-link { color: oklch(10% 0 0); font-family: 'Instrument Sans', system-ui, sans-serif; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; transition: color 0.2s ease; } .ds-link:hover { color: oklch(60% 0.25 350); }"
+      "refersTo": "button-secondary",
+      "description": "Outlined kinpaku on transparent lacquer.",
+      "html": "<button type=\"button\" class=\"ds-btn-secondary\">See the rules</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.96rem; font-weight: 500; color: oklch(84% 0.19 80.46); background: transparent; border: 1px solid oklch(84% 0.19 80.46); border-radius: 2px; cursor: pointer; transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-btn-secondary:hover { background: oklch(77% 0.14 82 / 0.08); transform: translateY(-1px); } .ds-btn-secondary:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 3px; }"
     },
     {
-      "name": "Email Input",
+      "name": "Text Input",
       "kind": "input",
       "refersTo": "input-text",
-      "description": "Hairline border, transparent background, magenta focus glow.",
-      "html": "<input type=\"email\" class=\"ds-input-email\" placeholder=\"you@example.com\">",
-      "css": ".ds-input-email { width: 100%; padding: 10px 14px; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 0.9rem; color: oklch(10% 0 0); background: transparent; border: 1px solid oklch(92% 0 0); border-radius: 6px; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-input-email::placeholder { color: oklch(55% 0 0); } .ds-input-email:focus { border-color: oklch(60% 0.25 350); box-shadow: 0 0 0 3px oklch(60% 0.25 350 / 0.15); }"
-    },
-    {
-      "name": "Micro-Label",
-      "kind": "chip",
-      "description": "'What's included' style. Uppercase mono, wide tracking.",
-      "html": "<span class=\"ds-microlabel\">What's included</span>",
-      "css": ".ds-microlabel { display: inline-block; font-family: 'Space Grotesk', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(55% 0 0); }"
+      "description": "Raised lacquer field with gold hairline border, patina focus.",
+      "html": "<input type=\"text\" class=\"ds-input-text\" placeholder=\"Search commands\">",
+      "css": ".ds-input-text { width: 100%; min-height: 46px; padding: 0 14px; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.92rem; color: oklch(84% 0.035 82); background: oklch(11% 0.006 95); border: 1px solid oklch(58% 0.065 82 / 0.32); border-radius: 2px; outline: none; transition: border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-input-text::placeholder { color: oklch(63% 0.024 82); } .ds-input-text:focus { border-color: oklch(70% 0.12 188); }"
     },
     {
       "name": "Site Navigation",
       "kind": "nav",
       "refersTo": "nav-link",
-      "description": "62px compact bar. No underline at rest; accent underline on active.",
-      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav-brand\">/ Impeccable</span><div class=\"ds-nav-links\"><a href=\"#\" class=\"ds-nav-link ds-nav-active\">Home</a><a href=\"#\" class=\"ds-nav-link\">Docs</a><a href=\"#\" class=\"ds-nav-link\">Anti-patterns</a></div></nav>",
-      "css": ".ds-nav { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 20px; background: oklch(96% 0.005 350); font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-nav-brand { font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.05rem; color: oklch(10% 0 0); } .ds-nav-links { display: flex; gap: 16px; } .ds-nav-link { font-size: 0.85rem; font-weight: 500; color: oklch(10% 0 0); text-decoration: none; padding-bottom: 3px; border-bottom: 1px solid transparent; transition: color 0.2s ease, border-color 0.2s ease; } .ds-nav-link:hover { color: oklch(60% 0.25 350); } .ds-nav-active { border-bottom-color: oklch(60% 0.25 350); }"
+      "description": "Dark header nav. Champagne at rest, kinpaku on hover/active.",
+      "html": "<nav class=\"ds-nav\"><a href=\"/\" class=\"ds-nav-link ds-nav-active\">Home</a><a href=\"/docs\" class=\"ds-nav-link\">Docs</a></nav>",
+      "css": ".ds-nav { display: flex; gap: clamp(22px, 3vw, 48px); font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.95rem; } .ds-nav-link { color: oklch(84% 0.035 82); text-decoration: none; transition: color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-nav-link:hover { color: oklch(84% 0.19 80.46); } .ds-nav-active { color: oklch(84% 0.19 80.46); }"
     },
     {
-      "name": "Feature Card",
+      "name": "Bento Tile",
       "kind": "card",
-      "refersTo": "card-feature",
-      "description": "Standard card: 12px radius, hairline border, hover lift with soft shadow.",
-      "html": "<article class=\"ds-card\"><h3 class=\"ds-card-title\">/impeccable polish</h3><p class=\"ds-card-body\">Sweep a site for AI-tool tells and refine typography, spacing, color in one pass.</p></article>",
-      "css": ".ds-card { padding: 20px 22px; background: oklch(98% 0 0); border: 1px solid oklch(92% 0 0); border-radius: 12px; transition: transform 0.2s ease, box-shadow 0.2s ease; font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-card:hover { transform: translateY(-2px); box-shadow: 0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06); } .ds-card-title { font-family: 'Space Grotesk', ui-monospace, monospace; font-size: 0.85rem; font-weight: 500; color: oklch(10% 0 0); margin: 0 0 6px; } .ds-card-body { font-size: 0.85rem; line-height: 1.55; color: oklch(25% 0 0); margin: 0; }"
+      "refersTo": "card",
+      "description": "Flat lacquer tile inside the 12-column bento grid. No nested cards.",
+      "html": "<article class=\"ds-bento-tile\"><span class=\"ds-bento-num\">01</span><h3 class=\"ds-bento-title\">Respects your design system.</h3><p class=\"ds-bento-body\">Inherits tokens and conventions instead of overwriting them.</p></article>",
+      "css": ".ds-bento-tile { display: flex; flex-direction: column; gap: 14px; padding: 48px; background: oklch(7% 0.006 95); border: 0; border-radius: 0; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; } .ds-bento-num { font-family: \"SFMono-Regular\", \"Roboto Mono\", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.28em; text-transform: uppercase; color: oklch(84% 0.19 80.46); } .ds-bento-title { margin: 0; font-size: 1.18rem; font-weight: 500; color: oklch(84% 0.035 82); } .ds-bento-body { margin: 0; font-size: 1.02rem; line-height: 1.8; color: oklch(81% 0.03 82); max-width: 65ch; }"
     },
     {
-      "name": "Command Category Tile",
+      "name": "Live Picker Bar",
       "kind": "custom",
-      "description": "Signature component: periodic-table tile used in the commands visualization.",
-      "html": "<div class=\"ds-tile\"><span class=\"ds-tile-num\">07</span><span class=\"ds-tile-sym\">Po</span><span class=\"ds-tile-lbl\">polish</span></div>",
-      "css": ".ds-tile { display: grid; grid-template-rows: auto 1fr auto; align-items: center; justify-items: center; width: 56px; height: 64px; padding: 4px; background: #fdf2f8; border: 1px solid #ec4899; border-radius: 6px; color: #be185d; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; } .ds-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(236, 72, 153, 0.18); } .ds-tile-num { font-family: 'Space Grotesk', ui-monospace, monospace; font-size: 7px; font-weight: 500; letter-spacing: 0.05em; justify-self: start; } .ds-tile-sym { font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 20px; font-weight: 500; line-height: 1; } .ds-tile-lbl { font-family: 'Space Grotesk', ui-monospace, monospace; font-size: 7px; font-weight: 500; letter-spacing: 0.05em; text-transform: lowercase; }"
+      "refersTo": "live-picker-bar",
+      "description": "Global live mode bar. Lacquer-deep fill, kinpaku border, carved-tile mark.",
+      "html": "<div class=\"ds-live-bar\"><span class=\"ds-live-mark\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" fill=\"currentColor\" width=\"18\" height=\"18\"><path d=\"M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z\"/><path d=\"M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z\"/></svg></span><button type=\"button\" class=\"ds-live-toggle is-active\">Pick</button><button type=\"button\" class=\"ds-live-toggle\">Detect</button></div>",
+      "css": ".ds-live-bar { display: inline-flex; align-items: center; gap: 2px; padding: 4px 5px; background: oklch(4% 0.004 95); border: 1.5px solid oklch(84% 0.19 80.46); border-radius: 10px; box-shadow: 0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28); font-family: system-ui, -apple-system, sans-serif; font-size: 12px; color: oklch(84% 0.035 82); } .ds-live-mark { display: inline-flex; align-items: center; padding: 0 12px 0 14px; color: oklch(84% 0.19 80.46); } .ds-live-toggle { padding: 6px 8px; border: none; border-radius: 7px; background: transparent; color: oklch(63% 0.024 82); font-family: inherit; font-size: 11.5px; font-weight: 500; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; } .ds-live-toggle:hover { color: oklch(84% 0.035 82); } .ds-live-toggle.is-active { background: oklch(78% 0.12 82 / 0.18); color: oklch(84% 0.19 80.46); } .ds-live-toggle:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(84% 0.19 80.46 / 0.18), 0 0 0 3px oklch(84% 0.19 80.46); }"
     }
   ],
   "narrative": {
-    "northStar": "The Editorial Sanctuary",
-    "overview": "The Impeccable site reads more like a printed design publication than a SaaS landing page. Committed typography, generous breathing room, a single decisive accent. The aesthetic philosophy is restraint in service of craft. Every element earns its place.",
+    "northStar": "Neo Kinpaku",
+    "overview": "Impeccable is a dark lacquer interface marked by Japanese gold leaf and precise technical geometry. The brand should feel like a crafted object: black urushi, irregular kinpaku seams, quiet measurement marks, circuit traces, and controlled verdigris oxidation. It is refined, technical, and physical. This direction replaces the old warm-paper editorial system.",
     "keyCharacteristics": [
-      "Warm off-white paper tones with an almost-imperceptible magenta tint.",
-      "A single decisive magenta accent used on ≤10% of any screen.",
-      "Italic serif for display type; clean neutral sans for body at 1.6 line-height.",
-      "Sharp, uppercase, letter-tracked primary CTAs.",
-      "Flat surfaces at rest. Shadows appear only on state change.",
-      "Magazine-scale spacing (8 / 16 / 24 / 32 / 48 / 80 / 120px)."
+      "Dark mineral and lacquer surfaces, never pure black.",
+      "Kinpaku gold as the primary accent, with true leaf texture where an element carries brand weight.",
+      "Verdigris patina as the secondary accent for state, contrast, and improved signals.",
+      "A geometric sans voice with a widely tracked wordmark, not a serif editorial voice.",
+      "Thin calibration lines, circuit geometry, and gold seams used as functional structure.",
+      "Small radii, restrained borders, and almost no decorative shadow."
     ],
     "rules": [
-      { "name": "The One Voice Rule", "section": "colors", "body": "Editorial Magenta is the only vibrant color. No supporting accent, ever. If a second emphasis point is needed, use scale or weight, never a second hue." },
-      { "name": "The Paper-Not-White Rule", "section": "colors", "body": "Page background is Warm Ash Cream, never Crisp Paper White. Warmth is load-bearing." },
-      { "name": "The OKLCH-Only Rule", "section": "colors", "body": "All new colors declared in OKLCH. Hex is reserved for the fenced Command Category Tints." },
-      { "name": "The Italic-Is-Voice Rule", "section": "typography", "body": "Italic is a voice choice for display type, not emphasis inside body copy. Body emphasis is carried by weight." },
-      { "name": "The 1.6 Leading Rule", "section": "typography", "body": "Body line-height is 1.6 everywhere. Not 1.5, not 1.7. This is the load-bearing readability decision." },
-      { "name": "The Fluid-Headlines-Only Rule", "section": "typography", "body": "Headings use clamp() fluid sizing. Body copy uses fixed rem values." },
-      { "name": "The Flat-By-Default Rule", "section": "elevation", "body": "Surfaces are flat at rest. Reach for shadows only on hover or deliberate elevation." },
-      { "name": "The Low-Alpha Rule", "section": "elevation", "body": "Every shadow uses ≤0.15 alpha on its strongest blur. Higher alphas read as 2014 Material drop shadows." },
-      { "name": "The Tinted-Shadow-Only-For-Accent Rule", "section": "elevation", "body": "Neutral shadows for structure. Magenta-tinted shadows only for deliberate accent-glow moments." }
+      { "name": "The Gold Carries Brand Rule", "section": "colors", "body": "Kinpaku gold is the primary brand signal. If a single accent must represent Impeccable, use gold, not magenta or cyan." },
+      { "name": "The Patina Has Meaning Rule", "section": "colors", "body": "Verdigris is secondary. It marks improvement, live state, or contrast against gold. Do not use it as a generic decoration field." },
+      { "name": "The Texture Budget Rule", "section": "colors", "body": "Leaf and patina textures are for brand-bearing moments: hero seams, CTA fills, dividers, major swatches, and select system modules. Generic cards stay mostly flat." },
+      { "name": "The OKLCH-Only Rule", "section": "colors", "body": "New colors are declared in OKLCH. Hex appears only inside third-party examples or imported assets." },
+      { "name": "The Weight-Inversion Rule", "section": "typography", "body": "Section h2s read heavier (600) than the hero h1 (300). This is deliberate: the hero is elegant and thin so the page can breathe; section anchors carry more weight to ground each block." },
+      { "name": "The Two-Face Rule", "section": "typography", "body": "Display sizes use Alumni Sans Pinstripe. Anything sized below 1.2rem uses Albert Sans. Pinstripe at small sizes loses its identity and reads as a bad rendering." },
+      { "name": "The Tracked Labels Are Short Rule", "section": "typography", "body": "Tracked uppercase labels are for short system markers. Do not write full sentences in tracked caps." },
+      { "name": "The Dark Type Needs Air Rule", "section": "typography", "body": "Body text on lacquer uses line-height 1.65 to 1.8 and a max width of 65 to 75ch." },
+      { "name": "The Hairline First Rule", "section": "elevation", "body": "Use 1px gold hairlines before adding shadow." },
+      { "name": "The No Glass Rule", "section": "elevation", "body": "Translucency can exist in overlays, but decorative blur/glass panels are not part of this system." },
+      { "name": "The Picker Is Brand Rule", "section": "components", "body": "Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the full kinpaku border, lacquer-deep fill, and carved-tile mark." }
     ],
     "dos": [
-      "Do treat Warm Ash Cream as the default page background.",
-      "Do use Editorial Magenta on ≤10% of any given screen.",
-      "Do set all new colors in OKLCH.",
-      "Do use italic display type as a voice, not as emphasis inside paragraphs.",
-      "Do use clamp() fluid sizing for headings; use fixed rem for body.",
-      "Do keep the primary CTA sharp and squared. border-radius: 0, uppercase, letter-tracked.",
-      "Do use --ease-out (cubic-bezier(0.16, 1, 0.3, 1)) or --ease-out-quint on transitions.",
-      "Do leave surfaces flat at rest. Reach for shadows only on hover or deliberate elevation.",
-      "Do respect prefers-reduced-motion on every animation.",
-      "Do cap body line length at 65–75ch via max-width."
+      "Do use kinpaku gold as the primary brand color.",
+      "Do use verdigris patina for secondary state and contrast.",
+      "Do keep surfaces dark, warm, and mineral.",
+      "Do use real texture assets for gold leaf and oxidation when the element is brand-bearing.",
+      "Do use circuit/calibration geometry as structure, especially around product proof.",
+      "Do keep cards compact, flat, and sharply bounded.",
+      "Do preserve utility: demos, sliders, audit tables, command examples, docs, and pricing must remain understandable.",
+      "Do keep live mode picker bars on lacquer-deep with kinpaku gold borders, regardless of host page theme."
     ],
     "donts": [
-      "Don't use pure black (#000) or pure white (#fff).",
-      "Don't use border-left or border-right greater than 1px as a colored stripe. The AI-dashboard tell.",
-      "Don't use background-clip: text with a gradient. Gradient text is banned.",
-      "Don't default to dark mode.",
-      "Don't use glassmorphism.",
-      "Don't add a second accent color.",
-      "Don't use rounded rectangles with generic drop shadows.",
-      "Don't use bounce or elastic easing.",
-      "Don't animate layout properties (width, height, padding, margin). Use transform and opacity.",
-      "Don't nest cards inside cards.",
-      "Don't use identical card grids.",
-      "Don't use the hero-metric layout template.",
-      "Don't extend the Command Category Tints vocabulary.",
-      "Don't hedge in UI copy.",
-      "Don't introduce a new spacing token outside the 8/16/24/32/48/80/120 scale."
+      "Do not use editorial magenta as a brand accent.",
+      "Do not use italic serif display typography.",
+      "Do not use purple gradients, neon cyan fields, glassmorphism, or generic AI-tool glow.",
+      "Do not put gold texture under long text.",
+      "Do not use beige, paper, or cream as the page ground.",
+      "Do not add decorative calibration marks that do not align with real content.",
+      "Do not use wide rounded cards or nested cards.",
+      "Do not use pure black or pure white.",
+      "Do not let the visual system hide the product proof.",
+      "Do not theme-adapt live mode picker chrome to match arbitrary host pages. The picker is always neo-kinpaku."
     ]
   }
 }

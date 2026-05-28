@@ -50,7 +50,7 @@ Create a strategy to increase impact while maintaining coherence:
 Systematically increase impact across these dimensions:
 
 ### Typography Amplification
-- **Replace generic fonts**: Swap system fonts for distinctive choices (see the parent skill's typography guidelines and [typography.md](typography.md) for inspiration)
+- **Replace generic fonts**: Swap system fonts for distinctive choices (see the parent skill's typography guidelines and the [Reference Material section of typeset.md](typeset.md#reference-material) for inspiration)
 - **Extreme scale**: Create dramatic size jumps (3x-5x differences, not 1.5x)
 - **Weight contrast**: Pair 900 weights with 200 weights, not 600 with 400
 - **Unexpected choices**: Variable fonts, display fonts for headlines, condensed/extended widths, monospace as intentional accent (not as lazy "dev tool" default)
@@ -78,10 +78,10 @@ Systematically increase impact across these dimensions:
 - **Custom elements**: Illustrative elements, custom icons, decorative details that reinforce brand
 
 ### Motion & Animation
-- **Entrance choreography**: Staggered, dramatic page load animations with 50-100ms delays
-- **Scroll effects**: Parallax, reveal animations, scroll-triggered sequences
-- **Micro-interactions**: Satisfying hover effects, click feedback, state changes
-- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic, which cheapen the effect)
+- **Hero moment**: One signature entrance, once. Not on every visit and not on every section.
+- **Micro-interactions**: Satisfying hover effects, click feedback, state changes.
+- **Transitions**: Smooth, noticeable transitions using ease-out-quart/quint/expo (not bounce or elastic, which cheapen the effect).
+- **Bolder ≠ scroll-fade-rise on every section.** That's the saturated AI default, the opposite of bold.
 
 ### Composition Boldness
 - **Hero moments**: Create clear focal points with dramatic treatment

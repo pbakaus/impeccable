@@ -214,6 +214,8 @@ export async function bootFixtureSession({ name, fixture, browser, agent, log = 
       agent,
       signal: agentAbort.signal,
       log: (m) => log('[agent] ' + m),
+      steerSourceFile: runtime.steer?.sourceFile,
+      steerTarget: runtime.steer?.target,
     });
 
     const scheme = runtime.scheme || 'http';

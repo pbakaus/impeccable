@@ -1,0 +1,153 @@
+/* ============================================================================
+   Divider patterns — shared between /design-system (where they live as
+   foundation elements) and / (homepage, where they're applied between
+   sections via a dev toggle until we pick).
+
+   Four CSS-only geometries: D1 double-notch, D2 ticks, D3 dot grid,
+   D5 circle anchor. Each composes with:
+     • Tone modifier — --patina, --plinth (defaults to kinpaku via currentColor)
+     • Texture modifier — --tex-leaf, --tex-patina, --tex-dust (uses the brand
+       accent images as the actual fill, with the pattern as a mask)
+
+   Depends on the brand tokens in kinpaku-tokens.css (--ks-kinpaku, --ks-patina).
+   ============================================================================ */
+
+.ksd-divider {
+  width: 100%;
+  color: var(--ks-kinpaku);
+}
+
+/* Tone modifiers. Override currentColor so any pattern can be re-tinted
+   without touching its geometry. Patina reads as oxidized copper alongside
+   the gold; plinth is a low-chroma warm dark that sits one step above the
+   lacquer bg and reads as inscribed into the surface. */
+.ksd-divider--patina { color: var(--ks-patina); }
+.ksd-divider--plinth { color: oklch(0.42 0.014 82); }
+
+/* Texture-fill modifiers. The pattern's geometry becomes a mask; the brand
+   accent texture becomes the visible fill. Filters match the .ks-accent-band
+   tuning so the inline divider reads as the same material as the foundation
+   textures. */
+.ksd-divider--tex-leaf {
+  --ksd-fill: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png");
+  --ksd-fill-filter: saturate(1.15) contrast(1.08);
+}
+.ksd-divider--tex-patina {
+  --ksd-fill: url("/assets/neo-kinpaku/verdigris-patina.png");
+  --ksd-fill-filter: saturate(1.18) contrast(1.06);
+}
+.ksd-divider--tex-dust {
+  --ksd-fill: url("/assets/neo-kinpaku/gold-dust-rule.png");
+  --ksd-fill-filter: saturate(1.22) contrast(1.15) brightness(1.12);
+}
+
+/* ----- Geometry: D1 double-notch ----- */
+.ksd-divider--double-notch {
+  position: relative;
+  height: 8px;
+}
+.ksd-divider--double-notch::before,
+.ksd-divider--double-notch::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: currentColor;
+}
+.ksd-divider--double-notch::before {
+  top: 0;
+  background: linear-gradient(90deg, currentColor 0 9%, transparent 9% 11.5%, currentColor 11.5%);
+}
+.ksd-divider--double-notch::after {
+  bottom: 0;
+}
+
+/* ----- Geometry: D2 ticks ----- */
+.ksd-divider--ticks {
+  height: 18px;
+  background:
+    repeating-linear-gradient(
+      -65deg,
+      currentColor 0 1.4px,
+      transparent 1.4px 12px
+    );
+}
+
+/* ----- Geometry: D3 dots ----- */
+.ksd-divider--dots {
+  height: 18px;
+  background-image: radial-gradient(circle, currentColor 0.9px, transparent 1.4px);
+  background-size: 7px 6px;
+  background-position: 0 1px;
+  background-repeat: repeat;
+}
+
+/* ----- Geometry: D5 anchor ----- */
+.ksd-divider--anchor {
+  position: relative;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.ksd-divider--anchor::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  flex: none;
+}
+.ksd-divider--anchor::after {
+  content: "";
+  flex: 1;
+  height: 1.5px;
+  background: currentColor;
+}
+
+/* ----- Texture-masked overrides per pattern ----- */
+.ksd-divider--ticks:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust) {
+  background: var(--ksd-fill) center / cover no-repeat;
+  filter: var(--ksd-fill-filter);
+  -webkit-mask-image: repeating-linear-gradient(-65deg, black 0 1.4px, transparent 1.4px 12px);
+          mask-image: repeating-linear-gradient(-65deg, black 0 1.4px, transparent 1.4px 12px);
+}
+
+.ksd-divider--dots:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust) {
+  background-image: var(--ksd-fill);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: var(--ksd-fill-filter);
+  -webkit-mask-image: radial-gradient(circle, black 0.9px, transparent 1.4px);
+          mask-image: radial-gradient(circle, black 0.9px, transparent 1.4px);
+  -webkit-mask-size: 7px 6px;
+          mask-size: 7px 6px;
+  -webkit-mask-repeat: repeat;
+          mask-repeat: repeat;
+  -webkit-mask-position: 0 1px;
+          mask-position: 0 1px;
+}
+
+.ksd-divider--double-notch:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust)::before,
+.ksd-divider--double-notch:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust)::after {
+  background: var(--ksd-fill) center / cover no-repeat;
+  filter: var(--ksd-fill-filter);
+}
+.ksd-divider--double-notch:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust)::before {
+  -webkit-mask-image: linear-gradient(90deg, black 0 9%, transparent 9% 11.5%, black 11.5%);
+          mask-image: linear-gradient(90deg, black 0 9%, transparent 9% 11.5%, black 11.5%);
+}
+
+.ksd-divider--anchor:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust)::before {
+  border: 0;
+  background: var(--ksd-fill) center / cover no-repeat;
+  filter: var(--ksd-fill-filter);
+  -webkit-mask-image: radial-gradient(circle, transparent 0 4px, black 4px 5.5px, transparent 5.5px);
+          mask-image: radial-gradient(circle, transparent 0 4px, black 4px 5.5px, transparent 5.5px);
+}
+.ksd-divider--anchor:is(.ksd-divider--tex-leaf, .ksd-divider--tex-patina, .ksd-divider--tex-dust)::after {
+  background: var(--ksd-fill) center / cover no-repeat;
+  filter: var(--ksd-fill-filter);
+}

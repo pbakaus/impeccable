@@ -4,7 +4,7 @@
  * Screenshot Anti-Pattern Examples
  *
  * Takes 1080x1080 screenshots of each anti-pattern example for LinkedIn sharing.
- * Requires the dev server to be running on localhost:3000
+ * Requires the dev server to be running on localhost:4321
  */
 
 import { chromium } from 'playwright';
@@ -43,7 +43,7 @@ async function screenshotAntipatterns() {
 
   for (const file of files) {
     const name = path.basename(file, '.html');
-    const url = `http://localhost:3000/antipattern-examples/${file}`;
+    const url = `http://localhost:4321/antipattern-examples/${file}`;
     const outputPath = path.join(OUTPUT_DIR, `${name}.png`);
 
     console.log(`  ${name}...`);
@@ -82,7 +82,7 @@ async function screenshotAntipatterns() {
 // Check if dev server is running
 async function checkServer() {
   try {
-    const response = await fetch('http://localhost:3000');
+    const response = await fetch('http://localhost:4321');
     return response.ok;
   } catch {
     return false;
