@@ -947,6 +947,53 @@
   color: var(--ks-kinpaku);
 }
 
+/* ============================================================
+   Kinpaku surface — legacy-token remap
+
+   For pages whose content still reads the old light tokens
+   (--color-paper, --color-ink, --font-display, …): instead of overriding
+   every rule, remap those tokens to kinpaku values at the body scope so
+   the existing legacy CSS renders dark for free. This is the same trick
+   docs-kinpaku/designing-kinpaku use per page, lifted into one reusable
+   class. It is also the prototype for making kinpaku the global default —
+   the eventual move is to lift this remap to :root and delete the light
+   token values entirely.
+
+   Pair with .kinpaku-chrome (header + footer). Existing bespoke kinpaku
+   pages already remap in their own page stylesheet, so they don't need
+   this class.
+   ============================================================ */
+.kinpaku-surface {
+  --color-paper: oklch(7% 0.006 95);
+  --color-cream: oklch(9% 0.006 95);
+  --color-bg: oklch(11% 0.006 95);
+  --color-mist: oklch(58% 0.065 82 / 0.22);
+  --color-charcoal: oklch(72% 0.025 82);
+  --color-ash: oklch(60% 0.018 82);
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
+  --font-body: var(--ks-font);
+  --font-display: var(--ks-font-display);
+  --font-mono: var(--ks-mono);
+
+  background: linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
+  color: var(--ks-text);
+  min-height: 100vh;
+}
+
+/* The legacy display face was italic serif; the kinpaku display face
+   (Alumni Sans Pinstripe) reads wrong synthesized-italic, so reset it on
+   the headings the base stylesheet set to italic. */
+.kinpaku-surface .sub-page-title,
+.kinpaku-surface .prose h1,
+.kinpaku-surface .prose h2 {
+  font-style: normal;
+}
+
 
 /* ============================================================
    Bento — multi-tile container pattern. The canonical alternative
