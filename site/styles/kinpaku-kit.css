@@ -721,7 +721,8 @@
 .designing-kinpaku .site-header,
 .docs-kinpaku .site-header,
 .slop-kinpaku .site-header,
-.live-mode-kinpaku .site-header {
+.live-mode-kinpaku .site-header,
+.neon-case-page .site-header {
   padding: 28px clamp(22px, 4vw, 56px);
   background: linear-gradient(180deg, oklch(5% 0.004 95 / 0.92), oklch(5% 0.004 95 / 0.68));
   border-bottom: 1px solid oklch(78% 0.12 82 / 0.18);
@@ -774,7 +775,8 @@
   .designing-kinpaku .site-header,
   .docs-kinpaku .site-header,
   .slop-kinpaku .site-header,
-  .live-mode-kinpaku .site-header {
+  .live-mode-kinpaku .site-header,
+  .neon-case-page .site-header {
     flex-wrap: wrap;
     padding: 16px clamp(16px, 4vw, 24px);
     row-gap: 12px;
@@ -809,7 +811,8 @@
   .designing-kinpaku .site-header-nav,
   .docs-kinpaku .site-header-nav,
   .slop-kinpaku .site-header-nav,
-  .live-mode-kinpaku .site-header-nav {
+  .live-mode-kinpaku .site-header-nav,
+  .neon-case-page .site-header-nav {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -841,7 +844,8 @@
   .designing-kinpaku .site-header-github,
   .docs-kinpaku .site-header-github,
   .slop-kinpaku .site-header-github,
-  .live-mode-kinpaku .site-header-github {
+  .live-mode-kinpaku .site-header-github,
+  .neon-case-page .site-header-github {
     align-self: flex-start;
     margin: 12px clamp(16px, 4vw, 24px) 6px;
   }
@@ -857,7 +861,8 @@
 .designing-kinpaku .site-header-brand,
 .docs-kinpaku .site-header-brand,
 .slop-kinpaku .site-header-brand,
-.live-mode-kinpaku .site-header-brand {
+.live-mode-kinpaku .site-header-brand,
+.neon-case-page .site-header-brand {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -870,7 +875,8 @@
 .designing-kinpaku .site-header-brand-logo,
 .docs-kinpaku .site-header-brand-logo,
 .slop-kinpaku .site-header-brand-logo,
-.live-mode-kinpaku .site-header-brand-logo {
+.live-mode-kinpaku .site-header-brand-logo,
+.neon-case-page .site-header-brand-logo {
   width: 38px;
   height: 38px;
   display: grid;
@@ -884,7 +890,8 @@
 .designing-kinpaku .site-header-brand-logo svg,
 .docs-kinpaku .site-header-brand-logo svg,
 .slop-kinpaku .site-header-brand-logo svg,
-.live-mode-kinpaku .site-header-brand-logo svg {
+.live-mode-kinpaku .site-header-brand-logo svg,
+.neon-case-page .site-header-brand-logo svg {
   width: 32px;
   height: 32px;
 }
@@ -898,7 +905,9 @@
 .slop-kinpaku .site-header-brand-name,
 .slop-kinpaku .footer-logo,
 .live-mode-kinpaku .site-header-brand-name,
-.live-mode-kinpaku .footer-logo {
+.live-mode-kinpaku .footer-logo,
+.neon-case-page .site-header-brand-name,
+.neon-case-page .footer-logo {
   color: var(--ks-kinpaku);
   font-family: var(--ks-font-wordmark);
   font-weight: 500;
@@ -918,7 +927,8 @@
 .designing-kinpaku .site-header-nav,
 .docs-kinpaku .site-header-nav,
 .slop-kinpaku .site-header-nav,
-.live-mode-kinpaku .site-header-nav {
+.live-mode-kinpaku .site-header-nav,
+.neon-case-page .site-header-nav {
   gap: clamp(22px, 3vw, 48px);
   font-family: var(--ks-font);
   font-size: 0.95rem;
@@ -934,7 +944,9 @@
 .slop-kinpaku .site-header-nav a,
 .slop-kinpaku .site-header-github,
 .live-mode-kinpaku .site-header-nav a,
-.live-mode-kinpaku .site-header-github {
+.live-mode-kinpaku .site-header-github,
+.neon-case-page .site-header-nav a,
+.neon-case-page .site-header-github {
   color: var(--ks-champagne);
 }
 
@@ -943,7 +955,9 @@
 .slop-kinpaku .site-header-nav a:hover,
 .slop-kinpaku .site-header-nav a[aria-current="page"],
 .live-mode-kinpaku .site-header-nav a:hover,
-.live-mode-kinpaku .site-header-nav a[aria-current="page"] {
+.live-mode-kinpaku .site-header-nav a[aria-current="page"],
+.neon-case-page .site-header-nav a:hover,
+.neon-case-page .site-header-nav a[aria-current="page"] {
   color: var(--ks-kinpaku);
 }
 
