@@ -100,7 +100,7 @@
   background:
     linear-gradient(90deg, var(--ks-ink) 0%, oklch(4% 0.004 95 / 0.65) 26%, transparent 48%, transparent 88%, var(--ks-ink) 100%),
     linear-gradient(180deg, oklch(4% 0.004 95 / 0.35) 0%, transparent 35%, var(--ks-ink) 100%),
-    url("/assets/neo-kinpaku/kintsugi-hero-v2.png") center / cover no-repeat;
+    url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png") center / cover no-repeat;
   filter: saturate(1.22) contrast(1.1);
 }
 
