@@ -715,11 +715,33 @@
   border-bottom-color: var(--ks-patina-pale);
 }
 
+/* Closing "go deeper" links under the usage examples — point to the full
+   workflow page and the command docs. */
+.downloads-rebuild-more {
+  margin: 30px auto 0;
+  max-width: 720px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-more a {
+  color: var(--ks-patina);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(70% 0.12 188 / 0.35);
+}
+.downloads-rebuild-more a:hover {
+  color: var(--ks-patina-pale);
+  border-bottom-color: var(--ks-patina-pale);
+}
+
 /* Center-aligned examples: each row is a vertical stack — the command line
    on top, the description below, both centered horizontally. */
+/* Usage examples now sit after the extras (the logical next step once the
+   skill, extension, CLI, and subscriptions are set up), so the separating
+   gap moves to the top. */
 .downloads-rebuild-examples {
   list-style: none;
-  margin: 0 auto 64px;
+  margin: 60px auto 0;
   padding: 0;
   display: grid;
   gap: 22px;
