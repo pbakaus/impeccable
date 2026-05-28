@@ -61,6 +61,25 @@ describe('live-copy-edit-agent', () => {
         failed: [{ entryId: 'b', reason: 'ambiguous', candidates: [] }],
         files: ['src/page.js'],
         notes: [],
+        warnings: [],
+      },
+    );
+  });
+
+  it('preserves structured warnings in batch results', () => {
+    assert.deepEqual(
+      parseCopyEditBatchResult('{"status":"done","appliedEntryIds":["a"],"files":["src/page.js"],"warnings":[{"reason":"repair_followup","file":"src/page.js"},"plain warning"]}'),
+      {
+        status: 'done',
+        message: null,
+        appliedEntryIds: ['a'],
+        failed: [],
+        files: ['src/page.js'],
+        notes: [],
+        warnings: [
+          { reason: 'repair_followup', file: 'src/page.js' },
+          { message: 'plain warning' },
+        ],
       },
     );
   });

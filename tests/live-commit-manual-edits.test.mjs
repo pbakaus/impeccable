@@ -15,6 +15,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SCRIPT = path.join(REPO_ROOT, 'skill/scripts/live-commit-manual-edits.mjs');
+const COMMIT_SOURCE = fs.readFileSync(SCRIPT, 'utf-8');
 
 let tmpDir;
 
@@ -51,6 +52,14 @@ function runCommit(extraArgs = [], env = {}) {
 }
 
 describe('live-commit-manual-edits.mjs batched AI apply', () => {
+  it('accumulates warnings returned by repair attempts', () => {
+    assert.match(
+      COMMIT_SOURCE,
+      /currentWarnings = \[\.\.\.currentWarnings, \.\.\.\(repairResult\.warnings \|\| \[\]\)\]/,
+      'repair agent warnings should be merged into the final manual Apply result instead of being dropped',
+    );
+  });
+
   it('batches staged edits and clears successful entries only after AI success', () => {
     fs.writeFileSync(path.join(tmpDir, 'src', 'page.html'), '<h1 class="hero">Hello</h1>\n');
     writeBuffer(tmpDir, {

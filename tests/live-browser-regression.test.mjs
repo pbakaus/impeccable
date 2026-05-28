@@ -77,6 +77,14 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('locks every global bar mode toggle while manual Apply is in flight', () => {
+    assert.match(
+      SOURCE,
+      /const controlsLocked = pendingApplyInFlight === true;[\s\S]{0,120}?\[pickToggle, insertToggle, detectToggle, designToggle\]\.forEach/,
+      'pending manual Apply must visually disable Pick, Insert, Detect, and Design together',
+    );
+  });
+
   it('handleServerLost preserves the current recoverable phase', () => {
     assert.doesNotMatch(
       SOURCE,

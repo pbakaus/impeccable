@@ -766,7 +766,7 @@ async function repairPostApplyValidation({
 
     currentFiles = mergeUniqueStrings(currentFiles, repairResult.files || []);
     currentNotes = [...currentNotes, ...(repairResult.notes || [])];
-    currentWarnings = [...currentWarnings];
+    currentWarnings = [...currentWarnings, ...(repairResult.warnings || [])];
     currentAppliedIds = mergeUniqueStrings(currentAppliedIds, repairResult.appliedEntryIds || []);
     currentFailed = [
       ...currentFailed,
@@ -1031,7 +1031,7 @@ export async function commitManualEdits({
       files: result.files || [],
       failed: aiFailed,
       notes: result.notes || [],
-      warnings: [],
+      warnings: result.warnings || [],
       repairReason: 'missing_touched_files',
       repairFailures: verificationFailuresForEntries(batch, reportedAppliedEntries, 'missing_touched_files'),
     });
@@ -1116,7 +1116,7 @@ export async function commitManualEdits({
       files: result.files || [],
       failed: nonRepairFailed,
       notes: result.notes || [],
-      warnings: [],
+      warnings: result.warnings || [],
       repairReason: 'source_verification_failed',
       repairFailures: verificationFailed,
     });
@@ -1144,7 +1144,7 @@ export async function commitManualEdits({
       files: result.files || [],
       failed,
       notes: result.notes || [],
-      warnings: postChecks.warnings || [],
+      warnings: [...(result.warnings || []), ...(postChecks.warnings || [])],
       postChecks,
     });
   }
@@ -1158,7 +1158,7 @@ export async function commitManualEdits({
     cleared,
     count,
     pageUrl,
-    warnings: postChecks.warnings,
+    warnings: [...(result.warnings || []), ...(postChecks.warnings || [])],
     notes: result.notes || [],
     ...counts,
   };

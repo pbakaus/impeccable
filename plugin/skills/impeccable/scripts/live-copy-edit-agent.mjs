@@ -357,6 +357,12 @@ function normalizeBatchResult(result) {
     : [];
   const files = Array.isArray(result.files) ? result.files.filter((file) => typeof file === 'string') : [];
   const notes = Array.isArray(result.notes) ? result.notes.filter((note) => typeof note === 'string') : [];
+  const warnings = Array.isArray(result.warnings)
+    ? result.warnings
+        .filter(Boolean)
+        .map((warning) => typeof warning === 'string' ? { message: warning } : warning)
+        .filter((warning) => warning && typeof warning === 'object')
+    : [];
   return {
     status,
     message: result.message || null,
@@ -364,6 +370,7 @@ function normalizeBatchResult(result) {
     failed,
     files,
     notes,
+    warnings,
   };
 }
 

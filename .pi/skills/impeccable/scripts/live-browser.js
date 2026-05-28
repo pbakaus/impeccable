@@ -7339,7 +7339,7 @@ void main() {
     sync(designToggle, designState.open);
 
     const controlsLocked = pendingApplyInFlight === true;
-    [pickToggle, detectToggle, designToggle].forEach((btn) => {
+    [pickToggle, insertToggle, detectToggle, designToggle].forEach((btn) => {
       if (!btn) return;
       btn.disabled = controlsLocked;
       btn.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
