@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
 import '../../styles/sub-pages.css';
 import '../../styles/docs-kinpaku.css';
 import {
@@ -23,18 +24,6 @@ for (const cat of CATEGORY_ORDER) {
     .filter(e => SKILL_CATEGORIES[e.id] === cat)
     .sort((a, b) => a.id.localeCompare(b.id))
     .map(e => ({ slug: e.id, tagline: e.data.tagline }));
-}
-
-const allCommands = entries.map(e => ({
-  slug: e.id,
-  category: SKILL_CATEGORIES[e.id] || 'system',
-}));
-
-const sidebarGroups: Record<string, { slug: string }[]> = {};
-for (const cat of CATEGORY_ORDER) {
-  sidebarGroups[cat] = allCommands
-    .filter(c => c.category === cat)
-    .sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 const session = [
@@ -60,43 +49,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
   bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
 >
   <div class="skills-layout">
-    <aside class="skills-sidebar" aria-label="Commands">
-      <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
-        <span class="skills-sidebar-toggle-label">Commands</span>
-        <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <div class="skills-sidebar-inner" id="skills-sidebar-inner">
-        <p class="skills-sidebar-label">Learn</p>
-        <div class="skills-sidebar-group">
-          <span class="skills-sidebar-category">Tutorials</span>
-          <ul class="skills-sidebar-list">
-            <li>
-              <a href="/tutorials"><span>All tutorials</span></a>
-            </li>
-            {tutorials.map(t => (
-              <li>
-                <a href={`/tutorials/${t.id}`}><span>{t.data.title}</span></a>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p class="skills-sidebar-label">Commands</p>
-        {CATEGORY_ORDER.map(cat => (
-          <div class="skills-sidebar-group">
-            <span class="skills-sidebar-category">{CATEGORY_LABELS[cat]}</span>
-            <ul class="skills-sidebar-list">
-              {sidebarGroups[cat].map(cmd => (
-                <li>
-                  <a href={`/docs/${cmd.slug}`}>
-                    <span>{cmd.slug}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </aside>
+    <DocsSidebar />
 
     <div class="skills-main">
       <div class="docs-index">
