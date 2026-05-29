@@ -190,10 +190,14 @@
 
 .live-mode-kinpaku .live-demo-frame {
   background: var(--ks-lacquer-deep);
-  border: 1px solid var(--ks-rule);
+  /* Crisp neutral hairline + tighter, deeper shadow that registers, instead of
+     a warm gold edge and a broad soft shadow that washes out on dark. */
+  border: 1px solid oklch(92% 0 0 / 0.1);
   border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 32px 80px oklch(2% 0.004 95 / 0.55);
+  box-shadow:
+    inset 0 1px 0 oklch(100% 0 0 / 0.05),
+    0 20px 48px -14px oklch(0% 0 0 / 0.6);
 }
 
 /* All .live-demo-* picker chrome (chrome bar, gbar, ctx, outline,

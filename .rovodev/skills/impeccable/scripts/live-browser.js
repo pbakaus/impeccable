@@ -46,9 +46,11 @@
     mist:      'oklch(90% 0.008 82 / 0.6)',     // light hairline
     white:     'oklch(99% 0 0)',
   };
-  // Picker bar chrome — mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css
+  // Picker bar chrome — mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css.
+  // Quiet neutral elevation: no gold halo ring (gold is reserved for the brand
+  // mark and the active control, not the container outline).
   const PICKER_SHADOW =
-    '0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28)';
+    '0 16px 36px -12px oklch(0% 0 0 / 0.6)';
   const FONT = 'system-ui, -apple-system, sans-serif';
   const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
   // z-index: detect overlays use 99999, so our UI must be above them
@@ -995,8 +997,8 @@
       transform: 'translateY(6px)',
       transition: 'opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       background: BP.surface,
-      border: '1.5px solid ' + BP.border,
-      borderRadius: '10px',
+      border: '1px solid ' + BP.border,
+      borderRadius: '8px',
       boxShadow: BP.shadow,
       transition: 'box-shadow 0.2s ease, opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       fontFamily: FONT, fontSize: '13px', color: BP.text,
@@ -1071,7 +1073,7 @@
     barEl.innerHTML = '';
     // Reset bar styling to the kinpaku picker palette
     barEl.style.background = BP.surface;
-    barEl.style.border = '1.5px solid ' + BP.border;
+    barEl.style.border = '1px solid ' + BP.border;
     barEl.style.boxShadow = BP.shadow;
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
@@ -2339,8 +2341,8 @@
       transformOrigin: 'bottom left',
       transition: 'opacity 0.18s ' + EASE + ', transform 0.2s ' + EASE,
       background: P.surface,
-      border: '1.5px solid ' + P.border,
-      borderRadius: '10px',
+      border: '1px solid ' + P.border,
+      borderRadius: '8px',
       boxShadow: P.shadow,
       padding: '6px',
       fontFamily: FONT,
@@ -6122,8 +6124,15 @@ void main() {
     return {
       surface: C.ink,
       surfaceDeep: C.ink,
-      border: C.brand,
-      hairline: 'oklch(58% 0.065 82 / 0.48)',
+      // Quiet neutral hairline (was the loud kinpaku gold border). Gold lives on
+      // the brand mark and the active control instead.
+      border: 'oklch(92% 0 0 / 0.13)',
+      // Crisp graphite pill behind the active toggle (was a murky kinpaku-dim
+      // wash); the gold text/icon carries the "selected" signal.
+      toggleActive: 'oklch(27% 0 0)',
+      // Neutral hairline for internal control borders / dividers (was a warm
+      // gold rule that read as muddy champagne edges on the pill / input / count).
+      hairline: 'oklch(92% 0 0 / 0.12)',
       text: 'oklch(84% 0.035 82)',
       textDim: 'oklch(63% 0.024 82)',
       accent: C.brand,
@@ -7032,8 +7041,8 @@ void main() {
       display: 'flex', alignItems: 'stretch',
       gap: '0',
       background: P.surface,
-      border: '1.5px solid ' + P.border,
-      borderRadius: '10px',
+      border: '1px solid ' + P.border,
+      borderRadius: '8px',
       boxShadow: P.shadow,
       fontFamily: FONT, fontSize: '12px', lineHeight: '1',
       opacity: '0',
@@ -7443,7 +7452,7 @@ void main() {
     // Sync one toggle's active state, colors, and slide-label visibility.
     function sync(btn, active) {
       if (!btn) return;
-      btn.style.background = active ? P.accentSoft : 'transparent';
+      btn.style.background = active ? P.toggleActive : 'transparent';
       btn.style.color = active ? P.accent : P.textDim;
       btn.dataset.active = active ? 'true' : 'false';
       if (active && btn._expandLabel) btn._expandLabel();

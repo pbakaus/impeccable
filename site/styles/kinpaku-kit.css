@@ -1099,16 +1099,21 @@
    constants are kept in sync with these tokens by hand.
    ============================================================ */
 
-/* Browser-chrome bar at the top of the mock (URL pill + dots). */
+/* Browser-chrome bar at the top of the mock (URL pill + dots). Refined to read
+   like a precise tool, not a stock screenshot frame: slimmer bar, small uniform
+   neutral dots, and a clean neutral-edged URL pill (no warm gold hairline). */
 .home-kinpaku .live-demo-chrome,
 .live-mode-kinpaku .live-demo-chrome {
+  padding: 9px 14px;
   background: var(--ks-graphite);
-  border-bottom: 1px solid var(--ks-rule);
+  border-bottom: 1px solid oklch(92% 0 0 / 0.07);
 }
 
 .home-kinpaku .live-demo-dot,
 .live-mode-kinpaku .live-demo-dot {
-  background: oklch(28% 0.01 95);
+  width: 8px;
+  height: 8px;
+  background: oklch(34% 0 0);
 }
 
 .home-kinpaku .live-demo-url,
@@ -1119,7 +1124,7 @@
   color: var(--ks-text-muted);
   letter-spacing: 0.04em;
   background: transparent;
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.08);
 }
 
 /* Active control surfaces — the bottom picker bar and the context bar
@@ -1131,10 +1136,12 @@
 .home-kinpaku .live-demo-ctx,
 .live-mode-kinpaku .live-demo-ctx {
   background: var(--ks-lacquer-deep);
-  border: 1.5px solid var(--ks-kinpaku);
-  box-shadow:
-    0 0 0 1px oklch(78% 0.12 82 / 0.18),
-    0 10px 28px oklch(0% 0 0 / 0.28);
+  /* Quiet neutral hairline instead of the loud 1.5px gold border + gold halo.
+     Gold is reserved for the brand mark and the active control, not the
+     container outline. */
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px -12px oklch(0% 0 0 / 0.6);
   color: var(--ks-champagne);
 }
 
@@ -1150,13 +1157,14 @@
   background: transparent;
 }
 
-/* Active state — soft kinpaku-dim pill with kinpaku text. The outer
-   gbar border carries the loud signal; the active button is the
-   quieter "currently selected" pill inside. */
+/* Active state — a crisp neutral pill with kinpaku text. The translucent
+   kinpaku-dim wash read as a murky smudge; a solid graphite chip with gold
+   text/icon makes the selected control precise. */
 .home-kinpaku .live-demo-gbar-btn.is-active,
 .live-mode-kinpaku .live-demo-gbar-btn.is-active {
-  background: oklch(78% 0.12 82 / 0.18);
+  background: oklch(27% 0 0);
   color: var(--ks-kinpaku);
+  border-radius: 6px;
 }
 
 /* Page chat — collapsed pill with chat + mic; expands on click. */
@@ -1167,9 +1175,9 @@
   height: 28px;
   width: 88px;
   margin: 0 4px 0 6px;
-  border-radius: 7px;
+  border-radius: 5px;
   background: var(--ks-graphite);
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.1);
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
@@ -1292,8 +1300,18 @@
 .home-kinpaku .live-demo-ctx-pill,
 .live-mode-kinpaku .live-demo-ctx-pill {
   background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.12);
   color: var(--ks-champagne);
+}
+
+/* Even heights across the configure row: the pill, input, count, and Go button
+   share one 30px baseline instead of stepping up and down. */
+.home-kinpaku .live-demo-ctx-row--configure > *,
+.live-mode-kinpaku .live-demo-ctx-row--configure > * {
+  height: 30px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
 }
 
 .home-kinpaku .live-demo-ctx-pill-caret,
@@ -1304,7 +1322,7 @@
 .home-kinpaku .live-demo-ctx-input,
 .live-mode-kinpaku .live-demo-ctx-input {
   background: var(--ks-graphite);
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.12);
   color: var(--ks-champagne);
 }
 
@@ -1316,7 +1334,7 @@
 .home-kinpaku .live-demo-ctx-count,
 .live-mode-kinpaku .live-demo-ctx-count {
   background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.12);
   color: var(--ks-text-muted);
 }
 
@@ -1377,8 +1395,12 @@
 .home-kinpaku .live-demo-outline,
 .live-mode-kinpaku .live-demo-outline {
   border-color: var(--ks-kinpaku);
+  border-width: 1.5px;
+  border-radius: 3px;
   color: var(--ks-kinpaku);
-  box-shadow: 0 0 0 4px oklch(78% 0.12 82 / 0.16);
+  /* No soft gold glow ring (off-brand accent halo); a crisp outline reads as a
+     precise selection, not a highlighter. */
+  box-shadow: none;
 }
 
 .home-kinpaku .live-demo-annotations,

@@ -1017,6 +1017,12 @@
   max-width: 100%;
 }
 
+/* The hero-scoped demo-chrome refinements (crisp outline, neutral chrome dots /
+   URL, quiet gbar border, crisp active-Pick pill, tighter radii, refined frame
+   elevation) were promoted into the shared picker chrome in kinpaku-kit.css /
+   live-mode-kinpaku.css / home-kinpaku.css so /live-mode and the injected
+   picker (skill/scripts/live-browser.js) match. Nothing hero-specific remains. */
+
 /* The stage holds a full (fake) website now, not a centered card. */
 .hero-live-demo .live-demo-stage {
   display: block;

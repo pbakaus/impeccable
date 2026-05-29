@@ -387,16 +387,16 @@ The footer can carry the strongest oxidation accent. Use the gold seam plus pati
 The global bottom bar and the contextual bar (configure / cycling / accept) share one chrome treatment. Source of truth: `skill/scripts/live-browser.js` (`barPaletteForTheme`, `initGlobalBar`, `initBar`). Homepage and `/live-mode` demos mirror it via `.live-demo-gbar` and `.live-demo-ctx` in `site/styles/kinpaku-kit.css`.
 
 - **Surface:** Lacquer Deep (`oklch(4% 0.004 95)`), always. Picker chrome does not adapt to the host page's light/dark theme.
-- **Border:** 1.5px solid Kinpaku Gold (`oklch(84% 0.19 80.46)`).
-- **Shadow:** `0 0 0 1px oklch(78% 0.12 82 / 0.18), 0 10px 28px oklch(0% 0 0 / 0.28)` (kinpaku halo + drop shadow).
+- **Border:** 1px solid neutral hairline (`oklch(92% 0 0 / 0.13)`), radius 8px. The bar reads as a quiet precise tool; gold is reserved for the brand mark and the active control, not the container outline.
+- **Shadow:** `0 16px 36px -12px oklch(0% 0 0 / 0.6)` (tight neutral drop, no gold halo ring).
 - **Brand mark:** Impeccable carved-tile icon (same SVG paths as `site/components/Header.astro` / `favicon.svg`), kinpaku fill on transparent ground. Not a "/" slash or rounded-square placeholder.
 - **Default controls:** Champagne labels at rest (`oklch(84% 0.035 82)`), muted icons (`oklch(63% 0.024 82)`).
-- **Active toggle:** Kinpaku-dim pill background (`oklch(78% 0.12 82 / 0.18)`) with kinpaku text.
+- **Active toggle:** Crisp graphite pill (`oklch(27% 0 0)`) with kinpaku text/icon. The gold carries the "selected" signal; the pill itself is neutral, not a kinpaku-dim wash.
 - **Exit hover:** Vermilion (`oklch(58% 0.15 35)`), not a neutral gray lift.
 - **Context bar internals:** Graphite-2 pills, gold hairline dividers, kinpaku Go/Accept CTAs with lacquer-deep text.
 - **DESIGN.md toggle icon:** Four-quadrant swatch; bottom-right uses warm charcoal (`oklch(34% 0.014 82)`) so the tile reads against lacquer-deep, not void-black.
 
-**The Picker Is Brand Rule.** Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the full kinpaku border, lacquer-deep fill, and carved-tile mark.
+**The Picker Is Brand Rule.** Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the lacquer-deep fill, the carved-tile mark, and gold on the mark + active control. Brand reads through the mark and the gold accent rather than a gold border ringing the bar; the container itself stays a quiet neutral-edged tool.
 
 ## 7. Do and Do Not
 
