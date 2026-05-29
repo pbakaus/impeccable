@@ -18,11 +18,11 @@ colors:
   graphite-2: "oklch(19% 0.008 95)"           # one step up from graphite
 
   # Text
-  champagne: "oklch(84% 0.035 82)"            # headlines, <strong>
-  text-warm: "oklch(81% 0.03 82)"             # body
-  text-muted: "oklch(63% 0.024 82)"           # captions, meta
-  text-faint: "oklch(52% 0.018 82)"           # subdued
-  text-mute-deep: "oklch(48% 0.018 82)"       # disabled
+  champagne: "oklch(91% 0.006 90)"            # headlines, <strong> — crisp white (name kept for compat)
+  text-warm: "oklch(88% 0.008 90)"            # body — crisp near-white
+  text-muted: "oklch(72% 0.01 90)"            # captions, meta
+  text-faint: "oklch(62% 0.008 90)"           # subdued
+  text-mute-deep: "oklch(52% 0.008 90)"       # disabled
 
   # Gold ramp
   kinpaku-pale: "oklch(86% 0.07 84)"          # hover lift, pale fills
@@ -277,11 +277,11 @@ Do not hand-type oklch values or font sizes in page CSS. If a value isn't in the
 
 ### Text
 
-- **Champagne** (`oklch(84% 0.035 82)`): Headlines, `<strong>`, important labels.
-- **Warm Text** (`oklch(81% 0.03 82)`): Body copy on dark surfaces.
-- **Muted Text** (`oklch(63% 0.024 82)`): Metadata, captions, secondary labels. The homepage lifts this to 65% on busier tile backgrounds.
-- **Faint Text** (`oklch(52% 0.018 82)`): Subdued labels.
-- **Mute Deep** (`oklch(48% 0.018 82)`): Disabled copy.
+- **Champagne** (`oklch(91% 0.006 90)`): Headlines, `<strong>`, important labels. Near-neutral and the brightest text tier (token name is legacy; the role is no longer warm). Text carries no warmth; the gold accents and surfaces do.
+- **Body Text** (`oklch(88% 0.008 90)`): Body copy on dark surfaces. Near-neutral and bright so reading copy reads crisp, not mushy.
+- **Muted Text** (`oklch(72% 0.01 90)`): Metadata, captions, secondary labels.
+- **Faint Text** (`oklch(62% 0.008 90)`): Subdued labels.
+- **Mute Deep** (`oklch(52% 0.008 90)`): Disabled copy.
 
 ### Secondary and State
 

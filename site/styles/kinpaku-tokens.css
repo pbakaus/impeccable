@@ -45,14 +45,17 @@
 	--ks-graphite-2:     oklch(19% 0.008 95);   /* one step up from graphite */
 
 	/* ============================================================
-	   Text. Warm champagne family. Body text reads at ≥0.92rem on
-	   lacquer; smaller than that loses to the warm noise floor.
+	   Text. The whole text ramp runs near-neutral and bright so copy,
+	   headings, and labels read crisp on lacquer instead of mushing
+	   into the warm floor. Warmth now lives only in the gold accents
+	   and the surfaces, not in the type. (--ks-champagne keeps its name
+	   for compatibility but is no longer warm.)
 	   ============================================================ */
-	--ks-champagne:      oklch(84% 0.035 82);   /* headlines, <strong> */
-	--ks-text:           oklch(81% 0.03 82);    /* body */
-	--ks-text-muted:     oklch(63% 0.024 82);   /* captions, meta */
-	--ks-text-faint:     oklch(52% 0.018 82);   /* subdued */
-	--ks-text-mute-deep: oklch(48% 0.018 82);   /* disabled */
+	--ks-champagne:      oklch(91% 0.006 90);   /* headlines, <strong> — crisp white */
+	--ks-text:           oklch(88% 0.008 90);   /* body — crisp near-white */
+	--ks-text-muted:     oklch(72% 0.01 90);    /* captions, meta */
+	--ks-text-faint:     oklch(62% 0.008 90);   /* subdued */
+	--ks-text-mute-deep: oklch(52% 0.008 90);   /* disabled */
 
 	/* ============================================================
 	   Rules. Gold hairlines. Default is quiet; "strong" appears on
