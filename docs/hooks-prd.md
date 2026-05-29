@@ -63,7 +63,7 @@ The hook is **on by default after install**, in **advisory mode only**. Findings
 
 - Event: `PostToolUse`.
 - Tool matcher: `Edit | Write | MultiEdit | apply_patch` on Claude Code; `Edit | Write | apply_patch` on Codex (Codex has no `MultiEdit` tool).
-- File filter: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`. Both harnesses filter in the hook script. Claude's native `if: "Edit(*.{…})"` permission rule binds to one tool name only, so it would skip `Write` and `MultiEdit`; we do not use `if:` on either side.
+- File filter: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`. Both harnesses filter in the hook script. Claude's native `if: "Edit(*.{…})"` permission rule binds to one tool name only, so it would skip `Write` and `MultiEdit`; we do not use `if:` on either side.
 
 ### Silent pass
 
@@ -174,7 +174,7 @@ Different file types need different comment syntaxes. The hook recognizes all fo
 |---|---|
 | `.html`, `.vue` template, `.svelte` markup, `.astro` markup | `<!-- impeccable: ignore <rule-id> -->` |
 | `.jsx`, `.tsx` JSX expressions | `{/* impeccable: ignore <rule-id> */}` |
-| `.css`, `.scss`, `.less` | `/* impeccable: ignore <rule-id> */` |
+| `.css`, `.scss`, `.sass`, `.less` | `/* impeccable: ignore <rule-id> */` |
 | `.ts`, `.js` (and `.vue`/`.svelte` script blocks) | `// impeccable: ignore <rule-id>` |
 
 To suppress all rules on the next line use `impeccable: ignore *`. Conventions match ESLint, Stylelint, and Biome so they are familiar. Detection is line-based string match — comments inside template literals will still match, which is a small false-positive risk we accept for v1.
@@ -269,7 +269,7 @@ import path from "node:path";
 
 const ALLOWED_EXTS = new Set([
   ".tsx", ".jsx", ".html", ".vue", ".svelte", ".astro",
-  ".css", ".scss", ".less", ".ts", ".js",
+  ".css", ".scss", ".sass", ".less", ".ts", ".js",
 ]);
 
 // S6: hard-skip sensitive files even if extension matches.
@@ -394,7 +394,7 @@ Schema:
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"],
-            "if": "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,ts,js})",
+            "if": "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,sass,less,ts,js})",
             "timeout": 5
           }
         ]

@@ -627,7 +627,7 @@ describe('suppressionNotice()', () => {
 
 describe('ALLOWED_EXTS', () => {
   it('covers the documented design-relevant extensions', () => {
-    for (const ext of ['.tsx', '.jsx', '.html', '.css', '.vue', '.svelte', '.astro', '.ts', '.js', '.scss', '.less', '.htm']) {
+    for (const ext of ['.tsx', '.jsx', '.html', '.css', '.vue', '.svelte', '.astro', '.ts', '.js', '.scss', '.sass', '.less', '.htm']) {
       assert.ok(ALLOWED_EXTS.has(ext), `missing: ${ext}`);
     }
     for (const ext of ['.md', '.py', '.go', '.json']) {
@@ -777,6 +777,31 @@ describe('runHook() — co-located stylesheet scan', () => {
     });
     assert.match(r.stdout, /Required design corrections/);
     assert.match(r.stdout, /styles\.css/);
+  });
+
+  it('flags slop in co-located .sass when only App.jsx was edited', async () => {
+    const app = write('src/App.jsx', 'export default function App() { return <main className="x" />; }');
+    write('src/styles.sass', ".card\n  border-left: 4px solid #3b82f6");
+    const det = {
+      detectText: (content, filePath) => (
+        filePath.endsWith('.sass') ? [finding('side-tab', 2)] : []
+      ),
+      detectHtml: () => [],
+    };
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'co-scan-sass',
+        cwd,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'apply_patch',
+        tool_input: { command: `*** Update File: ${app}\n` },
+      }),
+      env: {},
+      cwd,
+      detector: det,
+    });
+    assert.match(r.stdout, /Required design corrections/);
+    assert.match(r.stdout, /styles\.sass/);
   });
 });
 

@@ -43,7 +43,7 @@ export const ENVELOPE_PREFIX = '[impeccable@1]';
 
 export const ALLOWED_EXTS = new Set([
   '.tsx', '.jsx', '.html', '.htm', '.vue', '.svelte', '.astro',
-  '.css', '.scss', '.less', '.ts', '.js',
+  '.css', '.scss', '.sass', '.less', '.ts', '.js',
 ]);
 
 // Hard-skip regex for sensitive files. Cannot be turned off via config.
@@ -587,8 +587,8 @@ function envProjectDir(fallback) {
 const UI_CODE_EXTS = new Set(['.jsx', '.tsx', '.vue', '.svelte', '.astro']);
 const STYLE_EXTS = new Set(['.css', '.scss', '.sass', '.less']);
 const CO_SCAN_STYLE_NAMES = [
-  'styles.css', 'styles.scss', 'styles.less',
-  'index.css', 'global.css', 'globals.css',
+  'styles.css', 'styles.scss', 'styles.sass', 'styles.less',
+  'index.css', 'index.sass', 'global.css', 'global.sass', 'globals.css', 'globals.sass',
 ];
 const MAX_SCAN_TARGETS = 6;
 

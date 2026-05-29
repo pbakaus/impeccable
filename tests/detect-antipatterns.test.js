@@ -152,6 +152,11 @@ describe('detectText — CSS borders', () => {
     expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
   });
 
+  test('detects border-left shorthand in Sass', () => {
+    const f = detectText(".card\n  border-left: 4px solid #3b82f6", 'test.sass');
+    expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
+  });
+
   test('ignores neutral border', () => {
     const f = detectText('.card { border-left: 4px solid #e5e7eb; }', 'test.css');
     expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
@@ -802,6 +807,10 @@ describe('ANTIPATTERNS registry', () => {
 // ---------------------------------------------------------------------------
 
 describe('walkDir', () => {
+  test('includes Sass files in scannable extensions', () => {
+    expect(SCANNABLE_EXTENSIONS.has('.sass')).toBe(true);
+  });
+
   test('finds scannable files', () => {
     const files = walkDir(FIXTURES);
     expect(files.length).toBeGreaterThanOrEqual(3);
@@ -1396,6 +1405,16 @@ describe('buildImportGraph', () => {
     const themeImports = graph.get(path.join(MF, 'theme.scss'));
     expect(themeImports).toBeDefined();
     expect(themeImports.has(path.join(MF, 'variables.scss'))).toBe(true);
+  });
+
+  test('resolves Sass @import', () => {
+    const graph = buildImportGraph([
+      path.join(MF, 'theme.sass'),
+      path.join(MF, 'variables.sass'),
+    ]);
+    const themeImports = graph.get(path.join(MF, 'theme.sass'));
+    expect(themeImports).toBeDefined();
+    expect(themeImports.has(path.join(MF, 'variables.sass'))).toBe(true);
   });
 
   test('ignores bare/node_modules imports', () => {

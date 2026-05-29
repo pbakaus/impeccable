@@ -446,7 +446,7 @@ function detectText(content, filePath, options = {}) {
 
   // Run regex matchers on the full file content (catches Tailwind classes, inline styles)
   // Enable block context for CSS files where related properties span multiple lines
-  const cssLike = new Set(['.css', '.scss', '.less']);
+  const cssLike = new Set(['.css', '.scss', '.sass', '.less']);
   findings.push(...runRegexMatchers(lines, filePath, 0, cssLike.has(ext) || null, {
     profile,
     phase: 'source',

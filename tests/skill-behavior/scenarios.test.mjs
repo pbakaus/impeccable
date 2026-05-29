@@ -159,7 +159,7 @@ for (const modelId of resolveModelList()) {
         // also counts.
         const designSignal =
           readsMatching(trace, 'design.md').length > 0 ||
-          trace.readPaths.some((p) => /\.(css|scss|less|ts|tsx|js|jsx|json|svelte|astro)$/i.test(p)) ||
+          trace.readPaths.some((p) => /\.(css|scss|sass|less|ts|tsx|js|jsx|json|svelte|astro)$/i.test(p)) ||
           trace.listPaths.length > 0;
         assert.ok(
           designSignal,
