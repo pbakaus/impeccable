@@ -446,7 +446,7 @@
    ============================================================================ */
 
 .designing-kinpaku .designing-phase-sub code {
-  color: var(--ks-kinpaku);
+  color: var(--ks-code-fg);
 }
 
 .designing-kinpaku .designing-phase-commands {
@@ -834,7 +834,7 @@
 .designing-kinpaku .docs-viz-live-btn {
   align-self: start;
   padding: 8px 14px;
-  background: var(--ks-kinpaku-pale);
+  background: var(--ks-kinpaku);
   color: var(--ks-lacquer-deep);
   border: 0;
   border-radius: 2px;
@@ -848,8 +848,7 @@
   position: absolute;
   inset: 14px 14px 108px;
   border: 1.5px solid var(--ks-kinpaku);
-  border-radius: 4px;
-  box-shadow: 0 0 0 4px oklch(78% 0.12 82 / 0.1);
+  border-radius: 3px;
   pointer-events: none;
 }
 /* top: auto is required — the base/legacy rule sets top: 16px, and leaving it
@@ -865,11 +864,9 @@
   gap: 6px;
   padding: 6px;
   background: var(--ks-lacquer-deep);
-  border: 1.5px solid var(--ks-kinpaku);
-  border-radius: 6px;
-  box-shadow:
-    0 0 0 1px oklch(78% 0.12 82 / 0.18),
-    0 6px 18px oklch(0% 0 0 / 0.4);
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px -4px oklch(0% 0 0 / 0.5);
 }
 .designing-kinpaku .docs-viz-live-ctx-nav,
 .designing-kinpaku .docs-viz-live-ctx-discard,
@@ -887,7 +884,7 @@
   padding: 4px 6px;
 }
 .designing-kinpaku .docs-viz-live-ctx-accept {
-  background: var(--ks-kinpaku-pale);
+  background: var(--ks-kinpaku);
   color: var(--ks-lacquer-deep);
   border-radius: 3px;
   font-weight: 500;
@@ -918,11 +915,9 @@
   padding: 5px 7px;
   max-width: calc(100% - 24px);
   background: var(--ks-lacquer-deep);
-  border: 1.5px solid var(--ks-kinpaku);
-  border-radius: 9px;
-  box-shadow:
-    0 0 0 1px oklch(78% 0.12 82 / 0.18),
-    0 10px 28px oklch(0% 0 0 / 0.28);
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px -6px oklch(0% 0 0 / 0.5);
 }
 .designing-kinpaku .docs-viz-live-gbar-mark {
   display: inline-flex;
@@ -946,7 +941,7 @@
   flex-shrink: 0;
 }
 .designing-kinpaku .docs-viz-live-gbar-btn.is-active {
-  background: oklch(78% 0.12 82 / 0.18);
+  background: oklch(27% 0 0);
   color: var(--ks-kinpaku);
 }
 .designing-kinpaku .docs-viz-live-gbar-btn-mono {
@@ -1230,7 +1225,7 @@
 .designing-kinpaku .designing-extract-after {
   justify-self: end;
   padding: 8px 18px;
-  background: var(--ks-kinpaku-pale);
+  background: var(--ks-kinpaku);
   color: var(--ks-lacquer-deep);
   border-radius: 2px;
   font-family: var(--ks-font);
@@ -1374,7 +1369,7 @@
   font-size: 1rem;
   margin-bottom: 6px;
 }
-.designing-kinpaku .designing-avoid-title code { color: var(--ks-kinpaku); }
+.designing-kinpaku .designing-avoid-title code { color: var(--ks-code-fg); }
 .designing-kinpaku .designing-avoid-desc {
   color: var(--ks-text);
   font-size: 0.94rem;
