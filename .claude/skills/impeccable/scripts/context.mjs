@@ -218,56 +218,9 @@ async function computeUpdateDirective(now = Date.now()) {
   }
 }
 
-// ─── Codex subagent self-heal ───────────────────────────────────────────────
-// Codex reads custom subagents from .codex/agents/*.toml, a sibling of the
-// skill dir that skill installers (notably `npx skills add`) don't carry. The
-// build bundles the .toml inside the Codex skill variants, so when this module
-// runs under a Codex install and the project is missing the subagent, point the
-// agent at the bundled copy. Self-resolves the moment the file is copied.
-
-const CODEX_AGENT_FILE = 'impeccable_asset_producer.toml';
-
-/**
- * Returns a one-time directive when (a) the running harness is Codex -- detected
- * purely from this module's install path, since each harness loads its own skill
- * copy -- and (b) the bundled subagent .toml exists but the project's
- * .codex/agents/ copy does not. Returns null in every other case. Best-effort:
- * any error yields null and never disrupts context output.
- */
-export function computeCodexAgentDirective({ modulePath, fileExists = fs.existsSync } = {}) {
-  try {
-    if (!modulePath) return null;
-    const here = path.dirname(modulePath);
-    const skillRoot = path.resolve(here, '..');
-    const providerDir = path.basename(path.resolve(here, '..', '..', '..'));
-    const projectRoot = path.resolve(here, '..', '..', '..', '..');
-
-    // Only the variants Codex loads as a skill carry the bundled subagent.
-    if (providerDir !== '.agents' && providerDir !== '.codex') return null;
-
-    const bundledToml = path.join(skillRoot, 'agents', CODEX_AGENT_FILE);
-    const installedToml = path.join(projectRoot, '.codex', 'agents', CODEX_AGENT_FILE);
-    if (!fileExists(bundledToml)) return null; // older build without the bundled copy
-    if (fileExists(installedToml)) return null; // already installed -- nothing to do
-
-    const destDir = path.join(projectRoot, '.codex', 'agents');
-    return (
-      `CODEX_AGENT_MISSING: The Impeccable asset-producer subagent is not installed for Codex. ` +
-      `Codex reads custom subagents from .codex/agents/*.toml, but ${installedToml} is missing. ` +
-      `To enable it, copy the bundled definition once: ` +
-      `\`mkdir -p "${destDir}" && cp "${bundledToml}" "${destDir}/"\`. ` +
-      `This is optional and only affects the asset-production subagent; continue the current task either ` +
-      `way, and do not raise this again this session.`
-    );
-  } catch {
-    return null;
-  }
-}
-
 async function cli() {
   const ctx = loadContext(process.cwd());
   const updateDirective = await computeUpdateDirective();
-  const codexDirective = computeCodexAgentDirective({ modulePath: fileURLToPath(import.meta.url) });
 
   if (!ctx.hasProduct) {
     // Direct stdout message instead of relying on empty output as a signal
@@ -278,7 +231,6 @@ async function cli() {
       'instructions to write PRODUCT.md before resuming.',
     ];
     if (updateDirective) parts.push(updateDirective);
-    if (codexDirective) parts.push(codexDirective);
     process.stdout.write(parts.join('\n\n---\n\n') + '\n');
     process.exit(0);
   }
@@ -292,7 +244,6 @@ async function cli() {
     : `NEXT STEP: You MUST now read the matching register reference (\`reference/brand.md\` or \`reference/product.md\`) before producing any design output. Pick based on PRODUCT.md above.`;
   parts.push(next);
   if (updateDirective) parts.push(updateDirective);
-  if (codexDirective) parts.push(codexDirective);
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
 }
 

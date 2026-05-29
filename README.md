@@ -157,15 +157,13 @@ cp -r dist/gemini/.gemini your-project/
 ```bash
 # Project-local
 cp -r dist/agents/.agents your-project/
-mkdir -p your-project/.codex
-cp -r dist/codex/.codex/agents your-project/.codex/
 
 # Or user-wide
 mkdir -p ~/.agents/skills
 cp -r dist/agents/.agents/skills/* ~/.agents/skills/
-mkdir -p ~/.codex
-cp -r dist/codex/.codex/agents ~/.codex/
 ```
+
+> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed.
 
 **GitHub Copilot:**
 ```bash

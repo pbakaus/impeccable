@@ -50,9 +50,9 @@ const FIELD_SPECS = {
 };
 
 // Provider builds that Codex loads as a skill (it reads skills from .agents/skills,
-// and the .codex build mirrors it). For these, the Codex subagent .toml also travels
-// INSIDE the skill dir so context.mjs can point a running Codex agent at a local copy
-// when the sibling .codex/agents/ definition is missing (see skill/scripts/context.mjs).
+// and the .codex build mirrors it). For these, the Codex subagent .toml travels
+// INSIDE the skill's agents/ folder, which Codex auto-discovers once the skill is
+// installed -- so no separate .codex/agents/ sidecar copy is needed.
 const CODEX_SKILL_PROVIDERS = new Set(['agents', 'codex']);
 
 function humanizeSkillName(name) {
@@ -266,10 +266,10 @@ export function createTransformer(config) {
         }
       }
 
-      // Bundle the Codex subagent .toml inside the skill dir for the variants
-      // Codex actually loads. The sibling .codex/agents/ definition is what Codex
-      // reads at runtime, but installers (notably `npx skills add`) only carry the
-      // skills/ subtree -- so context.mjs uses this in-skill copy to self-heal.
+      // Bundle the Codex subagent .toml inside the skill's agents/ folder for the
+      // variants Codex loads as a skill. Codex auto-discovers agents nested in an
+      // installed skill, so this in-skill copy is the whole delivery -- the
+      // skills/ install carries it and no .codex/agents/ sidecar copy is required.
       if (CODEX_SKILL_PROVIDERS.has(provider)) {
         for (const agent of skill.agents || []) {
           if (agent.providers && !agent.providers.includes('codex')) continue;

@@ -101,11 +101,10 @@ site/public/js/generated/
 # time, and they enable clean submodule use. Run `bun run build` to refresh
 # them after editing skill/.
 #
-# Codex CLI consumes `.agents/skills/`; native custom agents live under
-# `.codex/agents/`. Keep only those agent definitions tracked.
+# Codex CLI consumes `.agents/skills/`; the asset-producer subagent now ships
+# nested inside that skill (agents/*.toml), auto-discovered on install, so
+# nothing under `.codex/` is tracked.
 .codex/*
-!.codex/agents/
-!.codex/agents/**
 .astro/
 
 # Local-only scratch for exploratory scripts, parked pages, and unused asset candidates.

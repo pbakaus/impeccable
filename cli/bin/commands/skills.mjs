@@ -398,36 +398,6 @@ function copyProviderSkills(bundleDir, root, targets) {
   return written;
 }
 
-/**
- * Codex reads custom subagents from `.codex/agents/*.toml`, a sibling of the
- * skill dir that the skills/ copy never touches. Treat it as a sidecar: only
- * write it for projects that actually use Codex, so a pure Claude project
- * doesn't get a stray `.codex/` folder. Codex-likely = the .agents (Codex
- * skills) variant is a target, or a global ~/.codex install exists.
- */
-function isCodexLikely(targets) {
-  return targets.includes('.agents') || existsSync(join(homedir(), '.codex'));
-}
-
-/**
- * Copy the Codex subagent definitions from the bundle's top-level `.codex/agents`
- * into the project's `.codex/agents`. Returns the number of files written (0 when
- * the bundle has none).
- */
-function installCodexAgents(bundleDir, root) {
-  const srcDir = join(bundleDir, '.codex', 'agents');
-  if (!existsSync(srcDir)) return 0;
-  const destDir = join(root, '.codex', 'agents');
-  let written = 0;
-  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    mkdirSync(destDir, { recursive: true });
-    writeFileSync(join(destDir, entry.name), readFileSync(join(srcDir, entry.name)));
-    written++;
-  }
-  return written;
-}
-
 async function install(flags) {
   const force = flags.includes('--force');
   const yes = flags.includes('-y') || flags.includes('--yes');
@@ -473,15 +443,8 @@ async function install(flags) {
   }
 
   let written = 0;
-  let codexAgents = 0;
   try {
     written = copyProviderSkills(bundleDir, root, targets);
-    // Codex users also need the asset-producer subagent, which lives in
-    // .codex/agents/ (a sibling of the skill dir, not part of skills/). Do this
-    // before the bundle is cleaned up below. Best-effort: never fail the install.
-    if (isCodexLikely(targets)) {
-      try { codexAgents = installCodexAgents(bundleDir, root); } catch {}
-    }
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
     console.error(`Install failed: ${e.message}`);
@@ -494,7 +457,6 @@ async function install(flags) {
     process.exit(1);
   }
   console.log(`Installed impeccable into: ${targets.join(', ')}`);
-  if (codexAgents > 0) console.log(`Installed ${codexAgents} Codex subagent(s) into .codex/agents/`);
 
   // Ask about prefixing (skip in CI mode unless --prefix= is set)
   let prefix = '';
@@ -703,18 +665,9 @@ async function update(flags = []) {
 
   // Compare local vs remote -- skip if already up to date
   if (isUpToDate(root, providers, tmpDir)) {
-    // Skills match, but the Codex subagent sidecar may still be missing (e.g.
-    // an `npx skills add` install that only carried skills/). Heal it before
-    // declaring nothing to do.
-    let healed = 0;
-    if (isCodexLikely(providers)
-        && !existsSync(join(root, '.codex', 'agents', 'impeccable_asset_producer.toml'))) {
-      try { healed = installCodexAgents(tmpDir, root); } catch {}
-    }
     rmSync(tmpDir, { recursive: true, force: true });
     const v = getSkillsVersion(root);
-    if (healed > 0) console.log(`Installed ${healed} Codex subagent(s) into .codex/agents/`);
-    console.log(`Skills are up to date${v ? ` (v${v})` : ''}.${healed > 0 ? '' : ' Nothing to do.'}`);
+    console.log(`Skills are up to date${v ? ` (v${v})` : ''}. Nothing to do.`);
     process.exit(0);
   }
 
@@ -749,11 +702,6 @@ async function update(flags = []) {
         copyDirSync(src, dest);
         updated++;
       }
-    }
-
-    // Refresh the Codex subagent sidecar (.codex/agents/) alongside the skills.
-    if (isCodexLikely(providers)) {
-      try { installCodexAgents(tmpDir, root); } catch {}
     }
 
     rmSync(tmpDir, { recursive: true, force: true });

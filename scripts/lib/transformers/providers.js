@@ -40,7 +40,9 @@ export const PROVIDERS = {
     frontmatterFields: [],
     includeVersion: false,
     writeOpenAIMetadata: true,
-    agentFormat: 'codex-toml',
+    // No agentFormat: the Codex subagent ships nested inside the skill's own
+    // agents/ folder (see CODEX_SKILL_PROVIDERS in factory.js), which Codex
+    // auto-discovers on install. No top-level .codex/agents/ sidecar is emitted.
   },
   agents: {
     provider: 'agents',
