@@ -27,7 +27,6 @@ import {
   truthy,
   writeAuditLog,
   resolveHarness,
-  normalizeHookEvent,
 } from './hook-lib.mjs';
 
 const UI_DEPS = new Set([
@@ -103,7 +102,6 @@ async function main() {
     || process.env.CURSOR_PROJECT_DIR
     || process.cwd();
   const harness = resolveHarness(inheritedEnv, event);
-  event = normalizeHookEvent(event, cwd, harness);
 
   if (!projectIsScannable(cwd)) {
     writeAuditLog(process.env, {
