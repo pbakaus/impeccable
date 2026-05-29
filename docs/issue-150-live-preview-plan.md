@@ -9,9 +9,10 @@ The current branch introduces source-shadow previews for Svelte so variants are 
 ## Current Status
 
 - Svelte source-shadow Accept fix is implemented.
+- Svelte manual pass with the user is complete.
 - React stateful fixture is added and passing the same automated flow.
 - Focused live tests, Svelte/React live E2E, build, and full test suite have passed.
-- Manual Svelte/React user checks and the DeepSeek-backed final run are still pending.
+- React manual user check and the DeepSeek-backed final run are still pending.
 
 ## Svelte Fix Plan
 
@@ -39,18 +40,20 @@ The current branch introduces source-shadow previews for Svelte so variants are 
 
 ### Svelte
 
-- [ ] Reset temp Svelte app and live session state.
-- [ ] Start Svelte dev server.
-- [ ] Start Impeccable live server.
-- [ ] Start plain `live-poll.mjs`; do not run a demo or autonomous agent.
-- [ ] User adds an expense.
-- [ ] User selects the expense row.
-- [ ] User runs Polish or Bolder.
-- [ ] User cycles variants.
-- [ ] User accepts a variant.
-- [ ] Accepted styling remains visible immediately after Accept.
-- [ ] Row text is real text, not `{expenses[0].name}` / `{expenses[0].amount}`.
-- [ ] Expense count remains `1 offen`.
+- [x] Reset temp Svelte app and live session state.
+- [x] Start Svelte dev server.
+- [x] Start Impeccable live server.
+- [x] Start plain `live-poll.mjs`; do not run a demo or autonomous agent.
+- [x] User adds an expense.
+- [x] User selects the expense row.
+- [x] User runs Polish or Bolder.
+- [x] User cycles variants.
+- [x] User accepts a variant.
+- [x] Accepted styling remains visible immediately after Accept.
+- [x] Row text is real text, not `{expenses[0].name}` / `{expenses[0].amount}`.
+- [x] Expense count remains `1 offen`.
+
+Manual note, 2026-05-30 07:46 JST: ran `/tmp/impeccable-svelte-manual` at `http://127.0.0.1:5173/` with Impeccable helper `8401` and plain polling only. The user added the expense row, selected it, ran Polish, accepted variant 2, and the accept event completed with deferred Svelte source write.
 
 ### React
 
