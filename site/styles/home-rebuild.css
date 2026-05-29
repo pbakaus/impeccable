@@ -499,13 +499,13 @@
    than .home-kinpaku code alone). Keeps the CLI block in the softer code-gold
    so the line reads as a terminal command, not a pumpkin headline. */
 .home-kinpaku code.slop-teaser-cli {
-  color: oklch(82% 0.11 82);
+  color: var(--ks-code-block-fg);
   font-family: var(--ks-mono);
   font-size: 0.86rem;
-  background: var(--ks-lacquer-raised);
+  background: var(--ks-code-block-bg);
   padding: 10px 16px;
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
+  border: 1px solid var(--ks-code-block-border);
+  border-radius: var(--ks-code-block-radius);
   user-select: all;
 }
 
@@ -555,8 +555,8 @@
   --card-fg-strong: var(--ks-champagne);
   --card-fg-muted: var(--ks-muted);
   --card-accent: var(--ks-kinpaku);
-  --card-cmd-bg: oklch(0.11 0 0);
-  --card-cmd-fg: var(--ks-champagne);
+  --card-cmd-bg: var(--ks-code-block-bg);
+  --card-cmd-fg: var(--ks-code-block-fg);
   --card-copy-border: var(--ks-rule);
   --card-copy-fg: var(--ks-kinpaku);
   --card-copy-hover-bg: oklch(77% 0.14 82 / 0.08);

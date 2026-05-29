@@ -92,10 +92,11 @@
    (3) keep the chip treatment subtle so it doesn't drag attention off the
    prose. */
 .home-kinpaku code {
-  color: oklch(82% 0.11 82);
-  background: oklch(78% 0.12 82 / 0.08);
-  border: 1px solid oklch(78% 0.12 82 / 0.14);
-  border-radius: 3px;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border: 0;
+  border-radius: var(--ks-code-radius);
+  font-family: var(--ks-mono);
   font-size: 0.88em;
   padding: 0.05em 0.4em;
 }

@@ -1044,17 +1044,17 @@
 .docs-kinpaku .prose code {
   font-family: var(--ks-mono);
   font-size: 0.84em;
-  color: var(--ks-champagne);
-  background: var(--ks-graphite-2);
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
   border: 0;
   padding: 4px 7px;
-  border-radius: 3px;
+  border-radius: var(--ks-code-radius);
 }
 
 /* Inline code that is itself a link — get the kinpaku cue back, since
    the link semantic is the meaningful one. */
 .docs-kinpaku .prose a code {
-  color: var(--ks-kinpaku);
+  color: var(--ks-code-cmd);
 }
 
 /* Fenced code blocks — deep lacquer terminal. Shiki injects inline
@@ -1067,10 +1067,10 @@
 .docs-kinpaku .prose pre.astro-code {
   margin: 0;
   padding: 22px 24px;
-  background: var(--ks-lacquer-deep) !important;
-  color: oklch(86% 0.025 82) !important;
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
+  background: var(--ks-code-block-bg) !important;
+  color: var(--ks-code-block-fg) !important;
+  border: 1px solid var(--ks-code-block-border);
+  border-radius: var(--ks-code-block-radius);
   overflow-x: auto;
   font-family: var(--ks-mono);
   font-size: 0.84rem;

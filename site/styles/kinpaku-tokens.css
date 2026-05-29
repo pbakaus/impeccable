@@ -67,6 +67,21 @@
 	--ks-rule-strong:    oklch(74% 0.09 82 / 0.6);
 
 	/* ============================================================
+	   Code. One treatment site-wide. Inline code is a neutral graphite
+	   chip; blocks / CLI commands are a deep lacquer terminal with a
+	   neutral hairline. Gold is only for code that is itself a command
+	   link (--ks-code-cmd). All code rules read these — don't hand-type.
+	   ============================================================ */
+	--ks-code-fg:         oklch(91% 0 0);        /* inline code text */
+	--ks-code-bg:         var(--ks-graphite-2);  /* inline code chip */
+	--ks-code-radius:     3px;
+	--ks-code-block-fg:   oklch(86% 0 0);        /* block / CLI text */
+	--ks-code-block-bg:   var(--ks-lacquer-deep);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-block-radius: 2px;
+	--ks-code-cmd:        var(--ks-kinpaku);     /* code that's a command link */
+
+	/* ============================================================
 	   Typography — three faces.
 	   - --ks-font-display: Alumni Sans Pinstripe. Pinstripe horizontal
 	     strikes feel futuristic and editorial at display size; used for
