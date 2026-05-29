@@ -401,6 +401,47 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('verifies copy inside a multi-line element when the source hint points to the opening tag', () => {
+    const file = path.join(tmpDir, 'site', 'pages', 'index.astro');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, [
+      '<section>',
+      '  <p class="hero-rebuild-body">',
+      '    Fresh visual vocabulary for teams',
+      '    working in production code.',
+      '  </p>',
+      '</section>',
+      '',
+    ].join('\n'));
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'p1',
+          ops: [{
+            ref: 'body>p.hero-rebuild-body',
+            tag: 'p',
+            classes: ['hero-rebuild-body'],
+            originalText: 'Your AI ships generic frontend by default.',
+            newText: 'Fresh visual vocabulary for teams working in production code.',
+            sourceHint: { file: 'site/pages/index.astro', line: 2, column: 3 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'done',
+        appliedEntryIds: ['p1'],
+        files: ['site/pages/index.astro'],
+      }),
+    });
+
+    assert.equal(result.cleared, 1);
+    assert.equal(result.applied.length, 1);
+    assert.equal(readBuffer(tmpDir).entries.length, 0);
+  });
+
   it('deduplicates failed entries across repeated repair attempts', async () => {
     const file = path.join(tmpDir, 'src', 'page.html');
     fs.writeFileSync(file, '<h1 class="hero">Welcome</h1>\n');

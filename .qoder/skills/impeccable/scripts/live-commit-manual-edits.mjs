@@ -396,7 +396,26 @@ function verificationTargetPassesLines(lines, target, op) {
   const radius = kind.includes('context_text_match') ? 20 : 4;
   const start = Math.max(0, target.line - radius - 1);
   const end = Math.min(lines.length, target.line + radius);
-  return lines.slice(start, end).some((candidateLine) => lineShowsAppliedOp(candidateLine, op));
+  const windowLines = lines.slice(start, end);
+  if (windowLines.some((candidateLine) => lineShowsAppliedOp(candidateLine, op))) return true;
+  if (windowShowsAppliedOp(windowLines, op)) return true;
+  return false;
+}
+
+function windowShowsAppliedOp(lines, op) {
+  const newText = typeof op?.newText === 'string' ? op.newText : '';
+  if (!newText) return false;
+  const originalText = typeof op?.originalText === 'string' ? op.originalText : '';
+  const normalizedNew = normalizeVerificationText(newText);
+  const normalizedOriginal = normalizeVerificationText(originalText);
+  const normalizedWindow = normalizeVerificationText(lines.join('\n'));
+  if (!normalizedNew || !normalizedWindow.includes(normalizedNew)) return false;
+  if (normalizedOriginal && !normalizedNew.includes(normalizedOriginal) && normalizedWindow.includes(normalizedOriginal)) return false;
+  return true;
+}
+
+function normalizeVerificationText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 function lineShowsAppliedOp(line, op) {
