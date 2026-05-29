@@ -52,7 +52,7 @@
 	   for compatibility but is no longer warm.)
 	   ============================================================ */
 	--ks-champagne:      oklch(91% 0.006 90);   /* headlines, <strong> — crisp white */
-	--ks-text:           oklch(88% 0.008 90);   /* body — crisp near-white */
+	--ks-text:           oklch(88% 0 0);         /* body — neutral near-white */
 	--ks-text-muted:     oklch(72% 0.01 90);    /* captions, meta */
 	--ks-text-faint:     oklch(62% 0.008 90);   /* subdued */
 	--ks-text-mute-deep: oklch(52% 0.008 90);   /* disabled */
