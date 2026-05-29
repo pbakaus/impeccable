@@ -1031,13 +1031,12 @@
    the 3-col grid below, not as a card competing with them. */
 .designing-kinpaku .designing-polish-band {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: 20px;
   padding: 18px 0;
   background: transparent;
   border: 0;
-  border-top: 1px solid var(--ks-rule);
   border-bottom: 1px solid var(--ks-rule);
   border-radius: 0;
   margin-bottom: 36px;
@@ -1063,10 +1062,7 @@
   text-underline-offset: 4px;
 }
 .designing-kinpaku .designing-polish-band-meta {
-  color: var(--ks-muted);
-  font-family: var(--ks-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
+  display: none; /* cryptic "03 · 04" step counter — removed */
 }
 
 .designing-kinpaku .designing-polish-grid {
@@ -1157,10 +1153,11 @@
 }
 
 .designing-kinpaku .designing-maintain-stage {
-  background: var(--ks-lacquer-raised);
-  border: 1px solid var(--ks-rule);
-  border-radius: 4px;
-  padding: 28px;
+  /* No inner box — the demo sits directly in the bento tile (removing the
+     box-in-box: plinth > tile > stage). */
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
   min-height: 180px;
   display: grid;
   place-items: center;
