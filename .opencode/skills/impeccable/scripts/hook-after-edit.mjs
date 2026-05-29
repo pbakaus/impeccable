@@ -12,6 +12,7 @@
 import {
   runHook,
   appendPending,
+  truthy,
   writeAuditLog,
   resolveHarness,
   normalizeHookEvent,
@@ -29,7 +30,7 @@ async function main() {
   const inheritedEnv = { ...process.env };
   process.env.IMPECCABLE_HOOK_DEPTH = process.env.IMPECCABLE_HOOK_DEPTH || '1';
 
-  if (inheritedEnv.IMPECCABLE_HOOK_DISABLED === '1') {
+  if (truthy(inheritedEnv.IMPECCABLE_HOOK_DISABLED)) {
     writeAuditLog(process.env, {
       ts: new Date().toISOString(),
       event: 'afterFileEdit',

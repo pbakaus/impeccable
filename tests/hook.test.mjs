@@ -729,6 +729,16 @@ describe('expandScanTargets()', () => {
     assert.deepEqual(expanded, [app, path.join(cwd, 'src/styles.css')]);
   });
 
+  it('includes common co-located Sass, SCSS, and Less stylesheet names', () => {
+    for (const name of ['index.scss', 'index.sass', 'index.less', 'global.scss', 'global.less', 'globals.scss', 'globals.less']) {
+      const dir = `src/${name.replaceAll('.', '-')}`;
+      const app = write(`${dir}/App.jsx`, 'export default function App() { return <main className="x" />; }');
+      const stylesheet = write(`${dir}/${name}`, ".card\n  border-left: 4px solid #3b82f6");
+      const expanded = expandScanTargets([app], cwd);
+      assert.ok(expanded.includes(stylesheet), `missing ${name}`);
+    }
+  });
+
   it('follows static stylesheet imports from the edited component', () => {
     const card = write('src/Card.jsx', "import './Card.module.css';\nexport default function Card() { return null; }");
     const mod = write('src/Card.module.css', '.card { border-left: 4px solid #3b82f6; }');
@@ -869,6 +879,26 @@ describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('afterFileEdit honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
+    const logPath = path.join(cwd, 'hook.ndjson');
+
+    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: '{not-json',
+      env: {
+        ...process.env,
+        IMPECCABLE_HOOK_DISABLED: 'true',
+        IMPECCABLE_HOOK_LOG: logPath,
+      },
+      encoding: 'utf-8',
+    });
+
+    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'afterFileEdit');
+    assert.equal(entries[0].skipped, 'env-disabled');
+  });
 
   it('afterFileEdit and stop share the default pending bucket when Cursor omits ids', () => {
     const filePath = path.join(cwd, 'index.html');

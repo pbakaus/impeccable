@@ -588,7 +588,9 @@ const UI_CODE_EXTS = new Set(['.jsx', '.tsx', '.vue', '.svelte', '.astro']);
 const STYLE_EXTS = new Set(['.css', '.scss', '.sass', '.less']);
 const CO_SCAN_STYLE_NAMES = [
   'styles.css', 'styles.scss', 'styles.sass', 'styles.less',
-  'index.css', 'index.sass', 'global.css', 'global.sass', 'globals.css', 'globals.sass',
+  'index.css', 'index.scss', 'index.sass', 'index.less',
+  'global.css', 'global.scss', 'global.sass', 'global.less',
+  'globals.css', 'globals.scss', 'globals.sass', 'globals.less',
 ];
 const MAX_SCAN_TARGETS = 6;
 
