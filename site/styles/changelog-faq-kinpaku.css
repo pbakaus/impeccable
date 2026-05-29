@@ -98,10 +98,11 @@
 .cf-items strong { color: var(--ks-champagne); font-weight: 600; }
 .cf-items code {
   font-family: var(--ks-mono);
-  font-size: 0.92em;
-  color: var(--ks-kinpaku);
-  background: transparent;
-  padding: 0;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  padding: 4px 7px;
+  border-radius: var(--ks-code-radius);
 }
 .cf-items a {
   color: var(--ks-patina);
@@ -329,10 +330,11 @@
 .cf-faq-answer strong { color: var(--ks-champagne); font-weight: 600; }
 .cf-faq-answer code {
   font-family: var(--ks-mono);
-  font-size: 0.92em;
-  color: var(--ks-kinpaku);
-  background: transparent;
-  padding: 0;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  padding: 4px 7px;
+  border-radius: var(--ks-code-radius);
 }
 .cf-faq-answer a {
   color: var(--ks-patina);

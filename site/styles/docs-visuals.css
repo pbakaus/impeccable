@@ -3347,10 +3347,10 @@
 .neon-case-command .code-block {
   margin: 0;
   padding: var(--spacing-md);
-  background: var(--ks-lacquer);
-  color: var(--ks-champagne);
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
+  background: var(--ks-code-block-bg);
+  color: var(--ks-code-block-fg);
+  border: 1px solid var(--ks-code-block-border);
+  border-radius: var(--ks-code-block-radius);
   overflow-x: auto;
   font-family: var(--ks-mono);
   font-size: 0.8125rem;

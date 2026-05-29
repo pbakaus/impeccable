@@ -47,10 +47,12 @@
 
 .designing-kinpaku code {
   font-family: var(--ks-mono);
-  color: var(--ks-kinpaku);
-  background: transparent;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
   border: 0;
-  padding: 0;
+  padding: 4px 7px;
+  border-radius: var(--ks-code-radius);
 }
 
 /* ============================================================================

@@ -396,7 +396,7 @@
   padding: 0;
   overflow: hidden;
   background: transparent;
-  color: var(--ks-champagne);
+  color: var(--ks-code-fg);
   font-family: var(--ks-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -471,7 +471,7 @@
 .detector-table-panel td code {
   padding: 0;
   background: transparent;
-  color: var(--ks-champagne);
+  color: var(--ks-code-fg);
   font-family: var(--ks-mono);
   font-size: 0.8125rem;
 }
