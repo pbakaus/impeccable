@@ -53,8 +53,8 @@ async function main() {
 
   const harness = resolveHarness(inheritedEnv, event);
   const cwd = resolveProjectCwd(event);
-  event = normalizeHookEvent(event, cwd, harness);
   const conversationId = event?.conversation_id || event?.session_id || null;
+  event = normalizeHookEvent(event, cwd, harness);
 
   const result = await runHook({
     stdinJson: event,

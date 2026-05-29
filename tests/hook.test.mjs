@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 
 import {
   ENVELOPE_PREFIX,
@@ -836,6 +837,47 @@ describe('appendPending() / drainPending() / clearPending()', () => {
     clearPending(cwd, 'conv-x');
     const items = drainPending(cwd, 'conv-x');
     assert.equal(items.length, 0);
+  });
+});
+
+describe('Cursor hook scripts', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('afterFileEdit and stop share the default pending bucket when Cursor omits ids', () => {
+    const filePath = path.join(cwd, 'index.html');
+    fs.writeFileSync(filePath, `
+      <style>
+        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+      </style>
+      <div class="card">Hello</div>
+    `);
+
+    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'afterFileEdit',
+        cwd,
+        file_path: filePath,
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.match(payload.followup_message, /Required design corrections/);
+    assert.match(payload.followup_message, /side-tab/);
   });
 });
 
