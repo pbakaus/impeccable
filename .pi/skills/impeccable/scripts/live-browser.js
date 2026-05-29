@@ -3210,10 +3210,10 @@
     }
   }
 
-  function writeManualApplyState(state) {
+  function writeManualApplyState(applyState) {
     try {
       sessionStorage.setItem(manualApplyStateKey(), JSON.stringify({
-        ...state,
+        ...applyState,
         pageUrl: location.pathname,
         updatedAt: Date.now(),
         expiresAt: Date.now() + MANUAL_APPLY_STATE_TTL_MS,

@@ -82,11 +82,16 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('does not shadow the global live state when reading stored Apply state', () => {
+  it('does not shadow the global live state when storing Apply state', () => {
     assert.doesNotMatch(
       SOURCE,
       /function readStoredManualApplyState\(\)[\s\S]{0,240}?const state = JSON\.parse\(raw\);/,
       'stored manual Apply JSON should not shadow the outer UI state variable',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /function writeManualApplyState\(state\)/,
+      'stored manual Apply object should not shadow the outer UI state variable',
     );
   });
 
