@@ -15,6 +15,7 @@
  */
 
 :root {
+	/* color-scheme follows html.light / html.dark class on <html> */
 	/* ============================================================
 	   Brand anchors. Two anchors carry the brand — kinpaku gold for
 	   commitment and brand voice, verdigris patina for state and
@@ -144,4 +145,65 @@
 	   Motion.
 	   ============================================================ */
 	--ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html.dark {
+	color-scheme: dark;
+}
+
+/* ============================================================
+   Light mode — warm paper surfaces, dark ink type, kinpaku gold
+   accents deepened for contrast. Activated via html.light on
+   <html> (set by theme.js + inline FOUC guard in Base.astro).
+   ============================================================ */
+html.light {
+	color-scheme: light;
+
+	/* Brand gold — same fills as dark mode (logo, buttons, marks).
+	   Use --ks-kinpaku-ink for small text on paper where bright gold
+	   lacks contrast; never swap the core token to a muddy orange. */
+	--ks-kinpaku:        oklch(84% 0.19 80.46);
+	--ks-kinpaku-pale:   oklch(86% 0.07 84);
+	--ks-kinpaku-rich:   oklch(77% 0.13 82);
+	--ks-kinpaku-deep:   oklch(61% 0.085 78);
+	--ks-kinpaku-ink:    oklch(56% 0.11 82);
+
+	/* Text links + active nav on paper — patina, not fill gold. */
+	--ks-link-on-paper:       var(--ks-patina-deep);
+	--ks-link-on-paper-hover: var(--ks-patina);
+	--ks-link-on-paper-line:  oklch(49% 0.08 188 / 0.42);
+	--ks-nav-active:          var(--ks-patina-deep);
+
+	/* Patina — brand values for fills; deep for text on paper. */
+	--ks-patina:         oklch(70% 0.12 188);
+	--ks-patina-pale:    oklch(82% 0.07 188);
+	--ks-patina-deep:    oklch(49% 0.08 188);
+
+	--ks-vermilion:      oklch(52% 0.16 35);
+
+	/* Surfaces — warm paper and cream panels. */
+	--ks-lacquer:        oklch(97% 0.012 95);
+	--ks-lacquer-deep:   oklch(94% 0.014 95);
+	--ks-lacquer-raised: oklch(99% 0.008 95);
+	--ks-graphite:       oklch(91% 0.012 95);
+	--ks-graphite-2:     oklch(88% 0.014 95);
+
+	/* Text — dark ink on paper. */
+	--ks-champagne:      oklch(18% 0.02 95);
+	--ks-text:           oklch(25% 0.018 95);
+	--ks-text-muted:     oklch(45% 0.015 95);
+	--ks-text-faint:     oklch(55% 0.012 95);
+	--ks-text-mute-deep: oklch(65% 0.01 95);
+
+	/* Rules — dark hairlines. */
+	--ks-rule:           oklch(25% 0.02 95 / 0.12);
+	--ks-rule-strong:    oklch(61% 0.085 78 / 0.45);
+
+	/* Code — light chips, dark text. */
+	--ks-code-fg:         oklch(28% 0.02 95);
+	--ks-code-bg:         var(--ks-graphite);
+	--ks-code-block-fg:   oklch(30% 0.02 95);
+	--ks-code-block-bg:   var(--ks-lacquer-raised);
+	--ks-code-block-border: var(--ks-rule);
+	--ks-code-cmd:        var(--ks-kinpaku-ink);
 }

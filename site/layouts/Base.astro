@@ -6,6 +6,7 @@ import Footer from '../components/Footer.astro';
 // to re-import from page-level stylesheets.
 import '../styles/kinpaku-tokens.css';
 import '../styles/kinpaku-kit.css';
+import '../styles/light-mode.css';
 import '../styles/footer.css';
 
 interface Props {
@@ -63,6 +64,21 @@ const resolvedOgDescription = ogDescription || description;
   <title>{title}</title>
   <meta name="description" content={description}>
   <meta name="theme-color" content="#010101">
+  <script is:inline>
+    (function () {
+      try {
+        var t = localStorage.getItem('impeccable-theme');
+        var root = document.documentElement;
+        if (t === 'light') {
+          root.classList.add('light');
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', '#f7f4ef');
+        } else {
+          root.classList.add('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
   {noIndex && <meta name="robots" content="noindex">}
   {canonical && <link rel="canonical" href={canonical}>}
 
@@ -97,5 +113,9 @@ const resolvedOgDescription = ogDescription || description;
   </main>
   {!hideFooter && <Footer />}
   <slot name="scripts" />
+  <script>
+    import { initThemeToggle } from '../scripts/utils/theme.js';
+    initThemeToggle();
+  </script>
 </body>
 </html>

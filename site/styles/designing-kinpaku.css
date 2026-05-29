@@ -274,8 +274,10 @@
 
 .designing-kinpaku .designing-loop-name {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-weight: 300;
+  /* Pinstripe is single-weight and reads broken at ~1.5–2rem; wordmark
+     carries real stroke weight at compass-label scale (cf. iterate-name). */
+  font-family: var(--ks-font-wordmark);
+  font-weight: 600;
   font-size: clamp(1.5rem, 2.2vw, 2rem);
   line-height: 1.05;
   letter-spacing: 0.01em;
@@ -1302,9 +1304,13 @@
 .designing-kinpaku .designing-lane-rule {
   color: var(--ks-text);
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.65;
   margin: 0;
   text-wrap: pretty;
+}
+.designing-kinpaku .designing-lane-rule strong {
+  color: var(--ks-champagne);
+  font-weight: 600;
 }
 
 /* The brand mock title used the pinstripe display face at ~1.6rem, which reads
@@ -1315,29 +1321,29 @@
 }
 
 .designing-kinpaku .designing-lane-mock {
-  margin-top: 6px;
-  padding: 16px 0 0;
-  /* No inner box — the mock sits directly in the bento tile (no plinth > tile
-     > mock nesting). */
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--ks-rule);
-  border-radius: 0;
-  min-height: 110px;
+  margin-top: 18px;
+  padding: 20px 18px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  justify-content: center;
 }
 .designing-kinpaku .designing-lane-mock--brand {
   align-items: flex-start;
 }
 .designing-kinpaku .designing-lane-mock--product {
-  align-items: flex-start;
+  align-items: stretch;
+  padding: 0;
+  gap: 0;
 }
 .designing-kinpaku .designing-lane-mock-label {
   color: var(--ks-patina);
   font-family: var(--ks-mono);
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -1345,8 +1351,38 @@
   color: var(--ks-champagne);
   font-family: var(--ks-font);
   font-weight: 500;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
+  line-height: 1.15;
 }
+.designing-kinpaku .designing-lane-mock-accent {
+  color: var(--ks-kinpaku);
+}
+.designing-kinpaku .designing-lane-product-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+.designing-kinpaku .designing-lane-product-row:last-child {
+  border-bottom: 0;
+}
+.designing-kinpaku .designing-lane-product-k {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+}
+.designing-kinpaku .designing-lane-product-v {
+  font-family: var(--ks-font);
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--ks-champagne);
+}
+
+/* Legacy single-line product mock title — kept for any downstream refs. */
 .designing-kinpaku .designing-lane-mock--product .designing-lane-mock-title {
   color: var(--ks-champagne);
   font-family: var(--ks-font);

@@ -46,9 +46,20 @@
   max-width: 100%;
 }
 
-.kinpaku-system-page a {
+.kinpaku-system-page a:not(.ks-brand) {
   color: inherit;
   text-decoration: none;
+}
+
+/* Brand lockup — kinpaku gold on dark surfaces; html.light swaps to ink
+   (see light-mode.css) to match impeccable-logo-on-light.svg. */
+.kinpaku-system-page a.ks-brand {
+  color: var(--ks-kinpaku);
+}
+
+.kinpaku-system-page a.ks-brand .ks-mark,
+.kinpaku-system-page a.ks-brand .ks-wordmark {
+  color: inherit;
 }
 
 .kinpaku-system-page button,

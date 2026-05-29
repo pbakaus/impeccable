@@ -713,6 +713,7 @@
 .downloads-rebuild-alts {
   grid-column: 1 / -1;
   margin: 2px 0 0;
+  text-align: center;
 }
 .downloads-rebuild-alts-summary {
   display: inline-flex;
@@ -773,8 +774,9 @@
 
 .downloads-rebuild-note {
   grid-column: 1 / -1;
-  margin: 0;
-  max-width: 64ch; /* was unbounded -> ~102 ch/line; cap for readability */
+  margin: 0 auto;
+  max-width: 64ch;
+  text-align: center;
   color: var(--card-fg-muted);
   font-size: 0.88rem;
 }
@@ -785,6 +787,7 @@
 .downloads-rebuild-secondary {
   grid-column: 1 / -1;
   margin: 6px 0 0;
+  text-align: center;
   font-size: 0.84rem;
   color: var(--ks-text-muted);
 }
@@ -798,8 +801,7 @@
   border-bottom-color: var(--ks-patina-pale);
 }
 
-/* Closing "go deeper" links under the usage examples — point to the full
-   workflow page and the command docs. */
+/* Closing links under the setup extras — workflow + command docs. */
 .downloads-rebuild-more {
   margin: 30px auto 0;
   max-width: 720px;
@@ -815,62 +817,6 @@
 .downloads-rebuild-more a:hover {
   color: var(--ks-patina-pale);
   border-bottom-color: var(--ks-patina-pale);
-}
-
-/* Center-aligned examples: each row is a vertical stack — the command line
-   on top, the description below, both centered horizontally. */
-/* Usage examples now sit after the extras (the logical next step once the
-   skill, extension, CLI, and subscriptions are set up), so the separating
-   gap moves to the top. */
-.downloads-rebuild-examples {
-  list-style: none;
-  margin: 48px auto 0;
-  padding: 48px 0 0;
-  /* Subtle hairline marking the "now use it" step after the setup block. */
-  border-top: 1px solid var(--ks-rule);
-  display: grid;
-  gap: 22px;
-  max-width: 720px;
-}
-
-.downloads-rebuild-examples li {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  justify-items: center;
-  text-align: center;
-}
-
-/* Strip the global .home-kinpaku code chrome for these example rows. */
-.home-kinpaku .downloads-rebuild-examples > li > code {
-  font-family: var(--ks-mono);
-  color: var(--card-accent);
-  font-size: 1rem;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  letter-spacing: 0.005em;
-}
-
-.downloads-rebuild-slash {
-  opacity: 0.55;
-}
-
-.downloads-rebuild-examples span {
-  color: var(--card-fg);
-  font-size: 0.94rem;
-  line-height: 1.5;
-}
-
-.home-kinpaku .downloads-rebuild-examples span code {
-  color: var(--card-fg-strong);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  font-family: var(--ks-mono);
-  font-size: 0.86rem;
 }
 
 .downloads-rebuild-extras {
@@ -953,7 +899,6 @@
 @media (max-width: 720px) {
   .downloads-rebuild { padding: 64px 0; }
   .downloads-rebuild-install { grid-template-columns: 1fr; }
-  .downloads-rebuild-examples li { grid-template-columns: 1fr; gap: 8px; }
 }
 
 /* ============================================================================

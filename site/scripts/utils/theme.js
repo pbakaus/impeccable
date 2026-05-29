@@ -1,56 +1,44 @@
-// Theme toggle - supports light, dark, and system preference
+// Theme toggle — light / dark with localStorage persistence.
 
 const STORAGE_KEY = 'impeccable-theme';
 
-function getStoredTheme() {
+export function getStoredTheme() {
   return localStorage.getItem(STORAGE_KEY);
 }
 
-function setStoredTheme(theme) {
+export function setStoredTheme(theme) {
   localStorage.setItem(STORAGE_KEY, theme);
 }
 
-function applyTheme(theme) {
+export function applyTheme(theme) {
   const html = document.documentElement;
+  const resolved = theme === 'light' ? 'light' : 'dark';
 
-  // Remove both classes first
   html.classList.remove('light', 'dark');
+  html.classList.add(resolved);
 
-  if (theme === 'light') {
-    html.classList.add('light');
-  } else if (theme === 'dark') {
-    html.classList.add('dark');
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', resolved === 'light' ? '#f7f4ef' : '#010101');
   }
-  // 'system' = no class, falls back to media query
 
-  // Update active state on buttons
-  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.theme === theme);
+  document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+    const next = resolved === 'light' ? 'dark' : 'light';
+    btn.setAttribute('aria-label', resolved === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+    btn.setAttribute('title', resolved === 'light' ? 'Dark mode' : 'Light mode');
+    btn.dataset.nextTheme = next;
   });
 }
 
 export function initThemeToggle() {
-  const toggle = document.querySelector('.theme-toggle');
-  if (!toggle) return;
+  const stored = getStoredTheme();
+  applyTheme(stored === 'light' ? 'light' : 'dark');
 
-  // Get stored theme or default to system
-  const storedTheme = getStoredTheme() || 'system';
-  applyTheme(storedTheme);
-
-  // Handle button clicks
-  toggle.addEventListener('click', (e) => {
-    const btn = e.target.closest('.theme-toggle-btn');
-    if (!btn) return;
-
-    const theme = btn.dataset.theme;
-    setStoredTheme(theme);
-    applyTheme(theme);
-  });
-
-  // Listen for system preference changes (only matters when in 'system' mode)
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (getStoredTheme() === 'system' || !getStoredTheme()) {
-      applyTheme('system');
-    }
+  document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.nextTheme || (document.documentElement.classList.contains('light') ? 'dark' : 'light');
+      setStoredTheme(next);
+      applyTheme(next);
+    });
   });
 }

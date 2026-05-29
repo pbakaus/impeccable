@@ -41,6 +41,22 @@ import '../../styles/design-system.css';
         <a href="#components">Components</a>
         <a href="#proof">Proof</a>
       </nav>
+      <button
+        type="button"
+        class="theme-toggle"
+        data-theme-toggle
+        aria-label="Switch to light mode"
+        title="Light mode"
+        data-next-theme="light"
+      >
+        <svg class="theme-toggle-icon--light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.5"/>
+          <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+        <svg class="theme-toggle-icon--dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5z"/>
+        </svg>
+      </button>
       <a class="ks-button ks-button-primary" href="#actions">
         Start audit
         <span class="ks-button-arrow" aria-hidden="true">

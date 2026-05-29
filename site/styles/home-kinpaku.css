@@ -228,7 +228,6 @@
 .home-kinpaku .downloads-rebuild-note,
 .home-kinpaku .why-panel-title,
 .home-kinpaku .live-demo-support-v,
-.home-kinpaku .downloads-rebuild-examples span,
 .home-kinpaku .downloads-rebuild-extras strong,
 .home-kinpaku .downloads-rebuild-extras span {
   text-wrap: balance;
@@ -1481,7 +1480,6 @@
    — dropped, the bento structure carries the brand voice now. */
 .home-kinpaku .why-terminal,
 .home-kinpaku .why-productmd-file,
-.home-kinpaku .why-register,
 .home-kinpaku .why-ci-window,
 .home-kinpaku .why-browser,
 .home-kinpaku .why-dm-grid,
@@ -1490,6 +1488,104 @@
   border-color: var(--ks-rule);
   background: var(--ks-lacquer-raised);
   border-radius: 4px;
+}
+
+.home-kinpaku .why-register {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 10px;
+}
+
+.home-kinpaku .why-register-label {
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+}
+
+.home-kinpaku .why-register-mock--brand,
+.home-kinpaku .why-register-mock--product {
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  background: var(--ks-lacquer-raised);
+}
+
+.home-kinpaku .why-brand-hero-mono {
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .why-brand-hero-title {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-wordmark);
+  font-weight: 300;
+}
+
+.home-kinpaku .why-brand-hero-title em {
+  color: var(--ks-kinpaku);
+  font-style: italic;
+}
+
+.home-kinpaku .why-product-k {
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .why-product-v {
+  color: var(--ks-champagne);
+}
+
+.home-kinpaku .why-product-row {
+  border-color: var(--ks-rule);
+}
+
+.home-kinpaku .why-productmd-file,
+.home-kinpaku .why-terminal {
+  overflow: hidden;
+  border: 1px solid var(--ks-rule);
+}
+
+.home-kinpaku .why-productmd-header,
+.home-kinpaku .why-productmd-footer,
+.home-kinpaku .why-terminal-header {
+  border-radius: 0;
+}
+
+/* Bento window chrome dots — one subtle traffic-light set across mocks. */
+.home-kinpaku :is(
+  .why-terminal-dot,
+  .why-live-dot,
+  .why-visual--extension .why-browser-dot,
+  .why-visual--v2 .v2-new-browser-dot
+) {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.5;
+  background: oklch(58% 0.012 95);
+}
+
+.home-kinpaku :is(
+  .why-terminal-dot,
+  .why-live-dot,
+  .why-visual--extension .why-browser-dot,
+  .why-visual--v2 .v2-new-browser-dot
+):nth-child(1) {
+  background: var(--ks-kinpaku-deep);
+}
+
+.home-kinpaku :is(
+  .why-terminal-dot,
+  .why-live-dot,
+  .why-visual--extension .why-browser-dot,
+  .why-visual--v2 .v2-new-browser-dot
+):nth-child(2) {
+  background: var(--ks-patina-deep);
+}
+
+.home-kinpaku .why-terminal-header,
+.home-kinpaku .why-live-chrome {
+  gap: 5px;
 }
 
 .home-kinpaku .why-panel-title {
@@ -1510,8 +1606,7 @@
 .home-kinpaku .why-productmd-k,
 .home-kinpaku .why-terminal-ok,
 .home-kinpaku .why-terminal-path,
-.home-kinpaku .why-dm-badge,
-.home-kinpaku .why-ci-status {
+.home-kinpaku .why-dm-badge {
   color: var(--ks-patina);
 }
 
@@ -1541,6 +1636,9 @@
 
 .home-kinpaku .why-ci-header {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   min-height: 54px;
   padding: 14px 18px 14px 72px;
   border-bottom: 1px solid var(--ks-rule);
@@ -1552,29 +1650,35 @@
   position: absolute;
   left: 22px;
   top: 50%;
-  width: 34px;
-  height: 9px;
+  width: 31px;
+  height: 7px;
   transform: translateY(-50%);
   background:
-    radial-gradient(circle at 4px 50%, var(--ks-kinpaku) 0 3px, transparent 3.5px),
-    radial-gradient(circle at 17px 50%, var(--ks-patina) 0 3px, transparent 3.5px),
-    radial-gradient(circle at 30px 50%, var(--ks-kinpaku-deep) 0 3px, transparent 3.5px);
-  opacity: 0.88;
+    radial-gradient(circle at 3.5px 50%, var(--ks-kinpaku-deep) 0 3.5px, transparent 3.6px),
+    radial-gradient(circle at 13.5px 50%, var(--ks-patina-deep) 0 3.5px, transparent 3.6px),
+    radial-gradient(circle at 23.5px 50%, oklch(58% 0.012 95) 0 3.5px, transparent 3.6px);
+  opacity: 0.5;
 }
 
 .home-kinpaku .why-ci-branch {
+  font-family: var(--ks-mono);
   color: var(--ks-champagne);
   font-size: 0.78rem;
   letter-spacing: 0.03em;
 }
 
-.home-kinpaku .why-ci-status {
+.home-kinpaku .why-ci-status,
+.home-kinpaku .why-ci-status--fail {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   padding: 5px 13px;
-  border: 1px solid oklch(58% 0.15 35 / 0.3);
-  color: var(--ks-patina);
-  background:
-    linear-gradient(90deg, oklch(58% 0.15 35 / 0.22), oklch(58% 0.15 35 / 0.1));
-  box-shadow: inset 0 0 0 1px oklch(100% 0 0 / 0.02);
+  border-radius: 999px;
+  border: 1px solid oklch(58% 0.15 35 / 0.42);
+  color: oklch(74% 0.14 35);
+  background: oklch(58% 0.15 35 / 0.14);
+  box-shadow: none;
 }
 
 .home-kinpaku .why-ci-body {
@@ -1643,9 +1747,13 @@
 }
 
 .home-kinpaku .why-visual--live {
-  padding: 0;
+  flex: 1;
+  padding: clamp(16px, 2vw, 22px);
   overflow: hidden;
-  min-height: 240px;
+  min-height: min(280px, 42vw);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
   background:
     linear-gradient(90deg, oklch(78% 0.12 82 / 0.018) 1px, transparent 1px),
     linear-gradient(180deg, oklch(78% 0.12 82 / 0.015) 1px, transparent 1px),
@@ -1656,7 +1764,8 @@
 
 .home-kinpaku .why-live-frame {
   position: relative;
-  margin: 24px clamp(20px, 3vw, 32px) 0;
+  width: 100%;
+  margin: 0;
   border: 1px solid oklch(78% 0.12 82 / 0.22);
   border-radius: 6px;
   background:
@@ -1666,25 +1775,17 @@
     inset 0 0 0 1px oklch(100% 0 0 / 0.02),
     0 18px 50px oklch(2% 0.004 95 / 0.32);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .home-kinpaku .why-live-chrome {
   display: flex;
   align-items: center;
-  gap: 5px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--ks-rule);
   background: oklch(13% 0.006 95);
 }
-.home-kinpaku .why-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: oklch(58% 0.018 82);
-  opacity: 0.55;
-}
-.home-kinpaku .why-live-dot:nth-child(1) { background: var(--ks-kinpaku-deep); }
-.home-kinpaku .why-live-dot:nth-child(2) { background: var(--ks-patina-deep); }
 .home-kinpaku .why-live-url {
   margin-left: 12px;
   padding: 3px 10px;
@@ -1698,8 +1799,12 @@
 
 .home-kinpaku .why-live-stage {
   position: relative;
-  min-height: 130px;
-  padding: 24px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 148px;
+  padding: 32px 28px;
   background:
     repeating-linear-gradient(0deg, transparent 0 9px, oklch(100% 0 0 / 0.012) 9px 10px),
     oklch(8% 0.006 95);
@@ -1708,9 +1813,9 @@
 .home-kinpaku .why-live-pick {
   position: relative;
   width: max-content;
-  max-width: calc(100% - 8px);
-  padding: 18px 22px;
-  margin: 12px auto 4px;
+  max-width: min(100%, 320px);
+  padding: 20px 24px;
+  margin: 0;
   border: 2px solid var(--ks-kinpaku);
   border-radius: 3px;
   background:
@@ -1723,20 +1828,20 @@
 .home-kinpaku .why-live-pick-tag {
   display: block;
   font-family: var(--ks-mono);
-  font-size: 0.7rem;
+  font-size: 0.74rem;
   letter-spacing: 0.06em;
   color: var(--ks-kinpaku);
 }
 .home-kinpaku .why-live-pick-note {
   position: absolute;
-  top: -14px;
-  right: -18px;
-  padding: 5px 10px;
+  top: -12px;
+  right: -14px;
+  padding: 6px 11px;
   background: var(--ks-kinpaku);
   border-radius: 2px;
   color: oklch(8% 0.006 95);
   font-family: var(--ks-mono);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   letter-spacing: 0.02em;
   white-space: nowrap;
   box-shadow: 0 4px 14px oklch(78% 0.12 82 / 0.25);
@@ -1754,46 +1859,35 @@
   50% { opacity: 0; }
 }
 
-.home-kinpaku .why-live-gbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.home-kinpaku .why-live-frame > .why-live-ctx.live-demo-ctx {
+  position: static;
+  left: auto;
+  transform: none;
+  display: block;
+  opacity: 1;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
   padding: 10px 14px;
+  border: 0;
   border-top: 1px solid var(--ks-rule);
+  border-radius: 0;
+  box-shadow: none;
   background: oklch(13% 0.006 95);
-  font-family: var(--ks-mono);
-  font-size: 0.74rem;
 }
-.home-kinpaku .why-live-gbar-brand {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ks-kinpaku);
-  color: oklch(8% 0.006 95);
-  border-radius: 3px;
-  font-weight: 600;
+
+.home-kinpaku .why-live-frame > .why-live-ctx .live-demo-ctx-row--configure {
+  display: flex;
+  gap: 6px;
 }
-.home-kinpaku .why-live-gbar-cmd {
-  padding: 3px 10px;
-  border: 1px solid oklch(78% 0.12 82 / 0.3);
-  border-radius: 3px;
-  color: var(--ks-kinpaku);
+
+.home-kinpaku .why-live-frame > .why-live-ctx .live-demo-ctx-input {
+  flex: 1;
+  min-width: 0;
 }
-.home-kinpaku .why-live-gbar-count {
-  padding: 3px 8px;
-  border: 1px solid var(--ks-rule);
-  border-radius: 3px;
-  color: var(--ks-text-muted);
-}
-.home-kinpaku .why-live-gbar-go {
-  margin-left: auto;
-  padding: 4px 12px;
-  background: var(--ks-kinpaku);
-  color: oklch(8% 0.006 95);
-  border-radius: 3px;
-  font-weight: 500;
+
+.home-kinpaku .why-live-frame > .why-live-ctx .live-demo-ctx-caret {
+  animation: why-live-caret 1s steps(2, end) infinite;
 }
 
 /* ============================================================
@@ -1899,20 +1993,6 @@
     linear-gradient(180deg, oklch(13% 0.006 95), oklch(8% 0.005 95));
 }
 
-.home-kinpaku .why-visual--extension .why-browser-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--ks-kinpaku-deep);
-}
-
-.home-kinpaku .why-visual--extension .why-browser-dot:nth-child(2) {
-  background: var(--ks-patina);
-}
-
-.home-kinpaku .why-visual--extension .why-browser-dot:nth-child(3) {
-  background: var(--ks-kinpaku);
-}
-
 .home-kinpaku .why-visual--extension .why-browser-url {
   min-height: 30px;
   display: flex;
@@ -2015,14 +2095,11 @@
 }
 
 .home-kinpaku .why-visual--designmd-v2 {
-  gap: 16px;
-  padding: clamp(18px, 2vw, 26px);
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 13% 24%, oklch(78% 0.12 82 / 0.055), transparent 18rem),
-    radial-gradient(circle at 88% 18%, oklch(70% 0.105 190 / 0.06), transparent 18rem),
-    linear-gradient(135deg, oklch(78% 0.12 82 / 0.035), transparent 46%),
-    oklch(6% 0.005 95 / 0.92);
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .home-kinpaku .why-dm-header {
@@ -2049,11 +2126,9 @@
 }
 
 .home-kinpaku .why-dm-tile {
-  border-color: var(--ks-rule);
-  background:
-    linear-gradient(135deg, oklch(100% 0 0 / 0.024), transparent 38%),
-    oklch(5% 0.004 95 / 0.78);
-  box-shadow: inset 0 0 0 1px oklch(78% 0.12 82 / 0.026);
+  border: 1px solid var(--ks-rule);
+  background: var(--ks-lacquer-raised);
+  box-shadow: none;
 }
 
 .home-kinpaku .why-dm-tile-meta {
@@ -2289,18 +2364,12 @@
 }
 
 .home-kinpaku .why-visual--v2 .v2-new-browser-dots {
+  display: flex;
+  gap: 5px;
   border-bottom: 1px solid var(--ks-rule);
   background:
     linear-gradient(90deg, oklch(78% 0.12 82 / 0.08), transparent),
     oklch(8% 0.006 95);
-}
-
-.home-kinpaku .why-visual--v2 .v2-new-browser-dot {
-  background: var(--ks-kinpaku-deep);
-}
-
-.home-kinpaku .why-visual--v2 .v2-new-browser-dot:nth-child(2) {
-  background: var(--ks-patina);
 }
 
 .home-kinpaku .why-visual--v2 .v2-new-browser-frame {

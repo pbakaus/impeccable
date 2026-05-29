@@ -106,3 +106,19 @@ button, input, textarea, select {
   --cat-system-border: #78716c;
   --cat-system-text: #44403c;
 }
+
+/* Light mode legacy aliases — mirror html.light --ks-* tokens. */
+html.light {
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-paper: var(--ks-lacquer);
+  --color-cream: var(--ks-lacquer-raised);
+  --color-charcoal: var(--ks-text);
+  --color-ash: var(--ks-text-muted);
+  --color-mist: var(--ks-rule);
+  --color-bg: var(--ks-lacquer-raised);
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-dim: oklch(77% 0.13 82 / 0.14);
+  --color-accent-soft: oklch(77% 0.13 82 / 0.24);
+}

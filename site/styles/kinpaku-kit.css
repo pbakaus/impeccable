@@ -892,6 +892,17 @@
   font-weight: 400;
 }
 
+.kinpaku-chrome .theme-toggle,
+.kinpaku-chrome .site-header-github {
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+.kinpaku-chrome .site-header-github {
+  padding: 0 12px 0 10px;
+}
+
 .kinpaku-chrome .site-header-nav a,
 .kinpaku-chrome .site-header-github {
   color: var(--ks-champagne);

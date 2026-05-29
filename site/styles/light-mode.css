@@ -1,0 +1,1625 @@
+/*
+ * impeccable.style — light mode overrides
+ *
+ * Most of the site reads var(--ks-*) tokens (swapped in kinpaku-tokens.css
+ * under html.light). This file catches hardcoded dark-lacquer values in
+ * page stylesheets and kinpaku-chrome chrome that don't flow through tokens.
+ *
+ * Imported globally from Base.astro after kinpaku-kit.css.
+ */
+
+/* ============================================================
+   Theme toggle — sits left of the GitHub star pill
+   ============================================================ */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--ks-rule);
+  background: transparent;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    background-color 180ms var(--ks-ease);
+}
+
+.theme-toggle:hover {
+  color: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku-deep);
+  background: oklch(77% 0.13 82 / 0.08);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.theme-toggle .theme-toggle-icon--dark {
+  display: none;
+}
+
+html.light .theme-toggle .theme-toggle-icon--light {
+  display: none;
+}
+
+html.light .theme-toggle .theme-toggle-icon--dark {
+  display: block;
+}
+
+.kinpaku-chrome .theme-toggle {
+  border-color: oklch(78% 0.12 82 / 0.28);
+  color: var(--ks-champagne);
+}
+
+html.light .kinpaku-chrome .theme-toggle {
+  border-color: var(--ks-rule);
+  color: var(--ks-text-muted);
+}
+
+html.light .kinpaku-chrome .theme-toggle:hover {
+  color: var(--ks-kinpaku);
+  border-color: var(--ks-kinpaku-deep);
+  background: oklch(77% 0.13 82 / 0.10);
+}
+
+/* ============================================================
+   Kinpaku chrome — header + footer hardcoded gradients
+   ============================================================ */
+
+html.light .kinpaku-chrome .site-header {
+  background: linear-gradient(180deg, oklch(99% 0.008 95 / 0.96), oklch(97% 0.012 95 / 0.88));
+  border-bottom-color: var(--ks-rule);
+}
+
+html.light .kinpaku-chrome .site-header-menu {
+  border-color: var(--ks-rule);
+  color: var(--ks-text);
+}
+
+html.light .kinpaku-chrome .site-header-menu:hover {
+  border-color: var(--ks-kinpaku-deep);
+  background: oklch(77% 0.13 82 / 0.08);
+}
+
+html.light .kinpaku-chrome .site-header-menu-line {
+  background: var(--ks-text);
+}
+
+html.light .kinpaku-chrome .site-header-github {
+  border-color: var(--ks-rule-strong);
+  background: oklch(99% 0.008 95 / 0.88);
+  color: var(--ks-text);
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px 0 10px;
+  box-sizing: border-box;
+}
+
+html.light .kinpaku-chrome .site-header-github:hover {
+  color: var(--ks-patina-deep);
+  border-color: var(--ks-patina);
+  background: oklch(52% 0.11 188 / 0.08);
+}
+
+html.light .kinpaku-chrome .site-footer {
+  background: var(--ks-lacquer-deep);
+}
+
+html.light .kinpaku-surface {
+  --color-paper: var(--ks-lacquer);
+  --color-cream: var(--ks-lacquer-raised);
+  --color-bg: var(--ks-lacquer-raised);
+  --color-mist: var(--ks-rule);
+  --color-charcoal: var(--ks-text);
+  --color-ash: var(--ks-text-muted);
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-accent-dim: oklch(77% 0.13 82 / 0.14);
+  --color-accent-soft: oklch(77% 0.13 82 / 0.24);
+
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+  color: var(--ks-text);
+}
+
+/* Bento rail — light gutter between tiles */
+html.light .ks-bento {
+  background: oklch(88% 0.014 95);
+  border-top-color: oklch(88% 0.014 95);
+  border-bottom-color: oklch(88% 0.014 95);
+}
+
+/* Primary buttons — dark ink on brand gold (lacquer-deep is paper-white in light) */
+html.light .ks-button.ks-button-primary,
+html.light .ks-button.ks-button-primary:hover,
+html.light .ks-button.ks-button-primary:active {
+  color: oklch(14% 0.018 95);
+}
+
+html.light .ks-button.ks-button-secondary {
+  color: var(--ks-kinpaku-ink);
+  border-color: var(--ks-kinpaku-deep);
+}
+
+html.light .ks-button.ks-button-secondary:hover,
+html.light .ks-button.ks-button-secondary:active {
+  color: var(--ks-kinpaku-rich);
+  border-color: var(--ks-kinpaku);
+}
+
+html.light .ks-button.ks-button-secondary:hover {
+  background: oklch(77% 0.13 82 / 0.10);
+}
+
+html.light .ks-button.ks-button-secondary:active {
+  background: oklch(77% 0.13 82 / 0.16);
+}
+
+/* Small labels / eyebrows — readable gold, not bright fill gold */
+html.light :is(
+  .ks-section-eyebrow,
+  .ks-subsection-label,
+  .home-kinpaku .section-eyebrow,
+  .home-kinpaku .section-number,
+  .home-kinpaku .spread-category-label,
+  .home-kinpaku .install-alts-label,
+  .home-kinpaku .changelog-highlights-label,
+  .home-kinpaku .ks-bento-num,
+  .home-kinpaku .fisheye-item.is-active,
+  .home-kinpaku .spread-command-name,
+  .docs-kinpaku .docs-index-eyebrow,
+  .docs-kinpaku .docs-live-eyebrow,
+  .docs-kinpaku .docs-flow-eyebrow,
+  .docs-kinpaku .docs-chains-eyebrow,
+  .docs-kinpaku .docs-reference-eyebrow,
+  .docs-kinpaku .docs-flow-verb,
+  .docs-kinpaku .skills-sidebar-category,
+  .docs-kinpaku .docs-live-target-sub,
+  .docs-kinpaku .docs-live-bar-accept,
+  .cf-eyebrow
+) {
+  color: var(--ks-kinpaku-ink);
+}
+
+/* ============================================================
+   Homepage — hero, scroll glass header, section shells
+   ============================================================ */
+
+html.light .home-kinpaku {
+  --color-accent-dim: oklch(77% 0.13 82 / 0.14);
+  --color-accent-soft: oklch(77% 0.13 82 / 0.22);
+
+  --cat-create-bg: linear-gradient(155deg, oklch(77% 0.13 82 / 0.12), transparent 56%), oklch(96% 0.012 95);
+  --cat-create-border: oklch(61% 0.085 78 / 0.55);
+  --cat-create-text: var(--ks-kinpaku-ink);
+  --cat-evaluate-bg: linear-gradient(155deg, oklch(70% 0.12 188 / 0.12), transparent 58%), oklch(96% 0.012 95);
+  --cat-evaluate-border: oklch(49% 0.08 188 / 0.55);
+  --cat-evaluate-text: var(--ks-patina-deep);
+  --cat-refine-bg: linear-gradient(155deg, oklch(86% 0.07 84 / 0.10), transparent 58%), oklch(96% 0.012 95);
+  --cat-refine-border: oklch(77% 0.13 82 / 0.45);
+  --cat-refine-text: var(--ks-kinpaku-ink);
+  --cat-simplify-bg: linear-gradient(155deg, oklch(61% 0.085 78 / 0.10), transparent 58%), oklch(96% 0.012 95);
+  --cat-simplify-border: oklch(61% 0.085 78 / 0.50);
+  --cat-simplify-text: var(--ks-kinpaku-ink);
+  --cat-harden-bg: linear-gradient(155deg, oklch(49% 0.08 188 / 0.10), transparent 58%), oklch(96% 0.012 95);
+  --cat-harden-border: oklch(49% 0.08 188 / 0.48);
+  --cat-harden-text: var(--ks-patina-deep);
+  --cat-system-bg: linear-gradient(155deg, oklch(61% 0.085 78 / 0.08), transparent 58%), oklch(96% 0.012 95);
+  --cat-system-border: oklch(61% 0.085 78 / 0.35);
+  --cat-system-text: oklch(45% 0.02 82);
+
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+}
+
+html.light .home-kinpaku ::selection {
+  color: var(--ks-lacquer-raised);
+  background: var(--ks-patina);
+}
+
+html.light .home-kinpaku .grain-overlay {
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+}
+
+html.light .home-kinpaku .site-header {
+  background: oklch(99% 0.008 95 / calc(0.88 * var(--hp, 0)));
+  border-bottom-color: oklch(25% 0.02 95 / calc(0.10 * var(--hp, 0)));
+}
+
+html.light .hero-rebuild {
+  border-bottom-color: var(--ks-rule);
+}
+
+html.light .hero-rebuild-art {
+  background-image: url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01-light.png");
+  background-position: left center;
+  filter: saturate(1.12) contrast(1.04);
+}
+
+html.light .hero-rebuild-demo-shell {
+  background: oklch(99% 0.008 95 / 0.92);
+  border-color: var(--ks-rule-strong);
+}
+
+html.light .hero-rebuild-demo-shell:hover {
+  border-color: var(--ks-kinpaku-deep);
+}
+
+/* Harness logos — mirror dark-mode per-logo exceptions for paper backgrounds.
+   Default: native assets, slightly dimmed; hover restores full color/weight. */
+html.light .home-kinpaku .hero-rebuild-logo {
+  opacity: 0.86;
+}
+
+html.light .home-kinpaku .hero-rebuild-logo img {
+  opacity: 0.84;
+  filter: none;
+}
+
+/* White-on-transparent / white-on-black sources — invert to ink on paper. */
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="Pi"] img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(0.2) contrast(1.1);
+}
+
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="OpenCode"] img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(0.92) contrast(1.05);
+}
+
+html.light .home-kinpaku .hero-rebuild-logo:hover,
+html.light .home-kinpaku .hero-rebuild-logo:focus-visible {
+  opacity: 1;
+}
+
+html.light .home-kinpaku .hero-rebuild-logo:hover img,
+html.light .home-kinpaku .hero-rebuild-logo:focus-visible img {
+  opacity: 1;
+  filter: none;
+}
+
+/* Pi stays inverted on hover — the source SVG is white-on-transparent. */
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="Pi"]:hover img,
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="Pi"]:focus-visible img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(0.18) contrast(1.1);
+}
+
+/* OpenCode hover keeps the inverted plate readable (same rationale as dark mode). */
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="OpenCode"]:hover img,
+html.light .home-kinpaku .hero-rebuild-logo[data-tooltip="OpenCode"]:focus-visible img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(0.92) contrast(1.05);
+}
+
+html.light .slop-teaser {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .slop-teaser-scanline {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 22px,
+    oklch(52% 0.14 35 / 0.04) 22px 23px
+  ),
+  linear-gradient(180deg, transparent 60%, oklch(94% 0.014 95 / 0.55));
+}
+
+html.light .slop-teaser-badge {
+  color: var(--ks-vermilion);
+  border-color: var(--ks-vermilion);
+}
+
+html.light .slop-teaser-terminal {
+  background: oklch(96% 0.012 95 / 0.95);
+}
+
+html.light .home-kinpaku .why-bento {
+  background: var(--ks-lacquer-raised);
+  border-top-color: var(--ks-lacquer-raised);
+  border-bottom-color: var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .why-bento-tile {
+  background: var(--ks-lacquer);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .section-nav {
+  background: oklch(99% 0.008 95 / 0.92);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .section-nav a {
+  color: var(--ks-text-muted);
+}
+
+html.light .home-kinpaku .section-nav a.is-active,
+html.light .home-kinpaku .section-nav a:hover {
+  color: var(--ks-nav-active);
+}
+
+html.light .kinpaku-chrome .site-header-nav a:hover,
+html.light .kinpaku-chrome .site-header-nav a[aria-current="page"] {
+  color: var(--ks-nav-active);
+}
+
+html.light .kinpaku-chrome .site-header-nav a[aria-current="page"]::after {
+  background: var(--ks-nav-active);
+}
+
+html.light .kinpaku-system-page .ks-nav a:hover,
+html.light .kinpaku-system-page .ks-nav a[aria-current="page"] {
+  color: var(--ks-nav-active);
+}
+
+html.light .kinpaku-system-page .ks-nav a[aria-current="page"]::after {
+  background: var(--ks-nav-active);
+}
+
+html.light .home-kinpaku .why-panel-body a {
+  color: var(--ks-champagne);
+  text-decoration-color: var(--ks-link-on-paper-line);
+}
+
+html.light .home-kinpaku .why-panel-body a:hover {
+  color: var(--ks-link-on-paper-hover);
+  text-decoration-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .home-kinpaku .why-dm-filename,
+html.light .home-kinpaku .why-dm-type-specimen {
+  color: var(--ks-champagne);
+}
+
+html.light .home-kinpaku .why-dm-comp-chip {
+  color: var(--ks-text);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-dm-comp-chip--primary {
+  color: oklch(14% 0.018 95);
+  border-color: var(--ks-kinpaku-deep);
+  background:
+    linear-gradient(90deg, oklch(77% 0.13 82 / 0.22), oklch(84% 0.19 80 / 0.55)),
+    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") center / 160% auto;
+}
+
+html.light .home-kinpaku .why-dm-comp-input {
+  background: oklch(88% 0.014 95);
+  color: var(--ks-text-muted);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-dm-color-hero {
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-dm-color-ramp span {
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-dm-foot {
+  color: var(--ks-text-muted);
+}
+
+html.light .home-kinpaku .why-visual--ci {
+  background:
+    linear-gradient(90deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(77% 0.13 82 / 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 92% 12%, oklch(52% 0.11 188 / 0.08), transparent 18rem),
+    var(--ks-lacquer-raised);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+}
+
+/* Live demo chrome on homepage */
+html.light .live-demo-gbar {
+  background: oklch(96% 0.012 95 / 0.88);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-demo-gbar-input {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  color: var(--ks-text);
+}
+
+html.light .live-demo-gbar-chip {
+  background: var(--ks-graphite);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-demo-panel {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  box-shadow: 0 8px 22px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .live-demo-variant-card {
+  background: var(--ks-lacquer);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-demo-variant-card.is-selected {
+  border-color: var(--ks-kinpaku-deep);
+  box-shadow: 0 0 0 4px oklch(77% 0.13 82 / 0.12);
+}
+
+html.light .live-demo-toolbar {
+  background: var(--ks-graphite);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-demo-canvas {
+  background: var(--ks-lacquer-deep);
+}
+
+html.light .live-demo-inspector {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+/* ============================================================
+   Docs, designing, slop, live-mode, changelog pages
+   ============================================================ */
+
+html.light .docs-kinpaku,
+html.light .designing-kinpaku,
+html.light .slop-kinpaku,
+html.light .live-mode-kinpaku {
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+}
+
+html.light .docs-kinpaku .skills-sidebar {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
+  background: oklch(77% 0.13 82 / 0.08);
+}
+
+html.light .docs-kinpaku .docs-tile,
+html.light .docs-kinpaku .docs-category-card,
+html.light .docs-kinpaku .docs-related-card,
+html.light .docs-kinpaku .docs-chain,
+html.light .docs-kinpaku .docs-ref-card,
+html.light .docs-kinpaku .docs-live-frame {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .docs-kinpaku .docs-tile:hover,
+html.light .docs-kinpaku .docs-category-card:hover,
+html.light .docs-kinpaku .docs-related-card:hover,
+html.light .docs-kinpaku .docs-ref-card:hover {
+  border-color: var(--ks-kinpaku-deep);
+}
+
+html.light .docs-visual-terminal {
+  background: var(--ks-lacquer-deep);
+  border-color: var(--ks-rule);
+  box-shadow: 0 12px 32px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .docs-visual-browser {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .designing-kinpaku .designing-loop-node {
+  background: transparent;
+  border: 0;
+}
+
+html.light .designing-kinpaku .designing-loop-node:hover .designing-loop-name {
+  color: var(--ks-nav-active);
+}
+
+html.light .designing-kinpaku .designing-start-step,
+html.light .designing-kinpaku .designing-phase-card {
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  padding: clamp(24px, 3vw, 36px);
+}
+
+/* Sticky phase nav — paper strip, not dark lacquer inset */
+html.light .designing-kinpaku .designing-phasenav {
+  background: var(--ks-lacquer-raised);
+  border-top-color: var(--ks-rule);
+  border-bottom-color: var(--ks-rule);
+  box-shadow: 0 1px 0 oklch(25% 0.02 95 / 0.04);
+}
+
+html.light .designing-kinpaku .designing-phasenav-link {
+  color: var(--ks-text-muted);
+}
+
+html.light .designing-kinpaku .designing-phasenav-link:hover {
+  color: var(--ks-champagne);
+}
+
+html.light .designing-kinpaku .designing-phasenav-link.is-active {
+  color: var(--ks-nav-active);
+}
+
+html.light .designing-kinpaku .designing-phasenav-link.is-active::after {
+  background: var(--ks-nav-active);
+}
+
+html.light .designing-kinpaku .site-header-nav a:hover,
+html.light .designing-kinpaku .site-header-nav a[aria-current="page"] {
+  color: var(--ks-nav-active);
+}
+
+html.light .designing-kinpaku .designing-phase-cmd {
+  background: var(--ks-graphite);
+  border-color: var(--ks-rule);
+  color: var(--ks-champagne);
+}
+
+html.light .designing-kinpaku .designing-phase-cmd:hover {
+  border-color: var(--ks-link-on-paper);
+  background: oklch(49% 0.08 188 / 0.08);
+  color: var(--ks-link-on-paper);
+}
+
+html.light .designing-kinpaku .docs-viz-file-header {
+  background: var(--ks-graphite);
+}
+
+html.light .designing-kinpaku .designing-iterate-terminal {
+  background: var(--ks-lacquer-deep);
+  border-color: var(--ks-rule);
+  color: var(--ks-champagne);
+  box-shadow:
+    inset 0 1px 0 oklch(99% 0 0 / 0.6),
+    0 12px 32px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .designing-kinpaku .designing-iterate-terminal-prompt {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .designing-kinpaku .docs-viz-live-frame {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .designing-kinpaku .docs-viz-live-chrome {
+  background: var(--ks-graphite);
+}
+
+html.light .designing-kinpaku .docs-viz-live-dot {
+  background: oklch(72% 0.02 95);
+}
+
+html.light .designing-kinpaku .docs-viz-live-stage {
+  background:
+    linear-gradient(90deg, oklch(61% 0.085 78 / 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(61% 0.085 78 / 0.05) 1px, transparent 1px),
+    var(--ks-lacquer);
+  background-size: 28px 28px;
+}
+
+html.light .designing-kinpaku .docs-viz-live-target {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .designing-kinpaku .docs-viz-live-kicker {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .designing-kinpaku .docs-viz-live-btn {
+  color: var(--ks-lacquer-deep);
+}
+
+html.light .designing-kinpaku .docs-viz-live-ctx,
+html.light .designing-kinpaku .docs-viz-live-gbar {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  box-shadow: 0 10px 28px -6px oklch(25% 0.02 95 / 0.14);
+}
+
+html.light .designing-kinpaku .docs-viz-live-gbar-mark {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active {
+  background: var(--ks-kinpaku);
+  color: oklch(14% 0.018 95);
+}
+
+html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active svg {
+  color: inherit;
+}
+
+html.light .designing-kinpaku .docs-viz-live-ctx-accept {
+  color: var(--ks-lacquer-deep);
+}
+
+html.light .designing-kinpaku .designing-surface-cmd,
+html.light .designing-kinpaku .designing-extract-btn {
+  background: var(--ks-graphite);
+  color: var(--ks-champagne);
+}
+
+html.light .designing-kinpaku .designing-extract-after {
+  color: oklch(14% 0.018 95);
+}
+
+html.light .designing-kinpaku .designing-lane-link {
+  color: var(--ks-link-on-paper);
+  text-decoration-color: var(--ks-link-on-paper-line);
+}
+
+html.light .designing-kinpaku .designing-lane-link:hover {
+  color: var(--ks-link-on-paper-hover);
+  text-decoration-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .designing-kinpaku .designing-cta-card:hover {
+  border-color: var(--ks-kinpaku-deep);
+}
+
+/* Bento rail — white gutters between tiles (match homepage why-bento) */
+html.light .designing-kinpaku .ks-bento {
+  background: var(--ks-lacquer-raised);
+  border-top-color: var(--ks-lacquer-raised);
+  border-bottom-color: var(--ks-lacquer-raised);
+}
+
+html.light .designing-kinpaku .ks-bento-tile {
+  background: var(--ks-lacquer);
+}
+
+html.light .designing-kinpaku .designing-lanes .ks-bento-tile {
+  background: transparent;
+}
+
+html.light .designing-kinpaku .designing-lane-mock {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .designing-kinpaku .designing-lane-mock-accent {
+  color: var(--ks-kinpaku-deep);
+}
+
+html.light .designing-kinpaku .ks-bento.designing-lanes {
+  background: transparent;
+  border: 0;
+}
+
+html.light .slop-kinpaku .slop-card,
+html.light .slop-kinpaku .slop-layer {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-mode-kinpaku .live-mode-hero-panel,
+html.light .live-mode-kinpaku .live-mode-step {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-mode-kinpaku .live-mode-pathway {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .live-mode-kinpaku .live-mode-pathway:hover {
+  border-color: var(--ks-kinpaku-deep);
+  background: oklch(77% 0.13 82 / 0.08);
+}
+
+html.light .live-mode-kinpaku .live-mode-pathway-kind,
+html.light .live-mode-kinpaku .live-mode-pathway-cta {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .live-mode-kinpaku .live-mode-terminal {
+  background: var(--ks-lacquer-deep);
+  border-color: var(--ks-rule);
+  box-shadow:
+    inset 0 1px 0 oklch(99% 0 0 / 0.6),
+    0 20px 48px -14px oklch(25% 0.02 95 / 0.12);
+}
+
+html.light .changelog-faq-kinpaku .changelog-entry,
+html.light .changelog-faq-kinpaku .faq-item {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+/* ============================================================
+   Design system page
+   ============================================================ */
+
+html.light .kinpaku-system-page {
+  background: var(--ks-lacquer);
+}
+
+html.light .kinpaku-system-page .ks-hero-art {
+  background:
+    linear-gradient(90deg, var(--ks-lacquer) 0%, oklch(97% 0.012 95 / 0.65) 26%, transparent 48%, transparent 88%, var(--ks-lacquer) 100%),
+    linear-gradient(180deg, oklch(97% 0.012 95 / 0.35) 0%, transparent 35%, var(--ks-lacquer) 100%),
+    url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01-light.png") center / cover no-repeat;
+  filter: saturate(1.05) contrast(1.02);
+}
+
+/* Logo lockup on paper — ink mark + wordmark (matches logo tile "On light") */
+html.light .kinpaku-system-page a.ks-brand,
+html.light .kinpaku-system-page a.ks-brand .ks-mark,
+html.light .kinpaku-system-page a.ks-brand .ks-wordmark,
+html.light .kinpaku-chrome .site-header-brand,
+html.light .kinpaku-chrome .site-header-brand-logo,
+html.light .kinpaku-chrome .site-header-brand-name,
+html.light .kinpaku-chrome .footer-logo,
+html.light .detector-home-link,
+html.light .detector-home-link .ks-mark,
+html.light .detector-home-link .ks-wordmark {
+  color: var(--ks-champagne);
+}
+
+html.light .kinpaku-system-page .ks-section-tile,
+html.light .kinpaku-system-page .ks-specimen,
+html.light .kinpaku-system-page .ks-proof-card {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .detector-lab-page {
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+}
+
+html.light .detector-lab-page .detector-lab-panel,
+html.light .detector-lab-page .detector-lab-sidebar {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .detector-lab-page .detector-lab-preview {
+  background: var(--ks-lacquer-deep);
+  border-color: var(--ks-rule);
+}
+
+/* ============================================================
+   Testimonials, footer, shared sub-page prose
+   ============================================================ */
+
+html.light .testimonials-section {
+  background: var(--ks-lacquer-deep);
+}
+
+html.light .testimonial-card {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .site-footer {
+  background: var(--ks-lacquer-deep);
+}
+
+html.light .sub-page-hero {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .prose pre {
+  background: var(--ks-code-block-bg);
+  border-color: var(--ks-code-block-border);
+}
+
+html.light .prose blockquote {
+  border-left-color: var(--ks-kinpaku-deep);
+  color: var(--ks-text-muted);
+}
+
+/* ============================================================
+   Homepage — panels, magazine, installs, why visuals
+   ============================================================ */
+
+html.light .home-kinpaku .foundation-card,
+html.light .home-kinpaku .magazine-container,
+html.light .home-kinpaku #framework-viz-container .ptable-cell,
+html.light .home-kinpaku .gallery-stack-card,
+html.light .home-kinpaku .language-view-toggle,
+html.light .home-kinpaku .demo-toggle-switch,
+html.light .home-kinpaku .glass-terminal,
+html.light .home-kinpaku .terminal-window,
+html.light .home-kinpaku .install-terminal-cmd,
+html.light .home-kinpaku .install-cmd-line,
+html.light .home-kinpaku .terminal-header {
+  background: var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .language-view-tab.is-active {
+  color: oklch(14% 0.018 95);
+}
+
+html.light .home-kinpaku .install-primary-main,
+html.light .home-kinpaku .install-primary-howto,
+html.light .home-kinpaku .install-step,
+html.light .home-kinpaku .install-cmd-block,
+html.light .home-kinpaku .install-tool-preview,
+html.light .home-kinpaku .install-updated-x,
+html.light .home-kinpaku .changelog-highlights,
+html.light .home-kinpaku .changelog-entry,
+html.light .home-kinpaku .faq-item,
+html.light .home-kinpaku .consulting-content,
+html.light .home-kinpaku .load-error {
+  background:
+    linear-gradient(135deg, oklch(77% 0.13 82 / 0.06), transparent 44%),
+    var(--ks-lacquer-raised);
+  box-shadow: inset 0 0 0 1px oklch(77% 0.13 82 / 0.05);
+}
+
+html.light .home-kinpaku .install-primary-howto {
+  background:
+    linear-gradient(135deg, oklch(52% 0.11 188 / 0.06), transparent 44%),
+    var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .foundation-plinth {
+  background:
+    repeating-linear-gradient(45deg, oklch(25% 0.02 95 / 0.06), oklch(25% 0.02 95 / 0.06) 1px, transparent 1px, transparent 9px),
+    oklch(91% 0.012 95 / 0.55);
+}
+
+html.light .home-kinpaku .foundation-column:hover .foundation-card {
+  box-shadow:
+    inset 0 0 0 1px oklch(52% 0.11 188 / 0.10),
+    0 24px 58px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison {
+  --demo-panel: oklch(96% 0.012 95);
+  --demo-panel-raised: oklch(94% 0.014 95);
+  --demo-panel-soft: oklch(91% 0.012 95);
+  --demo-border: oklch(25% 0.02 95 / 0.14);
+  --demo-text: oklch(28% 0.018 95);
+  --demo-muted: oklch(45% 0.015 95);
+  --demo-dim: oklch(58% 0.012 95);
+  --demo-warning-panel: oklch(94% 0.04 72);
+  --demo-danger-panel: oklch(94% 0.04 35);
+  --demo-info-panel: oklch(94% 0.04 205);
+  --demo-purple: oklch(52% 0.14 286);
+  --demo-purple-soft: oklch(92% 0.04 286);
+}
+
+html.light .home-kinpaku .spread-demo-area .demo-split-comparison .split-after,
+html.light .home-kinpaku .terminal-preview .demo-split-comparison .split-after {
+  background: oklch(94% 0.014 95);
+}
+
+html.light .home-kinpaku .hero-rebuild-right .split-label-item {
+  background: oklch(99% 0.008 95 / 0.88);
+  border-color: var(--ks-rule-strong);
+  color: var(--ks-champagne);
+}
+
+html.light .home-kinpaku .split-badge {
+  background: oklch(99% 0.008 95 / 0.92);
+}
+
+html.light .home-kinpaku .slop-callout {
+  background: var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .why-visual--writes,
+html.light .home-kinpaku .why-visual--extension {
+  background:
+    radial-gradient(circle at 92% 12%, oklch(52% 0.11 188 / 0.08), transparent 18rem),
+    var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .why-ci-window,
+html.light .home-kinpaku .why-writes-card,
+html.light .home-kinpaku .why-visual--extension .why-browser {
+  background: var(--ks-lacquer-raised);
+  box-shadow: 0 24px 70px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .home-kinpaku .why-ci-header,
+html.light .home-kinpaku .why-writes-head,
+html.light .home-kinpaku .why-visual--extension .why-browser-chrome {
+  background: oklch(88% 0.014 95);
+}
+
+html.light .home-kinpaku .why-writes-line--del {
+  color: oklch(46% 0.12 30);
+  background: oklch(58% 0.15 35 / 0.10);
+}
+
+html.light .home-kinpaku .why-writes-line--add {
+  color: oklch(40% 0.10 145);
+  background: oklch(58% 0.12 145 / 0.14);
+}
+
+html.light .home-kinpaku .why-writes-check {
+  color: oklch(14% 0.018 95);
+}
+
+html.light .home-kinpaku .why-visual--v2 .v2-canvas-mock,
+html.light .home-kinpaku .why-visual--v2 .v2-new-browser,
+html.light .home-kinpaku .why-visual--v2 .v2-new-line {
+  background: var(--ks-lacquer-raised);
+  box-shadow: 0 18px 48px oklch(25% 0.02 95 / 0.08);
+}
+
+html.light .home-kinpaku .why-visual--v2 .v2-canvas-mock::before,
+html.light .home-kinpaku .why-visual--v2 .v2-new-browser-dots {
+  background: var(--ks-graphite);
+}
+
+html.light .home-kinpaku .why-visual--v2 .v2-new-browser-frame {
+  background:
+    linear-gradient(90deg, oklch(77% 0.13 82 / 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 72% 58%, oklch(52% 0.11 188 / 0.06), transparent 7rem),
+    var(--ks-lacquer);
+}
+
+html.light .home-rebuild .slop-teaser-panel,
+html.light .home-rebuild .slop-teaser-terminal {
+  background: var(--ks-lacquer-raised);
+}
+
+html.light .home-rebuild .slop-teaser-terminal-header {
+  background: var(--ks-graphite);
+}
+
+/* Live demo picker chrome — light reskin */
+html.light .home-kinpaku .live-demo-dot,
+html.light .live-mode-kinpaku .live-demo-dot {
+  background: oklch(72% 0 0);
+}
+
+html.light .home-kinpaku .live-demo-url,
+html.light .live-mode-kinpaku .live-demo-url {
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .live-demo-gbar,
+html.light .live-mode-kinpaku .live-demo-gbar,
+html.light .home-kinpaku .live-demo-ctx,
+html.light .live-mode-kinpaku .live-demo-ctx {
+  box-shadow: 0 16px 36px -12px oklch(25% 0.02 95 / 0.12);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .live-demo-frame,
+html.light .live-mode-kinpaku .live-demo-frame {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .hero-live-demo .live-demo-pin-note {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule-strong);
+  box-shadow: 0 8px 22px oklch(25% 0.02 95 / 0.10);
+}
+
+html.light .hero-live-demo .live-demo-annot-clear {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+/* ============================================================
+   Docs / sub-pages shared shells
+   ============================================================ */
+
+html.light .docs-kinpaku,
+html.light .designing-kinpaku,
+html.light .slop-kinpaku,
+html.light .live-mode-kinpaku,
+html.light .changelog-faq-kinpaku {
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+}
+
+html.light .skills-layout-page .skills-sidebar,
+html.light .skills-layout-page .skills-content {
+  background: transparent;
+}
+
+html.light [data-site-header] .site-header-nav a {
+  border-bottom-color: var(--ks-rule);
+}
+
+html.light .docs-kinpaku .docs-live-chrome,
+html.light .docs-kinpaku .docs-live-bar {
+  background: var(--ks-graphite);
+}
+
+html.light .docs-kinpaku .docs-live-stage,
+html.light .docs-kinpaku .docs-live-target {
+  background: var(--ks-lacquer);
+}
+
+html.light .docs-kinpaku .docs-flow-link {
+  background: var(--ks-lacquer-raised);
+}
+
+/* Docs inline viz — bright fill gold on pale kinpaku wash or paper */
+html.light .docs-kinpaku .prose .docs-viz-flow-step--accent .docs-viz-flow-name,
+html.light .docs-kinpaku .prose .docs-viz-variant.is-active .docs-viz-variant-kicker,
+html.light .docs-kinpaku .prose .docs-viz-designmd-chip,
+html.light .docs-kinpaku .prose .docs-viz-file-status,
+html.light .docs-kinpaku .prose .docs-viz-live-kicker,
+html.light .docs-kinpaku .prose .docs-viz-live-title em,
+html.light .docs-kinpaku .prose th {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .docs-kinpaku .prose th {
+  border-bottom-color: var(--ks-kinpaku-deep);
+}
+
+html.light .docs-kinpaku .prose .docs-viz-flow-step + .docs-viz-flow-step::before {
+  color: var(--ks-kinpaku-deep);
+}
+
+html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active .docs-viz-variant-kicker,
+html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
+  border-color: var(--ks-kinpaku-deep);
+}
+
+/* Docs command demos — light surfaces (divider fix lives in docs-kinpaku.css) */
+html.light .docs-kinpaku .docs-command-demo .split-container {
+  background:
+    linear-gradient(90deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(77% 0.13 82 / 0.03) 1px, transparent 1px),
+    var(--ks-lacquer-raised);
+  background-size: 24px 24px;
+  border-bottom-color: var(--ks-rule);
+}
+
+html.light .docs-kinpaku .docs-command-demo .split-before {
+  background:
+    linear-gradient(135deg, oklch(77% 0.13 82 / 0.05), transparent 48%),
+    var(--ks-lacquer);
+}
+
+html.light .docs-kinpaku .docs-command-demo .split-after {
+  background: var(--ks-lacquer-raised);
+}
+
+html.light .docs-kinpaku .docs-command-demo .demo-caption {
+  background: var(--ks-graphite);
+  color: var(--ks-text-muted);
+}
+
+html.light .designing-kinpaku .designing-loop-track {
+  background: transparent;
+  border: 0;
+}
+
+html.light .slop-kinpaku .slop-hero-panel,
+html.light .slop-kinpaku .slop-gallery-item {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+.kinpaku-system-page .ks-topbar .theme-toggle {
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+html.light .site-header-github-star {
+  color: var(--ks-kinpaku);
+}
+
+html.light .slop-kinpaku .skills-sidebar {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .designing-kinpaku {
+  background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
+}
+
+html.light .kinpaku-system-page .ks-category-rail {
+  background: linear-gradient(180deg, transparent, oklch(97% 0.012 95 / 0.92));
+}
+
+html.light .kinpaku-system-page .ks-logo-tile.is-dark {
+  background: var(--ks-lacquer-deep);
+}
+
+html.light .kinpaku-system-page .ks-logo-tile figcaption {
+  background: var(--ks-lacquer-raised);
+}
+
+/* ============================================================
+   Header utilities — match toggle + star pill height
+   ============================================================ */
+
+html.light .site-header-github {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px 0 10px;
+  box-sizing: border-box;
+}
+
+/* ============================================================
+   Hero picker demo — readable controls on light surfaces
+   (graphite tokens are pale in light mode; use dark chips here)
+   ============================================================ */
+
+html.light .home-kinpaku .live-demo-gbar,
+html.light .live-mode-kinpaku .live-demo-gbar,
+html.light .home-kinpaku .live-demo-ctx,
+html.light .live-mode-kinpaku .live-demo-ctx {
+  color: var(--ks-text);
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  box-shadow: 0 16px 36px -12px oklch(25% 0.02 95 / 0.14);
+}
+
+html.light .home-kinpaku .live-demo-gbar-brand,
+html.light .live-mode-kinpaku .live-demo-gbar-brand {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .home-kinpaku .live-demo-gbar-btn.is-active,
+html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active {
+  background: oklch(22% 0.02 95);
+  color: var(--ks-kinpaku-pale);
+}
+
+html.light .home-kinpaku .live-demo-gbar-btn.is-active svg,
+html.light .home-kinpaku .live-demo-gbar-btn.is-active .live-demo-gbar-btn-label,
+html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active svg,
+html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active .live-demo-gbar-btn-label {
+  color: inherit;
+}
+
+html.light .home-kinpaku .live-demo-gbar-chat,
+html.light .live-mode-kinpaku .live-demo-gbar-chat {
+  background: oklch(88% 0.014 95);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .live-demo-gbar-chat.is-expanded,
+html.light .live-mode-kinpaku .live-demo-gbar-chat.is-expanded {
+  border-color: var(--ks-kinpaku-deep);
+}
+
+html.light .home-kinpaku .live-demo-gbar-chat-input,
+html.light .live-mode-kinpaku .live-demo-gbar-chat-input {
+  color: var(--ks-text);
+}
+
+html.light .home-kinpaku .live-demo-ctx-pill,
+html.light .home-kinpaku .live-demo-ctx-input,
+html.light .home-kinpaku .live-demo-ctx-count,
+html.light .live-mode-kinpaku .live-demo-ctx-pill,
+html.light .live-mode-kinpaku .live-demo-ctx-input,
+html.light .live-mode-kinpaku .live-demo-ctx-count {
+  background: oklch(88% 0.014 95);
+  border-color: var(--ks-rule);
+  color: var(--ks-text);
+}
+
+html.light .home-kinpaku .live-demo-ctx-go,
+html.light .home-kinpaku .live-demo-ctx-accept,
+html.light .live-mode-kinpaku .live-demo-ctx-go,
+html.light .live-mode-kinpaku .live-demo-ctx-accept {
+  color: oklch(14% 0.018 95);
+}
+
+html.light .home-kinpaku .live-demo-ctx-caret,
+html.light .live-mode-kinpaku .live-demo-ctx-caret {
+  background: var(--ks-kinpaku-rich);
+}
+
+html.light .home-kinpaku .live-demo-ctx-row--accepted,
+html.light .live-mode-kinpaku .live-demo-ctx-row--accepted {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .home-kinpaku .live-demo-ctx-nav:hover,
+html.light .live-mode-kinpaku .live-demo-ctx-nav:hover {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .home-kinpaku .live-demo-outline,
+html.light .home-kinpaku .live-demo-annotations,
+html.light .live-mode-kinpaku .live-demo-outline,
+html.light .live-mode-kinpaku .live-demo-annotations {
+  color: var(--ks-kinpaku-ink);
+  border-color: var(--ks-kinpaku-rich);
+}
+
+/* ============================================================
+   Why bento — Live Mode mock (tile 07)
+   ============================================================ */
+
+html.light .home-kinpaku .why-visual--live {
+  background:
+    linear-gradient(90deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, oklch(77% 0.13 82 / 0.03) 1px, transparent 1px),
+    radial-gradient(circle at 18% 100%, oklch(77% 0.13 82 / 0.06), transparent 16rem),
+    var(--ks-lacquer-raised);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+}
+
+html.light .home-kinpaku .why-live-frame {
+  background: var(--ks-lacquer);
+  border-color: var(--ks-rule);
+  box-shadow: 0 18px 48px oklch(25% 0.02 95 / 0.10);
+}
+
+html.light .home-kinpaku .why-live-chrome {
+  background: oklch(88% 0.014 95);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-live-url {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  color: var(--ks-text-muted);
+}
+
+html.light .home-kinpaku .why-live-stage {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 9px, oklch(25% 0.02 95 / 0.025) 9px 10px),
+    var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .why-live-pick {
+  background:
+    linear-gradient(135deg, oklch(77% 0.13 82 / 0.08), transparent 60%),
+    var(--ks-lacquer);
+  border-color: var(--ks-kinpaku-rich);
+  box-shadow:
+    0 0 0 1px oklch(77% 0.13 82 / 0.15),
+    0 0 24px oklch(77% 0.13 82 / 0.10);
+}
+
+html.light .home-kinpaku .why-live-pick-tag {
+  color: var(--ks-kinpaku-deep);
+}
+
+html.light .home-kinpaku .why-live-pick-note {
+  background: var(--ks-kinpaku);
+  color: oklch(14% 0.018 95);
+  box-shadow: 0 4px 14px oklch(77% 0.13 82 / 0.18);
+}
+
+html.light .home-kinpaku .why-live-pick-caret {
+  background: oklch(14% 0.018 95);
+}
+
+html.light .home-kinpaku .why-live-frame > .why-live-ctx.live-demo-ctx {
+  background: var(--ks-lacquer);
+  border-color: var(--ks-rule);
+  box-shadow: none;
+}
+
+/* ============================================================
+   Patina text links on paper — nav CTAs, inline links, prose
+   ============================================================ */
+
+html.light .home-kinpaku :is(
+  .cheatsheet-link,
+  .why-panel-meta a,
+  .install-howto-link,
+  .gallery-stack-link,
+  .install-cmd-note a,
+  .faq-answer a,
+  .consulting-desc a,
+  .downloads-rebuild-secondary a,
+  .downloads-rebuild-more a,
+  .downloads-rebuild-extras a:not(.downloads-rebuild-link-secondary),
+  .slop-teaser-cta-primary
+) {
+  color: var(--ks-link-on-paper);
+  border-bottom-color: var(--ks-link-on-paper-line);
+}
+
+html.light .home-kinpaku :is(
+  .cheatsheet-link,
+  .why-panel-meta a,
+  .install-howto-link,
+  .gallery-stack-link,
+  .install-cmd-note a,
+  .faq-answer a,
+  .consulting-desc a,
+  .downloads-rebuild-secondary a,
+  .downloads-rebuild-more a,
+  .downloads-rebuild-extras a:not(.downloads-rebuild-link-secondary),
+  .slop-teaser-cta-primary
+):hover {
+  color: var(--ks-link-on-paper-hover);
+  border-bottom-color: var(--ks-link-on-paper-hover);
+}
+
+html.light :is(.docs-kinpaku, .designing-kinpaku, .slop-kinpaku, .live-mode-kinpaku) .prose a {
+  color: var(--ks-link-on-paper);
+  text-decoration-color: var(--ks-link-on-paper-line);
+}
+
+html.light :is(.docs-kinpaku, .designing-kinpaku, .slop-kinpaku, .live-mode-kinpaku) .prose a:hover {
+  color: var(--ks-link-on-paper-hover);
+  text-decoration-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .docs-kinpaku .docs-flow-alt a {
+  color: var(--ks-link-on-paper);
+  border-bottom-color: var(--ks-link-on-paper-line);
+}
+
+html.light .docs-kinpaku .docs-flow-alt a:hover {
+  border-bottom-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .designing-kinpaku :is(
+  .designing-visualize-plate-note a,
+  .designing-iterate-table td a,
+  .designing-polish-band-cmds a,
+  .designing-maintain-label a
+) {
+  color: var(--ks-link-on-paper);
+  text-decoration-color: var(--ks-link-on-paper-line);
+}
+
+html.light .designing-kinpaku :is(
+  .designing-visualize-plate-note a,
+  .designing-iterate-table td a,
+  .designing-polish-band-cmds a,
+  .designing-maintain-label a
+):hover {
+  color: var(--ks-link-on-paper-hover);
+  text-decoration-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .slop-kinpaku .slop-catalog-lede a {
+  color: var(--ks-link-on-paper);
+  border-bottom-color: var(--ks-link-on-paper-line);
+}
+
+html.light .slop-kinpaku .slop-catalog-lede a:hover {
+  color: var(--ks-link-on-paper-hover);
+  border-bottom-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .cf-items a,
+html.light .cf-faq-answer a {
+  color: var(--ks-link-on-paper);
+}
+
+html.light .cf-items a:hover,
+html.light .cf-faq-answer a:hover {
+  color: var(--ks-link-on-paper-hover);
+}
+
+html.light :is(.docs-kinpaku, .slop-kinpaku) .skills-sidebar-list a:hover,
+html.light :is(.docs-kinpaku, .slop-kinpaku) .skills-sidebar-list a[aria-current="page"],
+html.light :is(.docs-kinpaku, .slop-kinpaku) .skills-sidebar-list a[aria-current="true"],
+html.light .docs-kinpaku .skills-breadcrumb a {
+  color: var(--ks-link-on-paper);
+}
+
+html.light :is(.docs-kinpaku, .slop-kinpaku) .skills-sidebar-list a[aria-current="page"],
+html.light :is(.docs-kinpaku, .slop-kinpaku) .skills-sidebar-list a[aria-current="true"] {
+  border-left-color: var(--ks-link-on-paper);
+}
+
+html.light .docs-kinpaku .skills-breadcrumb a:hover {
+  color: var(--ks-link-on-paper-hover);
+}
+
+html.light .slop-kinpaku :is(
+  .sub-page-lede a,
+  .anti-patterns-legend-body a,
+  .visual-mode-method-name a,
+  .visual-mode-method-desc a
+) {
+  color: var(--ks-link-on-paper);
+  text-decoration-color: var(--ks-link-on-paper-line);
+}
+
+html.light .slop-kinpaku :is(
+  .sub-page-lede a,
+  .anti-patterns-legend-body a,
+  .visual-mode-method-name a,
+  .visual-mode-method-desc a
+):hover {
+  color: var(--ks-link-on-paper-hover);
+  text-decoration-color: var(--ks-link-on-paper-hover);
+}
+
+/* ============================================================
+   Why bento — tile 03 (DESIGN.md) inner tiles
+   ============================================================ */
+
+html.light .home-kinpaku .why-dm-tile {
+  background: var(--ks-lacquer);
+  border-color: var(--ks-rule);
+  box-shadow: none;
+}
+
+html.light .home-kinpaku .why-dm-tile-meta span:first-child {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .home-kinpaku .why-terminal,
+html.light .home-kinpaku .why-productmd-file,
+html.light .home-kinpaku .why-ci-window {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku .why-terminal-header,
+html.light .home-kinpaku .why-productmd-header {
+  background: oklch(88% 0.014 95);
+  border-color: var(--ks-rule);
+}
+
+html.light .home-kinpaku :is(
+  .why-terminal-dot,
+  .why-live-dot,
+  .why-visual--extension .why-browser-dot,
+  .why-visual--v2 .v2-new-browser-dot
+) {
+  opacity: 0.62;
+}
+
+html.light .home-kinpaku .why-ci-header::before {
+  opacity: 0.62;
+}
+
+html.light .home-kinpaku .why-ci-status,
+html.light .home-kinpaku .why-ci-status--fail {
+  border-color: oklch(52% 0.16 35 / 0.32);
+  color: oklch(46% 0.13 35);
+  background: oklch(58% 0.15 35 / 0.10);
+}
+
+html.light .home-kinpaku .why-ci-line {
+  color: var(--ks-champagne);
+}
+
+html.light .home-kinpaku .why-ci-cmd {
+  color: var(--ks-kinpaku-deep);
+}
+
+html.light .home-kinpaku .why-ci-issue code {
+  color: var(--ks-text);
+  background: var(--ks-graphite);
+  border-color: var(--ks-rule);
+  padding: var(--ks-code-pad);
+}
+
+html.light .home-kinpaku .why-ci-x {
+  color: var(--ks-vermilion);
+}
+
+html.light .home-kinpaku .why-visual--terminal,
+html.light .home-kinpaku .why-visual--productmd,
+html.light .home-kinpaku .why-visual--registers,
+html.light .home-kinpaku .why-visual--vizfirst {
+  background: var(--ks-lacquer);
+}
+
+html.light .home-kinpaku .why-register-label {
+  color: var(--ks-text-muted);
+}
+
+html.light .home-kinpaku .why-brand-hero-title em {
+  color: var(--ks-kinpaku-deep);
+}
+
+html.light .home-kinpaku .why-register-mock--brand {
+  background: var(--ks-lacquer);
+}
+
+html.light .home-kinpaku .why-register-mock--product {
+  background: var(--ks-lacquer-raised);
+}
+
+html.light .home-kinpaku .why-vz-plate-kind {
+  color: var(--ks-kinpaku-ink);
+}
+
+/* ============================================================
+   Get started section
+   ============================================================ */
+
+html.light .downloads-rebuild-card {
+  --card-fg: var(--ks-text);
+  --card-fg-strong: var(--ks-champagne);
+  --card-fg-muted: var(--ks-text-muted);
+  --card-accent: var(--ks-link-on-paper);
+  --card-cmd-bg: oklch(92% 0.014 95);
+  --card-cmd-fg: var(--ks-text);
+  --card-copy-border: var(--ks-rule);
+  --card-copy-fg: var(--ks-link-on-paper);
+  --card-copy-hover-bg: oklch(70% 0.12 188 / 0.08);
+  --card-link-color: var(--ks-link-on-paper);
+  --card-link-underline: var(--ks-link-on-paper-line);
+  --card-link-secondary: var(--ks-text-muted);
+
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  box-shadow: 0 24px 60px oklch(25% 0.02 95 / 0.06);
+}
+
+html.light .downloads-rebuild-card::before {
+  opacity: 0.72;
+  mix-blend-mode: multiply;
+}
+
+html.light .home-kinpaku .downloads-rebuild {
+  background: transparent;
+}
+
+html.light .home-kinpaku .downloads-rebuild-copy {
+  border-color: var(--ks-rule);
+  color: var(--ks-link-on-paper);
+}
+
+html.light .downloads-rebuild-alt-label {
+  color: var(--ks-text-muted);
+}
+
+html.light .downloads-rebuild-note {
+  color: var(--ks-text-muted);
+}
+
+html.light .home-kinpaku .downloads-rebuild-extras strong {
+  color: var(--ks-champagne);
+}
+
+html.light .downloads-rebuild-eyebrow {
+  color: var(--ks-kinpaku-ink);
+}
+
+html.light .home-kinpaku .downloads-rebuild-cmd {
+  background: var(--ks-graphite);
+  border: 1px solid var(--ks-rule);
+}
+
+html.light .home-kinpaku .downloads-rebuild-cmd--alt {
+  background: var(--ks-lacquer);
+}
+
+html.light .downloads-rebuild-alt-note code {
+  background: var(--ks-graphite);
+  color: var(--card-accent);
+  padding: var(--ks-code-pad);
+  border-radius: var(--ks-code-radius);
+}
+
+html.light .home-kinpaku .downloads-rebuild-copy:hover {
+  border-color: var(--ks-patina);
+  background: oklch(70% 0.12 188 / 0.08);
+  color: var(--ks-link-on-paper-hover);
+}
+
+html.light .downloads-rebuild-alts-summary {
+  color: var(--ks-link-on-paper);
+}
+
+html.light .downloads-rebuild-alts-summary:hover {
+  color: var(--ks-link-on-paper-hover);
+}
+
+html.dark {
+  color-scheme: dark;
+}

@@ -1227,7 +1227,7 @@
   background: var(--ks-lacquer-raised);
 }
 
-.docs-kinpaku .docs-command-demo .split-comparison {
+.docs-kinpaku .docs-command-demo :is(.split-comparison, .demo-split-comparison) {
   max-width: none;
   margin: 0;
   padding: 0;
@@ -1253,6 +1253,9 @@
 }
 
 .docs-kinpaku .docs-command-demo .split-after {
+  /* Doc.astro initSplitCompare uses skewAngle: 0 — vertical seam, not the
+     angled default from sub-pages.css / main.css. */
+  clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%);
   background:
     linear-gradient(90deg, oklch(8% 0.006 95 / 0.92), oklch(10% 0.006 95 / 0.96)),
     radial-gradient(circle at 82% 26%, oklch(78% 0.12 82 / 0.14), transparent 12rem);
@@ -1261,6 +1264,7 @@
 .docs-kinpaku .docs-command-demo .split-divider {
   background: var(--ks-kinpaku);
   box-shadow: 0 0 20px oklch(78% 0.12 82 / 0.4);
+  transform: translateX(-50%) !important;
 }
 
 .docs-kinpaku .docs-command-demo .demo-caption {
