@@ -5376,7 +5376,7 @@ void main() {
   // dot so preserving alpha does not erase the loading texture.
   float inkRadius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
   float alphaInk = smoothstep(0.05, 0.95, cellTex.a) * u_alpha_glyphs;
-  float radius = max(0.12 * (1.0 - alphaInk), max(inkRadius, alphaInk * 0.56));
+  float radius = max(0.12 * (1.0 - alphaInk), max(inkRadius, alphaInk * 0.50));
   float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
   vec3 paper = vec3(0.975, 0.965, 0.955);
   vec3 dotLayer = mix(paper, u_accent, dotMask);
@@ -5385,7 +5385,7 @@ void main() {
   // capture pixels get a low-alpha paper wash plus stronger dot alpha, so
   // the matrix is visible without becoming the old opaque rectangle.
   vec4 tex = texture2D(u_texture, uv);
-  float bandAlpha = band * mix(0.05, 0.72, dotMask);
+  float bandAlpha = band * mix(0.05, 0.9, dotMask);
   gl_FragColor = vec4(mix(tex.rgb, dotLayer, band), max(tex.a, bandAlpha));
 }`;
 

@@ -97,12 +97,12 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /float radius = max\(0\.12 \* \(1\.0 - alphaInk\), max\(inkRadius, alphaInk \* 0\.56\)\);/,
+      /float radius = max\(0\.12 \* \(1\.0 - alphaInk\), max\(inkRadius, alphaInk \* 0\.50\)\);/,
       'transparent capture pixels should keep a small matrix dot while glyph pixels get larger dots',
     );
     assert.match(
       SOURCE,
-      /float bandAlpha = band \* mix\(0\.05, 0\.72, dotMask\);/,
+      /float bandAlpha = band \* mix\(0\.05, 0\.9, dotMask\);/,
       'transparent capture pixels should use stronger alpha for dots than for the paper wash',
     );
     assert.match(
