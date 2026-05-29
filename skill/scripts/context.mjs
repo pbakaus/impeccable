@@ -11,6 +11,13 @@
  *      escape hatch, only consulted when defaults are empty
  *   4. cwd as a "nothing found" default
  *
+ * DESIGN.md may be scoped: a project with more than one design system keeps a
+ * DESIGN.md inside named subdirectories of the context dir (alongside the
+ * shared PRODUCT.md). Pass the URL or file path being designed as argv[2] and
+ * the loader routes to the matching scope's DESIGN.md (see resolveDesignPath),
+ * falling back to the shared DESIGN.md. Single-DESIGN.md projects are
+ * unaffected.
+ *
  * `resolveContextDir()` and `loadContext()` are also exported for the
  * server-side scripts (live.mjs, live-server.mjs) that need the structured
  * shape rather than the markdown block.
@@ -56,10 +63,12 @@ export function resolveContextDir(cwd = process.cwd()) {
   return cwd;
 }
 
-export function loadContext(cwd = process.cwd()) {
+export function loadContext(cwd = process.cwd(), target = null) {
   const contextDir = resolveContextDir(cwd);
   const productPath = firstExisting(contextDir, PRODUCT_NAMES);
-  const designPath = firstExisting(contextDir, DESIGN_NAMES);
+  // DESIGN.md: scoped when `target` matches a scope subdir, else the shared
+  // DESIGN.md next to PRODUCT.md. PRODUCT.md is always project-wide.
+  const { path: designPath, scope: designScope } = resolveDesignPath(contextDir, target);
   const product = productPath ? safeRead(productPath) : null;
   const design = designPath ? safeRead(designPath) : null;
   return {
@@ -69,8 +78,92 @@ export function loadContext(cwd = process.cwd()) {
     hasDesign: !!design,
     design,
     designPath: designPath ? path.relative(cwd, designPath) : null,
+    designScope,
     contextDir,
   };
+}
+
+// ─── Scoped DESIGN.md routing ───────────────────────────────────────────────
+// Some projects ship more than one design system — e.g. an admin app, a public
+// marketing site, and a mobile web app, each with its own look. Impeccable
+// supports this with zero config: drop a DESIGN.md inside a named subdirectory
+// of the context dir (alongside the shared PRODUCT.md), e.g.
+//   .agents/context/PRODUCT.md          (shared — one product story)
+//   .agents/context/admin/DESIGN.md     (scope "admin")
+//   .agents/context/marketing/DESIGN.md (scope "marketing")
+// Pass the URL or file path you're working on to context.mjs and the loader
+// loads the matching scope's DESIGN.md, inferred by matching the target's
+// hostname labels / path segments against the scope directory names
+// (e.g. https://admin.example.com/... or src/admin/page.tsx -> "admin").
+// Falls back to the shared DESIGN.md when nothing matches, so single-DESIGN.md
+// projects are unaffected.
+
+/** Subdirectories of `contextDir` that contain a DESIGN.md, as design scopes. */
+function discoverScopes(contextDir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(contextDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const scopes = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const designPath = firstExisting(path.join(contextDir, entry.name), DESIGN_NAMES);
+    if (designPath) scopes.push({ name: entry.name, designPath });
+  }
+  return scopes;
+}
+
+/** Split a URL or path into lowercased tokens (host labels first, then path segments). */
+function tokenizeTarget(target) {
+  const trimmed = String(target || '').trim();
+  if (!trimmed) return [];
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      return [...url.hostname.split('.'), ...url.pathname.split('/')]
+        .map((t) => t.toLowerCase())
+        .filter(Boolean);
+    } catch {
+      // fall through to plain tokenization
+    }
+  }
+  return trimmed
+    .split(/[\/.\\]+/)
+    .map((t) => t.toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Infer a scope name from a target (URL or file path) by matching its tokens
+ * against the available scope names. Returns the first matching scope (host
+ * labels take precedence over path segments), or null.
+ */
+export function inferScope(target, scopeNames) {
+  if (!target || !Array.isArray(scopeNames) || scopeNames.length === 0) return null;
+  const byLower = new Map(scopeNames.map((n) => [n.toLowerCase(), n]));
+  for (const token of tokenizeTarget(target)) {
+    if (byLower.has(token)) return byLower.get(token);
+  }
+  return null;
+}
+
+/**
+ * Resolve which DESIGN.md to load. When `target` matches a scope subdir, use
+ * that scope's DESIGN.md; otherwise fall back to the shared DESIGN.md next to
+ * PRODUCT.md. Returns { path, scope } (scope is null for the shared file).
+ */
+export function resolveDesignPath(contextDir, target = null) {
+  if (target) {
+    const scopes = discoverScopes(contextDir);
+    if (scopes.length) {
+      const name = inferScope(target, scopes.map((s) => s.name));
+      const hit = name && scopes.find((s) => s.name === name);
+      if (hit) return { path: hit.designPath, scope: hit.name };
+    }
+  }
+  return { path: firstExisting(contextDir, DESIGN_NAMES), scope: null };
 }
 
 function firstExisting(dir, names) {
@@ -219,7 +312,9 @@ async function computeUpdateDirective(now = Date.now()) {
 }
 
 async function cli() {
-  const ctx = loadContext(process.cwd());
+  // process.argv[2] (optional): the URL or file path being designed, used to
+  // route to a scoped DESIGN.md when the project keeps more than one.
+  const ctx = loadContext(process.cwd(), process.argv[2] || null);
   const updateDirective = await computeUpdateDirective();
 
   if (!ctx.hasProduct) {

@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir } from '../skill/scripts/context.mjs';
+import { loadContext, resolveContextDir, inferScope, resolveDesignPath } from '../skill/scripts/context.mjs';
 
 import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
@@ -180,6 +180,87 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
     assert.equal(ctx.product, null);
     assert.equal(ctx.design, null);
     assert.equal(ctx.contextDir, path.resolve(scratch, 'no/such/dir'));
+  });
+});
+
+describe('inferScope', () => {
+  const scopes = ['admin', 'marketing', 'app'];
+
+  it('returns null without a target or scopes', () => {
+    assert.equal(inferScope(null, scopes), null);
+    assert.equal(inferScope('https://admin.example.com', []), null);
+  });
+
+  it('matches a URL subdomain label', () => {
+    assert.equal(inferScope('https://admin.example.com/users', scopes), 'admin');
+  });
+
+  it('matches a URL path segment', () => {
+    assert.equal(inferScope('https://example.com/marketing/pricing', scopes), 'marketing');
+  });
+
+  it('matches a file path segment', () => {
+    assert.equal(inferScope('src/admin/dashboard.tsx', scopes), 'admin');
+  });
+
+  it('prefers a host label over a later path segment', () => {
+    assert.equal(inferScope('https://app.example.com/admin', scopes), 'app');
+  });
+
+  it('returns null when nothing matches', () => {
+    assert.equal(inferScope('https://example.com/about', scopes), null);
+  });
+
+  it('is case-insensitive and preserves the declared scope casing', () => {
+    assert.equal(inferScope('https://Admin.example.com', ['Admin']), 'Admin');
+  });
+});
+
+describe('resolveDesignPath (scoped DESIGN.md)', () => {
+  it('routes to a scope subdir DESIGN.md when the target matches', () => {
+    write('.agents/context/PRODUCT.md', '# shared\n');
+    write('.agents/context/admin/DESIGN.md', '# admin design\n');
+    write('.agents/context/marketing/DESIGN.md', '# marketing design\n');
+    const ctxDir = path.join(scratch, '.agents', 'context');
+    const r = resolveDesignPath(ctxDir, 'https://admin.example.com/x');
+    assert.equal(r.scope, 'admin');
+    assert.equal(r.path, path.join(ctxDir, 'admin', 'DESIGN.md'));
+  });
+
+  it('falls back to the shared DESIGN.md when no scope matches', () => {
+    write('.agents/context/DESIGN.md', '# shared design\n');
+    write('.agents/context/admin/DESIGN.md', '# admin design\n');
+    const ctxDir = path.join(scratch, '.agents', 'context');
+    const r = resolveDesignPath(ctxDir, 'https://example.com/about');
+    assert.equal(r.scope, null);
+    assert.equal(r.path, path.join(ctxDir, 'DESIGN.md'));
+  });
+
+  it('falls back to the shared DESIGN.md when no target is given', () => {
+    write('.agents/context/DESIGN.md', '# shared design\n');
+    write('.agents/context/admin/DESIGN.md', '# admin design\n');
+    const ctxDir = path.join(scratch, '.agents', 'context');
+    const r = resolveDesignPath(ctxDir, null);
+    assert.equal(r.scope, null);
+    assert.equal(r.path, path.join(ctxDir, 'DESIGN.md'));
+  });
+
+  it('loadContext surfaces the scoped design and designScope', () => {
+    write('.agents/context/PRODUCT.md', '# product\n');
+    write('.agents/context/admin/DESIGN.md', '# admin design system\n');
+    const ctx = loadContext(scratch, 'src/admin/page.tsx');
+    assert.equal(ctx.designScope, 'admin');
+    assert.match(ctx.design, /admin design system/);
+    assert.equal(ctx.designPath, path.join('.agents', 'context', 'admin', 'DESIGN.md'));
+  });
+
+  it('loadContext without a target keeps single-DESIGN.md behaviour', () => {
+    write('PRODUCT.md', '# product\n');
+    write('DESIGN.md', '# the one design\n');
+    const ctx = loadContext(scratch);
+    assert.equal(ctx.designScope, null);
+    assert.match(ctx.design, /the one design/);
+    assert.equal(ctx.designPath, 'DESIGN.md');
   });
 });
 
