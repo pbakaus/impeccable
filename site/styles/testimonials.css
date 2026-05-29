@@ -13,10 +13,27 @@
   /* No background of its own: the body's lacquer gradient is the page ground,
      so the section sits on it directly and an opaque fill here would only
      duplicate (and, when overlapped, mask) it. */
-  padding: 0 0 clamp(56px, 7vw, 96px);
+  padding: 0 0 1em;
   color: var(--ks-text);
   border-top: 0;
   overflow: hidden;
+}
+
+/* Dotted accent at the bottom edge — a deliberate separator between the
+   testimonials and the section below. Neutral dots, matching the de-warmed
+   borders. (This is the dot rail that used to sit above the section.) */
+.home-kinpaku .testimonials-section::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  height: 18px;
+  transform: translateX(-50%);
+  background-image: radial-gradient(circle, oklch(0.45 0 0) 0.9px, transparent 1.4px);
+  background-size: 7px 6px;
+  background-repeat: repeat;
+  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------------------
