@@ -907,7 +907,11 @@
   padding: 24px;
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
-  background: oklch(9% 0.006 95 / 0.92);
+  /* Was 9% on a 7% ground (~1 level in sRGB): the card body vanished into the
+     page and only the gold hairline hinted at an edge. Lift to a clear raised
+     tone so the specimen card reads as an object; the gold hairline stays as
+     the brand edge. */
+  background: oklch(15% 0.004 95);
 }
 
 .home-kinpaku .foundation-column:hover .foundation-card {

@@ -10,68 +10,26 @@
      spans the full viewport. */
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  padding: 20px 0 clamp(56px, 7vw, 96px);
-  background: var(--ks-lacquer);
+  /* No background of its own: the body's lacquer gradient is the page ground,
+     so the section sits on it directly and an opaque fill here would only
+     duplicate (and, when overlapped, mask) it. */
+  padding: 0 0 clamp(56px, 7vw, 96px);
   color: var(--ks-text);
   border-top: 0;
   overflow: hidden;
 }
 
-/* Flat dotted top divider (matches the hero → testimonials boundary). */
-.home-kinpaku .testimonials-section::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 100vw;
-  height: 18px;
-  transform: translateX(-50%);
-  background-image: radial-gradient(circle, oklch(0.42 0.014 82) 0.9px, transparent 1.4px);
-  background-size: 7px 6px;
-  background-position: 0 1px;
-  background-repeat: repeat;
-  pointer-events: none;
-}
-
 /* ---------------------------------------------------------------------------
-   Plinth — the tinted graphite shelf the marquee rides on
-   --------------------------------------------------------------------------- */
-
-.home-kinpaku .t-plinth {
-  position: relative;
-  width: 100vw;
-  padding: 20px 0;
-  background:
-    linear-gradient(180deg, oklch(20% 0.01 78) 0%, oklch(17% 0.008 78) 100%);
-  border-top: 1px solid oklch(78% 0.12 82 / 0.12);
-  border-bottom: 1px solid oklch(78% 0.12 82 / 0.10);
-}
-.home-kinpaku .t-plinth--shelf::before,
-.home-kinpaku .t-plinth--shelf::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0;
-  height: 8px;
-  pointer-events: none;
-  z-index: 1;
-}
-.home-kinpaku .t-plinth--shelf::before {
-  top: 0;
-  background: linear-gradient(180deg, oklch(0% 0 0 / 0.18), transparent);
-}
-.home-kinpaku .t-plinth--shelf::after {
-  bottom: 0;
-  background: linear-gradient(0deg, oklch(0% 0 0 / 0.22), transparent);
-}
-
-/* ---------------------------------------------------------------------------
-   Marquee engine
+   Marquee engine. The cards are outlined and ride directly on the section
+   ground — the old graphite plinth wrapper was removed once it stopped being
+   a visible shelf, so the marquee carries its own vertical inset here.
    --------------------------------------------------------------------------- */
 
 .home-kinpaku .t-marquee {
   display: grid;
   gap: 14px;
   width: 100%;
+  padding: 22px 0;
 }
 .home-kinpaku .t-marquee-row { overflow: hidden; }
 
@@ -119,14 +77,16 @@
   transition: transform 200ms ease, background 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 
-/* Plinth-resident card — borderless, slightly raised tone */
+/* Outlined card: no fill, just a solid neutral border on the page ground.
+   On dark, a clean outline separates more honestly than a near-invisible
+   fill or a dead drop-shadow ever did. */
 .home-kinpaku .t-card--plinth {
-  background: oklch(13% 0.008 95);
-  border: 1px solid transparent;
-  box-shadow: 0 1px 0 0 oklch(78% 0.12 82 / 0.06) inset, 0 4px 12px -8px oklch(0% 0 0 / 0.6);
+  background: none;
+  border: 1px solid oklch(0.64 0 0 / 0.22);
+  box-shadow: none;
 }
 .home-kinpaku .t-card--plinth:hover {
-  background: oklch(15% 0.012 78);
+  border-color: oklch(0.64 0 0 / 0.42);
   transform: translateY(-1px);
 }
 

@@ -29,6 +29,9 @@
      never tucks under the nav; on tall viewports the content still centers. */
   padding: 113px 0 96px;
   overflow: hidden;
+  /* Hairline divider into the testimonials below, matching the testimonial
+     card border color. */
+  border-bottom: 1px solid oklch(0.64 0 0 / 0.22);
 }
 
 /* Header sits on top of the hero image like the /design-system topbar:
@@ -55,10 +58,7 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  /* Top scrim darkens the band behind the overlaid nav so the links stay
-     legible over the bright kintsugi gold, fading out before the hero copy. */
   background:
-    linear-gradient(180deg, oklch(7% 0.006 95 / 0.9) 0%, oklch(7% 0.006 95 / 0.5) 8%, transparent 18%),
     url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png") center / cover no-repeat;
   filter: saturate(1.2) contrast(1.08);
 }
@@ -116,7 +116,9 @@
 
 /* Hero CTAs migrated to .ks-button.ks-button-primary / .ks-button-secondary
    (see kinpaku-kit.css). The .hero-rebuild-arrow class is gone too — the
-   arrow now lives in .ks-button-arrow inside the button. */
+   arrow now lives in .ks-button-arrow inside the button.
+   "How it works" is the kit ghost variant: plain champagne (white) text, no
+   border or fill, hovering to gold. */
 
 .hero-rebuild-meta {
   margin: 24px 0 0;
