@@ -461,7 +461,7 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 16px;
-  background: oklch(11% 0.006 95);
+  background: oklch(11% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
   color: var(--ks-kinpaku);
@@ -532,7 +532,7 @@
 .designing-kinpaku .docs-viz-file-header {
   padding: 14px 18px;
   border-bottom: 1px solid var(--ks-rule);
-  background: oklch(13% 0.006 95);
+  background: oklch(13% 0 0);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -742,7 +742,7 @@
    frame opposite it. */
 .designing-kinpaku .designing-iterate-terminal {
   padding: 20px 22px;
-  background: oklch(13% 0.006 95);
+  background: oklch(13% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   font-family: var(--ks-mono);
@@ -765,7 +765,7 @@
 
 /* Live frame mock — restyle docs-viz-live-* on dark surface */
 .designing-kinpaku .docs-viz-live-frame {
-  background: oklch(13% 0.006 95);
+  background: oklch(13% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   overflow: hidden;
@@ -776,7 +776,7 @@
   gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--ks-rule);
-  background: oklch(11% 0.006 95);
+  background: oklch(11% 0 0);
 }
 .designing-kinpaku .docs-viz-live-dot {
   width: 9px;
@@ -806,7 +806,7 @@
 }
 .designing-kinpaku .docs-viz-live-target {
   width: 100%;
-  background: oklch(11% 0.006 95);
+  background: oklch(11% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   padding: 20px;
@@ -1134,7 +1134,7 @@
   gap: 10px;
   margin: 2px 0;
   padding: 11px 14px;
-  background: oklch(13% 0.006 95);
+  background: oklch(13% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   font-family: var(--ks-mono);
@@ -1215,7 +1215,7 @@
   display: inline-flex;
   align-items: center;
   padding: 5px 11px;
-  background: oklch(13% 0.006 95);
+  background: oklch(13% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 3px;
   color: var(--ks-muted);
@@ -1295,7 +1295,7 @@
 .designing-kinpaku .designing-lane-mock {
   margin-top: 6px;
   padding: 24px;
-  background: oklch(11% 0.006 95);
+  background: oklch(11% 0 0);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   min-height: 110px;
