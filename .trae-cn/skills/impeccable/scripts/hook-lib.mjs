@@ -631,19 +631,29 @@ export function expandScanTargets(primaryTargets, projectCwd) {
   if (!Array.isArray(primaryTargets) || primaryTargets.length === 0) return [];
   const ordered = [];
   const seen = new Set();
-  const add = (p) => {
-    if (ordered.length >= MAX_SCAN_TARGETS) return;
+  const baseCwd = projectCwd || process.cwd();
+  const normalizeTarget = (p) => {
     // Preserve literal `..` segments so downstream sensitive-path checks
     // still fire. path.resolve would collapse `/foo/../etc/passwd`.
-    const abs = (typeof p === 'string' && p.includes('..')) ? p : path.resolve(p);
+    if (typeof p === 'string' && p.includes('..')) return p;
+    return path.isAbsolute(p) ? p : path.resolve(baseCwd, p);
+  };
+  const add = (p) => {
+    if (ordered.length >= MAX_SCAN_TARGETS) return;
+    const abs = normalizeTarget(p);
     if (seen.has(abs)) return;
     seen.add(abs);
     ordered.push(abs);
+    return abs;
   };
 
-  for (const p of primaryTargets) add(p);
-
+  const normalizedPrimaries = [];
   for (const p of primaryTargets) {
+    const normalized = add(p);
+    if (normalized) normalizedPrimaries.push(normalized);
+  }
+
+  for (const p of normalizedPrimaries) {
     if (ordered.length >= MAX_SCAN_TARGETS) break;
     const ext = path.extname(p).toLowerCase();
     if (STYLE_EXTS.has(ext) || !UI_CODE_EXTS.has(ext)) continue;

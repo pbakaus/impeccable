@@ -746,6 +746,13 @@ describe('expandScanTargets()', () => {
     assert.ok(expanded.includes(mod));
   });
 
+  it('resolves relative primary targets against the project cwd', () => {
+    write('src/Card.jsx', "import './Card.module.css';\nexport default function Card() { return null; }");
+    const mod = write('src/Card.module.css', '.card { border-left: 4px solid #3b82f6; }');
+    const expanded = expandScanTargets(['src/Card.jsx'], cwd);
+    assert.deepEqual(expanded, [path.join(cwd, 'src/Card.jsx'), mod]);
+  });
+
   it('does not expand when the primary target is already a stylesheet', () => {
     const css = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
     assert.deepEqual(expandScanTargets([css], cwd), [css]);
@@ -879,6 +886,32 @@ describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('sessionStart honors project-level disabled config', () => {
+    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ dependencies: { react: 'latest' } }));
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'hook.json'), JSON.stringify({ enabled: false }));
+    const logPath = path.join(cwd, 'hook.ndjson');
+    const env = { ...process.env, IMPECCABLE_HOOK_LOG: logPath };
+    delete env.IMPECCABLE_HOOK_DISABLED;
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-session-start.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'SessionStart',
+        cwd,
+      }),
+      env,
+      encoding: 'utf-8',
+    });
+
+    assert.equal(out, '');
+    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].event, 'SessionStart');
+    assert.equal(entries[0].skipped, 'config-disabled');
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), false);
+  });
 
   it('afterFileEdit honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
     const logPath = path.join(cwd, 'hook.ndjson');

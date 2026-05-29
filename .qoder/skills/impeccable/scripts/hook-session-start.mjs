@@ -21,6 +21,7 @@ import path from 'node:path';
 
 import {
   ENVELOPE_PREFIX,
+  readConfig,
   readCache,
   persistCache,
   payload,
@@ -102,6 +103,16 @@ async function main() {
     || process.env.CURSOR_PROJECT_DIR
     || process.cwd();
   const harness = resolveHarness(inheritedEnv, event);
+
+  const config = readConfig(cwd);
+  if (config.enabled === false) {
+    writeAuditLog(process.env, {
+      ts: new Date().toISOString(),
+      event: 'SessionStart',
+      skipped: 'config-disabled',
+    });
+    return done(0, '');
+  }
 
   if (!projectIsScannable(cwd)) {
     writeAuditLog(process.env, {
