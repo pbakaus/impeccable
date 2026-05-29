@@ -4114,7 +4114,7 @@
         const doc = parser.parseFromString(block, 'text/html');
         srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
-          console.error('[impeccable] Variant wrapper not found in source file.');
+          console.warn('[impeccable] Variant wrapper not found in source file.');
           return;
         }
 
@@ -4149,7 +4149,7 @@
           }
 
           if (!liveEl) {
-            console.error('[impeccable] Could not find original element in live DOM.');
+            console.warn('[impeccable] Could not find original element in live DOM.');
             return;
           }
 
@@ -5851,12 +5851,12 @@ void main() {
     state = 'SAVING';
     updateBarContent('saving');
 
-  sendEvent(acceptPayload, { throwOnError: true })
-    .then(() => {
-      markSessionHandled();
-    })
-    .catch(() => {
-      pendingAcceptedSession = null;
+    sendEvent(acceptPayload, { throwOnError: true })
+      .then(() => {
+        markSessionHandled();
+      })
+      .catch(() => {
+        pendingAcceptedSession = null;
         state = 'CYCLING';
         updateBarContent('cycling');
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
@@ -5878,11 +5878,11 @@ void main() {
 
     // Give framework HMR a short chance to render the now-clean accepted
     // source. If it misses the update, unwrap the accepted variant after the
-  // source-side completion event so the page is not left empty or stale.
-  setTimeout(function() {
-    ensureAcceptedDomClean(pending);
-    cleanupAcceptedSession();
-  }, 1200);
+    // source-side completion event so the page is not left empty or stale.
+    setTimeout(function() {
+      ensureAcceptedDomClean(pending);
+      cleanupAcceptedSession();
+    }, 1200);
 
     return true;
   }
@@ -5978,6 +5978,28 @@ void main() {
     pendingAcceptedSession = null;
     renderEditBadge('hidden');
     state = 'PICKING';
+  }
+
+  function commitAcceptedVariantToDom(sessionId, variantId) {
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    if (!wrapper) return false;
+    const accepted = wrapper.querySelector('[data-impeccable-variant="' + variantId + '"]');
+    if (!accepted || !accepted.firstElementChild) return false;
+    const parent = wrapper.parentElement;
+    if (!parent) return false;
+
+    const style = wrapper.querySelector('style[data-impeccable-css]');
+    if (style && !document.querySelector('style[data-impeccable-accepted-css="' + sessionId + '"]')) {
+      const promotedStyle = style.cloneNode(true);
+      promotedStyle.setAttribute('data-impeccable-accepted-css', sessionId);
+      parent.insertBefore(promotedStyle, wrapper);
+    }
+
+    const committed = accepted.cloneNode(true);
+    committed.removeAttribute('hidden');
+    committed.style.display = 'contents';
+    parent.replaceChild(committed, wrapper);
+    return true;
   }
 
   function handleDiscard() {

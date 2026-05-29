@@ -6,6 +6,13 @@ Live preview can lose framework state when variants are written directly into wa
 
 The current branch introduces source-shadow previews for Svelte so variants are written to `.impeccable/live/previews/` and injected into the live DOM without triggering Svelte HMR during cycling. Accept must still visibly keep the selected variant applied immediately, while syncing the real `.svelte` source only when live mode exits.
 
+## Current Status
+
+- Svelte source-shadow Accept fix is implemented.
+- React stateful fixture is added and passing the same automated flow.
+- Focused live tests, Svelte/React live E2E, build, and full test suite have passed.
+- Manual Svelte/React user checks and the DeepSeek-backed final run are still pending.
+
 ## Svelte Fix Plan
 
 - Keep source-shadow previews scoped to `.svelte` targets.
@@ -61,11 +68,11 @@ The current branch introduces source-shadow previews for Svelte so variants are 
 
 ## Automated Validation Checklist
 
-- [ ] `node --test tests/live-browser-regression.test.mjs tests/live-accept.test.mjs tests/live-poll.test.mjs tests/live-server.test.mjs`
-- [ ] `IMPECCABLE_E2E_ONLY=vite8-sveltekit-stateful bun run test:live-e2e`
-- [ ] `IMPECCABLE_E2E_ONLY=vite8-react-stateful bun run test:live-e2e`
-- [ ] `bun run build`
-- [ ] `bun run test`
+- [x] `node --test tests/live-browser-regression.test.mjs tests/live-accept.test.mjs tests/live-poll.test.mjs tests/live-server.test.mjs`
+- [x] `IMPECCABLE_E2E_ONLY=vite8-sveltekit-stateful bun run test:live-e2e`
+- [x] `IMPECCABLE_E2E_ONLY=vite8-react-stateful bun run test:live-e2e`
+- [x] `bun run build`
+- [x] `bun run test`
 
 ## DeepSeek Final Test Command
 

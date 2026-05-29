@@ -205,6 +205,36 @@ describe('live-server integration', () => {
     res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
     data = await res.json();
     assert.equal(data.agentPolling, false);
+
+    const eventRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'a1b2c3e9',
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Lease</button>' },
+      }),
+    });
+    assert.equal(eventRes.status, 200);
+
+    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=250`).then((r) => r.json());
+    assert.equal(leased.id, 'a1b2c3e9');
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, true, 'leased work should keep the browser connected indicator on');
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: 'a1b2c3e9', type: 'done' }),
+    });
+    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
+    data = await res.json();
+    assert.equal(data.agentPolling, false);
   });
 
   it('/live.js serves script with token injected', async () => {

@@ -20,6 +20,7 @@ import { readLiveServerInfo } from './impeccable-paths.mjs';
 // that ceiling and loop in `pollOnce` to synthesize a long poll without
 // depending on the standalone undici package.
 export const PER_REQUEST_TIMEOUT_MS = 270_000;
+export const DEFAULT_EVENT_LEASE_MS = 600_000;
 
 const EVENT_TYPES_NEEDING_AGENT_REPLY = new Set(['generate', 'steer', 'manual_edit_apply']);
 
@@ -156,7 +157,7 @@ export async function fetchNextEvent(base, token, { totalDeadline } = {}) {
       ? totalDeadline - Date.now()
       : PER_REQUEST_TIMEOUT_MS;
     const slice = Math.min(Math.max(remaining, 1000), PER_REQUEST_TIMEOUT_MS);
-    const res = await fetch(`${base}/poll?token=${token}&timeout=${slice}`);
+    const res = await fetch(`${base}/poll?token=${token}&timeout=${slice}&leaseMs=${DEFAULT_EVENT_LEASE_MS}`);
 
     if (res.status === 401) {
       const err = new Error('Authentication failed. The server token may have changed.');

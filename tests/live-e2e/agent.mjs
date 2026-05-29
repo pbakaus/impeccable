@@ -95,13 +95,21 @@ export function createFakeAgent() {
       if (event.mode === 'insert') {
         return generateInsertFakeVariants(context);
       }
-      const text = extractText(event.element?.outerHTML) || 'Title';
-      const cls = 'hero-title';
+      const text = event.element?.textContent?.trim() || extractText(event.element?.outerHTML) || 'Title';
+      const tag = (event.element?.tagName || 'h1').toLowerCase();
+      const cls = (event.element?.classes || ['hero-title'])
+        .filter((name) => !/^svelte-[\w-]+$/.test(name))
+        .join(' ')
+        || 'hero-title';
+      const preservedAttrs = buildPreservedVariantAttrs(event.element || {}, cls);
+      const elementOpen = `<${tag}${preservedAttrs}>`;
+      const elementClose = `</${tag}>`;
+      const variantHtml = `${elementOpen}${htmlEscape(text)}${elementClose}`;
       const useAstroGlobalCss = context.wrapInfo?.styleMode === 'astro-global-prefixed';
 
       // Variant 1 — red color, with a `range` param tuning hue lightness.
       const variant1 = {
-        innerHtml: `<h1 class="${cls}">${text}</h1>`,
+        innerHtml: variantHtml,
         params: [
           {
             id: 'lightness',
@@ -117,7 +125,7 @@ export function createFakeAgent() {
 
       // Variant 2 — bold weight, with a `steps` param for serif/sans/mono.
       const variant2 = {
-        innerHtml: `<h1 class="${cls}">${text}</h1>`,
+        innerHtml: variantHtml,
         params: [
           {
             id: 'face',
@@ -135,7 +143,7 @@ export function createFakeAgent() {
 
       // Variant 3 — uppercase, with a `toggle` param for italic.
       const variant3 = {
-        innerHtml: `<h1 class="${cls}">${text}</h1>`,
+        innerHtml: variantHtml,
         params: [
           {
             id: 'italic',
@@ -151,29 +159,29 @@ export function createFakeAgent() {
       // tag plus explicit variant prefixes instead of raw @scope rules.
       const scopedCss = useAstroGlobalCss
         ? [
-            '[data-impeccable-variant="1"] > h1 {',
+            `[data-impeccable-variant="1"] > ${tag} {`,
             '  color: oklch(var(--p-lightness, 0.5) 0.25 25);',
             '}',
-            '[data-impeccable-variant="2"] > h1 { font-weight: 900; }',
-            '[data-impeccable-variant="2"][data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
-            '[data-impeccable-variant="2"][data-p-face="mono"]  > h1 { font-family: ui-monospace, monospace; }',
-            '[data-impeccable-variant="3"] > h1 { text-transform: uppercase; letter-spacing: 0.04em; }',
-            '[data-impeccable-variant="3"][data-p-italic] > h1 { font-style: italic; }',
+            `[data-impeccable-variant="2"] > ${tag} { font-weight: 900; }`,
+            `[data-impeccable-variant="2"][data-p-face="serif"] > ${tag} { font-family: ui-serif, serif; }`,
+            `[data-impeccable-variant="2"][data-p-face="mono"]  > ${tag} { font-family: ui-monospace, monospace; }`,
+            `[data-impeccable-variant="3"] > ${tag} { text-transform: uppercase; letter-spacing: 0.04em; }`,
+            `[data-impeccable-variant="3"][data-p-italic] > ${tag} { font-style: italic; }`,
           ].join('\n')
         : [
             '@scope ([data-impeccable-variant="1"]) {',
-            '  :scope > h1 {',
+            `  :scope > ${tag} {`,
             '    color: oklch(var(--p-lightness, 0.5) 0.25 25);',
             '  }',
             '}',
             '@scope ([data-impeccable-variant="2"]) {',
-            '  :scope > h1 { font-weight: 900; }',
-            '  :scope[data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
-            '  :scope[data-p-face="mono"]  > h1 { font-family: ui-monospace, monospace; }',
+            `  :scope > ${tag} { font-weight: 900; }`,
+            `  :scope[data-p-face="serif"] > ${tag} { font-family: ui-serif, serif; }`,
+            `  :scope[data-p-face="mono"]  > ${tag} { font-family: ui-monospace, monospace; }`,
             '}',
             '@scope ([data-impeccable-variant="3"]) {',
-            '  :scope > h1 { text-transform: uppercase; letter-spacing: 0.04em; }',
-            '  :scope[data-p-italic] > h1 { font-style: italic; }',
+            `  :scope > ${tag} { text-transform: uppercase; letter-spacing: 0.04em; }`,
+            `  :scope[data-p-italic] > ${tag} { font-style: italic; }`,
             '}',
           ].join('\n');
 
@@ -303,6 +311,32 @@ function extractText(outerHTML) {
   if (!outerHTML) return null;
   const m = outerHTML.match(/>([^<]+)</);
   return m ? m[1].trim() : null;
+}
+
+function htmlEscape(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function htmlAttrEscape(str) {
+  return htmlEscape(str).replace(/"/g, '&quot;');
+}
+
+function buildPreservedVariantAttrs(element, className) {
+  const attrs = [];
+  if (className) attrs.push(['class', className]);
+  if (element.id) attrs.push(['id', element.id]);
+  const testId = readAttrFromOuterHtml(element.outerHTML, 'data-testid');
+  if (testId) attrs.push(['data-testid', testId]);
+  return attrs.map(([name, value]) => ` ${name}="${htmlAttrEscape(value)}"`).join('');
+}
+
+function readAttrFromOuterHtml(outerHTML, attr) {
+  if (!outerHTML) return null;
+  const match = String(outerHTML).match(new RegExp("\\s" + attr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "\\s*=\\s*([\"'])(.*?)\\1"));
+  return match ? match[2] : null;
 }
 
 function attrEscape(str, { svelte = false } = {}) {
@@ -1525,6 +1559,7 @@ export async function runAgentLoop({
           variant: event.variantId,
           paramValues: event.paramValues,
           pageUrl: event.pageUrl,
+          deferSourceWrite: event.deferSourceWrite === true,
         });
 
         // Carbonize cleanup — required after accept per the live skill spec.
@@ -1867,12 +1902,13 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl }) {
+async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl, deferSourceWrite }) {
   const args = [path.join(scriptsDir, 'live-accept.mjs'), '--id', id];
   if (discard) args.push('--discard');
   else args.push('--variant', String(variant));
   if (paramValues) args.push('--param-values', JSON.stringify(paramValues));
   if (pageUrl) args.push('--page-url', pageUrl);
+  if (deferSourceWrite) args.push('--defer-source-write');
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);

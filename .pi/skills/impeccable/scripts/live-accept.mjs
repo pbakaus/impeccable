@@ -385,6 +385,31 @@ function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, met
   }
 
   const restored = deindentContent(variantContent, indent);
+
+  if (sourceFile.endsWith('.svelte')) {
+    let newLines = [
+      ...sourceLines.slice(0, start),
+      ...restored,
+      ...sourceLines.slice(end + 1),
+    ];
+    const svelteCss = extractAcceptedScopedCss(cssContent, variantNum);
+    if (svelteCss && svelteCss.length > 0) {
+      newLines = appendCssToSvelteStyle(newLines, svelteCss);
+    }
+    fs.writeFileSync(sourceFile, newLines.join('\n'), 'utf-8');
+    markSourceShadowPreviewHandled(previewFile, id, meta);
+
+    const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
+    return {
+      file: sourceRel,
+      sourceFile: sourceRel,
+      previewMode: 'source-shadow',
+      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
+      carbonize: false,
+      acceptedOriginalText: originalContent.join('\n'),
+    };
+  }
+
   const replacement = [];
 
   if (cssContent) {
@@ -426,6 +451,66 @@ function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, met
     carbonize: needsCarbonize,
     acceptedOriginalText: originalContent.join('\n'),
   };
+}
+
+function extractAcceptedScopedCss(cssContent, variantNum) {
+  if (!cssContent || cssContent.length === 0) return null;
+  const css = Array.isArray(cssContent) ? cssContent.join('\n') : String(cssContent);
+  const scoped = extractScopeBlockForVariant(css, variantNum);
+  const body = scoped || css;
+  const lines = body
+    .split('\n')
+    .map((line) => line.replace(/:scope\s*>\s*/g, '').replace(/:scope\s+/g, '').replace(/:scope/g, '').trimEnd());
+  while (lines.length > 0 && lines[0].trim() === '') lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines.length > 0 ? lines : null;
+}
+
+function extractScopeBlockForVariant(css, variantNum) {
+  const needle = 'data-impeccable-variant="' + variantNum + '"';
+  let cursor = 0;
+  while (cursor < css.length) {
+    const scopeIdx = css.indexOf('@scope', cursor);
+    if (scopeIdx === -1) return null;
+    const openIdx = css.indexOf('{', scopeIdx);
+    if (openIdx === -1) return null;
+    const header = css.slice(scopeIdx, openIdx);
+    let depth = 1;
+    let i = openIdx + 1;
+    for (; i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      else if (css[i] === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) return null;
+    if (header.includes(needle) || header.includes("data-impeccable-variant='" + variantNum + "'")) {
+      return css.slice(openIdx + 1, i);
+    }
+    cursor = i + 1;
+  }
+  return null;
+}
+
+function appendCssToSvelteStyle(lines, cssLines) {
+  const closeIdx = findLastStyleCloseLine(lines);
+  const prepared = ['', ...cssLines.map((line) => line.trim() === '' ? '' : '  ' + line.trimStart())];
+  if (closeIdx === -1) {
+    return [...lines, '', '<style>', ...prepared.slice(1), '</style>'];
+  }
+  return [
+    ...lines.slice(0, closeIdx),
+    ...prepared,
+    ...lines.slice(closeIdx),
+  ];
+}
+
+function findLastStyleCloseLine(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/<\/style\s*>/.test(lines[i])) return i;
+  }
+  return -1;
 }
 
 function deferredSourceShadowAcceptsPath(cwd = process.cwd()) {

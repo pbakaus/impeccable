@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DEFAULT_EVENT_LEASE_MS,
   buildAcceptScriptArgs,
   buildPollReplyPayload,
   isEventPending,
@@ -37,6 +38,19 @@ describe('live-poll accept handling', () => {
         pageUrl: '/pricing',
       }),
       ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
+    );
+  });
+
+  it('forwards defer-source-write for source-shadow accepts', () => {
+    assert.deepEqual(
+      buildAcceptScriptArgs({
+        type: 'accept',
+        id: 'abc12345',
+        variantId: 1,
+        pageUrl: '/',
+        deferSourceWrite: true,
+      }),
+      ['--id', 'abc12345', '--variant', '1', '--page-url', '/', '--defer-source-write'],
     );
   });
 });
@@ -130,6 +144,10 @@ describe('live-poll --reply arg parsing', () => {
 });
 
 describe('live-poll stream helpers', () => {
+  it('uses a long event lease for human-paced Codex live handling', () => {
+    assert.equal(DEFAULT_EVENT_LEASE_MS, 600_000);
+  });
+
   it('requiresAgentReply is true for work items that need agent acknowledgement', () => {
     assert.equal(requiresAgentReply({ type: 'generate' }), true);
     assert.equal(requiresAgentReply({ type: 'steer' }), true);

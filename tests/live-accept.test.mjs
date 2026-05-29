@@ -97,6 +97,18 @@ describe('live-accept — style-element edge cases', () => {
       <span>{expenses[0].amount}</span>
     </article>
   </div>
+  <style data-impeccable-css="DEFER">
+    @scope ([data-impeccable-variant="1"]) {
+      :scope > .accepted {
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+      }
+    }
+    @scope ([data-impeccable-variant="2"]) {
+      :scope > .unused {
+        color: red;
+      }
+    }
+  </style>
 </div>
 <!-- impeccable-variants-end DEFER -->
 `);
@@ -121,6 +133,11 @@ describe('live-accept — style-element edge cases', () => {
     const sourceAfterExit = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
     assert.ok(sourceAfterExit.includes('class="expense-row accepted"'), 'deferred accept writes selected variant on exit');
     assert.ok(sourceAfterExit.includes('{expenses[0].name}'), 'source write preserves Svelte expressions');
+    assert.ok(sourceAfterExit.includes('.accepted {'), 'accepted preview CSS is written into Svelte style');
+    assert.ok(sourceAfterExit.includes('box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);'), 'accepted CSS declaration survives');
+    assert.ok(!sourceAfterExit.includes('data-impeccable-variant'), 'Svelte source sync does not leave variant scaffolding');
+    assert.ok(!sourceAfterExit.includes('impeccable-carbonize-start'), 'Svelte source sync does not leave carbonize scaffolding');
+    assert.ok(!sourceAfterExit.includes('.unused'), 'unaccepted variant CSS is not written');
     const previewAfterExit = readFileSync(join(tmp, '.impeccable/live/previews/DEFER.html'), 'utf-8');
     assert.ok(previewAfterExit.includes('source-shadow preview handled DEFER'), 'preview is marked handled after deferred apply');
   });

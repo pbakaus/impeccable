@@ -14,6 +14,13 @@
       "expectedFile": ".impeccable/live/previews/wraptest0.html",
       "expectedSourceFile": "src/routes/+page.svelte",
       "expectedPreviewMode": "source-shadow"
+    },
+    {
+      "name": "wraps stateful expense row through source-shadow preview",
+      "args": { "classes": "expense-row", "tag": "article" },
+      "expectedFile": ".impeccable/live/previews/wraptest1.html",
+      "expectedSourceFile": "src/routes/+page.svelte",
+      "expectedPreviewMode": "source-shadow"
     }
   ],
   "runtime": {
@@ -22,7 +29,8 @@
     "devCommand": ["npx", "vite", "dev", "--host", "127.0.0.1"],
     "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
     "readyTimeoutMs": 120000,
-    "pickSelector": "h1.hero-title",
+    "pickSelector": "[data-testid='expense-row']",
+    "acceptedSourcePattern": "<article[^>]*class=\"[^\"]*\\bexpense-row\\b",
     "preActions": [
       { "type": "click", "selector": "[data-testid='add-expense']" },
       { "type": "wait", "selector": "[data-testid='expense-row']" }

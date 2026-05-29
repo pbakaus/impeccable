@@ -189,6 +189,12 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
     try { rmSync(tmp, { recursive: true, force: true }); } catch {}
   };
 
+  const stopLiveForDeferredWork = () => {
+    if (!live) return;
+    stopLiveServer(tmp);
+    live = null;
+  };
+
   try {
     log(`installing deps`);
     runInstall(tmp, runtime.install);
@@ -245,6 +251,7 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
       dev,
       live,
       consoleErrors,
+      stopLiveServer: stopLiveForDeferredWork,
       teardown,
     };
   } catch (err) {

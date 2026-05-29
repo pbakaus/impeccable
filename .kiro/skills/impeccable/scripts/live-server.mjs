@@ -898,6 +898,8 @@ function leaseEvent(entry, leaseMs) {
     return entry.event;
   }
   entry.leaseUntil = Date.now() + leaseMs;
+  scheduleLeaseFlush();
+  broadcastAgentPollingIfChanged();
   return entry.event;
 }
 
@@ -908,6 +910,7 @@ function acknowledgePendingEvent(id) {
   const acknowledged = state.pendingEvents[idx].event;
   state.pendingEvents.splice(idx, 1);
   scheduleLeaseFlush();
+  broadcastAgentPollingIfChanged();
   return acknowledged;
 }
 
@@ -1002,7 +1005,6 @@ function scheduleLeaseFlush() {
     clearTimeout(state.leaseTimer);
     state.leaseTimer = null;
   }
-  if (state.pendingPolls.length === 0) return;
   const now = Date.now();
   const nextLeaseUntil = state.pendingEvents
     .map((entry) => entry.leaseUntil || 0)
@@ -1012,6 +1014,7 @@ function scheduleLeaseFlush() {
   state.leaseTimer = setTimeout(() => {
     state.leaseTimer = null;
     flushPendingPolls();
+    broadcastAgentPollingIfChanged();
   }, Math.max(0, nextLeaseUntil - now));
 }
 
@@ -1033,7 +1036,9 @@ function flushPendingPolls() {
 }
 
 function agentPollingConnected() {
-  return state.pendingPolls.length > 0;
+  const now = Date.now();
+  return state.pendingPolls.length > 0
+    || state.pendingEvents.some((entry) => entry.leaseUntil && entry.leaseUntil > now);
 }
 
 function broadcastAgentPollingIfChanged() {

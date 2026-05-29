@@ -163,6 +163,14 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('nonfatal source reinjection misses do not pollute console.error', () => {
+    assert.match(
+      SOURCE,
+      /console\.warn\('\[impeccable\] Could not find original element in live DOM\.'\);/,
+      'transient HMR fallback misses should be warnings so console-clean tests catch real failures',
+    );
+  });
+
   it('source-shadow previews hydrate Svelte text expressions from the live DOM', () => {
     assert.match(
       SOURCE,
@@ -210,7 +218,12 @@ describe('live-browser.js regression guards', () => {
   it('deferred source-shadow accept keeps preview CSS after wrapper cleanup', () => {
     assert.match(
       SOURCE,
-      /const style = wrapper\.querySelector\('style\[data-impeccable-css\]'\);[\s\S]{0,350}?parent\.insertBefore\(promotedStyle, wrapper\);[\s\S]{0,220}?parent\.replaceChild\(accepted, wrapper\);/,
+      /acceptedIsSourceShadow[\s\S]{0,180}?commitAcceptedVariantToDom\(acceptedSessionId, acceptedVariant\);/,
+      'source-shadow accept should commit the selected variant immediately after server acknowledgement',
+    );
+    assert.match(
+      SOURCE,
+      /function commitAcceptedVariantToDom\(sessionId, variantId\)[\s\S]{0,500}?const style = wrapper\.querySelector\('style\[data-impeccable-css\]'\);[\s\S]{0,350}?parent\.insertBefore\(promotedStyle, wrapper\);[\s\S]{0,350}?parent\.replaceChild\(committed, wrapper\);/,
       'source-shadow accept fallback should promote the preview style before replacing the wrapper so accepted CSS remains visible',
     );
   });

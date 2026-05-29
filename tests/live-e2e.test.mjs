@@ -154,7 +154,7 @@ for (const { name, fixture } of fixtures) {
         fixture,
         browser,
         agent,
-        wrapTarget: agentMode === 'llm' ? wrapTargetFromPickedElement : undefined,
+        wrapTarget: wrapTargetFromPickedElement,
         log: (m) => t.diagnostic(m),
       });
 
@@ -166,6 +166,9 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? (insertCfg.expectSelector || '.inserted-strip')
         : pickSelector;
+      const variantContentSelector = isInsert
+        ? '[data-impeccable-variant="2"] .inserted-copy'
+        : '[data-impeccable-variant="2"] > :first-child';
       let stateProbeBaseline = null;
 
       try {
@@ -281,17 +284,14 @@ for (const { name, fixture } of fixtures) {
         const visible = await getVisibleVariant(page);
         assert.equal(visible, 2, 'variant 2 visible after one Next');
         if (agentMode === 'fake') {
-          const variantSel = isInsert
-            ? '[data-impeccable-variant="2"] .inserted-copy'
-            : '[data-impeccable-variant="2"] > h1';
           await page.waitForFunction((sel) => {
             const el = document.querySelector(sel);
             return el && getComputedStyle(el).fontWeight === '900';
-          }, variantSel, { timeout: 5_000 }).catch(() => {});
+          }, variantContentSelector, { timeout: 5_000 }).catch(() => {});
           const variantWeight = await page.evaluate((sel) => {
             const el = document.querySelector(sel);
             return el ? getComputedStyle(el).fontWeight : null;
-          }, variantSel);
+          }, variantContentSelector);
           assert.equal(
             variantWeight,
             '900',
@@ -302,6 +302,15 @@ for (const { name, fixture } of fixtures) {
         // 7. Accept variant 2
         t.diagnostic('Accepting variant 2');
         await clickAccept(page, { expectedVariant: 2 });
+        await waitForBarHidden(page);
+        if (fixture.runtime.stateProbe) {
+          await assertStateProbe(page, fixture.runtime.stateProbe, 'after accept', { baseline: stateProbeBaseline });
+        }
+        const sourceShadow = !!sourceShadowTargetFor(sourceFile);
+        if (sourceShadow && typeof session.stopLiveServer === 'function') {
+          t.diagnostic('Stopping live-server to flush deferred source-shadow accept');
+          session.stopLiveServer();
+        }
 
         // 8. Wait for live-accept + the agent's carbonize cleanup to land.
         //    File-side: wrapper, all variants, and carbonize markers gone;
@@ -319,10 +328,12 @@ for (const { name, fixture } of fixtures) {
             assert.match(final, new RegExp(insertCfg.assertAnchorContains), 'anchor section still in source');
           }
         } else {
+          const acceptedSourcePattern = fixture.runtime.acceptedSourcePattern
+            || '<h1[^>]*(class|className)="[^"]*\\bhero-title\\b[^"]*"';
           assert.match(
             final,
-            /<h1[^>]*(class|className)="[^"]*\bhero-title\b[^"]*"/,
-            'accepted h1 survives with hero-title class',
+            new RegExp(acceptedSourcePattern),
+            'accepted source element survives',
           );
         }
 
@@ -341,15 +352,16 @@ for (const { name, fixture } of fixtures) {
 
         // 9. DOM-side: at least one matching element, none inside any wrapper.
         await page.waitForFunction(
-          (sel) => {
+          ({ sel, allowVariantRoot }) => {
             const all = document.querySelectorAll(sel);
             if (all.length < 1) return false;
             for (const el of all) {
-              if (el.closest('[data-impeccable-variants],[data-impeccable-variant]')) return false;
+              if (el.closest('[data-impeccable-variants]')) return false;
+              if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
             }
             return true;
           },
-          domSelector,
+          { sel: domSelector, allowVariantRoot: sourceShadow },
           { timeout: 20_000 },
         );
 
@@ -535,7 +547,9 @@ function wrapTargetFromPickedElement(event) {
   const tag = typeof element.tagName === 'string'
     ? element.tagName.trim().toLowerCase()
     : '';
-  const classes = typeof element.className === 'string'
+  const classes = Array.isArray(element.classes)
+    ? element.classes.filter(Boolean).join(' ')
+    : typeof element.className === 'string'
     ? element.className.trim().split(/\s+/).filter(Boolean).join(' ')
     : extractClassAttr(element.outerHTML);
   const elementId = typeof element.id === 'string' ? element.id.trim() : '';
@@ -544,6 +558,7 @@ function wrapTargetFromPickedElement(event) {
     tag: tag || 'h1',
     ...(classes ? { classes } : {}),
     ...(elementId ? { elementId } : {}),
+    ...(element.textContent ? { text: String(element.textContent).trim() } : {}),
   };
 }
 
