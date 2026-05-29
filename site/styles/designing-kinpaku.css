@@ -1289,10 +1289,13 @@
 
 .designing-kinpaku .designing-lane-mock {
   margin-top: 6px;
-  padding: 24px;
-  background: oklch(11% 0 0);
-  border: 1px solid var(--ks-rule);
-  border-radius: 4px;
+  padding: 16px 0 0;
+  /* No inner box — the mock sits directly in the bento tile (no plinth > tile
+     > mock nesting). */
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ks-rule);
+  border-radius: 0;
   min-height: 110px;
   display: flex;
   flex-direction: column;
@@ -1345,14 +1348,21 @@
   display: grid;
   gap: 18px;
 }
+.designing-kinpaku .designing-avoid {
+  gap: 0;
+}
 .designing-kinpaku .designing-avoid li {
   display: grid;
   grid-template-columns: 28px 1fr;
   gap: 14px;
-  padding: 22px 24px;
-  background: var(--ks-lacquer-raised);
-  border: 1px solid var(--ks-rule);
-  border-radius: 2px;
+  padding: 22px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ks-rule);
+  border-radius: 0;
+}
+.designing-kinpaku .designing-avoid li:last-child {
+  border-bottom: 0;
 }
 .designing-kinpaku .designing-avoid-x {
   color: var(--ks-vermilion);
