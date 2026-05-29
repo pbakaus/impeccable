@@ -75,6 +75,7 @@
 	--ks-code-fg:         oklch(91% 0 0);        /* inline code text */
 	--ks-code-bg:         var(--ks-graphite-2);  /* inline code chip */
 	--ks-code-radius:     3px;
+	--ks-code-pad:        0.3em 0.5em;           /* inline code chip padding */
 	--ks-code-block-fg:   oklch(86% 0 0);        /* block / CLI text */
 	--ks-code-block-bg:   var(--ks-lacquer-deep);
 	--ks-code-block-border: var(--ks-rule);

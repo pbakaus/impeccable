@@ -1047,7 +1047,7 @@
   color: var(--ks-code-fg);
   background: var(--ks-code-bg);
   border: 0;
-  padding: 4px 7px;
+  padding: var(--ks-code-pad);
   border-radius: var(--ks-code-radius);
 }
 

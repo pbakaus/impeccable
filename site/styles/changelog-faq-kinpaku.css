@@ -101,7 +101,7 @@
   font-size: 0.84em;
   color: var(--ks-code-fg);
   background: var(--ks-code-bg);
-  padding: 4px 7px;
+  padding: var(--ks-code-pad);
   border-radius: var(--ks-code-radius);
 }
 .cf-items a {
@@ -333,7 +333,7 @@
   font-size: 0.84em;
   color: var(--ks-code-fg);
   background: var(--ks-code-bg);
-  padding: 4px 7px;
+  padding: var(--ks-code-pad);
   border-radius: var(--ks-code-radius);
 }
 .cf-faq-answer a {

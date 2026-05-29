@@ -98,7 +98,7 @@
   border-radius: var(--ks-code-radius);
   font-family: var(--ks-mono);
   font-size: 0.88em;
-  padding: 0.05em 0.4em;
+  padding: var(--ks-code-pad);
 }
 
 .home-kinpaku ::selection {
