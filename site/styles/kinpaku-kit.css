@@ -904,7 +904,7 @@
 
 /* GitHub star pill. Previously home-only; now every kinpaku page gets it. */
 .kinpaku-chrome .site-header-github {
-  border: 1px solid var(--ks-rule);
+  border: 1px solid oklch(92% 0 0 / 0.18);
   border-radius: 999px;
   background: oklch(10% 0.006 95 / 0.74);
 }

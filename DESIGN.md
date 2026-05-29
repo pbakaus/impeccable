@@ -28,8 +28,8 @@ colors:
   kinpaku-pale: "oklch(86% 0.07 84)"          # hover lift, pale fills
   kinpaku-rich: "oklch(77% 0.13 82)"          # active CTA, severity-medium
   kinpaku-deep: "oklch(61% 0.085 78)"         # borders against the brand
-  gold-hairline: "oklch(58% 0.065 82 / 0.32)" # default rule
-  gold-hairline-strong: "oklch(74% 0.09 82 / 0.6)" # active rule
+  gold-hairline: "oklch(78% 0 0 / 0.16)"      # default rule — neutral (name kept for compat)
+  gold-hairline-strong: "oklch(74% 0.09 82 / 0.6)" # active rule — gold
 
   # Patina ramp
   patina-pale: "oklch(82% 0.07 188)"          # hover lift on patina
@@ -272,8 +272,8 @@ Do not hand-type oklch values or font sizes in page CSS. If a value isn't in the
 - **Kinpaku Rich** (`oklch(77% 0.13 82)`): Active CTA fill and severity-medium markers.
 - **Kinpaku Deep** (`oklch(61% 0.085 78)`): Secondary gold for borders, subdued icons, and large technical diagrams.
 - **Kinpaku Pale** (`oklch(86% 0.07 84)`): Hover lift and pale fills.
-- **Gold Hairline** (`oklch(58% 0.065 82 / 0.32)`): Default border and divider. The homepage's busier surfaces lift this to alpha 0.48 locally.
-- **Strong Gold Hairline** (`oklch(74% 0.09 82 / 0.6)`): Active borders, focus outlines, and structural anchors.
+- **Default Hairline** (`oklch(78% 0 0 / 0.16)`): Default border and divider. Neutral, so borders and labels don't carry warmth (token name `gold-hairline` / `--ks-rule` is legacy).
+- **Strong Gold Hairline** (`oklch(74% 0.09 82 / 0.6)`): Active borders, focus outlines, and structural anchors. Stays gold — this is where the hairline is meant to read as brand.
 
 ### Text
 

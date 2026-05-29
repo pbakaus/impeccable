@@ -58,10 +58,12 @@
 	--ks-text-mute-deep: oklch(52% 0.008 90);   /* disabled */
 
 	/* ============================================================
-	   Rules. Gold hairlines. Default is quiet; "strong" appears on
-	   focus, active state, and structural anchors.
+	   Rules. The default hairline is neutral so borders/dividers/labels
+	   don't carry warmth (warmth lives in the gold accents and surfaces).
+	   "strong" stays gold — it appears on focus, active state, and
+	   structural brand anchors where the gold is the signal.
 	   ============================================================ */
-	--ks-rule:           oklch(58% 0.065 82 / 0.32);
+	--ks-rule:           oklch(78% 0 0 / 0.16);
 	--ks-rule-strong:    oklch(74% 0.09 82 / 0.6);
 
 	/* ============================================================
