@@ -6012,7 +6012,9 @@ void main() {
   }
 
   function shouldFocusSteerChat() {
-    return state !== 'CONFIGURING' && !steerLocked;
+    return state !== 'CONFIGURING'
+      && state !== 'EDITING'
+      && !steerLocked;
   }
 
   function pageHasHostTextSelection() {

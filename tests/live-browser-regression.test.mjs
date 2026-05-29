@@ -90,6 +90,14 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('does not autofocus the steering chat while inline editing', () => {
+    assert.match(
+      SOURCE,
+      /function shouldFocusSteerChat\(\) \{\s*return state !== 'CONFIGURING'\s*&& state !== 'EDITING'\s*&& !steerLocked;\s*\}/,
+      'edit-mode contenteditable focus must not be stolen by the global steering chat focus recovery',
+    );
+  });
+
   it('does not shadow the global live state when storing Apply state', () => {
     assert.doesNotMatch(
       SOURCE,
