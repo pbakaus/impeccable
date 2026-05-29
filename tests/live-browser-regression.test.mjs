@@ -82,6 +82,14 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('restores unsaved inline edit drafts before hideBar tears editing down', () => {
+    assert.match(
+      SOURCE,
+      /function hideBar\(\) \{[\s\S]{0,360}?if \(state === 'EDITING'\) restoreInlineEditDrafts\(\);[\s\S]{0,80}?disableInlineEdit\(\);/,
+      'hideBar should not leave unsaved contenteditable drafts in the DOM when an external event hides the bar',
+    );
+  });
+
   it('does not shadow the global live state when storing Apply state', () => {
     assert.doesNotMatch(
       SOURCE,

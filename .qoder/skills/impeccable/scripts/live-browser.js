@@ -1062,6 +1062,7 @@
     setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
+    if (state === 'EDITING') restoreInlineEditDrafts();
     disableInlineEdit();
   }
 
