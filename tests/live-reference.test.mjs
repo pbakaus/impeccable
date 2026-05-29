@@ -33,6 +33,7 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
+    assert.match(liveMd, /live-accept\.mjs --page-url PAGE_URL/);
     assert.match(liveMd, /If `repair` is present/);
     assert.match(liveMd, /Fix the current source/);
     assert.match(liveMd, /browser will ask the user before any rollback/);

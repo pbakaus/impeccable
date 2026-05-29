@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildAcceptScriptArgs,
   buildPollReplyPayload,
   isEventPending,
   manualApplyPollBanner,
@@ -22,6 +23,20 @@ describe('live-poll reply payloads', () => {
       payload.data,
       { carbonize: true },
       'event=live_poll.reply_data actor=agent operation=completion_ack risk=carbonize_flag_dropped_before_server_journal expected={"carbonize":true} actual=' + JSON.stringify(payload.data),
+    );
+  });
+});
+
+describe('live-poll accept handling', () => {
+  it('forwards pageUrl to live-accept so staged manual edits are scrubbed by page', () => {
+    assert.deepEqual(
+      buildAcceptScriptArgs({
+        type: 'accept',
+        id: 'abc12345',
+        variantId: 2,
+        pageUrl: '/pricing',
+      }),
+      ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
     );
   });
 });

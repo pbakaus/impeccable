@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
 import { buildManualEditEvidence } from '../skill/scripts/live-manual-edit-evidence.mjs';
+import { commitManualEdits } from '../skill/scripts/live-commit-manual-edits.mjs';
 import {
   buildCopyEditBatchPrompt,
   runCopyEditPostApplyChecks,
@@ -397,6 +398,55 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(result.failed[0].reason, 'source_verification_failed');
     assert.equal(result.rolledBackFiles, undefined);
     assert.equal(fs.readFileSync(file, 'utf-8'), '<h1 class="hero">Welcome</h1>\n<p>Hello</p>\n');
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
+  it('deduplicates failed entries across repeated repair attempts', async () => {
+    const file = path.join(tmpDir, 'src', 'page.html');
+    fs.writeFileSync(file, '<h1 class="hero">Welcome</h1>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+    let calls = 0;
+
+    const result = await commitManualEdits({
+      cwd: tmpDir,
+      provider: 'chat',
+      env: { IMPECCABLE_LIVE_MANUAL_EDIT_REPAIR_ATTEMPTS: '2' },
+      applyBatchToSource: async (_batch, { repair } = {}) => {
+        calls += 1;
+        if (!repair) {
+          return {
+            status: 'done',
+            appliedEntryIds: ['e1'],
+            failed: [],
+            files: ['src/page.html'],
+          };
+        }
+        return {
+          status: 'partial',
+          appliedEntryIds: [],
+          failed: [{ entryId: 'e1', reason: 'still cannot verify source' }],
+          files: ['src/page.html'],
+        };
+      },
+    });
+
+    assert.equal(calls, 3);
+    assert.equal(result.reason, 'manual_edit_repair_needs_decision');
+    assert.deepEqual(result.failed.map((item) => item.id), ['e1']);
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 

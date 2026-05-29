@@ -440,6 +440,7 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically, then acknowledged event delivery to the helper. The browser DOM is already updated.
 
+- The accept event includes `pageUrl`; the poll script must forward it to `live-accept.mjs --page-url PAGE_URL` so accept-time cleanup only scrubs staged copy edits for the current page.
 - `_completionAck.ok !== true`: do not poll yet. Run `live-status.mjs` / `live-resume.mjs`, complete the cleanup manually if needed, then run `live-complete.mjs --id EVENT_ID`.
 - `_acceptResult.handled: true` and `carbonize: false`: nothing to do. Poll again.
 - `_acceptResult.handled: true` and `carbonize: true`: **post-accept cleanup is required before the next poll.** See the "Required after accept (carbonize)" section below. The `event._acceptResult.todo` field, `_completionAck.requiresComplete`, and a stderr banner all point at this required follow-up; none are decorative. After cleanup, run `live-complete.mjs --id EVENT_ID`, then poll again.

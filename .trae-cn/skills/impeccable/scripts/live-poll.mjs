@@ -183,12 +183,7 @@ export async function augmentEventWithAcceptHandling(event, base, token) {
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const acceptScript = path.join(__dirname, 'live-accept.mjs');
-  const scriptArgs = event.type === 'discard'
-    ? ['--id', event.id, '--discard']
-    : ['--id', event.id, '--variant', event.variantId];
-  if (event.type === 'accept' && event.paramValues && Object.keys(event.paramValues).length > 0) {
-    scriptArgs.push('--param-values', JSON.stringify(event.paramValues));
-  }
+  const scriptArgs = buildAcceptScriptArgs(event);
 
   try {
     const out = execFileSync(
@@ -218,6 +213,17 @@ export async function augmentEventWithAcceptHandling(event, base, token) {
   }
 
   return event;
+}
+
+export function buildAcceptScriptArgs(event) {
+  const scriptArgs = event.type === 'discard'
+    ? ['--id', String(event.id), '--discard']
+    : ['--id', String(event.id), '--variant', String(event.variantId)];
+  if (event.pageUrl) scriptArgs.push('--page-url', String(event.pageUrl));
+  if (event.type === 'accept' && event.paramValues && Object.keys(event.paramValues).length > 0) {
+    scriptArgs.push('--param-values', JSON.stringify(event.paramValues));
+  }
+  return scriptArgs;
 }
 
 export function writeCarbonizeBanner(event) {

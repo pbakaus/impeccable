@@ -117,6 +117,32 @@ function normalizeFailedEntries(batch, result, fallbackReason) {
   return failed;
 }
 
+function mergeFailedEntries(...groups) {
+  const out = [];
+  const indexById = new Map();
+  for (const item of groups.flatMap((group) => Array.isArray(group) ? group : [])) {
+    if (!item || typeof item !== 'object') continue;
+    const id = typeof item.id === 'string' && item.id ? item.id : null;
+    if (!id) {
+      out.push(item);
+      continue;
+    }
+    const existingIndex = indexById.get(id);
+    if (existingIndex === undefined) {
+      indexById.set(id, out.length);
+      out.push(item);
+      continue;
+    }
+    out[existingIndex] = {
+      ...out[existingIndex],
+      ...item,
+      candidates: item.candidates || out[existingIndex].candidates,
+      checks: item.checks || out[existingIndex].checks,
+    };
+  }
+  return out;
+}
+
 function candidatesForEntry(batch, entryId) {
   return (batch.candidates || [])
     .filter((candidate) => candidate.entryId === entryId)
@@ -774,10 +800,10 @@ async function repairPostApplyValidation({
     currentNotes = [...currentNotes, ...(repairResult.notes || [])];
     currentWarnings = [...currentWarnings, ...(repairResult.warnings || [])];
     currentAppliedIds = mergeUniqueStrings(currentAppliedIds, repairResult.appliedEntryIds || []);
-    currentFailed = [
-      ...currentFailed,
-      ...normalizeFailedEntries(batch, repairResult, 'repair_failed'),
-    ];
+    currentFailed = mergeFailedEntries(
+      currentFailed,
+      normalizeFailedEntries(batch, repairResult, 'repair_failed'),
+    );
 
     const verified = verifyEntriesAfterRepair({
       batch,
@@ -802,7 +828,7 @@ async function repairPostApplyValidation({
     const verifiedIdSet = new Set(verified.verifiedIds);
     return {
       applied: summarizeAppliedEntries(batch.entries, verified.verifiedIds),
-      failed: currentFailed.filter((item) => !verifiedIdSet.has(item.id)),
+      failed: mergeFailedEntries(currentFailed).filter((item) => !verifiedIdSet.has(item.id)),
       files: currentFiles,
       cleared,
       count,
@@ -831,10 +857,7 @@ async function repairPostApplyValidation({
     : verificationFailuresForEntries(batch, batch.entries || [], repairReason, { checks: currentFailures });
   return {
     applied: [],
-    failed: [
-      ...decisionFailedEntries,
-      ...currentFailed,
-    ],
+    failed: mergeFailedEntries(decisionFailedEntries, currentFailed),
     files: currentFiles,
     cleared: 0,
     count,
