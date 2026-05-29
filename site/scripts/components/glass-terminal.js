@@ -9,6 +9,11 @@ let sourceCache = {}; // Cache fetched source content
 
 const MOBILE_BREAKPOINT = 900;
 
+// Setup / management commands that aren't "steering" verbs. They're kept off
+// the command palette (fisheye + mobile carousel) but still appear in the
+// periodic table (rendered separately by framework-viz.js).
+const PALETTE_EXCLUDED = new Set(['impeccable', 'init', 'extract', 'document', 'live']);
+
 function isMobile() {
     return window.innerWidth <= MOBILE_BREAKPOINT;
 }
@@ -75,7 +80,7 @@ function renderDesktopLayout(container, commands) {
     // too (when they were rendered as 'impeccable craft' etc.) but are now
     // first-class sub-commands that should appear in the gallery.
     const deprecated = new Set(['teach-impeccable', 'frontend-design', 'arrange', 'normalize', 'onboard', 'impeccable craft', 'impeccable teach', 'impeccable extract']);
-    const filteredCommands = commands.filter(c => !deprecated.has(c.id));
+    const filteredCommands = commands.filter(c => !deprecated.has(c.id) && !PALETTE_EXCLUDED.has(c.id));
 
     const categoryOrder = ['create', 'evaluate', 'refine', 'simplify', 'harden', 'system'];
     const categoryLabelsShort = {
@@ -481,6 +486,9 @@ function truncateDescription(text, maxLen = 120) {
 // ============================================
 
 function renderMobileLayout(container, commands) {
+    // Keep setup/management commands off the palette (they stay in the periodic
+    // table); match the desktop fisheye filter.
+    commands = commands.filter(c => !PALETTE_EXCLUDED.has(c.id));
     // Build carousel pills
     // Carousel pills show bare command names for sub-commands, and /impeccable
     // for the root entry.
