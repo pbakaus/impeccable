@@ -1409,10 +1409,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 18px;
-}
-.designing-kinpaku .designing-avoid {
-  gap: 0;
+  gap: 0; /* divided list: items separated by hairlines, not gaps */
 }
 .designing-kinpaku .designing-avoid li {
   display: grid;

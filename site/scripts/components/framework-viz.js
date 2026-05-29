@@ -336,7 +336,6 @@ export class PeriodicTable {
 
 		const deactivate = () => {
 			el.style.transform = 'translateY(0)';
-			el.style.boxShadow = 'none';
 			this.hideTooltip();
 		};
 
