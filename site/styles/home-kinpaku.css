@@ -908,10 +908,9 @@
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   /* Was 9% on a 7% ground (~1 level in sRGB): the card body vanished into the
-     page and only the gold hairline hinted at an edge. Lift to a clear raised
-     tone so the specimen card reads as an object; the gold hairline stays as
-     the brand edge. */
-  background: oklch(15% 0.004 95);
+     page and only the hairline hinted at an edge. Lift to a clear raised
+     neutral tone so the specimen card reads as a crisp object. */
+  background: oklch(15% 0 0);
 }
 
 .home-kinpaku .foundation-column:hover .foundation-card {
@@ -944,15 +943,11 @@
 
 .home-kinpaku .foundation-plinth {
   border-color: var(--ks-rule);
+  /* Neutral hatch (was kinpaku gold, which washed the section champagne) on a
+     neutral base, for a crisp pedestal that matches the de-warmed section. */
   background:
-    repeating-linear-gradient(45deg, oklch(78% 0.12 82 / 0.12), oklch(78% 0.12 82 / 0.12) 1px, transparent 1px, transparent 9px),
-    oklch(10% 0.006 95 / 0.42);
-  /* Soften the bottom so the plinth fades into the section bg like a real
-     shadow instead of terminating in a hard horizontal line. Mask fades the
-     bottom 45% of the element, taking the diagonal stripes + side borders
-     down with it. */
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
-          mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 100%);
+    repeating-linear-gradient(45deg, oklch(80% 0 0 / 0.07), oklch(80% 0 0 / 0.07) 1px, transparent 1px, transparent 9px),
+    oklch(10% 0 0 / 0.42);
 }
 
 .home-kinpaku .language-intro-row {
