@@ -34,13 +34,13 @@ export const skillFocusAreas = {
 // detail line communicates what bad-default we catch — not what we teach.
 export const slopFocusAreas = {
   'impeccable': [
-    { area: 'Typography', detail: 'No Inter monoculture. No flat hierarchy. No all-caps body.' },
-    { area: 'Color & Contrast', detail: 'No purple gradients. No sub-WCAG text. No washed pastels.' },
-    { area: 'Spatial Design', detail: 'No cards in cards. No identical grids. No template layouts.' },
-    { area: 'Responsive', detail: 'No stiff breakpoints. No mobile-as-afterthought.' },
-    { area: 'Interaction', detail: 'No modal abuse. No generic CTAs. No gradient text.' },
-    { area: 'Motion', detail: 'No bouncy easing. No decorative fades. No spring overshoot.' },
-    { area: 'UX Writing', detail: 'No "Welcome to our platform." No em dashes. No "let\'s dive in".' }
+    { area: 'Typography', detail: 'A type scale with real contrast, set in a face chosen on purpose, not Inter by reflex.' },
+    { area: 'Color & Contrast', detail: 'Palettes that clear WCAG and commit to a hue. The purple-gradient default never ships.' },
+    { area: 'Spatial Design', detail: 'Structure from spacing and rhythm, not a grid of identical cards nested in more cards.' },
+    { area: 'Responsive', detail: 'Built for the small screen first, with breakpoints that follow the content.' },
+    { area: 'Interaction', detail: 'Honest states and clear affordances, without defaulting to a modal or gradient text.' },
+    { area: 'Motion', detail: 'Motion that eases like physics and settles. Nothing bounces or springs past its mark.' },
+    { area: 'UX Writing', detail: 'Specific copy that names what the thing does, not "Welcome to our platform."' }
   ]
 };
 

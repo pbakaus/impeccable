@@ -772,6 +772,7 @@
 .downloads-rebuild-note {
   grid-column: 1 / -1;
   margin: 0;
+  max-width: 64ch; /* was unbounded -> ~102 ch/line; cap for readability */
   color: var(--card-fg-muted);
   font-size: 0.88rem;
 }

@@ -308,7 +308,7 @@ function setupFisheyeList(commands, headerIndices = []) {
     // to a fractional "center index" which drives everything.
 
     const BASE_H = 36; // height of the center (scale=1) item
-    const MIN_SCALE = 0.35;
+    const MIN_SCALE = 0.52; // off-center items stay legibly sized, not microscopic
     const RADIUS = 5;
     const count = items.length;
     const listH = list.clientHeight;
@@ -367,7 +367,10 @@ function setupFisheyeList(commands, headerIndices = []) {
         items.forEach((item, i) => {
             const h = heights[i];
             const scale = getScale(Math.abs(i - center));
-            const opacity = 0.25 + (scale - MIN_SCALE) / (1 - MIN_SCALE) * 0.75;
+            // Floor at 0.62 so off-center command names stay readable (WCAG): the
+            // full vocabulary is the point of this view. Focus still reads clearly
+            // via scale + the gold/weight active state, not by crushing legibility.
+            const opacity = 0.62 + (scale - MIN_SCALE) / (1 - MIN_SCALE) * 0.38;
 
             item.style.top = `${y}px`;
             item.style.transform = `scale(${scale})`;

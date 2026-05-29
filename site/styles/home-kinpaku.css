@@ -214,7 +214,7 @@
 
 .home-kinpaku .section-lead,
 .home-kinpaku .section-subtitle {
-  max-width: 68ch;
+  max-width: 62ch; /* 68ch rendered ~86 actual chars/line; tighten into the band */
   color: var(--ks-text);
   font-size: 1.02rem;
   line-height: 1.8;
@@ -989,7 +989,7 @@
 }
 
 .home-kinpaku .fisheye-item {
-  color: var(--ks-muted);
+  color: var(--ks-text);
   font-family: var(--ks-font);
   font-size: 1.18rem;
 }
