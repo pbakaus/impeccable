@@ -489,6 +489,49 @@ describe('live-commit-manual-edits.mjs batched AI apply', () => {
     assert.equal(readBuffer(tmpDir).entries.length, 1);
   });
 
+  it('does not delete pre-existing reported files that were outside the rollback snapshot', () => {
+    const pageFile = path.join(tmpDir, 'src', 'page.html');
+    const extraFile = path.join(tmpDir, 'src', 'extra.html');
+    const beforePage = '<h1 class="hero">Welcome</h1>\n';
+    fs.writeFileSync(pageFile, beforePage);
+    fs.writeFileSync(extraFile, '<p>Existing file</p>\n');
+    writeBuffer(tmpDir, {
+      entries: [
+        entry({
+          id: 'e1',
+          ops: [{
+            ref: 'body>h1.hero',
+            tag: 'h1',
+            classes: ['hero'],
+            originalText: 'Welcome',
+            newText: 'Hello',
+            sourceHint: { file: 'src/page.html', line: 1, column: 1 },
+          }],
+        }),
+      ],
+    });
+
+    const result = runCommit([], {
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({
+        'src/page.html': '<h1 class="hero">Hello</h1>\n',
+        'src/extra.html': '<p>Existing file changed outside snapshot</p>\n',
+      }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({
+        status: 'error',
+        message: 'agent failed after editing',
+        files: ['src/page.html', 'src/extra.html'],
+      }),
+    });
+
+    assert.equal(result.cleared, 0);
+    assert.deepEqual(result.rolledBackFiles, ['src/page.html']);
+    assert.equal(fs.existsSync(extraFile), true);
+    assert.equal(fs.readFileSync(pageFile, 'utf-8'), beforePage);
+    assert.equal(fs.readFileSync(extraFile, 'utf-8'), '<p>Existing file changed outside snapshot</p>\n');
+    assert.equal(result.rollbackFailures.some((item) => item.file === 'src/extra.html' && item.reason === 'no_snapshot'), true);
+    assert.equal(readBuffer(tmpDir).entries.length, 1);
+  });
+
   it('verifies against reported files before failing a stale source hint window', () => {
     fs.mkdirSync(path.join(tmpDir, 'site/pages'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'site/pages/index.astro'), '<h1 class="hero">Welcome</h1>\n');

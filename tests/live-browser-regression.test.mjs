@@ -62,6 +62,32 @@ describe('live-browser.js regression guards', () => {
       /const controlsLocked = pendingApplyInFlight === true;[\s\S]{0,120}?\[pickToggle, insertToggle, detectToggle, designToggle\]\.forEach/,
       'pending manual Apply must visually disable Pick, Insert, Detect, and Design together',
     );
+    assert.match(
+      SOURCE,
+      /function toggleInsert\(\) \{[\s\S]{0,120}?if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}/,
+      'Insert must have the same in-flight Apply guard as the other mode toggles',
+    );
+  });
+
+  it('exits inline editing directly on outside click', () => {
+    assert.match(
+      SOURCE,
+      /function cancelEditingToPicking\(\) \{[\s\S]{0,600}?state = 'PICKING';/,
+      'outside-click editing cancel should avoid rebuilding configure UI before hiding it',
+    );
+    assert.match(
+      SOURCE,
+      /state === 'EDITING'[\s\S]{0,180}?cancelEditingToPicking\(\);[\s\S]{0,40}?return;/,
+      'outside-click handler should leave EDITING directly',
+    );
+  });
+
+  it('does not shadow the global live state when reading stored Apply state', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /function readStoredManualApplyState\(\)[\s\S]{0,240}?const state = JSON\.parse\(raw\);/,
+      'stored manual Apply JSON should not shadow the outer UI state variable',
+    );
   });
 
   it('handleServerLost preserves the current recoverable phase', () => {

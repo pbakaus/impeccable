@@ -529,10 +529,14 @@ function snapshotRollbackFiles(cwd, files = null) {
     const absolute = path.resolve(cwd, relativeFile);
     try {
       snapshot.set(relativeFile, {
+        existed: true,
         content: fs.readFileSync(absolute, 'utf-8'),
       });
-    } catch {
-      // If we cannot read a file before the AI run, it is not safe to roll back.
+    } catch (err) {
+      if (err?.code === 'ENOENT') {
+        snapshot.set(relativeFile, { existed: false });
+      }
+      // Other read failures are not safe to roll back.
     }
   }
   return snapshot;
@@ -584,6 +588,10 @@ function changedFilesSinceSnapshot(cwd, snapshot, scopeFiles = null) {
   for (const [relativeFile, before] of snapshot.entries()) {
     if (scopedFiles && !currentFiles.has(relativeFile)) continue;
     const absolute = path.resolve(cwd, relativeFile);
+    if (before?.existed === false) {
+      if (fs.existsSync(absolute)) changed.set(relativeFile, { file: relativeFile, kind: 'added' });
+      continue;
+    }
     if (!fs.existsSync(absolute)) {
       changed.set(relativeFile, { file: relativeFile, kind: 'deleted' });
       continue;
@@ -595,9 +603,7 @@ function changedFilesSinceSnapshot(cwd, snapshot, scopeFiles = null) {
     }
   }
   for (const relativeFile of currentFiles) {
-    if (!snapshot.has(relativeFile)) {
-      changed.set(relativeFile, { file: relativeFile, kind: 'added' });
-    }
+    if (!snapshot.has(relativeFile)) continue;
   }
   return [...changed.values()];
 }
@@ -624,10 +630,10 @@ function rollbackChangedFiles(cwd, snapshot, extraFiles = [], scopeFiles = []) {
     const absolute = path.resolve(cwd, item.file);
     const before = snapshot.get(item.file);
     try {
-      if (before) {
+      if (before?.existed !== false && typeof before?.content === 'string') {
         fs.mkdirSync(path.dirname(absolute), { recursive: true });
         fs.writeFileSync(absolute, before.content, 'utf-8');
-      } else if (item.kind === 'added' && fs.existsSync(absolute)) {
+      } else if (before?.existed === false && item.kind === 'added' && fs.existsSync(absolute)) {
         fs.rmSync(absolute);
       } else {
         rollbackFailures.push({ file: item.file, reason: 'no_snapshot' });

@@ -2866,17 +2866,35 @@
     }
   }
 
-  function cancelEditing() {
+  function restoreInlineEditDrafts() {
     for (const row of inlineEditRows) {
       if (inlineEditDrafts.has(row.el)) {
         row.el.textContent = row.el.dataset.impeccableOriginalText;
       }
     }
+  }
+
+  function cancelEditing() {
+    restoreInlineEditDrafts();
     disableInlineEdit();
     state = 'CONFIGURING';
     showBar('configure');
     showAnnotOverlay(selectedElement);
     renderEditBadge('idle');
+  }
+
+  function cancelEditingToPicking() {
+    restoreInlineEditDrafts();
+    disableInlineEdit();
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    renderEditBadge('hidden');
+    state = 'PICKING';
+    hoveredElement = null;
+    hideHighlight();
+    syncPageChatFocus('editing-outside-click');
   }
 
   // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
@@ -3181,12 +3199,12 @@
     try {
       const raw = sessionStorage.getItem(manualApplyStateKey());
       if (!raw) return null;
-      const state = JSON.parse(raw);
-      if (!state || state.pageUrl !== location.pathname || Date.now() > Number(state.expiresAt || 0)) {
+      const storedState = JSON.parse(raw);
+      if (!storedState || storedState.pageUrl !== location.pathname || Date.now() > Number(storedState.expiresAt || 0)) {
         sessionStorage.removeItem(manualApplyStateKey());
         return null;
       }
-      return state;
+      return storedState;
     } catch {
       return null;
     }
@@ -4689,10 +4707,10 @@
     if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
       closeTunePopover();
     }
-    // In EDITING: click outside returns to CONFIGURING (via cancelEditing), then check CONFIGURING exit
+    // In EDITING: click outside exits the text edit flow without rebuilding configure UI first.
     if (state === 'EDITING' && !own(e.target) && selectedElement && !selectedElement.contains(e.target)) {
-      cancelEditing();
-      // Fall through to check if we should also exit CONFIGURING
+      cancelEditingToPicking();
+      return;
     }
     // In CONFIGURING: click outside the bar and selected element returns to PICKING.
     if (
@@ -7355,6 +7373,7 @@ void main() {
   }
 
   function toggleInsert() {
+    if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     insertActive = !insertActive;
     if (insertActive) {
       pickActive = false;
