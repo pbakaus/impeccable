@@ -6,18 +6,12 @@
 @import "./kinpaku-tokens.css";
 
 .home-kinpaku {
-  /* Intentional overrides: the homepage uses brighter rule alphas because
-     bento tile borders need to read against busy backgrounds. The default
-     --ks-rule from kinpaku-tokens.css is the quieter doctrinal value used
-     on /design-system and elsewhere. */
-  --ks-rule: oklch(58% 0.065 82 / 0.48);
-  --ks-rule-strong: oklch(74% 0.09 82 / 0.68);
+  /* --ks-rule / --ks-rule-strong inherit the global tokens (neutral default,
+     gold strong); the homepage no longer diverges on border color. */
 
-  /* Slightly lighter muted text on the homepage's busier surfaces. The
-     default --ks-text-muted (63% L) is used everywhere else; here we lift
-     to 65% so captions stay readable against bento tile fills. Kept under
-     the old --ks-muted name for code-churn reasons. */
-  --ks-muted: oklch(65% 0.024 82);
+  /* Legacy alias — homepage code reads --ks-muted; map it to the global muted
+     text token (no divergent value). */
+  --ks-muted: var(--ks-text-muted);
 
   /* Legacy alias — homepage code still reads --ks-faint and --ks-oxide. The
      forward names live in kinpaku-tokens.css as --ks-text-faint and
