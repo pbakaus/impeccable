@@ -629,7 +629,9 @@ function changedFilesSinceSnapshot(cwd, snapshot, scopeFiles = null) {
     }
   }
   for (const relativeFile of currentFiles) {
-    if (!snapshot.has(relativeFile)) continue;
+    if (!snapshot.has(relativeFile)) {
+      changed.set(relativeFile, { file: relativeFile, kind: 'unknown' });
+    }
   }
   return [...changed.values()];
 }
