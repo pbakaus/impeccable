@@ -221,14 +221,18 @@ function buildRepairBatch(batch, repair) {
   };
 }
 
-function normalizeRelativeFile(cwd, file) {
+function normalizeProjectSourcePath(cwd, file, opts = {}) {
   if (!file || typeof file !== 'string') return null;
   const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
   const relative = path.relative(cwd, absolute);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
-  if (!fs.existsSync(absolute)) return null;
+  if (opts.requireExists && !fs.existsSync(absolute)) return null;
   if (isGeneratedFile(absolute, { cwd })) return null;
   return relative;
+}
+
+function normalizeRelativeFile(cwd, file) {
+  return normalizeProjectSourcePath(cwd, file, { requireExists: true });
 }
 
 function sourceHintWindowFailure(cwd, op) {
@@ -711,12 +715,7 @@ function unreportedChangedFiles(cwd, snapshot, reportedFiles, scopeFiles = []) {
 }
 
 function normalizeRollbackPath(cwd, file) {
-  if (!file || typeof file !== 'string') return null;
-  const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
-  const relative = path.relative(cwd, absolute);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
-  if (isGeneratedFile(absolute, { cwd })) return null;
-  return relative;
+  return normalizeProjectSourcePath(cwd, file);
 }
 
 function verifyEntriesAfterRepair({ batch, appliedEntryIds, files, cwd }) {

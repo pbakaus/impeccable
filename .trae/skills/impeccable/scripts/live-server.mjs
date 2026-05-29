@@ -1661,26 +1661,26 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
             totalCount,
           });
+        } else {
+          recordManualEditActivity('manual_edit_commit_done', {
+            pageUrl,
+            provider: routedProvider,
+            reason: result.reason || null,
+            repair: result.repair || null,
+            appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
+            failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
+            failed: summarizeManualApplyFailures(result.failed),
+            files: Array.isArray(result.files) ? result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
+            warnings: summarizeManualDiagnostics(result.warnings),
+            rolledBackFiles: Array.isArray(result.rolledBackFiles) ? result.rolledBackFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
+            rollbackFailures: summarizeManualDiagnostics(result.rollbackFailures),
+            unreportedFiles: Array.isArray(result.unreportedFiles) ? result.unreportedFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : undefined,
+            noteCount: Array.isArray(result.notes) ? result.notes.length : 0,
+            cleared: result.cleared || 0,
+            remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
+            totalCount,
+          });
         }
-        recordManualEditActivity('manual_edit_commit_done', {
-          pageUrl,
-          provider: routedProvider,
-          reason: result.reason || null,
-          needsManualDecision: result.needsManualDecision === true,
-          repair: result.repair || null,
-          appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
-          failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
-          failed: summarizeManualApplyFailures(result.failed),
-          files: Array.isArray(result.files) ? result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
-          warnings: summarizeManualDiagnostics(result.warnings),
-          rolledBackFiles: Array.isArray(result.rolledBackFiles) ? result.rolledBackFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
-          rollbackFailures: summarizeManualDiagnostics(result.rollbackFailures),
-          unreportedFiles: Array.isArray(result.unreportedFiles) ? result.unreportedFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : undefined,
-          noteCount: Array.isArray(result.notes) ? result.notes.length : 0,
-          cleared: result.cleared || 0,
-          remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
-          totalCount,
-        });
         if (!asyncMode) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ...result, totalCount, perPage }));

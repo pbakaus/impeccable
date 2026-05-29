@@ -1454,6 +1454,10 @@ colors: {}
       assert.equal(result.repair.attempts, 3);
       assert.equal(readFileSync(dataPath, 'utf-8'), "export const counts = { 'Color': 0029 };\n");
       assert.equal(existsSync(join(getLiveDir(tmp), 'manual-edit-apply-transaction.json')), true);
+      const decisionStatus = await fetch(`http://localhost:${decisionServer.port}/status?token=${decisionServer.token}`);
+      assert.equal(decisionStatus.status, 200);
+      const decisionStatusBody = await decisionStatus.json();
+      assert.equal(decisionStatusBody.manualEdits.lastActivity.type, 'manual_edit_repair_needs_decision');
       const bufferBeforeRollback = JSON.parse(readFileSync(join(getLiveDir(tmp), 'pending-manual-edits.json'), 'utf-8'));
       assert.equal(bufferBeforeRollback.entries.length, 1);
 
