@@ -52,8 +52,63 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /float bandAlpha = band \* 0\.18;[\s\S]{0,120}?gl_FragColor = vec4\(mix\(tex\.rgb, dotLayer, band\), max\(tex\.a, bandAlpha\)\)/,
-      'shader overlay must preserve texture alpha while keeping a faint loading band visible over transparent capture pixels',
+      /function shouldUseAlphaGlyphHalftone\b/,
+      'shader setup should detect sparse-alpha text captures so glyph coverage can drive dot size',
+    );
+    assert.match(
+      SOURCE,
+      /function cloakShaderTextElement\b[\s\S]{0,900}?opacity: style\.opacity[\s\S]{0,260}?style\.opacity = '0';[\s\S]{0,160}?style\.color = 'transparent'/,
+      'shader should cloak the original DOM text while sparse-alpha glyph dots replace it',
+    );
+    assert.match(
+      SOURCE,
+      /function restoreShaderElementCloak\b[\s\S]{0,240}?el\.style\.opacity = prev\.opacity;/,
+      'shader cleanup must restore the selected element opacity after cloaking',
+    );
+    assert.match(
+      SOURCE,
+      /function hideShaderOverlay\(\)[\s\S]{0,500}?restoreShaderElementCloak\(cloak\);[\s\S]{0,80}?shaderState = null;/,
+      'shader cleanup must restore the selected element after the loading overlay ends',
+    );
+    assert.match(
+      SOURCE,
+      /const cloak = alphaGlyphs \? cloakShaderTextElement\(el\) : null;[\s\S]{0,180}?shaderState = \{ canvas, gl, program, texture, rafId: 0, startTime: performance\.now\(\), reduced, cloak \};/,
+      'shader should only cloak sparse-alpha text captures and keep the restore handle in shaderState',
+    );
+    assert.match(
+      SOURCE,
+      /uniform float u_alpha_glyphs;/,
+      'shader should receive whether the captured texture uses alpha as glyph coverage',
+    );
+    assert.match(
+      SOURCE,
+      /float cellPx = 10\.0;\s+vec2 gridUv = uv \* u_resolution \/ cellPx;/,
+      'shader should keep the pre-merge 10px halftone grid so the total dot count stays stable',
+    );
+    assert.match(
+      SOURCE,
+      /gl\.uniform2f\(uRes, canvas\.width, canvas\.height\);/,
+      'shader should keep using the canvas pixel resolution for the halftone grid density',
+    );
+    assert.match(
+      SOURCE,
+      /float alphaInk = smoothstep\(0\.05, 0\.95, cellTex\.a\) \* u_alpha_glyphs;/,
+      'alpha glyph captures should turn opaque letter pixels into larger halftone dots',
+    );
+    assert.match(
+      SOURCE,
+      /float radius = max\(0\.12 \* \(1\.0 - alphaInk\), max\(inkRadius, alphaInk \* 0\.56\)\);/,
+      'transparent capture pixels should keep a small matrix dot while glyph pixels get larger dots',
+    );
+    assert.match(
+      SOURCE,
+      /float bandAlpha = band \* mix\(0\.05, 0\.72, dotMask\);/,
+      'transparent capture pixels should use stronger alpha for dots than for the paper wash',
+    );
+    assert.match(
+      SOURCE,
+      /gl_FragColor = vec4\(mix\(tex\.rgb, dotLayer, band\), max\(tex\.a, bandAlpha\)\)/,
+      'shader overlay must preserve texture alpha while showing the halftone layer',
     );
   });
 

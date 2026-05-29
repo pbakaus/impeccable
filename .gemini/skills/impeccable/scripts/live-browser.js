@@ -5340,6 +5340,7 @@ uniform sampler2D u_texture;
 uniform float u_time;
 uniform vec2 u_resolution;
 uniform vec3 u_accent;
+uniform float u_alpha_glyphs;
 varying vec2 v_uv;
 
 // Asymmetric roller band. Product of two one-sided smoothsteps — peaks at
@@ -5370,16 +5371,21 @@ void main() {
   vec3 cellImg = mix(vec3(1.0), cellTex.rgb, cellTex.a);
   float luma = dot(cellImg, vec3(0.299, 0.587, 0.114));
   // Darker cells → bigger kinpaku dots (classic risograph halftone curve).
-  float radius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
+  // Sparse alpha captures are usually text glyphs. Let that coverage drive
+  // larger dots over the letters, while transparent cells keep a small matrix
+  // dot so preserving alpha does not erase the loading texture.
+  float inkRadius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
+  float alphaInk = smoothstep(0.05, 0.95, cellTex.a) * u_alpha_glyphs;
+  float radius = max(0.12 * (1.0 - alphaInk), max(inkRadius, alphaInk * 0.56));
   float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
   vec3 paper = vec3(0.975, 0.965, 0.955);
   vec3 dotLayer = mix(paper, u_accent, dotMask);
 
   // Blend the halftone layer in where the roller is passing. Transparent
-  // capture pixels get a faint band so the loading state is visible over
-  // image/gradient backdrops without becoming an opaque block.
+  // capture pixels get a low-alpha paper wash plus stronger dot alpha, so
+  // the matrix is visible without becoming the old opaque rectangle.
   vec4 tex = texture2D(u_texture, uv);
-  float bandAlpha = band * 0.18;
+  float bandAlpha = band * mix(0.05, 0.72, dotMask);
   gl_FragColor = vec4(mix(tex.rgb, dotLayer, band), max(tex.a, bandAlpha));
 }`;
 
@@ -5412,11 +5418,70 @@ void main() {
 
   function hideShaderOverlay() {
     if (!shaderState) return;
+    const cloak = shaderState.cloak;
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
+    restoreShaderElementCloak(cloak);
     shaderState = null;
+  }
+
+  function cloakShaderTextElement(el) {
+    if (!el) return null;
+    const style = el.style;
+    const prev = {
+      opacity: style.opacity,
+      color: style.color,
+      webkitTextFillColor: style.webkitTextFillColor,
+      textShadow: style.textShadow,
+      caretColor: style.caretColor,
+    };
+    style.opacity = '0';
+    style.color = 'transparent';
+    style.webkitTextFillColor = 'transparent';
+    style.textShadow = 'none';
+    style.caretColor = 'transparent';
+    return { el, prev };
+  }
+
+  function restoreShaderElementCloak(cloak) {
+    if (!cloak || !cloak.el || !cloak.prev) return;
+    const { el, prev } = cloak;
+    el.style.opacity = prev.opacity;
+    el.style.color = prev.color;
+    el.style.webkitTextFillColor = prev.webkitTextFillColor;
+    el.style.textShadow = prev.textShadow;
+    el.style.caretColor = prev.caretColor;
+  }
+
+  function shouldUseAlphaGlyphHalftone(bitmap) {
+    const width = Math.max(0, bitmap?.width || bitmap?.naturalWidth || 0);
+    const height = Math.max(0, bitmap?.height || bitmap?.naturalHeight || 0);
+    if (!width || !height) return false;
+    const sampleW = Math.min(width, 96);
+    const sampleH = Math.min(height, 96);
+    try {
+      const c = document.createElement('canvas');
+      c.width = sampleW;
+      c.height = sampleH;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return false;
+      ctx.clearRect(0, 0, sampleW, sampleH);
+      ctx.drawImage(bitmap, 0, 0, sampleW, sampleH);
+      const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
+      let transparent = 0;
+      let visible = 0;
+      const pixels = sampleW * sampleH;
+      for (let i = 3; i < data.length; i += 4) {
+        const a = data[i];
+        if (a < 245) transparent += 1;
+        if (a > 16) visible += 1;
+      }
+      return transparent / pixels > 0.08 && visible / pixels > 0.01;
+    } catch {
+      return false;
+    }
   }
 
   async function showShaderOverlay(el, blob, rect) {
@@ -5504,6 +5569,7 @@ void main() {
       bitmap = img;
       URL.revokeObjectURL(imgUrl);
     }
+    const alphaGlyphs = shouldUseAlphaGlyphHalftone(bitmap) ? 1 : 0;
     texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -5518,9 +5584,11 @@ void main() {
     const uRes = gl.getUniformLocation(program, 'u_resolution');
     const uAccent = gl.getUniformLocation(program, 'u_accent');
     const uTex = gl.getUniformLocation(program, 'u_texture');
+    const uAlphaGlyphs = gl.getUniformLocation(program, 'u_alpha_glyphs');
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cloak = alphaGlyphs ? cloakShaderTextElement(el) : null;
 
-    shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced };
+    shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced, cloak };
     function frame() {
       if (!shaderState) return;
       const elapsed = (performance.now() - shaderState.startTime) / 1000;
@@ -5533,6 +5601,7 @@ void main() {
       gl.uniform1f(uTime, t);
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform3f(uAccent, SHADER_ACCENT[0], SHADER_ACCENT[1], SHADER_ACCENT[2]);
+      gl.uniform1f(uAlphaGlyphs, alphaGlyphs);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       shaderState.rafId = requestAnimationFrame(frame);
     }
