@@ -1186,7 +1186,7 @@
 }
 .hotel-hero--slop .hotel-hero-photo { display: none; }
 .hotel-hero--slop .hotel-hero-title {
-  font-family: var(--h-sans);
+  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
   font-weight: 800;
   font-size: 27px;
   letter-spacing: -0.02em;
@@ -1347,7 +1347,7 @@
 /* original — the AI-slop card: generic sans, purple gradient, overdone radius +
    shadow, weak copy. Clashes on purpose with the serif siblings. */
 .hotel-card--slop {
-  font-family: var(--h-sans);
+  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
   border-radius: 16px;
   border-color: transparent;
   box-shadow: 0 12px 30px oklch(52% 0.2 295 / 0.4);
@@ -1699,6 +1699,7 @@
   color: var(--ks-champagne);
   background: oklch(13% 0.006 95);
   border: 1px solid var(--ks-rule);
+  border-left: 2px solid var(--ks-kinpaku);
   border-radius: 3px;
   padding: 4px 8px;
 }
