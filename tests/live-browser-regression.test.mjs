@@ -44,74 +44,6 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('shader loading capture preserves transparent pixels over image backgrounds', () => {
-    assert.match(
-      SOURCE,
-      /while \(node\) \{[\s\S]{0,220}?backgroundImage[\s\S]{0,80}?return null/,
-      'transparent text over a background image/gradient should not be captured on a fake white rectangle',
-    );
-    assert.match(
-      SOURCE,
-      /function shouldUseAlphaGlyphHalftone\b/,
-      'shader setup should detect sparse-alpha text captures so glyph coverage can drive dot size',
-    );
-    assert.match(
-      SOURCE,
-      /function cloakShaderTextElement\b[\s\S]{0,900}?opacity: style\.opacity[\s\S]{0,260}?style\.opacity = '0';[\s\S]{0,160}?style\.color = 'transparent'/,
-      'shader should cloak the original DOM text while sparse-alpha glyph dots replace it',
-    );
-    assert.match(
-      SOURCE,
-      /function restoreShaderElementCloak\b[\s\S]{0,240}?el\.style\.opacity = prev\.opacity;/,
-      'shader cleanup must restore the selected element opacity after cloaking',
-    );
-    assert.match(
-      SOURCE,
-      /function hideShaderOverlay\(\)[\s\S]{0,500}?restoreShaderElementCloak\(cloak\);[\s\S]{0,80}?shaderState = null;/,
-      'shader cleanup must restore the selected element after the loading overlay ends',
-    );
-    assert.match(
-      SOURCE,
-      /const cloak = alphaGlyphs \? cloakShaderTextElement\(el\) : null;[\s\S]{0,180}?shaderState = \{ canvas, gl, program, texture, rafId: 0, startTime: performance\.now\(\), reduced, cloak \};/,
-      'shader should only cloak sparse-alpha text captures and keep the restore handle in shaderState',
-    );
-    assert.match(
-      SOURCE,
-      /uniform float u_alpha_glyphs;/,
-      'shader should receive whether the captured texture uses alpha as glyph coverage',
-    );
-    assert.match(
-      SOURCE,
-      /float cellPx = 10\.0;\s+vec2 gridUv = uv \* u_resolution \/ cellPx;/,
-      'shader should keep the pre-merge 10px halftone grid so the total dot count stays stable',
-    );
-    assert.match(
-      SOURCE,
-      /gl\.uniform2f\(uRes, canvas\.width, canvas\.height\);/,
-      'shader should keep using the canvas pixel resolution for the halftone grid density',
-    );
-    assert.match(
-      SOURCE,
-      /float alphaInk = smoothstep\(0\.05, 0\.95, cellTex\.a\) \* u_alpha_glyphs;/,
-      'alpha glyph captures should turn opaque letter pixels into larger halftone dots',
-    );
-    assert.match(
-      SOURCE,
-      /float radius = max\(0\.12 \* \(1\.0 - alphaInk\), max\(inkRadius, alphaInk \* 0\.50\)\);/,
-      'transparent capture pixels should keep a small matrix dot while glyph pixels get larger dots',
-    );
-    assert.match(
-      SOURCE,
-      /float bandAlpha = band \* mix\(0\.05, 0\.9, dotMask\);/,
-      'transparent capture pixels should use stronger alpha for dots than for the paper wash',
-    );
-    assert.match(
-      SOURCE,
-      /gl_FragColor = vec4\(mix\(tex\.rgb, dotLayer, band\), max\(tex\.a, bandAlpha\)\)/,
-      'shader overlay must preserve texture alpha while showing the halftone layer',
-    );
-  });
-
   it('detectPageTheme honors alpha when reading body / html backgroundColor', () => {
     // Equivalent trap: `rgba(0, 0, 0, 0)` parsed naively as `(0,0,0)` makes
     // a perfectly white default page register as "dark," which flips the
@@ -121,14 +53,6 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function detectPageTheme\b[\s\S]{0,1500}?function readOpaque\b/,
       'detectPageTheme must keep its readOpaque helper that filters out fully-transparent backgrounds before computing luminance',
-    );
-  });
-
-  it('large text capture treats line-break elements as text flow', () => {
-    assert.match(
-      SOURCE,
-      /function shouldCaptureTextFromParent\b[\s\S]{0,700}?tag !== 'br' && tag !== 'wbr'/,
-      'large text elements with <br>/<wbr> children must still use the parent-crop screenshot path; direct modern-screenshot capture shifts/crops multi-line display text during the loading shader',
     );
   });
 

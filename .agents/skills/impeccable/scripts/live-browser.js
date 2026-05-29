@@ -5176,7 +5176,6 @@
     let node = el.parentElement;
     while (node) {
       const cs = getComputedStyle(node);
-      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
       if (!isTransparentColor(cs.backgroundColor)) return cs.backgroundColor;
       node = node.parentElement;
     }
@@ -5189,58 +5188,6 @@
     // black canvas and the shader overlay flashes solid black during load.
     // The browser canvas defaults to white, so we do too.
     return '#ffffff';
-  }
-
-  function shouldCaptureTextFromParent(el, snapshot) {
-    if (!el || !el.parentElement || el.parentElement === document.body) return false;
-    if (snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0)) return false;
-    if (own(el.parentElement)) return false;
-    const text = (el.textContent || '').trim();
-    if (!text) return false;
-    const hasElementChildren = Array.from(el.children || []).some((child) => {
-      const tag = child.tagName?.toLowerCase();
-      return tag !== 'br' && tag !== 'wbr' && !own(child);
-    });
-    if (hasElementChildren) return false;
-    const cs = getComputedStyle(el);
-    return parseFloat(cs.fontSize) >= 20;
-  }
-
-  async function cropBlobToRect(blob, sourceRect, targetRect, scale) {
-    let bitmap;
-    try {
-      bitmap = await createImageBitmap(blob);
-    } catch {
-      const imgUrl = URL.createObjectURL(blob);
-      const img = new Image();
-      img.src = imgUrl;
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
-      URL.revokeObjectURL(imgUrl);
-      bitmap = img;
-    }
-    const canvas = document.createElement('canvas');
-    const sx = Math.max(0, Math.round((targetRect.left - sourceRect.left) * scale));
-    const sy = Math.max(0, Math.round((targetRect.top - sourceRect.top) * scale));
-    const sw = Math.max(1, Math.round(targetRect.width * scale));
-    const sh = Math.max(1, Math.round(targetRect.height * scale));
-    canvas.width = sw;
-    canvas.height = sh;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
-    if (bitmap.close) bitmap.close();
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((out) => out ? resolve(out) : reject(new Error('cropped capture failed')), 'image/png');
-    });
-  }
-
-  async function captureFromParentCrop(ms, el, options) {
-    const parent = el.parentElement;
-    const parentRect = parent.getBoundingClientRect();
-    const targetRect = el.getBoundingClientRect();
-    if (!parentRect.width || !parentRect.height) return null;
-    if (parentRect.width * parentRect.height > 4000000) return null;
-    const blob = await ms.domToBlob(parent, options);
-    return cropBlobToRect(blob, parentRect, targetRect, options.scale || 1);
   }
 
   // Capture the element (with current annotations baked in) and return a PNG
@@ -5264,17 +5211,11 @@
       const ms = await loadModernScreenshot();
       const fontCssText = await collectFontCssText();
       const backgroundColor = resolveCanvasBackground(el);
-      const options = {
+      return await ms.domToBlob(el, {
         scale: Math.min(window.devicePixelRatio || 1, 2),
         font: fontCssText ? { cssText: fontCssText } : undefined,
-        onCloneNode: stripManualEditRuntimeState,
         ...(backgroundColor ? { backgroundColor } : {}),
-      };
-      if (shouldCaptureTextFromParent(el, snapshot)) {
-        const cropped = await captureFromParentCrop(ms, el, options).catch(() => null);
-        if (cropped) return cropped;
-      }
-      return await ms.domToBlob(el, options);
+      });
     } finally {
       if (annotNode) annotNode.remove();
       if (savedPosition !== null) el.style.position = savedPosition;
@@ -5340,7 +5281,6 @@ uniform sampler2D u_texture;
 uniform float u_time;
 uniform vec2 u_resolution;
 uniform vec3 u_accent;
-uniform float u_alpha_glyphs;
 varying vec2 v_uv;
 
 // Asymmetric roller band. Product of two one-sided smoothsteps — peaks at
@@ -5367,26 +5307,18 @@ void main() {
   vec2 cellId = floor(gridUv);
   vec2 cellUv = fract(gridUv) - 0.5;
   vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
-  vec4 cellTex = texture2D(u_texture, sampleCenter);
-  vec3 cellImg = mix(vec3(1.0), cellTex.rgb, cellTex.a);
+  vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
   float luma = dot(cellImg, vec3(0.299, 0.587, 0.114));
   // Darker cells → bigger kinpaku dots (classic risograph halftone curve).
-  // Sparse alpha captures are usually text glyphs. Let that coverage drive
-  // larger dots over the letters, while transparent cells keep a small matrix
-  // dot so preserving alpha does not erase the loading texture.
-  float inkRadius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
-  float alphaInk = smoothstep(0.05, 0.95, cellTex.a) * u_alpha_glyphs;
-  float radius = max(0.12 * (1.0 - alphaInk), max(inkRadius, alphaInk * 0.50));
+  float radius = sqrt(clamp(1.0 - luma, 0.0, 1.0)) * 0.56;
   float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
   vec3 paper = vec3(0.975, 0.965, 0.955);
   vec3 dotLayer = mix(paper, u_accent, dotMask);
 
-  // Blend the halftone layer in where the roller is passing. Transparent
-  // capture pixels get a low-alpha paper wash plus stronger dot alpha, so
-  // the matrix is visible without becoming the old opaque rectangle.
-  vec4 tex = texture2D(u_texture, uv);
-  float bandAlpha = band * mix(0.05, 0.9, dotMask);
-  gl_FragColor = vec4(mix(tex.rgb, dotLayer, band), max(tex.a, bandAlpha));
+  // Blend the halftone layer in where the roller is passing; leave the
+  // element pristine elsewhere.
+  vec3 base = texture2D(u_texture, uv).rgb;
+  gl_FragColor = vec4(mix(base, dotLayer, band), 1.0);
 }`;
 
   // Kinpaku gold converted to approximate sRGB 0-1 (matches oklch(84% 0.19 80.46))
@@ -5418,70 +5350,11 @@ void main() {
 
   function hideShaderOverlay() {
     if (!shaderState) return;
-    const cloak = shaderState.cloak;
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
-    restoreShaderElementCloak(cloak);
     shaderState = null;
-  }
-
-  function cloakShaderTextElement(el) {
-    if (!el) return null;
-    const style = el.style;
-    const prev = {
-      opacity: style.opacity,
-      color: style.color,
-      webkitTextFillColor: style.webkitTextFillColor,
-      textShadow: style.textShadow,
-      caretColor: style.caretColor,
-    };
-    style.opacity = '0';
-    style.color = 'transparent';
-    style.webkitTextFillColor = 'transparent';
-    style.textShadow = 'none';
-    style.caretColor = 'transparent';
-    return { el, prev };
-  }
-
-  function restoreShaderElementCloak(cloak) {
-    if (!cloak || !cloak.el || !cloak.prev) return;
-    const { el, prev } = cloak;
-    el.style.opacity = prev.opacity;
-    el.style.color = prev.color;
-    el.style.webkitTextFillColor = prev.webkitTextFillColor;
-    el.style.textShadow = prev.textShadow;
-    el.style.caretColor = prev.caretColor;
-  }
-
-  function shouldUseAlphaGlyphHalftone(bitmap) {
-    const width = Math.max(0, bitmap?.width || bitmap?.naturalWidth || 0);
-    const height = Math.max(0, bitmap?.height || bitmap?.naturalHeight || 0);
-    if (!width || !height) return false;
-    const sampleW = Math.min(width, 96);
-    const sampleH = Math.min(height, 96);
-    try {
-      const c = document.createElement('canvas');
-      c.width = sampleW;
-      c.height = sampleH;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return false;
-      ctx.clearRect(0, 0, sampleW, sampleH);
-      ctx.drawImage(bitmap, 0, 0, sampleW, sampleH);
-      const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
-      let transparent = 0;
-      let visible = 0;
-      const pixels = sampleW * sampleH;
-      for (let i = 3; i < data.length; i += 4) {
-        const a = data[i];
-        if (a < 245) transparent += 1;
-        if (a > 16) visible += 1;
-      }
-      return transparent / pixels > 0.08 && visible / pixels > 0.01;
-    } catch {
-      return false;
-    }
   }
 
   async function showShaderOverlay(el, blob, rect) {
@@ -5569,7 +5442,6 @@ void main() {
       bitmap = img;
       URL.revokeObjectURL(imgUrl);
     }
-    const alphaGlyphs = shouldUseAlphaGlyphHalftone(bitmap) ? 1 : 0;
     texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -5584,11 +5456,9 @@ void main() {
     const uRes = gl.getUniformLocation(program, 'u_resolution');
     const uAccent = gl.getUniformLocation(program, 'u_accent');
     const uTex = gl.getUniformLocation(program, 'u_texture');
-    const uAlphaGlyphs = gl.getUniformLocation(program, 'u_alpha_glyphs');
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const cloak = alphaGlyphs ? cloakShaderTextElement(el) : null;
 
-    shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced, cloak };
+    shaderState = { canvas, gl, program, texture, rafId: 0, startTime: performance.now(), reduced };
     function frame() {
       if (!shaderState) return;
       const elapsed = (performance.now() - shaderState.startTime) / 1000;
@@ -5601,7 +5471,6 @@ void main() {
       gl.uniform1f(uTime, t);
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform3f(uAccent, SHADER_ACCENT[0], SHADER_ACCENT[1], SHADER_ACCENT[2]);
-      gl.uniform1f(uAlphaGlyphs, alphaGlyphs);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
       shaderState.rafId = requestAnimationFrame(frame);
     }
