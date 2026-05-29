@@ -363,6 +363,9 @@ function cssColorToRgb01(str) {
   if (!colorParseCtx) {
     colorParseCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
   }
+  // Clear first: the ctx is cached, so a semi-transparent color would blend
+  // with the previous call's pixel and make the result history-dependent.
+  colorParseCtx.clearRect(0, 0, 1, 1);
   colorParseCtx.fillStyle = '#000';
   colorParseCtx.fillStyle = str;
   colorParseCtx.fillRect(0, 0, 1, 1);

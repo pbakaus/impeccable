@@ -3969,6 +3969,10 @@ void main() {
     if (!colorParseCtx) {
       colorParseCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
     }
+    // Clear first: the ctx is cached across calls, so a semi-transparent color
+    // would otherwise blend (source-over) with the previous call's leftover
+    // pixel, making the result depend on call history.
+    colorParseCtx.clearRect(0, 0, 1, 1);
     colorParseCtx.fillStyle = '#000'; // invalid input leaves this default
     colorParseCtx.fillStyle = str;
     colorParseCtx.fillRect(0, 0, 1, 1);
