@@ -1073,6 +1073,11 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
+  /* Flatten the legacy outer box (docs-visuals adds a cream bg + L/R/B border +
+     padding); the cards are the only surface, no box-in-box. */
+  background: none;
+  border: 0;
+  padding: 0;
 }
 @media (max-width: 900px) {
   .designing-kinpaku .designing-polish-grid { grid-template-columns: 1fr; }
