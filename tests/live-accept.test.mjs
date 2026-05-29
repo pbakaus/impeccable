@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,97 @@ describe('live-accept — style-element edge cases', () => {
   let tmp;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-test-')); });
   afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it('accepts a Svelte source-shadow preview into the real source file', () => {
+    mkdirSync(join(tmp, 'src', 'routes'), { recursive: true });
+    mkdirSync(join(tmp, '.impeccable', 'live', 'previews'), { recursive: true });
+    writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
+  <h1 class="hero-title">Original</h1>
+</main>
+`);
+    writeFileSync(join(tmp, '.impeccable/live/previews/SHADOW.html'), `<!-- impeccable-variants-start SHADOW -->
+<div data-impeccable-variants="SHADOW" data-impeccable-variant-count="2" data-impeccable-preview="source-shadow" data-impeccable-source-file="src/routes/+page.svelte" data-impeccable-source-start="2" data-impeccable-source-end="2" style="display: contents">
+  <div data-impeccable-variant="original">
+    <h1 class="hero-title">Original</h1>
+  </div>
+  <!-- Variants: insert below this line -->
+  <div data-impeccable-variant="1">
+    <h1 class="hero-title">Variant one</h1>
+  </div>
+  <div data-impeccable-variant="2" style="display: none">
+    <h1 class="hero-title">Variant two</h1>
+  </div>
+</div>
+<!-- impeccable-variants-end SHADOW -->
+`);
+
+    const result = runAccept(tmp, ['--id', 'SHADOW', '--variant', '2']);
+    assert.equal(result.handled, true, `accept should succeed: ${JSON.stringify(result)}`);
+    assert.equal(result.file, 'src/routes/+page.svelte');
+    assert.equal(result.previewMode, 'source-shadow');
+
+    const sourceAfter = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.ok(sourceAfter.includes('Variant two'), 'accepted variant written to real Svelte source');
+    assert.ok(!sourceAfter.includes('Variant one'), 'unaccepted variant not written');
+    assert.ok(!sourceAfter.includes('impeccable-variants-start'), 'source has no preview markers');
+
+    const previewAfter = readFileSync(join(tmp, '.impeccable/live/previews/SHADOW.html'), 'utf-8');
+    assert.ok(previewAfter.includes('source-shadow preview handled SHADOW'), 'preview file marked handled');
+    assert.ok(!previewAfter.includes('impeccable-variants-start'), 'preview markers cleared');
+  });
+
+  it('can defer a Svelte source-shadow source write until live mode exits', () => {
+    mkdirSync(join(tmp, 'src', 'routes'), { recursive: true });
+    mkdirSync(join(tmp, '.impeccable', 'live', 'previews'), { recursive: true });
+    writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
+  <article class="expense-row">
+    <strong>{expenses[0].name}</strong>
+    <span>{expenses[0].amount}</span>
+  </article>
+</main>
+`);
+    writeFileSync(join(tmp, '.impeccable/live/previews/DEFER.html'), `<!-- impeccable-variants-start DEFER -->
+<div data-impeccable-variants="DEFER" data-impeccable-variant-count="2" data-impeccable-preview="source-shadow" data-impeccable-source-file="src/routes/+page.svelte" data-impeccable-source-start="2" data-impeccable-source-end="5" style="display: contents">
+  <div data-impeccable-variant="original">
+    <article class="expense-row">
+      <strong>{expenses[0].name}</strong>
+      <span>{expenses[0].amount}</span>
+    </article>
+  </div>
+  <!-- Variants: insert below this line -->
+  <div data-impeccable-variant="1">
+    <article class="expense-row accepted">
+      <strong>{expenses[0].name}</strong>
+      <span>{expenses[0].amount}</span>
+    </article>
+  </div>
+</div>
+<!-- impeccable-variants-end DEFER -->
+`);
+
+    const deferred = runAccept(tmp, ['--id', 'DEFER', '--variant', '1', '--defer-source-write']);
+    assert.equal(deferred.handled, true, `deferred accept should succeed: ${JSON.stringify(deferred)}`);
+    assert.equal(deferred.deferredSourceWrite, true);
+    assert.equal(deferred.file, 'src/routes/+page.svelte');
+
+    const sourceBeforeExit = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.ok(!sourceBeforeExit.includes('accepted'), 'deferred accept should not touch watched Svelte source immediately');
+    const previewBeforeExit = readFileSync(join(tmp, '.impeccable/live/previews/DEFER.html'), 'utf-8');
+    assert.ok(previewBeforeExit.includes('impeccable-variants-start DEFER'), 'preview remains available for deferred source apply');
+    assert.ok(readFileSync(join(tmp, '.impeccable/live/deferred-source-shadow-accepts.json'), 'utf-8').includes('DEFER'));
+
+    execFileSync('node', [
+      '--input-type=module',
+      '-e',
+      `import { applyDeferredSourceShadowAccepts } from ${JSON.stringify(ACCEPT)}; applyDeferredSourceShadowAccepts(process.cwd());`,
+    ], { cwd: tmp });
+
+    const sourceAfterExit = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.ok(sourceAfterExit.includes('class="expense-row accepted"'), 'deferred accept writes selected variant on exit');
+    assert.ok(sourceAfterExit.includes('{expenses[0].name}'), 'source write preserves Svelte expressions');
+    const previewAfterExit = readFileSync(join(tmp, '.impeccable/live/previews/DEFER.html'), 'utf-8');
+    assert.ok(previewAfterExit.includes('source-shadow preview handled DEFER'), 'preview is marked handled after deferred apply');
+  });
 
   // Historical bug: extractVariant flipped into "inStyle" mode on <style and
   // scanned for </style> line-by-line. JSX self-closing <style ... /> has no

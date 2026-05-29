@@ -155,6 +155,66 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('source reinjection can re-anchor Svelte scoped class elements', () => {
+    assert.match(
+      SOURCE,
+      /expectedClasses = String\(cls\)\.split\([\s\S]{0,500}?expectedClasses\.every\(\(name\) => c\.classList\.contains\(name\)\)/,
+      'source-shadow reinjection should match source classes as a subset so Svelte scoped classes do not block DOM replacement',
+    );
+  });
+
+  it('source-shadow previews hydrate Svelte text expressions from the live DOM', () => {
+    assert.match(
+      SOURCE,
+      /wrapper\.dataset\.impeccablePreview === 'source-shadow'[\s\S]{0,120}?hydrateSourceShadowExpressions\(wrapper, origContent, liveEl\);/,
+      'source-shadow injection should hydrate framework expressions before replacing the live element',
+    );
+    assert.match(
+      SOURCE,
+      /function buildSvelteExpressionTextMap\(sourceOriginal, liveOriginal\)[\s\S]{0,1200}?collectTextNodes\(liveOriginal\)[\s\S]{0,800}?map\.set\(token, liveText\);/,
+      'Svelte expression hydration should map source placeholders like {item.name} to current live DOM text',
+    );
+  });
+
+  it('source-shadow previews carry Svelte scoped classes into injected variants', () => {
+    assert.match(
+      SOURCE,
+      /wrapper\.dataset\.impeccablePreview === 'source-shadow'[\s\S]{0,180}?hydrateSourceShadowFrameworkClasses\(wrapper, origContent, liveEl\);/,
+      'source-shadow injection should hydrate framework-generated classes after hydrating text',
+    );
+    assert.match(
+      SOURCE,
+      /function collectSvelteScopeClasses\(root\)[\s\S]{0,500}?\^svelte-\[\\w-\]\+\$/,
+      'Svelte scope class hydration should recognize generated svelte-* class names',
+    );
+    assert.match(
+      SOURCE,
+      /function addFrameworkClassesToPreviewTree\(root, scopeClasses\)[\s\S]{0,500}?root\.querySelectorAll\('\*'\)[\s\S]{0,300}?classList\.add\(name\)/,
+      'source-shadow injection should add scoped classes throughout the preview subtree so component CSS keeps applying',
+    );
+  });
+
+  it('source-shadow accepts defer source writes to avoid Svelte accept-time remounts', () => {
+    assert.match(
+      SOURCE,
+      /acceptWrapper\?\.dataset\?\.impeccablePreview === 'source-shadow'[\s\S]{0,100}?acceptPayload\.deferSourceWrite = true;/,
+      'source-shadow accepts should tell the agent to defer the real source write',
+    );
+    assert.match(
+      SOURCE,
+      /Accepted\. Svelte source will sync when live mode exits\./,
+      'the browser should explain why source-shadow accepts do not write the watched Svelte file immediately',
+    );
+  });
+
+  it('deferred source-shadow accept keeps preview CSS after wrapper cleanup', () => {
+    assert.match(
+      SOURCE,
+      /const style = wrapper\.querySelector\('style\[data-impeccable-css\]'\);[\s\S]{0,350}?parent\.insertBefore\(promotedStyle, wrapper\);[\s\S]{0,220}?parent\.replaceChild\(accepted, wrapper\);/,
+      'source-shadow accept fallback should promote the preview style before replacing the wrapper so accepted CSS remains visible',
+    );
+  });
+
   it('global bar includes expandable page chat affordance', () => {
     assert.match(
       SOURCE,

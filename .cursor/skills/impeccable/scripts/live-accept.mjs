@@ -41,6 +41,9 @@ Required:
 
 Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
+  --defer-source-write
+                     For Svelte source-shadow previews, keep the accepted
+                     preview active and write the real source on live exit
 
 Output (JSON):
   { handled, file, carbonize }`);
@@ -52,6 +55,7 @@ Output (JSON):
   const paramValuesRaw = argVal(args, '--param-values');
   const pageUrl = argVal(args, '--page-url');
   const isDiscard = args.includes('--discard');
+  const deferSourceWrite = args.includes('--defer-source-write');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!isDiscard && !variantNum) { console.error('Need --discard or --variant N'); process.exit(1); }
@@ -71,6 +75,33 @@ Output (JSON):
 
   const { file: targetFile, content, lines } = found;
   const relFile = path.relative(process.cwd(), targetFile);
+  const previewBlock = findMarkerBlock(id, lines);
+  const sourceShadowPreview = previewBlock
+    ? readSourceShadowPreviewMeta(content, id)
+    : null;
+
+  if (sourceShadowPreview) {
+    if (isDiscard) {
+      const result = handleSourceShadowDiscard(id, targetFile, sourceShadowPreview);
+      console.log(JSON.stringify({ handled: true, file: sourceShadowPreview.sourceFile, carbonize: false, ...result }));
+    } else {
+      const result = handleSourceShadowAccept(id, variantNum, lines, targetFile, sourceShadowPreview, paramValues, { deferSourceWrite });
+      const acceptedOriginalText = result.acceptedOriginalText || '';
+      delete result.acceptedOriginalText;
+      if (result.carbonize) {
+        result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';
+      }
+      if (result.handled !== false) {
+        try {
+          scrubManualEditsAgainstOriginalBlock(acceptedOriginalText, process.cwd(), pageUrl);
+        } catch {
+          // Non-fatal; the buffer stays as-is and the user can discard later.
+        }
+      }
+      console.log(JSON.stringify({ handled: true, ...result }));
+    }
+    return;
+  }
 
   // Bail if the session lives in a generated file. The agent manually wrote
   // the wrapper there for preview, and is responsible for writing the
@@ -283,6 +314,246 @@ function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
 
   return { carbonize: needsCarbonize, acceptedOriginalText: originalContent.join('\n') };
+}
+
+// ---------------------------------------------------------------------------
+// Source-shadow previews
+// ---------------------------------------------------------------------------
+
+function handleSourceShadowDiscard(id, previewFile, meta) {
+  markSourceShadowPreviewHandled(previewFile, id, meta);
+  return {
+    previewMode: 'source-shadow',
+    previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
+    sourceFile: meta.sourceFile,
+  };
+}
+
+function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, meta, paramValues, opts = {}) {
+  const block = findMarkerBlock(id, previewLines);
+  if (!block) return { handled: false, error: 'Markers not found' };
+
+  const sourceFile = resolveSourceShadowFile(meta.sourceFile);
+  const sourceContent = fs.readFileSync(sourceFile, 'utf-8');
+  const sourceLines = sourceContent.split('\n');
+  const start = Number(meta.sourceStartLine) - 1;
+  const end = Number(meta.sourceEndLine) - 1;
+  if (
+    !Number.isInteger(start)
+    || !Number.isInteger(end)
+    || start < 0
+    || end < start
+    || end >= sourceLines.length
+  ) {
+    return {
+      handled: false,
+      error: 'Invalid source-shadow line range for ' + meta.sourceFile,
+    };
+  }
+
+  const commentSyntax = detectCommentSyntax(sourceFile);
+  const isJsx = commentSyntax.open === '{/*';
+  const indent = sourceLines[start].match(/^(\s*)/)?.[1] || '';
+  const variantContent = extractVariant(previewLines, block, variantNum);
+  if (!variantContent) return { handled: false, error: 'Variant ' + variantNum + ' not found' };
+  const originalContent = extractOriginal(previewLines, block);
+  const cssContent = extractCss(previewLines, block, id);
+  const variantText = variantContent.join('\n');
+  const hasHelperAttrs = variantText.includes('data-impeccable-variant');
+  const needsCarbonize = !!(cssContent || hasHelperAttrs);
+
+  if (opts.deferSourceWrite) {
+    const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
+    writeDeferredSourceShadowAccept({
+      id,
+      variantNum,
+      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
+      sourceFile: sourceRel,
+      sourceStartLine: meta.sourceStartLine,
+      sourceEndLine: meta.sourceEndLine,
+      paramValues,
+    });
+    return {
+      file: sourceRel,
+      sourceFile: sourceRel,
+      previewMode: 'source-shadow',
+      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
+      deferredSourceWrite: true,
+      carbonize: false,
+      acceptedOriginalText: originalContent.join('\n'),
+    };
+  }
+
+  const restored = deindentContent(variantContent, indent);
+  const replacement = [];
+
+  if (cssContent) {
+    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-start ' + id + ' ' + commentSyntax.close);
+    replacement.push(indent + '<style data-impeccable-css="' + id + '">' + (isJsx ? '{`' : ''));
+    for (const cssLine of cssContent) {
+      replacement.push(indent + cssLine.trimStart());
+    }
+    replacement.push(indent + (isJsx ? '`}</style>' : '</style>'));
+    if (paramValues && Object.keys(paramValues).length > 0) {
+      replacement.push(indent + commentSyntax.open + ' impeccable-param-values ' + id + ': ' + JSON.stringify(paramValues) + ' ' + commentSyntax.close);
+    }
+    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-end ' + id + ' ' + commentSyntax.close);
+  }
+
+  if (cssContent) {
+    const styleAttr = isJsx ? "style={{ display: 'contents' }}" : 'style="display: contents"';
+    replacement.push(indent + '<div data-impeccable-variant="' + variantNum + '" ' + styleAttr + '>');
+    replacement.push(...restored);
+    replacement.push(indent + '</div>');
+  } else {
+    replacement.push(...restored);
+  }
+
+  const newLines = [
+    ...sourceLines.slice(0, start),
+    ...replacement,
+    ...sourceLines.slice(end + 1),
+  ];
+  fs.writeFileSync(sourceFile, newLines.join('\n'), 'utf-8');
+  markSourceShadowPreviewHandled(previewFile, id, meta);
+
+  const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
+  return {
+    file: sourceRel,
+    sourceFile: sourceRel,
+    previewMode: 'source-shadow',
+    previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
+    carbonize: needsCarbonize,
+    acceptedOriginalText: originalContent.join('\n'),
+  };
+}
+
+function deferredSourceShadowAcceptsPath(cwd = process.cwd()) {
+  return path.join(cwd, '.impeccable', 'live', 'deferred-source-shadow-accepts.json');
+}
+
+function readDeferredSourceShadowAccepts(cwd = process.cwd()) {
+  const file = deferredSourceShadowAcceptsPath(cwd);
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch {
+    return { accepts: [] };
+  }
+}
+
+function writeDeferredSourceShadowAccept(entry, cwd = process.cwd()) {
+  const file = deferredSourceShadowAcceptsPath(cwd);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const data = readDeferredSourceShadowAccepts(cwd);
+  data.accepts = (data.accepts || []).filter((item) => item.id !== entry.id);
+  data.accepts.push({ ...entry, createdAt: new Date().toISOString() });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+}
+
+export function applyDeferredSourceShadowAccepts(cwd = process.cwd()) {
+  const file = deferredSourceShadowAcceptsPath(cwd);
+  const data = readDeferredSourceShadowAccepts(cwd);
+  const pending = Array.isArray(data.accepts) ? data.accepts : [];
+  const results = [];
+  const remaining = [];
+  for (const entry of pending) {
+    try {
+      const previewFile = path.resolve(cwd, entry.previewFile);
+      const previewContent = fs.readFileSync(previewFile, 'utf-8');
+      const previewLines = previewContent.split('\n');
+      const meta = {
+        sourceFile: entry.sourceFile,
+        sourceStartLine: entry.sourceStartLine,
+        sourceEndLine: entry.sourceEndLine,
+      };
+      const result = handleSourceShadowAccept(
+        entry.id,
+        entry.variantNum,
+        previewLines,
+        previewFile,
+        meta,
+        entry.paramValues || null,
+        { deferSourceWrite: false },
+      );
+      results.push({ id: entry.id, ok: result.handled !== false, result });
+      if (result.handled === false) remaining.push(entry);
+    } catch (err) {
+      results.push({ id: entry.id, ok: false, error: err.message });
+      remaining.push(entry);
+    }
+  }
+  if (remaining.length > 0) {
+    fs.writeFileSync(file, JSON.stringify({ accepts: remaining }, null, 2) + '\n', 'utf-8');
+  } else {
+    try { fs.rmSync(file, { force: true }); } catch {}
+  }
+  return { applied: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+}
+
+function readSourceShadowPreviewMeta(content, id) {
+  const escaped = escapeRegExp(id);
+  const wrapperRe = new RegExp('<[^>]+data-impeccable-variants=(["\'])' + escaped + '\\1[^>]*>');
+  const match = String(content || '').match(wrapperRe);
+  if (!match) return null;
+  const tag = match[0];
+  if (readHtmlAttr(tag, 'data-impeccable-preview') !== 'source-shadow') return null;
+  const sourceFile = readHtmlAttr(tag, 'data-impeccable-source-file');
+  const sourceStartLine = Number(readHtmlAttr(tag, 'data-impeccable-source-start'));
+  const sourceEndLine = Number(readHtmlAttr(tag, 'data-impeccable-source-end'));
+  if (!sourceFile || !Number.isFinite(sourceStartLine) || !Number.isFinite(sourceEndLine)) return null;
+  return { sourceFile, sourceStartLine, sourceEndLine };
+}
+
+function readHtmlAttr(tag, name) {
+  const match = String(tag || '').match(new RegExp('\\s' + escapeRegExp(name) + '\\s*=\\s*(["\'])(.*?)\\1'));
+  if (!match) return null;
+  return decodeHtmlAttr(match[2]);
+}
+
+function decodeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function resolveSourceShadowFile(sourceFile) {
+  if (!sourceFile || path.isAbsolute(sourceFile)) {
+    throw new Error('Invalid source-shadow source file');
+  }
+  const cwd = path.resolve(process.cwd());
+  const full = path.resolve(cwd, sourceFile);
+  const rel = path.relative(cwd, full);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Source-shadow source file escapes project root');
+  }
+  if (!fs.existsSync(full)) {
+    throw new Error('Source-shadow source file not found: ' + sourceFile);
+  }
+  return full;
+}
+
+function markSourceShadowPreviewHandled(previewFile, id, meta = {}) {
+  const sourceAttrs = meta.sourceFile
+    ? ' data-impeccable-preview="source-shadow"'
+      + ' data-impeccable-source-file="' + escapeHtmlAttr(meta.sourceFile) + '"'
+      + ' data-impeccable-source-start="' + escapeHtmlAttr(meta.sourceStartLine || '') + '"'
+      + ' data-impeccable-source-end="' + escapeHtmlAttr(meta.sourceEndLine || '') + '"'
+    : '';
+  fs.writeFileSync(
+    previewFile,
+    '<!-- impeccable source-shadow preview handled ' + id + sourceAttrs + ' -->\n',
+    'utf-8',
+  );
+}
+
+function escapeHtmlAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,41 @@
+{
+  "name": "Vite 8 + SvelteKit stateful page",
+  "config": {
+    "files": ["src/app.html"],
+    "insertBefore": "</body>",
+    "commentSyntax": "html"
+  },
+  "sourceFiles": ["src/app.html", "src/routes/+page.svelte", "src/routes/+layout.svelte", "svelte.config.js", "vite.config.js"],
+  "generatedFiles": [],
+  "wrapCases": [
+    {
+      "name": "wraps hero title through source-shadow preview",
+      "args": { "classes": "hero-title", "tag": "h1" },
+      "expectedFile": ".impeccable/live/previews/wraptest0.html",
+      "expectedSourceFile": "src/routes/+page.svelte",
+      "expectedPreviewMode": "source-shadow"
+    }
+  ],
+  "runtime": {
+    "styling": "plain-css",
+    "install": ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],
+    "devCommand": ["npx", "vite", "dev", "--host", "127.0.0.1"],
+    "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
+    "readyTimeoutMs": 120000,
+    "pickSelector": "h1.hero-title",
+    "preActions": [
+      { "type": "click", "selector": "[data-testid='add-expense']" },
+      { "type": "wait", "selector": "[data-testid='expense-row']" }
+    ],
+    "stateProbe": {
+      "textSelector": "[data-testid='open-count']",
+      "expectedText": "1 offen",
+      "windowProperty": "__impeccableStatefulMounts",
+      "expectWindowUnchanged": true
+    },
+    "probe": {
+      "expectLiveInit": true,
+      "expectConsoleClean": true
+    }
+  }
+}

@@ -262,6 +262,14 @@ The agent should insert variant HTML at insertLine.`);
     .map((l) => (l.trim() === '' ? '' : indent + extra + l.slice(originalBaseIndent)))
     .join('\n');
   const originalIndented = reindentOriginal('    ');
+  const relTargetFile = path.relative(process.cwd(), targetFile).split(path.sep).join('/');
+  const useShadowPreview = shouldUseShadowPreview(targetFile);
+  const sourceShadowAttrs = useShadowPreview
+    ? ' data-impeccable-preview="source-shadow"'
+      + ' data-impeccable-source-file="' + attrEscapeDouble(relTargetFile) + '"'
+      + ' data-impeccable-source-start="' + (startLine + 1) + '"'
+      + ' data-impeccable-source-end="' + (endLine + 1) + '"'
+    : '';
 
   // Wrapper attributes differ by syntax. HTML allows plain string attrs;
   // JSX requires object-literal style and parses string attrs as HTML (which
@@ -281,7 +289,7 @@ The agent should insert variant HTML at insertLine.`);
   // replacement range to include the wrapper's `<div>` open / close lines
   // so the entire scaffold gets removed cleanly.
   const wrapperLines = isJsx ? [
-    indent + '<div data-impeccable-variants="' + id + '" data-impeccable-variant-count="' + count + '" ' + styleContents + '>',
+    indent + '<div data-impeccable-variants="' + id + '" data-impeccable-variant-count="' + count + '"' + sourceShadowAttrs + ' ' + styleContents + '>',
     indent + '  ' + commentSyntax.open + ' impeccable-variants-start ' + id + ' ' + commentSyntax.close,
     indent + '  ' + commentSyntax.open + ' Original ' + commentSyntax.close,
     indent + '  <div data-impeccable-variant="original">',
@@ -292,7 +300,7 @@ The agent should insert variant HTML at insertLine.`);
     indent + '</div>',
   ] : [
     indent + commentSyntax.open + ' impeccable-variants-start ' + id + ' ' + commentSyntax.close,
-    indent + '<div data-impeccable-variants="' + id + '" data-impeccable-variant-count="' + count + '" ' + styleContents + '>',
+    indent + '<div data-impeccable-variants="' + id + '" data-impeccable-variant-count="' + count + '"' + sourceShadowAttrs + ' ' + styleContents + '>',
     indent + '  ' + commentSyntax.open + ' Original ' + commentSyntax.close,
     indent + '  <div data-impeccable-variant="original">',
     originalIndented,
@@ -302,33 +310,57 @@ The agent should insert variant HTML at insertLine.`);
     indent + commentSyntax.open + ' impeccable-variants-end ' + id + ' ' + commentSyntax.close,
   ];
 
-  // Replace the original element with the wrapper
-  const newLines = [
-    ...lines.slice(0, startLine),
-    ...wrapperLines,
-    ...lines.slice(endLine + 1),
-  ];
-  fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+  let outputFile = targetFile;
+  let outputLines;
+  let outputStartLine = startLine + 1;
+  let outputEndLine = startLine + wrapperLines.length + (originalLines.length - 1);
+  let insertLine;
 
-  // Calculate insert line (the "insert below this line" comment).
-  // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
-  // the insert marker (HTML: start-comment + outer-div + Original-comment +
-  // original-div + content + close-original-div; JSX: outer-div +
-  // start-comment + Original-comment + original-div + content +
-  // close-original-div). Multi-line originals push the marker by their
-  // extra line count.
-  const insertLine = startLine + 6 + (originalLines.length - 1);
+  if (useShadowPreview) {
+    // Svelte/SvelteKit resets component-local state on markup HMR updates.
+    // Keep generation source-neutral: agents write variants into a shadow
+    // preview file, the browser injects that wrapper into the live DOM, and
+    // live-accept.mjs writes the accepted variant back to the real source.
+    outputLines = wrapperLines.join('\n').split('\n');
+    outputFile = writeShadowPreviewFile(id, outputLines.join('\n') + '\n');
+    outputStartLine = 1;
+    outputEndLine = outputLines.length;
+    insertLine = outputLines.findIndex((line) => line.includes('Variants: insert below this line')) + 1;
+  } else {
+    // Replace the original element with the wrapper
+    const newLines = [
+      ...lines.slice(0, startLine),
+      ...wrapperLines,
+      ...lines.slice(endLine + 1),
+    ];
+    fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+
+    // Calculate insert line (the "insert below this line" comment).
+    // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
+    // the insert marker (HTML: start-comment + outer-div + Original-comment +
+    // original-div + content + close-original-div; JSX: outer-div +
+    // start-comment + Original-comment + original-div + content +
+    // close-original-div). Multi-line originals push the marker by their
+    // extra line count.
+    insertLine = startLine + 6 + (originalLines.length - 1) + 1;
+  }
+
+  const outputRelFile = path.relative(process.cwd(), outputFile).split(path.sep).join('/');
 
   console.log(JSON.stringify({
-    file: path.relative(process.cwd(), targetFile),
-    startLine: startLine + 1,       // 1-indexed for the agent
+    file: outputRelFile,
+    sourceFile: useShadowPreview ? relTargetFile : undefined,
+    previewMode: useShadowPreview ? 'source-shadow' : undefined,
+    sourceStartLine: useShadowPreview ? startLine + 1 : undefined,
+    sourceEndLine: useShadowPreview ? endLine + 1 : undefined,
+    startLine: outputStartLine,       // 1-indexed for the agent
     // wrapperLines is an array but one element (the original-content slot)
     // is a `\n`-joined multi-line string, so the actual file-row count is
     // wrapperLines.length + (originalLines.length - 1). Without the offset,
     // endLine pointed inside the wrapper for any picked element that
     // spanned more than one source line.
-    endLine: startLine + wrapperLines.length + (originalLines.length - 1), // 1-indexed
-    insertLine: insertLine + 1,     // 1-indexed: where variants go
+    endLine: outputEndLine, // 1-indexed
+    insertLine,            // 1-indexed: where variants go
     commentSyntax: commentSyntax,
     styleMode: styleMode.mode,
     styleTag: styleMode.styleTag,
@@ -525,6 +557,27 @@ function buildSearchQueries(elementId, classes, tag, query) {
 
 function splitClassList(classes) {
   return String(classes).split(/[,\s]+/).map(c => c.trim()).filter(Boolean);
+}
+
+function shouldUseShadowPreview(filePath) {
+  if (/^(0|false|no)$/i.test(process.env.IMPECCABLE_LIVE_SVELTE_SHADOW_PREVIEW || '')) return false;
+  return path.extname(filePath).toLowerCase() === '.svelte';
+}
+
+function writeShadowPreviewFile(sessionId, content) {
+  const dir = path.join(process.cwd(), '.impeccable', 'live', 'previews');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${sessionId}.html`);
+  fs.writeFileSync(file, content, 'utf-8');
+  return file;
+}
+
+function attrEscapeDouble(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function detectCommentSyntax(filePath) {

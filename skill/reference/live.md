@@ -153,6 +153,8 @@ If `--text` matches multiple candidates equally well, wrap exits with `{ error: 
 
 Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }`.
 
+For Svelte/SvelteKit targets, `live-wrap.mjs` may return `previewMode: "source-shadow"` with `file` pointing at `.impeccable/live/previews/<id>.html` and `sourceFile` pointing at the real `.svelte` file. Write variants into `file` exactly as usual and reply with that `file`; the browser injects the preview wrapper directly so Svelte HMR does not reset page state while the user cycles variants. On Accept, `live-accept.mjs` writes the accepted variant back to `sourceFile`.
+
 `styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess:
 
 - `scoped`: use `@scope ([data-impeccable-variant="N"])` rules.

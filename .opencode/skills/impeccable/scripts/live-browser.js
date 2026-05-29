@@ -4139,11 +4139,23 @@
             for (const c of candidates) {
               if (c.className === cls && !own(c)) { liveEl = c; break; }
             }
+            if (!liveEl) {
+              const expectedClasses = String(cls).split(/\s+/).filter(Boolean);
+              for (const c of candidates) {
+                if (own(c)) continue;
+                if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
+              }
+            }
           }
 
           if (!liveEl) {
             console.error('[impeccable] Could not find original element in live DOM.');
             return;
+          }
+
+          if (wrapper.dataset.impeccablePreview === 'source-shadow') {
+            hydrateSourceShadowExpressions(wrapper, origContent, liveEl);
+            hydrateSourceShadowFrameworkClasses(wrapper, origContent, liveEl);
           }
 
           liveEl.parentElement.replaceChild(wrapper, liveEl);
@@ -4177,6 +4189,134 @@
         console.error('[impeccable] Failed to fetch source:', err);
         showToast('Could not load variants. Try refreshing the page.', 5000);
       });
+  }
+
+  function hydrateSourceShadowExpressions(wrapper, sourceOriginal, liveOriginal) {
+    const values = buildSvelteExpressionTextMap(sourceOriginal, liveOriginal);
+    if (!values || values.size === 0) return;
+    const textNodes = collectTextNodes(wrapper);
+    for (const node of textNodes) {
+      const before = node.nodeValue || '';
+      if (!before.includes('{')) continue;
+      const after = before.replace(/\{[^{}]+\}/g, (match) => (
+        values.has(match) ? values.get(match) : match
+      ));
+      if (after !== before) node.nodeValue = after;
+    }
+  }
+
+  function buildSvelteExpressionTextMap(sourceOriginal, liveOriginal) {
+    const map = new Map();
+    if (!sourceOriginal || !liveOriginal) return map;
+
+    const sourceNodes = collectTextNodes(sourceOriginal)
+      .filter((node) => /\{[^{}]+\}/.test(node.nodeValue || ''));
+    const liveTexts = collectTextNodes(liveOriginal)
+      .map((node) => normalizePreviewText(node.nodeValue || ''))
+      .filter(Boolean);
+    let liveIndex = 0;
+
+    for (const sourceNode of sourceNodes) {
+      const sourceText = sourceNode.nodeValue || '';
+      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+      if (tokens.length === 0) continue;
+
+      const liveText = liveTexts[liveIndex++] || '';
+      if (!liveText) continue;
+
+      if (tokens.length === 1) {
+        const token = tokens[0];
+        const normalizedSource = normalizePreviewText(sourceText);
+        if (normalizedSource === token) {
+          map.set(token, liveText);
+          continue;
+        }
+
+        const match = liveText.match(expressionTextMatcher(sourceText, [token]));
+        if (match && match[1]) map.set(token, match[1].trim());
+        continue;
+      }
+
+      if (normalizePreviewText(sourceText) === tokens.join(' ')) {
+        for (const token of tokens) {
+          const tokenLiveText = liveTexts[liveIndex - 1] || '';
+          if (tokenLiveText) map.set(token, tokenLiveText);
+        }
+      }
+    }
+
+    return map;
+  }
+
+  function expressionTextMatcher(sourceText, tokens) {
+    let pattern = '^';
+    let cursor = 0;
+    for (const token of tokens) {
+      const index = sourceText.indexOf(token, cursor);
+      if (index === -1) continue;
+      pattern += escapeRegExp(sourceText.slice(cursor, index)).replace(/\s+/g, '\\s*');
+      pattern += '(.*?)';
+      cursor = index + token.length;
+    }
+    pattern += escapeRegExp(sourceText.slice(cursor)).replace(/\s+/g, '\\s*') + '$';
+    return new RegExp(pattern);
+  }
+
+  function collectTextNodes(root) {
+    if (!root) return [];
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      nodes.push(node);
+      node = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  function normalizePreviewText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  const SOURCE_SHADOW_CLASS_SKIP = new Set(['STYLE', 'SCRIPT', 'LINK', 'META', 'TEMPLATE']);
+
+  function hydrateSourceShadowFrameworkClasses(wrapper, sourceOriginal, liveOriginal) {
+    const sourceScopeClasses = collectSvelteScopeClasses(sourceOriginal);
+    const scopeClasses = collectSvelteScopeClasses(liveOriginal)
+      .filter((name) => !sourceScopeClasses.includes(name));
+    if (scopeClasses.length === 0) return;
+
+    const variants = wrapper.querySelectorAll('[data-impeccable-variant]');
+    for (const variant of variants) {
+      for (const child of variant.children) {
+        addFrameworkClassesToPreviewTree(child, scopeClasses);
+      }
+    }
+  }
+
+  function collectSvelteScopeClasses(root) {
+    if (!root) return [];
+    const out = new Set();
+    const nodes = [root, ...root.querySelectorAll('*')];
+    for (const node of nodes) {
+      for (const name of node.classList || []) {
+        if (/^svelte-[\w-]+$/.test(name)) out.add(name);
+      }
+    }
+    return [...out];
+  }
+
+  function addFrameworkClassesToPreviewTree(root, scopeClasses) {
+    if (!root || root.nodeType !== 1 || SOURCE_SHADOW_CLASS_SKIP.has(root.tagName)) return;
+    for (const name of scopeClasses) root.classList.add(name);
+    for (const node of root.querySelectorAll('*')) {
+      if (SOURCE_SHADOW_CLASS_SKIP.has(node.tagName)) continue;
+      for (const name of scopeClasses) node.classList.add(name);
+    }
+  }
+
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   function cycleVariant(dir) {
@@ -5588,14 +5728,14 @@ void main() {
     });
     document.body.appendChild(canvas);
 
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: false })
-            || canvas.getContext('experimental-webgl');
-    if (!gl) {
-      // WebGL unavailable: use the captured bitmap as a background overlay so
-      // the user still sees something meaningful during generation.
-      showShaderBitmapFallback(canvas, blob);
-      return;
-    }
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: false })
+          || canvas.getContext('experimental-webgl');
+  if (!gl) {
+    // WebGL unavailable: use the captured bitmap as a background overlay so
+    // the user still sees something meaningful during generation.
+    showShaderBitmapFallback(canvas, blob);
+    return;
+  }
 
     let program, texture;
     try {
@@ -5691,6 +5831,10 @@ void main() {
       variantId: String(visibleVariant),
       pageUrl: location.pathname,
     };
+    const acceptWrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
+    if (acceptWrapper?.dataset?.impeccablePreview === 'source-shadow') {
+      acceptPayload.deferSourceWrite = true;
+    }
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
     }
@@ -5707,12 +5851,12 @@ void main() {
     state = 'SAVING';
     updateBarContent('saving');
 
-    sendEvent(acceptPayload, { throwOnError: true })
-      .then(() => {
-        markSessionHandled();
-      })
-      .catch(() => {
-        pendingAcceptedSession = null;
+  sendEvent(acceptPayload, { throwOnError: true })
+    .then(() => {
+      markSessionHandled();
+    })
+    .catch(() => {
+      pendingAcceptedSession = null;
         state = 'CYCLING';
         updateBarContent('cycling');
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
@@ -5734,11 +5878,11 @@ void main() {
 
     // Give framework HMR a short chance to render the now-clean accepted
     // source. If it misses the update, unwrap the accepted variant after the
-    // source-side completion event so the page is not left empty or stale.
-    setTimeout(function() {
-      ensureAcceptedDomClean(pending);
-      cleanupAcceptedSession();
-    }, 1200);
+  // source-side completion event so the page is not left empty or stale.
+  setTimeout(function() {
+    ensureAcceptedDomClean(pending);
+    cleanupAcceptedSession();
+  }, 1200);
 
     return true;
   }

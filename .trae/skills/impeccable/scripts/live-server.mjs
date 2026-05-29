@@ -42,6 +42,7 @@ import {
 } from './live-manual-edits-buffer.mjs';
 import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
 import { commitManualEdits } from './live-commit-manual-edits.mjs';
+import { applyDeferredSourceShadowAccepts } from './live-accept.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
@@ -1827,6 +1828,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             return;
           }
         }
+        if (msg.type === 'exit') {
+          applyDeferredAcceptsBeforeExit();
+        }
         if (msg.type !== 'checkpoint') {
           enqueueEvent(msg);
         }
@@ -2023,6 +2027,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
+  applyDeferredAcceptsBeforeExit();
   removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
   state.leaseTimer = null;
@@ -2035,6 +2040,17 @@ function shutdown() {
   state.pendingPolls.length = 0;
   if (httpServer) httpServer.close();
   process.exit(0);
+}
+
+function applyDeferredAcceptsBeforeExit() {
+  try {
+    const result = applyDeferredSourceShadowAccepts(process.cwd());
+    if (result.applied > 0 || result.failed > 0) {
+      console.log('[impeccable] applied deferred source-shadow accepts:', JSON.stringify(result));
+    }
+  } catch (err) {
+    console.warn('[impeccable] deferred source-shadow accept apply failed:', err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------

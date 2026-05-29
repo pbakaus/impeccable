@@ -166,6 +166,7 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? (insertCfg.expectSelector || '.inserted-strip')
         : pickSelector;
+      let stateProbeBaseline = null;
 
       try {
         // 1. Handshake
@@ -185,6 +186,9 @@ for (const { name, fixture } of fixtures) {
         if (fixture.runtime.preActions) {
           t.diagnostic(`Running ${fixture.runtime.preActions.length} preAction(s)`);
           await runPreActions(page, fixture.runtime.preActions);
+          if (fixture.runtime.stateProbe) {
+            stateProbeBaseline = await assertStateProbe(page, fixture.runtime.stateProbe, 'after preActions');
+          }
         }
 
         // 3. Start generate — replace picks an element; insert places a placeholder.
@@ -231,6 +235,9 @@ for (const { name, fixture } of fixtures) {
           preActions: fixture.runtime.preActions,
           log: (m) => t.diagnostic(m),
         });
+        if (fixture.runtime.stateProbe) {
+          await assertStateProbe(page, fixture.runtime.stateProbe, 'after variants', { baseline: stateProbeBaseline });
+        }
 
         // 5. Source-side check: wrapper + style + variants are present
         const sourceFile = await locateSessionFile(tmp);
@@ -861,6 +868,22 @@ async function clickPickToggle(page, selector) {
 async function waitForSourceClean(filePath, timeoutMs) {
   const start = Date.now();
   let last = '';
+  const shadowTarget = sourceShadowTargetFor(filePath);
+  if (shadowTarget) {
+    let handled = false;
+    while (Date.now() - start < timeoutMs) {
+      last = readFileSync(filePath, 'utf-8');
+      if (last.includes('source-shadow preview handled')) {
+        handled = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!handled) {
+      throw new Error(`source-shadow preview not handled after ${timeoutMs}ms — last contents:\n${last}`);
+    }
+    filePath = shadowTarget;
+  }
   while (Date.now() - start < timeoutMs) {
     last = readFileSync(filePath, 'utf-8');
     const dirty =
@@ -872,6 +895,62 @@ async function waitForSourceClean(filePath, timeoutMs) {
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`source not clean after ${timeoutMs}ms — last contents:\n${last}`);
+}
+
+function sourceShadowTargetFor(filePath) {
+  let body;
+  try { body = readFileSync(filePath, 'utf-8'); } catch { return null; }
+  if (!body.includes('data-impeccable-preview="source-shadow"')) return null;
+  const match = body.match(/\bdata-impeccable-source-file=(["'])(.*?)\1/);
+  if (!match) return null;
+  const root = filePath.includes('/.impeccable/')
+    ? filePath.slice(0, filePath.indexOf('/.impeccable/'))
+    : dirname(filePath);
+  return join(root, decodeHtmlAttr(match[2]));
+}
+
+function decodeHtmlAttr(value) {
+  return String(value || '')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+async function assertStateProbe(page, probe, label, { baseline = null } = {}) {
+  const snapshot = {};
+  if (probe.textSelector) {
+    const actual = await page.locator(probe.textSelector).first().textContent({ timeout: 5_000 });
+    snapshot.text = normalizeText(actual);
+    assert.equal(
+      snapshot.text,
+      normalizeText(probe.expectedText),
+      `stateProbe text ${label}`,
+    );
+  }
+  if (probe.windowProperty) {
+    const actual = await page.evaluate((prop) => window[prop], probe.windowProperty);
+    snapshot.windowValue = actual;
+    if (Object.hasOwn(probe, 'expectedWindowValue')) {
+      assert.equal(
+        actual,
+        probe.expectedWindowValue,
+        `stateProbe ${probe.windowProperty} ${label}`,
+      );
+    }
+    if (probe.expectWindowUnchanged && baseline) {
+      assert.equal(
+        actual,
+        baseline.windowValue,
+        `stateProbe ${probe.windowProperty} unchanged ${label}`,
+      );
+    }
+  }
+  return snapshot;
+}
+
+function normalizeText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
 /**

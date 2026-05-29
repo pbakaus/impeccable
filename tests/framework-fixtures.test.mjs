@@ -174,6 +174,12 @@ for (const name of listFixtures()) {
             assert.equal(parsed.error, wc.expectsError, `wrap case "${wc.name}": expected error ${wc.expectsError}, got ${JSON.stringify(parsed)}`);
           } else {
             assert.equal(parsed.file, wc.expectedFile, `wrap case "${wc.name}": landed in ${parsed.file}, expected ${wc.expectedFile}`);
+            if (wc.expectedSourceFile) {
+              assert.equal(parsed.sourceFile, wc.expectedSourceFile, `wrap case "${wc.name}": source file`);
+            }
+            if (wc.expectedPreviewMode) {
+              assert.equal(parsed.previewMode, wc.expectedPreviewMode, `wrap case "${wc.name}": preview mode`);
+            }
           }
         }
       } finally {
