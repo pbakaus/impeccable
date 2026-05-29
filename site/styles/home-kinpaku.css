@@ -976,6 +976,8 @@
    surface (flat oklch(0.17 0 0), no border, no shadow). All inner demo
    surfaces sit transparently on top — no plinth-in-plinth, no nested rings. */
 .home-kinpaku .magazine-container {
+  /* Solid panel, no border. The demo preview inside gets its own thin border
+     (see .spread-demo-area below) and inherits this fill. */
   border: 0;
   border-radius: 2px;
   background: oklch(0.17 0 0);
@@ -1012,13 +1014,23 @@
 }
 
 .home-kinpaku .spread-flow-cmd {
-  color: var(--ks-kinpaku);
-  background: oklch(78% 0.12 82 / 0.08);
-  border: 1px solid oklch(78% 0.12 82 / 0.18);
+  color: var(--ks-code-cmd);
+  background: var(--ks-code-bg);
+  border: 0;
+  border-radius: var(--ks-code-radius);
 }
 
-/* Inner demo surfaces are transparent — the plinth lives on the outer
-   .magazine-container; these sit on top with no chrome of their own. */
+/* The demo's frame is the .split-container's own border; the caption sits
+   outside it. Strip the leftover chrome: no grid ::before, no inner shadow. */
+.home-kinpaku .spread-demo-area .split-container {
+  box-shadow: none;
+}
+.home-kinpaku .spread-demo-area .split-container::before {
+  display: none;
+}
+
+/* Inner demo surfaces are transparent — they sit on the panel inside the
+   framed .split-container, with no chrome of their own. */
 .home-kinpaku .spread-demo-area .demo-split-comparison .split-container,
 .home-kinpaku .terminal-preview .demo-split-comparison .split-container,
 .home-kinpaku .demo-container,
@@ -1109,14 +1121,16 @@
   --ptable-accent: var(--ks-kinpaku);
   width: clamp(64px, 5vw, 76px) !important;
   height: clamp(76px, 5.8vw, 90px) !important;
-  border-width: 1px !important;
+  /* Crisp neutral card. Was a category-tinted gradient bg + strong colored
+     border + muddy multi-inset shadow that read as dim blobs; now a clean
+     graphite tile with a neutral hairline. Category is cued by the group label
+     and the accent line below, not a muddy fill. */
+  background: oklch(15% 0 0) !important;
+  border: 1px solid var(--ks-rule) !important;
   border-radius: 4px !important;
   overflow: hidden;
   isolation: isolate;
-  box-shadow:
-    inset 0 0 0 1px oklch(100% 0 0 / 0.035),
-    inset 0 -18px 34px oklch(2% 0.004 95 / 0.28),
-    0 18px 42px oklch(2% 0.004 95 / 0.22) !important;
+  box-shadow: none !important;
 }
 
 .home-kinpaku #framework-viz-container .ptable-element--create {
@@ -1143,40 +1157,20 @@
   --ptable-accent: var(--cat-system-text);
 }
 
+/* No gold-leaf texture overlay (was washing the tile bg) and no bottom accent
+   line — the tile is a clean flat neutral surface. */
 .home-kinpaku #framework-viz-container .ptable-element::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(circle at 74% 12%, oklch(100% 0 0 / 0.09), transparent 32%),
-    url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") center / 190px auto;
-  mix-blend-mode: screen;
-  opacity: 0.055;
-  pointer-events: none;
+  content: none;
 }
 
 .home-kinpaku #framework-viz-container .ptable-element::after {
-  content: "";
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 9px;
-  z-index: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--ptable-accent), transparent);
-  opacity: 0.24;
-  pointer-events: none;
+  content: none;
 }
 
 .home-kinpaku #framework-viz-container .ptable-element:is(:hover, :focus-visible) {
   transform: translateY(-3px) !important;
-  border-color: var(--ptable-accent) !important;
-  box-shadow:
-    inset 0 0 0 1px oklch(100% 0 0 / 0.05),
-    0 0 0 1px oklch(78% 0.12 82 / 0.12),
-    0 22px 48px oklch(2% 0.004 95 / 0.36),
-    0 0 26px oklch(78% 0.12 82 / 0.16) !important;
+  border-color: oklch(85% 0 0 / 0.4) !important;
+  box-shadow: none !important;
 }
 
 .home-kinpaku #framework-viz-container .ptable-number,
@@ -1195,16 +1189,17 @@
 
 .home-kinpaku #framework-viz-container .ptable-symbol {
   font-size: clamp(1.45rem, 1.8vw, 1.8rem) !important;
-  font-weight: 300 !important;
+  font-weight: 400 !important;
   letter-spacing: 0.01em;
+  color: var(--ks-champagne) !important;
 }
 
 .home-kinpaku #framework-viz-container .ptable-name {
   max-width: 64px !important;
-  color: var(--ptable-accent) !important;
-  font-size: 0.54rem !important;
+  color: var(--ks-text-muted) !important;
+  font-size: 0.56rem !important;
   letter-spacing: 0.04em;
-  opacity: 0.72 !important;
+  opacity: 1 !important;
 }
 
 .home-kinpaku #framework-viz-container .ptable-alpha {
@@ -1216,12 +1211,14 @@
 
 .home-kinpaku .spread-demo-area .demo-split-comparison .split-before,
 .home-kinpaku .terminal-preview .demo-split-comparison .split-before {
-  background: oklch(10% 0.006 95);
+  /* Left half inherits the panel fill — no separate background. */
+  background: transparent;
 }
 
 .home-kinpaku .spread-demo-area .demo-split-comparison .split-after,
 .home-kinpaku .terminal-preview .demo-split-comparison .split-after {
-  background: oklch(8% 0.006 95);
+  /* Right half is near-black: the clean before/after contrast. */
+  background: oklch(2% 0 0);
 }
 
 .home-kinpaku .demo-caption,
@@ -1256,12 +1253,12 @@
 }
 
 .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison .split-container {
-  background:
-    linear-gradient(90deg, oklch(78% 0.12 82 / 0.028) 1px, transparent 1px),
-    linear-gradient(180deg, oklch(78% 0.12 82 / 0.022) 1px, transparent 1px),
-    radial-gradient(circle at 74% 48%, oklch(70% 0.105 190 / 0.055), transparent 18rem),
-    oklch(7% 0.005 95);
-  background-size: 36px 36px, 36px 36px, auto, auto;
+  /* No grid lines, no radial glow — the container is transparent so the before
+     half shows the panel fill and the after half its own near-black. A thin
+     neutral border frames the demo itself (the caption sits outside it). */
+  background: transparent;
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
 }
 
 .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison .split-before,

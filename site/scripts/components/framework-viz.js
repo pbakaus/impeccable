@@ -240,15 +240,13 @@ export class PeriodicTable {
 		el.style.cssText = `
 			width: 56px;
 			height: 64px;
-			background: ${colors.bg};
-			border: 1.5px solid ${colors.border};
 			border-radius: 5px;
 			display: flex;
 			flex-direction: column;
 			align-items: center;
 			justify-content: center;
 			cursor: pointer;
-			transition: transform 0.15s ease, box-shadow 0.15s ease;
+			transition: transform 0.15s ease, border-color 0.15s ease;
 			position: relative;
 			font-family: inherit;
 			padding: 0;
@@ -328,12 +326,10 @@ export class PeriodicTable {
 		// Hover/focus: show tooltip
 		const activate = () => {
 			el.style.transform = 'translateY(-2px)';
-			el.style.boxShadow = `0 4px 12px ${colors.border}40`;
 			this.showTooltip(el, cmd);
 
 			if (this.activeElement && this.activeElement !== el) {
 				this.activeElement.style.transform = 'translateY(0)';
-				this.activeElement.style.boxShadow = 'none';
 			}
 			this.activeElement = el;
 		};
