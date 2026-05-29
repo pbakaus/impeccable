@@ -2788,13 +2788,14 @@
     inlineEditRows = rows;
     inlineEditDrafts = new Map();
     for (const row of rows) {
+      row.inlineWhiteSpace = row.el.style.whiteSpace;
+      row.el.style.whiteSpace = getComputedStyle(row.el).whiteSpace;
       row.el.setAttribute('contenteditable', 'true');
       row.el.dataset.impeccableEditable = 'true';
       row.el.dataset.impeccableOriginalText = row.text;
       row.el.style.userSelect = 'text';
       row.el.style.cursor = 'text';
       row.el.style.outline = 'none';
-      row.el.style.webkitUserModify = 'read-write-plaintext-only';
       row.el.addEventListener('input', onInlineInput);
     }
   }
@@ -2805,10 +2806,10 @@
       row.el.removeAttribute('contenteditable');
       delete row.el.dataset.impeccableEditable;
       delete row.el.dataset.impeccableOriginalText;
+      row.el.style.whiteSpace = row.inlineWhiteSpace || '';
       row.el.style.userSelect = '';
       row.el.style.cursor = '';
       row.el.style.outline = '';
-      row.el.style.webkitUserModify = '';
       row.el.removeEventListener('input', onInlineInput);
     }
     inlineEditRows = [];
