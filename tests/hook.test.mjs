@@ -49,6 +49,7 @@ import {
   renderCursorFollowup,
   followupPayload,
 } from '../skill/scripts/hook-lib.mjs';
+import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
 function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
@@ -583,6 +584,24 @@ describe('runHook()', () => {
     assert.equal(r.stdout, '');
   });
 
+  it('awaits the real async HTML detector before deciding a page is clean', async () => {
+    const file = writeFixture('index.html', [
+      '<!doctype html>',
+      '<html><body>',
+      '<div style="border-left: 4px solid #6366f1; border-radius: 8px; padding: 16px;">Feature</div>',
+      '</body></html>',
+    ].join('\n'));
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {},
+      cwd,
+      detector: { detectHtml, detectText },
+    });
+    assert.match(r.stdout, /Required design corrections/);
+    assert.doesNotMatch(r.stdout, /No anti-patterns/);
+    assert.ok(r.audit.findings > 0);
+  });
+
   it('malformed stdin → silent skip', async () => {
     const r = await runHook({ stdinJson: '{not json', env: {}, cwd });
     assert.equal(r.audit.skipped, 'stdin-malformed');
@@ -672,6 +691,8 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
   it('routes explicit env and Cursor conversation_id to cursor harness', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
     assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
+    assert.equal(resolveHarness({}, { hook_event_name: 'sessionStart' }), 'cursor');
+    assert.equal(resolveHarness({}, { hook_event_name: 'stop' }), 'cursor');
     assert.equal(resolveHarness({}), 'claude');
   });
 

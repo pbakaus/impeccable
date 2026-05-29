@@ -6,7 +6,8 @@
  * detector against the touched file, and emits a system reminder via
  * `hookSpecificOutput.additionalContext` when findings exist.
  *
- * Contract: never break a turn. Always exit 0. Silent on clean files.
+ * Contract: never break a turn. Always exit 0. Clean files emit a small ack
+ * unless quiet mode is enabled.
  *
  * Most logic lives in `hook-lib.mjs` so it is unit-testable without a
  * subprocess. This file is the thin stdin/stdout adapter.

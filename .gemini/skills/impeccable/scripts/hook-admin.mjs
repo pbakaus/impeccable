@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getConfigPath, getCachePath, readConfig, DEFAULT_CONFIG } from './hook-lib.mjs';
+import { getConfigPath, getCachePath, getPendingPath, readConfig, DEFAULT_CONFIG } from './hook-lib.mjs';
 
 const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'reset']);
 
@@ -100,7 +100,7 @@ function addIgnoreFile(cwd, glob) {
 
 function reset(cwd) {
   const removed = [];
-  for (const filePath of [getConfigPath(cwd), getCachePath(cwd)]) {
+  for (const filePath of [getConfigPath(cwd), getCachePath(cwd), getPendingPath(cwd)]) {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);

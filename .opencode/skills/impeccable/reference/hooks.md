@@ -2,7 +2,7 @@
 
 Manage the **design detector hook** for the current project.
 
-The hook is a `PostToolUse` handler that runs the impeccable design detector after every direct file edit on a design-relevant file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). When findings exist, it pushes a short system reminder into the agent's context so the next turn can course-correct. Silent on clean files. Never blocks an edit.
+The hook is a `PostToolUse` handler that runs the impeccable design detector after every direct file edit on a design-relevant file (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.less`, `.ts`, `.js`). It pushes a short system reminder into the agent's context so the next turn can course-correct: findings get a correction prompt, pending issues get a re-nudge, and clean files get a short ack unless `IMPECCABLE_HOOK_QUIET=1` is set. Never blocks an edit.
 
 This command toggles the hook **per project** by editing `.impeccable/hook.json`. To disable globally, set `IMPECCABLE_HOOK_DISABLED=1` in your shell environment.
 
@@ -21,7 +21,7 @@ The first argument is the action. Defaults to `status`.
 | `off` | Set `enabled: false` in `.impeccable/hook.json`. |
 | `ignore-rule <id>` | Append `<id>` to `ignoreRules`. |
 | `ignore-file <glob>` | Append `<glob>` to `ignoreFiles`. |
-| `reset` | Delete the project config and the dedup cache. |
+| `reset` | Delete the project config, dedup cache, and Cursor pending queue. |
 
 ## Flow
 

@@ -6,7 +6,7 @@
  *   - Claude/Codex hook manifests have the right shape, matcher, timeouts,
  *     and command/args. (Pure unit test against the builders — no FS dep.)
  *   - The committed build artifacts (`plugin/hooks/hooks.json`,
- *     `.agents/hooks/hooks.json`, `.codex-plugin/plugin.json`) exist and
+ *     `.agents/hooks/hooks.json`, `plugin/.codex-plugin/plugin.json`) exist and
  *     parse, and reference the bundled hook scripts that are also present.
  *
  * Both halves matter: the builder test catches regressions in the schema we
@@ -164,10 +164,11 @@ describe('buildCursorHooksManifest()', () => {
     assert.equal(m.hooks.PostToolUse, undefined);
   });
 
-  it('afterFileEdit uses harness env + hook-after-edit.mjs', () => {
+  it('afterFileEdit uses a portable node command + hook-after-edit.mjs', () => {
     const handler = m.hooks.afterFileEdit[0];
     assert.equal(handler.timeout, 5);
-    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.match(handler.command, /^node "/);
+    assert.ok(!handler.command.includes('=cursor '));
     assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-after-edit.mjs'));
   });
 
@@ -175,14 +176,16 @@ describe('buildCursorHooksManifest()', () => {
     const handler = m.hooks.stop[0];
     assert.equal(handler.timeout, 5);
     assert.equal(handler.loop_limit, 1);
-    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.match(handler.command, /^node "/);
+    assert.ok(!handler.command.includes('=cursor '));
     assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-stop.mjs'));
   });
 
-  it('sessionStart uses the session script with harness env', () => {
+  it('sessionStart uses the session script with a portable node command', () => {
     const handler = m.hooks.sessionStart[0];
     assert.equal(handler.timeout, 3);
-    assert.match(handler.command, /^IMPECCABLE_HOOK_HARNESS=cursor node "/);
+    assert.match(handler.command, /^node "/);
+    assert.ok(!handler.command.includes('=cursor '));
     assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-session-start.mjs'));
   });
 });
@@ -198,10 +201,10 @@ describe('hooksJsonFor()', () => {
 
 describe('committed hook artifacts in repo', () => {
   for (const rel of [
+    'plugin/.codex-plugin/plugin.json',
     'plugin/hooks/hooks.json',
     '.agents/hooks/hooks.json',
     '.cursor/hooks.json',
-    '.codex-plugin/plugin.json',
   ]) {
     it(`${rel} exists and is valid JSON`, () => {
       const abs = path.join(REPO_ROOT, rel);
@@ -217,6 +220,12 @@ describe('committed hook artifacts in repo', () => {
     assert.ok(match, `expected quoted script path in command: ${commandStr}`);
     return match[1].replace(`${rootPlaceholder}/`, '');
   };
+
+  it('plugin/.codex-plugin/plugin.json points at plugin-local skills/', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/.codex-plugin/plugin.json'), 'utf-8'));
+    assert.equal(manifest.skills, './skills/');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/SKILL.md')));
+  });
 
   it('plugin/hooks/hooks.json references a hook.mjs that is bundled in plugin/skills/', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/hooks/hooks.json'), 'utf-8'));

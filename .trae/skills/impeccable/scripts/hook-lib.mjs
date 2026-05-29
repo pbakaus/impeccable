@@ -536,7 +536,7 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'claude' || explicit === 'codex') return 'claude';
-  if (event?.hook_event_name === 'afterFileEdit') return 'cursor';
+  if (['afterFileEdit', 'sessionStart', 'stop'].includes(event?.hook_event_name)) return 'cursor';
   if (typeof event?.conversation_id === 'string' && event.conversation_id) return 'cursor';
   return 'claude';
 }
@@ -883,9 +883,9 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       let findings;
       let detectorThrew = false;
       if ((ext === '.html' || ext === '.htm') && typeof det.detectHtml === 'function') {
-        try { findings = det.detectHtml(filePath); } catch { findings = []; detectorThrew = true; }
+        try { findings = await det.detectHtml(filePath); } catch { findings = []; detectorThrew = true; }
       } else {
-        try { findings = det.detectText(content, filePath); } catch { findings = []; detectorThrew = true; }
+        try { findings = await det.detectText(content, filePath); } catch { findings = []; detectorThrew = true; }
       }
 
       const filtered = filterFindings(findings || [], content, ext, config);

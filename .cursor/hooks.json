@@ -3,20 +3,20 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "IMPECCABLE_HOOK_HARNESS=cursor node \".cursor/skills/impeccable/scripts/hook-after-edit.mjs\"",
+        "command": "node \".cursor/skills/impeccable/scripts/hook-after-edit.mjs\"",
         "timeout": 5
       }
     ],
     "stop": [
       {
-        "command": "IMPECCABLE_HOOK_HARNESS=cursor node \".cursor/skills/impeccable/scripts/hook-stop.mjs\"",
+        "command": "node \".cursor/skills/impeccable/scripts/hook-stop.mjs\"",
         "timeout": 5,
         "loop_limit": 1
       }
     ],
     "sessionStart": [
       {
-        "command": "IMPECCABLE_HOOK_HARNESS=cursor node \".cursor/skills/impeccable/scripts/hook-session-start.mjs\"",
+        "command": "node \".cursor/skills/impeccable/scripts/hook-session-start.mjs\"",
         "timeout": 3
       }
     ]

@@ -28,7 +28,7 @@
 
 ## 1. Summary
 
-Ship a `PostToolUse` hook inside the Impeccable plugin so the existing design detector runs automatically after every relevant file write. Findings (if any) are fed back into the agent's context as a short system reminder so the model can course-correct on its next turn. The hook is silent on clean files and never blocks an edit.
+Ship a `PostToolUse` hook inside the Impeccable plugin so the existing design detector runs automatically after every relevant file write. Findings are fed back into the agent's context as a short system reminder so the model can course-correct on its next turn. Clean scans emit a short ack unless quiet mode is enabled. The hook never blocks an edit.
 
 Think of it as the spell-checker squiggle for AI-generated UI. The detector already catches 16 visual "AI tells" (side-tab borders, gradient text, icon-tile stacks, purple palette defaults, bounce easing, etc.). Today those only get caught when the user notices in review or runs `/impeccable audit` after the fact. The hook closes the loop at the moment the slop is written.
 
@@ -57,7 +57,7 @@ Think of it as the spell-checker squiggle for AI-generated UI. The detector alre
 
 ### Default state
 
-The hook is **on by default after install**, in **advisory mode only**. This was confirmed during planning: surprise is acceptable here because the hook is silent on clean files. Users see the hook only when there are real findings to act on.
+The hook is **on by default after install**, in **advisory mode only**. Findings produce correction context, and clean scans produce a short ack unless quiet mode is enabled.
 
 ### Trigger surface
 
@@ -416,14 +416,14 @@ Schema:
 }
 ```
 
-**Why exec form (`command` + `args`), not shell form**: the [official reference](https://code.claude.com/docs/en/hooks.md) explicitly recommends exec form for any hook that references a path placeholder, because each `args` element is passed as one argument with no shell tokenization. On Windows, shell form additionally breaks because `.cmd` / `.bat` shims for `node_modules/.bin` tools cannot be spawned without a shell. The `node` + script-path combination works identically on macOS, Linux, and Windows.
+**Why shell form in the shipped manifest**: Codex substitutes plugin-root placeholders inside the `command` string. The shipped hook uses `node "${CLAUDE_PLUGIN_ROOT}/..."` with a quoted script path so Claude Code and Codex can share `plugin/hooks/hooks.json`; Codex also exports `CLAUDE_PLUGIN_ROOT` for compatibility.
 
 ### Codex wiring
 
 Codex needs two things:
 
-1. `.codex-plugin/plugin.json` declaring the plugin. (Repo does not have this today; net-new file.)
-2. `hooks/hooks.json` discoverable from the plugin root. Same script, **exec form** like Claude Code:
+1. `plugin/.codex-plugin/plugin.json` declaring the shared marketplace plugin root.
+2. `plugin/hooks/hooks.json` discoverable from the plugin root. Same script as Claude Code:
 
 ```json
 {
@@ -435,8 +435,7 @@ Codex needs two things:
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"],
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
             "timeout": 5
           }
         ]
@@ -448,7 +447,7 @@ Codex needs two things:
 
 Notes on Codex specifics:
 
-- **`PLUGIN_ROOT` is Codex's native placeholder**; Codex also exports `CLAUDE_PLUGIN_ROOT` for compatibility. We use `PLUGIN_ROOT` in the Codex `hooks.json` because that is the documented Codex placeholder and the right surface for an open-source project that does not want to look Claude-branded inside Codex configs.
+- **`PLUGIN_ROOT` is Codex's native placeholder**; Codex also exports `CLAUDE_PLUGIN_ROOT` for compatibility. Marketplace installs reuse the Claude-compatible `plugin/hooks/hooks.json`; repo-local `.agents/hooks/hooks.json` uses `PLUGIN_ROOT`.
 - **Feature flag**: Codex still ships hooks behind `[features].hooks = true` in `config.toml` (or `[features] codex_hooks = true` on older builds — Codex names have shifted; verify against the version the user is on). Install README must call this out.
 - **Windows is not supported.** Per the [Codex docs](https://developers.openai.com/codex/hooks) and confirmed in the rust-v0.124.0 release notes, hooks are disabled on Windows. v1 ships Codex hooks on macOS and Linux only.
 - **No `if:` glob analog.** The hook script does the extension filter (already required for the kill switches and path safety, so this is "free").
@@ -464,7 +463,7 @@ Notes on Codex specifics:
 - Track output files in git:
   - `plugin/hooks/hooks.json` (slim plugin subtree, already tracked)
   - `.agents/hooks/hooks.json` (new)
-  - `.codex-plugin/plugin.json` (new)
+  - `plugin/.codex-plugin/plugin.json` (new)
 - Update `scripts/build.js` validators if needed to skip these files in count checks.
 
 ### Failure modes
@@ -636,7 +635,7 @@ For the implementation branch, not this one.
 
 ### Integration tests (Node test)
 
-- Build pipeline produces expected hook artifacts: `plugin/hooks/hooks.json`, `.agents/hooks/hooks.json`, `.codex-plugin/plugin.json`.
+- Build pipeline produces expected hook artifacts: `plugin/hooks/hooks.json`, `.agents/hooks/hooks.json`, `plugin/.codex-plugin/plugin.json`.
 - Generated `hooks.json` parses as valid Claude Code and Codex hook schemas.
 - Hook script in each harness directory imports the detector correctly from its relative path on macOS, Linux, **and Windows** (CI matrix).
 - Audit log file is created on first append, gets one valid NDJSON line per fire, and survives session restart.
@@ -665,7 +664,7 @@ For the implementation branch, not this one.
 | 2026-05-28 | Default on, design-files only | Per planning conversation; lowest surprise + highest value tradeoff. |
 | 2026-05-28 | Single hook script for both harnesses | Reduces drift; Codex env vars are aliased to Claude's for compat. |
 | 2026-05-28 | In-process detector import, not subprocess | Saves the ~150ms `npx impeccable` resolution cost per call. |
-| 2026-05-28 | Exec form everywhere (`command` + `args`) | Official Claude Code recommendation; only form that works on Windows with `.cmd`/`.bat` shims; safe against shell tokenization of paths with spaces. |
+| 2026-05-28 | Shell command string for plugin-root placeholders | Codex substitutes placeholders in `command`; quoted script paths keep plugin roots with spaces safe. |
 | 2026-05-28 | Timeout 5s on PostToolUse, 3s on SessionStart | Community consensus (Claude Code Guides, systemprompt.io, Dotzlaw) is 2–5s ceiling. 10s gives a hung detector enough headroom to feel laggy. |
 | 2026-05-28 | Re-entrancy guard via `IMPECCABLE_HOOK_DEPTH` | Belt-and-suspenders even though v1 spawns nothing. The pattern is universally recommended for any hook that might ever shell out. |
 | 2026-05-28 | Session-scoped dedup as v1 requirement | Token-tax math (~12.5K wasted per chatty session) makes this a v1 must, not an open question. |
@@ -684,7 +683,8 @@ For the implementation branch, not this one.
 | 2026-05-28 | v7: Codex manifest parity + SessionStart matcher | Added SessionStart to the Codex `.agents` manifest (was Claude-only). Both manifests now use `matcher: startup|resume` on SessionStart per Codex docs. SessionStart greeting copy corrected (no Bash/MCP false claim). Optional `statusMessage` on handlers. |
 | 2026-05-28 | v8: co-scan stylesheets when a UI component is edited | PostToolUse only scanned the patched file. React/Vite apps often keep slop in sibling `styles.css` while JSX edits trigger the hook — so `App.jsx` came back clean while `styles.css` still had Inter/bounce/etc. Fix: after resolving the primary target(s), also scan static `import '…css'` dependencies plus co-located stylesheets (`styles.css`, `Component.module.css`, `globals.css`, …) in the same directory. Cap at 6 files per fire. Stylesheet-only edits unchanged. |
 | 2026-05-28 | v9: drop Claude `if: Edit(*.{…})` — script filters on both harnesses | Claude's `if` field is one permission rule per handler; `Edit(*.tsx)` never matches `Write` or `MultiEdit`, so most Claude edits never spawned the hook despite the group matcher. Codex never had `if:`. Extension filter now lives only in `hook-lib.mjs` on both sides. |
-| 2026-05-28 | v10: Cursor hooks via `.cursor/hooks.json` | Cursor uses a flat project manifest (`version: 1`, camelCase events) not Claude's plugin `hooks/hooks.json`. Same hook scripts; `IMPECCABLE_HOOK_HARNESS=cursor` selects Cursor I/O (`additional_context`, `tool_input.path`, `conversation_id`). Initial `postToolUse` matcher `Write\|StrReplace`; `sessionStart` for the throttled greeting. CSS co-scan and dedup cache unchanged. |
+| 2026-05-28 | v10: Cursor hooks via `.cursor/hooks.json` | Cursor uses a flat project manifest (`version: 1`, camelCase events) not Claude's plugin `hooks/hooks.json`. Same hook scripts infer Cursor from event shape (`additional_context`, `tool_input.path`, `conversation_id`). Initial `postToolUse` matcher `Write\|StrReplace`; `sessionStart` for the throttled greeting. CSS co-scan and dedup cache unchanged. |
+| 2026-05-29 | v12: shared marketplace plugin root for Codex | The existing marketplace points at `./plugin`, so Codex's `.codex-plugin/plugin.json` lives under `plugin/` next to the shared `skills/` and `hooks/` trees. The root-level `.codex-plugin` artifact was removed. |
 | 2026-05-29 | v11: Cursor stop-hook followup (drop postToolUse) | Cursor 3.5.x accepts and logs `postToolUse` `additional_context` but does not inject it into model context (confirmed upstream bug). Workaround: `afterFileEdit` records fresh/pending findings to `.impeccable/hook.pending.json`; `stop` drains the queue and emits `followup_message` (auto-submitted as next user message). `loop_limit: 1` plus `loop_count >= 1` guard in `hook-stop.mjs` caps at one nudge per turn. Claude/Codex PostToolUse unchanged. |
 | TBD | `/impeccable hooks` hidden vs visible | Open question 2. |
 | Resolved 2026-05-28 | Bash blind spot policy (open question 1) | v2 added a `Bash\|mcp__.*` sweep; v3 narrowed it to `mcp__node_repl__.*`; v5 removed the sweep group entirely. The conclusion is that Bash / MCP coverage isn't worth the always-on second code path. Pure `Bash` writes (via heredoc/redirect) and `mcp__node_repl__js` writes both go un-scanned at write time; the dedup cache catches them on the next direct edit. |

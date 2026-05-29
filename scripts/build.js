@@ -713,19 +713,17 @@ async function build() {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }
 
-  // Build the Codex plugin subtree at ./.codex-plugin/. Net-new directory for
-  // v1; Codex auto-discovers `hooks/hooks.json` from the plugin root, so the
-  // manifest itself stays small. The matching hooks/ tree is the same one we
-  // already sync to .agents/hooks above, so we just write the manifest.
+  // Make the same ./plugin/ subtree installable by Codex too. The legacy
+  // marketplace already points at "./plugin"; Codex requires a manifest inside
+  // that plugin root and auto-discovers the existing hooks/hooks.json there.
   if (Object.values(PROVIDERS).some(p => p.emitCodexPlugin)) {
-    const codexPluginDir = path.join(ROOT_DIR, '.codex-plugin');
-    fs.mkdirSync(codexPluginDir, { recursive: true });
+    fs.mkdirSync(pluginCodexManifestDir, { recursive: true });
     const codexManifest = buildCodexPluginManifest(rootManifest);
     fs.writeFileSync(
-      path.join(codexPluginDir, 'plugin.json'),
+      path.join(pluginCodexManifestDir, 'plugin.json'),
       JSON.stringify(codexManifest, null, 2) + '\n',
     );
-    console.log('📦 Wrote Codex plugin manifest at ./.codex-plugin/plugin.json');
+    console.log('📦 Wrote Codex plugin manifest at ./plugin/.codex-plugin/plugin.json');
   }
 
   // Generate authoritative counts and validate references
