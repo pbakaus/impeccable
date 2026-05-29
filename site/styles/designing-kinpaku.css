@@ -1268,6 +1268,26 @@
   margin-bottom: 24px;
 }
 
+/* Flatten the bento plinth: drop the 0.17 plinth fill + 8px gutter (which drew
+   the weird gutter "borders") and the 0.07 tile fill. The two lanes sit on the
+   page, split by a single center hairline. */
+.designing-kinpaku .ks-bento.designing-lanes {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 0;
+}
+.designing-kinpaku .designing-lanes .ks-bento-tile {
+  background: transparent;
+  padding: 0 clamp(20px, 3.5vw, 44px);
+}
+.designing-kinpaku .designing-lanes .ks-bento-tile:first-child {
+  padding-left: 0;
+}
+.designing-kinpaku .designing-lanes .ks-bento-tile + .ks-bento-tile {
+  border-left: 1px solid var(--ks-rule);
+}
+
 .designing-kinpaku .designing-lane-kind {
   color: var(--ks-kinpaku);
   font-family: var(--ks-mono);
@@ -1285,6 +1305,13 @@
   line-height: 1.6;
   margin: 0;
   text-wrap: pretty;
+}
+
+/* The brand mock title used the pinstripe display face at ~1.6rem, which reads
+   broken/washed at that size (Two-Face rule); use the clean body face. */
+.designing-kinpaku .designing-lane-mock-title {
+  font-family: var(--ks-font);
+  font-weight: 500;
 }
 
 .designing-kinpaku .designing-lane-mock {
@@ -1316,9 +1343,9 @@
 }
 .designing-kinpaku .designing-lane-mock--brand .designing-lane-mock-title {
   color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-weight: 300;
-  font-size: 1.6rem;
+  font-family: var(--ks-font);
+  font-weight: 500;
+  font-size: 1.3rem;
 }
 .designing-kinpaku .designing-lane-mock--product .designing-lane-mock-title {
   color: var(--ks-champagne);
