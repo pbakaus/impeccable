@@ -13,12 +13,6 @@
         "timeout": 5,
         "loop_limit": 1
       }
-    ],
-    "sessionStart": [
-      {
-        "command": "node \".cursor/skills/impeccable/scripts/hook-session-start.mjs\"",
-        "timeout": 3
-      }
     ]
   }
 }

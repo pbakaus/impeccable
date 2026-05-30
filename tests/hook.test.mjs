@@ -332,8 +332,6 @@ describe('payload()', () => {
     const obj = JSON.parse(payload('hello'));
     assert.equal(obj.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.equal(obj.hookSpecificOutput.additionalContext, 'hello');
-    const session = JSON.parse(payload('hi', 'SessionStart'));
-    assert.equal(session.hookSpecificOutput.hookEventName, 'SessionStart');
   });
 
   it('produces additional_context for Cursor', () => {
@@ -692,7 +690,6 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
   it('routes explicit env and Cursor conversation_id to cursor harness', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
     assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
-    assert.equal(resolveHarness({}, { hook_event_name: 'sessionStart' }), 'cursor');
     assert.equal(resolveHarness({}, { hook_event_name: 'stop' }), 'cursor');
     assert.equal(resolveHarness({}), 'claude');
   });
@@ -886,32 +883,6 @@ describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
-
-  it('sessionStart honors project-level disabled config', () => {
-    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ dependencies: { react: 'latest' } }));
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(path.join(cwd, '.impeccable', 'hook.json'), JSON.stringify({ enabled: false }));
-    const logPath = path.join(cwd, 'hook.ndjson');
-    const env = { ...process.env, IMPECCABLE_HOOK_LOG: logPath };
-    delete env.IMPECCABLE_HOOK_DISABLED;
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-session-start.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'SessionStart',
-        cwd,
-      }),
-      env,
-      encoding: 'utf-8',
-    });
-
-    assert.equal(out, '');
-    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].event, 'SessionStart');
-    assert.equal(entries[0].skipped, 'config-disabled');
-    assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), false);
-  });
 
   it('afterFileEdit honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
     const logPath = path.join(cwd, 'hook.ndjson');

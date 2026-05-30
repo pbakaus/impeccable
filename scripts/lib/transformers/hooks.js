@@ -13,7 +13,6 @@
  */
 
 const HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
-const SESSION_SCRIPT_REL = 'skills/impeccable/scripts/hook-session-start.mjs';
 
 // Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
 // shared marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex
@@ -64,21 +63,6 @@ export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLU
           ],
         },
       ],
-      SessionStart: [
-        {
-          // Codex docs: matcher filters `source` (startup, resume, clear, compact).
-          // Greet on fresh open and resume only — skip compact/clear churn.
-          matcher: 'startup|resume',
-          hooks: [
-            {
-              type: 'command',
-              command: `node "${pluginRootPlaceholder}/${SESSION_SCRIPT_REL}"`,
-              timeout: 3,
-              statusMessage: 'Loading design hook',
-            },
-          ],
-        },
-      ],
     },
   };
 }
@@ -98,19 +82,6 @@ export function buildCodexHooksManifest({ pluginRootPlaceholder = '${PLUGIN_ROOT
               command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
               timeout: 5,
               statusMessage: 'Scanning design',
-            },
-          ],
-        },
-      ],
-      SessionStart: [
-        {
-          matcher: 'startup|resume',
-          hooks: [
-            {
-              type: 'command',
-              command: `node "${pluginRootPlaceholder}/${SESSION_SCRIPT_REL}"`,
-              timeout: 3,
-              statusMessage: 'Loading design hook',
             },
           ],
         },
@@ -139,12 +110,10 @@ export function buildCodexPluginManifest(rootManifest) {
 //
 // Cursor 3.5.x discards postToolUse `additional_context` (confirmed bug).
 // Dynamic findings use afterFileEdit (record) + stop (followup_message).
-// sessionStart `additional_context` still works for the static greeting.
 // Keep commands free of POSIX-only `VAR=value` prefixes so the same manifest
 // works on Windows; the scripts infer Cursor from the event shape.
 const CURSOR_AFTER_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-after-edit.mjs';
 const CURSOR_STOP_SCRIPT = '.cursor/skills/impeccable/scripts/hook-stop.mjs';
-const CURSOR_SESSION_SCRIPT = '.cursor/skills/impeccable/scripts/hook-session-start.mjs';
 
 export function buildCursorHooksManifest() {
   return {
@@ -161,12 +130,6 @@ export function buildCursorHooksManifest() {
           command: `node "${CURSOR_STOP_SCRIPT}"`,
           timeout: 5,
           loop_limit: 1,
-        },
-      ],
-      sessionStart: [
-        {
-          command: `node "${CURSOR_SESSION_SCRIPT}"`,
-          timeout: 3,
         },
       ],
     },

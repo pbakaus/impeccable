@@ -181,11 +181,10 @@ function numberOr(value, fallback) {
 export function readCache(cwd) {
   const raw = safeReadJson(getCachePath(cwd));
   if (!raw || typeof raw !== 'object' || raw.version !== 1) {
-    return { version: 1, lastEducationAt: null, sessions: {} };
+    return { version: 1, sessions: {} };
   }
   return {
     version: 1,
-    lastEducationAt: raw.lastEducationAt || null,
     sessions: raw.sessions && typeof raw.sessions === 'object' ? raw.sessions : {},
   };
 }
@@ -536,7 +535,7 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'claude' || explicit === 'codex') return 'claude';
-  if (['afterFileEdit', 'sessionStart', 'stop'].includes(event?.hook_event_name)) return 'cursor';
+  if (['afterFileEdit', 'stop'].includes(event?.hook_event_name)) return 'cursor';
   if (typeof event?.conversation_id === 'string' && event.conversation_id) return 'cursor';
   return 'claude';
 }

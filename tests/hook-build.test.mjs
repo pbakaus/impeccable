@@ -64,22 +64,12 @@ describe('buildClaudeHooksManifest()', () => {
     assert.equal(m.hooks.PostToolUse[0].hooks[0].if, undefined);
   });
 
-  it('sets timeouts: 5s PostToolUse, 3s SessionStart', () => {
+  it('sets PostToolUse timeout to 5s', () => {
     assert.equal(m.hooks.PostToolUse[0].hooks[0].timeout, 5);
-    assert.equal(m.hooks.SessionStart[0].hooks[0].timeout, 3);
   });
 
-  it('declares a SessionStart greeting hook using shell form', () => {
-    const group = m.hooks.SessionStart[0];
-    assert.equal(group.matcher, 'startup|resume');
-    const handler = group.hooks[0];
-    assert.equal(handler.type, 'command');
-    assert.equal(
-      handler.command,
-      'node "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"',
-    );
-    assert.ok(!('args' in handler));
-    assert.equal(handler.statusMessage, 'Loading design hook');
+  it('does not declare a SessionStart greeting hook', () => {
+    assert.equal(m.hooks.SessionStart, undefined);
   });
 });
 
@@ -116,17 +106,8 @@ describe('buildCodexHooksManifest()', () => {
     assert.equal(handler.statusMessage, 'Scanning design');
   });
 
-  it('declares SessionStart with startup|resume matcher and PLUGIN_ROOT', () => {
-    const group = m.hooks.SessionStart[0];
-    assert.equal(group.matcher, 'startup|resume');
-    const handler = group.hooks[0];
-    assert.equal(handler.type, 'command');
-    assert.equal(
-      handler.command,
-      'node "${PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"',
-    );
-    assert.equal(handler.timeout, 3);
-    assert.equal(handler.statusMessage, 'Loading design hook');
+  it('does not declare a SessionStart greeting hook', () => {
+    assert.equal(m.hooks.SessionStart, undefined);
   });
 });
 
@@ -159,7 +140,7 @@ describe('buildCursorHooksManifest()', () => {
     assert.equal(m.version, 1);
     assert.ok(Array.isArray(m.hooks.afterFileEdit));
     assert.ok(Array.isArray(m.hooks.stop));
-    assert.ok(Array.isArray(m.hooks.sessionStart));
+    assert.equal(m.hooks.sessionStart, undefined);
     assert.equal(m.hooks.postToolUse, undefined);
     assert.equal(m.hooks.PostToolUse, undefined);
   });
@@ -181,13 +162,6 @@ describe('buildCursorHooksManifest()', () => {
     assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-stop.mjs'));
   });
 
-  it('sessionStart uses the session script with a portable node command', () => {
-    const handler = m.hooks.sessionStart[0];
-    assert.equal(handler.timeout, 3);
-    assert.match(handler.command, /^node "/);
-    assert.ok(!handler.command.includes('=cursor '));
-    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-session-start.mjs'));
-  });
 });
 
 describe('hooksJsonFor()', () => {

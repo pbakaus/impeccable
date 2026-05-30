@@ -39,7 +39,7 @@ The first argument is the action. Defaults to `status`.
 ## Constraints
 
 - Never modify `.impeccable/hook.json` by hand from this command. Always go through `hook-admin.mjs` so writes stay validated and the file shape stays consistent.
-- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-session-start.mjs`, `hook-after-edit.mjs`, `hook-stop.mjs`) from this flow. Those are skill plumbing.
+- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-after-edit.mjs`, `hook-stop.mjs`) from this flow. Those are skill plumbing.
 - The hook never blocks edits, including when disabled is toggled. Disabling stops it from emitting findings; it does not interfere with the tool call that triggered it.
 - The hook is bundled with the Impeccable skill on Claude Code (plugin), Codex (plugin), and Cursor (`.cursor/hooks.json`). On Codex, the user must also enable `[features].hooks = true` in `~/.codex/config.toml` and approve the hook via `/hooks` the first time. On Cursor, confirm hooks are enabled under Settings → Hooks.
 
