@@ -90,14 +90,23 @@ describe('SENSITIVE_PATH / GENERATED_PATH', () => {
   it('skips .env, .pem, id_rsa, secrets, credentials, .git', () => {
     for (const p of [
       '/x/.env', '/x/.env.production', '/x/server.pem', '/x/id_rsa',
-      '/x/api-secret.json', '/x/credentials.yml', '/x/.git/config',
+      '/x/id_rsa.pub', '/x/api-secret.json', '/x/client_secret.ts',
+      '/x/credentials.yml', '/x/.git/config',
     ]) {
       assert.ok(SENSITIVE_PATH.test(p), `expected sensitive: ${p}`);
     }
   });
 
   it('does not flag normal source files as sensitive', () => {
-    for (const p of ['/x/src/Card.tsx', '/x/app/page.html', '/x/styles/main.css']) {
+    for (const p of [
+      '/x/src/Card.tsx',
+      '/x/app/page.html',
+      '/x/styles/main.css',
+      '/x/src/CredentialForm.tsx',
+      '/x/src/SecretPage.jsx',
+      '/x/src/secretary-dashboard.vue',
+      '/x/src/credentials-panel.tsx',
+    ]) {
       assert.ok(!SENSITIVE_PATH.test(p), `unexpected sensitive: ${p}`);
     }
   });

@@ -47,7 +47,15 @@ export const ALLOWED_EXTS = new Set([
 ]);
 
 // Hard-skip regex for sensitive files. Cannot be turned off via config.
-export const SENSITIVE_PATH = /(?:^|[/\\])(?:\.env(?:\.|$)|.*\.pem$|id_rsa.*|.*secret.*|.*credential.*|\.git[/\\].*)/i;
+// Match tokenized secret/credential filenames, not UI names such as
+// CredentialForm.tsx, SecretPage.jsx, or secretary-dashboard.vue.
+export const SENSITIVE_PATH = new RegExp([
+  String.raw`(?:^|[/\\])\.env(?:\.|$)`,
+  String.raw`(?:^|[/\\])\.git(?:[/\\]|$)`,
+  String.raw`(?:^|[/\\])id_rsa(?:$|[._-])[^/\\]*$`,
+  String.raw`(?:^|[/\\])[^/\\]*\.pem$`,
+  String.raw`(?:^|[/\\])(?:[^/\\]*[._-])?(?:secret|secrets|credential|credentials)(?=[._-])[^/\\]*\.(?:json|ya?ml|toml|ini|conf|config|env|txt|key|cert|crt|pem|js|ts)$`,
+].join('|'), 'i');
 
 // Hard-skip regex for generated, lock, minified, and build-output paths.
 export const GENERATED_PATH = /(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)/i;
