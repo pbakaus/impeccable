@@ -14,8 +14,6 @@ import {
   appendPending,
   truthy,
   writeAuditLog,
-  resolveHarness,
-  normalizeHookEvent,
   resolveProjectCwd,
 } from './hook-lib.mjs';
 
@@ -52,10 +50,8 @@ async function main() {
     return process.exit(0);
   }
 
-  const harness = resolveHarness(inheritedEnv, event);
   const cwd = resolveProjectCwd(event);
   const conversationId = event?.conversation_id || event?.session_id || null;
-  event = normalizeHookEvent(event, cwd, harness);
 
   const result = await runHook({
     stdinJson: event,
