@@ -15,6 +15,7 @@ import {
   renderCursorFollowup,
   followupPayload,
   readConfig,
+  truthy,
   writeAuditLog,
   resolveProjectCwd,
 } from './hook-lib.mjs';
@@ -44,6 +45,16 @@ async function main() {
   const conversationId = event?.conversation_id || event?.session_id || null;
   const loopCount = Number(event?.loop_count) || 0;
 
+  if (truthy(process.env.IMPECCABLE_HOOK_DISABLED)) {
+    clearPending(cwd, conversationId);
+    writeAuditLog(process.env, {
+      ts: new Date().toISOString(),
+      event: 'stop',
+      skipped: 'env-disabled',
+    });
+    return done(0, '');
+  }
+
   if (loopCount >= 1) {
     clearPending(cwd, conversationId);
     writeAuditLog(process.env, {
@@ -51,6 +62,17 @@ async function main() {
       event: 'stop',
       skipped: 'loop-guard',
       loopCount,
+    });
+    return done(0, '');
+  }
+
+  const config = readConfig(cwd);
+  if (config.enabled === false) {
+    clearPending(cwd, conversationId);
+    writeAuditLog(process.env, {
+      ts: new Date().toISOString(),
+      event: 'stop',
+      skipped: 'config-disabled',
     });
     return done(0, '');
   }
@@ -65,7 +87,6 @@ async function main() {
     return done(0, '');
   }
 
-  const config = readConfig(cwd);
   const text = renderCursorFollowup(items, { cwd, config });
   if (!text) {
     writeAuditLog(process.env, {

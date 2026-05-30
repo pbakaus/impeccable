@@ -958,6 +958,55 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.followup_message, /side-tab/);
   });
 
+  it('stop honors IMPECCABLE_HOOK_DISABLED before emitting queued findings', () => {
+    const filePath = path.join(cwd, 'src/Card.tsx');
+    appendPending(cwd, null, {
+      kind: 'fresh',
+      file: filePath,
+      findings: [finding('side-tab', 12)],
+    });
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+      }),
+      env: {
+        ...process.env,
+        IMPECCABLE_HOOK_DISABLED: 'yes',
+        IMPECCABLE_HOOK_LOG: '',
+      },
+      encoding: 'utf-8',
+    });
+
+    assert.equal(out, '');
+    assert.deepEqual(drainPending(cwd, null), []);
+  });
+
+  it('stop honors disabled hook config before emitting queued findings', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'hook.json'), JSON.stringify({ enabled: false }));
+    appendPending(cwd, null, {
+      kind: 'fresh',
+      file: path.join(cwd, 'src/Card.tsx'),
+      findings: [finding('side-tab', 12)],
+    });
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.equal(out, '');
+    assert.deepEqual(drainPending(cwd, null), []);
+  });
+
   it('afterFileEdit queues suppression notices for stop followup', () => {
     const filePath = path.join(cwd, 'index.html');
     fs.writeFileSync(filePath, `
