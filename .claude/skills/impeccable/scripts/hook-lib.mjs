@@ -417,16 +417,21 @@ export function renderCursorFollowup(items, opts = {}) {
 
   const header = `${ENVELOPE_PREFIX} Design hook flagged issues during your last turn:`;
   const sections = [];
+  let needsDirectiveFooter = false;
 
   for (const item of items) {
     if (!item || typeof item !== 'object' || typeof item.file !== 'string') continue;
     const display = relativize(item.file, cwd);
     if (item.kind === 'pending' && Array.isArray(item.known) && item.known.length) {
+      needsDirectiveFooter = true;
       const count = item.known.length;
       const sample = item.known.slice(0, 3).join(', ');
       const more = count > 3 ? `, +${count - 3} more` : '';
       sections.push(`Still pending in ${display}: ${count} issue(s) flagged earlier this session (${sample}${more}).`);
+    } else if (item.kind === 'suppression') {
+      sections.push(suppressionNotice(display).replace(`${ENVELOPE_PREFIX} `, ''));
     } else if (item.kind === 'fresh' && Array.isArray(item.findings) && item.findings.length) {
+      needsDirectiveFooter = true;
       const total = item.findings.length;
       const shown = item.findings.slice(0, cap);
       const remaining = total - shown.length;
@@ -441,7 +446,9 @@ export function renderCursorFollowup(items, opts = {}) {
   if (sections.length === 0) return '';
 
   const footer = directiveFooter();
-  let text = [header, ...sections, '', footer].join('\n');
+  const blocks = [header, ...sections];
+  if (needsDirectiveFooter) blocks.push('', footer);
+  let text = blocks.join('\n');
   if (text.length > maxChars) {
     text = `${text.slice(0, maxChars - 16)}\n...(truncated)`;
   }
@@ -618,7 +625,9 @@ export function coLocatedStylesheets(filePath) {
     path.join(dir, `${base}.scss`),
     path.join(dir, `${base}.module.scss`),
     path.join(dir, `${base}.sass`),
+    path.join(dir, `${base}.module.sass`),
     path.join(dir, `${base}.less`),
+    path.join(dir, `${base}.module.less`),
   ]);
   for (const name of CO_SCAN_STYLE_NAMES) {
     candidates.add(path.join(dir, name));

@@ -62,7 +62,7 @@ async function main() {
   let queued = false;
   if (
     result.emission
-    && (result.emission.kind === 'fresh' || result.emission.kind === 'pending')
+    && ['fresh', 'pending', 'suppression'].includes(result.emission.kind)
   ) {
     appendPending(cwd, conversationId, result.emission);
     queued = true;

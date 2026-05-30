@@ -743,6 +743,16 @@ describe('expandScanTargets()', () => {
     assert.ok(expanded.includes(mod));
   });
 
+  it('includes co-located module Sass and Less stylesheets', () => {
+    for (const name of ['Card.module.sass', 'Card.module.less']) {
+      const dir = `src/${name.replaceAll('.', '-')}`;
+      const card = write(`${dir}/Card.jsx`, 'export default function Card() { return <main className="x" />; }');
+      const stylesheet = write(`${dir}/${name}`, '.card { border-left: 4px solid #3b82f6; }');
+      const expanded = expandScanTargets([card], cwd);
+      assert.ok(expanded.includes(stylesheet), `missing ${name}`);
+    }
+  });
+
   it('resolves relative primary targets against the project cwd', () => {
     write('src/Card.jsx', "import './Card.module.css';\nexport default function Card() { return null; }");
     const mod = write('src/Card.module.css', '.card { border-left: 4px solid #3b82f6; }');
@@ -938,6 +948,43 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.followup_message, /Required design corrections/);
     assert.match(payload.followup_message, /side-tab/);
   });
+
+  it('afterFileEdit queues suppression notices for stop followup', () => {
+    const filePath = path.join(cwd, 'index.html');
+    fs.writeFileSync(filePath, `
+      <style>
+        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+      </style>
+      <div class="card">Hello</div>
+    `);
+
+    for (let i = 0; i < 7; i++) {
+      execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+        cwd: path.resolve('.'),
+        input: JSON.stringify({
+          hook_event_name: 'afterFileEdit',
+          cwd,
+          file_path: filePath,
+        }),
+        env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+        encoding: 'utf-8',
+      });
+    }
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.match(payload.followup_message, /Suppressing further design hints on index\.html/);
+    assert.match(payload.followup_message, /Run \/impeccable audit/);
+  });
 });
 
 describe('renderCursorFollowup()', () => {
@@ -957,6 +1004,15 @@ describe('renderCursorFollowup()', () => {
     ], { cwd: '/proj' });
     assert.match(text, /Still pending in src\/Card\.tsx/);
     assert.match(text, /side-tab:12/);
+  });
+
+  it('includes suppression notices', () => {
+    const text = renderCursorFollowup([
+      { kind: 'suppression', file: '/proj/src/Card.tsx' },
+    ], { cwd: '/proj' });
+    assert.match(text, /Suppressing further design hints on src\/Card\.tsx/);
+    assert.match(text, /Run \/impeccable audit/);
+    assert.doesNotMatch(text, /Fix these in your next reply/);
   });
 });
 
