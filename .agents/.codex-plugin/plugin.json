@@ -1,0 +1,44 @@
+{
+  "name": "impeccable",
+  "version": "3.5.0",
+  "description": "Design fluency for frontend development. One skill with 23 commands and curated anti-pattern detection.",
+  "author": {
+    "name": "Paul Bakaus",
+    "email": "paul@paulbakaus.com",
+    "url": "https://github.com/pbakaus"
+  },
+  "homepage": "https://impeccable.style",
+  "repository": "https://github.com/pbakaus/impeccable",
+  "license": "Apache-2.0",
+  "keywords": [
+    "design",
+    "frontend",
+    "ux",
+    "skills",
+    "anti-patterns",
+    "accessibility"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Impeccable",
+    "shortDescription": "Frontend design craft, critique, polish, and anti-pattern detection for Codex.",
+    "longDescription": "Impeccable brings Codex a production-grade frontend design workflow: 23 design commands, deep visual guidance, browser-aware live iteration scripts, and deterministic anti-pattern detection for HTML, CSS, and app surfaces.",
+    "developerName": "Paul Bakaus",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Design",
+      "Frontend",
+      "Review",
+      "Write"
+    ],
+    "websiteURL": "https://impeccable.style",
+    "defaultPrompt": [
+      "Use Impeccable to critique this interface.",
+      "Use Impeccable to polish this frontend.",
+      "Use Impeccable to audit UI anti-patterns."
+    ],
+    "brandColor": "#D4AF37",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/logo.png"
+  }
+}
