@@ -40,14 +40,16 @@ Thumbs.db
 # Impeccable-owned project files are split: generated sidecars/config may be
 # tracked, but runtime recovery state and local assets should stay local.
 .impeccable/live/server.json
+.impeccable/hook.cache.json
 .impeccable/live/sessions/
+.impeccable/live/previews/
 .impeccable/live/annotations/
 .impeccable/live/cache/
 .impeccable/live/manual-edit-apply-transaction.json
 .impeccable/live/manual-edit-events.jsonl
 .impeccable/live/manual-edit-evidence/
 .impeccable/live/pending-manual-edits.json
-.impeccable/hook.cache.json
+.impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/history/
 # Per-run critique snapshots are local artifacts. ignore.md (also under
 # this dir) carries deferrals the user may want to share, so it's
@@ -58,6 +60,8 @@ Thumbs.db
 # Legacy live mode session file + annotation screenshots
 .impeccable-live.json
 .impeccable-live/
+src/lib/impeccable/ImpeccableLiveRoot.svelte
+src/lib/impeccable/__runtime.js
 
 # Legacy per-project live mode injection config. New installs use
 # .impeccable/live/config.json in the project root instead.

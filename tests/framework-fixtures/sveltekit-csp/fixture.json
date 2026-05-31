@@ -11,9 +11,9 @@
     {
       "name": "wraps hero title in route source",
       "args": { "classes": "hero-title", "tag": "h1" },
-      "expectedFile": ".impeccable/live/previews/wraptest0.html",
+      "expectedFile": "node_modules/.impeccable-live/wraptest0/manifest.json",
       "expectedSourceFile": "src/routes/+page.svelte",
-      "expectedPreviewMode": "source-shadow"
+      "expectedPreviewMode": "svelte-component"
     }
   ],
   "csp": {

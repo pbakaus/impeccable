@@ -5,7 +5,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
@@ -15,6 +15,10 @@ import {
   getLiveServerPath,
   getLiveSessionsDir,
 } from '../skill/scripts/impeccable-paths.mjs';
+import {
+  deferredAcceptsPath,
+  writeDeferredAccept,
+} from '../skill/scripts/live-svelte-component.mjs';
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
@@ -93,16 +97,96 @@ async function stashManualEdit(server, entry) {
   return res.json();
 }
 
+function seedDeferredSvelteAccept(tmp, id = 'LEGACY') {
+  const queueCwd = realpathSync(tmp);
+  mkdirSync(join(tmp, 'src', 'routes'), { recursive: true });
+  mkdirSync(join(tmp, 'node_modules/.impeccable-live', id), { recursive: true });
+  writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
+  <article class="expense-row">
+    <strong>{expenses[0].name}</strong>
+  </article>
+</main>
+`);
+  const manifest = {
+    id,
+    previewMode: 'svelte-component',
+    sourceFile: 'src/routes/+page.svelte',
+    sourceStartLine: 2,
+    sourceEndLine: 4,
+    count: 1,
+    propContract: [
+      { prop: 'name', expr: 'expenses[0].name', placeholder: '{expenses[0].name}' },
+    ],
+    originalMarkup: `<article class="expense-row">
+    <strong>{expenses[0].name}</strong>
+  </article>`,
+    componentDir: `node_modules/.impeccable-live/${id}`,
+    runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+  };
+  const manifestFile = join(tmp, 'node_modules/.impeccable-live', id, 'manifest.json');
+  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + '\n');
+  writeFileSync(join(tmp, 'node_modules/.impeccable-live', id, 'v1.svelte'), `<script>
+  let { name } = $props();
+</script>
+
+<article class="expense-row accepted">
+  <strong>{name}</strong>
+</article>
+`);
+  writeDeferredAccept({
+    id,
+    variantNum: '1',
+    manifestFile: `node_modules/.impeccable-live/${id}/manifest.json`,
+    sourceFile: 'src/routes/+page.svelte',
+  }, queueCwd);
+}
+
 it('gitignores local Impeccable runtime artifacts', () => {
   const ignored = execFileSync('git', [
     'check-ignore',
     '.impeccable/live/manual-edit-apply-transaction.json',
     '.impeccable/live/manual-edit-evidence/example.json',
     '.impeccable/hook.cache.json',
+    '.impeccable/live/deferred-svelte-component-accepts.json',
   ], { cwd: REPO_ROOT, encoding: 'utf-8' });
   assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
   assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
+  assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
+});
+
+it('applies legacy deferred Svelte accepts once on startup', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'impeccable-legacy-deferred-start-'));
+  const queuePath = deferredAcceptsPath(realpathSync(tmp));
+  let server;
+  try {
+    seedDeferredSvelteAccept(tmp, 'STARTUP');
+    server = await startServer(8561, { cwd: tmp });
+    const source = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.match(source, /class="expense-row accepted"/);
+    assert.match(source, /\{expenses\[0\]\.name\}/);
+    assert.equal(existsSync(queuePath), false, 'legacy queue should be cleared after startup rescue');
+  } finally {
+    if (server) await stopServer(server.port, server.token);
+    rmSync(queuePath, { force: true });
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+it('does not apply deferred Svelte accepts on shutdown', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'impeccable-legacy-deferred-stop-'));
+  const queuePath = deferredAcceptsPath(realpathSync(tmp));
+  let server;
+  try {
+    server = await startServer(8562, { cwd: tmp });
+    seedDeferredSvelteAccept(tmp, 'STOPONLY');
+    await stopServer(server.port, server.token);
+    const source = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.doesNotMatch(source, /accepted/, 'shutdown must not write queued accepts into source');
+  } finally {
+    rmSync(queuePath, { force: true });
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
@@ -2275,6 +2359,71 @@ colors: {}
     assert.equal(ack.status, 200);
     const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3d9.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.phase, 'completed');
+  });
+
+  it('records Svelte component preview manifests as previewFile, not completed sourceFile', async () => {
+    await drainPolls(server);
+    const id = 'a1b2c3da';
+    mkdirSync(join(server.cwd, 'node_modules/.impeccable-live', id), { recursive: true });
+    writeFileSync(join(server.cwd, 'node_modules/.impeccable-live', id, 'manifest.json'), JSON.stringify({
+      id,
+      previewMode: 'svelte-component',
+      sourceFile: 'src/routes/+page.svelte',
+      sourceStartLine: 1,
+      sourceEndLine: 1,
+      count: 2,
+      propContract: [],
+      originalMarkup: '<span>0 offen</span>',
+      componentDir: `node_modules/.impeccable-live/${id}`,
+      runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+    }, null, 2) + '\n');
+
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'polish',
+        count: 2,
+        pageUrl: '/',
+        element: { outerHTML: '<span>0 offen</span>', tagName: 'span' },
+      }),
+    });
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50`).then(r => r.json());
+    assert.equal(polled.id, id);
+    const ack = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id,
+        type: 'done',
+        file: `node_modules/.impeccable-live/${id}/manifest.json`,
+      }),
+    });
+    assert.equal(ack.status, 200);
+
+    let snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), `${id}.snapshot.json`), 'utf-8'));
+    assert.equal(snapshot.sourceFile, 'src/routes/+page.svelte');
+    assert.equal(snapshot.previewFile, `node_modules/.impeccable-live/${id}/manifest.json`);
+
+    const complete = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id,
+        type: 'complete',
+        file: 'src/routes/+page.svelte',
+      }),
+    });
+    assert.equal(complete.status, 200);
+    snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), `${id}.snapshot.json`), 'utf-8'));
+    assert.equal(snapshot.phase, 'completed');
+    assert.equal(snapshot.sourceFile, 'src/routes/+page.svelte');
+    assert.doesNotMatch(snapshot.sourceFile, /node_modules\/\.impeccable-live/);
   });
 
   it('manual live-complete acknowledges the running helper queue before writing fallback journal state', async () => {

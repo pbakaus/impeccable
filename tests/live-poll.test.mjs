@@ -10,6 +10,7 @@ import {
   parseReplyArgs,
   requiresAgentReply,
 } from '../skill/scripts/live-poll.mjs';
+import { completionTypeForAcceptResult } from '../skill/scripts/live-completion.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -41,7 +42,7 @@ describe('live-poll accept handling', () => {
     );
   });
 
-  it('forwards defer-source-write for source-shadow accepts', () => {
+  it('ignores legacy defer-source-write requests so accepts write source immediately', () => {
     assert.deepEqual(
       buildAcceptScriptArgs({
         type: 'accept',
@@ -50,7 +51,31 @@ describe('live-poll accept handling', () => {
         pageUrl: '/',
         deferSourceWrite: true,
       }),
-      ['--id', 'abc12345', '--variant', '1', '--page-url', '/', '--defer-source-write'],
+      ['--id', 'abc12345', '--variant', '1', '--page-url', '/'],
+    );
+  });
+
+  it('maps failed accept promotion to error instead of agent_done', () => {
+    assert.equal(
+      completionTypeForAcceptResult('accept', {
+        handled: false,
+        previewMode: 'svelte-component',
+        file: 'src/routes/+page.svelte',
+        componentDir: 'node_modules/.impeccable-live/abc12345',
+        error: 'Variant 3 not found',
+      }),
+      'error',
+    );
+  });
+
+  it('maps successful immediate accept promotion to complete', () => {
+    assert.equal(
+      completionTypeForAcceptResult('accept', {
+        handled: true,
+        previewMode: 'svelte-component',
+        file: 'src/routes/+page.svelte',
+      }),
+      'complete',
     );
   });
 });

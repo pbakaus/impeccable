@@ -71,9 +71,11 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '- The single top-level element is the replacement root itself. If the picked element is <section class="hero-copy">...</section>, emit <section class="hero-copy">...</section> with edited children directly; do not wrap a duplicate <section class="hero-copy"> inside another root.',
   '- PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain exactly class="hero-title"; do not add, remove, or rename classes. This is a hard requirement — mapped-list fixtures depend on the class string staying stable across the variant set.',
   '- PRESERVE all existing visible copy exactly. GO variants change presentation, hierarchy, and styling; they must not rewrite titles, paragraphs, button labels, or user-applied manual copy edits.',
+  '- Use the visible literal copy from the picked element. Do not emit framework template expressions or placeholders such as {name}, {amount}, ${value}, or {{value}} in innerHtml.',
   '- For bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
   '- PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
   '- Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
+  '- For non-bare elements where the existing children must stay in place, add a harmless root attribute such as data-impeccable-e2e-variant="1" or another non-copy styling hook so the markup is materially changed without changing visible text.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
@@ -361,7 +363,9 @@ export async function createLlmAgent(opts = {}) {
           'VALIDATION ERROR',
           validationError,
           `Every variant must preserve this exact normalized visible text: "${expectedText}"`,
+          'Use literal visible text in innerHtml, not framework placeholders like {name}, {amount}, ${value}, or {{value}}.',
           'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
+          'For non-bare markup, keep the existing visible descendants in place and add a harmless root data attribute or styling hook so the source is not identical.',
           'Return corrected JSON only.',
         ].join('\n');
       }
@@ -776,8 +780,10 @@ function validateScopedCss(css) {
 function validateVariantInnerHtml(html) {
   if (/<!--[\s\S]*?-->/.test(html)) return 'must not include HTML comments';
   if (/<\/?script\b/i.test(html)) return 'must not include a <script> tag';
+  if (/<\/?style\b/i.test(html)) return 'must not include a <style> tag';
   if (/\bclassName\s*=/.test(html)) return 'must use HTML class= attributes, not JSX className=';
   if (/\bstyle\s*=\s*\{\{/.test(html)) return 'must use HTML style="..." syntax, not JSX style={{...}}';
+  if (/\{[^}]+\}/.test(html)) return 'must use literal visible copy, not framework template expressions such as {name}';
   if (/\bdata-impeccable-variants?\s*=/.test(html)) return 'must not include Impeccable wrapper attributes';
   if (/<\/?>/.test(html)) return 'must not use JSX fragments';
   return null;

@@ -42,7 +42,10 @@ import {
 } from './live-manual-edits-buffer.mjs';
 import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
 import { commitManualEdits } from './live-commit-manual-edits.mjs';
-import { applyDeferredSourceShadowAccepts } from './live-accept.mjs';
+import {
+  applyDeferredSvelteComponentAccepts,
+  removeAllSvelteComponentSessions,
+} from './live-svelte-component.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
@@ -1834,7 +1837,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           }
         }
         if (msg.type === 'exit') {
-          applyDeferredAcceptsBeforeExit();
+          cleanupSvelteComponentSessionsBeforeExit();
         }
         if (msg.type !== 'checkpoint') {
           enqueueEvent(msg);
@@ -1912,6 +1915,36 @@ function handlePollGet(req, res, url) {
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
     broadcastAgentPollingIfChanged();
   });
+}
+
+function sessionFileMetadataFromPollReply(file) {
+  if (!file || typeof file !== 'string') return { file };
+  const normalized = file.split(path.sep).join('/');
+  const base = { file: normalized };
+  if (!normalized.endsWith('/manifest.json') && normalized !== 'manifest.json') return base;
+  if (!normalized.includes('node_modules/.impeccable-live/') && !normalized.includes('src/lib/impeccable/')) return base;
+
+  let full;
+  try {
+    full = path.resolve(process.cwd(), normalized);
+    const rel = path.relative(process.cwd(), full);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return base;
+  } catch {
+    return base;
+  }
+
+  try {
+    const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
+    if (manifest?.previewMode !== 'svelte-component' || !manifest.sourceFile) return base;
+    return {
+      file: String(manifest.sourceFile).split(path.sep).join('/'),
+      sourceFile: String(manifest.sourceFile).split(path.sep).join('/'),
+      previewFile: normalized,
+      previewMode: 'svelte-component',
+    };
+  } catch {
+    return base;
+  }
 }
 
 function handlePollPost(req, res) {
@@ -1996,6 +2029,7 @@ function handlePollPost(req, res) {
       }));
       return;
     }
+    const replyFileMeta = sessionFileMetadataFromPollReply(msg.file);
     if (state.sessionStore && msg.id && !skipJournalReply) {
       try {
         const eventType = msg.type === 'steer_done'
@@ -2010,7 +2044,10 @@ function handlePollPost(req, res) {
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,
-          file: msg.file,
+          file: replyFileMeta.file,
+          sourceFile: replyFileMeta.sourceFile,
+          previewFile: replyFileMeta.previewFile,
+          previewMode: replyFileMeta.previewMode,
           message: msg.message,
           sourceEventType: acknowledgedEvent?.type,
           carbonize: msg.data?.carbonize === true,
@@ -2032,7 +2069,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
-  applyDeferredAcceptsBeforeExit();
+  cleanupSvelteComponentSessionsBeforeExit();
   removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
   state.leaseTimer = null;
@@ -2047,14 +2084,22 @@ function shutdown() {
   process.exit(0);
 }
 
-function applyDeferredAcceptsBeforeExit() {
+function cleanupSvelteComponentSessionsBeforeExit() {
   try {
-    const result = applyDeferredSourceShadowAccepts(process.cwd());
+    removeAllSvelteComponentSessions(process.cwd());
+  } catch (err) {
+    console.warn('[impeccable] Svelte component session cleanup failed:', err.message);
+  }
+}
+
+function applyLegacyDeferredAcceptsOnStartup() {
+  try {
+    const result = applyDeferredSvelteComponentAccepts(process.cwd());
     if (result.applied > 0 || result.failed > 0) {
-      console.log('[impeccable] applied deferred source-shadow accepts:', JSON.stringify(result));
+      console.log('[impeccable] applied legacy deferred Svelte component accepts:', JSON.stringify(result));
     }
   } catch (err) {
-    console.warn('[impeccable] deferred source-shadow accept apply failed:', err.message);
+    console.warn('[impeccable] legacy deferred Svelte component accept apply failed:', err.message);
   }
 }
 
@@ -2183,6 +2228,7 @@ rollbackManualApplyTransaction({
   cwd: process.cwd(),
   reason: 'manual_edit_server_start_recovered_abandoned_transaction',
 });
+applyLegacyDeferredAcceptsOnStartup();
 restorePendingEventsFromStore();
 pruneStaleManualApplyEvidence(process.cwd());
 const portArg = args.find(a => a.startsWith('--port='));

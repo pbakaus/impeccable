@@ -229,6 +229,63 @@ describe('live-session-store', () => {
     assert.equal(completed.sourceFile, 'src/pages/index.astro');
   });
 
+  it('keeps Svelte preview manifest separate from the real completed source', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'svelte-complete' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'svelte-complete',
+      action: 'polish',
+      count: 2,
+      element: { outerHTML: '<span>0 offen</span>', tagName: 'span' },
+    });
+    store.appendEvent({
+      type: 'agent_done',
+      id: 'svelte-complete',
+      file: 'src/routes/+page.svelte',
+      sourceFile: 'src/routes/+page.svelte',
+      previewFile: 'node_modules/.impeccable-live/svelte-complete/manifest.json',
+      previewMode: 'svelte-component',
+    });
+    store.appendEvent({
+      type: 'complete',
+      id: 'svelte-complete',
+      file: 'src/routes/+page.svelte',
+      sourceFile: 'src/routes/+page.svelte',
+      previewFile: 'node_modules/.impeccable-live/svelte-complete/manifest.json',
+    });
+
+    const completed = store.getSnapshot('svelte-complete', { includeCompleted: true });
+    assert.equal(completed.phase, 'completed');
+    assert.equal(completed.sourceFile, 'src/routes/+page.svelte');
+    assert.equal(completed.previewFile, 'node_modules/.impeccable-live/svelte-complete/manifest.json');
+  });
+
+  it('ignores late browser checkpoints after completion', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'late-checkpoint' });
+    store.appendEvent({
+      type: 'generate',
+      id: 'late-checkpoint',
+      action: 'polish',
+      count: 2,
+      element: { outerHTML: '<span>0 offen</span>', tagName: 'span' },
+    });
+    store.appendEvent({ type: 'complete', id: 'late-checkpoint', file: 'src/routes/+page.svelte' });
+    store.appendEvent({
+      type: 'checkpoint',
+      id: 'late-checkpoint',
+      revision: 9,
+      phase: 'confirmed',
+      visibleVariant: 2,
+    });
+
+    const completed = store.getSnapshot('late-checkpoint', { includeCompleted: true });
+    assert.equal(completed.phase, 'completed');
+    assert.equal(
+      completed.diagnostics.some((d) => d.error === 'checkpoint_after_terminal_ignored'),
+      true,
+    );
+  });
+
   it('writes a rebuildable snapshot cache without making it authoritative', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'cache-session' });
     store.appendEvent({

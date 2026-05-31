@@ -96,4 +96,20 @@ describe('validateEvent — replace generate (regression)', () => {
       null,
     );
   });
+
+  it('accepts replace generate events with annotations and screenshot path', () => {
+    assert.equal(
+      validateEvent({
+        type: 'generate',
+        id: VALID_ID,
+        count: 3,
+        action: 'polish',
+        element: { outerHTML: '<article class="expense-row">Design snack</article>' },
+        comments: [{ x: 12, y: 24, text: 'tighten spacing' }],
+        strokes: [{ points: [[1, 2], [12, 20]] }],
+        screenshotPath: '/tmp/impeccable/live/annotations/a1b2c3d4.png',
+      }),
+      null,
+    );
+  });
 });

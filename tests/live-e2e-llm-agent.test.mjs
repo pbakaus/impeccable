@@ -1467,6 +1467,7 @@ describe('live-e2e LLM agent variant prompt', () => {
   it('tells the model to preserve existing visible copy', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /PRESERVE all existing visible copy exactly/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /must not rewrite titles, paragraphs, button labels/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Do not emit framework template expressions/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /full visible copy in one editable text node/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /wrap the entire copy/);
   });
@@ -1479,6 +1480,7 @@ describe('live-e2e LLM agent variant prompt', () => {
   it('tells the model bare text variants must not be source-identical no-ops', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Do not return source-identical variants/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /bare text element/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /harmless root attribute/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Accept persists a real source change/);
   });
 });
@@ -1652,6 +1654,18 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
     assert.throws(
       () => parseVariantResponse(body),
       /innerHtml must not include a <style> tag/,
+    );
+  });
+
+  it('rejects framework template expressions inside variant HTML', () => {
+    const body = JSON.stringify({
+      scopedCss: '@scope ([data-impeccable-variant="1"]) {}',
+      variants: [{ innerHtml: '<article class="expense-row"><strong>{name}</strong><span>{amount}</span></article>' }],
+    });
+
+    assert.throws(
+      () => parseVariantResponse(body),
+      /literal visible copy/,
     );
   });
 

@@ -106,6 +106,7 @@ function baseSnapshot(id) {
     phase: 'new',
     pageUrl: null,
     sourceFile: null,
+    previewFile: null,
     expectedVariants: 0,
     arrivedVariants: 0,
     visibleVariant: null,
@@ -177,7 +178,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
     case 'variants_ready':
     case 'agent_done':
       next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';
-      next.sourceFile = event.file ?? next.sourceFile;
+      next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
+      next.previewFile = event.previewFile ?? next.previewFile;
       next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants ?? next.expectedVariants);
       next.pendingEventSeq = null;
       next.pendingEvent = null;
@@ -190,6 +192,10 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       }
       break;
     case 'checkpoint':
+      if (COMPLETED_PHASES.has(next.phase)) {
+        next.diagnostics.push({ error: 'checkpoint_after_terminal_ignored', phase: event.phase ?? null, revision: event.revision ?? null });
+        break;
+      }
       if ((event.revision ?? 0) >= (next.checkpointRevision ?? 0)) {
         next.phase = event.phase ?? next.phase;
         next.checkpointRevision = event.revision ?? next.checkpointRevision;
@@ -238,6 +244,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       break;
     case 'complete':
       next.phase = 'completed';
+      next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
+      next.previewFile = event.previewFile ?? next.previewFile;
       next.pendingEventSeq = null;
       next.pendingEvent = null;
       break;

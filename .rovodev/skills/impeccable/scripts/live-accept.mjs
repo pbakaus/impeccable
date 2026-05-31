@@ -17,6 +17,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
 import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live-manual-edits-buffer.mjs';
+import {
+  applyDeferredSvelteComponentAccepts,
+  findSvelteComponentManifest,
+  inlineSvelteComponentAccept,
+  removeSvelteComponentSession,
+} from './live-svelte-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -42,8 +48,8 @@ Required:
 Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
   --defer-source-write
-                     For Svelte source-shadow previews, keep the accepted
-                     preview active and write the real source on live exit
+                     Deprecated compatibility flag. Svelte component accepts
+                     now write the real source immediately.
 
 Output (JSON):
   { handled, file, carbonize }`);
@@ -55,7 +61,6 @@ Output (JSON):
   const paramValuesRaw = argVal(args, '--param-values');
   const pageUrl = argVal(args, '--page-url');
   const isDiscard = args.includes('--discard');
-  const deferSourceWrite = args.includes('--defer-source-write');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!isDiscard && !variantNum) { console.error('Need --discard or --variant N'); process.exit(1); }
@@ -68,9 +73,49 @@ Output (JSON):
 
   // Find the file containing this session's markers
   const found = findSessionFile(id, process.cwd());
-  if (!found) {
+  const svelteComponentManifest = found ? null : findSvelteComponentManifest(id, process.cwd());
+
+  if (!found && !svelteComponentManifest) {
     console.log(JSON.stringify({ handled: false, error: 'Session markers not found for id: ' + id }));
     process.exit(0);
+  }
+
+  if (svelteComponentManifest) {
+    if (isDiscard) {
+      removeSvelteComponentSession(id, process.cwd());
+      console.log(JSON.stringify({
+        handled: true,
+        file: svelteComponentManifest.sourceFile,
+        carbonize: false,
+        previewMode: 'svelte-component',
+        componentDir: svelteComponentManifest.componentDir,
+      }));
+      return;
+    }
+
+    let result;
+    try {
+      result = inlineSvelteComponentAccept(
+        svelteComponentManifest,
+        variantNum,
+        paramValues,
+        process.cwd(),
+      );
+    } catch (err) {
+      result = {
+        handled: false,
+        error: err.message,
+        file: svelteComponentManifest.sourceFile,
+        sourceFile: svelteComponentManifest.sourceFile,
+        previewMode: 'svelte-component',
+        componentDir: svelteComponentManifest.componentDir,
+      };
+    }
+    if (result.carbonize) {
+      result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';
+    }
+    console.log(JSON.stringify({ handled: result.handled !== false, ...result }));
+    return;
   }
 
   const { file: targetFile, content, lines } = found;
@@ -81,32 +126,14 @@ Output (JSON):
     : null;
 
   if (sourceShadowPreview) {
-    if (isDiscard) {
-      const result = handleSourceShadowDiscard(id, targetFile, sourceShadowPreview);
-      console.log(JSON.stringify({ handled: true, file: sourceShadowPreview.sourceFile, carbonize: false, ...result }));
-    } else {
-      const result = handleSourceShadowAccept(id, variantNum, lines, targetFile, sourceShadowPreview, paramValues, { deferSourceWrite });
-      const acceptedOriginalText = result.acceptedOriginalText || '';
-      delete result.acceptedOriginalText;
-      if (result.carbonize) {
-        result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';
-      }
-      if (result.handled !== false) {
-        try {
-          scrubManualEditsAgainstOriginalBlock(acceptedOriginalText, process.cwd(), pageUrl);
-        } catch {
-          // Non-fatal; the buffer stays as-is and the user can discard later.
-        }
-      }
-      console.log(JSON.stringify({ handled: true, ...result }));
-    }
-    return;
+    console.log(JSON.stringify({
+      handled: false,
+      error: 'source_shadow_preview_deprecated',
+      hint: 'Svelte live mode now uses svelte-component injection. Re-wrap the element and regenerate variants.',
+    }));
+    process.exit(0);
   }
 
-  // Bail if the session lives in a generated file. The agent manually wrote
-  // the wrapper there for preview, and is responsible for writing the
-  // accepted variant to true source (or cleaning up on discard). See
-  // "Handle fallback" in live.md.
   if (isGeneratedFile(targetFile, { cwd: process.cwd() })) {
     console.log(JSON.stringify({
       handled: false,
@@ -238,6 +265,62 @@ function handleDiscard(id, lines, targetFile) {
 // Accept
 // ---------------------------------------------------------------------------
 
+/**
+ * Build carbonize stitch-in lines. JSX targets occupy a single child slot
+ * (ternary branch, return value, etc.) — the same constraint as live-wrap.
+ * When isJsx, tuck markers + <style> + variant wrapper inside one outer
+ * <div data-impeccable-carbonize> so the slot keeps a single root node.
+ */
+function buildCarbonizeReplacement({
+  indent,
+  commentSyntax,
+  isJsx,
+  id,
+  variantNum,
+  cssContent,
+  paramValues,
+  restored,
+}) {
+  const lines = [];
+  if (!cssContent) {
+    lines.push(...restored);
+    return lines;
+  }
+
+  const variantStyleAttr = isJsx
+    ? "style={{ display: 'contents' }}"
+    : 'style="display: contents"';
+
+  const pushCarbonizeBody = (bodyIndent) => {
+    lines.push(bodyIndent + commentSyntax.open + ' impeccable-carbonize-start ' + id + ' ' + commentSyntax.close);
+    lines.push(bodyIndent + '<style data-impeccable-css="' + id + '">' + (isJsx ? '{`' : ''));
+    for (const cssLine of cssContent) {
+      lines.push(bodyIndent + cssLine.trimStart());
+    }
+    lines.push(bodyIndent + (isJsx ? '`}</style>' : '</style>'));
+    if (paramValues && Object.keys(paramValues).length > 0) {
+      lines.push(
+        bodyIndent + commentSyntax.open + ' impeccable-param-values ' + id + ': ' + JSON.stringify(paramValues) + ' ' + commentSyntax.close,
+      );
+    }
+    lines.push(bodyIndent + commentSyntax.open + ' impeccable-carbonize-end ' + id + ' ' + commentSyntax.close);
+    lines.push(bodyIndent + '<div data-impeccable-variant="' + variantNum + '" ' + variantStyleAttr + '>');
+    lines.push(...restored);
+    lines.push(bodyIndent + '</div>');
+  };
+
+  if (isJsx) {
+    const wrapperStyle = 'style={{ display: "contents" }}';
+    lines.push(indent + '<div data-impeccable-carbonize="' + id + '" ' + wrapperStyle + '>');
+    pushCarbonizeBody(indent + '  ');
+    lines.push(indent + '</div>');
+  } else {
+    pushCarbonizeBody(indent);
+  }
+
+  return lines;
+}
+
 function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   const block = findMarkerBlock(id, lines);
   if (!block) return { handled: false, error: 'Markers not found' };
@@ -266,45 +349,17 @@ function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   const hasHelperAttrs = variantText.includes('data-impeccable-variant');
   const needsCarbonize = !!(cssContent || hasHelperAttrs);
 
-  // Build the replacement
   const restored = deindentContent(variantContent, indent);
-  const replacement = [];
-
-  if (cssContent) {
-    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-start ' + id + ' ' + commentSyntax.close);
-    // JSX targets need the CSS body wrapped in a template literal so that the
-    // `{` and `}` in CSS rules don't get parsed as JSX expressions.
-    replacement.push(indent + '<style data-impeccable-css="' + id + '">' + (isJsx ? '{`' : ''));
-    // Re-indent CSS content to match
-    for (const cssLine of cssContent) {
-      replacement.push(indent + cssLine.trimStart());
-    }
-    replacement.push(indent + (isJsx ? '`}</style>' : '</style>'));
-    if (paramValues && Object.keys(paramValues).length > 0) {
-      // Preserve the user's knob positions for the carbonize-cleanup agent
-      // to bake into the final CSS when it collapses scoped rules.
-      replacement.push(indent + commentSyntax.open + ' impeccable-param-values ' + id + ': ' + JSON.stringify(paramValues) + ' ' + commentSyntax.close);
-    }
-    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-end ' + id + ' ' + commentSyntax.close);
-  }
-
-  // Keep the `@scope ([data-impeccable-variant="N"])` selectors in the
-  // carbonize CSS block working visually by re-wrapping the accepted content
-  // in a data-impeccable-variant="N" div with `display: contents` (so layout
-  // isn't affected). The carbonize agent strips this attribute + wrapper when
-  // it moves the CSS to a proper stylesheet.
-  //
-  // Style attribute syntax has to follow the host file's flavor — JSX files
-  // need the object form, otherwise React 19 throws "Failed to set indexed
-  // property [0] on CSSStyleDeclaration" while parsing the string char-by-char.
-  if (cssContent) {
-    const styleAttr = isJsx ? "style={{ display: 'contents' }}" : 'style="display: contents"';
-    replacement.push(indent + '<div data-impeccable-variant="' + variantNum + '" ' + styleAttr + '>');
-    replacement.push(...restored);
-    replacement.push(indent + '</div>');
-  } else {
-    replacement.push(...restored);
-  }
+  const replacement = buildCarbonizeReplacement({
+    indent,
+    commentSyntax,
+    isJsx,
+    id,
+    variantNum,
+    cssContent,
+    paramValues,
+    restored,
+  });
 
   const newLines = [
     ...lines.slice(0, replaceRange.start),
@@ -362,28 +417,6 @@ function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, met
   const hasHelperAttrs = variantText.includes('data-impeccable-variant');
   const needsCarbonize = !!(cssContent || hasHelperAttrs);
 
-  if (opts.deferSourceWrite) {
-    const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
-    writeDeferredSourceShadowAccept({
-      id,
-      variantNum,
-      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
-      sourceFile: sourceRel,
-      sourceStartLine: meta.sourceStartLine,
-      sourceEndLine: meta.sourceEndLine,
-      paramValues,
-    });
-    return {
-      file: sourceRel,
-      sourceFile: sourceRel,
-      previewMode: 'source-shadow',
-      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
-      deferredSourceWrite: true,
-      carbonize: false,
-      acceptedOriginalText: originalContent.join('\n'),
-    };
-  }
-
   const restored = deindentContent(variantContent, indent);
 
   if (sourceFile.endsWith('.svelte')) {
@@ -410,29 +443,16 @@ function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, met
     };
   }
 
-  const replacement = [];
-
-  if (cssContent) {
-    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-start ' + id + ' ' + commentSyntax.close);
-    replacement.push(indent + '<style data-impeccable-css="' + id + '">' + (isJsx ? '{`' : ''));
-    for (const cssLine of cssContent) {
-      replacement.push(indent + cssLine.trimStart());
-    }
-    replacement.push(indent + (isJsx ? '`}</style>' : '</style>'));
-    if (paramValues && Object.keys(paramValues).length > 0) {
-      replacement.push(indent + commentSyntax.open + ' impeccable-param-values ' + id + ': ' + JSON.stringify(paramValues) + ' ' + commentSyntax.close);
-    }
-    replacement.push(indent + commentSyntax.open + ' impeccable-carbonize-end ' + id + ' ' + commentSyntax.close);
-  }
-
-  if (cssContent) {
-    const styleAttr = isJsx ? "style={{ display: 'contents' }}" : 'style="display: contents"';
-    replacement.push(indent + '<div data-impeccable-variant="' + variantNum + '" ' + styleAttr + '>');
-    replacement.push(...restored);
-    replacement.push(indent + '</div>');
-  } else {
-    replacement.push(...restored);
-  }
+  const replacement = buildCarbonizeReplacement({
+    indent,
+    commentSyntax,
+    isJsx,
+    id,
+    variantNum,
+    cssContent,
+    paramValues,
+    restored,
+  });
 
   const newLines = [
     ...sourceLines.slice(0, start),
@@ -536,43 +556,7 @@ function writeDeferredSourceShadowAccept(entry, cwd = process.cwd()) {
 }
 
 export function applyDeferredSourceShadowAccepts(cwd = process.cwd()) {
-  const file = deferredSourceShadowAcceptsPath(cwd);
-  const data = readDeferredSourceShadowAccepts(cwd);
-  const pending = Array.isArray(data.accepts) ? data.accepts : [];
-  const results = [];
-  const remaining = [];
-  for (const entry of pending) {
-    try {
-      const previewFile = path.resolve(cwd, entry.previewFile);
-      const previewContent = fs.readFileSync(previewFile, 'utf-8');
-      const previewLines = previewContent.split('\n');
-      const meta = {
-        sourceFile: entry.sourceFile,
-        sourceStartLine: entry.sourceStartLine,
-        sourceEndLine: entry.sourceEndLine,
-      };
-      const result = handleSourceShadowAccept(
-        entry.id,
-        entry.variantNum,
-        previewLines,
-        previewFile,
-        meta,
-        entry.paramValues || null,
-        { deferSourceWrite: false },
-      );
-      results.push({ id: entry.id, ok: result.handled !== false, result });
-      if (result.handled === false) remaining.push(entry);
-    } catch (err) {
-      results.push({ id: entry.id, ok: false, error: err.message });
-      remaining.push(entry);
-    }
-  }
-  if (remaining.length > 0) {
-    fs.writeFileSync(file, JSON.stringify({ accepts: remaining }, null, 2) + '\n', 'utf-8');
-  } else {
-    try { fs.rmSync(file, { force: true }); } catch {}
-  }
-  return { applied: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
+  return applyDeferredSvelteComponentAccepts(cwd);
 }
 
 function readSourceShadowPreviewMeta(content, id) {
@@ -1042,4 +1026,4 @@ if (_running?.endsWith('live-accept.mjs') || _running?.endsWith('live-accept.mjs
   acceptCli();
 }
 
-export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile, scrubManualEditsAgainstOriginalBlock };
+export { findMarkerBlock, extractOriginal, extractVariant, extractCss, deindentContent, detectCommentSyntax, scrubManualEditsAgainstFile, scrubManualEditsAgainstOriginalBlock, applyDeferredSvelteComponentAccepts };

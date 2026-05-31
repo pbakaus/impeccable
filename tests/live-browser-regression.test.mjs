@@ -27,6 +27,50 @@ const LIVE_BROWSER = path.resolve(
 const SOURCE = fs.readFileSync(LIVE_BROWSER, 'utf-8');
 
 describe('live-browser.js regression guards', () => {
+  it('exposes adapter-neutral live chrome core metadata at runtime', () => {
+    assert.match(
+      SOURCE,
+      /window\.__IMPECCABLE_LIVE_CHROME_CORE__\s*=\s*\{[\s\S]{0,600}?mountContract: LIVE_CHROME_MOUNT_CONTRACT/,
+      'live-browser.js should expose the shared chrome mount contract for Svelte now and React/plain DOM later',
+    );
+    assert.match(
+      SOURCE,
+      /surfaces: LIVE_UI_SURFACES/,
+      'live-browser.js should publish the live UI inventory used by parity audit recorders',
+    );
+    assert.match(
+      SOURCE,
+      /adapter: window\.__IMPECCABLE_LIVE_ADAPTER__ \|\| 'dom'/,
+      'live-browser.js should default to a plain DOM adapter and not assume Svelte',
+    );
+  });
+
+  it('routes Impeccable chrome through the supplied UI root', () => {
+    assert.match(
+      SOURCE,
+      /function liveUiRoot\(\)[\s\S]{0,220}?window\.__IMPECCABLE_LIVE_UI_ROOT__[\s\S]{0,160}?return document\.body;/,
+      'live chrome should mount into an adapter-provided root, falling back to document.body',
+    );
+    assert.match(
+      SOURCE,
+      /function uiAppendStyle\(styleEl\)[\s\S]{0,220}?root !== document\.body[\s\S]{0,80}?document\.head\.appendChild/,
+      'live chrome styles should enter the shadow root when one is provided',
+    );
+    assert.match(
+      SOURCE,
+      /function uiGetById\(id\)[\s\S]{0,260}?root\.getElementById[\s\S]{0,260}?document\.getElementById/,
+      'live chrome lookups should pierce the shared shadow root before falling back to document',
+    );
+  });
+
+  it('does not define duplicate Svelte-only chrome controls in the browser bundle', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /from ['"]svelte|@sveltejs|\$app\/environment/,
+      'shared live chrome must remain plain JS, with Svelte limited to the adapter host',
+    );
+  });
+
   it('resolveCanvasBackground does not fall back to `getComputedStyle(...).backgroundColor || ...`', () => {
     // The browser returns the literal string `"rgba(0, 0, 0, 0)"` for an
     // unset body/html background. That string is non-empty and truthy, so a
@@ -155,14 +199,6 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('source reinjection can re-anchor Svelte scoped class elements', () => {
-    assert.match(
-      SOURCE,
-      /expectedClasses = String\(cls\)\.split\([\s\S]{0,500}?expectedClasses\.every\(\(name\) => c\.classList\.contains\(name\)\)/,
-      'source-shadow reinjection should match source classes as a subset so Svelte scoped classes do not block DOM replacement',
-    );
-  });
-
   it('nonfatal source reinjection misses do not pollute console.error', () => {
     assert.match(
       SOURCE,
@@ -171,60 +207,181 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('source-shadow previews hydrate Svelte text expressions from the live DOM', () => {
+  it('source reinjection can re-anchor elements by class subset', () => {
     assert.match(
       SOURCE,
-      /wrapper\.dataset\.impeccablePreview === 'source-shadow'[\s\S]{0,120}?hydrateSourceShadowExpressions\(wrapper, origContent, liveEl\);/,
-      'source-shadow injection should hydrate framework expressions before replacing the live element',
+      /expectedClasses = String\(cls\)\.split\([\s\S]{0,500}?expectedClasses\.every\(\(name\) => c\.classList\.contains\(name\)\)/,
+      'source reinjection should match source classes as a subset so framework-generated classes do not block DOM replacement',
+    );
+  });
+  it('Svelte component previews mount real components from manifest.json', () => {
+    assert.match(
+      SOURCE,
+      /function isSvelteComponentManifestPath\(filePath\)[\s\S]{0,120}?manifest\.json/,
+      'source reinjection should detect Svelte component manifests',
     );
     assert.match(
       SOURCE,
-      /function buildSvelteExpressionTextMap\(sourceOriginal, liveOriginal\)[\s\S]{0,1200}?collectTextNodes\(liveOriginal\)[\s\S]{0,800}?map\.set\(token, liveText\);/,
-      'Svelte expression hydration should map source placeholders like {item.name} to current live DOM text',
+      /async function mountSvelteComponentVariant\(variantNum\)[\s\S]{0,1200}?runtime\.mount\(Component,/,
+      'Svelte component injection should dynamically import and mount compiled variants',
+    );
+    assert.match(
+      SOURCE,
+      /async function injectSvelteComponentsFromManifest\(manifestPath, sessionId\)[\s\S]{0,3000}?await mountSvelteComponentVariant\(/,
+      'manifest injection should mount the visible Svelte component variant',
+    );
+    assert.match(
+      SOURCE,
+      /function buildSveltePropValuesFromLiveElement\(liveEl, manifest\)[\s\S]{0,500}?buildSvelteExpressionTextMap/,
+      'Svelte component injection should map propContract expressions to live DOM values',
     );
   });
 
-  it('source-shadow previews carry Svelte scoped classes into injected variants', () => {
+  it('orphaned Svelte component wrappers reset instead of stranding the bar at 0/0', () => {
     assert.match(
       SOURCE,
-      /wrapper\.dataset\.impeccablePreview === 'source-shadow'[\s\S]{0,180}?hydrateSourceShadowFrameworkClasses\(wrapper, origContent, liveEl\);/,
-      'source-shadow injection should hydrate framework-generated classes after hydrating text',
+      /wrapper\.dataset\.impeccablePreview === 'svelte-component'[\s\S]{0,200}?svelteComponentSession\?\.sessionId !== sessionId[\s\S]{0,200}?return false;/,
+      'resumeSession should drop an orphaned svelte-component wrapper instead of resuming it empty',
     );
     assert.match(
       SOURCE,
-      /function collectSvelteScopeClasses\(root\)[\s\S]{0,500}?\^svelte-\[\\w-\]\+\$/,
-      'Svelte scope class hydration should recognize generated svelte-* class names',
+      /function abortSvelteComponentInjection\(sessionId, message\)[\s\S]{0,1500}?state = 'PICKING';/,
+      'a failed Svelte mount should reset the bar to PICKING via abortSvelteComponentInjection',
     );
     assert.match(
       SOURCE,
-      /function addFrameworkClassesToPreviewTree\(root, scopeClasses\)[\s\S]{0,500}?root\.querySelectorAll\('\*'\)[\s\S]{0,300}?classList\.add\(name\)/,
-      'source-shadow injection should add scoped classes throughout the preview subtree so component CSS keeps applying',
+      /const mounted = await mountSvelteComponentVariant\(visibleVariant\);[\s\S]{0,500}?abortSvelteComponentInjection\(sessionId,/,
+      'injection should abort when the initial variant mount fails',
     );
   });
 
-  it('source-shadow accepts defer source writes to avoid Svelte accept-time remounts', () => {
+  it('Svelte component params load from a sidecar params.json, not a DOM attribute', () => {
     assert.match(
       SOURCE,
-      /acceptWrapper\?\.dataset\?\.impeccablePreview === 'source-shadow'[\s\S]{0,100}?acceptPayload\.deferSourceWrite = true;/,
-      'source-shadow accepts should tell the agent to defer the real source write',
+      /async function loadSvelteComponentParams\(manifest\)[\s\S]{0,400}?params\.json/,
+      'Svelte component params should be fetched from componentDir/params.json',
     );
     assert.match(
+      SOURCE,
+      /function parseVariantParams\(variantEl\)[\s\S]{0,400}?svelteComponentSession\?\.sessionId === currentSessionId[\s\S]{0,200}?paramsByVariant/,
+      'parseVariantParams should read the Svelte session sidecar params instead of the data-impeccable-params attribute',
+    );
+  });
+
+  it('Svelte component accepts write source immediately instead of deferring to live exit', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /acceptPayload\.deferSourceWrite\s*=/,
+      'Svelte component accepts must not ask the agent to defer the real source write',
+    );
+    assert.doesNotMatch(
       SOURCE,
       /Accepted\. Svelte source will sync when live mode exits\./,
-      'the browser should explain why source-shadow accepts do not write the watched Svelte file immediately',
+      'the browser should not promise exit-time source sync',
+    );
+    assert.match(
+      SOURCE,
+      /const acceptedIsSvelteComponent = svelteComponentSession\?\.sessionId === acceptedSessionId[\s\S]{0,120}?impeccablePreview === 'svelte-component';/,
+      'Svelte component accepts should still bridge the accepted preview in the DOM while HMR catches up',
     );
   });
 
-  it('deferred source-shadow accept keeps preview CSS after wrapper cleanup', () => {
+  it('Accept waits for final poll acknowledgement before confirming the UI', () => {
     assert.match(
       SOURCE,
-      /acceptedIsSourceShadow[\s\S]{0,180}?commitAcceptedVariantToDom\(acceptedSessionId, acceptedVariant\);/,
-      'source-shadow accept should commit the selected variant immediately after server acknowledgement',
+      /let pendingAccept = null;/,
+      'Accept needs a pending state that survives the browser POST completing before source promotion finishes',
     );
     assert.match(
       SOURCE,
-      /function commitAcceptedVariantToDom\(sessionId, variantId\)[\s\S]{0,500}?const style = wrapper\.querySelector\('style\[data-impeccable-css\]'\);[\s\S]{0,350}?parent\.insertBefore\(promotedStyle, wrapper\);[\s\S]{0,350}?parent\.replaceChild\(committed, wrapper\);/,
-      'source-shadow accept fallback should promote the preview style before replacing the wrapper so accepted CSS remains visible',
+      /sendEvent\(acceptPayload, \{ throwOnError: true \}\)\s*[\s\S]{0,80}?\.then\(\(\) => \{\}\)/,
+      'the accept POST acknowledgement must not immediately mark the variant as applied',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /sendEvent\(acceptPayload, \{ throwOnError: true \}\)[\s\S]{0,160}?confirmAcceptAfterReceipt\(\)/,
+      'confirming on browser event receipt recreates the source-promotion race',
+    );
+    assert.match(
+      SOURCE,
+      /case 'complete':[\s\S]{0,120}?completePendingAccept\(msg\)/,
+      'the browser should confirm only when the server broadcasts complete for the active accept',
+    );
+    assert.match(
+      SOURCE,
+      /function failPendingAccept\(msg\)[\s\S]{0,220}?state = 'CYCLING'/,
+      'failed accept promotion should recover to cycling instead of hiding the bar',
+    );
+  });
+
+  it('Svelte component cycling uses unmount and remount', () => {
+    assert.match(
+      SOURCE,
+      /async function mountSvelteComponentVariant\(variantNum\)[\s\S]{0,900}?runtime\.unmount/,
+      'Svelte component cycling should unmount the previous variant before mounting the next one',
+    );
+    assert.match(
+      SOURCE,
+      /svelteComponentSession\?\.sessionId === sessionId[\s\S]{0,200}?mountSvelteComponentVariant\(num\)/,
+      'showVariantInDOM should route Svelte component sessions through mount-based cycling',
+    );
+  });
+
+  it('Svelte component cycling keeps the highlight anchored during variant swaps', () => {
+    assert.match(
+      SOURCE,
+      /function makeFrozenAnchor\(el\)[\s\S]{0,700}?__impeccableFrozenAnchor/,
+      'Svelte component swaps should keep a frozen real-element rect while the old component unmounts and the next one mounts',
+    );
+    assert.match(
+      SOURCE,
+      /function resolveSvelteComponentAnchor\(session = svelteComponentSession\)[\s\S]{0,180}?session\?\.swapAnchor/,
+      'the live overlay should use the frozen rect when the mount target is temporarily empty',
+    );
+    assert.match(
+      SOURCE,
+      /const mod = await import\([\s\S]{0,260}?moduleUrl\);[\s\S]{0,260}?if \(svelteComponentSession\.mountedInstance && runtime\.unmount\)/,
+      'the next Svelte component should be imported before unmounting the current one to avoid an empty-frame highlight jump',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /selectedElement = svelteComponentSession\.mountTargetEl\?\.firstElementChild\s*\|\|\s*svelteComponentSession\.mountTargetEl/,
+      'selectedElement must not fall back to the display:contents mount target, because its rect is zero and makes the highlight jump',
+    );
+    assert.match(
+      SOURCE,
+      /let variantSelectionInFlight = false;/,
+      'variant selection needs an in-flight guard for async Svelte remounts',
+    );
+    assert.match(
+      SOURCE,
+      /let variantSelectionPromise = null;/,
+      'accept needs access to the active Svelte remount promise before reading the visible DOM variant',
+    );
+    assert.match(
+      SOURCE,
+      /async function selectVariant\(next, checkpointReason\)[\s\S]{0,240}?if \(variantSelectionInFlight\) return;/,
+      'variant clicks should be serialized so overlapping Svelte mount promises cannot race the overlay anchor',
+    );
+    assert.match(
+      SOURCE,
+      /async function handleAccept\(\)[\s\S]{0,180}?if \(variantSelectionPromise\)[\s\S]{0,160}?await variantSelectionPromise;/,
+      'Accept should wait for an in-flight Svelte variant mount before reading mountedVariant',
+    );
+    assert.match(
+      SOURCE,
+      /function applyOriginalAttrsToSvelteAnchor\(el, originalMarkup\)[\s\S]{0,650}?el\.setAttribute\(attr\.name, attr\.value\);/,
+      'Svelte component preview DOM should preserve source attributes such as data-testid while cycling',
+    );
+    assert.match(
+      SOURCE,
+      /function commitAcceptedSvelteComponentToDom\(sessionId\)[\s\S]{0,900}?replaceChild\(committed, wrapperEl\)/,
+      'Svelte accept should promote the accepted preview out of the data-impeccable wrapper immediately',
+    );
+    assert.match(
+      SOURCE,
+      /function completePendingAccept\(msg\)[\s\S]{0,260}?commitAcceptedSvelteComponentToDom\(accepted\.id\);/,
+      'completed Svelte accepts should remove the live preview wrapper before cleanup',
     );
   });
 
@@ -439,7 +596,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function handleAccept\(\)[\s\S]{0,180}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
+      /async function handleAccept\(\)[\s\S]{0,360}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
       'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
     );
   });

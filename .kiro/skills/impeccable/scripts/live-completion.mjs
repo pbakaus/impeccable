@@ -3,6 +3,7 @@ export function completionTypeForAcceptResult(eventType, acceptResult) {
   if (acceptResult?.handled === true && acceptResult?.carbonize === true) return 'agent_done';
   if (acceptResult?.handled === true) return 'complete';
   if (acceptResult?.mode === 'error') return 'error';
+  if (eventType === 'accept' && acceptResult?.previewMode === 'svelte-component') return 'error';
   return 'agent_done';
 }
 

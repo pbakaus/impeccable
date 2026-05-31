@@ -5,22 +5,22 @@
     "insertBefore": "</body>",
     "commentSyntax": "html"
   },
-  "sourceFiles": ["src/app.html", "src/routes/+page.svelte", "src/routes/+layout.svelte", "svelte.config.js", "vite.config.js"],
+  "sourceFiles": ["DESIGN.md", "src/app.html", "src/routes/+page.svelte", "src/routes/+layout.svelte", "svelte.config.js", "vite.config.js"],
   "generatedFiles": [],
   "wrapCases": [
     {
-      "name": "wraps hero title through source-shadow preview",
+      "name": "wraps hero title through Svelte component preview",
       "args": { "classes": "hero-title", "tag": "h1" },
-      "expectedFile": ".impeccable/live/previews/wraptest0.html",
+      "expectedFile": "node_modules/.impeccable-live/wraptest0/manifest.json",
       "expectedSourceFile": "src/routes/+page.svelte",
-      "expectedPreviewMode": "source-shadow"
+      "expectedPreviewMode": "svelte-component"
     },
     {
-      "name": "wraps stateful expense row through source-shadow preview",
+      "name": "wraps stateful expense row through Svelte component preview",
       "args": { "classes": "expense-row", "tag": "article" },
-      "expectedFile": ".impeccable/live/previews/wraptest1.html",
+      "expectedFile": "node_modules/.impeccable-live/wraptest1/manifest.json",
       "expectedSourceFile": "src/routes/+page.svelte",
-      "expectedPreviewMode": "source-shadow"
+      "expectedPreviewMode": "svelte-component"
     }
   ],
   "runtime": {
@@ -44,6 +44,40 @@
     "probe": {
       "expectLiveInit": true,
       "expectConsoleClean": true
-    }
+    },
+    "liveChrome": {
+      "bottomBar": true,
+      "detect": {
+        "expectMinCount": 1
+      },
+      "design": {
+        "title": "",
+        "rawText": "Design System: Stateful Expense System"
+      },
+      "annotations": {
+        "selector": ".hero-title",
+        "comment": "Make the page title easier to scan"
+      }
+    },
+    "manualEditScenarios": [
+      {
+        "name": "SvelteKit stateful expense row manual edit",
+        "element": { "selector": "[data-testid='expense-row']" },
+        "applyTimeoutMs": 300000,
+        "expectApplyLoading": true,
+        "expectNoRollback": true,
+        "edits": [
+          {
+            "leafSelector": ".expense-row strong",
+            "originalText": "Design snack",
+            "newText": "Design snack edited",
+            "expectedSourceFile": "src/routes/+page.svelte",
+            "expectedSourceMissing": [
+              "name: 'Design snack', amount: '$12'"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

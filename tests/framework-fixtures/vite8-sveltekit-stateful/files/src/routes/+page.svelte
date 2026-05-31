@@ -37,6 +37,11 @@
       </article>
     {/if}
   </section>
+
+  <aside class="detect-target" data-testid="detect-target">
+    <strong>Audit edge case</strong>
+    <p>This deliberately keeps a one-sided accent border for the Detect smoke test.</p>
+  </aside>
 </main>
 
 <style>
@@ -103,5 +108,24 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+  }
+
+  .detect-target {
+    margin-top: 28px;
+    border-left: 6px solid #f4c430;
+    border-radius: 0 14px 14px 0;
+    background: rgba(255, 255, 255, 0.62);
+    padding: 16px 18px;
+    color: #1b3329;
+  }
+
+  .detect-target strong,
+  .detect-target p {
+    margin: 0;
+  }
+
+  .detect-target p {
+    margin-top: 6px;
+    font-size: 14px;
   }
 </style>

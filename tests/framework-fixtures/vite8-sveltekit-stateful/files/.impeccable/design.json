@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "source": "vite8-sveltekit-stateful fixture",
+  "extensions": {
+    "colorMeta": {
+      "forest": { "description": "Deep green page canvas" },
+      "moss": { "description": "Main panel surface" },
+      "paper": { "description": "Primary control surface" },
+      "ink": { "description": "Readable foreground text" }
+    },
+    "typographyMeta": {
+      "display": { "purpose": "Compact headings and page titles" },
+      "body": { "purpose": "Expense rows and supporting copy" }
+    },
+    "shadows": [
+      {
+        "name": "soft-panel",
+        "value": "0 8px 28px rgba(0, 0, 0, 0.16)",
+        "purpose": "Used when floating panels need separation"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Add expense button",
+      "kind": "button",
+      "html": "<button>Ausgabe hinzufugen</button>",
+      "css": "button { border: 0; border-radius: 999px; background: #f8fbf8; color: #142720; padding: 12px 18px; font-weight: 700; }"
+    },
+    {
+      "name": "Expense row",
+      "kind": "card",
+      "html": "<article><strong>Design snack</strong><span>$12</span></article>",
+      "css": "article { border: 1px solid #16332b; border-radius: 18px; background: rgba(255, 255, 255, 0.62); padding: 26px; display: flex; justify-content: space-between; }"
+    }
+  ],
+  "narrative": {
+    "overview": "Keep the tracker practical, compact, and legible.",
+    "rules": [
+      { "name": "Preserve state clarity", "body": "Expense count and row content should stay readable during live previews." },
+      { "name": "Keep controls compact", "body": "Buttons and pills should feel like app controls, not marketing CTAs." }
+    ],
+    "dos": [
+      "Use green surfaces with strong foreground contrast.",
+      "Keep expense rows easy to scan."
+    ],
+    "donts": [
+      "Do not introduce decorative hero layouts.",
+      "Do not hide the open-count status."
+    ]
+  }
+}

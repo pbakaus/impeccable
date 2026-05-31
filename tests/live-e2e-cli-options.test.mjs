@@ -45,7 +45,7 @@ describe('live-e2e readCliOption', () => {
 });
 
 describe('live-poll accept args', () => {
-  it('passes deferred source writes through for source-shadow accepts', () => {
+  it('does not pass deprecated deferred source writes through', () => {
     assert.deepEqual(
       buildAcceptScriptArgs({
         type: 'accept',
@@ -54,7 +54,7 @@ describe('live-poll accept args', () => {
         pageUrl: '/',
         deferSourceWrite: true,
       }),
-      ['--id', 'abc12345', '--variant', '2', '--page-url', '/', '--defer-source-write'],
+      ['--id', 'abc12345', '--variant', '2', '--page-url', '/'],
     );
   });
 });
