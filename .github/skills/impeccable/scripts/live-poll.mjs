@@ -318,7 +318,7 @@ Modes:
 Options:
   --timeout=MS        One-shot poll timeout in ms (default: 600000). Ignored in --stream mode
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
-  --file PATH         Attach a source file path to the reply (generate flow)
+  --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
   --help              Show this help message
 

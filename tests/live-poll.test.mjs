@@ -120,6 +120,14 @@ describe('live-poll --reply arg parsing', () => {
     assert.equal(reply.message, undefined);
   });
 
+  it('parses a steer_done reply with a source file', () => {
+    const reply = parseReplyArgs(['--reply', 'abc12345', 'steer_done', '--file', 'src/routes/+page.svelte', 'Title updated']);
+    assert.equal(reply.id, 'abc12345');
+    assert.equal(reply.type, 'steer_done');
+    assert.equal(reply.file, 'src/routes/+page.svelte');
+    assert.equal(reply.message, 'Title updated');
+  });
+
   it('reaches the POST body unchanged through buildPollReplyPayload', () => {
     const reply = parseReplyArgs(['--reply', 'abc12345', 'done', '--data', '{"status":"partial","appliedEntryIds":["abc12345"]}']);
     const payload = buildPollReplyPayload('tok', reply);

@@ -229,6 +229,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       break;
     case 'steer_done':
       next.phase = 'steer_done';
+      next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
+      next.message = event.message ?? next.message;
       next.pendingEventSeq = null;
       next.pendingEvent = null;
       break;

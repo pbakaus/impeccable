@@ -413,6 +413,21 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
+      /function keepSteerPointerInside\(e[\s\S]{0,120}?preventDefault/,
+      'steer pointer events must stay inside the shadow chrome and not be stolen by the host app',
+    );
+    assert.match(
+      SOURCE,
+      /function submitSteerMessage\(\)[\s\S]{0,700}?steerPendingMessage = text;[\s\S]{0,900}?steer_send_failed[\s\S]{0,220}?restoreMessage: text/,
+      'failed steer submits should restore the typed prompt instead of clearing the input',
+    );
+    assert.match(
+      SOURCE,
+      /function lockSteerChat\(\)[\s\S]{0,650}?preparePageChatInputForTyping\(\)/,
+      'steer processing must not clear/collapse the input before final acknowledgement',
+    );
+    assert.match(
+      SOURCE,
       /case 'steer_done':[\s\S]{0,80}?maybeCompleteSteer\(msg\)/,
       'steer_done SSE must unlock the chat bar',
     );

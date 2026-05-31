@@ -917,6 +917,12 @@ function acknowledgePendingEvent(id) {
   return acknowledged;
 }
 
+function findPendingEventById(id) {
+  if (!id) return null;
+  const entry = state.pendingEvents.find((item) => item.event?.id === id);
+  return entry?.event || null;
+}
+
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
   const id = typeof eventOrId === 'string' ? eventOrId : eventOrId?.id || 'EVENT_ID';
   return `live-poll.mjs --reply ${id} done --data '<json>'`;
@@ -2005,6 +2011,16 @@ function handlePollPost(req, res) {
       });
       res.writeHead(409, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
+      return;
+    }
+    const pendingEventBeforeAck = findPendingEventById(msg.id);
+    if (pendingEventBeforeAck?.type === 'steer' && msg.type === 'steer_done'
+        && !msg.file && !(typeof msg.message === 'string' && msg.message.trim())) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'steer_done_requires_file_or_message',
+        hint: 'Reply with --file after writing source, or include a message explaining an intentional no-op.',
+      }));
       return;
     }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);

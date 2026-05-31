@@ -2721,6 +2721,7 @@ colors: {}
         id: 'b2c3d4e5',
         type: 'steer_done',
         message: 'Hero spacing tightened',
+        file: 'src/routes/+page.svelte',
       }),
     });
 
@@ -2728,8 +2729,60 @@ colors: {}
     assert.ok(text.includes('"steer_done"'));
     assert.ok(text.includes('b2c3d4e5'));
     assert.ok(text.includes('Hero spacing tightened'));
+    assert.ok(text.includes('src/routes/+page.svelte'));
 
     controller.abort();
+  });
+
+  it('/poll rejects steer_done without source file or no-op message', async () => {
+    await drainPolls(server);
+
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'steer',
+        id: 'b2c3d4e6',
+        message: 'Make the title clearer',
+        pageUrl: 'http://localhost:3000/',
+      }),
+    });
+    assert.equal(postRes.status, 200);
+
+    const event = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=5000&leaseMs=1`)
+      .then(r => r.json());
+    assert.equal(event.type, 'steer');
+    assert.equal(event.id, 'b2c3d4e6');
+
+    const badAck = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'b2c3d4e6',
+        type: 'steer_done',
+      }),
+    });
+    assert.equal(badAck.status, 400);
+    const badBody = await badAck.json();
+    assert.equal(badBody.error, 'steer_done_requires_file_or_message');
+
+    await new Promise(r => setTimeout(r, 5));
+    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=1`)
+      .then(r => r.json());
+    assert.equal(redelivered.id, 'b2c3d4e6', 'invalid steer_done must not acknowledge the pending steer event');
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id: 'b2c3d4e6',
+        type: 'error',
+        message: 'cleanup',
+      }),
+    });
   });
 
   it('POST /events accepts generate with optional annotation fields', async () => {

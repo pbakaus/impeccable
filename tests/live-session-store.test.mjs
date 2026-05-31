@@ -209,6 +209,28 @@ describe('live-session-store', () => {
     );
   });
 
+  it('records steer completion source file and message', () => {
+    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'steer-session' });
+    store.appendEvent({
+      type: 'steer',
+      id: 'steer-session',
+      message: 'Make the hero clearer',
+      pageUrl: 'http://localhost:5174/',
+    });
+    store.appendEvent({
+      type: 'steer_done',
+      id: 'steer-session',
+      file: 'src/routes/+page.svelte',
+      message: 'Hero updated',
+    });
+
+    const snapshot = store.getSnapshot('steer-session');
+    assert.equal(snapshot.phase, 'steer_done');
+    assert.equal(snapshot.sourceFile, 'src/routes/+page.svelte');
+    assert.equal(snapshot.message, 'Hero updated');
+    assert.equal(snapshot.pendingEvent, null);
+  });
+
   it('keeps completed sessions auditable but excludes them from active sessions by default', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'done-session' });
     store.appendEvent({

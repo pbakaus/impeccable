@@ -1584,6 +1584,13 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
     assert.deepEqual(parsed, validParsed);
   });
 
+  it('extracts fenced JSON when a provider adds stray wrapper text', () => {
+    const parsed = parseVariantResponse(
+      ':\n\n```json\n' + JSON.stringify(validParsed) + '\n```\n\nReturn plain JSON only.',
+    );
+    assert.deepEqual(parsed, validParsed);
+  });
+
   it('echoes the raw payload (first 500 chars) on JSON-parse failure', () => {
     assert.throws(
       () => parseVariantResponse('not valid json {'),

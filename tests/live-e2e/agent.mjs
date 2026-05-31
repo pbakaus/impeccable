@@ -1537,6 +1537,7 @@ export async function runAgentLoop({
             type: 'steer_done',
             id: event.id,
             message: toast,
+            file: steerContext.targetFile,
           }),
           signal,
         });

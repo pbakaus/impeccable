@@ -877,26 +877,26 @@ export async function preparePageForBarInteraction(page) {
   });
 }
 
-async function focusSteerInput(page) {
-  return page.evaluate(({ chatSel, inputSel }) => {
-    const chat = window.__impeccableLiveQuery(chatSel);
-    const input = window.__impeccableLiveQuery(inputSel);
-    if (!chat || !input) return false;
-    chat.dataset.expanded = 'true';
-    chat.style.width = 'min(280px, 38vw)';
-    chat.style.cursor = 'text';
-    input.disabled = false;
-    input.style.pointerEvents = 'auto';
-    input.style.opacity = '1';
-    input.style.width = 'auto';
-    input.style.padding = '0 6px';
-    try { window.focus(); } catch { /* embed may block */ }
-    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
-    const active = window.__IMPECCABLE_LIVE_CHROME_CORE__?.activeElementDeep?.()
-      || input.getRootNode()?.activeElement
-      || document.activeElement;
-    return active === input;
-  }, { chatSel: STEER_CHAT_ID, inputSel: STEER_INPUT_ID });
+export async function waitForSteerInputFocused(page, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    (inputSel) => {
+      const input = window.__impeccableLiveQuery(inputSel);
+      const active = window.__IMPECCABLE_LIVE_CHROME_CORE__?.activeElementDeep?.()
+        || input?.getRootNode?.()?.activeElement
+        || document.activeElement;
+      return Boolean(input && active === input && input.style.pointerEvents !== 'none' && input.style.opacity !== '0');
+    },
+    STEER_INPUT_ID,
+    { timeout },
+  );
+}
+
+export async function waitForSteerInputValue(page, value, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    ({ inputSel, value: expected }) => window.__impeccableLiveQuery(inputSel)?.value === expected,
+    { inputSel: STEER_INPUT_ID, value },
+    { timeout },
+  );
 }
 
 /**
@@ -905,21 +905,21 @@ async function focusSteerInput(page) {
  * (e.g. Astro dev toolbar) intercept pointer events — same outcome as keyboard focus.
  */
 export async function submitSteer(page, message) {
+  await installLiveQueryHelpers(page);
   await preparePageForBarInteraction(page);
-  await page.locator(STEER_CHAT_ID).waitFor({ state: 'visible', timeout: 5_000 });
+  const chat = page.locator(STEER_CHAT_ID);
+  await chat.waitFor({ state: 'visible', timeout: 5_000 });
 
   try {
-    await page.locator(STEER_CHAT_ID).click({ timeout: 2_500 });
+    await chat.click({ timeout: 2_500 });
   } catch {
-    await focusSteerInput(page);
+    await chat.click({ force: true, timeout: 2_500 });
   }
-  if (!(await focusSteerInput(page))) {
-    await page.locator(STEER_CHAT_ID).click({ force: true, timeout: 2_500 }).catch(() => {});
-    await focusSteerInput(page);
-  }
+  await waitForSteerInputFocused(page);
 
   const input = page.locator(STEER_INPUT_ID);
-  await input.fill(message, { timeout: 5_000 });
+  await input.type(message, { timeout: 5_000 });
+  await waitForSteerInputValue(page, message);
   await input.press('Enter');
 }
 

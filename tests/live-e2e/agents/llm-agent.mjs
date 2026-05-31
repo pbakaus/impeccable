@@ -177,6 +177,7 @@ const STEER_SYSTEM_INSTRUCTIONS = [
   '- Use exact find strings copied from context.sourceExcerpt or context.tagLine. Do not guess whitespace.',
   '- Prefer a single edit on the hero opening tag (h1 with the hero class). Preserve all existing classes and inner content.',
   '- file must match context.targetFile unless the excerpt clearly shows a different path is wrong.',
+  '- Never edit temporary preview or scratch paths such as node_modules/.impeccable-live; Steer edits must land in the real app source file.',
   '- edits must be non-empty; find must match exactly once in the file.',
   '',
   'CONTEXT — live-mode skill spec follows for steer semantics (Handle steer section).',
@@ -1412,7 +1413,56 @@ function decodeBasicHtmlEntities(text) {
  * Strip a single optional fence, leave anything else alone.
  */
 function stripCodeFence(s) {
-  return s
-    .replace(/^```(?:json)?\s*\n/, '')
-    .replace(/\n```\s*$/, '');
+  const text = String(s).trim();
+  const exactFence = text.match(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/);
+  const candidate = exactFence ? exactFence[1].trim() : text;
+  return extractFirstJsonValue(candidate) || candidate;
+}
+
+function extractFirstJsonValue(text) {
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch !== '{' && ch !== '[') continue;
+    const end = findJsonValueEnd(text, i);
+    if (end !== -1) return text.slice(i, end + 1);
+  }
+  return null;
+}
+
+function findJsonValueEnd(text, start) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      const expected = ch === '}' ? '{' : '[';
+      if (stack.pop() !== expected) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+
+  return -1;
 }

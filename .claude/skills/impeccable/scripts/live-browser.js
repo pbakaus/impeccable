@@ -5433,6 +5433,20 @@
     return sendEvent(checkpointPayload(reason)).catch(() => null);
   }
 
+  function sendSteerCheckpoint(id, reason, extra) {
+    if (!id) return Promise.resolve(null);
+    return sendEvent({
+      type: 'checkpoint',
+      id,
+      revision: sessionState.nextCheckpointRevision(),
+      owner: browserOwner,
+      phase: 'steer',
+      reason,
+      pageUrl: location.pathname,
+      ...(extra || {}),
+    }).catch(() => null);
+  }
+
   function queueCheckpoint(reason) {
     if (!currentSessionId) return;
     if (checkpointTimer) clearTimeout(checkpointTimer);
@@ -6953,6 +6967,8 @@ void main() {
   let pageChatExpanded = false;
   let steerLocked = false;
   let steerRequestId = null;
+  let steerPendingMessage = '';
+  let steerInputWasFocused = false;
   let pageChatDotsEl = null;
   let steerAwaitTimer = null;
   let voiceRecognition = null;
@@ -7302,6 +7318,37 @@ void main() {
     return wrap;
   }
 
+  function keepSteerPointerInside(e, opts = {}) {
+    e.stopPropagation();
+    if (opts.preventDefault !== false) e.preventDefault();
+  }
+
+  function preparePageChatInputForTyping() {
+    if (!pageChatEl || !pageChatInput) return false;
+    pageChatExpanded = true;
+    pageChatEl.dataset.expanded = 'true';
+    pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
+    pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
+    if (pageChatHint) {
+      pageChatHint.style.display = 'none';
+      pageChatHint.style.opacity = '0';
+    }
+    pageChatInput.style.width = '';
+    pageChatInput.style.padding = '0 6px';
+    pageChatInput.style.opacity = steerLocked ? '0.72' : '1';
+    pageChatInput.style.pointerEvents = steerLocked ? 'none' : 'auto';
+    return true;
+  }
+
+  function focusPageChatInput(reason) {
+    if (!preparePageChatInputForTyping() || steerLocked) return false;
+    try { pageChatInput.focus({ preventScroll: true }); } catch { pageChatInput.focus(); }
+    const focused = activeElementDeep() === pageChatInput;
+    if (focused) steerInputWasFocused = true;
+    syncPageChatFocusRing();
+    return focused;
+  }
+
   function clearSteerAwaitTimer() {
     if (steerAwaitTimer) {
       clearTimeout(steerAwaitTimer);
@@ -7315,6 +7362,7 @@ void main() {
       if (!steerLocked || steerRequestId !== id) return;
       unlockSteerChat({
         error: 'Steer timed out waiting for the agent. Check that live-poll is running and replies with steer_done.',
+        restoreMessage: steerPendingMessage,
       });
     }, STEER_AWAIT_TIMEOUT_MS);
   }
@@ -7325,19 +7373,12 @@ void main() {
     steerLocked = true;
     pageChatEl.dataset.processing = 'true';
     pageChatInput.disabled = true;
-    pageChatInput.value = '';
-    pageChatInput.blur();
+    preparePageChatInputForTyping();
     if (pageChatVoiceBtn) {
       pageChatVoiceBtn.disabled = true;
       pageChatVoiceBtn.style.display = 'none';
     }
-    pageChatExpanded = false;
-    pageChatEl.dataset.expanded = 'false';
-    pageChatEl.style.width = PAGE_CHAT_PROCESSING_W;
     pageChatEl.style.cursor = 'default';
-    pageChatInput.style.width = '0';
-    pageChatInput.style.padding = '0';
-    pageChatInput.style.opacity = '0';
     pageChatInput.style.pointerEvents = 'none';
     if (pageChatHint) {
       pageChatHint.style.display = 'none';
@@ -7355,17 +7396,26 @@ void main() {
 
   function unlockSteerChat(opts) {
     clearSteerAwaitTimer();
+    const restoreMessage = typeof opts?.restoreMessage === 'string' ? opts.restoreMessage : '';
+    const keepExpanded = Boolean(opts?.error && restoreMessage);
     steerLocked = false;
+    const completedId = steerRequestId;
     steerRequestId = null;
     if (!pageChatEl) return;
     pageChatEl.dataset.processing = 'false';
     pageChatEl.removeAttribute('aria-busy');
     pageChatEl.setAttribute('aria-label', 'Steer the page');
-    pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
+    pageChatExpanded = keepExpanded;
+    pageChatEl.dataset.expanded = keepExpanded ? 'true' : 'false';
+    pageChatEl.style.width = keepExpanded ? PAGE_CHAT_EXPANDED_W : PAGE_CHAT_COLLAPSED_W;
     pageChatEl.style.cursor = 'pointer';
     if (pageChatInput) {
       pageChatInput.disabled = false;
-      pageChatInput.value = '';
+      pageChatInput.value = keepExpanded ? restoreMessage : '';
+      pageChatInput.style.width = keepExpanded ? '' : '0';
+      pageChatInput.style.padding = keepExpanded ? '0 6px' : '0';
+      pageChatInput.style.opacity = keepExpanded ? '1' : '0';
+      pageChatInput.style.pointerEvents = 'auto';
     }
     if (pageChatVoiceBtn) {
       pageChatVoiceBtn.disabled = false;
@@ -7373,18 +7423,28 @@ void main() {
     }
     if (pageChatHint) {
       pageChatHint.textContent = 'Steer';
-      pageChatHint.style.display = '';
-      pageChatHint.style.visibility = '';
+      pageChatHint.style.display = keepExpanded ? 'none' : '';
+      pageChatHint.style.visibility = keepExpanded ? 'hidden' : '';
+      pageChatHint.style.opacity = keepExpanded ? '0' : '1';
     }
     if (pageChatDotsEl?.parentNode) {
       pageChatDotsEl.remove();
       pageChatDotsEl = null;
     }
+    steerPendingMessage = keepExpanded ? restoreMessage : '';
+    steerInputWasFocused = false;
     syncPageChatChrome();
     syncPageChatFocusRing();
     if (opts?.error) showToast(String(opts.error), 5000);
     else if (opts?.message) showToast(String(opts.message), 4000);
-    syncPageChatFocus('steer-unlock');
+    if (completedId) {
+      sendSteerCheckpoint(completedId, opts?.error ? 'steer_error' : 'steer_done', {
+        message: opts?.message || opts?.error || '',
+        file: opts?.file || '',
+      });
+    }
+    if (keepExpanded) focusPageChatInput('steer-error-restore');
+    else syncPageChatFocus('steer-unlock');
   }
 
   function steerSpeechRecognitionCtor() {
@@ -7606,26 +7666,37 @@ void main() {
     if (!text || steerLocked) return;
     const id = id8();
     steerRequestId = id;
+    steerPendingMessage = text;
+    if (steerInputWasFocused) sendSteerCheckpoint(id, 'steer_input_focused', { focused: true });
     lockSteerChat();
     scheduleSteerAwaitTimeout(id);
+    sendSteerCheckpoint(id, 'steer_submitted', { message: text, pageUrl: location.href });
     sendEvent({
       type: 'steer',
       id,
       message: text,
       pageUrl: location.href,
     }).then((res) => {
-      if (!res) unlockSteerChat({ error: 'Could not reach live server' });
+      if (!res) {
+        sendSteerCheckpoint(id, 'steer_send_failed', { message: text });
+        unlockSteerChat({ error: 'Could not reach live server', restoreMessage: text });
+      }
     });
   }
 
   function maybeCompleteSteer(msg) {
     if (!steerRequestId || msg.id !== steerRequestId) return false;
     if (msg.type === 'steer_done') {
-      unlockSteerChat({ message: msg.message });
+      unlockSteerChat({ message: msg.message, file: msg.file });
+      if (msg.file && /\.svelte(?:$|\?)/.test(String(msg.file))) {
+        setTimeout(() => {
+          if (!steerLocked) showToast('Steer applied. Reload if the page has not refreshed yet.', 5000);
+        }, 4500);
+      }
       return true;
     }
     if (msg.type === 'error') {
-      unlockSteerChat({ error: msg.message || 'Steer failed' });
+      unlockSteerChat({ error: msg.message || 'Steer failed', restoreMessage: steerPendingMessage });
       return true;
     }
     return false;
@@ -7634,21 +7705,10 @@ void main() {
   function expandPageChat(opts) {
     const focus = !opts || opts.focus !== false;
     if (!pageChatEl || !pageChatInput || steerLocked) return;
-    pageChatExpanded = true;
-    pageChatEl.dataset.expanded = 'true';
-    pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
-    pageChatEl.style.cursor = 'text';
-    if (pageChatHint) {
-      pageChatHint.style.display = 'none';
-      pageChatHint.style.opacity = '0';
-    }
-    pageChatInput.style.width = '';
-    pageChatInput.style.padding = '0 6px';
-    pageChatInput.style.opacity = '1';
-    pageChatInput.style.pointerEvents = 'auto';
+    preparePageChatInputForTyping();
     syncPageChatChrome();
     syncPageChatFocusRing();
-    if (focus) pageChatInput.focus();
+    if (focus) focusPageChatInput('expand-page-chat');
   }
 
   function collapsePageChat(opts) {
@@ -7756,18 +7816,29 @@ void main() {
       uiAppendStyle(s);
     }
 
-    pageChatEl.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatEl.addEventListener('pointerdown', keepSteerPointerInside);
+    pageChatEl.addEventListener('mousedown', keepSteerPointerInside);
     pageChatEl.addEventListener('click', (e) => {
+      keepSteerPointerInside(e);
       if (steerLocked) return;
       if (pageChatVoiceBtn.contains(e.target)) return;
-      expandPageChat();
+      expandPageChat({ focus: false });
+      focusPageChatInput('page-chat-click');
     });
 
-    pageChatVoiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    pageChatVoiceBtn.addEventListener('pointerdown', keepSteerPointerInside);
+    pageChatVoiceBtn.addEventListener('mousedown', keepSteerPointerInside);
     pageChatVoiceBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
+      keepSteerPointerInside(e);
       if (steerLocked) return;
       toggleSteerVoice();
+    });
+
+    pageChatInput.addEventListener('pointerdown', keepSteerPointerInside);
+    pageChatInput.addEventListener('mousedown', keepSteerPointerInside);
+    pageChatInput.addEventListener('click', (e) => {
+      keepSteerPointerInside(e);
+      if (!steerLocked) focusPageChatInput('page-chat-input-click');
     });
 
     pageChatInput.addEventListener('input', () => {
