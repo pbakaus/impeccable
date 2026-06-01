@@ -176,12 +176,12 @@
   filter: none;
 }
 
-/* VS Code Copilot and Codex CLI logos are dark monochrome glyphs. The row's
+/* GitHub Copilot and Codex CLI logos are dark monochrome glyphs. The row's
    default invert filter makes them readable; removing it on hover would put
    them back to dark-on-dark, which is invisible. Keep them inverted on
    hover — they don't have a brand color to restore. */
-.home-kinpaku .hero-rebuild-logo[data-tooltip="VS Code Copilot"]:hover img,
-.home-kinpaku .hero-rebuild-logo[data-tooltip="VS Code Copilot"]:focus-visible img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="GitHub Copilot"]:hover img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="GitHub Copilot"]:focus-visible img,
 .home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:hover img,
 .home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:focus-visible img {
   filter: grayscale(1) saturate(0) invert(1) brightness(1.18);

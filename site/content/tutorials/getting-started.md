@@ -11,7 +11,7 @@ You will end this tutorial with Impeccable installed in your project, a `PRODUCT
 
 ## Prerequisites
 
-- An AI coding harness: Claude Code, Cursor, Gemini CLI, Codex CLI, or any of the other supported tools.
+- An AI coding harness: Claude Code, Cursor, GitHub Copilot, Gemini CLI, Codex CLI, or any of the other supported tools.
 - A project with at least one HTML or component file you want to improve. A fresh scaffolded landing page works fine.
 
 ## How Impeccable works
@@ -34,7 +34,7 @@ From the root of your project, run:
 npx impeccable skills install
 ```
 
-This auto-detects your harness and writes the build compiled for it to the right location (e.g., `.claude/skills/`, `.cursor/skills/`). It works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other major harness. Reload your harness and type `/`. You should see `/impeccable` in the autocomplete. Type it and the skill's argument hint will show all available commands.
+This auto-detects your harness and writes the build compiled for it to the right location (e.g., `.claude/skills/`, `.cursor/skills/`). It works with Cursor, Claude Code, GitHub Copilot, Gemini CLI, Codex CLI, and every other major harness. Reload your harness and type `/`. You should see `/impeccable` in the autocomplete. Type it and the skill's argument hint will show all available commands.
 
 Prefer a different setup? Claude Code users can install the plugin with `/plugin marketplace add pbakaus/impeccable`, and the general-purpose `npx skills add pbakaus/impeccable` still works (though it installs one shared build for all harnesses rather than the one compiled for yours).
 
