@@ -538,6 +538,13 @@
   color: var(--ks-code-fg);
 }
 
+@media (max-width: 720px) {
+  .designing-kinpaku .ks-section.designing-phase {
+    padding-left: clamp(18px, 5vw, 24px);
+    padding-right: clamp(18px, 5vw, 24px);
+  }
+}
+
 .designing-kinpaku .designing-phase-commands {
   display: flex;
   flex-wrap: wrap;
