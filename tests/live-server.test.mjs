@@ -93,14 +93,16 @@ async function stashManualEdit(server, entry) {
   return res.json();
 }
 
-it('gitignores local manual Apply runtime artifacts', () => {
+it('gitignores local Impeccable runtime artifacts', () => {
   const ignored = execFileSync('git', [
     'check-ignore',
     '.impeccable/live/manual-edit-apply-transaction.json',
     '.impeccable/live/manual-edit-evidence/example.json',
+    '.impeccable/hook.cache.json',
   ], { cwd: REPO_ROOT, encoding: 'utf-8' });
   assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
+  assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
 });
 
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
