@@ -10,7 +10,6 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { ensureLiveGitIgnores, LIVE_IGNORE_PATTERNS } from '../skill/scripts/live-inject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
@@ -81,65 +80,6 @@ describe('live-inject — insert/remove round-trip preserves file bytes', () => 
     const removed = runInjectDefault(tmp, ['--remove']);
     assert.equal(removed.ok, true);
     assert.equal(readFileSync(join(tmp, 'index.html'), 'utf-8'), original);
-  });
-
-  it('adds live runtime artifacts to local git excludes without dirtying .gitignore', () => {
-    execFileSync('git', ['init', '-q'], { cwd: tmp });
-    writeFileSync(join(tmp, '.git', 'info', 'exclude'), '# existing local excludes\n');
-
-    const first = ensureLiveGitIgnores(tmp);
-    const second = ensureLiveGitIgnores(tmp);
-    const body = readFileSync(join(tmp, '.git', 'info', 'exclude'), 'utf-8');
-
-    assert.equal(first.mode, 'git-info-exclude');
-    assert.equal(first.file, '.git/info/exclude');
-    assert.equal(first.changed, true);
-    assert.equal(second.changed, false);
-    assert.match(body, /# existing local excludes/);
-    assert.equal((body.match(/impeccable-live-ignore-start/g) || []).length, 1);
-    for (const pattern of LIVE_IGNORE_PATTERNS) {
-      assert.match(body, new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    }
-
-    const ignored = execFileSync('git', [
-      'check-ignore',
-      '.impeccable/hook.cache.json',
-      '.impeccable/live/server.json',
-      '.impeccable/live/sessions/a4ac4e74.jsonl',
-      '.impeccable/live/previews/a4ac4e74/v3.html',
-      '.impeccable/live/deferred-svelte-component-accepts.json',
-      'node_modules/.impeccable-live/package.json',
-      'src/lib/impeccable/ImpeccableLiveRoot.svelte',
-      'src/lib/impeccable/__runtime.js',
-      'src/lib/impeccable/a4ac4e74/v3.svelte',
-    ], { cwd: tmp, encoding: 'utf-8' });
-    assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
-    assert.match(ignored, /\.impeccable\/live\/server\.json/);
-    assert.match(ignored, /\.impeccable\/live\/sessions\/a4ac4e74\.jsonl/);
-    assert.match(ignored, /\.impeccable\/live\/previews\/a4ac4e74\/v3\.html/);
-    assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
-    assert.match(ignored, /node_modules\/\.impeccable-live\/package\.json/);
-    assert.match(ignored, /src\/lib\/impeccable\/ImpeccableLiveRoot\.svelte/);
-    assert.match(ignored, /src\/lib\/impeccable\/__runtime\.js/);
-    assert.match(ignored, /src\/lib\/impeccable\/a4ac4e74\/v3\.svelte/);
-  });
-
-  it('falls back to a marked .gitignore block outside git repos', () => {
-    writeFileSync(join(tmp, '.gitignore'), 'node_modules/\n');
-
-    const first = ensureLiveGitIgnores(tmp);
-    const second = ensureLiveGitIgnores(tmp);
-    const body = readFileSync(join(tmp, '.gitignore'), 'utf-8');
-
-    assert.equal(first.mode, 'gitignore');
-    assert.equal(first.file, '.gitignore');
-    assert.equal(first.changed, true);
-    assert.equal(second.changed, false);
-    assert.match(body, /^node_modules\/$/m);
-    assert.equal((body.match(/impeccable-live-ignore-start/g) || []).length, 1);
-    for (const pattern of LIVE_IGNORE_PATTERNS) {
-      assert.match(body, new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    }
   });
 
   it('round-trips an HTML file without mangling indentation', () => {

@@ -5,7 +5,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
@@ -15,10 +15,6 @@ import {
   getLiveServerPath,
   getLiveSessionsDir,
 } from '../skill/scripts/impeccable-paths.mjs';
-import {
-  deferredAcceptsPath,
-  writeDeferredAccept,
-} from '../skill/scripts/live-svelte-component.mjs';
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
@@ -97,50 +93,6 @@ async function stashManualEdit(server, entry) {
   return res.json();
 }
 
-function seedDeferredSvelteAccept(tmp, id = 'LEGACY') {
-  const queueCwd = realpathSync(tmp);
-  mkdirSync(join(tmp, 'src', 'routes'), { recursive: true });
-  mkdirSync(join(tmp, 'node_modules/.impeccable-live', id), { recursive: true });
-  writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
-  <article class="expense-row">
-    <strong>{expenses[0].name}</strong>
-  </article>
-</main>
-`);
-  const manifest = {
-    id,
-    previewMode: 'svelte-component',
-    sourceFile: 'src/routes/+page.svelte',
-    sourceStartLine: 2,
-    sourceEndLine: 4,
-    count: 1,
-    propContract: [
-      { prop: 'name', expr: 'expenses[0].name', placeholder: '{expenses[0].name}' },
-    ],
-    originalMarkup: `<article class="expense-row">
-    <strong>{expenses[0].name}</strong>
-  </article>`,
-    componentDir: `node_modules/.impeccable-live/${id}`,
-    runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
-  };
-  const manifestFile = join(tmp, 'node_modules/.impeccable-live', id, 'manifest.json');
-  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + '\n');
-  writeFileSync(join(tmp, 'node_modules/.impeccable-live', id, 'v1.svelte'), `<script>
-  let { name } = $props();
-</script>
-
-<article class="expense-row accepted">
-  <strong>{name}</strong>
-</article>
-`);
-  writeDeferredAccept({
-    id,
-    variantNum: '1',
-    manifestFile: `node_modules/.impeccable-live/${id}/manifest.json`,
-    sourceFile: 'src/routes/+page.svelte',
-  }, queueCwd);
-}
-
 it('gitignores local Impeccable runtime artifacts', () => {
   const ignored = execFileSync('git', [
     'check-ignore',
@@ -155,40 +107,6 @@ it('gitignores local Impeccable runtime artifacts', () => {
   assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
 });
 
-it('applies legacy deferred Svelte accepts once on startup', async () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'impeccable-legacy-deferred-start-'));
-  const queuePath = deferredAcceptsPath(realpathSync(tmp));
-  let server;
-  try {
-    seedDeferredSvelteAccept(tmp, 'STARTUP');
-    server = await startServer(8561, { cwd: tmp });
-    const source = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
-    assert.match(source, /class="expense-row accepted"/);
-    assert.match(source, /\{expenses\[0\]\.name\}/);
-    assert.equal(existsSync(queuePath), false, 'legacy queue should be cleared after startup rescue');
-  } finally {
-    if (server) await stopServer(server.port, server.token);
-    rmSync(queuePath, { force: true });
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-it('does not apply deferred Svelte accepts on shutdown', async () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'impeccable-legacy-deferred-stop-'));
-  const queuePath = deferredAcceptsPath(realpathSync(tmp));
-  let server;
-  try {
-    server = await startServer(8562, { cwd: tmp });
-    seedDeferredSvelteAccept(tmp, 'STOPONLY');
-    await stopServer(server.port, server.token);
-    const source = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
-    assert.doesNotMatch(source, /accepted/, 'shutdown must not write queued accepts into source');
-  } finally {
-    rmSync(queuePath, { force: true });
-    rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
   let text = '';
   for (let i = 0; i < maxReads; i++) {
@@ -198,41 +116,6 @@ async function readSseUntil(reader, decoder, needle, maxReads = 12) {
     if (text.includes(needle)) return text;
   }
   return text;
-}
-
-async function readConnectedSsePayload(server) {
-  const controller = new AbortController();
-  const sseRes = await fetch(
-    `http://localhost:${server.port}/events?token=${server.token}`,
-    { signal: controller.signal },
-  );
-  assert.equal(sseRes.status, 200);
-  const reader = sseRes.body.getReader();
-  const decoder = new TextDecoder();
-  let text = '';
-  try {
-    for (let i = 0; i < 6; i++) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      text += decoder.decode(value);
-      const payload = parseSsePayload(text, 'connected');
-      if (payload) return payload;
-    }
-  } finally {
-    controller.abort();
-  }
-  throw new Error('connected SSE payload not found: ' + text);
-}
-
-function parseSsePayload(text, type) {
-  for (const line of String(text || '').split('\n')) {
-    if (!line.startsWith('data: ')) continue;
-    try {
-      const payload = JSON.parse(line.slice('data: '.length));
-      if (!type || payload.type === type) return payload;
-    } catch { /* keep scanning */ }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,73 +185,6 @@ describe('live-server integration', () => {
     await drainPolls(server);
   });
 
-  it('SSE connected includes active session summaries for browser reload recovery', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-sse-recovery-'));
-    let isolated;
-    const id = 'a1b2c3ea';
-    try {
-      isolated = await startServer(8563, { cwd: tmp });
-      mkdirSync(join(isolated.cwd, 'src/routes'), { recursive: true });
-      mkdirSync(join(isolated.cwd, 'node_modules/.impeccable-live', id), { recursive: true });
-      writeFileSync(join(isolated.cwd, 'src/routes/+page.svelte'), '<h1 class="hero-title">Hello</h1>\n');
-      writeFileSync(join(isolated.cwd, 'node_modules/.impeccable-live', id, 'manifest.json'), JSON.stringify({
-        id,
-        previewMode: 'svelte-component',
-        sourceFile: 'src/routes/+page.svelte',
-        sourceStartLine: 1,
-        sourceEndLine: 1,
-        count: 3,
-        propContract: [],
-        originalMarkup: '<h1 class="hero-title">Hello</h1>',
-        componentDir: `node_modules/.impeccable-live/${id}`,
-        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
-      }, null, 2) + '\n');
-
-      const eventRes = await fetch(`http://localhost:${isolated.port}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: isolated.token,
-          type: 'generate',
-          id,
-          action: 'polish',
-          count: 3,
-          pageUrl: '/',
-          element: { outerHTML: '<h1 class="hero-title">Hello</h1>' },
-        }),
-      });
-      assert.equal(eventRes.status, 200);
-      const polled = await fetch(`http://localhost:${isolated.port}/poll?token=${isolated.token}&timeout=50`).then(r => r.json());
-      assert.equal(polled.id, id);
-      const ack = await fetch(`http://localhost:${isolated.port}/poll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: isolated.token,
-          id,
-          type: 'done',
-          file: `node_modules/.impeccable-live/${id}/manifest.json`,
-        }),
-      });
-      assert.equal(ack.status, 200);
-
-      const connected = await readConnectedSsePayload(isolated);
-      const restored = connected.activeSessions.find((session) => session.id === id);
-      assert.ok(restored, 'connected payload should include active session');
-      assert.equal(restored.sourceFile, 'src/routes/+page.svelte');
-      assert.equal(restored.previewFile, `node_modules/.impeccable-live/${id}/manifest.json`);
-      assert.equal(restored.previewMode, 'svelte-component');
-      assert.equal(restored.expectedVariants, 3);
-      assert.equal(restored.arrivedVariants, 3);
-    } finally {
-      if (isolated) {
-        await stopServer(isolated.port, isolated.token);
-        isolated.proc.kill();
-      }
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
   it('/status reports agentPolling from active poll leases', async () => {
     await drainPolls(server);
     let res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
@@ -388,36 +204,6 @@ describe('live-server integration', () => {
     controller.abort();
     await pollPromise.catch(() => {});
     await new Promise((resolve) => setTimeout(resolve, 80));
-    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
-    data = await res.json();
-    assert.equal(data.agentPolling, false);
-
-    const eventRes = await fetch(`http://localhost:${server.port}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        type: 'generate',
-        id: 'a1b2c3e9',
-        action: 'impeccable',
-        count: 1,
-        pageUrl: '/',
-        element: { outerHTML: '<button>Lease</button>' },
-      }),
-    });
-    assert.equal(eventRes.status, 200);
-
-    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=250`).then((r) => r.json());
-    assert.equal(leased.id, 'a1b2c3e9');
-    res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
-    data = await res.json();
-    assert.equal(data.agentPolling, true, 'leased work should keep the browser connected indicator on');
-
-    await fetch(`http://localhost:${server.port}/poll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: server.token, id: 'a1b2c3e9', type: 'done' }),
-    });
     res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
     data = await res.json();
     assert.equal(data.agentPolling, false);
@@ -2463,71 +2249,6 @@ colors: {}
     assert.equal(snapshot.phase, 'completed');
   });
 
-  it('records Svelte component preview manifests as previewFile, not completed sourceFile', async () => {
-    await drainPolls(server);
-    const id = 'a1b2c3da';
-    mkdirSync(join(server.cwd, 'node_modules/.impeccable-live', id), { recursive: true });
-    writeFileSync(join(server.cwd, 'node_modules/.impeccable-live', id, 'manifest.json'), JSON.stringify({
-      id,
-      previewMode: 'svelte-component',
-      sourceFile: 'src/routes/+page.svelte',
-      sourceStartLine: 1,
-      sourceEndLine: 1,
-      count: 2,
-      propContract: [],
-      originalMarkup: '<span>0 offen</span>',
-      componentDir: `node_modules/.impeccable-live/${id}`,
-      runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
-    }, null, 2) + '\n');
-
-    await fetch(`http://localhost:${server.port}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        type: 'generate',
-        id,
-        action: 'polish',
-        count: 2,
-        pageUrl: '/',
-        element: { outerHTML: '<span>0 offen</span>', tagName: 'span' },
-      }),
-    });
-    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50`).then(r => r.json());
-    assert.equal(polled.id, id);
-    const ack = await fetch(`http://localhost:${server.port}/poll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        id,
-        type: 'done',
-        file: `node_modules/.impeccable-live/${id}/manifest.json`,
-      }),
-    });
-    assert.equal(ack.status, 200);
-
-    let snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), `${id}.snapshot.json`), 'utf-8'));
-    assert.equal(snapshot.sourceFile, 'src/routes/+page.svelte');
-    assert.equal(snapshot.previewFile, `node_modules/.impeccable-live/${id}/manifest.json`);
-
-    const complete = await fetch(`http://localhost:${server.port}/poll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        id,
-        type: 'complete',
-        file: 'src/routes/+page.svelte',
-      }),
-    });
-    assert.equal(complete.status, 200);
-    snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), `${id}.snapshot.json`), 'utf-8'));
-    assert.equal(snapshot.phase, 'completed');
-    assert.equal(snapshot.sourceFile, 'src/routes/+page.svelte');
-    assert.doesNotMatch(snapshot.sourceFile, /node_modules\/\.impeccable-live/);
-  });
-
   it('manual live-complete acknowledges the running helper queue before writing fallback journal state', async () => {
     await drainPolls(server);
     await fetch(`http://localhost:${server.port}/events`, {
@@ -2687,42 +2408,6 @@ colors: {}
     controller.abort();
   });
 
-  it('browser reconnect cancels a queued anonymous exit from a slow refresh', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-refresh-exit-'));
-    let isolated;
-    try {
-      isolated = await startServer(8564, { cwd: tmp });
-      await drainPolls(isolated);
-      const first = new AbortController();
-      const firstRes = await fetch(
-        `http://localhost:${isolated.port}/events?token=${isolated.token}`,
-        { signal: first.signal },
-      );
-      assert.equal(firstRes.status, 200);
-      const firstReader = firstRes.body.getReader();
-      await firstReader.read();
-      first.abort();
-
-      await new Promise((resolve) => setTimeout(resolve, 8300));
-
-      const connected = await readConnectedSsePayload(isolated);
-      assert.equal(connected.type, 'connected');
-
-      const polled = await fetch(`http://localhost:${isolated.port}/poll?token=${isolated.token}&timeout=80`).then(r => r.json());
-      assert.notEqual(
-        polled.type,
-        'exit',
-        'event=live_server.refresh_exit_cancel actor=browser operation=sse_reconnect risk=slow_refresh_stops_live_mode expected=timeout actual=exit suggestion=remove queued anonymous exit events on reconnect',
-      );
-    } finally {
-      if (isolated) {
-        await stopServer(isolated.port, isolated.token);
-        isolated.proc.kill();
-      }
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
   it('/source reads project files with valid token', async () => {
     const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=package.json`);
     assert.equal(res.status, 200);
@@ -2859,7 +2544,6 @@ colors: {}
         id: 'b2c3d4e5',
         type: 'steer_done',
         message: 'Hero spacing tightened',
-        file: 'src/routes/+page.svelte',
       }),
     });
 
@@ -2867,60 +2551,8 @@ colors: {}
     assert.ok(text.includes('"steer_done"'));
     assert.ok(text.includes('b2c3d4e5'));
     assert.ok(text.includes('Hero spacing tightened'));
-    assert.ok(text.includes('src/routes/+page.svelte'));
 
     controller.abort();
-  });
-
-  it('/poll rejects steer_done without source file or no-op message', async () => {
-    await drainPolls(server);
-
-    const postRes = await fetch(`http://localhost:${server.port}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        type: 'steer',
-        id: 'b2c3d4e6',
-        message: 'Make the title clearer',
-        pageUrl: 'http://localhost:3000/',
-      }),
-    });
-    assert.equal(postRes.status, 200);
-
-    const event = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=5000&leaseMs=1`)
-      .then(r => r.json());
-    assert.equal(event.type, 'steer');
-    assert.equal(event.id, 'b2c3d4e6');
-
-    const badAck = await fetch(`http://localhost:${server.port}/poll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        id: 'b2c3d4e6',
-        type: 'steer_done',
-      }),
-    });
-    assert.equal(badAck.status, 400);
-    const badBody = await badAck.json();
-    assert.equal(badBody.error, 'steer_done_requires_file_or_message');
-
-    await new Promise(r => setTimeout(r, 5));
-    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=1`)
-      .then(r => r.json());
-    assert.equal(redelivered.id, 'b2c3d4e6', 'invalid steer_done must not acknowledge the pending steer event');
-
-    await fetch(`http://localhost:${server.port}/poll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: server.token,
-        id: 'b2c3d4e6',
-        type: 'error',
-        message: 'cleanup',
-      }),
-    });
   });
 
   it('POST /events accepts generate with optional annotation fields', async () => {

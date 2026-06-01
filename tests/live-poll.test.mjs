@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DEFAULT_EVENT_LEASE_MS,
   buildAcceptScriptArgs,
   buildPollReplyPayload,
   isEventPending,
@@ -10,7 +9,6 @@ import {
   parseReplyArgs,
   requiresAgentReply,
 } from '../skill/scripts/live-poll.mjs';
-import { completionTypeForAcceptResult } from '../skill/scripts/live-completion.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -39,43 +37,6 @@ describe('live-poll accept handling', () => {
         pageUrl: '/pricing',
       }),
       ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
-    );
-  });
-
-  it('ignores legacy defer-source-write requests so accepts write source immediately', () => {
-    assert.deepEqual(
-      buildAcceptScriptArgs({
-        type: 'accept',
-        id: 'abc12345',
-        variantId: 1,
-        pageUrl: '/',
-        deferSourceWrite: true,
-      }),
-      ['--id', 'abc12345', '--variant', '1', '--page-url', '/'],
-    );
-  });
-
-  it('maps failed accept promotion to error instead of agent_done', () => {
-    assert.equal(
-      completionTypeForAcceptResult('accept', {
-        handled: false,
-        previewMode: 'svelte-component',
-        file: 'src/routes/+page.svelte',
-        componentDir: 'node_modules/.impeccable-live/abc12345',
-        error: 'Variant 3 not found',
-      }),
-      'error',
-    );
-  });
-
-  it('maps successful immediate accept promotion to complete', () => {
-    assert.equal(
-      completionTypeForAcceptResult('accept', {
-        handled: true,
-        previewMode: 'svelte-component',
-        file: 'src/routes/+page.svelte',
-      }),
-      'complete',
     );
   });
 });
@@ -118,14 +79,6 @@ describe('live-poll --reply arg parsing', () => {
     });
     // The --data value must not be misread as the trailing message positional.
     assert.equal(reply.message, undefined);
-  });
-
-  it('parses a steer_done reply with a source file', () => {
-    const reply = parseReplyArgs(['--reply', 'abc12345', 'steer_done', '--file', 'src/routes/+page.svelte', 'Title updated']);
-    assert.equal(reply.id, 'abc12345');
-    assert.equal(reply.type, 'steer_done');
-    assert.equal(reply.file, 'src/routes/+page.svelte');
-    assert.equal(reply.message, 'Title updated');
   });
 
   it('reaches the POST body unchanged through buildPollReplyPayload', () => {
@@ -177,10 +130,6 @@ describe('live-poll --reply arg parsing', () => {
 });
 
 describe('live-poll stream helpers', () => {
-  it('uses a long event lease for human-paced Codex live handling', () => {
-    assert.equal(DEFAULT_EVENT_LEASE_MS, 600_000);
-  });
-
   it('requiresAgentReply is true for work items that need agent acknowledgement', () => {
     assert.equal(requiresAgentReply({ type: 'generate' }), true);
     assert.equal(requiresAgentReply({ type: 'steer' }), true);

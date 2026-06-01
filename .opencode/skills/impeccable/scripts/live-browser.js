@@ -1694,6 +1694,11 @@
     positionBar();
   }
 
+  function showOrUpdateCyclingBar() {
+    if (barEl && barEl.style.display !== 'none') updateBarContent('cycling');
+    else showBar('cycling');
+  }
+
   function buildPlaceholderResizeHandles() {
     if (!placeholderResizeLayerEl) return;
     placeholderResizeLayerEl.innerHTML = '';
@@ -4412,7 +4417,7 @@
       barEl.style.boxShadow = direction === 'below' ? BAR_SHADOW_UP : BAR_SHADOW_DOWN;
     }
     // Re-render the bar so the Tune chip picks up the active styling.
-    updateBarContent('cycling');
+    showOrUpdateCyclingBar();
   }
 
   function closeTunePopover() {
@@ -4420,7 +4425,7 @@
     hideParamsPanel();
     if (barEl) barEl.style.boxShadow = BAR_SHADOW_DEFAULT;
     if (barEl && barEl.style.display !== 'none' && state === 'CYCLING') {
-      updateBarContent('cycling');
+      showOrUpdateCyclingBar();
     }
   }
 
@@ -4451,7 +4456,7 @@
       if (state !== 'CYCLING') return;
       if (currentSessionId !== sessionId) return;
       if (visibleVariant !== variantNum) return;
-      updateBarContent('cycling');
+      showOrUpdateCyclingBar();
       syncCyclingControls();
       positionBar();
     });
@@ -4531,6 +4536,14 @@
 
   function isSvelteInsertManifest(manifest) {
     return manifest?.previewMode === 'svelte-component' && manifest?.mode === 'insert';
+  }
+
+  function findLiveElementForSvelteManifest(manifest) {
+    if (isSvelteInsertManifest(manifest)) {
+      const anchor = findInsertAnchorInDom();
+      if (anchor?.parentElement) return anchor;
+    }
+    return findLiveElementForOriginalMarkup(manifest?.originalMarkup || manifest?.anchorMarkup || '');
   }
 
   function loadSvelteRuntime(runtimeModule) {
@@ -4708,12 +4721,12 @@
         visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants ? visibleVariant : 1;
         await mountSvelteComponentVariant(visibleVariant || 1);
         state = 'CYCLING';
-        updateBarContent('cycling');
+        showOrUpdateCyclingBar();
         saveSession();
         return;
       }
 
-      const liveEl = findLiveElementForOriginalMarkup(manifest.originalMarkup || '');
+      const liveEl = findLiveElementForSvelteManifest(manifest);
       if (!liveEl?.parentElement) {
         console.warn('[impeccable] Could not find original element in live DOM.');
         arrivedVariants = Number(manifest.count) || expectedVariants || 1;
@@ -4797,7 +4810,7 @@
       state = 'CYCLING';
       recoveryWaitingForAnchor = false;
       hideShaderOverlay();
-      updateBarContent('cycling');
+      showOrUpdateCyclingBar();
       disableInlineEdit();
       refreshParamsPanel();
       positionBar();
@@ -4817,7 +4830,7 @@
         pendingSvelteComponentRetryObserver = null;
         return;
       }
-      const liveEl = findLiveElementForOriginalMarkup(manifest.originalMarkup || '');
+      const liveEl = findLiveElementForSvelteManifest(manifest);
       if (!liveEl?.parentElement) return;
       pendingSvelteComponentRetryObserver.disconnect();
       pendingSvelteComponentRetryObserver = null;
@@ -4939,7 +4952,7 @@
         state = 'CYCLING';
         recoveryWaitingForAnchor = false;
         hideShaderOverlay();
-        updateBarContent('cycling');
+        showOrUpdateCyclingBar();
         disableInlineEdit();
         refreshParamsPanel();
         positionBar();
@@ -5039,18 +5052,18 @@
     variantSelectionInFlight = true;
     const selectionPromise = (async () => {
       visibleVariant = next;
-      updateBarContent('cycling');
+      showOrUpdateCyclingBar();
       saveSession();
       const shown = await showVariantInDOM(currentSessionId, next); // calls refreshParamsPanel itself
       if (!shown) {
         visibleVariant = previous;
         await showVariantInDOM(currentSessionId, previous);
-        updateBarContent('cycling');
+        showOrUpdateCyclingBar();
         saveSession();
         return;
       }
       updateSelectedElement();
-      updateBarContent('cycling');
+      showOrUpdateCyclingBar();
       positionBar();
       saveSession();
       if (checkpointReason) queueCheckpoint(checkpointReason);
@@ -5309,7 +5322,7 @@
         hideShaderOverlay();
         if (wrapper.dataset.impeccableMode === 'insert') finalizeInsertSession();
         updateSelectedElement();
-        updateBarContent('cycling');
+        showOrUpdateCyclingBar();
         disableInlineEdit();
         refreshParamsPanel();
         positionBar();
@@ -5417,7 +5430,7 @@
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
               state = 'CYCLING';
-              updateBarContent('cycling');
+              showOrUpdateCyclingBar();
               disableInlineEdit();
               refreshParamsPanel();
             }
@@ -6626,7 +6639,7 @@ void main() {
       .catch(() => {
         if (pendingAccept?.id === acceptedSessionId) pendingAccept = null;
         state = 'CYCLING';
-        updateBarContent('cycling');
+        showOrUpdateCyclingBar();
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
   }
@@ -6649,7 +6662,7 @@ void main() {
     if (!pendingAccept || msg.id !== pendingAccept.id) return false;
     pendingAccept = null;
     state = 'CYCLING';
-    updateBarContent('cycling');
+    showOrUpdateCyclingBar();
     refreshParamsPanel();
     showToast('Could not apply variant: ' + (msg.message || 'source write failed'), 7000);
     return true;

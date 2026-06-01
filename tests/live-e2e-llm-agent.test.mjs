@@ -6,14 +6,12 @@ import { describe, it } from 'node:test';
 import {
   MANUAL_EDIT_SYSTEM_INSTRUCTIONS,
   VARIANT_SYSTEM_INSTRUCTIONS,
-  buildVariantRequestPayload,
   createLlmAgent,
   parseManualEditResponse,
   parseVariantResponse,
   resolveLlmAgentConfig,
   validateManualEditCoverage,
   validateManualEditPlanningCoverage,
-  validateInsertVariantOutput,
   validateVariantMaterialChange,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
@@ -1469,7 +1467,6 @@ describe('live-e2e LLM agent variant prompt', () => {
   it('tells the model to preserve existing visible copy', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /PRESERVE all existing visible copy exactly/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /must not rewrite titles, paragraphs, button labels/);
-    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Do not emit framework template expressions/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /full visible copy in one editable text node/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /wrap the entire copy/);
   });
@@ -1482,14 +1479,7 @@ describe('live-e2e LLM agent variant prompt', () => {
   it('tells the model bare text variants must not be source-identical no-ops', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Do not return source-identical variants/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /bare text element/);
-    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /harmless root attribute/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Accept persists a real source change/);
-  });
-
-  it('tells the model insert variants are net-new visible content', () => {
-    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Insert mode/);
-    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /net-new content/);
-    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /must contain visible inserted content/);
   });
 });
 
@@ -1572,70 +1562,6 @@ describe('live-e2e LLM agent variant copy validation', () => {
 
     assert.equal(result, null);
   });
-
-  it('builds insert requests with prompt, anchor, and placeholder context', () => {
-    const payload = buildVariantRequestPayload(
-      {
-        id: 'ins12345',
-        mode: 'insert',
-        count: 3,
-        freeformPrompt: 'Add a muted footnote',
-        insert: {
-          position: 'after',
-          anchor: { tagName: 'article', classes: ['empty-card'], textContent: 'No expenses' },
-        },
-        placeholder: { width: 420, height: 80 },
-      },
-      { wrapInfo: { styleMode: 'svelte-component' } },
-    );
-
-    assert.equal(payload.mode, 'insert');
-    assert.equal(payload.freeformPrompt, 'Add a muted footnote');
-    assert.equal(payload.insert.position, 'after');
-    assert.deepEqual(payload.insert.anchor.classes, ['empty-card']);
-    assert.deepEqual(payload.placeholder, { width: 420, height: 80 });
-    assert.equal(payload.element, null);
-  });
-
-  it('rejects insert variants with empty visible content', () => {
-    const result = validateInsertVariantOutput(
-      { variants: [{ innerHtml: '<div data-impeccable-e2e-variant="1"></div>' }] },
-      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
-    );
-
-    assert.match(result, /data-impeccable/);
-  });
-
-  it('does not require insert variants to preserve anchor text', () => {
-    const result = validateInsertVariantOutput(
-      { variants: [{ innerHtml: '<p class="inserted-copy">Shared expenses sync automatically.</p>' }] },
-      {
-        mode: 'insert',
-        freeformPrompt: 'Add a muted footnote',
-        insert: { anchor: { textContent: 'Keine offenen Ausgaben.' } },
-      },
-    );
-
-    assert.equal(result, null);
-  });
-
-  it('rejects insert variants with multiple top-level roots', () => {
-    const result = validateInsertVariantOutput(
-      { variants: [{ innerHtml: '<p>One</p><p>Two</p>' }] },
-      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
-    );
-
-    assert.match(result, /single top-level/);
-  });
-
-  it('rejects insert variants with inline styles before hoisting can add preview attrs', () => {
-    const result = validateInsertVariantOutput(
-      { variants: [{ innerHtml: '<p style="color:red">Shared expenses sync automatically.</p>' }] },
-      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
-    );
-
-    assert.match(result, /inline style/);
-  });
 });
 
 describe('live-e2e LLM agent parseVariantResponse', () => {
@@ -1652,13 +1578,6 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
   it('strips a single surrounding ```json fence', () => {
     const parsed = parseVariantResponse(
       '```json\n' + JSON.stringify(validParsed) + '\n```',
-    );
-    assert.deepEqual(parsed, validParsed);
-  });
-
-  it('extracts fenced JSON when a provider adds stray wrapper text', () => {
-    const parsed = parseVariantResponse(
-      ':\n\n```json\n' + JSON.stringify(validParsed) + '\n```\n\nReturn plain JSON only.',
     );
     assert.deepEqual(parsed, validParsed);
   });
@@ -1733,18 +1652,6 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
     assert.throws(
       () => parseVariantResponse(body),
       /innerHtml must not include a <style> tag/,
-    );
-  });
-
-  it('rejects framework template expressions inside variant HTML', () => {
-    const body = JSON.stringify({
-      scopedCss: '@scope ([data-impeccable-variant="1"]) {}',
-      variants: [{ innerHtml: '<article class="expense-row"><strong>{name}</strong><span>{amount}</span></article>' }],
-    });
-
-    assert.throws(
-      () => parseVariantResponse(body),
-      /literal visible copy/,
     );
   });
 

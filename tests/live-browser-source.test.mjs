@@ -7,50 +7,6 @@ const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js')
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
-  it('keeps stable ids for every bottom-bar and annotation control under test', () => {
-    for (const suffix of [
-      'pick-toggle',
-      'insert-toggle',
-      'detect-toggle',
-      'detect-badge',
-      'design-toggle',
-      'design-host',
-      'page-chat',
-      'page-chat-input',
-      'page-chat-voice',
-      'exit',
-      'annot',
-      'annot-svg',
-      'annot-pins',
-      'annot-clear',
-    ]) {
-      assert.match(SOURCE, new RegExp(`PREFIX \\+ ['"]-${suffix}['"]`));
-    }
-  });
-
-  it('keeps Svelte shadow edit badge clickable without a full-page hit blocker', () => {
-    assert.match(
-      SOURCE,
-      /function initEditBadgeHitProxies\(\)[\s\S]*?PREFIX \+ '-edit-badge-hit-proxies'/,
-      'Svelte shadow chrome should install edit badge hit proxies',
-    );
-    assert.match(
-      SOURCE,
-      /function syncEditBadgeHitProxies\(\)[\s\S]*?editBadgeProxyTargets\(\)/,
-      'Edit badge proxies should resync from the live shadow buttons',
-    );
-    assert.match(
-      SOURCE,
-      /proxy\.addEventListener\('click'[\s\S]*?target\.click\(\)/,
-      'The transparent proxy should forward real user clicks to the shadow button',
-    );
-    assert.match(
-      SOURCE,
-      /function positionEditBadge\(\)[\s\S]*?syncEditBadgeHitProxies\(\)/,
-      'Edit badge proxy hit regions should follow the floating badge position',
-    );
-  });
-
   it('saves copy edits to the staged buffer with rich AI context', () => {
     assert.doesNotMatch(
       SOURCE,

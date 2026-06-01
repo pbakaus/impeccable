@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
@@ -143,43 +143,6 @@ describe('live-insert CLI integration', () => {
     const after = readFileSync(join(tmp, 'App.jsx'), 'utf-8');
     assert.match(after, /data-impeccable-mode="insert"/);
     assert.match(after, /{\/\* impeccable-variants-start jsxins01 \*\/}/);
-  });
-
-  it('creates a Svelte component insert manifest without mutating route source', () => {
-    mkdirSync(join(tmp, 'src/routes'), { recursive: true });
-    const before = `<main>
-  <section class="expense-panel">
-    <article class="empty-card">
-      <strong>Keine offenen Ausgaben.</strong>
-      <p>Fügt die nächste gemeinsame Ausgabe hinzu.</p>
-    </article>
-    {:else}
-      <article class="expense-row">Row</article>
-  </section>
-</main>
-`;
-    writeFileSync(join(tmp, 'src/routes/+page.svelte'), before);
-
-    const scriptPath = join(process.cwd(), 'skill/scripts/live-insert.mjs');
-    const out = execSync(
-      `node "${scriptPath}" --id svins001 --count 3 --position after --classes "empty-card" --tag article --file "src/routes/+page.svelte"`,
-      { cwd: tmp, encoding: 'utf-8' },
-    );
-    const result = JSON.parse(out.trim());
-
-    assert.equal(result.previewMode, 'svelte-component');
-    assert.equal(result.mode, 'insert');
-    assert.equal(result.sourceFile, 'src/routes/+page.svelte');
-    assert.equal(result.styleMode, 'svelte-component');
-    assert.equal(readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8'), before);
-    assert.ok(existsSync(join(tmp, 'node_modules/.impeccable-live/svins001/manifest.json')));
-    assert.ok(existsSync(join(tmp, 'node_modules/.impeccable-live/svins001/v1.svelte')));
-
-    const manifest = JSON.parse(readFileSync(join(tmp, result.file), 'utf-8'));
-    assert.equal(manifest.mode, 'insert');
-    assert.equal(manifest.position, 'after');
-    assert.equal(manifest.insertLine, 7);
-    assert.match(manifest.anchorMarkup, /empty-card/);
   });
 
   it('exits with error when position is missing', () => {

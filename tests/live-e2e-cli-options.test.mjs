@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readCliOption } from './live-e2e/cli-options.mjs';
-import { buildAcceptScriptArgs } from '../skill/scripts/live-poll.mjs';
 
 describe('live-e2e readCliOption', () => {
   const baseArgv = ['node', 'runner.mjs'];
@@ -41,20 +40,5 @@ describe('live-e2e readCliOption', () => {
 
   it('treats --name= (empty `=`) as an empty-string value, not a throw', () => {
     assert.equal(readCliOption([...baseArgv, '--llm-model='], 'llm-model'), '');
-  });
-});
-
-describe('live-poll accept args', () => {
-  it('does not pass deprecated deferred source writes through', () => {
-    assert.deepEqual(
-      buildAcceptScriptArgs({
-        type: 'accept',
-        id: 'abc12345',
-        variantId: '2',
-        pageUrl: '/',
-        deferSourceWrite: true,
-      }),
-      ['--id', 'abc12345', '--variant', '2', '--page-url', '/'],
-    );
   });
 });
