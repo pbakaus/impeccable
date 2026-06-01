@@ -111,6 +111,13 @@ html.light .kinpaku-chrome .site-header-github:hover {
   background: oklch(52% 0.11 188 / 0.08);
 }
 
+@media (max-width: 760px) {
+  html.light .kinpaku-chrome [data-site-header] .site-header-right {
+    background: var(--ks-lacquer-raised);
+    border-top-color: var(--ks-rule);
+  }
+}
+
 html.light .kinpaku-chrome .site-footer {
   background: var(--ks-lacquer-deep);
 }
