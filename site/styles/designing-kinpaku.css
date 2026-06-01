@@ -69,6 +69,19 @@
   color: var(--ks-kinpaku);
 }
 
+@media (max-width: 760px) {
+  .designing-kinpaku [data-site-header] .site-header-right {
+    position: absolute;
+    top: calc(100% + 12px);
+    left: clamp(16px, 4vw, 24px);
+    right: clamp(16px, 4vw, 24px);
+    z-index: 110;
+    width: auto;
+    flex-basis: auto;
+    margin: 0;
+  }
+}
+
 /* Footer chrome moved to kinpaku-kit.css (.kinpaku-chrome .site-footer). */
 
 /* ============================================================================
@@ -351,6 +364,83 @@
   letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--ks-muted);
+}
+
+@media (max-width: 720px) {
+  .designing-kinpaku .designing-page {
+    padding-top: 32px;
+  }
+
+  .designing-kinpaku .designing-hero {
+    padding: 40px clamp(18px, 5vw, 24px) 56px;
+    row-gap: 0;
+  }
+
+  .designing-kinpaku .designing-page-header {
+    max-width: none;
+    margin: 0;
+    text-align: left;
+  }
+
+  .designing-kinpaku .designing-page-title {
+    font-size: clamp(2.1rem, 12vw, 2.8rem);
+    line-height: 1.02;
+    margin-bottom: 18px;
+  }
+
+  .designing-kinpaku .designing-page-lede {
+    max-width: none;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .designing-kinpaku .designing-loop-wrap {
+    width: 100%;
+    margin-top: 36px;
+  }
+
+  .designing-kinpaku .designing-loop {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    row-gap: 0;
+    column-gap: 0;
+    max-width: none;
+    margin: 0;
+    justify-items: stretch;
+  }
+
+  .designing-kinpaku .designing-loop-node,
+  .designing-kinpaku .designing-loop-node--start,
+  .designing-kinpaku .designing-loop-node--iterate,
+  .designing-kinpaku .designing-loop-node--polish,
+  .designing-kinpaku .designing-loop-node--maintain {
+    grid-column: 1;
+    grid-row: auto;
+    align-items: flex-start;
+    width: 100%;
+    padding: 14px 0;
+    text-align: left;
+    border-top: 1px solid var(--ks-rule);
+  }
+
+  .designing-kinpaku .designing-loop-node:first-of-type {
+    border-top: 0;
+  }
+
+  .designing-kinpaku .designing-loop-name {
+    font-size: 1.45rem;
+  }
+
+  .designing-kinpaku .designing-loop-hint {
+    max-width: none;
+    font-size: 0.9rem;
+  }
+
+  .designing-kinpaku .designing-loop-wheel {
+    display: none;
+  }
 }
 
 /* ============================================================================
