@@ -655,7 +655,9 @@
   display: grid;
   gap: 22px;
   margin: 0 0 48px;
+  width: 100%;
   max-width: 600px;
+  min-width: 0;
   text-align: left;
 }
 
@@ -663,6 +665,7 @@
 .downloads-rebuild-cmd-group {
   display: grid;
   gap: 9px;
+  min-width: 0;
 }
 
 .downloads-rebuild-cmd-label {
@@ -685,6 +688,9 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 15px 14px 15px 22px;
   background: var(--card-cmd-bg);
   border: 1px solid var(--card-cmd-border);
@@ -959,6 +965,30 @@
 @media (max-width: 720px) {
   .downloads-rebuild { padding: 64px 0; }
   .downloads-rebuild-install { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .home-kinpaku .downloads-rebuild-cmd {
+    gap: 10px;
+    padding: 13px 12px 13px 16px;
+  }
+
+  .home-kinpaku .downloads-rebuild-cmd > code {
+    overflow-x: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.96rem;
+    line-height: 1.35;
+  }
+
+  .home-kinpaku .downloads-rebuild-prompt {
+    font-size: 1.05rem;
+  }
+
+  .home-kinpaku .downloads-rebuild-copy {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 /* ============================================================================
