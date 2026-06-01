@@ -56,6 +56,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('shader bitmap decode failure keeps a visible fallback overlay', () => {
+    assert.match(
+      SOURCE,
+      /function showShaderBitmapFallback\(canvas, blob\)[\s\S]{0,900}?fallback\.style\.backgroundImage = 'url\("' \+ objectUrl \+ '"\)';[\s\S]{0,300}?shaderState = \{ canvas: fallback,[\s\S]{0,180}?objectUrl \};/,
+      'shader fallback should render the captured bitmap via a background-image div and keep its object URL revocable',
+    );
+    assert.match(
+      SOURCE,
+      /catch \(err\) \{[\s\S]{0,220}?shader bitmap decode failed[\s\S]{0,220}?showShaderBitmapFallback\(canvas, blob\);[\s\S]{0,80}?return;/,
+      'createImageBitmap failures should fall back to a visible captured-bitmap overlay',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /new Image\(/,
+      'shader fallback should not use an image element fallback',
+    );
+  });
+
   it('locks every global bar mode toggle while manual Apply is in flight', () => {
     assert.match(
       SOURCE,

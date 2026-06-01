@@ -5544,6 +5544,25 @@ void main() {
     shaderState = null;
   }
 
+  function showShaderBitmapFallback(canvas, blob) {
+    canvas.remove();
+    const objectUrl = URL.createObjectURL(blob);
+    const fallback = document.createElement('div');
+    fallback.id = PREFIX + '-shader';
+    // Copy positioning via cssText. Object.assign across CSSStyleDeclaration
+    // throws in modern Chromium because the source's indexed properties
+    // (style[0], [1], ...) are read-only and the engine forbids writing
+    // them on the destination.
+    fallback.style.cssText = canvas.style.cssText;
+    fallback.style.backgroundImage = 'url("' + objectUrl + '")';
+    fallback.style.backgroundSize = '100% 100%';
+    fallback.style.backgroundRepeat = 'no-repeat';
+    fallback.style.outline = '2px dashed ' + C.brand;
+    fallback.style.outlineOffset = '-2px';
+    document.body.appendChild(fallback);
+    shaderState = { canvas: fallback, gl: null, program: null, texture: null, rafId: 0, startTime: 0, objectUrl };
+  }
+
   async function showShaderOverlay(el, blob, rect, paper) {
     hideShaderOverlay();
     if (!blob || !el) return;
@@ -5566,22 +5585,7 @@ void main() {
     if (!gl) {
       // WebGL unavailable: use the captured bitmap as a background overlay so
       // the user still sees something meaningful during generation.
-      canvas.remove();
-      const objectUrl = URL.createObjectURL(blob);
-      const fallback = document.createElement('div');
-      fallback.id = PREFIX + '-shader';
-      // Copy positioning via cssText. Object.assign across CSSStyleDeclaration
-      // throws in modern Chromium because the source's indexed properties
-      // (style[0], [1], ...) are read-only and the engine forbids writing
-      // them on the destination.
-      fallback.style.cssText = canvas.style.cssText;
-      fallback.style.backgroundImage = 'url("' + objectUrl + '")';
-      fallback.style.backgroundSize = '100% 100%';
-      fallback.style.backgroundRepeat = 'no-repeat';
-      fallback.style.outline = '2px dashed ' + C.brand;
-      fallback.style.outlineOffset = '-2px';
-      document.body.appendChild(fallback);
-      shaderState = { canvas: fallback, gl: null, program: null, texture: null, rafId: 0, startTime: 0, objectUrl };
+      showShaderBitmapFallback(canvas, blob);
       return;
     }
 
@@ -5625,7 +5629,9 @@ void main() {
       bitmap = await createImageBitmap(blob);
     } catch (err) {
       console.warn('[impeccable] shader bitmap decode failed:', err);
-      canvas.remove();
+      const lose = gl.getExtension?.('WEBGL_lose_context');
+      try { lose?.loseContext(); } catch {}
+      showShaderBitmapFallback(canvas, blob);
       return;
     }
     texture = gl.createTexture();
@@ -5766,7 +5772,11 @@ void main() {
       restoreAcceptedDomFromSnapshot(pending);
       return;
     }
-    if (!accepted) return;
+    if (!accepted) {
+      wrapper.remove();
+      restoreAcceptedDomFromSnapshot(pending);
+      return;
+    }
     const parent = wrapper.parentElement;
     if (!parent) return;
     while (accepted.firstChild) {

@@ -311,6 +311,11 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
+      /if \(!accepted\) \{[\s\S]{0,120}?wrapper\.remove\(\);[\s\S]{0,120}?restoreAcceptedDomFromSnapshot\(pending\);[\s\S]{0,80}?return;/,
+      'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
+    );
+    assert.match(
+      SOURCE,
       /function reloadAfterMissingAcceptedDom\(pending\)[\s\S]*?location\.reload\(\);/,
       'missing accepted DOM after clean source should recover by reloading the clean page',
     );
