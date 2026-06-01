@@ -1156,6 +1156,18 @@
   display: none; /* cryptic "03 · 04" step counter — removed */
 }
 
+@media (max-width: 720px) {
+  .designing-kinpaku .designing-polish-band {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .designing-kinpaku .designing-polish-band-cmds {
+    flex-wrap: nowrap;
+    gap: clamp(10px, 4vw, 14px);
+  }
+}
+
 .designing-kinpaku .designing-polish-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
