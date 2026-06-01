@@ -292,6 +292,7 @@ function buildCarbonizeReplacement({
     : 'style="display: contents"';
 
   const pushCarbonizeBody = (bodyIndent) => {
+    const bodyRestored = reindentContent(restored, indent, bodyIndent + '  ');
     lines.push(bodyIndent + commentSyntax.open + ' impeccable-carbonize-start ' + id + ' ' + commentSyntax.close);
     lines.push(bodyIndent + '<style data-impeccable-css="' + id + '">' + (isJsx ? '{`' : ''));
     for (const cssLine of cssContent) {
@@ -305,7 +306,7 @@ function buildCarbonizeReplacement({
     }
     lines.push(bodyIndent + commentSyntax.open + ' impeccable-carbonize-end ' + id + ' ' + commentSyntax.close);
     lines.push(bodyIndent + '<div data-impeccable-variant="' + variantNum + '" ' + variantStyleAttr + '>');
-    lines.push(...restored);
+    lines.push(...bodyRestored);
     lines.push(bodyIndent + '</div>');
   };
 
@@ -319,6 +320,14 @@ function buildCarbonizeReplacement({
   }
 
   return lines;
+}
+
+function reindentContent(contentLines, fromIndent, toIndent) {
+  return contentLines.map((line) => {
+    if (line.trim() === '') return '';
+    if (fromIndent && line.startsWith(fromIndent)) return toIndent + line.slice(fromIndent.length);
+    return toIndent + line.trimStart();
+  });
 }
 
 function handleAccept(id, variantNum, lines, targetFile, paramValues) {
@@ -371,194 +380,6 @@ function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   return { carbonize: needsCarbonize, acceptedOriginalText: originalContent.join('\n') };
 }
 
-// ---------------------------------------------------------------------------
-// Source-shadow previews
-// ---------------------------------------------------------------------------
-
-function handleSourceShadowDiscard(id, previewFile, meta) {
-  markSourceShadowPreviewHandled(previewFile, id, meta);
-  return {
-    previewMode: 'source-shadow',
-    previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
-    sourceFile: meta.sourceFile,
-  };
-}
-
-function handleSourceShadowAccept(id, variantNum, previewLines, previewFile, meta, paramValues, opts = {}) {
-  const block = findMarkerBlock(id, previewLines);
-  if (!block) return { handled: false, error: 'Markers not found' };
-
-  const sourceFile = resolveSourceShadowFile(meta.sourceFile);
-  const sourceContent = fs.readFileSync(sourceFile, 'utf-8');
-  const sourceLines = sourceContent.split('\n');
-  const start = Number(meta.sourceStartLine) - 1;
-  const end = Number(meta.sourceEndLine) - 1;
-  if (
-    !Number.isInteger(start)
-    || !Number.isInteger(end)
-    || start < 0
-    || end < start
-    || end >= sourceLines.length
-  ) {
-    return {
-      handled: false,
-      error: 'Invalid source-shadow line range for ' + meta.sourceFile,
-    };
-  }
-
-  const commentSyntax = detectCommentSyntax(sourceFile);
-  const isJsx = commentSyntax.open === '{/*';
-  const indent = sourceLines[start].match(/^(\s*)/)?.[1] || '';
-  const variantContent = extractVariant(previewLines, block, variantNum);
-  if (!variantContent) return { handled: false, error: 'Variant ' + variantNum + ' not found' };
-  const originalContent = extractOriginal(previewLines, block);
-  const cssContent = extractCss(previewLines, block, id);
-  const variantText = variantContent.join('\n');
-  const hasHelperAttrs = variantText.includes('data-impeccable-variant');
-  const needsCarbonize = !!(cssContent || hasHelperAttrs);
-
-  const restored = deindentContent(variantContent, indent);
-
-  if (sourceFile.endsWith('.svelte')) {
-    let newLines = [
-      ...sourceLines.slice(0, start),
-      ...restored,
-      ...sourceLines.slice(end + 1),
-    ];
-    const svelteCss = extractAcceptedScopedCss(cssContent, variantNum);
-    if (svelteCss && svelteCss.length > 0) {
-      newLines = appendCssToSvelteStyle(newLines, svelteCss);
-    }
-    fs.writeFileSync(sourceFile, newLines.join('\n'), 'utf-8');
-    markSourceShadowPreviewHandled(previewFile, id, meta);
-
-    const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
-    return {
-      file: sourceRel,
-      sourceFile: sourceRel,
-      previewMode: 'source-shadow',
-      previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
-      carbonize: false,
-      acceptedOriginalText: originalContent.join('\n'),
-    };
-  }
-
-  const replacement = buildCarbonizeReplacement({
-    indent,
-    commentSyntax,
-    isJsx,
-    id,
-    variantNum,
-    cssContent,
-    paramValues,
-    restored,
-  });
-
-  const newLines = [
-    ...sourceLines.slice(0, start),
-    ...replacement,
-    ...sourceLines.slice(end + 1),
-  ];
-  fs.writeFileSync(sourceFile, newLines.join('\n'), 'utf-8');
-  markSourceShadowPreviewHandled(previewFile, id, meta);
-
-  const sourceRel = path.relative(process.cwd(), sourceFile).split(path.sep).join('/');
-  return {
-    file: sourceRel,
-    sourceFile: sourceRel,
-    previewMode: 'source-shadow',
-    previewFile: path.relative(process.cwd(), previewFile).split(path.sep).join('/'),
-    carbonize: needsCarbonize,
-    acceptedOriginalText: originalContent.join('\n'),
-  };
-}
-
-function extractAcceptedScopedCss(cssContent, variantNum) {
-  if (!cssContent || cssContent.length === 0) return null;
-  const css = Array.isArray(cssContent) ? cssContent.join('\n') : String(cssContent);
-  const scoped = extractScopeBlockForVariant(css, variantNum);
-  const body = scoped || css;
-  const lines = body
-    .split('\n')
-    .map((line) => line.replace(/:scope\s*>\s*/g, '').replace(/:scope\s+/g, '').replace(/:scope/g, '').trimEnd());
-  while (lines.length > 0 && lines[0].trim() === '') lines.shift();
-  while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
-  return lines.length > 0 ? lines : null;
-}
-
-function extractScopeBlockForVariant(css, variantNum) {
-  const needle = 'data-impeccable-variant="' + variantNum + '"';
-  let cursor = 0;
-  while (cursor < css.length) {
-    const scopeIdx = css.indexOf('@scope', cursor);
-    if (scopeIdx === -1) return null;
-    const openIdx = css.indexOf('{', scopeIdx);
-    if (openIdx === -1) return null;
-    const header = css.slice(scopeIdx, openIdx);
-    let depth = 1;
-    let i = openIdx + 1;
-    for (; i < css.length; i++) {
-      if (css[i] === '{') depth++;
-      else if (css[i] === '}') {
-        depth--;
-        if (depth === 0) break;
-      }
-    }
-    if (depth !== 0) return null;
-    if (header.includes(needle) || header.includes("data-impeccable-variant='" + variantNum + "'")) {
-      return css.slice(openIdx + 1, i);
-    }
-    cursor = i + 1;
-  }
-  return null;
-}
-
-function appendCssToSvelteStyle(lines, cssLines) {
-  const closeIdx = findLastStyleCloseLine(lines);
-  const prepared = ['', ...cssLines.map((line) => line.trim() === '' ? '' : '  ' + line.trimStart())];
-  if (closeIdx === -1) {
-    return [...lines, '', '<style>', ...prepared.slice(1), '</style>'];
-  }
-  return [
-    ...lines.slice(0, closeIdx),
-    ...prepared,
-    ...lines.slice(closeIdx),
-  ];
-}
-
-function findLastStyleCloseLine(lines) {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (/<\/style\s*>/.test(lines[i])) return i;
-  }
-  return -1;
-}
-
-function deferredSourceShadowAcceptsPath(cwd = process.cwd()) {
-  return path.join(cwd, '.impeccable', 'live', 'deferred-source-shadow-accepts.json');
-}
-
-function readDeferredSourceShadowAccepts(cwd = process.cwd()) {
-  const file = deferredSourceShadowAcceptsPath(cwd);
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf-8'));
-  } catch {
-    return { accepts: [] };
-  }
-}
-
-function writeDeferredSourceShadowAccept(entry, cwd = process.cwd()) {
-  const file = deferredSourceShadowAcceptsPath(cwd);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const data = readDeferredSourceShadowAccepts(cwd);
-  data.accepts = (data.accepts || []).filter((item) => item.id !== entry.id);
-  data.accepts.push({ ...entry, createdAt: new Date().toISOString() });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-}
-
-export function applyDeferredSourceShadowAccepts(cwd = process.cwd()) {
-  return applyDeferredSvelteComponentAccepts(cwd);
-}
-
 function readSourceShadowPreviewMeta(content, id) {
   const escaped = escapeRegExp(id);
   const wrapperRe = new RegExp('<[^>]+data-impeccable-variants=(["\'])' + escaped + '\\1[^>]*>');
@@ -585,44 +406,6 @@ function decodeHtmlAttr(value) {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
-}
-
-function resolveSourceShadowFile(sourceFile) {
-  if (!sourceFile || path.isAbsolute(sourceFile)) {
-    throw new Error('Invalid source-shadow source file');
-  }
-  const cwd = path.resolve(process.cwd());
-  const full = path.resolve(cwd, sourceFile);
-  const rel = path.relative(cwd, full);
-  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error('Source-shadow source file escapes project root');
-  }
-  if (!fs.existsSync(full)) {
-    throw new Error('Source-shadow source file not found: ' + sourceFile);
-  }
-  return full;
-}
-
-function markSourceShadowPreviewHandled(previewFile, id, meta = {}) {
-  const sourceAttrs = meta.sourceFile
-    ? ' data-impeccable-preview="source-shadow"'
-      + ' data-impeccable-source-file="' + escapeHtmlAttr(meta.sourceFile) + '"'
-      + ' data-impeccable-source-start="' + escapeHtmlAttr(meta.sourceStartLine || '') + '"'
-      + ' data-impeccable-source-end="' + escapeHtmlAttr(meta.sourceEndLine || '') + '"'
-    : '';
-  fs.writeFileSync(
-    previewFile,
-    '<!-- impeccable source-shadow preview handled ' + id + sourceAttrs + ' -->\n',
-    'utf-8',
-  );
-}
-
-function escapeHtmlAttr(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 // ---------------------------------------------------------------------------

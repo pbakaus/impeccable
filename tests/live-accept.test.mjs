@@ -169,6 +169,11 @@ describe('live-accept — style-element edge cases', () => {
     assert.equal(closeCount, 1, `expected exactly one \`} closer, got ${closeCount}`);
     // CSS content survived intact.
     assert.ok(inner.includes('@scope ([data-impeccable-variant="1"])'), 'variant-1 scope kept');
+    assert.match(
+      after,
+      /\n          <div data-impeccable-variant="1" style=\{\{ display: 'contents' \}\}>\n            <p className="hook">variant one<\/p>\n          <\/div>/,
+      'accepted JSX content is indented inside the temporary carbonize variant wrapper',
+    );
   });
 
   // Same shape, but the agent put `{`` and ``\`}` attached to first/last CSS

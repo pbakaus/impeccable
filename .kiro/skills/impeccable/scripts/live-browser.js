@@ -152,7 +152,7 @@
   let currentPreviewFile = null;
   let currentPreviewMode = null;
   let recoveryWaitingForAnchor = false;
-  let pendingAccept = null;
+  let pendingAcceptedSession = null;
   let variantObserver = null;
   let variantSelectionInFlight = false;
   let variantSelectionPromise = null;
@@ -5458,12 +5458,13 @@
           }, 2000);
           break;
         case 'complete':
-          if (completePendingAccept(msg)) break;
+        case 'accept':
+          if (maybeCompleteAcceptedSession(msg)) break;
           break;
         case 'agent_done':
-          // Accept cleanup is only final after live-complete.mjs posts the
-          // completed source state. Keep SAVING recoverable while the agent
-          // is still carbonizing the wrapper out of source.
+          // Carbonize accepts are not terminal until live-complete.mjs sends
+          // the final complete event. Keep the browser in its recoverable
+          // saving state while the source cleanup is still in flight.
           break;
         case 'discarded':
           if (msg.id && msg.id === currentSessionId) {
@@ -5472,8 +5473,14 @@
           }
           break;
         case 'error':
+          if (pendingAcceptedSession?.id && msg.id === pendingAcceptedSession.id) {
+            pendingAcceptedSession = null;
+            state = 'CYCLING';
+            updateBarContent('cycling');
+            showToast('Could not complete accept cleanup. Try Accept again.', 5000);
+            break;
+          }
           if (maybeCompleteSteer(msg)) break;
-          if (failPendingAccept(msg)) break;
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
           hideBar();
@@ -5910,6 +5917,7 @@
     disableInlineEdit();
     stripManualEditRuntimeState(selectedElement);
 
+    pendingAcceptedSession = null;
     currentSessionId = id8();
     expectedVariants = selectedCount;
     arrivedVariants = 0;
@@ -5983,6 +5991,7 @@
     if (!canCreateInsert({ prompt, comments: snapshot.comments, strokes: snapshot.strokes })) return;
 
     stopVoice({ suppressSubmit: true });
+    pendingAcceptedSession = null;
     currentSessionId = id8();
     expectedVariants = selectedCount;
     arrivedVariants = 0;
@@ -6607,7 +6616,7 @@ void main() {
 
   async function handleAccept() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
-    if (pendingAccept || state === 'SAVING') return;
+    if (pendingAcceptedSession || state === 'SAVING') return;
     if (variantSelectionPromise) {
       try { await variantSelectionPromise; } catch { /* failed selection falls back below */ }
     }
@@ -6638,45 +6647,41 @@ void main() {
 
     state = 'SAVING';
     updateBarContent('saving');
-    pendingAccept = {
+    pendingAcceptedSession = {
       id: acceptedSessionId,
       variant: String(acceptedVariant),
       isSvelteComponent: acceptedIsSvelteComponent,
       ...acceptedSnapshot,
+      finalizing: false,
     };
     saveSession();
 
     sendEvent(acceptPayload, { throwOnError: true })
       .then(() => {})
       .catch(() => {
-        if (pendingAccept?.id === acceptedSessionId) pendingAccept = null;
+        if (pendingAcceptedSession?.id === acceptedSessionId) pendingAcceptedSession = null;
         state = 'CYCLING';
         showOrUpdateCyclingBar();
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
   }
 
-  function completePendingAccept(msg) {
-    if (!pendingAccept || msg.id !== pendingAccept.id) return false;
-    const accepted = pendingAccept;
-    pendingAccept = null;
+  function maybeCompleteAcceptedSession(msg) {
+    const pending = pendingAcceptedSession;
+    if (!pending || !msg?.id || msg.id !== pending.id) return false;
+    if (currentSessionId && currentSessionId !== pending.id) {
+      pendingAcceptedSession = null;
+      return false;
+    }
+    if (pending.finalizing) return true;
+    pending.finalizing = true;
     markSessionHandled();
-    if (accepted.isSvelteComponent) {
-      commitAcceptedSvelteComponentToDom(accepted.id);
+    if (pending.isSvelteComponent) {
+      commitAcceptedSvelteComponentToDom(pending.id);
     }
     state = 'CONFIRMED';
     updateBarContent('confirmed');
-    scheduleAcceptCleanup(accepted);
-    return true;
-  }
-
-  function failPendingAccept(msg) {
-    if (!pendingAccept || msg.id !== pendingAccept.id) return false;
-    pendingAccept = null;
-    state = 'CYCLING';
-    showOrUpdateCyclingBar();
-    refreshParamsPanel();
-    showToast('Could not apply variant: ' + (msg.message || 'source write failed'), 7000);
+    scheduleAcceptCleanup(pending);
     return true;
   }
 
@@ -6776,7 +6781,7 @@ void main() {
     selectedElement = null;
     currentSessionId = null;
     selectedAction = 'impeccable';
-    pendingAccept = null;
+    pendingAcceptedSession = null;
     renderEditBadge('hidden');
     state = 'PICKING';
   }
