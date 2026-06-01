@@ -4569,6 +4569,10 @@
         case 'error':
           if (pendingAcceptedSession?.id && msg.id === pendingAcceptedSession.id) {
             pendingAcceptedSession = null;
+            state = 'CYCLING';
+            updateBarContent('cycling');
+            showToast('Could not complete accept cleanup with the live server. Session kept for recovery; try Accept again.', 5000);
+            break;
           }
           if (maybeCompleteSteer(msg)) break;
           console.error('[impeccable] Error:', msg.message);
@@ -5758,11 +5762,6 @@ void main() {
     const classes = [...(root.classList || [])].filter(Boolean);
     if (classes.length === 0) return tag;
     return tag + classes.map((cls) => '.' + cssIdent(cls)).join('');
-  }
-
-  function cssIdent(value) {
-    if (window.CSS?.escape) return window.CSS.escape(value);
-    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   }
 
   function acceptedDomAlreadyClean(pending) {

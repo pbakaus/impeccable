@@ -293,8 +293,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /case 'error':\s*if \(pendingAcceptedSession\?\.id && msg\.id === pendingAcceptedSession\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,40}?\}[\s\S]{0,80}?if \(maybeCompleteSteer\(msg\)\) break;/,
-      'an SSE error for a queued accept should invalidate pending accept state before delayed completions can act on it',
+      /case 'error':\s*if \(pendingAcceptedSession\?\.id && msg\.id === pendingAcceptedSession\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,80}?state = 'CYCLING';[\s\S]{0,80}?updateBarContent\('cycling'\);[\s\S]{0,160}?break;/,
+      'an SSE error for a queued accept should invalidate pending accept state and keep variants retryable',
+    );
+    assert.equal(
+      SOURCE.match(/function cssIdent\(value\)/g)?.length || 0,
+      1,
+      'accepted DOM cleanup should reuse the existing cssIdent helper instead of shadowing it',
     );
     const agentDoneStart = SOURCE.indexOf("case 'agent_done':");
     const errorCaseStart = SOURCE.indexOf("case 'error':", agentDoneStart);
