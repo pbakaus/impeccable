@@ -116,6 +116,14 @@ html.light .kinpaku-chrome .site-header-github:hover {
     background: var(--ks-lacquer-raised);
     border-top-color: var(--ks-rule);
   }
+
+  html.light .kinpaku-chrome [data-site-header] .site-header-nav a[aria-current="page"] {
+    border-bottom: 0;
+  }
+
+  html.light .kinpaku-chrome [data-site-header] .site-header-nav a[aria-current="page"]::after {
+    display: none;
+  }
 }
 
 html.light .kinpaku-chrome .site-footer {
