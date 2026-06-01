@@ -6,8 +6,9 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import {
@@ -16,6 +17,9 @@ import {
   findClosingLine,
   detectCommentSyntax,
 } from '../skill/scripts/live-wrap.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LIVE_WRAP_SCRIPT = resolve(__dirname, '..', 'skill/scripts/live-wrap.mjs');
 
 // ---------------------------------------------------------------------------
 // Unit tests: pure functions
@@ -232,8 +236,8 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'index.html'), html);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id test123 --count 3 --classes "hero-section" --file "${join(tmp, 'index.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id test123 --count 3 --classes "hero-section" --file "index.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     // The file path is relative to cwd, so it may be a relative path to the tmp dir
@@ -266,8 +270,8 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'App.jsx'), jsx);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id jsx123 --count 2 --classes "hero" --file "${join(tmp, 'App.jsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id jsx123 --count 2 --classes "hero" --file "App.jsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     assert.equal(result.commentSyntax.open, '{/*');
@@ -288,8 +292,8 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'page.html'), html);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id id123 --count 2 --element-id "pricing" --file "${join(tmp, 'page.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id id123 --count 2 --element-id "pricing" --file "page.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     const modified = readFileSync(join(tmp, 'page.html'), 'utf-8');
@@ -303,8 +307,8 @@ describe('wrapCli integration', () => {
 
     try {
       execSync(
-        `node skill/scripts/live-wrap.mjs --id err123 --count 2 --classes "nonexistent" --file "${join(tmp, 'empty.html')}"`,
-        { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' }
+        `node "${LIVE_WRAP_SCRIPT}" --id err123 --count 2 --classes "nonexistent" --file "empty.html"`,
+        { cwd: tmp, encoding: 'utf-8', stdio: 'pipe' }
       );
       assert.fail('Should have exited with error');
     } catch (err) {
@@ -322,8 +326,8 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'preserve.html'), html);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id pres123 --count 2 --classes "target" --file "${join(tmp, 'preserve.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id pres123 --count 2 --classes "target" --file "preserve.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'preserve.html'), 'utf-8');
@@ -339,8 +343,8 @@ describe('wrapCli integration', () => {
     writeFileSync(join(tmp, 'plain.html'), html);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id scopedCss --count 2 --classes "hero-shell" --tag "section" --file "${join(tmp, 'plain.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id scopedCss --count 2 --classes "hero-shell" --tag "section" --file "plain.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     assert.equal(result.styleMode, 'scoped');
@@ -364,8 +368,8 @@ const title = 'Astro title';
     writeFileSync(join(tmp, 'Hero.astro'), astro);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id astroCss --count 3 --classes "hero-shell" --tag "section" --file "${join(tmp, 'Hero.astro')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id astroCss --count 3 --classes "hero-shell" --tag "section" --file "Hero.astro"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     assert.equal(
@@ -446,8 +450,8 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'page.tsx'), tsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id wrapA --count 3 --classes "organic-sand-surface,py-20,lg:py-24" --tag "section" --file "${join(tmp, 'page.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id wrapA --count 3 --classes "organic-sand-surface,py-20,lg:py-24" --tag "section" --file "page.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'page.tsx'), 'utf-8');
@@ -482,8 +486,8 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id jsxStyle --count 3 --classes "target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id jsxStyle --count 3 --classes "target" --tag "section" --file "App.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
@@ -515,8 +519,8 @@ describe('live-wrap — JSX / TSX correctness', () => {
     writeFileSync(join(tmp, 'Page.tsx'), tsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id classNameA --count 3 --classes "shared-class,target-marker" --tag "div" --file "${join(tmp, 'Page.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id classNameA --count 3 --classes "shared-class,target-marker" --tag "div" --file "Page.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'Page.tsx'), 'utf-8');
@@ -541,8 +545,8 @@ export default function App() {
     writeFileSync(join(tmp, 'App.jsx'), jsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id cssModuleA --count 3 --classes "hero-title _heroTitle_1lpqp_2" --tag "h1" --text "CSS Modules Fixture" --file "${join(tmp, 'App.jsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id cssModuleA --count 3 --classes "hero-title _heroTitle_1lpqp_2" --tag "h1" --text "CSS Modules Fixture" --file "App.jsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'App.jsx'), 'utf-8');
@@ -571,8 +575,8 @@ export default function App() {
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id frag1 --count 3 --classes "frag-target" --tag "section" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id frag1 --count 3 --classes "frag-target" --tag "section" --file "App.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
@@ -595,8 +599,8 @@ export default function App() {
     writeFileSync(join(tmp, 'page.html'), html);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id htmlFrag --count 3 --classes "html-frag" --tag "section" --file "${join(tmp, 'page.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id htmlFrag --count 3 --classes "html-frag" --tag "section" --file "page.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'page.html'), 'utf-8');
@@ -631,8 +635,8 @@ export default function App() {
     writeFileSync(join(tmp, 'Page.tsx'), tsx);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id repeat1 --count 3 --classes "card" --tag "aside" --text "Beta card Second in the list." --file "${join(tmp, 'Page.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id repeat1 --count 3 --classes "card" --tag "aside" --text "Beta card Second in the list." --file "Page.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'Page.tsx'), 'utf-8');
@@ -674,8 +678,8 @@ export default function App() {
     // Note: --text is the textContent the BROWSER produced — no space between
     // "Two" and "Second" because textContent has no inter-element whitespace.
     execSync(
-      `node skill/scripts/live-wrap.mjs --id concat1 --count 3 --classes "card" --tag "aside" --text "Hero TwoSecond card body copy." --file "${join(tmp, 'Page.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id concat1 --count 3 --classes "card" --tag "aside" --text "Hero TwoSecond card body copy." --file "Page.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'Page.tsx'), 'utf-8');
@@ -709,8 +713,8 @@ export default function App() {
     // makes wrap silently land on the first match (existing behavior
     // documented in filterByText's JSDoc).
     execSync(
-      `node skill/scripts/live-wrap.mjs --id short1 --count 3 --classes "card" --tag "aside" --text "Hi" --file "${join(tmp, 'Short.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id short1 --count 3 --classes "card" --tag "aside" --text "Hi" --file "Short.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'Short.tsx'), 'utf-8');
@@ -736,8 +740,8 @@ export default function App() {
     writeFileSync(join(tmp, 'multi.html'), html);
 
     const result = JSON.parse(execSync(
-      `node skill/scripts/live-wrap.mjs --id ml1 --count 3 --classes "multiline-target" --tag "section" --file "${join(tmp, 'multi.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id ml1 --count 3 --classes "multiline-target" --tag "section" --file "multi.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     ));
 
     const modified = readFileSync(join(tmp, 'multi.html'), 'utf-8');
@@ -772,8 +776,8 @@ export default function App() {
 
     // Run with --text that won't show up in source verbatim.
     execSync(
-      `node skill/scripts/live-wrap.mjs --id dyn1 --count 3 --classes "card" --tag "aside" --text "Beta card body text" --file "${join(tmp, 'Cards.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id dyn1 --count 3 --classes "card" --tag "aside" --text "Beta card body text" --file "Cards.tsx"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'Cards.tsx'), 'utf-8');
@@ -802,8 +806,8 @@ export default function App() {
     let errPayload;
     try {
       execSync(
-        `node skill/scripts/live-wrap.mjs --id dup1 --count 3 --classes "card" --tag "aside" --text "Same headline Identical body copy." --file "${join(tmp, 'Dup.tsx')}"`,
-        { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' }
+        `node "${LIVE_WRAP_SCRIPT}" --id dup1 --count 3 --classes "card" --tag "aside" --text "Same headline Identical body copy." --file "Dup.tsx"`,
+        { cwd: tmp, encoding: 'utf-8', stdio: 'pipe' }
       );
       assert.fail('Should have exited with error');
     } catch (err) {
@@ -827,8 +831,8 @@ export default function App() {
     writeFileSync(join(tmp, 'index.html'), html);
 
     execSync(
-      `node skill/scripts/live-wrap.mjs --id tagFilter --count 3 --classes "ambiguous-name" --tag "section" --file "${join(tmp, 'index.html')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
+      `node "${LIVE_WRAP_SCRIPT}" --id tagFilter --count 3 --classes "ambiguous-name" --tag "section" --file "index.html"`,
+      { cwd: tmp, encoding: 'utf-8' }
     );
 
     const modified = readFileSync(join(tmp, 'index.html'), 'utf-8');

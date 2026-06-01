@@ -13,10 +13,17 @@ import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
+const TEST_TOKEN = '11111111-1111-4111-8111-111111111111';
+
+function withToken(args) {
+  return args.includes('--port') && !args.includes('--token')
+    ? [...args, '--token', TEST_TOKEN]
+    : args;
+}
 
 function runInject(cwd, configPath, args) {
   try {
-    const out = execFileSync('node', [INJECT, ...args], {
+    const out = execFileSync('node', [INJECT, ...withToken(args)], {
       cwd,
       encoding: 'utf-8',
       env: { ...process.env, IMPECCABLE_LIVE_CONFIG: configPath },
@@ -31,7 +38,7 @@ function runInject(cwd, configPath, args) {
 
 function runInjectDefault(cwd, args) {
   try {
-    const out = execFileSync('node', [INJECT, ...args], {
+    const out = execFileSync('node', [INJECT, ...withToken(args)], {
       cwd,
       encoding: 'utf-8',
       env: { ...process.env, IMPECCABLE_LIVE_CONFIG: '' },
@@ -206,6 +213,26 @@ describe('live-inject — insert/remove round-trip preserves file bytes', () => 
     assert.equal(after, original, 'insertAfter round-trip must restore original byte-for-byte');
   });
 
+  it('rejects config files outside the project root', () => {
+    const sibling = tmp + '-sibling';
+    mkdirSync(sibling, { recursive: true });
+    try {
+      writeFileSync(join(sibling, 'index.html'), '<html><body></body></html>\n');
+      const cfgPath = join(tmp, 'config.json');
+      writeFileSync(cfgPath, JSON.stringify({
+        files: [join(sibling, 'index.html')],
+        insertBefore: '</body>',
+        commentSyntax: 'html',
+      }));
+
+      const result = runInject(tmp, cfgPath, ['--port', '8400']);
+      assert.equal(result.ok, false);
+      assert.equal(result.results[0].error, 'file_outside_project');
+    } finally {
+      rmSync(sibling, { recursive: true, force: true });
+    }
+  });
+
   it('round-trips through CSP-meta patch and revert (insert mutates the meta tag, remove restores it)', () => {
     // Mirrors a Vite app that ships a CSP meta tag in index.html. live-inject
     // appends `http://localhost:PORT` to script-src / connect-src on insert
@@ -263,7 +290,7 @@ const title = 'Test';
 
     runInject(tmp, cfgPath, ['--port', '8400']);
     const afterInject = readFileSync(file, 'utf-8');
-    assert.match(afterInject, /<script is:inline src="http:\/\/localhost:8400\/live\.js"><\/script>/, 'astro inject should carry is:inline');
+    assert.match(afterInject, /<script is:inline src="http:\/\/localhost:8400\/live\.js\?token=[^"]+"><\/script>/, 'astro inject should carry is:inline');
 
     // Non-astro file with same config should NOT get is:inline
     const htmlFile = join(tmp, 'plain.html');
@@ -314,8 +341,8 @@ const title = 'Test';
     const afterInject = readFileSync(file, 'utf-8');
 
     assert.equal((afterInject.match(/impeccable-live-start/g) || []).length, 1, 'reinjection should leave one live block');
-    assert.match(afterInject, /<script is:inline src="http:\/\/localhost:8400\/live\.js"><\/script>/, 'astro reinject should restore is:inline');
-    assert.doesNotMatch(afterInject, /<script src="http:\/\/localhost:8400\/live\.js"><\/script>/, 'bare astro live script must not survive');
+    assert.match(afterInject, /<script is:inline src="http:\/\/localhost:8400\/live\.js\?token=[^"]+"><\/script>/, 'astro reinject should restore is:inline');
+    assert.doesNotMatch(afterInject, /<script src="http:\/\/localhost:8400\/live\.js(?:\?token=[^"]+)?"><\/script>/, 'bare astro live script must not survive');
   });
 
   it('round-trips when the insert anchor has no leading indent (column-0 </body>)', () => {

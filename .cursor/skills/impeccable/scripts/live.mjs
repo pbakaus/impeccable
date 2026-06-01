@@ -67,8 +67,8 @@ The agent should then:
     process.exit(1);
   }
 
-  // 3. Inject the script tag at the current port
-  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port)]);
+  // 3. Inject the script tag at the current port with the one-session token.
+  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port), '--token', String(serverInfo.token || '')]);
   const injectResult = safeParse(injectOut);
   if (!injectResult || !injectResult.ok) {
     console.log(JSON.stringify({

@@ -110,7 +110,7 @@ for (const name of listFixtures()) {
     it('live-inject --port adds the script tag to every config file', () => {
       const { tmp } = stageFixture(name);
       try {
-        const out = runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
+        const out = runScript('live-inject.mjs', ['--port', '9999', '--token', '11111111-1111-4111-8111-111111111111'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'inject succeeded');
         for (const r of result.results) {
@@ -127,7 +127,7 @@ for (const name of listFixtures()) {
     it('live-inject --remove strips the script tag cleanly', () => {
       const { tmp } = stageFixture(name);
       try {
-        runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
+        runScript('live-inject.mjs', ['--port', '9999', '--token', '11111111-1111-4111-8111-111111111111'], { cwd: tmp });
         const out = runScript('live-inject.mjs', ['--remove'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'remove succeeded');

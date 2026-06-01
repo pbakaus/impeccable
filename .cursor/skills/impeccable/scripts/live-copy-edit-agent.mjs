@@ -449,11 +449,13 @@ function runCodex(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_T
   const args = [
     'exec',
     '--cd', cwd,
-    '--dangerously-bypass-approvals-and-sandbox',
     '--ephemeral',
     '--output-last-message', resultPath,
     '-c', `model_reasoning_effort="${env.IMPECCABLE_LIVE_COPY_AGENT_EFFORT || 'low'}"`,
   ];
+  if (allowsBypassPermissions(env)) {
+    args.splice(3, 0, '--dangerously-bypass-approvals-and-sandbox');
+  }
   if (env.IMPECCABLE_LIVE_COPY_AGENT_MODEL) {
     args.push('--model', env.IMPECCABLE_LIVE_COPY_AGENT_MODEL);
   }
@@ -464,17 +466,15 @@ function runCodex(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_T
 function runClaude(prompt, { cwd, env, resultPath, logPath, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   const args = [
     '--print',
-    '--permission-mode', 'bypassPermissions',
     '--output-format', 'json',
   ];
+  if (allowsBypassPermissions(env)) {
+    args.splice(1, 0, '--permission-mode', 'bypassPermissions');
+  }
   if (env.IMPECCABLE_LIVE_COPY_AGENT_MODEL) {
     args.push('--model', env.IMPECCABLE_LIVE_COPY_AGENT_MODEL);
   }
   args.push(prompt);
-  // Forward env as-is so CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY flow
-  // through. On macOS, `claude /login` stores creds in the Keychain, which a
-  // non-TTY subprocess cannot read; setting CLAUDE_CODE_OAUTH_TOKEN (via
-  // `claude setup-token`) is the supported headless auth path.
   return runAgentProcess('claude', args, '', { cwd, env, logPath, timeoutMs, mirrorOutputPath: resultPath });
 }
 
@@ -483,7 +483,7 @@ function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, m
     const log = fs.createWriteStream(logPath, { flags: 'a' });
     const child = spawn(command, args, {
       cwd,
-      env,
+      env: buildAgentProcessEnv(env),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let output = '';
@@ -531,6 +531,47 @@ function runAgentProcess(command, args, stdin, { cwd, env, logPath, timeoutMs, m
     if (stdin) child.stdin.end(stdin);
     else child.stdin.end();
   });
+}
+
+export function allowsBypassPermissions(env = process.env) {
+  return /^(1|true|yes)$/i.test(env.IMPECCABLE_LIVE_COPY_AGENT_BYPASS || '');
+}
+
+export function buildAgentProcessEnv(env = process.env) {
+  if (/^(1|true|yes)$/i.test(env.IMPECCABLE_LIVE_COPY_AGENT_PASS_ENV || '')) return env;
+
+  const allowedExact = new Set([
+    'ANTHROPIC_API_KEY',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'CODEX_HOME',
+    'HOME',
+    'LANG',
+    'LC_ALL',
+    'LOGNAME',
+    'OPENAI_API_KEY',
+    'PATH',
+    'SHELL',
+    'SSH_AUTH_SOCK',
+    'TERM',
+    'TMPDIR',
+    'USER',
+    'XDG_CONFIG_HOME',
+    'XDG_DATA_HOME',
+    'XDG_STATE_HOME',
+  ]);
+  const allowedPrefixes = [
+    'CODEX_',
+    'CLAUDE_CODE_',
+    'IMPECCABLE_LIVE_COPY_AGENT_',
+    'npm_config_',
+  ];
+  const out = {};
+  for (const [key, value] of Object.entries(env || {})) {
+    if (allowedExact.has(key) || allowedPrefixes.some((prefix) => key.startsWith(prefix))) {
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 function isPathInsideOrEqual(cwd, file) {

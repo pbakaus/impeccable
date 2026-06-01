@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allowsBypassPermissions,
+  buildAgentProcessEnv,
   buildCopyEditBatchPrompt,
   chooseCopyEditAgent,
   describeNoProviderError,
@@ -99,12 +101,16 @@ describe('live-copy-edit-agent', () => {
     }
   });
 
-  it('flags invalid JSX syntax in post-apply checks', () => {
+  it('flags invalid JSX syntax when parser is available, otherwise warns', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-agent-jsx-checks-'));
     try {
       fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
       fs.writeFileSync(path.join(tmp, 'src', 'App.jsx'), 'export default function App() { return <h1>Broken</h2>; }\n');
       const checks = runCopyEditPostApplyChecks({ cwd: tmp, files: ['src/App.jsx'] });
+      if (checks.warnings.some((item) => item.reason === 'syntax_parser_unavailable')) {
+        assert.equal(checks.ok, true);
+        return;
+      }
       assert.equal(checks.ok, false);
       assert.equal(checks.failures.some((item) => item.reason === 'invalid_source_syntax'), true);
     } finally {
@@ -151,6 +157,28 @@ describe('live-copy-edit-agent', () => {
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'off' } }), null);
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'false' } }), null);
     assert.equal(chooseCopyEditAgent({ env: { IMPECCABLE_LIVE_COPY_AGENT: 'mock' } }), 'mock');
+  });
+
+  it('requires explicit opt-in for bypass permissions and full environment forwarding', () => {
+    assert.equal(allowsBypassPermissions({}), false);
+    assert.equal(allowsBypassPermissions({ IMPECCABLE_LIVE_COPY_AGENT_BYPASS: '1' }), true);
+
+    const filtered = buildAgentProcessEnv({
+      PATH: '/bin',
+      HOME: '/tmp/home',
+      ANTHROPIC_API_KEY: 'allowed-auth',
+      DATABASE_URL: 'must-not-flow',
+      STRIPE_SECRET_KEY: 'must-not-flow',
+      IMPECCABLE_LIVE_COPY_AGENT_MODEL: 'allowed-setting',
+    });
+    assert.equal(filtered.PATH, '/bin');
+    assert.equal(filtered.ANTHROPIC_API_KEY, 'allowed-auth');
+    assert.equal(filtered.IMPECCABLE_LIVE_COPY_AGENT_MODEL, 'allowed-setting');
+    assert.equal(filtered.DATABASE_URL, undefined);
+    assert.equal(filtered.STRIPE_SECRET_KEY, undefined);
+
+    const full = { DATABASE_URL: 'allowed-by-explicit-opt-in', IMPECCABLE_LIVE_COPY_AGENT_PASS_ENV: '1' };
+    assert.equal(buildAgentProcessEnv(full), full);
   });
 
   it('surfaces Claude CLI auth errors from is_error JSON output', () => {

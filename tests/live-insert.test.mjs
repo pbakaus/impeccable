@@ -6,8 +6,9 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import {
@@ -15,6 +16,9 @@ import {
   buildInsertWrapperLines,
   isInsertPosition,
 } from '../skill/scripts/live-insert.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LIVE_INSERT_SCRIPT = resolve(__dirname, '..', 'skill/scripts/live-insert.mjs');
 
 describe('isInsertPosition', () => {
   it('accepts before and after only', () => {
@@ -92,8 +96,8 @@ describe('live-insert CLI integration', () => {
 </html>`);
 
     const out = execSync(
-      `node skill/scripts/live-insert.mjs --id ins12345 --count 3 --position after --classes "hero" --tag section --file "${join(tmp, 'index.html')}"`,
-      { encoding: 'utf-8' },
+      `node "${LIVE_INSERT_SCRIPT}" --id ins12345 --count 3 --position after --classes "hero" --tag section --file "index.html"`,
+      { cwd: tmp, encoding: 'utf-8' },
     );
     const result = JSON.parse(out.trim());
     assert.equal(result.mode, 'insert');
@@ -115,8 +119,8 @@ describe('live-insert CLI integration', () => {
 </main>`);
 
     execSync(
-      `node skill/scripts/live-insert.mjs --id ins99999 --count 2 --position before --classes "cta" --tag section --file "${join(tmp, 'page.html')}"`,
-      { encoding: 'utf-8' },
+      `node "${LIVE_INSERT_SCRIPT}" --id ins99999 --count 2 --position before --classes "cta" --tag section --file "page.html"`,
+      { cwd: tmp, encoding: 'utf-8' },
     );
 
     const after = readFileSync(join(tmp, 'page.html'), 'utf-8');
@@ -135,8 +139,8 @@ describe('live-insert CLI integration', () => {
 }`);
 
     const out = execSync(
-      `node skill/scripts/live-insert.mjs --id jsxins01 --count 3 --position after --classes "hero" --tag section --file "${join(tmp, 'App.jsx')}"`,
-      { encoding: 'utf-8' },
+      `node "${LIVE_INSERT_SCRIPT}" --id jsxins01 --count 3 --position after --classes "hero" --tag section --file "App.jsx"`,
+      { cwd: tmp, encoding: 'utf-8' },
     );
     const result = JSON.parse(out.trim());
     assert.equal(result.commentSyntax.open, '{/*');
@@ -149,8 +153,8 @@ describe('live-insert CLI integration', () => {
     writeFileSync(join(tmp, 'empty.html'), '<div class="x">x</div>');
     assert.throws(
       () => execSync(
-        `node skill/scripts/live-insert.mjs --id bad00001 --count 2 --classes x --file "${join(tmp, 'empty.html')}"`,
-        { encoding: 'utf-8', stdio: 'pipe' },
+        `node "${LIVE_INSERT_SCRIPT}" --id bad00001 --count 2 --classes x --file "empty.html"`,
+        { cwd: tmp, encoding: 'utf-8', stdio: 'pipe' },
       ),
       (err) => err.status !== 0,
     );
@@ -160,8 +164,8 @@ describe('live-insert CLI integration', () => {
     writeFileSync(join(tmp, 'empty.html'), '<div class="x">x</div>');
     assert.throws(
       () => execSync(
-        `node skill/scripts/live-insert.mjs --id bad00002 --count 2 --position inside --classes x --file "${join(tmp, 'empty.html')}"`,
-        { encoding: 'utf-8', stdio: 'pipe' },
+        `node "${LIVE_INSERT_SCRIPT}" --id bad00002 --count 2 --position inside --classes x --file "empty.html"`,
+        { cwd: tmp, encoding: 'utf-8', stdio: 'pipe' },
       ),
       (err) => err.status !== 0,
     );
