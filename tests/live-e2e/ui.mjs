@@ -1003,15 +1003,35 @@ export async function runInsertFlow(page, {
   }, { timeout: 5_000 });
   await page.mouse.click(x, y);
 
-  await page.waitForSelector(INSERT_INPUT_ID, { state: 'visible', timeout: 5_000 });
-  await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 });
+  await installLiveQueryHelpers(page);
+  await page.waitForFunction(
+    ({ inputSel, barSel }) => {
+      const input = window.__impeccableLiveQuery(inputSel);
+      const bar = window.__impeccableLiveQuery(barSel);
+      if (!input || !bar) return false;
+      const rect = input.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && bar.style.display !== 'none';
+    },
+    { inputSel: INSERT_INPUT_ID, barSel: BAR_ID },
+    { timeout: 5_000 },
+  );
 
-  await page.evaluate(({ sel, value }) => {
+  const focused = await page.evaluate((sel) => {
     const el = window.__impeccableLiveQuery(sel);
-    if (!el) return;
-    el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, { sel: INSERT_INPUT_ID, value: prompt });
+    if (!el) return false;
+    try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+    let active = document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    return active === el;
+  }, INSERT_INPUT_ID);
+  if (!focused) throw new Error('Insert prompt input did not receive focus');
+
+  await page.keyboard.type(prompt);
+  await page.waitForFunction(
+    ({ sel, value }) => window.__impeccableLiveQuery(sel)?.value === value,
+    { sel: INSERT_INPUT_ID, value: prompt },
+    { timeout: 5_000 },
+  );
 
   await page.waitForFunction(
     (sel) => {

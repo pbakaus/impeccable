@@ -147,7 +147,7 @@ describe('live-browser.js regression guards', () => {
   it('restores unsaved inline edit drafts before hideBar tears editing down', () => {
     assert.match(
       SOURCE,
-      /function hideBar\(\) \{[\s\S]{0,360}?if \(state === 'EDITING'\) restoreInlineEditDrafts\(\);[\s\S]{0,80}?disableInlineEdit\(\);/,
+      /function hideBar\(\) \{[\s\S]{0,520}?if \(state === 'EDITING'\) restoreInlineEditDrafts\(\);[\s\S]{0,80}?disableInlineEdit\(\);/,
       'hideBar should not leave unsaved contenteditable drafts in the DOM when an external event hides the bar',
     );
   });
@@ -237,11 +237,11 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('orphaned Svelte component wrappers reset instead of stranding the bar at 0/0', () => {
+  it('orphaned Svelte component wrappers recover from the manifest instead of stranding the bar at 0/0', () => {
     assert.match(
       SOURCE,
-      /wrapper\.dataset\.impeccablePreview === 'svelte-component'[\s\S]{0,200}?svelteComponentSession\?\.sessionId !== sessionId[\s\S]{0,200}?return false;/,
-      'resumeSession should drop an orphaned svelte-component wrapper instead of resuming it empty',
+      /wrapper\.dataset\.impeccablePreview === 'svelte-component'[\s\S]{0,220}?svelteComponentSession\?\.sessionId !== sessionId[\s\S]{0,160}?wrapper\.remove\(\);[\s\S]{0,160}?restoreSessionWithoutWrapper\('browser_resumed_svelte_orphan_wrapper'\)/,
+      'resumeSession should remove an orphaned svelte-component wrapper and remount from the persisted manifest instead of clearing the session',
     );
     assert.match(
       SOURCE,
@@ -252,6 +252,55 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /const mounted = await mountSvelteComponentVariant\(visibleVariant\);[\s\S]{0,500}?abortSvelteComponentInjection\(sessionId,/,
       'injection should abort when the initial variant mount fails',
+    );
+  });
+
+  it('persists preview/source metadata needed to restore Svelte variants after refresh', () => {
+    assert.match(
+      SOURCE,
+      /let currentSourceFile = null;[\s\S]{0,140}?let currentPreviewFile = null;[\s\S]{0,140}?let currentPreviewMode = null;/,
+      'browser runtime needs durable source/preview fields for refresh recovery',
+    );
+    assert.match(
+      SOURCE,
+      /function saveSession\(\)[\s\S]{0,600}?sourceFile: currentSourceFile \|\| undefined,[\s\S]{0,160}?previewFile: currentPreviewFile \|\| undefined,[\s\S]{0,160}?previewMode: currentPreviewMode \|\| undefined,[\s\S]{0,160}?paramValues: \{ \.\.\.paramsCurrentValues \}/,
+      'saveSession should persist sourceFile, previewFile, previewMode, and current param values',
+    );
+    assert.match(
+      SOURCE,
+      /function checkpointPayload\(reason\)[\s\S]{0,500}?sourceFile: currentSourceFile \|\| undefined,[\s\S]{0,160}?previewFile: currentPreviewFile \|\| undefined,[\s\S]{0,160}?previewMode: currentPreviewMode \|\| undefined/,
+      'checkpoints should carry file metadata so the live server can include it in activeSessions',
+    );
+  });
+
+  it('SSE connected activeSessions can remount saved Svelte component sessions', () => {
+    assert.match(
+      SOURCE,
+      /case 'connected':[\s\S]{0,500}?restoreFromActiveSessions\(msg\.activeSessions, 'sse_connected'\)/,
+      'the connected handshake should ask the server for active sessions and try to remount the matching saved session',
+    );
+    assert.match(
+      SOURCE,
+      /const restoreFile = currentPreviewMode === 'svelte-component'[\s\S]{0,120}?\? currentPreviewFile[\s\S]{0,180}?injectVariantsFromSource\(restoreFile, currentSessionId\)/,
+      'reload recovery should prefer previewFile for Svelte component sessions and inject that manifest',
+    );
+    assert.match(
+      SOURCE,
+      /function injectSvelteComponentsFromManifest\(manifestPath, sessionId\)[\s\S]{0,700}?rememberSessionFileMeta\(\{[\s\S]{0,160}?previewMode: 'svelte-component'/,
+      'manifest injection should refresh local preview metadata for subsequent reloads',
+    );
+  });
+
+  it('missing-anchor Svelte recovery waits instead of clearing the session', () => {
+    assert.match(
+      SOURCE,
+      /if \(!liveEl\?\.parentElement\) \{[\s\S]{0,900}?recoveryWaitingForAnchor = true;[\s\S]{0,500}?waitForSvelteComponentTargetAndRetry\(\{ manifestPath, sessionId, manifest \}\);[\s\S]{0,220}?Variants ready\. Reveal the selected element to resume\./,
+      'Svelte manifest injection should keep a recoverable session when the anchor disappeared after refresh',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!wrapper\) \{[\s\S]{0,180}?restoreSessionWithoutWrapper\('browser_resumed_without_wrapper'\)[\s\S]{0,180}?return true;[\s\S]{0,180}?clearSession\(\);/,
+      'no-wrapper refresh recovery should try the durable session restore path before clearing stale local state',
     );
   });
 
@@ -283,6 +332,47 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /const acceptedIsSvelteComponent = svelteComponentSession\?\.sessionId === acceptedSessionId[\s\S]{0,120}?impeccablePreview === 'svelte-component';/,
       'Svelte component accepts should still bridge the accepted preview in the DOM while HMR catches up',
+    );
+  });
+
+  it('Svelte component Insert previews mount beside the anchor instead of replacing it', () => {
+    assert.match(
+      SOURCE,
+      /function isSvelteInsertManifest\(manifest\)[\s\S]{0,140}?manifest\?\.mode === 'insert'/,
+      'Svelte insert manifests should be detected explicitly',
+    );
+    assert.match(
+      SOURCE,
+      /const insertMode = isSvelteInsertManifest\(manifest\);[\s\S]{0,260}?const detachedOriginal = insertMode \? null : liveEl;/,
+      'Svelte insert previews should keep the live anchor in place',
+    );
+    assert.match(
+      SOURCE,
+      /if \(insertMode\) \{[\s\S]{0,120}?removeInsertPlaceholderDom\(\);[\s\S]{0,220}?insertBefore\(wrapper, liveEl\)[\s\S]{0,220}?insertBefore\(wrapper, liveEl\.nextSibling\)/,
+      'Svelte insert previews should remove the placeholder and insert a component wrapper before/after the anchor',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!isSvelteInsertManifest\(manifest\)\) \{[\s\S]{0,120}?applyOriginalAttrsToSvelteAnchor/,
+      'Svelte insert variants must not receive source-anchor attrs while mounting',
+    );
+  });
+
+  it('stale delayed hideBar timers cannot hide a newly shown live bar', () => {
+    assert.match(
+      SOURCE,
+      /let barHideSeq = 0;/,
+      'the live bar needs a hide/show generation token',
+    );
+    assert.match(
+      SOURCE,
+      /function showBar\(mode\) \{[\s\S]{0,80}?barHideSeq \+= 1;/,
+      'showBar should invalidate any pending delayed hide',
+    );
+    assert.match(
+      SOURCE,
+      /const hideSeq = \+\+barHideSeq;[\s\S]{0,360}?hideSeq === barHideSeq[\s\S]{0,80}?style\.display = 'none'/,
+      'hideBar should only hide if no newer show happened before the timeout',
     );
   });
 

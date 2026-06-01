@@ -280,6 +280,7 @@ describe('live-session-store', () => {
     assert.equal(completed.phase, 'completed');
     assert.equal(completed.sourceFile, 'src/routes/+page.svelte');
     assert.equal(completed.previewFile, 'node_modules/.impeccable-live/svelte-complete/manifest.json');
+    assert.equal(completed.previewMode, 'svelte-component');
   });
 
   it('ignores late browser checkpoints after completion', () => {

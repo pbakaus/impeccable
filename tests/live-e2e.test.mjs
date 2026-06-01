@@ -41,6 +41,7 @@ import {
   clickSaveEdit,
   clickGo,
   clickNext,
+  clickPrev,
   editTextLeaf,
   drawAnnotationPinAndStroke,
   getVisibleVariant,
@@ -84,6 +85,8 @@ const fixtures = onlyName
 
 const manualOnly = process.env.IMPECCABLE_E2E_MANUAL_ONLY === '1'
   || process.env.IMPECCABLE_E2E_MANUAL_ONLY === 'true';
+const reloadVariants = process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === '1'
+  || process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === 'true';
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -167,12 +170,15 @@ for (const { name, fixture } of fixtures) {
       const isInsert = fixture.runtime.mode === 'insert';
       const insertCfg = fixture.runtime.insert || {};
       const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+      const insertDomSelector = agentMode === 'llm' && insertCfg.expectSelectorLlm
+        ? insertCfg.expectSelectorLlm
+        : (insertCfg.expectSelector || '.inserted-strip');
       const domSelector = isInsert
-        ? (insertCfg.expectSelector || '.inserted-strip')
+        ? insertDomSelector
         : pickSelector;
       const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture);
       const variantContentSelector = isInsert
-        ? '[data-impeccable-variant="2"] .inserted-copy'
+        ? (usesSvelteComponentPreview ? '.inserted-copy' : '[data-impeccable-variant="2"] .inserted-copy')
         : usesSvelteComponentPreview
         ? pickSelector
         : '[data-impeccable-variant="2"] > :first-child';
@@ -267,16 +273,34 @@ for (const { name, fixture } of fixtures) {
           const variantBody = readFileSync(variantFile, 'utf-8');
           const routeBody = readFileSync(join(tmp, svelteComponentSession.manifest.sourceFile), 'utf-8');
           assert.match(after, /"previewMode": "svelte-component"/, 'Svelte component manifest inserted');
-          assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'Svelte variant component contains target element');
+          if (isInsert) {
+            assert.equal(svelteComponentSession.manifest.mode, 'insert', 'Svelte insert manifest marks insert mode');
+            if (agentMode === 'fake') {
+              assert.match(variantBody, /inserted-strip/, 'Svelte insert variant component contains inserted content');
+            } else if (insertCfg.expectSourcePattern) {
+              assert.match(variantBody, new RegExp(insertCfg.expectSourcePattern, 'i'), 'Svelte insert variant component contains prompt-matching content');
+            } else {
+              assert.match(variantBody, /<([a-z][\w:-]*)\b[\s\S]*<\/\1>|<[a-z][\w:-]*\b[^>]*\/>/i, 'Svelte insert variant component contains a root element');
+            }
+          } else {
+            assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'Svelte variant component contains target element');
+          }
           assert.doesNotMatch(routeBody, /data-impeccable-variants="/, 'Svelte route source is not edited during generation');
         } else {
           assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
         }
         if (isInsert) {
-          assert.match(after, /data-impeccable-mode="insert"/, 'insert mode wrapper');
-          assert.doesNotMatch(after, /data-impeccable-variant="original"/, 'insert has no original variant');
+          if (svelteComponentSession) {
+            assert.equal(svelteComponentSession.manifest.mode, 'insert', 'Svelte insert uses component preview mode');
+          } else {
+            assert.match(after, /data-impeccable-mode="insert"/, 'insert mode wrapper');
+            assert.doesNotMatch(after, /data-impeccable-variant="original"/, 'insert has no original variant');
+          }
           if (insertCfg.assertAnchorContains) {
-            assert.match(after, new RegExp(insertCfg.assertAnchorContains), 'anchor section untouched');
+            const anchorSource = svelteComponentSession
+              ? readFileSync(join(tmp, svelteComponentSession.manifest.sourceFile), 'utf-8')
+              : after;
+            assert.match(anchorSource, new RegExp(insertCfg.assertAnchorContains), 'anchor section untouched');
           }
         }
         if (svelteComponentSession) {
@@ -309,30 +333,108 @@ for (const { name, fixture } of fixtures) {
           }
         }
 
-        // 6. Cycle to variant 2 (the bold one in the fake agent)
-        t.diagnostic('Cycling to variant 2');
-        await clickNext(page);
-        const visible = await getVisibleVariant(page);
-        assert.equal(visible, 2, 'variant 2 visible after one Next');
-        if (agentMode === 'fake') {
-          await page.waitForFunction((sel) => {
-            const el = document.querySelector(sel);
-            return el && getComputedStyle(el).fontWeight === '900';
-          }, variantContentSelector, { timeout: 5_000 }).catch(() => {});
-          const variantWeight = await page.evaluate((sel) => {
-            const el = document.querySelector(sel);
-            return el ? getComputedStyle(el).fontWeight : null;
-          }, variantContentSelector);
-          assert.equal(
-            variantWeight,
-            '900',
-            'event=live_e2e.variant_css_applied actor=browser operation=render_visible_variant risk=unstyled_live_preview expected=font-weight 900 actual=' + variantWeight + ' suggestion=inspect live CSS style mode and selector shape',
-          );
+        // 6. Cycle variants. Most fixtures stop at variant 2; Svelte Insert
+        // also exercises right/right/left/right and accepts variant 3.
+        const cycleSequence = Array.isArray(fixture.runtime.variantSequence) && fixture.runtime.variantSequence.length > 0
+          ? fixture.runtime.variantSequence
+          : [2];
+        let visible = await getVisibleVariant(page);
+        let checkedVariantTwoStyle = false;
+        for (const targetVariant of cycleSequence) {
+          t.diagnostic(`Cycling to variant ${targetVariant}`);
+          while (visible < targetVariant) {
+            await clickNext(page);
+            visible = await getVisibleVariant(page);
+          }
+          while (visible > targetVariant) {
+            await clickPrev(page);
+            visible = await getVisibleVariant(page);
+          }
+          assert.equal(visible, targetVariant, `variant ${targetVariant} visible`);
+          if (agentMode === 'fake' && targetVariant === 2 && !checkedVariantTwoStyle) {
+            await page.waitForFunction((sel) => {
+              const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+              const el = query(sel) || document.querySelector(sel);
+              return el && getComputedStyle(el).fontWeight === '900';
+            }, variantContentSelector, { timeout: 5_000 }).catch(() => {});
+            const variantWeight = await page.evaluate((sel) => {
+              const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+              const el = query(sel) || document.querySelector(sel);
+              return el ? getComputedStyle(el).fontWeight : null;
+            }, variantContentSelector);
+            assert.equal(
+              variantWeight,
+              '900',
+              'event=live_e2e.variant_css_applied actor=browser operation=render_visible_variant risk=unstyled_live_preview expected=font-weight 900 actual=' + variantWeight + ' suggestion=inspect live CSS style mode and selector shape',
+            );
+            checkedVariantTwoStyle = true;
+          }
         }
 
-        // 7. Accept variant 2
-        t.diagnostic('Accepting variant 2');
-        await clickAccept(page, { expectedVariant: 2 });
+        if (reloadVariants && usesSvelteComponentPreview) {
+          const visibleBeforeReload = await getVisibleVariant(page);
+          t.diagnostic(`Reload recovery probe at variant ${visibleBeforeReload}/${expectedCount}`);
+          const savedBeforeReload = await readLiveSessionStorage(page);
+          assert.ok(savedBeforeReload, 'local session exists before reload');
+          assert.equal(savedBeforeReload.visible, visibleBeforeReload, 'local session stores visible variant before reload');
+          assert.equal(savedBeforeReload.previewMode, 'svelte-component', 'local session stores Svelte preview mode before reload');
+          assert.ok(savedBeforeReload.previewFile, 'local session stores Svelte preview manifest before reload');
+
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await waitForHandshake(page);
+
+          const savedAfterReload = await readLiveSessionStorage(page);
+          assert.ok(savedAfterReload, 'local session exists after reload');
+          assert.equal(savedAfterReload.id, savedBeforeReload.id, 'same live session id survives refresh');
+          assert.equal(savedAfterReload.visible, visibleBeforeReload, 'fresh local visible variant wins after refresh');
+          assert.equal(savedAfterReload.previewFile, savedBeforeReload.previewFile, 'preview manifest survives refresh');
+
+          if (fixture.runtime.preActions?.length) {
+            await waitForRecoverableVariantSession(page, visibleBeforeReload, expectedCount, {
+              timeout: agentMode === 'llm' ? 60_000 : 15_000,
+            });
+            await runPreActions(page, fixture.runtime.preActions);
+          }
+
+          await waitForCyclingRobust(page, expectedCount, {
+            agentMode,
+            preActions: fixture.runtime.preActions,
+            log: (m) => t.diagnostic(m),
+          });
+          await waitForVariantCounter(page, visibleBeforeReload, expectedCount, {
+            timeout: agentMode === 'llm' ? 60_000 : 15_000,
+          });
+          assert.equal(await getVisibleVariant(page), visibleBeforeReload, 'same visible variant is restored after refresh');
+
+          if (visibleBeforeReload < expectedCount) {
+            await clickNext(page);
+            await waitForVariantCounter(page, visibleBeforeReload + 1, expectedCount, {
+              timeout: agentMode === 'llm' ? 60_000 : 15_000,
+            });
+            assert.equal(await getVisibleVariant(page), visibleBeforeReload + 1, 'next arrow still works after refresh restore');
+            await clickPrev(page);
+            await waitForVariantCounter(page, visibleBeforeReload, expectedCount, {
+              timeout: agentMode === 'llm' ? 60_000 : 15_000,
+            });
+            assert.equal(await getVisibleVariant(page), visibleBeforeReload, 'prev arrow still works after refresh restore');
+          } else {
+            await clickPrev(page);
+            await waitForVariantCounter(page, visibleBeforeReload - 1, expectedCount, {
+              timeout: agentMode === 'llm' ? 60_000 : 15_000,
+            });
+            assert.equal(await getVisibleVariant(page), visibleBeforeReload - 1, 'prev arrow still works after refresh restore');
+            await clickNext(page);
+            await waitForVariantCounter(page, visibleBeforeReload, expectedCount, {
+              timeout: agentMode === 'llm' ? 60_000 : 15_000,
+            });
+            assert.equal(await getVisibleVariant(page), visibleBeforeReload, 'next arrow still works after refresh restore');
+          }
+        }
+
+        // 7. Accept the final visible variant
+        const acceptVariant = cycleSequence[cycleSequence.length - 1] || 2;
+        t.diagnostic(`Accepting variant ${acceptVariant}`);
+        await clickAccept(page, { expectedVariant: acceptVariant });
         await waitForBarHidden(page);
         const sourceShadow = !!sourceShadowTargetFor(sourceFile);
         const svelteComponentTarget = svelteComponentSession || svelteComponentTargetFor(sourceFile);
@@ -364,7 +466,11 @@ for (const { name, fixture } of fixtures) {
         assert.doesNotMatch(final, /impeccable-carbonize-end/,       'carbonize-end marker removed');
         assert.doesNotMatch(final, /data-impeccable-variant="/,      'no leftover variant scaffolding');
         if (isInsert) {
-          assert.match(final, /inserted-strip/, 'accepted insert content survives');
+          if (agentMode === 'fake') {
+            assert.match(final, /inserted-strip/, 'accepted insert content survives');
+          } else if (insertCfg.expectSourcePattern) {
+            assert.match(final, new RegExp(insertCfg.expectSourcePattern, 'i'), 'accepted insert content survives');
+          }
           if (insertCfg.assertAnchorContains) {
             assert.match(final, new RegExp(insertCfg.assertAnchorContains), 'anchor section still in source');
           }
@@ -395,19 +501,16 @@ for (const { name, fixture } of fixtures) {
         if (svelteComponent && fixture.runtime.preActions) {
           await runPreActions(page, fixture.runtime.preActions);
         }
-        await page.waitForFunction(
-          ({ sel, allowVariantRoot }) => {
-            const all = document.querySelectorAll(sel);
-            if (all.length < 1) return false;
-            for (const el of all) {
-              if (el.closest('[data-impeccable-variants]')) return false;
-              if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
-            }
-            return true;
-          },
-          { sel: domSelector, allowVariantRoot: sourceShadow },
-          { timeout: 20_000 },
-        );
+        try {
+          await waitForAcceptedDom(page, domSelector, { allowVariantRoot: sourceShadow, timeout: 20_000 });
+        } catch (err) {
+          if (!svelteComponent || !fixture.runtime.preActions) throw err;
+          t.diagnostic('Accepted Svelte DOM was not visible after HMR; reloading and re-running preActions');
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await waitForHandshake(page);
+          await runPreActions(page, fixture.runtime.preActions);
+          await waitForAcceptedDom(page, domSelector, { allowVariantRoot: sourceShadow, timeout: 20_000 });
+        }
 
         // 9b. reloadProbe — fixtures with conditional render assert that the
         //     accepted variant survives a full page reload. The picked element
@@ -911,6 +1014,81 @@ async function waitForAcceptedSelectionReady(page, selector, { timeout }) {
       return true;
     },
     selector,
+    { timeout },
+  );
+}
+
+async function readLiveSessionStorage(page) {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('impeccable-live-session');
+    return raw ? JSON.parse(raw) : null;
+  });
+}
+
+async function waitForVariantCounter(page, variant, count, { timeout = 15_000 } = {}) {
+  try {
+    await page.waitForFunction(
+      ({ variant, count }) => {
+        const query = window.__impeccableLiveQuery || ((sel) => document.querySelector(sel));
+        const bar = query('#impeccable-live-bar');
+        const text = bar?.textContent || '';
+        return text.includes(`${variant}/${count}`);
+      },
+      { variant, count },
+      { timeout },
+    );
+  } catch (err) {
+    const snapshot = await page.evaluate(() => {
+      const query = window.__impeccableLiveQuery || ((sel) => document.querySelector(sel));
+      const bar = query('#impeccable-live-bar');
+      const wrapper = document.querySelector('[data-impeccable-variants]');
+      return {
+        barText: bar?.textContent || null,
+        debugState: window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.() || null,
+        storage: localStorage.getItem('impeccable-live-session'),
+        wrapper: wrapper ? { preview: wrapper.dataset.impeccablePreview, count: wrapper.dataset.impeccableVariantCount, html: wrapper.outerHTML.slice(0, 500) } : null,
+      };
+    }).catch((snapErr) => ({ error: snapErr.message }));
+    console.error('--- waitForVariantCounter snapshot ---\n' + JSON.stringify(snapshot, null, 2));
+    err.message += '\nVariant counter snapshot: ' + JSON.stringify(snapshot, null, 2);
+    throw err;
+  }
+}
+
+async function waitForRecoverableVariantSession(page, variant, count, { timeout = 15_000 } = {}) {
+  await page.waitForFunction(
+    ({ variant, count }) => {
+      const query = window.__impeccableLiveQuery || ((sel) => document.querySelector(sel));
+      const bar = query('#impeccable-live-bar');
+      const text = bar?.textContent || '';
+      const raw = localStorage.getItem('impeccable-live-session');
+      let saved = null;
+      try { saved = raw ? JSON.parse(raw) : null; } catch {}
+      return Boolean(
+        saved
+        && saved.visible === variant
+        && saved.expected === count
+        && saved.previewMode === 'svelte-component'
+        && /Reveal the selected element to resume/i.test(text)
+      );
+    },
+    { variant, count },
+    { timeout },
+  );
+}
+
+async function waitForAcceptedDom(page, selector, { allowVariantRoot = false, timeout = 20_000 } = {}) {
+  await page.waitForFunction(
+    ({ sel, allowVariantRoot }) => {
+      const all = document.querySelectorAll(sel);
+      if (all.length < 1) return false;
+      for (const el of all) {
+        if (el.closest('[data-impeccable-variants]')) return false;
+        if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
+      }
+      return true;
+    },
+    { sel: selector, allowVariantRoot },
     { timeout },
   );
 }

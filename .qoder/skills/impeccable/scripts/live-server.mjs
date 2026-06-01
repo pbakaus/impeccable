@@ -968,6 +968,42 @@ function summarizePendingEventForStatus(entry) {
   return summary;
 }
 
+function summarizeActiveSessionForClient(snapshot = {}) {
+  return {
+    id: snapshot.id,
+    phase: snapshot.phase,
+    pageUrl: snapshot.pageUrl ?? null,
+    sourceFile: snapshot.sourceFile ?? null,
+    previewFile: snapshot.previewFile ?? null,
+    previewMode: snapshot.previewMode ?? null,
+    expectedVariants: snapshot.expectedVariants ?? 0,
+    arrivedVariants: snapshot.arrivedVariants ?? 0,
+    visibleVariant: snapshot.visibleVariant ?? null,
+    checkpointRevision: snapshot.checkpointRevision ?? 0,
+    paramValues: snapshot.paramValues || {},
+  };
+}
+
+function activeSessionSummaries() {
+  if (!state.sessionStore) return [];
+  return state.sessionStore.listActiveSessions().map((snapshot) => summarizeActiveSessionForClient(snapshot));
+}
+
+function cancelQueuedAnonymousExitEvents() {
+  let removed = 0;
+  for (let i = state.pendingEvents.length - 1; i >= 0; i -= 1) {
+    const event = state.pendingEvents[i]?.event;
+    if (event?.type !== 'exit' || event.id) continue;
+    state.pendingEvents.splice(i, 1);
+    removed += 1;
+  }
+  if (removed > 0) {
+    scheduleLeaseFlush();
+    broadcastAgentPollingIfChanged();
+  }
+  return removed;
+}
+
 function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded') {
   const canceledById = new Map();
   const shouldCancel = (event) => event?.type === 'manual_edit_apply' && (!pageUrl || event.pageUrl === pageUrl);
@@ -1333,7 +1369,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/status') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
-      const sessions = state.sessionStore ? state.sessionStore.listActiveSessions() : [];
+      const sessions = activeSessionSummaries();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'ok',
@@ -1438,6 +1474,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/events' && req.method === 'GET') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      clearTimeout(state.exitTimer);
+      state.exitTimer = null;
+      cancelQueuedAnonymousExitEvents();
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -1447,10 +1486,10 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         type: 'connected',
         hasProjectContext: hasProjectContext(),
         agentPolling: agentPollingConnected(),
+        activeSessions: activeSessionSummaries(),
       }) + '\n\n');
 
       state.sseClients.add(res);
-      clearTimeout(state.exitTimer);
 
       // Keepalive: SSE comment every 30s prevents silent connection drops.
       const heartbeat = setInterval(() => {
@@ -2072,7 +2111,16 @@ function handlePollPost(req, res) {
     }
     flushPendingPolls();
     // Forward the reply to the browser via SSE
-    broadcast({ type: msg.type || 'done', id: msg.id, message: msg.message, file: msg.file, data: msg.data });
+    broadcast({
+      type: msg.type || 'done',
+      id: msg.id,
+      message: msg.message,
+      file: msg.file,
+      sourceFile: replyFileMeta.sourceFile,
+      previewFile: replyFileMeta.previewFile,
+      previewMode: replyFileMeta.previewMode,
+      data: msg.data,
+    });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });

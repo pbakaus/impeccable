@@ -61,4 +61,32 @@ describe('live-browser-session state helper', () => {
       'event=live_browser_session.revision_resume actor=browser operation=reload_checkpoint risk=durable_store_ignores_stale_checkpoint expected=3 actual=' + second.currentCheckpointRevision(),
     );
   });
+
+  it('persists Svelte preview metadata and the freshest visible variant', () => {
+    const createState = loadFactory();
+    const storage = createMemoryStorage();
+    const state = createState({ prefix: 'impeccable-live', storage, idFactory: () => 'owner-a' });
+
+    state.saveSession({
+      id: 'session-c',
+      state: 'CYCLING',
+      expected: 3,
+      arrived: 3,
+      visible: 2,
+      sourceFile: 'src/routes/+page.svelte',
+      previewFile: 'node_modules/.impeccable-live/session-c/manifest.json',
+      previewMode: 'svelte-component',
+      pageUrl: '/',
+      paramValues: { density: 'compact' },
+      insertPlaceholder: { position: 'after', anchor: { tagName: 'section' } },
+    });
+
+    const restored = state.loadSession();
+    assert.equal(restored.visible, 2);
+    assert.equal(restored.sourceFile, 'src/routes/+page.svelte');
+    assert.equal(restored.previewFile, 'node_modules/.impeccable-live/session-c/manifest.json');
+    assert.equal(restored.previewMode, 'svelte-component');
+    assert.equal(restored.paramValues.density, 'compact');
+    assert.equal(restored.insertPlaceholder.position, 'after');
+  });
 });

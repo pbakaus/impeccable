@@ -105,4 +105,80 @@ describe('live-svelte-component helpers', () => {
     assert.ok(after.includes('data-testid="expense-row"'));
     assert.ok(!after.includes('{name}'));
   });
+
+  it('inserts accepted Svelte insert component markup into the real source', () => {
+    mkdirSync(join(tmp, 'src/routes'), { recursive: true });
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/INSERT01'), { recursive: true });
+    writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
+  <section class="expense-panel">
+    <article class="empty-card">
+      <strong>Keine offenen Ausgaben.</strong>
+    </article>
+    {:else}
+      <article class="expense-row">Row</article>
+  </section>
+</main>
+`);
+    const manifest = {
+      id: 'INSERT01',
+      mode: 'insert',
+      previewMode: 'svelte-component',
+      sourceFile: 'src/routes/+page.svelte',
+      insertLine: 6,
+      position: 'after',
+      componentDir: 'node_modules/.impeccable-live/INSERT01',
+      originalMarkup: `<article class="empty-card">
+  <strong>Keine offenen Ausgaben.</strong>
+</article>`,
+      propContract: [],
+    };
+    writeFileSync(join(tmp, manifest.componentDir, 'v3.svelte'), `<script>
+  let {} = $props();
+</script>
+<p class="inserted-strip">Shared expenses sync automatically.</p>
+<style>
+  .inserted-strip { color: #345; }
+</style>
+`);
+
+    const result = inlineSvelteComponentAccept(manifest, 3, null, tmp);
+    assert.equal(result.handled, true);
+
+    const after = readFileSync(join(tmp, 'src/routes/+page.svelte'), 'utf-8');
+    assert.ok(after.includes('<p class="inserted-strip">Shared expenses sync automatically.</p>'));
+    assert.ok(after.indexOf('class="empty-card"') < after.indexOf('class="inserted-strip"'));
+    assert.ok(after.indexOf('class="inserted-strip"') < after.indexOf('{:else}'));
+    assert.ok(after.includes('.inserted-strip { color: #345; }'));
+    assert.equal(existsSync(join(tmp, manifest.componentDir)), false);
+  });
+
+  it('rejects empty Svelte insert component variants without deleting the temp session', () => {
+    mkdirSync(join(tmp, 'src/routes'), { recursive: true });
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/EMPTYINS'), { recursive: true });
+    writeFileSync(join(tmp, 'src/routes/+page.svelte'), `<main>
+  <article class="empty-card">Empty</article>
+</main>
+`);
+    const manifest = {
+      id: 'EMPTYINS',
+      mode: 'insert',
+      previewMode: 'svelte-component',
+      sourceFile: 'src/routes/+page.svelte',
+      insertLine: 3,
+      position: 'after',
+      componentDir: 'node_modules/.impeccable-live/EMPTYINS',
+      originalMarkup: '<article class="empty-card">Empty</article>',
+      propContract: [],
+    };
+    writeFileSync(join(tmp, manifest.componentDir, 'v1.svelte'), `<script>
+  let {} = $props();
+</script>
+<div></div>
+`);
+
+    const result = inlineSvelteComponentAccept(manifest, 1, null, tmp);
+    assert.equal(result.handled, false);
+    assert.match(result.error, /empty/);
+    assert.equal(existsSync(join(tmp, manifest.componentDir)), true);
+  });
 });

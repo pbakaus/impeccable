@@ -148,6 +148,10 @@
   let svelteComponentSession = null;
   let svelteRuntimePromise = null;
   let pendingSvelteComponentRetryObserver = null;
+  let currentSourceFile = null;
+  let currentPreviewFile = null;
+  let currentPreviewMode = null;
+  let recoveryWaitingForAnchor = false;
   let pendingAccept = null;
   let variantObserver = null;
   let variantSelectionInFlight = false;
@@ -200,6 +204,7 @@
   let highlightEl = null;
   let tooltipEl = null;
   let barEl = null;
+  let barHideSeq = 0;
   let pickerEl = null;
   let toastEl = null;
   let scrollRaf = null;
@@ -317,9 +322,15 @@
       arrivedVariants,
       visibleVariant,
       savedSession: loadSession(),
+      sourceFile: currentSourceFile,
+      previewFile: currentPreviewFile,
+      previewMode: currentPreviewMode,
+      barText: barEl?.textContent || null,
+      barConnected: !!barEl?.isConnected,
       hasSvelteComponentSession: !!svelteComponentSession,
       mountedSvelteVariant: svelteComponentSession?.mountedVariant || 0,
       pendingSvelteComponentRetry: !!pendingSvelteComponentRetryObserver,
+      recoveryWaitingForAnchor,
       evtSourceReadyState: evtSource ? evtSource.readyState : null,
     }),
   };
@@ -1159,6 +1170,7 @@
   }
 
   function showBar(mode) {
+    barHideSeq += 1;
     if (mode === 'cycling' && !ensureCyclingRenderable('show-bar')) return;
     barEl.innerHTML = '';
     if (mode === 'configure') {
@@ -1177,11 +1189,12 @@
 
   function hideBar() {
     if (!barEl) return;
+    const hideSeq = ++barHideSeq;
     stopVoice({ suppressSubmit: true });
     if (configureKind === 'insert') clearInsertPicking();
     barEl.style.opacity = '0';
     barEl.style.transform = 'translateY(6px)';
-    setTimeout(() => { if (barEl) barEl.style.display = 'none'; }, 250);
+    setTimeout(() => { if (barEl && hideSeq === barHideSeq) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
     if (state === 'EDITING') restoreInlineEditDrafts();
@@ -2073,6 +2086,9 @@
       transition: 'border-color 0.15s ease',
     });
     inputWrap.id = PREFIX + '-insert-input-wrap';
+    inputWrap.addEventListener('pointerdown', (e) => e.stopPropagation());
+    inputWrap.addEventListener('mousedown', (e) => e.stopPropagation());
+    inputWrap.addEventListener('click', (e) => e.stopPropagation());
 
     const input = document.createElement('input');
     input.id = PREFIX + '-insert-input';
@@ -2108,6 +2124,12 @@
     voiceBtn.style.opacity = controlsLocked ? '0.58' : '1';
 
     input.addEventListener('input', () => syncInsertCreateButton());
+    input.addEventListener('pointerdown', (e) => e.stopPropagation());
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    input.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+    });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.stopPropagation(); e.preventDefault();
@@ -2173,6 +2195,7 @@
     });
     create.addEventListener('mouseleave', hideInsertCreateTooltip);
     create.addEventListener('click', (e) => {
+      e.preventDefault();
       e.stopPropagation();
       if (controlsLocked) { showManualApplyBusyToast(); return; }
       if (!isInsertCreateEnabled(create)) return;
@@ -2210,9 +2233,11 @@
     });
     // Variants currently arrive atomically in a single file edit, so a
     // per-variant counter would lie. Say what's true.
-    status.textContent = arrivedVariants < expectedVariants
-      ? 'Generating ' + expectedVariants + ' variants...'
-      : 'Done';
+    status.textContent = recoveryWaitingForAnchor
+      ? 'Variants ready. Reveal the selected element to resume.'
+      : (arrivedVariants < expectedVariants
+        ? 'Generating ' + expectedVariants + ' variants...'
+        : 'Done');
     row.appendChild(status);
 
     return row;
@@ -2233,6 +2258,7 @@
 
     // Prev
     const prev = navBtn('\u2190');
+    prev.id = PREFIX + '-variant-prev';
     prev.addEventListener('click', (e) => { e.stopPropagation(); cycleVariant(-1); });
     if (visibleVariant <= 1) prev.style.opacity = '0.3';
     row.appendChild(prev);
@@ -2245,11 +2271,13 @@
       fontFamily: MONO, fontSize: '11px', fontWeight: '500',
       color: BP.textDim, minWidth: '24px', textAlign: 'center',
     });
+    counter.id = PREFIX + '-variant-counter';
     counter.textContent = visibleVariant + '/' + arrivedVariants;
     row.appendChild(counter);
 
     // Next
     const next = navBtn('\u2192');
+    next.id = PREFIX + '-variant-next';
     next.addEventListener('click', (e) => { e.stopPropagation(); cycleVariant(1); });
     if (visibleVariant >= arrivedVariants) next.style.opacity = '0.3';
     row.appendChild(next);
@@ -4418,6 +4446,30 @@
     }
   }
 
+  function scheduleCyclingBarSync(sessionId, variantNum) {
+    requestAnimationFrame(() => {
+      if (state !== 'CYCLING') return;
+      if (currentSessionId !== sessionId) return;
+      if (visibleVariant !== variantNum) return;
+      updateBarContent('cycling');
+      syncCyclingControls();
+      positionBar();
+    });
+  }
+
+  function syncCyclingControls() {
+    const shown = svelteComponentSession?.sessionId === currentSessionId && svelteComponentSession.mountedVariant > 0
+      ? svelteComponentSession.mountedVariant
+      : visibleVariant;
+    const counter = uiGetById(PREFIX + '-variant-counter');
+    if (counter && arrivedVariants > 0) counter.textContent = shown + '/' + arrivedVariants;
+    const prev = uiGetById(PREFIX + '-variant-prev');
+    const next = uiGetById(PREFIX + '-variant-next');
+    if (prev) prev.style.opacity = shown <= 1 ? '0.3' : '1';
+    if (next) next.style.opacity = shown >= arrivedVariants ? '0.3' : '1';
+    if (currentSessionId && state === 'CYCLING') saveSession();
+  }
+
   async function showVariantInDOM(sessionId, num) {
     if (svelteComponentSession?.sessionId === sessionId) {
       visibleVariant = num;
@@ -4425,6 +4477,7 @@
       if (!mounted) return false;
       updateSelectedElement();
       refreshParamsPanel();
+      scheduleCyclingBarSync(sessionId, num);
       return true;
     }
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
@@ -4474,6 +4527,10 @@
       }
     }
     return liveEl;
+  }
+
+  function isSvelteInsertManifest(manifest) {
+    return manifest?.previewMode === 'svelte-component' && manifest?.mode === 'insert';
   }
 
   function loadSvelteRuntime(runtimeModule) {
@@ -4545,9 +4602,12 @@
       });
       svelteComponentSession.mountedVariant = variantNum;
       svelteComponentSession.runtime = runtime;
+      if (state === 'CYCLING') syncCyclingControls();
       const nextAnchor = getMountedSvelteComponentAnchor(svelteComponentSession);
       if (nextAnchor) {
-        applyOriginalAttrsToSvelteAnchor(nextAnchor, manifest.originalMarkup || '');
+        if (!isSvelteInsertManifest(manifest)) {
+          applyOriginalAttrsToSvelteAnchor(nextAnchor, manifest.originalMarkup || '');
+        }
         svelteComponentSession.swapAnchor = null;
         selectedElement = nextAnchor;
       } else {
@@ -4555,7 +4615,9 @@
           if (svelteComponentSession?.sessionId !== sessionId) return;
           const settledAnchor = getMountedSvelteComponentAnchor(svelteComponentSession);
           if (!settledAnchor) return;
-          applyOriginalAttrsToSvelteAnchor(settledAnchor, manifest.originalMarkup || '');
+          if (!isSvelteInsertManifest(manifest)) {
+            applyOriginalAttrsToSvelteAnchor(settledAnchor, manifest.originalMarkup || '');
+          }
           svelteComponentSession.swapAnchor = null;
           selectedElement = settledAnchor;
         });
@@ -4606,7 +4668,9 @@
     const anchor = getMountedSvelteComponentAnchor(svelteComponentSession);
     if (!anchor || !wrapperEl?.parentElement) return false;
     const committed = anchor.cloneNode(true);
-    applyOriginalAttrsToSvelteAnchor(committed, manifest.originalMarkup || '');
+    if (!isSvelteInsertManifest(manifest)) {
+      applyOriginalAttrsToSvelteAnchor(committed, manifest.originalMarkup || '');
+    }
     if (mountedInstance && runtime?.unmount) {
       try { runtime.unmount(mountedInstance); } catch { /* non-fatal */ }
     }
@@ -4628,10 +4692,16 @@
       const paramsByVariant = await loadSvelteComponentParams(manifest);
       currentSessionId = sessionId;
       expectedVariants = Number(manifest.count) || expectedVariants || 1;
+      rememberSessionFileMeta({
+        sourceFile: manifest.sourceFile,
+        previewFile: manifestPath,
+        previewMode: 'svelte-component',
+      });
       if (state !== 'CYCLING') state = 'GENERATING';
 
       const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (existingWrapper && svelteComponentSession?.sessionId === sessionId) {
+        recoveryWaitingForAnchor = false;
         svelteComponentSession.paramsByVariant = paramsByVariant;
         arrivedVariants = Number(manifest.count) || expectedVariants || 1;
         expectedVariants = arrivedVariants;
@@ -4646,8 +4716,22 @@
       const liveEl = findLiveElementForOriginalMarkup(manifest.originalMarkup || '');
       if (!liveEl?.parentElement) {
         console.warn('[impeccable] Could not find original element in live DOM.');
+        arrivedVariants = Number(manifest.count) || expectedVariants || 1;
+        expectedVariants = arrivedVariants;
+        const saved = loadSession();
+        const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
+        visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants
+          ? visibleVariant
+          : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
+        selectedElement = document.body;
+        state = 'GENERATING';
+        recoveryWaitingForAnchor = true;
+        showBar('generating');
+        startScrollTracking();
+        saveSession();
+        queueCheckpoint('svelte_component_anchor_missing');
         waitForSvelteComponentTargetAndRetry({ manifestPath, sessionId, manifest });
-        showToast("Variants ready. Retrace the path that revealed the picked element and they'll appear automatically.", 5000);
+        showToast('Variants ready. Reveal the selected element to resume.', 15000);
         return;
       }
 
@@ -4662,12 +4746,20 @@
       mountTarget.style.display = 'contents';
       wrapper.appendChild(mountTarget);
 
-      const detachedOriginal = liveEl;
-      liveEl.parentElement.replaceChild(wrapper, liveEl);
+      const insertMode = isSvelteInsertManifest(manifest);
+      const detachedOriginal = insertMode ? null : liveEl;
+      if (insertMode) {
+        removeInsertPlaceholderDom();
+        if (manifest.position === 'before') liveEl.parentElement.insertBefore(wrapper, liveEl);
+        else liveEl.parentElement.insertBefore(wrapper, liveEl.nextSibling);
+      } else {
+        liveEl.parentElement.replaceChild(wrapper, liveEl);
+      }
 
       svelteComponentSession = {
         sessionId,
         manifest,
+        insertMode,
         wrapperEl: wrapper,
         mountTargetEl: mountTarget,
         detachedOriginal,
@@ -4681,6 +4773,7 @@
         pendingSvelteComponentRetryObserver.disconnect();
         pendingSvelteComponentRetryObserver = null;
       }
+      recoveryWaitingForAnchor = false;
 
       const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
       arrivedVariants = Number(manifest.count) || expectedVariants || 1;
@@ -4702,6 +4795,7 @@
 
       selectedElement = mountTarget.firstElementChild || mountTarget;
       state = 'CYCLING';
+      recoveryWaitingForAnchor = false;
       hideShaderOverlay();
       updateBarContent('cycling');
       disableInlineEdit();
@@ -4752,6 +4846,7 @@
     stopScrollLock();
     clearSession();
     clearHandled();
+    resetSessionFileMeta();
     currentSessionId = null;
     expectedVariants = 0;
     arrivedVariants = 0;
@@ -4772,6 +4867,7 @@
       injectSvelteComponentsFromManifest(filePath, sessionId);
       return;
     }
+    rememberSessionFileMeta({ file: filePath });
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
@@ -4808,11 +4904,18 @@
           const liveEl = findLiveElementForOriginalMarkup(origContent.outerHTML);
           if (!liveEl) {
             console.warn('[impeccable] Could not find original element in live DOM.');
+            selectedElement = document.body;
+            recoveryWaitingForAnchor = true;
+            state = 'GENERATING';
+            showBar('generating');
+            saveSession();
+            showToast('Variants ready. Reveal the selected element to resume.', 15000);
             return;
           }
 
           liveEl.parentElement.replaceChild(wrapper, liveEl);
         }
+        recoveryWaitingForAnchor = false;
 
         // Update state: count variants, preserving the user's current variant
         // when a late HMR/source reinjection lands after they have cycled.
@@ -4834,6 +4937,7 @@
         selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
 
         state = 'CYCLING';
+        recoveryWaitingForAnchor = false;
         hideShaderOverlay();
         updateBarContent('cycling');
         disableInlineEdit();
@@ -4936,11 +5040,13 @@
     const selectionPromise = (async () => {
       visibleVariant = next;
       updateBarContent('cycling');
+      saveSession();
       const shown = await showVariantInDOM(currentSessionId, next); // calls refreshParamsPanel itself
       if (!shown) {
         visibleVariant = previous;
         await showVariantInDOM(currentSessionId, previous);
         updateBarContent('cycling');
+        saveSession();
         return;
       }
       updateSelectedElement();
@@ -5199,6 +5305,7 @@
 
       if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
         state = 'CYCLING';
+        recoveryWaitingForAnchor = false;
         hideShaderOverlay();
         if (wrapper.dataset.impeccableMode === 'insert') finalizeInsertSession();
         updateSelectedElement();
@@ -5282,6 +5389,7 @@
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
+          restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
           if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
           syncPageChatFocus('sse-connected');
           break;
@@ -5304,6 +5412,7 @@
           break;
         case 'done':
           if (maybeCompleteSteer(msg)) break;
+          rememberSessionFileMeta(msg);
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
@@ -5424,6 +5533,9 @@
       expectedVariants,
       arrivedVariants,
       visibleVariant,
+      sourceFile: currentSourceFile || undefined,
+      previewFile: currentPreviewFile || undefined,
+      previewMode: currentPreviewMode || undefined,
       paramValues: { ...paramsCurrentValues },
     };
   }
@@ -5658,6 +5770,14 @@
   function handleKeyDown(e) {
     // When the annotation input is focused, let it handle its own keys.
     if (annotEditing && annotEditing.input && e.target === annotEditing.input) return;
+    const deepActive = activeElementDeep();
+    if (
+      deepActive
+      && own(deepActive)
+      && /^(INPUT|TEXTAREA|SELECT)$/.test(deepActive.tagName || '')
+    ) {
+      return;
+    }
     // While a contenteditable text-leaf is focused, let the browser handle
     // all keys except Escape. Escape cancels the current edit (restores
     // original text) and blurs without saving, staying in CONFIGURING.
@@ -5777,6 +5897,7 @@
     expectedVariants = selectedCount;
     arrivedVariants = 0;
     visibleVariant = 0;
+    resetSessionFileMeta();
 
     // Flip to GENERATING immediately so the bar morphs without waiting on
     // capture + upload. The event is emitted from captureAndEmit() once the
@@ -5849,6 +5970,7 @@
     expectedVariants = selectedCount;
     arrivedVariants = 0;
     visibleVariant = 0;
+    resetSessionFileMeta();
     selectedElement = placeholderElement;
     insertPlaceholderSnapshot = buildInsertPlaceholderSnapshotFromDom(insertAnchorElement, placeholderElement);
 
@@ -6542,6 +6664,7 @@ void main() {
       stopScrollLock();
       clearScrollY();
       clearSession();
+      resetSessionFileMeta();
       selectedElement = null;
       currentSessionId = null;
       selectedAction = 'impeccable';
@@ -6598,6 +6721,136 @@ void main() {
   //
   // Survives page reloads, browser close/reopen, HMR, and accidental refreshes.
 
+  function normalizeSessionPath(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed.replace(/\\/g, '/') : null;
+  }
+
+  function resetSessionFileMeta() {
+    currentSourceFile = null;
+    currentPreviewFile = null;
+    currentPreviewMode = null;
+    recoveryWaitingForAnchor = false;
+  }
+
+  function rememberSessionFileMeta(meta = {}) {
+    const file = normalizeSessionPath(meta.file);
+    const sourceFile = normalizeSessionPath(meta.sourceFile);
+    const previewFile = normalizeSessionPath(meta.previewFile);
+    const previewMode = meta.previewMode || (isSvelteComponentManifestPath(previewFile || file) ? 'svelte-component' : null);
+
+    if (previewMode === 'svelte-component' || isSvelteComponentManifestPath(file)) {
+      currentPreviewMode = 'svelte-component';
+      currentPreviewFile = previewFile || (isSvelteComponentManifestPath(file) ? file : currentPreviewFile);
+      currentSourceFile = sourceFile || currentSourceFile;
+      return;
+    }
+
+    if (sourceFile || file) currentSourceFile = sourceFile || file;
+    if (previewFile) currentPreviewFile = previewFile;
+    if (previewMode) currentPreviewMode = previewMode;
+  }
+
+  function applySavedSessionMeta(saved) {
+    if (!saved) return;
+    rememberSessionFileMeta(saved);
+    if (saved.insertPlaceholder) insertPlaceholderSnapshot = saved.insertPlaceholder;
+    if (saved.action) selectedAction = saved.action;
+    if (saved.count) selectedCount = saved.count;
+    if (saved.previewMode) currentPreviewMode = saved.previewMode;
+    if (saved.paramValues && typeof saved.paramValues === 'object') {
+      paramsCurrentValues = { ...saved.paramValues };
+    }
+  }
+
+  function normalizePagePath(value) {
+    if (!value || typeof value !== 'string') return null;
+    try {
+      return new URL(value, location.origin).pathname;
+    } catch {
+      return value.split(/[?#]/)[0] || null;
+    }
+  }
+
+  function pageMatchesCurrent(value) {
+    const path = normalizePagePath(value);
+    return !path || path === location.pathname;
+  }
+
+  function isTerminalSessionSummary(session) {
+    return /^(completed|discarded|discard_requested|accept_requested)$/.test(String(session?.phase || ''));
+  }
+
+  function findActiveSessionSummary(saved, activeSessions) {
+    if (!saved?.id || !Array.isArray(activeSessions)) return null;
+    return activeSessions.find((session) =>
+      session?.id === saved.id
+      && pageMatchesCurrent(session.pageUrl || saved.pageUrl)
+      && !isTerminalSessionSummary(session)
+    ) || null;
+  }
+
+  function clampVariantIndex(value, count) {
+    const num = Number(value);
+    const max = Number(count);
+    if (!Number.isFinite(num) || num < 1) return 0;
+    if (Number.isFinite(max) && max > 0 && num > max) return 0;
+    return Math.floor(num);
+  }
+
+  function restoreSessionWithoutWrapper(reason, activeSessions) {
+    const saved = loadSession();
+    if (!saved?.id || isSessionHandled(saved.id)) return false;
+    const savedState = String(saved.state || '').toUpperCase();
+    if (savedState !== 'GENERATING' && savedState !== 'CYCLING') return false;
+
+    const serverSession = findActiveSessionSummary(saved, activeSessions);
+    if (Array.isArray(activeSessions) && activeSessions.length > 0 && !serverSession) {
+      return false;
+    }
+
+    currentSessionId = saved.id;
+    applySavedSessionMeta(serverSession);
+    applySavedSessionMeta(saved);
+
+    expectedVariants = Number(saved.expected || serverSession?.expectedVariants || selectedCount || 0);
+    arrivedVariants = Number(saved.arrived || serverSession?.arrivedVariants || 0);
+    if (arrivedVariants <= 0 && currentPreviewFile) arrivedVariants = Number(serverSession?.expectedVariants || saved.expected || selectedCount || 0);
+    if (expectedVariants <= 0) expectedVariants = Number(serverSession?.expectedVariants || arrivedVariants || selectedCount || 0);
+    visibleVariant = clampVariantIndex(saved.visible, arrivedVariants || expectedVariants)
+      || clampVariantIndex(serverSession?.visibleVariant, arrivedVariants || expectedVariants)
+      || (arrivedVariants > 0 ? 1 : 0);
+
+    selectedElement = document.body;
+    state = 'GENERATING';
+    recoveryWaitingForAnchor = true;
+    showBar('generating');
+    startScrollTracking();
+    if (variantObserver) variantObserver.disconnect();
+    variantObserver = startVariantObserver(currentSessionId);
+    saveSession();
+    queueCheckpoint(reason || 'browser_restore_without_wrapper');
+
+    const restoreFile = currentPreviewMode === 'svelte-component'
+      ? currentPreviewFile
+      : (currentSourceFile || currentPreviewFile);
+    if (restoreFile) {
+      injectVariantsFromSource(restoreFile, currentSessionId);
+      return true;
+    }
+
+    showToast('Variants ready. Reveal the selected element to resume.', 15000);
+    return true;
+  }
+
+  function restoreFromActiveSessions(activeSessions, reason) {
+    const wrapper = document.querySelector('[data-impeccable-variants]');
+    if (wrapper && wrapper.dataset.impeccablePreview !== 'svelte-component') return false;
+    if (svelteComponentSession?.sessionId === currentSessionId) return false;
+    return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
+  }
+
   function saveSession() {
     if (!currentSessionId) return;
     // NOTE: scrollY is stored under a separate key (writeScrollY). Storing
@@ -6610,6 +6863,11 @@ void main() {
       expected: expectedVariants,
       arrived: arrivedVariants,
       visible: visibleVariant,
+      sourceFile: currentSourceFile || undefined,
+      previewFile: currentPreviewFile || undefined,
+      previewMode: currentPreviewMode || undefined,
+      pageUrl: location.pathname,
+      paramValues: { ...paramsCurrentValues },
       insertPlaceholder: insertPlaceholderSnapshot || undefined,
     });
   }
@@ -6674,6 +6932,7 @@ void main() {
     clearScrollY();
     finalizeInsertSession();
     clearSession();
+    resetSessionFileMeta();
     selectedElement = null;
     currentSessionId = null;
     selectedAction = 'impeccable';
@@ -6731,23 +6990,7 @@ void main() {
   function resumeSession() {
     const wrapper = document.querySelector('[data-impeccable-variants]');
     if (!wrapper) {
-      const saved = loadSession();
-      if (saved?.id && saved.state === 'GENERATING' && saved.expected > 0) {
-        currentSessionId = saved.id;
-        expectedVariants = saved.expected;
-        arrivedVariants = saved.arrived || 0;
-        visibleVariant = saved.visible || 0;
-        if (saved.action) selectedAction = saved.action;
-        if (saved.count) selectedCount = saved.count;
-        selectedElement = document.body;
-        state = 'GENERATING';
-        showBar('generating');
-        startScrollTracking();
-        if (variantObserver) variantObserver.disconnect();
-        variantObserver = startVariantObserver(currentSessionId);
-        queueCheckpoint('browser_resumed_generating_without_wrapper');
-        return true;
-      }
+      if (restoreSessionWithoutWrapper('browser_resumed_without_wrapper')) return true;
       clearSession();
       clearHandled();
       return false;
@@ -6767,6 +7010,7 @@ void main() {
     if (wrapper.dataset.impeccablePreview === 'svelte-component'
         && svelteComponentSession?.sessionId !== sessionId) {
       wrapper.remove();
+      if (restoreSessionWithoutWrapper('browser_resumed_svelte_orphan_wrapper')) return true;
       clearSession();
       clearHandled();
       return false;
@@ -6783,6 +7027,7 @@ void main() {
         || 1;
       arrivedVariants = expectedVariants;
       const saved = loadSession();
+      applySavedSessionMeta(saved);
       const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
       visibleVariant = svelteComponentSession.mountedVariant > 0 && svelteComponentSession.mountedVariant <= arrivedVariants
         ? svelteComponentSession.mountedVariant
@@ -6807,6 +7052,7 @@ void main() {
     // Restore state from localStorage if available
     const saved = loadSession();
     if (saved && saved.id === sessionId) {
+      applySavedSessionMeta(saved);
       visibleVariant = (saved.visible > 0 && saved.visible <= arrivedVariants) ? saved.visible : (arrivedVariants > 0 ? 1 : 0);
       if (saved.action) selectedAction = saved.action;
       if (saved.count) selectedCount = saved.count;

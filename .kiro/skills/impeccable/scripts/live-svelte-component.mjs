@@ -132,6 +132,10 @@ function buildVariantStub(variantNum, originalWithProps, contract) {
   return `${buildPropsScript(contract)}${propsComment}${originalWithProps.trim()}\n\n<style>\n  /* Variant ${variantNum}: add scoped CSS here */\n</style>\n`;
 }
 
+function buildInsertVariantStub(variantNum) {
+  return `${buildPropsScript([])}<div class="impeccable-insert-preview">Insert variant ${variantNum}</div>\n\n<style>\n  .impeccable-insert-preview { display: block; }\n</style>\n`;
+}
+
 export function scaffoldSvelteComponentSession({
   id,
   count,
@@ -176,6 +180,56 @@ export function scaffoldSvelteComponentSession({
     manifestFile: path.relative(cwd, path.join(dir, 'manifest.json')).split(path.sep).join('/'),
     componentDir: manifest.componentDir,
     propContract: contract,
+  };
+}
+
+export function scaffoldSvelteComponentInsertSession({
+  id,
+  count,
+  sourceFile,
+  insertLine,
+  position,
+  anchorStartLine,
+  anchorEndLine,
+  anchorLines,
+  cwd = process.cwd(),
+}) {
+  ensureRuntimeHelper(cwd);
+  const dir = componentSessionDir(id, cwd);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const anchorMarkup = (anchorLines || []).join('\n');
+  const manifest = {
+    id,
+    mode: 'insert',
+    previewMode: 'svelte-component',
+    sourceFile: sourceFile.split(path.sep).join('/'),
+    insertLine,
+    position,
+    anchorStartLine,
+    anchorEndLine,
+    originalMarkup: anchorMarkup,
+    anchorMarkup,
+    count,
+    propContract: [],
+    componentDir: path.relative(cwd, dir).split(path.sep).join('/'),
+    runtimeModule: `/${SVELTE_RUNTIME_FILE}`,
+  };
+
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
+
+  for (let n = 1; n <= count; n++) {
+    const variantFile = path.join(dir, `v${n}.svelte`);
+    if (!fs.existsSync(variantFile)) {
+      fs.writeFileSync(variantFile, buildInsertVariantStub(n), 'utf-8');
+    }
+  }
+
+  return {
+    manifest,
+    manifestFile: path.relative(cwd, path.join(dir, 'manifest.json')).split(path.sep).join('/'),
+    componentDir: manifest.componentDir,
+    propContract: [],
   };
 }
 
@@ -458,6 +512,19 @@ export function inlineSvelteComponentAccept(manifest, variantNum, paramValues = 
   }
 
   const { markup, cssLines } = parseSvelteComponentFile(fs.readFileSync(variantPath, 'utf-8'));
+  if (manifest.mode === 'insert') {
+    return inlineSvelteComponentInsertAccept({
+      manifest,
+      markup,
+      cssLines,
+      variantNum,
+      paramValues,
+      sourceFile,
+      resultBase,
+      cwd,
+    });
+  }
+
   const rootTag = matchOpeningTag(markup)?.tag || 'div';
   const contract = manifest.propContract || [];
   const mergedMarkup = mergeOriginalTopLevelAttrs(markup, manifest.originalMarkup || '');
@@ -502,6 +569,78 @@ export function inlineSvelteComponentAccept(manifest, variantNum, paramValues = 
     handled: true,
     ...resultBase,
   };
+}
+
+function inlineSvelteComponentInsertAccept({
+  manifest,
+  markup,
+  cssLines,
+  variantNum,
+  paramValues,
+  sourceFile,
+  resultBase,
+  cwd,
+}) {
+  if (!svelteMarkupHasVisibleContent(markup)) {
+    return { handled: false, error: 'Accepted Svelte insert variant is empty', ...resultBase };
+  }
+  if (/\bdata-impeccable-[\w-]*\s*=/.test(markup)) {
+    return { handled: false, error: 'Accepted Svelte insert variant contains preview-only data-impeccable attributes', ...resultBase };
+  }
+
+  const rootTag = matchOpeningTag(markup)?.tag || 'div';
+  const restoredMarkup = String(markup || '')
+    .split('\n')
+    .map((line) => line.trimEnd());
+  const sourceContent = fs.readFileSync(sourceFile, 'utf-8');
+  const sourceLines = sourceContent.split('\n');
+  const insertIndex = Number(manifest.insertLine) - 1;
+  if (!Number.isInteger(insertIndex) || insertIndex < 0 || insertIndex > sourceLines.length) {
+    return { handled: false, error: 'Invalid insert line for ' + manifest.sourceFile, ...resultBase };
+  }
+
+  const nearbyLine = sourceLines[insertIndex] ?? sourceLines[insertIndex - 1] ?? '';
+  const indent = nearbyLine.match(/^(\s*)/)?.[1] || '';
+  const indentedMarkup = restoredMarkup.map((line) => {
+    if (line.trim() === '') return '';
+    return indent + line.trimStart();
+  });
+
+  let newLines = [
+    ...sourceLines.slice(0, insertIndex),
+    ...indentedMarkup,
+    ...sourceLines.slice(insertIndex),
+  ];
+
+  const sanitizedCss = sanitizeAcceptedSvelteCss(cssLines, variantNum, paramValues, rootTag);
+  const bakedCss = bakeParamValuesInCss(sanitizedCss, paramValues);
+  if (bakedCss.length > 0) {
+    newLines = appendCssToSvelteStyle(newLines, bakedCss);
+  }
+
+  try {
+    fs.writeFileSync(sourceFile, newLines.join('\n'), 'utf-8');
+  } catch (err) {
+    return { handled: false, error: 'Failed to write Svelte source: ' + err.message, ...resultBase };
+  }
+  removeSvelteComponentSession(manifest.id, cwd);
+
+  return {
+    handled: true,
+    ...resultBase,
+  };
+}
+
+function svelteMarkupHasVisibleContent(markup) {
+  const text = String(markup || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > 0) return true;
+  return /<(img|svg|canvas|video|audio|picture|input|button|select|textarea)\b/i.test(markup || '');
 }
 
 function mergeOriginalTopLevelAttrs(markup, originalMarkup) {

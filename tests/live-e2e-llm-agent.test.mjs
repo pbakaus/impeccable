@@ -6,12 +6,14 @@ import { describe, it } from 'node:test';
 import {
   MANUAL_EDIT_SYSTEM_INSTRUCTIONS,
   VARIANT_SYSTEM_INSTRUCTIONS,
+  buildVariantRequestPayload,
   createLlmAgent,
   parseManualEditResponse,
   parseVariantResponse,
   resolveLlmAgentConfig,
   validateManualEditCoverage,
   validateManualEditPlanningCoverage,
+  validateInsertVariantOutput,
   validateVariantMaterialChange,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
@@ -1483,6 +1485,12 @@ describe('live-e2e LLM agent variant prompt', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /harmless root attribute/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Accept persists a real source change/);
   });
+
+  it('tells the model insert variants are net-new visible content', () => {
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /Insert mode/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /net-new content/);
+    assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /must contain visible inserted content/);
+  });
 });
 
 describe('live-e2e LLM agent variant copy validation', () => {
@@ -1563,6 +1571,70 @@ describe('live-e2e LLM agent variant copy validation', () => {
     );
 
     assert.equal(result, null);
+  });
+
+  it('builds insert requests with prompt, anchor, and placeholder context', () => {
+    const payload = buildVariantRequestPayload(
+      {
+        id: 'ins12345',
+        mode: 'insert',
+        count: 3,
+        freeformPrompt: 'Add a muted footnote',
+        insert: {
+          position: 'after',
+          anchor: { tagName: 'article', classes: ['empty-card'], textContent: 'No expenses' },
+        },
+        placeholder: { width: 420, height: 80 },
+      },
+      { wrapInfo: { styleMode: 'svelte-component' } },
+    );
+
+    assert.equal(payload.mode, 'insert');
+    assert.equal(payload.freeformPrompt, 'Add a muted footnote');
+    assert.equal(payload.insert.position, 'after');
+    assert.deepEqual(payload.insert.anchor.classes, ['empty-card']);
+    assert.deepEqual(payload.placeholder, { width: 420, height: 80 });
+    assert.equal(payload.element, null);
+  });
+
+  it('rejects insert variants with empty visible content', () => {
+    const result = validateInsertVariantOutput(
+      { variants: [{ innerHtml: '<div data-impeccable-e2e-variant="1"></div>' }] },
+      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
+    );
+
+    assert.match(result, /data-impeccable/);
+  });
+
+  it('does not require insert variants to preserve anchor text', () => {
+    const result = validateInsertVariantOutput(
+      { variants: [{ innerHtml: '<p class="inserted-copy">Shared expenses sync automatically.</p>' }] },
+      {
+        mode: 'insert',
+        freeformPrompt: 'Add a muted footnote',
+        insert: { anchor: { textContent: 'Keine offenen Ausgaben.' } },
+      },
+    );
+
+    assert.equal(result, null);
+  });
+
+  it('rejects insert variants with multiple top-level roots', () => {
+    const result = validateInsertVariantOutput(
+      { variants: [{ innerHtml: '<p>One</p><p>Two</p>' }] },
+      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
+    );
+
+    assert.match(result, /single top-level/);
+  });
+
+  it('rejects insert variants with inline styles before hoisting can add preview attrs', () => {
+    const result = validateInsertVariantOutput(
+      { variants: [{ innerHtml: '<p style="color:red">Shared expenses sync automatically.</p>' }] },
+      { mode: 'insert', freeformPrompt: 'Add a muted footnote' },
+    );
+
+    assert.match(result, /inline style/);
   });
 });
 

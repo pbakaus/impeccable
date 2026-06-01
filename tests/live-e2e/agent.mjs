@@ -1337,10 +1337,11 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
   const manifestPath = path.join(tmp, wrapInfo.file);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
   const componentDir = path.join(tmp, manifest.componentDir);
+  const isInsert = manifest.mode === 'insert';
   const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
   const propNames = contract.map((entry) => entry.prop);
-  const baseMarkup = substituteSvelteExprsWithProps(manifest.originalMarkup || '', contract).trim();
-  const textValues = extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
+  const baseMarkup = isInsert ? '' : substituteSvelteExprsWithProps(manifest.originalMarkup || '', contract).trim();
+  const textValues = isInsert ? [] : extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
   const paramsByVariant = {};
 
   for (let i = 0; i < output.variants.length; i++) {
@@ -1348,8 +1349,14 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
     const variant = output.variants[i];
     const tag = firstTagName(variant.innerHtml) || firstTagName(baseMarkup) || 'div';
     let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, textValues).trim();
-    if (contract.length > 0 && !propNames.some((name) => markup.includes(`{${name}}`))) {
+    if (!isInsert && contract.length > 0 && !propNames.some((name) => markup.includes(`{${name}}`))) {
       markup = mergeTopLevelAttrs(baseMarkup, variant.innerHtml || '') || baseMarkup;
+    }
+    if (isInsert && !variantMarkupHasVisibleContent(markup)) {
+      throw new Error(`Svelte insert variant ${variantId} has no visible content`);
+    }
+    if (isInsert && /\bdata-impeccable-[\w-]*\s*=/.test(markup)) {
+      throw new Error(`Svelte insert variant ${variantId} contains preview-only data-impeccable attributes`);
     }
     const css = svelteCssForVariant(output.scopedCss || '', variantId, tag);
     const component = [
@@ -1367,6 +1374,18 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
   }
 
   await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
+}
+
+function variantMarkupHasVisibleContent(markup) {
+  const text = String(markup || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > 0) return true;
+  return /<(img|svg|canvas|video|audio|picture|input|button|select|textarea)\b/i.test(markup || '');
 }
 
 function buildSveltePropsScript(contract) {

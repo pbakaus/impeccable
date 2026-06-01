@@ -107,6 +107,7 @@ function baseSnapshot(id) {
     pageUrl: null,
     sourceFile: null,
     previewFile: null,
+    previewMode: null,
     expectedVariants: 0,
     arrivedVariants: 0,
     visibleVariant: null,
@@ -180,7 +181,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';
       next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
       next.previewFile = event.previewFile ?? next.previewFile;
-      next.arrivedVariants = event.arrivedVariants ?? (next.arrivedVariants ?? next.expectedVariants);
+      next.previewMode = event.previewMode ?? next.previewMode;
+      next.arrivedVariants = event.arrivedVariants ?? (next.expectedVariants || next.arrivedVariants || 0);
       next.pendingEventSeq = null;
       next.pendingEvent = null;
       if (event.carbonize === true) {
@@ -202,6 +204,9 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
         next.activeOwner = event.owner ?? next.activeOwner;
         next.arrivedVariants = event.arrivedVariants ?? next.arrivedVariants;
         next.visibleVariant = event.visibleVariant ?? next.visibleVariant;
+        next.sourceFile = event.sourceFile ?? next.sourceFile;
+        next.previewFile = event.previewFile ?? next.previewFile;
+        next.previewMode = event.previewMode ?? next.previewMode;
         if (event.paramValues) next.paramValues = { ...event.paramValues };
       } else {
         next.diagnostics.push({ error: 'stale_checkpoint_ignored', revision: event.revision });
@@ -230,6 +235,8 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
     case 'steer_done':
       next.phase = 'steer_done';
       next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
+      next.previewFile = event.previewFile ?? next.previewFile;
+      next.previewMode = event.previewMode ?? next.previewMode;
       next.message = event.message ?? next.message;
       next.pendingEventSeq = null;
       next.pendingEvent = null;
@@ -248,6 +255,7 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       next.phase = 'completed';
       next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
       next.previewFile = event.previewFile ?? next.previewFile;
+      next.previewMode = event.previewMode ?? next.previewMode;
       next.pendingEventSeq = null;
       next.pendingEvent = null;
       break;

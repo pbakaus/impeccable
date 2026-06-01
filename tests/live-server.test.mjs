@@ -200,6 +200,41 @@ async function readSseUntil(reader, decoder, needle, maxReads = 12) {
   return text;
 }
 
+async function readConnectedSsePayload(server) {
+  const controller = new AbortController();
+  const sseRes = await fetch(
+    `http://localhost:${server.port}/events?token=${server.token}`,
+    { signal: controller.signal },
+  );
+  assert.equal(sseRes.status, 200);
+  const reader = sseRes.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  try {
+    for (let i = 0; i < 6; i++) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value);
+      const payload = parseSsePayload(text, 'connected');
+      if (payload) return payload;
+    }
+  } finally {
+    controller.abort();
+  }
+  throw new Error('connected SSE payload not found: ' + text);
+}
+
+function parseSsePayload(text, type) {
+  for (const line of String(text || '').split('\n')) {
+    if (!line.startsWith('data: ')) continue;
+    try {
+      const payload = JSON.parse(line.slice('data: '.length));
+      if (!type || payload.type === type) return payload;
+    } catch { /* keep scanning */ }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Server integration tests
 // ---------------------------------------------------------------------------
@@ -265,6 +300,73 @@ describe('live-server integration', () => {
     assert.equal(data.pendingEvents.some((e) => e.id === 'a1b2c3d5' && e.type === 'generate'), true);
 
     await drainPolls(server);
+  });
+
+  it('SSE connected includes active session summaries for browser reload recovery', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-sse-recovery-'));
+    let isolated;
+    const id = 'a1b2c3ea';
+    try {
+      isolated = await startServer(8563, { cwd: tmp });
+      mkdirSync(join(isolated.cwd, 'src/routes'), { recursive: true });
+      mkdirSync(join(isolated.cwd, 'node_modules/.impeccable-live', id), { recursive: true });
+      writeFileSync(join(isolated.cwd, 'src/routes/+page.svelte'), '<h1 class="hero-title">Hello</h1>\n');
+      writeFileSync(join(isolated.cwd, 'node_modules/.impeccable-live', id, 'manifest.json'), JSON.stringify({
+        id,
+        previewMode: 'svelte-component',
+        sourceFile: 'src/routes/+page.svelte',
+        sourceStartLine: 1,
+        sourceEndLine: 1,
+        count: 3,
+        propContract: [],
+        originalMarkup: '<h1 class="hero-title">Hello</h1>',
+        componentDir: `node_modules/.impeccable-live/${id}`,
+        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+      }, null, 2) + '\n');
+
+      const eventRes = await fetch(`http://localhost:${isolated.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: isolated.token,
+          type: 'generate',
+          id,
+          action: 'polish',
+          count: 3,
+          pageUrl: '/',
+          element: { outerHTML: '<h1 class="hero-title">Hello</h1>' },
+        }),
+      });
+      assert.equal(eventRes.status, 200);
+      const polled = await fetch(`http://localhost:${isolated.port}/poll?token=${isolated.token}&timeout=50`).then(r => r.json());
+      assert.equal(polled.id, id);
+      const ack = await fetch(`http://localhost:${isolated.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: isolated.token,
+          id,
+          type: 'done',
+          file: `node_modules/.impeccable-live/${id}/manifest.json`,
+        }),
+      });
+      assert.equal(ack.status, 200);
+
+      const connected = await readConnectedSsePayload(isolated);
+      const restored = connected.activeSessions.find((session) => session.id === id);
+      assert.ok(restored, 'connected payload should include active session');
+      assert.equal(restored.sourceFile, 'src/routes/+page.svelte');
+      assert.equal(restored.previewFile, `node_modules/.impeccable-live/${id}/manifest.json`);
+      assert.equal(restored.previewMode, 'svelte-component');
+      assert.equal(restored.expectedVariants, 3);
+      assert.equal(restored.arrivedVariants, 3);
+    } finally {
+      if (isolated) {
+        await stopServer(isolated.port, isolated.token);
+        isolated.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('/status reports agentPolling from active poll leases', async () => {
@@ -2583,6 +2685,42 @@ colors: {}
     assert.ok(text2.includes('5ee7e575'));
 
     controller.abort();
+  });
+
+  it('browser reconnect cancels a queued anonymous exit from a slow refresh', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-refresh-exit-'));
+    let isolated;
+    try {
+      isolated = await startServer(8564, { cwd: tmp });
+      await drainPolls(isolated);
+      const first = new AbortController();
+      const firstRes = await fetch(
+        `http://localhost:${isolated.port}/events?token=${isolated.token}`,
+        { signal: first.signal },
+      );
+      assert.equal(firstRes.status, 200);
+      const firstReader = firstRes.body.getReader();
+      await firstReader.read();
+      first.abort();
+
+      await new Promise((resolve) => setTimeout(resolve, 8300));
+
+      const connected = await readConnectedSsePayload(isolated);
+      assert.equal(connected.type, 'connected');
+
+      const polled = await fetch(`http://localhost:${isolated.port}/poll?token=${isolated.token}&timeout=80`).then(r => r.json());
+      assert.notEqual(
+        polled.type,
+        'exit',
+        'event=live_server.refresh_exit_cancel actor=browser operation=sse_reconnect risk=slow_refresh_stops_live_mode expected=timeout actual=exit suggestion=remove queued anonymous exit events on reconnect',
+      );
+    } finally {
+      if (isolated) {
+        await stopServer(isolated.port, isolated.token);
+        isolated.proc.kill();
+      }
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('/source reads project files with valid token', async () => {
