@@ -186,6 +186,18 @@ const FIXTURES = [
       <span class="btn" style="background:oklch(84% 0.19 80);color:#1a1a1a">Action</span></div>`,
   },
   {
+    id: 'framework-proxy-card',
+    title: 'Framework proxy card',
+    desc: 'Svelte uses the ancestor-crop proxy here because stateful component-framework previews can be semi-transparent or backdrop-composited; element-only capture loses that real painted context and turns the shader ground wrong. React/Vue can opt in once tested, without changing the working Astro path.',
+    bodyBg: '#102923',
+    ancestorCropProxy: true,
+    h: 260,
+    html: `<div style="padding:24px;border-radius:20px;background:#9bbfad">
+      <div class="card" data-target style="background:rgba(255,255,255,0.62);border:1px solid #16332b;color:#1b3329">
+        <h3>Proxy card</h3><p>Framework previews can depend on a painted parent surface.</p>
+        <span class="btn" style="background:#142720;color:#f4f7f3">Proxy path</span></div></div>`,
+  },
+  {
     id: 'transparent-root-white',
     title: 'Transparent, page bg unset',
     desc: 'Element + every ancestor transparent. This is the reported bug: capture falls back to white.',
@@ -409,11 +421,55 @@ function findBackdropAncestor(el) {
   }
   return null;
 }
+function paintsShaderProxySurface(node) {
+  const s = cs(node);
+  return !isTransparentColor(s.backgroundColor)
+    || (s.backgroundImage && s.backgroundImage !== 'none')
+    || paintsBackdrop(node);
+}
+function findShaderProxyCaptureRoot(el) {
+  const doc = el.ownerDocument;
+  const er = el.getBoundingClientRect();
+  let node = el.parentElement;
+  while (node && node !== doc.documentElement) {
+    const nr = node.getBoundingClientRect();
+    const containsElement =
+      nr.width > 0 && nr.height > 0 &&
+      nr.left <= er.left + 0.5 &&
+      nr.top <= er.top + 0.5 &&
+      nr.right >= er.right - 0.5 &&
+      nr.bottom >= er.bottom - 0.5;
+    if (containsElement && paintsShaderProxySurface(node)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
 function averageRgb01(ctx, w, h) {
   const data = ctx.getImageData(0, 0, w, h).data;
   let r = 0, g = 0, b = 0, n = 0;
   for (let i = 0; i < data.length; i += 16) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
   return n ? [r / n / 255, g / n / 255, b / n / 255] : SHADER_PAPER_FALLBACK;
+}
+function dominantRgb01(ctx, w, h) {
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const stride = Math.max(1, Math.floor((w * h) / 6000));
+  const buckets = new Map();
+  for (let p = 0; p < w * h; p += stride) {
+    const i = p * 4;
+    if (data[i + 3] < 16) continue;
+    const key = (data[i] >> 4) + ',' + (data[i + 1] >> 4) + ',' + (data[i + 2] >> 4);
+    const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+    bucket.count += 1;
+    bucket.r += data[i];
+    bucket.g += data[i + 1];
+    bucket.b += data[i + 2];
+    buckets.set(key, bucket);
+  }
+  let best = null;
+  for (const bucket of buckets.values()) {
+    if (!best || bucket.count > best.count) best = bucket;
+  }
+  return best ? [best.r / best.count / 255, best.g / best.count / 255, best.b / best.count / 255] : null;
 }
 // Backdrop sampled just outside an element's rect (the true ground tone),
 // excluding the element's own content. Matches sampleSurroundingRgb in
@@ -519,10 +575,18 @@ function loadModernScreenshot() {
   return Promise.resolve(window.modernScreenshot);
 }
 
-async function captureElementToBlob(el) {
+async function captureElementToBlob(el, useAncestorCropProxy = false) {
   try { if (el.ownerDocument.fonts?.ready) await el.ownerDocument.fonts.ready; } catch {}
   const ms = await loadModernScreenshot();
   const opts = { scale: Math.min(window.devicePixelRatio || 1, 2) };
+  if (useAncestorCropProxy) {
+    try {
+      const { blob, paper, root } = await captureElementFromRenderedAncestor(ms, el, opts);
+      return { blob, paper, note: 'ancestor crop <' + root.tagName.toLowerCase() + '>' };
+    } catch (err) {
+      console.warn('[shader-lab] ancestor crop capture failed, falling back to element capture:', err);
+    }
+  }
   const bg = resolveCanvasBackground(el);
   // Fast path: element owns its bg, or an opaque ancestor color was found.
   if (bg !== '#ffffff') {
@@ -557,6 +621,30 @@ async function captureElementToBlob(el) {
   return { blob, paper, note: 'backdrop captured <' + backdrop.className + '>' };
 }
 
+async function captureElementFromRenderedAncestor(ms, el, opts) {
+  const doc = el.ownerDocument;
+  const captureRoot = findShaderProxyCaptureRoot(el);
+  if (!captureRoot) throw new Error('No painted ancestor for shader proxy');
+  const rootCanvas = await ms.domToCanvas(captureRoot, opts);
+  const S = opts.scale;
+  const er = el.getBoundingClientRect();
+  const rr = captureRoot.getBoundingClientRect();
+  const sx = (er.left - rr.left) * S;
+  const sy = (er.top - rr.top) * S;
+  const sw = er.width * S;
+  const sh = er.height * S;
+  if (sw <= 0 || sh <= 0) throw new Error('Selected element has no visible capture rect');
+  const crop = doc.createElement('canvas');
+  crop.width = Math.max(1, Math.round(sw));
+  crop.height = Math.max(1, Math.round(sh));
+  const cctx = crop.getContext('2d', { willReadFrequently: true });
+  cctx.drawImage(rootCanvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+  const paper = dominantRgb01(cctx, crop.width, crop.height) || averageRgb01(cctx, crop.width, crop.height);
+  const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
+  if (!blob) throw new Error('Ancestor crop failed to produce a PNG blob');
+  return { blob, paper, root: captureRoot };
+}
+
 // Position a fixed-position canvas over an element living inside an iframe.
 function rectForTarget(iframe, target) {
   const ir = iframe.getBoundingClientRect();
@@ -570,10 +658,12 @@ async function mountShaderOverlay(cell, iframe, target, blob, paper) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.max(1, Math.floor(rect.width * dpr));
   canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const radius = cs(target).borderRadius;
   Object.assign(canvas.style, {
     position: 'fixed', pointerEvents: 'none', zIndex: '50',
     top: rect.top + 'px', left: rect.left + 'px',
     width: rect.width + 'px', height: rect.height + 'px',
+    borderRadius: radius, overflow: 'hidden',
   });
   document.body.appendChild(canvas);
 
@@ -771,7 +861,7 @@ async function run() {
     if (!target) { valEl.textContent = '(no target)'; continue; }
 
     try {
-      const { blob, paper, note } = await captureElementToBlob(target);
+      const { blob, paper, note } = await captureElementToBlob(target, fx.ancestorCropProxy === true);
       valEl.textContent = note;
       // Only the genuine "nothing painted behind it" case is the bug now; an
       // embedded backdrop (ancestor-captured) is the fix, so don't flag it red.

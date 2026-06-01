@@ -74,6 +74,44 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('uses a Svelte-gated painted-ancestor crop proxy for shader capture', () => {
+    assert.match(
+      SOURCE,
+      /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
+      'shader proxy should choose the nearest painted ancestor, not the document root',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);/,
+      'shader capture should render the minimal painted ancestor and crop the selected element rect',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldUseAncestorCropShaderProxy\(el\) \{[\s\S]{0,260}?window\.__IMPECCABLE_LIVE_ADAPTER__[\s\S]{0,280}?currentPreviewMode === 'svelte-component' \|\| svelteComponentSession[\s\S]{0,260}?dataset\?\.impeccablePreview === 'svelte-component';/,
+      'ancestor crop proxy must be gated to the Svelte adapter / Svelte component previews',
+    );
+    assert.match(
+      SOURCE,
+      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,240}?return await hideCaptureChromeForShaderProxy\(\(\) => captureElementFromRenderedAncestor\(ms, el, opts\)\);[\s\S]{0,280}?Svelte ancestor crop capture failed, falling back to element capture/,
+      'Svelte ancestor crop must run before the legacy capture path and hide live chrome while doing so',
+    );
+    assert.match(
+      SOURCE,
+      /const paper = dominantRgb01\(cctx, crop\.width, crop\.height\) \|\| averageRgb01\(cctx, crop\.width, crop\.height\);/,
+      'shader paper should come from the cropped pixels so framework/backdrop composition is preserved',
+    );
+    assert.match(
+      SOURCE,
+      /const radius = getComputedStyle\(el\)\.borderRadius;[\s\S]{0,420}?borderRadius: radius,[\s\S]{0,80}?overflow: 'hidden'/,
+      'the shader canvas should clip to the selected element radius when using a rectangular ancestor crop',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /isSemiTransparentOwnBackground|findCompositedBackdropAncestor|compositeRgbOver|cssColorToRgba01/,
+      'the shader fix should not depend on semi-transparent CSS special cases',
+    );
+  });
+
   it('locks every global bar mode toggle while manual Apply is in flight', () => {
     assert.match(
       SOURCE,

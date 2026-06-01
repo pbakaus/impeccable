@@ -6164,11 +6164,113 @@
     return '#ffffff';
   }
 
+  function captureChromeNodes() {
+    const nodes = [];
+    const add = (node) => {
+      if (!node || node === document.body || nodes.includes(node)) return;
+      nodes.push(node);
+    };
+    add(document.getElementById(PREFIX + '-root'));
+    [
+      PREFIX + '-highlight',
+      PREFIX + '-tooltip',
+      PREFIX + '-bar',
+      PREFIX + '-picker',
+      PREFIX + '-params-panel',
+      PREFIX + '-insert-line',
+      PREFIX + '-insert-placeholder',
+      PREFIX + '-insert-create-tooltip',
+      PREFIX + '-annot',
+      PREFIX + '-design-host',
+      PREFIX + '-toast',
+      PREFIX + '-shader',
+    ].forEach((id) => add(uiGetById(id)));
+    return nodes;
+  }
+
+  async function hideCaptureChromeForShaderProxy(fn) {
+    const saved = captureChromeNodes().map((node) => ({
+      node,
+      visibility: node.style.visibility,
+      priority: node.style.getPropertyPriority('visibility'),
+    }));
+    for (const { node } of saved) {
+      node.style.setProperty('visibility', 'hidden', 'important');
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    try {
+      return await fn();
+    } finally {
+      for (const { node, visibility, priority } of saved) {
+        node.style.setProperty('visibility', visibility, priority);
+      }
+    }
+  }
+
+  function shouldUseAncestorCropShaderProxy(el) {
+    // TODO: Enable this proxy for React/Vue/etc. adapters once their live
+    // preview mounts are covered by the same shader regression checks.
+    const adapter = String(window.__IMPECCABLE_LIVE_ADAPTER__ || '').toLowerCase();
+    if (adapter === 'svelte' || adapter === 'sveltekit') return true;
+    if (currentPreviewMode === 'svelte-component' || svelteComponentSession) return true;
+    const wrapper = el?.closest?.('[data-impeccable-variants]');
+    return wrapper?.dataset?.impeccablePreview === 'svelte-component';
+  }
+
+  function paintsShaderProxySurface(node) {
+    const s = getComputedStyle(node);
+    return !isTransparentColor(s.backgroundColor)
+      || (s.backgroundImage && s.backgroundImage !== 'none')
+      || paintsBackdrop(node);
+  }
+
+  function findShaderProxyCaptureRoot(el) {
+    const doc = el.ownerDocument || document;
+    const er = el.getBoundingClientRect();
+    let node = el.parentElement;
+    while (node && node !== doc.documentElement) {
+      const nr = node.getBoundingClientRect();
+      const containsElement =
+        nr.width > 0 && nr.height > 0 &&
+        nr.left <= er.left + 0.5 &&
+        nr.top <= er.top + 0.5 &&
+        nr.right >= er.right - 0.5 &&
+        nr.bottom >= er.bottom - 0.5;
+      if (containsElement && paintsShaderProxySurface(node)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
   // Capture the element (with current annotations baked in) and return
   // { blob, paper }: the PNG Blob, plus the representative backdrop tone for the
   // shader's halftone ground (so capture, upload, and shader all agree on what
   // sits behind the element). Shared between the Go flow (uploads the blob) and
   // the shader-resume path.
+  async function captureElementFromRenderedAncestor(ms, el, opts) {
+    const doc = el.ownerDocument || document;
+    const captureRoot = findShaderProxyCaptureRoot(el);
+    if (!captureRoot) throw new Error('No painted ancestor for Svelte shader proxy');
+    const rootCanvas = await ms.domToCanvas(captureRoot, opts);
+    const S = opts.scale;
+    const er = el.getBoundingClientRect();
+    const rr = captureRoot.getBoundingClientRect();
+    const sx = (er.left - rr.left) * S;
+    const sy = (er.top - rr.top) * S;
+    const sw = er.width * S;
+    const sh = er.height * S;
+    if (sw <= 0 || sh <= 0) throw new Error('Selected element has no visible capture rect');
+    const crop = doc.createElement('canvas');
+    crop.width = Math.max(1, Math.round(sw));
+    crop.height = Math.max(1, Math.round(sh));
+    const cctx = crop.getContext('2d', { willReadFrequently: true });
+    cctx.drawImage(rootCanvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+    const paper = dominantRgb01(cctx, crop.width, crop.height) || averageRgb01(cctx, crop.width, crop.height);
+    const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('Ancestor crop failed to produce a PNG blob');
+    return { blob, paper };
+  }
+
   async function captureElementToBlob(el, snapshot, rect) {
     try { if (document.fonts?.ready) await document.fonts.ready; } catch {}
     const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
@@ -6190,6 +6292,13 @@
         scale: Math.min(window.devicePixelRatio || 1, 2),
         font: fontCssText ? { cssText: fontCssText } : undefined,
       };
+      if (shouldUseAncestorCropShaderProxy(el)) {
+        try {
+          return await hideCaptureChromeForShaderProxy(() => captureElementFromRenderedAncestor(ms, el, opts));
+        } catch (err) {
+          console.warn('[impeccable] Svelte ancestor crop capture failed, falling back to element capture:', err);
+        }
+      }
       const bg = resolveCanvasBackground(el);
       // Fast path: the element paints its own background, or an opaque ancestor
       // color was found. modern-screenshot bakes that color; paper matches it.
@@ -6431,6 +6540,31 @@ void main() {
     return n ? [r / n / 255, g / n / 255, b / n / 255] : SHADER_PAPER_FALLBACK;
   }
 
+  // Pick the most common visible color cluster from a crop. A straight average
+  // gets pulled by text and icons; the dominant bucket usually represents the
+  // surface the shader should dissolve into.
+  function dominantRgb01(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const stride = Math.max(1, Math.floor((w * h) / 6000));
+    const buckets = new Map();
+    for (let p = 0; p < w * h; p += stride) {
+      const i = p * 4;
+      if (data[i + 3] < 16) continue;
+      const key = (data[i] >> 4) + ',' + (data[i + 1] >> 4) + ',' + (data[i + 2] >> 4);
+      const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+      bucket.count += 1;
+      bucket.r += data[i];
+      bucket.g += data[i + 1];
+      bucket.b += data[i + 2];
+      buckets.set(key, bucket);
+    }
+    let best = null;
+    for (const bucket of buckets.values()) {
+      if (!best || bucket.count > best.count) best = bucket;
+    }
+    return best ? [best.r / best.count / 255, best.g / best.count / 255, best.b / best.count / 255] : null;
+  }
+
   // Average the backdrop sampled just OUTSIDE an element's rect within a larger
   // canvas. The ground tone for the dissolve must be the real backdrop, not the
   // mean of the element's own crop - averaging the crop folds in the element's
@@ -6511,12 +6645,15 @@ void main() {
     const canvas = document.createElement('canvas');
     canvas.id = PREFIX + '-shader';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const radius = getComputedStyle(el).borderRadius;
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     Object.assign(canvas.style, {
       position: 'fixed',
       top: rect.top + 'px', left: rect.left + 'px',
       width: rect.width + 'px', height: rect.height + 'px',
+      borderRadius: radius,
+      overflow: 'hidden',
       pointerEvents: 'none',
       zIndex: Z.bar - 1,
     });
