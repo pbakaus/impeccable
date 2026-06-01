@@ -50,6 +50,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTEXT_DIR = resolveContextDir(process.cwd());
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+const MAX_JSON_BODY_BYTES = 256 * 1024;
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -93,6 +94,7 @@ const state = {
   // a poll to be parked at the exact moment we dispatch.
   lastPollAt: 0,
   timedOutApplyIds: new Map(),
+  allowedOrigins: new Set(),
 };
 
 const CHAT_POLL_FRESHNESS_MS = 60_000;
@@ -1188,21 +1190,93 @@ function statOrNull(filePath) {
   try { return fs.statSync(filePath); } catch { return null; }
 }
 
+function parseOrigin(value) {
+  if (!value || typeof value !== 'string') return null;
+  try { return new URL(value).origin; } catch { return null; }
+}
+
+function rememberScriptOrigin(req) {
+  const origin = parseOrigin(req.headers.origin) || parseOrigin(req.headers.referer);
+  if (origin) state.allowedOrigins.add(origin);
+}
+
+function setCorsHeaders(req, res) {
+  const origin = parseOrigin(req.headers.origin);
+  if (!origin || !state.allowedOrigins.has(origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  return true;
+}
+
+function writeJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+function readLimitedTextBody(req, res, onBody, { maxBytes = MAX_JSON_BODY_BYTES } = {}) {
+  let body = '';
+  let total = 0;
+  let aborted = false;
+  req.on('data', (chunk) => {
+    if (aborted) return;
+    total += chunk.length;
+    if (total > maxBytes) {
+      aborted = true;
+      writeJson(res, 413, { error: 'Payload too large' });
+      req.destroy();
+      return;
+    }
+    body += chunk;
+  });
+  req.on('end', () => {
+    if (!aborted) onBody(body);
+  });
+  req.on('error', () => {
+    if (!aborted) writeJson(res, 500, { error: 'Request body read failed' });
+  });
+}
+
+function readLimitedJsonBody(req, res, onJson) {
+  readLimitedTextBody(req, res, (body) => {
+    try {
+      onJson(body ? JSON.parse(body) : {});
+    } catch {
+      writeJson(res, 400, { error: 'Invalid JSON' });
+    }
+  });
+}
+
+function resolveProjectPath(cwd, requested) {
+  if (!requested || typeof requested !== 'string') return null;
+  const root = path.resolve(cwd);
+  const absolute = path.isAbsolute(requested) ? path.resolve(requested) : path.resolve(root, requested);
+  const relative = path.relative(root, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return { absolute, relative };
+}
+
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
 function createRequestHandler({ detectScript, sessionPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    const corsOk = setCorsHeaders(req, res);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(corsOk ? 204 : 403);
+      res.end();
+      return;
+    }
 
     const p = url.pathname;
 
     // --- Scripts ---
     if (p === '/live.js') {
+      const token = url.searchParams.get('token');
+      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      rememberScriptOrigin(req);
       // Re-read from disk each request so edits to live-browser.js land on
       // the next tab reload. No-store headers prevent browser caching across
       // sessions — during iteration, a cached old script silently breaks
@@ -1408,11 +1482,10 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
       const filePath = url.searchParams.get('path');
-      if (!filePath || filePath.includes('..')) { res.writeHead(400); res.end('Bad path'); return; }
-      const absPath = path.resolve(process.cwd(), filePath);
-      if (!absPath.startsWith(process.cwd())) { res.writeHead(403); res.end('Forbidden'); return; }
+      const resolved = resolveProjectPath(process.cwd(), filePath);
+      if (!resolved) { res.writeHead(403); res.end('Forbidden'); return; }
       let content;
-      try { content = fs.readFileSync(absPath, 'utf-8'); }
+      try { content = fs.readFileSync(resolved.absolute, 'utf-8'); }
       catch { res.writeHead(404); res.end('File not found'); return; }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(content);
@@ -1458,15 +1531,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     // --- Manual copy edits: Save stages entries, Apply commits the staged
     // page batch through the local AI copy-edit runner.
     if (p === '/manual-edit-stash' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (c) => { body += c; });
-      req.on('end', () => {
-        let msg;
-        try { msg = JSON.parse(body); } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          return;
-        }
+      readLimitedJsonBody(req, res, (msg) => {
         if (msg.token !== state.token) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Unauthorized' }));
@@ -1691,15 +1756,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
 
     // POST /manual-edit-repair-decision  →  user resolves an exhausted repair loop.
     if (p === '/manual-edit-repair-decision' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk; });
-      req.on('end', () => {
-        let payload = {};
-        try { payload = body ? JSON.parse(body) : {}; } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          return;
-        }
+      readLimitedJsonBody(req, res, (payload) => {
         const token = payload.token || url.searchParams.get('token');
         if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
         const pageUrl = payload.pageUrl || url.searchParams.get('pageUrl') || null;
@@ -1786,15 +1843,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
 
     // --- Browser→server events (replaces WebSocket messages) ---
     if (p === '/events' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (c) => { body += c; });
-      req.on('end', () => {
-        let msg;
-        try { msg = JSON.parse(body); } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          return;
-        }
+      readLimitedJsonBody(req, res, (msg) => {
         if (msg.token !== state.token) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Unauthorized' }));
@@ -1906,15 +1955,7 @@ function handlePollGet(req, res, url) {
 }
 
 function handlePollPost(req, res) {
-  let body = '';
-  req.on('data', (c) => { body += c; });
-  req.on('end', () => {
-    let msg;
-    try { msg = JSON.parse(body); } catch {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      return;
-    }
+  readLimitedJsonBody(req, res, (msg) => {
     if (msg.token !== state.token) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Unauthorized' }));
@@ -2181,7 +2222,7 @@ httpServer.listen(state.port, '127.0.0.1', () => {
   const url = `http://localhost:${state.port}`;
   console.log(`\nImpeccable live server running on ${url}`);
   console.log(`Token: ${state.token}\n`);
-  console.log(`Script: ${url}/live.js`);
+  console.log(`Script: ${url}/live.js?token=${state.token}`);
   console.log('Inject: managed by live-inject.mjs; Astro source tags use is:inline automatically.');
   console.log(`Stop:   node ${path.basename(fileURLToPath(import.meta.url))} stop`);
 });

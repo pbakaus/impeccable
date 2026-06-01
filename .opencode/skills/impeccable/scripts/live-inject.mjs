@@ -8,7 +8,7 @@
  * with zero LLM involvement.
  *
  * Usage:
- *   node live-inject.mjs --port PORT   # Insert the live script tag
+ *   node live-inject.mjs --port PORT --token TOKEN   # Insert the live script tag
  *   node live-inject.mjs --remove      # Remove the live script tag
  *   node live-inject.mjs --check       # Check whether live config exists
  */
@@ -43,7 +43,8 @@ Insert or remove the live mode script tag in the project's HTML entry point.
 Reads configuration from .impeccable/live/config.json.
 
 Modes:
-  --port PORT   Insert script tag pointing at http://localhost:PORT/live.js
+  --port PORT   Insert script tag pointing at http://localhost:PORT/live.js?token=TOKEN
+  --token TOKEN Session token from live-server.mjs
   --remove      Remove the script tag (if present)
   --check       Print whether .impeccable/live/config.json exists and its content
 
@@ -86,7 +87,8 @@ Output (JSON):
 
   if (args.includes('--remove')) {
     const results = resolvedFiles.map((relFile) => {
-      const absFile = path.resolve(process.cwd(), relFile);
+      const absFile = resolveProjectFile(process.cwd(), relFile);
+      if (!absFile) return { file: relFile, error: 'file_outside_project' };
       if (!fs.existsSync(absFile)) return { file: relFile, error: 'file_not_found' };
       const content = fs.readFileSync(absFile, 'utf-8');
       const detagged = removeTag(content, config.commentSyntax);
@@ -106,17 +108,23 @@ Output (JSON):
   // Insert mode — need --port
   const portIdx = args.indexOf('--port');
   const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : NaN;
+  const token = argValue(args, '--token');
   if (!Number.isFinite(port)) {
     console.error(JSON.stringify({ ok: false, error: 'missing_port' }));
     process.exit(1);
   }
+  if (!isValidToken(token)) {
+    console.error(JSON.stringify({ ok: false, error: 'missing_or_invalid_token' }));
+    process.exit(1);
+  }
 
   const results = resolvedFiles.map((relFile) => {
-    const absFile = path.resolve(process.cwd(), relFile);
+    const absFile = resolveProjectFile(process.cwd(), relFile);
+    if (!absFile) return { file: relFile, error: 'file_outside_project' };
     if (!fs.existsSync(absFile)) return { file: relFile, error: 'file_not_found' };
     const content = fs.readFileSync(absFile, 'utf-8');
     const withoutOld = revertCspMeta(removeTag(content, config.commentSyntax));
-    const withTag = insertTag(withoutOld, config, port, relFile);
+    const withTag = insertTag(withoutOld, config, port, relFile, token);
     if (withTag === withoutOld) {
       return { file: relFile, error: 'insertion_point_not_found', anchor: config.insertBefore || config.insertAfter };
     }
@@ -131,6 +139,30 @@ Output (JSON):
   const anyInserted = results.some((r) => r.inserted);
   console.log(JSON.stringify({ ok: anyInserted, port, results }));
   if (!anyInserted) process.exit(1);
+}
+
+function argValue(args, name) {
+  const idx = args.indexOf(name);
+  return idx === -1 ? null : args[idx + 1];
+}
+
+function isValidToken(token) {
+  return typeof token === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token);
+}
+
+function normalizeProjectRelativePath(rootDir, filePath) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  const root = path.resolve(rootDir);
+  const absolute = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(root, filePath);
+  const relative = path.relative(root, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join('/');
+}
+
+function resolveProjectFile(rootDir, filePath) {
+  const relative = normalizeProjectRelativePath(rootDir, filePath);
+  return relative ? path.resolve(rootDir, relative) : null;
 }
 
 /**
@@ -156,9 +188,10 @@ export function resolveFiles(rootDir, config) {
       // Literal path — include even if it doesn't exist yet; the caller
       // reports file_not_found per-entry. Exclude list doesn't apply to
       // explicit literal entries (user named it on purpose).
-      if (!seen.has(pat)) {
-        seen.add(pat);
-        out.push(pat);
+      const rel = normalizeProjectRelativePath(rootDir, pat) || pat;
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        out.push(rel);
       }
       continue;
     }
@@ -171,7 +204,8 @@ export function resolveFiles(rootDir, config) {
     for (const ent of matches) {
       if (!ent.isFile || !ent.isFile()) continue;
       const abs = path.join(ent.parentPath || ent.path || rootDir, ent.name);
-      const rel = path.relative(rootDir, abs).split(path.sep).join('/');
+      const rel = normalizeProjectRelativePath(rootDir, abs)
+        || path.relative(rootDir, abs).split(path.sep).join('/');
       if (isExcluded(rel)) continue;
       if (seen.has(rel)) continue;
       seen.add(rel);
@@ -256,22 +290,23 @@ function validateConfig(cfg) {
 function commentOpen(syntax) { return syntax === 'jsx' ? '{/*' : '<!--'; }
 function commentClose(syntax) { return syntax === 'jsx' ? '*/}' : '-->'; }
 
-function buildTagBlock(syntax, port, filePath) {
+function buildTagBlock(syntax, port, filePath, token) {
   const open = commentOpen(syntax);
   const close = commentClose(syntax);
   // Astro processes <script> tags by default and rewrites src to its own
   // bundled URL. is:inline opts out so the literal external src survives.
   const isAstro = typeof filePath === 'string' && filePath.endsWith('.astro');
   const scriptAttrs = isAstro ? 'is:inline ' : '';
+  const src = 'http://localhost:' + port + '/live.js?token=' + encodeURIComponent(token);
   return (
     open + ' ' + MARKER_OPEN_TEXT + ' ' + close + '\n' +
-    '<script ' + scriptAttrs + 'src="http://localhost:' + port + '/live.js"></script>\n' +
+    '<script ' + scriptAttrs + 'src="' + src + '"></script>\n' +
     open + ' ' + MARKER_CLOSE_TEXT + ' ' + close + '\n'
   );
 }
 
-function insertTag(content, config, port, filePath) {
-  const block = buildTagBlock(config.commentSyntax, port, filePath);
+function insertTag(content, config, port, filePath, token) {
+  const block = buildTagBlock(config.commentSyntax, port, filePath, token);
   // insertBefore: match the LAST occurrence. Anchors like `</body>` naturally
   // belong at the end, and the same literal can appear earlier in code blocks
   // within rendered documentation pages.

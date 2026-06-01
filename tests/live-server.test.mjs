@@ -205,8 +205,16 @@ describe('live-server integration', () => {
     assert.equal(data.agentPolling, false);
   });
 
-  it('/live.js serves script with token injected', async () => {
+  it('/live.js rejects requests without the session token', async () => {
     const res = await fetch(`http://localhost:${server.port}/live.js`);
+    assert.equal(res.status, 401);
+  });
+
+  it('/live.js serves script with token injected and pins the requesting origin', async () => {
+    const origin = 'http://localhost:5173';
+    const res = await fetch(`http://localhost:${server.port}/live.js?token=${server.token}`, {
+      headers: { Referer: origin + '/app' },
+    });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'application/javascript');
     const text = await res.text();
@@ -221,6 +229,17 @@ describe('live-server integration', () => {
       sessionHelperIndex < browserInitIndex,
       'event=live_server.browser_helper_order actor=browser operation=load_live_js risk=session_helper_missing_before_browser_init expected=session helper before live init actual=' + sessionHelperIndex + ':' + browserInitIndex,
     );
+
+    const options = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: origin,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+    assert.equal(options.status, 204);
+    assert.equal(options.headers.get('access-control-allow-origin'), origin);
   });
 
   it('/design-system.json reads DESIGN.md plus .impeccable/design.json', async () => {
@@ -2413,12 +2432,34 @@ colors: {}
 
   it('/source rejects path traversal', async () => {
     const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=../../../etc/passwd`);
-    assert.equal(res.status, 400);
+    assert.equal(res.status, 403);
+  });
+
+  it('/source rejects absolute sibling paths that share the cwd prefix', async () => {
+    const sibling = serverCwd + '-sibling';
+    try {
+      mkdirSync(sibling, { recursive: true });
+      writeFileSync(join(sibling, 'package.json'), JSON.stringify({ name: 'outside' }));
+      const outsidePath = join(sibling, 'package.json');
+      const res = await fetch(`http://localhost:${server.port}/source?token=${server.token}&path=${encodeURIComponent(outsidePath)}`);
+      assert.equal(res.status, 403);
+    } finally {
+      rmSync(sibling, { recursive: true, force: true });
+    }
   });
 
   it('/source rejects invalid token', async () => {
     const res = await fetch(`http://localhost:${server.port}/source?token=wrong&path=package.json`);
     assert.equal(res.status, 401);
+  });
+
+  it('rejects oversized JSON bodies before parsing', async () => {
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"token":"' + server.token + '","type":"exit","padding":"' + 'x'.repeat(300 * 1024) + '"}',
+    });
+    assert.equal(res.status, 413);
   });
 
   it('/source returns 404 for missing files', async () => {

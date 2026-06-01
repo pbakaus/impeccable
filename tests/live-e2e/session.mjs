@@ -85,9 +85,10 @@ export function stopLiveServer(tmp) {
 }
 
 export function runInject(tmp, port) {
+  const info = JSON.parse(readFileSync(join(tmp, '.impeccable', 'live', 'server.json'), 'utf-8'));
   const out = execFileSync(
     process.execPath,
-    [join(SCRIPTS_DIR, 'live-inject.mjs'), '--port', String(port)],
+    [join(SCRIPTS_DIR, 'live-inject.mjs'), '--port', String(port), '--token', String(info.token || '')],
     {
       cwd: tmp,
       encoding: 'utf-8',
@@ -196,7 +197,7 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
     log(`starting live-server`);
     live = startLiveServer(tmp);
 
-    log(`live-inject --port ${live.port}`);
+    log(`live-inject --port ${live.port} --token <server token>`);
     const injectResult = runInject(tmp, live.port);
     if (!injectResult.ok) throw new Error('live-inject failed: ' + JSON.stringify(injectResult));
 

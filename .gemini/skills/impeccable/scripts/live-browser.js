@@ -1,7 +1,7 @@
 /**
  * Impeccable Live Variant Mode — Browser Script
  *
- * Injected into the user's page via <script src="http://localhost:PORT/live.js">.
+ * Injected into the user's page via <script src="http://localhost:PORT/live.js?token=TOKEN">.
  * The server prepends window.__IMPECCABLE_TOKEN__ and window.__IMPECCABLE_PORT__
  * before this code.
  *

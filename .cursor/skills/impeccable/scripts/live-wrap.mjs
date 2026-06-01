@@ -110,6 +110,14 @@ The agent should insert variant HTML at insertLine.`);
       process.exit(1);
     }
   } else {
+    targetFile = resolveProjectFile(process.cwd(), targetFile);
+    if (!targetFile) {
+      console.error(JSON.stringify({
+        error: 'file_outside_project',
+        fallback: 'agent-driven',
+      }));
+      process.exit(1);
+    }
     if (isGeneratedFile(targetFile, genOpts)) {
       console.error(JSON.stringify({
         error: 'file_is_generated',
@@ -819,6 +827,15 @@ function findClosingLine(lines, start) {
 
   // If we can't find the close, return a reasonable guess
   return Math.min(start + 50, lines.length - 1);
+}
+
+function resolveProjectFile(rootDir, filePath) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  const root = path.resolve(rootDir);
+  const absolute = path.isAbsolute(filePath) ? path.resolve(filePath) : path.resolve(root, filePath);
+  const relative = path.relative(root, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  return absolute;
 }
 
 // Auto-execute when run directly (node live-wrap.mjs ...)
