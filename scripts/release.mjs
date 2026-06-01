@@ -46,9 +46,10 @@ const COMPONENTS = {
     label: 'Extension',
     changelogLabel: 'Extension v',
     buildCmd: 'bun run build:extension',
-    artifacts: ['dist/extension.zip'],
-    postReleaseHint: 'Upload `dist/extension.zip` to the Chrome Web Store dashboard to publish.',
-    tweetHeader: (v) => `Impeccable Chrome extension v${v} is out.`,
+    artifacts: ['dist/extension.zip', 'dist/extension-firefox.zip'],
+    postReleaseHint:
+      'Upload `dist/extension.zip` to the Chrome Web Store dashboard, and `dist/extension-firefox.zip` to addons.mozilla.org (AMO), to publish.',
+    tweetHeader: (v) => `Impeccable browser extension v${v} is out.`,
     tweetCta: null,
   },
 };

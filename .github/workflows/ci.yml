@@ -32,10 +32,22 @@ jobs:
         
       - name: Build
         run: bun run build
-        
+
+      - name: Build extension
+        run: bun run build:extension
+
+      - name: Lint Firefox extension (web-ext)
+        # Pinned for reproducible CI. Fails on AMO errors; innerHTML style
+        # warnings in the panel renderer are non-blocking and not promoted to
+        # errors here.
+        run: npx --yes web-ext@8 lint --source-dir dist/extension-firefox
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: impeccable-dist
-          path: dist/
+          # Ship the packaged zips, not the unpacked Firefox staging tree.
+          path: |
+            dist/
+            !dist/extension-firefox/
           retention-days: 7
