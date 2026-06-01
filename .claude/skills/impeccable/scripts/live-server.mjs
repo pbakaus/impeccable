@@ -107,6 +107,7 @@ const MIN_MANUAL_EDIT_APPLY_CHUNK_SIZE = 1;
 const MAX_MANUAL_EDIT_APPLY_CHUNK_SIZE = 20;
 const MANUAL_APPLY_COMPACT_TEXT_LIMIT = 240;
 const MANUAL_APPLY_COMPACT_NEARBY_LIMIT = 4;
+const POLL_LEASE_EXPIRY_TIMER_GRACE_MS = 2;
 const DEBUG_MANUAL_EDIT_EVENTS = /^(1|true|yes)$/i.test(process.env.IMPECCABLE_LIVE_DEBUG_EVENTS || '');
 
 function tombstoneTimedOutApplyId(eventId, details = {}) {
@@ -1060,7 +1061,7 @@ function scheduleLeaseFlush() {
     state.leaseTimer = null;
     flushPendingPolls();
     broadcastAgentPollingIfChanged();
-  }, Math.max(0, nextLeaseUntil - now));
+  }, Math.max(0, nextLeaseUntil - now + POLL_LEASE_EXPIRY_TIMER_GRACE_MS));
 }
 
 function flushPendingPolls() {
