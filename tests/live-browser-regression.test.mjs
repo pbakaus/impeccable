@@ -116,6 +116,32 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('pins edit badge button metrics instead of inheriting host button chrome', () => {
+    const start = SOURCE.indexOf('const calloutStyle = (color, borderColor) => ({');
+    const end = SOURCE.indexOf('    });', start);
+    const calloutStyle = SOURCE.slice(start, end);
+    assert.match(
+      calloutStyle,
+      /fontSize: '10px'/,
+      'edit badge controls should not scale from host rem settings',
+    );
+    assert.match(
+      calloutStyle,
+      /lineHeight: '16px'/,
+      'edit badge controls need the same 22px button height on pages with or without button resets',
+    );
+    assert.match(
+      calloutStyle,
+      /boxSizing: 'border-box'/,
+      'edit badge controls should include padding and border in their rendered dimensions',
+    );
+    assert.doesNotMatch(
+      calloutStyle,
+      /fontSize: '0\.625rem'/,
+      'edit badge controls should not depend on the host root font-size',
+    );
+  });
+
   it('does not shadow the global live state when storing Apply state', () => {
     assert.doesNotMatch(
       SOURCE,
