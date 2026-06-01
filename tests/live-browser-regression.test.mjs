@@ -266,6 +266,29 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('detect mode shows an empty result toast once per requested scan', () => {
+    assert.match(
+      SOURCE,
+      /const DETECT_EMPTY_MESSAGE = 'No detector issues found\.';/,
+      'live detector zero result copy should live in one named constant',
+    );
+    assert.match(
+      SOURCE,
+      /function toggleDetect\(\)[\s\S]{0,240}?if \(detectActive\) \{[\s\S]{0,80}?detectAwaitingResult = true;/,
+      'turning Detect on must mark that the next detector result belongs to a user requested scan',
+    );
+    assert.match(
+      SOURCE,
+      /if \(detectActive && detectAwaitingResult && detectCount === 0\) \{[\s\S]{0,80}?showToast\(DETECT_EMPTY_MESSAGE, 3200\);[\s\S]{0,120}?detectAwaitingResult = false;/,
+      'a zero result scan must use the existing toast UI and clear the pending flag',
+    );
+    assert.match(
+      SOURCE,
+      /window\.postMessage\(\{ source: 'impeccable-command', action: 'remove' \}, '\*'\);[\s\S]{0,80}?detectAwaitingResult = false;/,
+      'turning Detect off must suppress stale zero result toasts',
+    );
+  });
+
   it('insert mode UI and generate payload guards', () => {
     assert.match(SOURCE, /function toggleInsert\(\)/, 'global bar must expose insert toggle');
     assert.match(SOURCE, /PREFIX \+ '-insert-toggle'/, 'insert toggle needs stable id');

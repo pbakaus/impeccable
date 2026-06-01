@@ -6083,6 +6083,8 @@ void main() {
   let steerFocusRecoverTimer = null;
   const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
+  let detectAwaitingResult = false;
+  const DETECT_EMPTY_MESSAGE = 'No detector issues found.';
   const PICK_PREFS_KEY = 'impeccable-live-pick';
   const INTERACTION_PREFS_KEY = 'impeccable-live-interaction';
   const PLACEHOLDER_DEFAULT_HEIGHT = 80;
@@ -7602,6 +7604,7 @@ void main() {
     updateGlobalBarState();
 
     if (detectActive) {
+      detectAwaitingResult = true;
       if (!detectScriptLoaded) {
         detectPendingScan = true;
         loadDetectScript();
@@ -7612,6 +7615,7 @@ void main() {
       }
     } else {
       window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
+      detectAwaitingResult = false;
       detectCount = 0;
       updateGlobalBarState();
     }
@@ -7687,6 +7691,10 @@ void main() {
     // Scan results arrived
     if (e.data.source === 'impeccable-results') {
       detectCount = e.data.count || 0;
+      if (detectActive && detectAwaitingResult && detectCount === 0) {
+        showToast(DETECT_EMPTY_MESSAGE, 3200);
+      }
+      detectAwaitingResult = false;
       updateGlobalBarState();
     }
   }
