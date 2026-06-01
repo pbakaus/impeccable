@@ -792,6 +792,8 @@
     order: 3;
     flex-basis: 100%;
     display: none;
+    grid-template-columns: max-content max-content 1fr;
+    column-gap: 10px;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -801,10 +803,11 @@
     border-top: 1px solid oklch(78% 0.12 82 / 0.18);
   }
   [data-site-header][data-nav-open="true"] .site-header-right {
-    display: flex;
+    display: grid;
   }
 
   .kinpaku-chrome .site-header-nav {
+    grid-column: 1 / -1;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
@@ -832,9 +835,15 @@
     display: block;
   }
 
+  .kinpaku-chrome .theme-toggle {
+    grid-column: 1;
+    margin: 12px 0 6px clamp(16px, 4vw, 24px);
+  }
+
   .kinpaku-chrome .site-header-github {
+    grid-column: 2;
     align-self: flex-start;
-    margin: 12px clamp(16px, 4vw, 24px) 6px;
+    margin: 12px 0 6px;
   }
 
   /* sub-pages.css hides the github star count label on mobile. The drawer
