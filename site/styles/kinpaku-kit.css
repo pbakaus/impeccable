@@ -795,7 +795,7 @@
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    margin: 12px calc(-1 * clamp(16px, 4vw, 24px)) -16px;
+    margin: 12px 0 -16px;
     padding: 4px 0 6px;
     background: oklch(4% 0.004 95);
     border-top: 1px solid oklch(78% 0.12 82 / 0.18);
