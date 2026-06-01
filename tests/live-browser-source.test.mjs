@@ -279,4 +279,40 @@ describe('live-browser source contracts', () => {
     assert.match(SOURCE, /sendEvent\(acceptPayload, \{ throwOnError: true \}\)/);
     assert.match(SOURCE, /sendEvent\(\{ type: 'discard', id: currentSessionId \}, \{ throwOnError: true \}\)/);
   });
+
+  it('waits for post-carbonize completion before final accepted DOM cleanup', () => {
+    assert.match(
+      SOURCE,
+      /let pendingAcceptedSession = null;/,
+      'accept flow should keep pending completion state after the browser sends the accept intent',
+    );
+    assert.match(
+      SOURCE,
+      /case 'complete':\s*case 'accept':\s*if \(maybeCompleteAcceptedSession\(msg\)\) break;/,
+      'final accepted DOM cleanup should be driven by explicit complete or harness accept replies',
+    );
+    const agentDoneStart = SOURCE.indexOf("case 'agent_done':");
+    const errorCaseStart = SOURCE.indexOf("case 'error':", agentDoneStart);
+    const agentDoneSource = SOURCE.slice(agentDoneStart, errorCaseStart);
+    assert.match(agentDoneSource, /Carbonize accepts are not terminal/);
+    assert.match(agentDoneSource, /break;/);
+    const handleAcceptStart = SOURCE.indexOf('function handleAccept()');
+    const maybeCompleteStart = SOURCE.indexOf('function maybeCompleteAcceptedSession', handleAcceptStart);
+    const handleAcceptSource = SOURCE.slice(handleAcceptStart, maybeCompleteStart);
+    assert.doesNotMatch(
+      handleAcceptSource,
+      /state = 'CONFIRMED'|cleanupAcceptedSession\(|hideBar\(\)/,
+      'accept enqueue should not clear or confirm the browser session before source cleanup completes',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);/,
+      'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /function reloadAfterMissingAcceptedDom\(pending\)[\s\S]*?location\.reload\(\);/,
+      'missing accepted DOM after clean source should recover by reloading the clean page',
+    );
+  });
 });

@@ -1,11 +1,11 @@
 /**
- * Impeccable Live Variant Mode — Browser Script
+ * Impeccable Live Variant Mode - Browser Script
  *
  * Injected into the user's page via <script src="http://localhost:PORT/live.js">.
  * The server prepends window.__IMPECCABLE_TOKEN__ and window.__IMPECCABLE_PORT__
  * before this code.
  *
- * UI: a single floating bar that morphs between three states —
+ * UI: a single floating bar that morphs between three states -
  * configure (pick action + go), generating (progressive dots), and cycling
  * (prev/next + accept/discard). Feels like Spotlight, not a modal.
  */
@@ -46,7 +46,7 @@
     mist:      'oklch(90% 0.008 82 / 0.6)',     // light hairline
     white:     'oklch(99% 0 0)',
   };
-  // Picker bar chrome — mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css.
+  // Picker bar chrome - mirrors .live-demo-gbar / .live-demo-ctx in kinpaku-kit.css.
   // Quiet neutral elevation: no gold halo ring (gold is reserved for the brand
   // mark and the active control, not the container outline).
   const PICKER_SHADOW =
@@ -83,7 +83,7 @@
 
   // SVG icons stack above each chip label. All strokes use currentColor so the
   // icon recolors to C.brand when its chip is selected. 20x20 render, 24-viewBox,
-  // 1.5 stroke — visually consistent with the Foundation grid on the homepage.
+  // 1.5 stroke - visually consistent with the Foundation grid on the homepage.
   const ICON_ATTRS = 'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"';
   const ICONS = {
     impeccable: `<svg ${ICON_ATTRS}><path d="M4 20l4-1L18 9l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>`,
@@ -123,6 +123,7 @@
   let hoveredElement = null;
   let selectedElement = null;
   let currentSessionId = null;
+  let pendingAcceptedSession = null;
   let expectedVariants = 0;
   let arrivedVariants = 0;
   let visibleVariant = 0;
@@ -133,7 +134,7 @@
   const browserOwner = sessionState.owner;
   let checkpointTimer = null;
 
-  // Scroll lock — holds window.scrollY at a fixed value while the session is
+  // Scroll lock - holds window.scrollY at a fixed value while the session is
   // active, so HMR DOM patches and variant swaps can't drift the page. See
   // startScrollLock / stopScrollLock below.
   let scrollLockObserver = null;
@@ -141,7 +142,7 @@
   let scrollLockRaf = null;
   let scrollLockAbort = null;
 
-  // Dedicated key for scroll position — SEPARATE from LS_KEY so that
+  // Dedicated key for scroll position - SEPARATE from LS_KEY so that
   // saveSession's state updates don't clobber a carefully-captured scrollY.
   // (Previously: saveSession wrote scrollY alongside state, so every call
   // during resume overwrote the pre-reload value with whatever the browser
@@ -231,7 +232,7 @@
   //   - Stop `focusin` propagation so any focus shifts inside our chrome
   //     don't read as "focus moved outside the dialog" to focus traps.
   //
-  // Click events still bubble normally — only the early pointer/focus
+  // Click events still bubble normally - only the early pointer/focus
   // signals that drive outside-interaction detection are silenced.
   function defangOutsideHandlers(rootEl, { setPointerEvents = true } = {}) {
     if (!rootEl) return;
@@ -319,7 +320,7 @@
   // correlate directly with the captured PNG.
   // ---------------------------------------------------------------------------
 
-  const DRAG_THRESHOLD = 5;       // px — below this, treat pointerup as a click
+  const DRAG_THRESHOLD = 5;       // px - below this, treat pointerup as a click
   const PIN_DBL_CLICK_MS = 300;   // two clicks on the same pin within this delete it
   let annotOverlayEl = null;
   let annotSvgEl = null;
@@ -423,7 +424,7 @@
     placeholderResizeDrag = null;
     if (annotOverlayEl) annotOverlayEl.style.display = 'none';
     syncPlaceholderResizeHandles();
-    // Drop any in-progress edit without touching annotState — clearAnnotations
+    // Drop any in-progress edit without touching annotState - clearAnnotations
     // (if the caller is exiting configure mode) handles state reset.
     annotEditing = null;
   }
@@ -488,7 +489,7 @@
   function onAnnotDown(e) {
     if (!annotActive) return;
 
-    // 0) Insert placeholder edge resize — wins over draw / pins.
+    // 0) Insert placeholder edge resize - wins over draw / pins.
     const resizeEdge = e.target.closest?.('[data-impeccable-placeholder-resize]')?.dataset.impeccablePlaceholderResize;
     if (resizeEdge && configureKind === 'insert' && placeholderElement) {
       startPlaceholderEdgeResize(resizeEdge, e);
@@ -536,7 +537,7 @@
       // If editing a different pin, commit that edit before starting here.
       if (annotEditing && annotEditing.idx !== idx) finalizeEditingPin();
       // If already editing THIS pin and the user clicked the dot, let the
-      // input keep focus (don't start a drag — the click wasn't meant as one).
+      // input keep focus (don't start a drag - the click wasn't meant as one).
       if (annotEditing && annotEditing.idx === idx) return;
       const p = localCoords(e);
       const pin = annotState.comments[idx];
@@ -971,7 +972,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // The Bar — one floating element, three modes
+  // The Bar - one floating element, three modes
   // ---------------------------------------------------------------------------
 
   // Contextual-bar palette. Cached at init so every build*Row reads a
@@ -1752,7 +1753,7 @@
       display: 'flex', alignItems: 'center', gap: '6px',
     });
 
-    // Action pill — dark graphite chip (matches kinpaku-kit .live-demo-ctx-pill)
+    // Action pill - dark graphite chip (matches kinpaku-kit .live-demo-ctx-pill)
     const pill = el('button', {
       display: 'inline-flex', alignItems: 'center', gap: '4px',
       padding: '5px 10px', borderRadius: '6px',
@@ -1786,7 +1787,7 @@
     });
     row.appendChild(pill);
 
-    // Prompt field — same chat-surface chrome as the bottom Steer bar
+    // Prompt field - same chat-surface chrome as the bottom Steer bar
     const inputWrap = el('div', {
       display: 'inline-flex', alignItems: 'center',
       flex: '1', minWidth: '0', height: '28px',
@@ -2126,7 +2127,7 @@
     if (visibleVariant >= arrivedVariants) next.style.opacity = '0.3';
     row.appendChild(next);
 
-    // Tune chip — only when the visible variant exposes params
+    // Tune chip - only when the visible variant exposes params
     const visParams = parseVariantParams(getVisibleVariantEl());
     const hasParams = visParams.length > 0;
     if (hasParams) {
@@ -2173,7 +2174,7 @@
     // Spacer
     row.appendChild(el('div', { flex: '1' }));
 
-    // Accept — primary action, kinpaku gold + lacquer-deep (matches demo .live-demo-ctx-accept)
+    // Accept - primary action, kinpaku gold + lacquer-deep (matches demo .live-demo-ctx-accept)
     const accept = el('button', {
       padding: '5px 14px', borderRadius: '5px',
       border: 'none', background: C.brand, color: C.ink,
@@ -2266,7 +2267,7 @@
       const active = i === visibleVariant;
       // active: solid site-brand kinpaku dot. arrived+inactive: muted neutral.
       // pending (not yet arrived): faint outline ring. No borders on arrived
-      // dots — the previous "accent ring + ash fill" combo read as noisy
+      // dots - the previous "accent ring + ash fill" combo read as noisy
       // kinpaku chips, especially when all variants had arrived and every
       // dot wore an accent ring.
       const dotBg = active ? C.brand
@@ -2456,7 +2457,7 @@
   let paramsPanelEl = null;     // outer wrapper (overflow:hidden, clips the slide)
   let paramsPanelInner = null;  // translating content (carries bg, padding, knobs)
   let paramsPanelBody = null;   // grid holding the knob cells
-  let paramsCurrentValues = {}; // {paramId: value} — mirror of the visible variant's live values
+  let paramsCurrentValues = {}; // {paramId: value} - mirror of the visible variant's live values
   let tuneOpen = false;         // whether the Tune popover is open right now
 
   // Theme-aware Tune popover. Appears as a drawer that slides out from the
@@ -2471,7 +2472,7 @@
     const P = paramsPanelPalette;
 
     // Single element, always in the DOM. The slide animation is a CSS mask
-    // with mask-size growing from 0% to 100% along the bar-facing axis — no
+    // with mask-size growing from 0% to 100% along the bar-facing axis - no
     // display toggle, no opacity toggle, no transform trickery. The mask
     // hides everything initially; as it grows, content is revealed from
     // the bar edge outward.
@@ -2494,7 +2495,7 @@
       transition: 'clip-path 0.44s ' + EASE,
 
       // Park off-screen until positionParamsPanel places it. These are NOT
-      // in the transition list, so they snap instantly — no fly-in from the
+      // in the transition list, so they snap instantly - no fly-in from the
       // top-left when first shown.
       top: '-9999px', left: '-9999px', width: '0',
     });
@@ -2685,7 +2686,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Inline text editing — makes pure-text descendants of the picked element
+  // Inline text editing - makes pure-text descendants of the picked element
   // directly contenteditable. Save stages copy edits in the live buffer; the
   // Apply copy edits dock later asks the AI to apply the staged batch.
   // ---------------------------------------------------------------------------
@@ -3132,7 +3133,7 @@
       if (detail.includes('newText cannot contain') || detail.includes('newText cannot be empty')) {
         showToast('Save rejected: ' + detail.replace(/^manual_edits:\s*/, ''), 5500);
       } else {
-        showToast('Save failed — retry or cancel', 4000);
+        showToast('Save failed: retry or cancel', 4000);
       }
     }
   }
@@ -3454,19 +3455,19 @@
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
         console.warn('[impeccable] some copy edits failed:', result.failed);
-        showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed — see console', 5000);
+        showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed, see console', 5000);
       } else {
         const n = Array.isArray(result.applied) ? result.applied.length : (result.cleared || 0);
         if (n > 0) {
           showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
         } else {
           console.warn('[impeccable] apply returned no verified edits:', result);
-          showToast('No edits applied — see console', 4000);
+          showToast('No edits applied, see console', 4000);
         }
       }
     } catch (err) {
       console.error('[impeccable] commit failed:', err);
-      showToast('Apply failed — see console', 4000);
+      showToast('Apply failed, see console', 4000);
     } finally {
       if (waitForSseCompletion) return;
       const remainingCount = parseInt(pendingPillEl?.dataset.count || '0', 10) || 0;
@@ -3496,7 +3497,7 @@
       }
     } catch (err) {
       console.error('[impeccable] discard failed:', err);
-      showToast('Discard failed — see console', 4000);
+      showToast('Discard failed, see console', 4000);
     }
   }
 
@@ -3644,7 +3645,7 @@
         const failedCount = numberOrNull(msg.failedCount) || 0;
         const appliedCount = numberOrNull(msg.appliedCount) || numberOrNull(msg.cleared) || 0;
         if (failedCount > 0) {
-          showToast('Applied ' + appliedCount + ', ' + failedCount + ' failed — see console', 5000);
+          showToast('Applied ' + appliedCount + ', ' + failedCount + ' failed, see console', 5000);
         } else if (appliedCount > 0) {
           showToast('Applied ' + appliedCount + ' edit' + (appliedCount === 1 ? '' : 's'), 2500);
         }
@@ -3799,7 +3800,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Edit content badge — floating button at element top-right to enter EDITING mode
+  // Edit content badge - floating button at element top-right to enter EDITING mode
   // ---------------------------------------------------------------------------
 
   function initEditBadge() {
@@ -3884,7 +3885,7 @@
       }
       editBadgeEl.appendChild(btn);
     } else {
-      // 'editing' — show Cancel + Save separated
+      // 'editing' - show Cancel + Save separated
       editBadgeEl.innerHTML = '';
       editBadgeEl.style.gap = '8px';
       const cancel = document.createElement('button');
@@ -4083,7 +4084,7 @@
       if (!v) continue;
       setVariantShown(child, v === String(num));
     }
-    // Unconditional refresh — covers first-reveal (no-op if state isn't
+    // Unconditional refresh - covers first-reveal (no-op if state isn't
     // CYCLING yet, the subsequent CYCLING transition triggers its own
     // refresh) and every cycle step.
     refreshParamsPanel();
@@ -4318,7 +4319,7 @@
       window.scrollTo({ top: scrollLockTargetY, left: window.scrollX, behavior: 'instant' });
     }, { passive: true, ...sig });
 
-    // Apply target synchronously, not via rAF — racing the browser's
+    // Apply target synchronously, not via rAF - racing the browser's
     // restore or a smooth-scroll animation means we want to win now.
     if (Math.abs(window.scrollY - scrollLockTargetY) > 0.5) {
       window.scrollTo({ top: scrollLockTargetY, left: window.scrollX, behavior: 'instant' });
@@ -4545,16 +4546,25 @@
           // hidden tab, a route the user navigated away from). The variant
           // MutationObserver stays armed and auto-transitions to CYCLING
           // the moment the wrapper actually mounts. Nudge the user toward
-          // that path with a toast — better than the prior force-reload
+          // that path with a toast - better than the prior force-reload
           // which reset framework state and left the session stuck.
           setTimeout(() => {
             if (arrivedVariants >= expectedVariants && expectedVariants > 0) return;
             if (state !== 'GENERATING') return;
             showToast(
-              "Variants ready. If the picked element isn't visible, retrace the path that revealed it — they'll appear automatically.",
+              "Variants ready. If the picked element isn't visible, retrace the path that revealed it; they'll appear automatically.",
               15000,
             );
           }, 2000);
+          break;
+        case 'complete':
+        case 'accept':
+          if (maybeCompleteAcceptedSession(msg)) break;
+          break;
+        case 'agent_done':
+          // Carbonize accepts are not terminal until live-complete.mjs sends
+          // the final complete event. Keep the browser in its recoverable
+          // saving state while the source cleanup is still in flight.
           break;
         case 'error':
           if (maybeCompleteSteer(msg)) break;
@@ -4779,14 +4789,14 @@
 
   /**
    * Surface a brief, non-blocking heads-up when the picked element lives
-   * inside a container whose visibility is gated by ephemeral state — modals,
+   * inside a container whose visibility is gated by ephemeral state - modals,
    * collapsible panels, popovers, off-screen tab panels. If HMR remounts the
    * parent during generation (Vite Fast Refresh, SvelteKit page reload), the
    * variants land in source but stay invisible until the user re-opens the
    * container. Telling the user upfront is much friendlier than the silent
    * timeout-then-toast that they'd otherwise hit.
    *
-   * Heuristic, intentionally narrow — only fires for unambiguous cases so
+   * Heuristic, intentionally narrow - only fires for unambiguous cases so
    * we don't cry wolf on every nested element.
    */
   function maybeWarnConditionalAncestor(el) {
@@ -4804,7 +4814,7 @@
         showToast('Heads up: this element lives inside an open panel. If state resets during generation, you may need to re-open it.', 6000);
         return;
       }
-      // 3. Tab panel — only meaningful when the page also shows ANOTHER
+      // 3. Tab panel - only meaningful when the page also shows ANOTHER
       // tab as selected. A single tabpanel with no tablist is just a static
       // section in disguise and isn't conditional.
       if (node.getAttribute && node.getAttribute('role') === 'tabpanel') {
@@ -4833,7 +4843,7 @@
   // Fire a lightweight prefetch event the first time the user selects an
   // element on a given route. The agent uses this to Read the underlying file
   // into context before Go is hit, shaving the read off the critical path.
-  // Dedupe per session by pathname — clicking around on the same page doesn't
+  // Dedupe per session by pathname - clicking around on the same page doesn't
   // re-fire.
   //
   // DISABLED: quick-Go workflows pay an extra harness round trip because
@@ -4976,7 +4986,7 @@
 
     // Flip to GENERATING immediately so the bar morphs without waiting on
     // capture + upload. The event is emitted from captureAndEmit() once the
-    // screenshot is uploaded (or capture fails — we still emit, just without
+    // screenshot is uploaded (or capture fails - we still emit, just without
     // screenshotPath).
     const elForCapture = selectedElement;
     const captureRect = elForCapture.getBoundingClientRect();
@@ -5002,7 +5012,7 @@
     state = 'GENERATING';
     // Disable the Edit badge: starting a manual text edit mid-generation would
     // conflict with the variant wrap that's about to land in the same DOM
-    // region. Only swap if the badge was visible — picked elements with no
+    // region. Only swap if the badge was visible - picked elements with no
     // text rows have it hidden already.
     if (editBadgeEl && editBadgeEl.style.display !== 'none') renderEditBadge('idle-disabled');
     showBar('generating');
@@ -5104,7 +5114,7 @@
 
   // Collect @font-face rules from every stylesheet on the page. Cross-origin
   // sheets (Google Fonts, Typekit, etc.) throw SecurityError on .cssRules
-  // access, so modern-screenshot can't embed them on its own — the resulting
+  // access, so modern-screenshot can't embed them on its own - the resulting
   // SVG falls back to system fonts and text re-wraps + renders with different
   // weight. We fetch the raw CSS text (CORS-permitted for these providers),
   // extract @font-face blocks, inline the referenced font files as base64
@@ -5188,7 +5198,7 @@
   // modern-screenshot force-sets `background-color: X !important` on the
   // cloned root whenever `backgroundColor` is passed, clobbering the
   // element's own background. So we only pass it when the element is
-  // genuinely transparent (no own color, no own image) — in that case
+  // genuinely transparent (no own color, no own image) - in that case
   // we resolve up the DOM to the nearest opaque ancestor so the capture
   // sits on the page's real background instead of rendering black.
   function resolveCanvasBackground(el) {
@@ -5206,7 +5216,7 @@
     // `getComputedStyle(body).backgroundColor || …` chain is a trap: that
     // call returns the literal string `"rgba(0, 0, 0, 0)"` for a page that
     // never set its own bg, which is truthy and short-circuits the chain to
-    // transparent-black — modern-screenshot then renders the capture on a
+    // transparent-black - modern-screenshot then renders the capture on a
     // black canvas and the shader overlay flashes solid black during load.
     // The browser canvas defaults to white, so we do too.
     return '#ffffff';
@@ -5248,7 +5258,7 @@
       // Transparent up to the root. The visible backdrop may still come from an
       // ancestor's background-image or a covering positioned layer (e.g. a hero
       // art div) that the color walk can't see. Capture that ancestor and crop
-      // to the element so the real backdrop is embedded — correct for both the
+      // to the element so the real backdrop is embedded - correct for both the
       // shader and the screenshot sent to the model. Fall back to white only
       // when nothing is actually painted behind the element.
       const backdrop = findBackdropAncestor(el);
@@ -5289,13 +5299,13 @@
     } catch (err) {
       console.warn('[impeccable] capture failed, proceeding without screenshot:', err);
     }
-    // Light up the shader overlay the moment capture is ready — no reason to
+    // Light up the shader overlay the moment capture is ready - no reason to
     // wait for the upload to complete before the user sees something alive.
     if (blob && state === 'GENERATING') {
       showShaderOverlay(el, blob, rect, paper);
     }
     // Only upload + forward the screenshot when annotations (comments/strokes)
-    // are present. Without annotations the image is pure visual anchoring —
+    // are present. Without annotations the image is pure visual anchoring -
     // it biases the model toward the current rendering and works against the
     // three-distinct-directions brief.
     const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
@@ -5320,7 +5330,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Shader overlay — renders the captured screenshot as a WebGL texture and
+  // Shader overlay - renders the captured screenshot as a WebGL texture and
   // runs an editorial "ink-wash" fragment shader over it during generation.
   // A single rolling band sweeps top-to-bottom, desaturating + tinting kinpaku
   // and leaving a soft trail. Makes the wait feel like a letterpress scan
@@ -5343,7 +5353,7 @@ uniform vec3 u_accent;
 uniform vec3 u_paper;
 varying vec2 v_uv;
 
-// Asymmetric roller band. Product of two one-sided smoothsteps — peaks at
+// Asymmetric roller band. Product of two one-sided smoothsteps - peaks at
 // d=0 with a short sharp leading ramp and a longer soft trailing tail. Clean
 // outside the [-leadW, trailW] range (no rogue "trail=1 everywhere below"
 // failure that reversed-edge smoothstep would give).
@@ -5369,8 +5379,8 @@ void main() {
   vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
   vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
   // Dot size tracks how much the cell DIFFERS from the element's own ground
-  // (u_paper), not absolute darkness. So the content — text, buttons, anything
-  // that deviates from the background — always becomes the dots, on light AND
+  // (u_paper), not absolute darkness. So the content - text, buttons, anything
+  // that deviates from the background - always becomes the dots, on light AND
   // dark surfaces. A plain darkness curve inverts on dark elements: the dark
   // background fills with ink and the lighter content punches holes instead.
   // Capped below the cell half-width so dense content stays separated dots.
@@ -5380,8 +5390,8 @@ void main() {
   // Two-stage dissolve as the roller passes, so the element is rebuilt purely
   // from dot size (its own halftone) and never bleeds through as raw pixels
   // behind the dots:
-  //   1. cover  — the element flattens to the uniform paper ground first.
-  //   2. dotAmt — kinpaku dots then emerge, sized by each cell's luma.
+  //   1. cover  - the element flattens to the uniform paper ground first.
+  //   2. dotAmt - kinpaku dots then emerge, sized by each cell's luma.
   // A plain mix(base, halftone, band) instead left the raw element visible
   // through the band's soft core/trail. The paper ground is u_paper (the
   // element's own bg tone) rather than a fixed white, so the dissolve reads the
@@ -5399,7 +5409,7 @@ void main() {
 
   // Kinpaku gold converted to approximate sRGB 0-1 (matches oklch(84% 0.19 80.46))
   const SHADER_ACCENT = [1.0, 0.78, 0.31];
-  // Fallback ground when an element and all its ancestors are transparent —
+  // Fallback ground when an element and all its ancestors are transparent -
   // matches the original off-white risograph paper.
   const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
@@ -5412,7 +5422,7 @@ void main() {
   // Rasterize any CSS color (oklch, color(), named, hex, rgb) through a 1x1
   // canvas and read back the sRGB pixel. String-parsing computed colors is a
   // trap: Chrome returns backgroundColor as oklch()/color() for oklch inputs,
-  // which a hex/rgb regex misses — every site token would fall back to white.
+  // which a hex/rgb regex misses - every site token would fall back to white.
   let colorParseCtx = null;
   function cssColorToRgb01(str) {
     if (!colorParseCtx) {
@@ -5440,7 +5450,7 @@ void main() {
 
   // When an element is transparent up to the root, its visible backdrop can
   // still come from an ancestor's background-image or a covering positioned
-  // layer that is a *child* of an ancestor (e.g. a hero's absolute art div) —
+  // layer that is a *child* of an ancestor (e.g. a hero's absolute art div) -
   // neither of which the ancestor background-COLOR walk can see. Return the
   // nearest such ancestor so we can capture it and crop, embedding the real
   // backdrop. Returns null when nothing is actually painted behind the element
@@ -5481,7 +5491,7 @@ void main() {
 
   // Average the backdrop sampled just OUTSIDE an element's rect within a larger
   // canvas. The ground tone for the dissolve must be the real backdrop, not the
-  // mean of the element's own crop — averaging the crop folds in the element's
+  // mean of the element's own crop - averaging the crop folds in the element's
   // content (e.g. bright heading text), pulling the ground toward muddy gray.
   function sampleSurroundingRgb(ctx, sx, sy, sw, sh, W, H) {
     const pad = Math.max(2, Math.round(Math.min(sw, sh) * 0.12));
@@ -5528,6 +5538,7 @@ void main() {
     if (!shaderState) return;
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
+    if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
@@ -5553,21 +5564,24 @@ void main() {
     const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: false })
             || canvas.getContext('experimental-webgl');
     if (!gl) {
-      // WebGL unavailable — fall back to a plain <img> overlay so the user
-      // still sees something meaningful during generation.
+      // WebGL unavailable: use the captured bitmap as a background overlay so
+      // the user still sees something meaningful during generation.
       canvas.remove();
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(blob);
-      img.id = PREFIX + '-shader';
+      const objectUrl = URL.createObjectURL(blob);
+      const fallback = document.createElement('div');
+      fallback.id = PREFIX + '-shader';
       // Copy positioning via cssText. Object.assign across CSSStyleDeclaration
       // throws in modern Chromium because the source's indexed properties
       // (style[0], [1], ...) are read-only and the engine forbids writing
       // them on the destination.
-      img.style.cssText = canvas.style.cssText;
-      img.style.outline = '2px dashed ' + C.brand;
-      img.style.outlineOffset = '-2px';
-      document.body.appendChild(img);
-      shaderState = { canvas: img, gl: null, program: null, texture: null, rafId: 0, startTime: 0 };
+      fallback.style.cssText = canvas.style.cssText;
+      fallback.style.backgroundImage = 'url("' + objectUrl + '")';
+      fallback.style.backgroundSize = '100% 100%';
+      fallback.style.backgroundRepeat = 'no-repeat';
+      fallback.style.outline = '2px dashed ' + C.brand;
+      fallback.style.outlineOffset = '-2px';
+      document.body.appendChild(fallback);
+      shaderState = { canvas: fallback, gl: null, program: null, texture: null, rafId: 0, startTime: 0, objectUrl };
       return;
     }
 
@@ -5609,14 +5623,10 @@ void main() {
     let bitmap;
     try {
       bitmap = await createImageBitmap(blob);
-    } catch {
-      // Safari fallback: go via a regular Image
-      const imgUrl = URL.createObjectURL(blob);
-      const img = new Image();
-      img.src = imgUrl;
-      await new Promise((r, rej) => { img.onload = r; img.onerror = rej; });
-      bitmap = img;
-      URL.revokeObjectURL(imgUrl);
+    } catch (err) {
+      console.warn('[impeccable] shader bitmap decode failed:', err);
+      canvas.remove();
+      return;
     }
     texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -5670,14 +5680,15 @@ void main() {
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
     }
-    // The accepted variant is already the only visible child of the wrapper
-    // (all other variants are display:none). HMR from the source rewrite will
-    // replace the wrapper imminently. Don't eagerly replaceChild here — React
-    // reconciliation races with our mutation and throws NotFoundError in Next
-    // 16 / Turbopack. Schedule a fallback that runs the manual swap only if
-    // HMR hasn't cleaned up by then (keeps static-server flows working).
     const acceptedSessionId = currentSessionId;
     const acceptedVariant = visibleVariant;
+    const acceptedSnapshot = snapshotAcceptedVariantDom(acceptedSessionId, acceptedVariant);
+    pendingAcceptedSession = {
+      id: acceptedSessionId,
+      variant: String(acceptedVariant),
+      ...acceptedSnapshot,
+      finalizing: false,
+    };
 
     state = 'SAVING';
     updateBarContent('saving');
@@ -5685,53 +5696,127 @@ void main() {
     sendEvent(acceptPayload, { throwOnError: true })
       .then(() => {
         markSessionHandled();
-        confirmAcceptAfterReceipt();
       })
       .catch(() => {
+        pendingAcceptedSession = null;
         state = 'CYCLING';
         updateBarContent('cycling');
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
+  }
 
-    function confirmAcceptAfterReceipt() {
-      state = 'CONFIRMED';
-      updateBarContent('confirmed');
-      scheduleAcceptCleanup();
-    }
+  function maybeCompleteAcceptedSession(msg) {
+    const pending = pendingAcceptedSession;
+    if (!pending || !msg?.id || msg.id !== pending.id) return false;
+    if (pending.finalizing) return true;
+    pending.finalizing = true;
 
-    function scheduleAcceptCleanup() {
-      setTimeout(function() {
-      hideBar();
-      hideHighlight();
-      stopScrollTracking();
-      if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
-      stopScrollLock();
-      clearScrollY();
-      clearSession();
-      selectedElement = null;
-      currentSessionId = null;
-      selectedAction = 'impeccable';
-      renderEditBadge('hidden');
-      state = 'PICKING';
-    }, 1800);
+    state = 'CONFIRMED';
+    updateBarContent('confirmed');
 
-    // Static-server / no-HMR fallback: if the wrapper is still around 2s after
-    // the cleanup above, swap it out manually. By now React has either moved
-    // on or the app isn't React at all. Preserve the `data-impeccable-variant="N"`
-    // div (with display:contents) so @scope rules anchored to the variant
-    // attribute keep matching until reload replaces it with the carbonize block.
+    // Give framework HMR a short chance to render the now-clean accepted
+    // source. If it misses the update, unwrap the accepted variant after the
+    // source-side completion event so the page is not left empty or stale.
     setTimeout(function() {
-      const wrapper = document.querySelector('[data-impeccable-variants="' + acceptedSessionId + '"]');
-      if (!wrapper) return;
-      const accepted = wrapper.querySelector('[data-impeccable-variant="' + acceptedVariant + '"]');
-      if (accepted && accepted.firstElementChild) {
-        const parent = wrapper.parentElement;
-        if (!parent) return;
-        accepted.style.display = 'contents';
-        parent.replaceChild(accepted, wrapper);
-      }
-      }, 2000);
+      ensureAcceptedDomClean(pending);
+      cleanupAcceptedSession();
+    }, 1200);
+
+    return true;
+  }
+
+  function snapshotAcceptedVariantDom(sessionId, variantId) {
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
+    const root = accepted?.firstElementChild || null;
+    return {
+      acceptedHtml: accepted ? accepted.innerHTML : '',
+      acceptedSelector: selectorForAcceptedRoot(root),
+      parentElement: wrapper?.parentElement || null,
+      parentSelector: selectorForAcceptedRoot(wrapper?.parentElement || null),
+      nextSibling: wrapper?.nextSibling || null,
+    };
+  }
+
+  function selectorForAcceptedRoot(root) {
+    if (!root || !root.tagName) return '';
+    const tag = root.tagName.toLowerCase();
+    const classes = [...(root.classList || [])].filter(Boolean);
+    if (classes.length === 0) return tag;
+    return tag + classes.map((cls) => '.' + cssIdent(cls)).join('');
+  }
+
+  function cssIdent(value) {
+    if (window.CSS?.escape) return window.CSS.escape(value);
+    return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
+
+  function acceptedDomAlreadyClean(pending) {
+    if (!pending?.acceptedSelector) return false;
+    const matches = [...document.querySelectorAll(pending.acceptedSelector)];
+    return matches.some((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+  }
+
+  function ensureAcceptedDomClean(pending) {
+    const sessionId = pending?.id;
+    const variantId = pending?.variant;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
+    if (!wrapper) {
+      restoreAcceptedDomFromSnapshot(pending);
+      return;
     }
+    if (!accepted) return;
+    const parent = wrapper.parentElement;
+    if (!parent) return;
+    while (accepted.firstChild) {
+      parent.insertBefore(accepted.firstChild, wrapper);
+    }
+    wrapper.remove();
+  }
+
+  function restoreAcceptedDomFromSnapshot(pending) {
+    if (acceptedDomAlreadyClean(pending)) return;
+    if (!pending?.acceptedHtml) {
+      reloadAfterMissingAcceptedDom(pending);
+      return;
+    }
+    const parent = pending.parentElement?.isConnected
+      ? pending.parentElement
+      : (pending.parentSelector ? document.querySelector(pending.parentSelector) : null);
+    if (!parent) {
+      reloadAfterMissingAcceptedDom(pending);
+      return;
+    }
+    const template = document.createElement('template');
+    template.innerHTML = pending.acceptedHtml;
+    const anchor = pending.nextSibling?.isConnected && pending.nextSibling.parentElement === parent
+      ? pending.nextSibling
+      : null;
+    parent.insertBefore(template.content, anchor);
+    if (!acceptedDomAlreadyClean(pending)) reloadAfterMissingAcceptedDom(pending);
+  }
+
+  function reloadAfterMissingAcceptedDom(pending) {
+    if (acceptedDomAlreadyClean(pending)) return;
+    if (pending?.id && document.querySelector('[data-impeccable-variants="' + pending.id + '"]')) return;
+    location.reload();
+  }
+
+  function cleanupAcceptedSession() {
+    hideBar();
+    hideHighlight();
+    stopScrollTracking();
+    if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
+    stopScrollLock();
+    clearScrollY();
+    clearSession();
+    selectedElement = null;
+    currentSessionId = null;
+    selectedAction = 'impeccable';
+    pendingAcceptedSession = null;
+    renderEditBadge('hidden');
+    state = 'PICKING';
   }
 
   function handleDiscard() {
@@ -5792,7 +5877,7 @@ void main() {
 
   function cleanup() {
     // Hide the wrapper immediately so variants disappear. DON'T structurally
-    // mutate the DOM yet — HMR from the agent's source rewrite is on its way,
+    // mutate the DOM yet - HMR from the agent's source rewrite is on its way,
     // and a manual replaceChild under React causes NotFoundError when the
     // reconciler later tries to remove a wrapper we already removed.
     // Schedule a 2s fallback that does the manual swap only if HMR hasn't
@@ -5838,8 +5923,8 @@ void main() {
   function showToast(message, duration) {
     if (toastEl) toastEl.remove();
     // Stack the toast above the global bar (which sits at bottom:14px) so
-    // the two never overlap. Read the bar's actual rect — its height varies
-    // with hover-expanded labels — and fall back to a sensible default
+    // the two never overlap. Read the bar's actual rect - its height varies
+    // with hover-expanded labels - and fall back to a sensible default
     // when the bar isn't mounted yet.
     const barRect = globalBarEl?.getBoundingClientRect();
     const barTopFromBottom = barRect && barRect.height > 0
@@ -6047,7 +6132,7 @@ void main() {
   let pendingApplyInFlight = false;
   let firstSaveOfSession = true;
 
-  // Steer — collapsed pill in the global bar; expands while typing for page-level chat.
+  // Steer - collapsed pill in the global bar; expands while typing for page-level chat.
   let pageChatEl = null;
   let pageChatInput = null;
   let pageChatHint = null;
@@ -6068,7 +6153,7 @@ void main() {
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
-  const AGENT_DISCONNECTED_TIP = 'Agent disconnected — run live-poll.mjs to connect';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected: run live-poll.mjs to connect';
   const GLOBAL_BAR_SECTION_GAP = 8;
   const GLOBAL_BAR_INNER_GAP = 2;
   const GLOBAL_BAR_INNER_PAD_LEFT = 2;
@@ -6079,7 +6164,7 @@ void main() {
     '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
 
   // Theme-aware color palette for the global bar. We detect the page's
-  // ambient background and invert — dark bar on light pages, light bar on
+  // ambient background and invert - dark bar on light pages, light bar on
   // dark pages. This keeps the bar from fighting with the host design.
   function detectPageTheme() {
     try {
@@ -6092,7 +6177,7 @@ void main() {
       // Walk body → html, taking the first opaque background. The browser's
       // default body / html background is `rgba(0, 0, 0, 0)`, which a naive
       // regex would read as black and mislabel a perfectly white page as
-      // dark. Honoring alpha avoids that — and falling through to <html>
+      // dark. Honoring alpha avoids that - and falling through to <html>
       // catches the common pattern of a bg only on <html> (or only on body).
       function readOpaque(el) {
         if (!el) return null;
@@ -6141,7 +6226,7 @@ void main() {
       exitHover: 'oklch(58% 0.15 35 / 0.18)',
       shadow: PICKER_SHADOW,
       chatSurface: 'oklch(22% 0.012 82)',
-      // Verdigris patina — secondary state (see site/styles/kinpaku-tokens.css)
+      // Verdigris patina - secondary state (see site/styles/kinpaku-tokens.css)
       patina: 'oklch(70% 0.12 188)',
       patinaPale: 'oklch(82% 0.07 188)',
       patinaSoft: 'oklch(70% 0.12 188 / 0.28)',
@@ -6913,7 +6998,7 @@ void main() {
     steerFocusLog('page-chat-mounted', {});
   }
 
-  // Impeccable mark — same paths as site/components/Header.astro + favicon.svg.
+  // Impeccable mark - same paths as site/components/Header.astro + favicon.svg.
   function brandMarkSvg(color = C.brand, size = 18) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${color}" aria-hidden="true">
       <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
@@ -6928,7 +7013,7 @@ void main() {
     globalBarBrandEl.dataset.agentConnected = connected ? 'true' : 'false';
     globalBarBrandEl.setAttribute('aria-label', connected
       ? 'Impeccable live mode'
-      : 'Impeccable live mode — agent not polling');
+      : 'Impeccable live mode: agent not polling');
     globalBarBrandEl.removeAttribute('title');
     globalBarBrandEl.style.cursor = connected ? 'default' : 'help';
     const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
@@ -7053,7 +7138,7 @@ void main() {
     globalBarEl.id = PREFIX + '-global-bar';
     globalBarEl.dataset.theme = theme;
 
-    // Brand mark — kinpaku Impeccable icon (site header / favicon paths).
+    // Brand mark - kinpaku Impeccable icon (site header / favicon paths).
     const brand = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       alignSelf: 'stretch', position: 'relative',
@@ -7065,7 +7150,7 @@ void main() {
     brand.id = PREFIX + '-global-bar-brand';
     brand.dataset.agentConnected = 'false';
     brand.setAttribute('role', 'img');
-    brand.setAttribute('aria-label', 'Impeccable live mode — agent not polling');
+    brand.setAttribute('aria-label', 'Impeccable live mode: agent not polling');
 
     const brandMark = el('span', {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -7130,7 +7215,7 @@ void main() {
       // Per-button hover only changes color (no layout). The label expand/
       // collapse is driven by the bar-level mouseenter/mouseleave so moving
       // the mouse between adjacent buttons doesn't trigger per-button width
-      // thrashing — the whole bar grows once and shrinks once.
+      // thrashing - the whole bar grows once and shrinks once.
       b.addEventListener('mouseenter', () => { if (b.dataset.active !== 'true') b.style.color = P.text; });
       b.addEventListener('mouseleave', () => { if (b.dataset.active !== 'true') b.style.color = P.textDim; });
       b.addEventListener('click', onClick);
@@ -7139,7 +7224,7 @@ void main() {
       return b;
     }
 
-    // Pick toggle — restored from localStorage; both pick and insert may be off.
+    // Pick toggle - restored from localStorage; both pick and insert may be off.
     const pickBtn = makeIconBtn({
       id: PREFIX + '-pick-toggle',
       svg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>',
@@ -7176,7 +7261,7 @@ void main() {
     detectBtn.appendChild(detectBadge);
     inner.appendChild(detectBtn);
 
-    // DESIGN.md panel toggle — quartet of color squares as the mark.
+    // DESIGN.md panel toggle - quartet of color squares as the mark.
     const designBtn = makeIconBtn({
       id: PREFIX + '-design-toggle',
       svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);flex-shrink:0">
@@ -7378,13 +7463,13 @@ void main() {
     });
     inner.appendChild(divider);
 
-    // Exit × on the right — intentionally subtle (textDim at rest, text on
+    // Exit × on the right - intentionally subtle (textDim at rest, text on
     // hover) so it sits behind the active toggles in visual hierarchy.
     //
     // Explicit padding + box-sizing here is load-bearing: a host page like
     // `button { padding: 0.5rem 1rem; }` (very common in resets) would
     // otherwise inflate this 24x24 button into 56x40 and push the SVG out
-    // of the visible bar — the X stays invisible even though the styles in
+    // of the visible bar - the X stays invisible even though the styles in
     // DevTools look fine. Every other chrome button sets padding inline;
     // this one needed it too.
     const exitBtn = el('button', {
@@ -7472,7 +7557,7 @@ void main() {
       btn.style.opacity = controlsLocked ? '0.55' : '1';
     });
 
-    // If the bar is currently under the cursor, keep all labels expanded —
+    // If the bar is currently under the cursor, keep all labels expanded -
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
     if (globalBarEl && globalBarEl.matches(':hover')) {
@@ -7648,7 +7733,7 @@ void main() {
   }
 
   // ---------------------------------------------------------------------------
-  // Design System Panel — visualizes the project's .impeccable/design.json sidecar
+  // Design System Panel - visualizes the project's .impeccable/design.json sidecar
   // ---------------------------------------------------------------------------
 
   const DESIGN_PREFS_KEY = 'impeccable-live-design-panel';
@@ -7674,7 +7759,7 @@ void main() {
   };
 
   function loadDesignPrefs() {
-    // `open` is intentionally NOT persisted — the panel always starts closed
+    // `open` is intentionally NOT persisted - the panel always starts closed
     // so live mode doesn't auto-slide a big panel over the page on startup.
     try {
       const raw = localStorage.getItem(DESIGN_PREFS_KEY);
@@ -7731,7 +7816,7 @@ void main() {
     }
   }
 
-  // Neutral panel palette — deliberately NOT Impeccable-branded. The panel is
+  // Neutral panel palette - deliberately NOT Impeccable-branded. The panel is
   // a viewer of the project's design system, not an Impeccable surface.
   const DP = {
     canvas:   'oklch(94% 0 0)',            // panel background
@@ -8025,7 +8110,7 @@ void main() {
     const root = designShadow.querySelector('.root');
     root.innerHTML = '';
 
-    // (Panel toggle lives in the global bar — no floating FAB.)
+    // (Panel toggle lives in the global bar - no floating FAB.)
     // Panel
     const panel = document.createElement('aside');
     panel.className = 'panel';
@@ -8141,7 +8226,7 @@ void main() {
       return;
     }
 
-    // Visual tab — single unified render path.
+    // Visual tab - single unified render path.
     if (designState.mdNewerThanJson) body.appendChild(renderStaleHint());
     if (designState.hasMd && !designState.hasSidecar) {
       body.appendChild(renderParsedMdCta());
@@ -8357,7 +8442,7 @@ void main() {
       specimen.style.fontFamily = fontStack(t);
       specimen.style.fontWeight = String(t.weight || 400);
       specimen.style.fontStyle = t.style || 'normal';
-      specimen.style.fontSize = '56px';  // Fixed specimen size — compare faces, not scales.
+      specimen.style.fontSize = '56px';  // Fixed specimen size - compare faces, not scales.
       specimen.style.letterSpacing = 'normal';
       specimen.style.textTransform = 'none';
       tile.appendChild(specimen);
@@ -8501,7 +8586,7 @@ void main() {
       }
 
       // Single shared description if all items carry the same one; otherwise
-      // skip — per-item descriptions clutter a grouped tile.
+      // skip - per-item descriptions clutter a grouped tile.
       if (group.length === 1 && group[0].description) {
         const d = document.createElement('div');
         d.className = 'c-desc';

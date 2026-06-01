@@ -116,3 +116,9 @@ These artifacts are local and intentionally not committed.
    - accept/poll contract changes,
    - wrap/carbonize changes.
 5. Keep Svelte adapter work separate; current evidence shows `vite8-sveltekit` passes on `main`, while broad non-Svelte fixtures fail on `main`.
+
+## Resolution
+
+The focused DeepSeek Playwright regression reproduced the exact boundary as: source cleanup was complete, all live variant markers were gone from `src/App.jsx`, but the browser had no clean `h1.hero-title` after accept. The live browser was treating the `/events` enqueue response as final accept confirmation, then clearing local session state before the post-carbonize completion signal and before Vite reliably remounted the accepted source.
+
+The fix keeps accept in `SAVING` until an existing terminal server signal arrives (`complete`, or the current harness's post-cleanup `accept` reply). `agent_done` remains non-terminal for carbonize-required accepts. After terminal completion, the browser gives HMR a short window, unwraps the accepted variant if the wrapper is still present, restores from the accepted DOM snapshot if HMR removed the wrapper without mounting the accepted element, and finally reloads from the now-clean source only if the accepted DOM is still missing.
