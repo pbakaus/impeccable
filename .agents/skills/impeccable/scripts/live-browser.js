@@ -5457,9 +5457,13 @@
             );
           }, 2000);
           break;
-        case 'agent_done':
         case 'complete':
           if (completePendingAccept(msg)) break;
+          break;
+        case 'agent_done':
+          // Accept cleanup is only final after live-complete.mjs posts the
+          // completed source state. Keep SAVING recoverable while the agent
+          // is still carbonizing the wrapper out of source.
           break;
         case 'discarded':
           if (msg.id && msg.id === currentSessionId) {
@@ -6467,9 +6471,29 @@ void main() {
     if (!shaderState) return;
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
+    if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
+  }
+
+  function showShaderBitmapFallback(canvas, blob) {
+    canvas.remove();
+    const objectUrl = URL.createObjectURL(blob);
+    const fallback = document.createElement('div');
+    fallback.id = PREFIX + '-shader';
+    // Copy positioning via cssText. Object.assign across CSSStyleDeclaration
+    // throws in modern Chromium because the source's indexed properties
+    // (style[0], [1], ...) are read-only and the engine forbids writing
+    // them on the destination.
+    fallback.style.cssText = canvas.style.cssText;
+    fallback.style.backgroundImage = 'url("' + objectUrl + '")';
+    fallback.style.backgroundSize = '100% 100%';
+    fallback.style.backgroundRepeat = 'no-repeat';
+    fallback.style.outline = '2px dashed ' + C.brand;
+    fallback.style.outlineOffset = '-2px';
+    uiAppend(fallback);
+    shaderState = { canvas: fallback, gl: null, program: null, texture: null, rafId: 0, startTime: 0, objectUrl };
   }
 
   async function showShaderOverlay(el, blob, rect, paper) {
@@ -6492,21 +6516,9 @@ void main() {
     const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: false })
             || canvas.getContext('experimental-webgl');
     if (!gl) {
-      // WebGL unavailable - fall back to a plain image overlay so the user
-      // still sees something meaningful during generation.
-      canvas.remove();
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(blob);
-      img.id = PREFIX + '-shader';
-      // Copy positioning via cssText. Object.assign across CSSStyleDeclaration
-      // throws in modern Chromium because the source's indexed properties
-      // (style[0], [1], ...) are read-only and the engine forbids writing
-      // them on the destination.
-      img.style.cssText = canvas.style.cssText;
-      img.style.outline = '2px dashed ' + C.brand;
-      img.style.outlineOffset = '-2px';
-      uiAppend(img);
-      shaderState = { canvas: img, gl: null, program: null, texture: null, rafId: 0, startTime: 0 };
+      // WebGL unavailable: use the captured bitmap as a background overlay so
+      // the user still sees something meaningful during generation.
+      showShaderBitmapFallback(canvas, blob);
       return;
     }
 
@@ -6548,14 +6560,12 @@ void main() {
     let bitmap;
     try {
       bitmap = await createImageBitmap(blob);
-    } catch {
-      // Safari fallback: go via a regular Image
-      const imgUrl = URL.createObjectURL(blob);
-      const img = new Image();
-      img.src = imgUrl;
-      await new Promise((r, rej) => { img.onload = r; img.onerror = rej; });
-      bitmap = img;
-      URL.revokeObjectURL(imgUrl);
+    } catch (err) {
+      console.warn('[impeccable] shader bitmap decode failed:', err);
+      const lose = gl.getExtension?.('WEBGL_lose_context');
+      try { lose?.loseContext(); } catch {}
+      showShaderBitmapFallback(canvas, blob);
+      return;
     }
     texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -6624,13 +6634,15 @@ void main() {
     const acceptedVariant = visibleVariant;
     const acceptedIsSvelteComponent = svelteComponentSession?.sessionId === acceptedSessionId
       || acceptWrapper?.dataset?.impeccablePreview === 'svelte-component';
+    const acceptedSnapshot = snapshotAcceptedVariantDom(acceptedSessionId, acceptedVariant);
 
     state = 'SAVING';
     updateBarContent('saving');
     pendingAccept = {
       id: acceptedSessionId,
-      variant: acceptedVariant,
+      variant: String(acceptedVariant),
       isSvelteComponent: acceptedIsSvelteComponent,
+      ...acceptedSnapshot,
     };
     saveSession();
 
@@ -6654,7 +6666,7 @@ void main() {
     }
     state = 'CONFIRMED';
     updateBarContent('confirmed');
-    scheduleAcceptCleanup(accepted.id, accepted.variant);
+    scheduleAcceptCleanup(accepted);
     return true;
   }
 
@@ -6668,32 +6680,105 @@ void main() {
     return true;
   }
 
-  function scheduleAcceptCleanup(acceptedSessionId, acceptedVariant) {
+  function scheduleAcceptCleanup(accepted) {
     setTimeout(function() {
-      hideBar();
-      hideHighlight();
-      stopScrollTracking();
-      if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
-      stopScrollLock();
-      clearScrollY();
-      clearSession();
-      resetSessionFileMeta();
-      selectedElement = null;
-      currentSessionId = null;
-      selectedAction = 'impeccable';
-      renderEditBadge('hidden');
-      state = 'PICKING';
-    }, 1800);
+      if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+      cleanupAcceptedSession();
+    }, 1200);
+  }
 
-    // Static-server / no-HMR fallback: if the wrapper is still around 2s after
-    // the cleanup above, swap it out manually. By now React has either moved
-    // on or the app isn't React at all. Preserve the `data-impeccable-variant="N"`
-    // div (with display:contents) so @scope rules anchored to the variant
-    // attribute keep matching until reload replaces it with the carbonize block.
-    setTimeout(function() {
-      if (svelteComponentSession?.sessionId === acceptedSessionId) return;
-      commitAcceptedVariantToDom(acceptedSessionId, acceptedVariant);
-    }, 2000);
+  function snapshotAcceptedVariantDom(sessionId, variantId) {
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
+    const root = accepted?.firstElementChild || null;
+    return {
+      acceptedHtml: accepted ? accepted.innerHTML : '',
+      acceptedSelector: selectorForAcceptedRoot(root),
+      parentElement: wrapper?.parentElement || null,
+      parentSelector: selectorForAcceptedRoot(wrapper?.parentElement || null),
+      nextSibling: wrapper?.nextSibling || null,
+    };
+  }
+
+  function selectorForAcceptedRoot(root) {
+    if (!root || !root.tagName) return '';
+    const tag = root.tagName.toLowerCase();
+    const classes = [...(root.classList || [])].filter(Boolean);
+    if (classes.length === 0) return tag;
+    return tag + classes.map((cls) => '.' + cssIdent(cls)).join('');
+  }
+
+  function acceptedDomAlreadyClean(pending) {
+    if (!pending?.acceptedSelector) return false;
+    const matches = [...document.querySelectorAll(pending.acceptedSelector)];
+    return matches.some((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+  }
+
+  function ensureAcceptedDomClean(pending) {
+    const sessionId = pending?.id;
+    const variantId = pending?.variant;
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
+    if (!wrapper) {
+      restoreAcceptedDomFromSnapshot(pending);
+      return;
+    }
+    if (!accepted) {
+      wrapper.remove();
+      restoreAcceptedDomFromSnapshot(pending);
+      return;
+    }
+    const parent = wrapper.parentElement;
+    if (!parent) return;
+    while (accepted.firstChild) {
+      parent.insertBefore(accepted.firstChild, wrapper);
+    }
+    wrapper.remove();
+  }
+
+  function restoreAcceptedDomFromSnapshot(pending) {
+    if (acceptedDomAlreadyClean(pending)) return;
+    if (!pending?.acceptedHtml) {
+      reloadAfterMissingAcceptedDom(pending);
+      return;
+    }
+    const parent = pending.parentElement?.isConnected
+      ? pending.parentElement
+      : (pending.parentSelector ? document.querySelector(pending.parentSelector) : null);
+    if (!parent) {
+      reloadAfterMissingAcceptedDom(pending);
+      return;
+    }
+    const template = document.createElement('template');
+    template.innerHTML = pending.acceptedHtml;
+    const anchor = pending.nextSibling?.isConnected && pending.nextSibling.parentElement === parent
+      ? pending.nextSibling
+      : null;
+    parent.insertBefore(template.content, anchor);
+    if (!acceptedDomAlreadyClean(pending)) reloadAfterMissingAcceptedDom(pending);
+  }
+
+  function reloadAfterMissingAcceptedDom(pending) {
+    if (acceptedDomAlreadyClean(pending)) return;
+    if (pending?.id && document.querySelector('[data-impeccable-variants="' + pending.id + '"]')) return;
+    location.reload();
+  }
+
+  function cleanupAcceptedSession() {
+    hideBar();
+    hideHighlight();
+    stopScrollTracking();
+    if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
+    stopScrollLock();
+    clearScrollY();
+    clearSession();
+    resetSessionFileMeta();
+    selectedElement = null;
+    currentSessionId = null;
+    selectedAction = 'impeccable';
+    pendingAccept = null;
+    renderEditBadge('hidden');
+    state = 'PICKING';
   }
 
   function commitAcceptedVariantToDom(sessionId, variantId) {
