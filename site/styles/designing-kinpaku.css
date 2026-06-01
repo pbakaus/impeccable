@@ -1228,6 +1228,14 @@
   gap: 8px;
 }
 
+@media (max-width: 720px) {
+  .designing-kinpaku .designing-maintain .ks-bento-tile,
+  .designing-kinpaku .designing-surfaces .ks-bento-tile {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
 /* Surfaces grounding (skill / CLI / extension). Each tile carries a small
    mono identifier line: a terminal command for the CLI, a browser address
    for the extension. */
