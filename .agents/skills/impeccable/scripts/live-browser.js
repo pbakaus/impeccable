@@ -6083,7 +6083,9 @@ void main() {
   let steerFocusRecoverTimer = null;
   const STEER_PAGE_FOCUS_PAUSE_MS = 500;
   let detectActive = false;
-  let detectAwaitingResult = false;
+  let detectScanSeq = 0;
+  let activeDetectScanId = null;
+  let pendingDetectScanId = null;
   const DETECT_EMPTY_MESSAGE = 'No detector issues found.';
   const PICK_PREFS_KEY = 'impeccable-live-pick';
   const INTERACTION_PREFS_KEY = 'impeccable-live-interaction';
@@ -7598,24 +7600,35 @@ void main() {
   let detectReady = false; // true once detect script posts 'impeccable-ready'
   let detectPendingScan = false; // scan requested before script was ready
 
+  function requestDetectScan() {
+    const scanId = String(++detectScanSeq);
+    activeDetectScanId = scanId;
+    pendingDetectScanId = scanId;
+    window.postMessage({
+      source: 'impeccable-command',
+      action: 'scan',
+      config: { scanId },
+    }, '*');
+  }
+
   function toggleDetect() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     detectActive = !detectActive;
     updateGlobalBarState();
 
     if (detectActive) {
-      detectAwaitingResult = true;
       if (!detectScriptLoaded) {
         detectPendingScan = true;
         loadDetectScript();
       } else if (detectReady) {
-        window.postMessage({ source: 'impeccable-command', action: 'scan' }, '*');
+        requestDetectScan();
       } else {
         detectPendingScan = true;
       }
     } else {
       window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
-      detectAwaitingResult = false;
+      activeDetectScanId = null;
+      pendingDetectScanId = null;
       detectCount = 0;
       updateGlobalBarState();
     }
@@ -7685,16 +7698,18 @@ void main() {
       detectReady = true;
       if (detectPendingScan && detectActive) {
         detectPendingScan = false;
-        window.postMessage({ source: 'impeccable-command', action: 'scan' }, '*');
+        requestDetectScan();
       }
     }
     // Scan results arrived
     if (e.data.source === 'impeccable-results') {
+      if (!detectActive) return;
+      if (activeDetectScanId && e.data.scanId !== activeDetectScanId) return;
       detectCount = e.data.count || 0;
-      if (detectActive && detectAwaitingResult && detectCount === 0) {
+      if (detectActive && pendingDetectScanId && detectCount === 0) {
         showToast(DETECT_EMPTY_MESSAGE, 3200);
       }
-      detectAwaitingResult = false;
+      pendingDetectScanId = null;
       updateGlobalBarState();
     }
   }

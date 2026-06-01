@@ -4253,13 +4253,20 @@ if (IS_BROWSER) {
     return true;
   }
 
-  function postSerializedFindings(groupMap) {
+  function scanResultMeta(options = {}) {
+    const scanId = options.scanId;
+    if (typeof scanId !== 'string' && typeof scanId !== 'number') return {};
+    return { scanId: String(scanId) };
+  }
+
+  function postSerializedFindings(groupMap, options = {}) {
     if (!EXTENSION_MODE) return;
     const allFindings = browserFindingsFromMap(groupMap);
     window.postMessage({
       source: 'impeccable-results',
       findings: serializeFindings(allFindings),
       count: allFindings.length,
+      ...scanResultMeta(options),
     }, '*');
   }
 
@@ -4313,7 +4320,7 @@ if (IS_BROWSER) {
             rememberVisualContrastAnalysis(result);
             const added = addVisualContrastResult(groupMap, result, { decorate: true });
             if (added) {
-              postSerializedFindings(groupMap);
+              postSerializedFindings(groupMap, options);
               window.dispatchEvent(new CustomEvent('impeccable-visual-contrast-resolved', {
                 detail: {
                   selector: result.selector,
@@ -4381,7 +4388,7 @@ if (IS_BROWSER) {
     overlayIndex = 0;
   }
 
-  function renderBrowserFindings(collected) {
+  function renderBrowserFindings(collected, options = {}) {
     const { allFindings, pageLevelFindings } = collected;
 
     for (const { el, findings } of allFindings) {
@@ -4401,6 +4408,7 @@ if (IS_BROWSER) {
         source: 'impeccable-results',
         findings: serializeFindings(allFindings),
         count: allFindings.length,
+        ...scanResultMeta(options),
       }, '*');
     }
 
@@ -4415,11 +4423,11 @@ if (IS_BROWSER) {
     clearOverlays();
     const generation = scanGeneration;
     const collected = collectBrowserFindings();
-    const allFindings = renderBrowserFindings(collected);
+    const allFindings = renderBrowserFindings(collected, options);
     if (shouldRunVisualContrast(options)) {
       addVisualContrastFindings(collected.groupMap, options, { decorate: true, generation })
         .then(() => {
-          if (generation === scanGeneration) postSerializedFindings(collected.groupMap);
+          if (generation === scanGeneration) postSerializedFindings(collected.groupMap, options);
         })
         .catch(err => {
           reportVisualContrastError(err);
@@ -4434,10 +4442,10 @@ if (IS_BROWSER) {
     if (shouldRunVisualContrast(options)) {
       const collected = await collectBrowserFindingsAsync(options, { generation, scheduleLazy: true });
       if (generation !== scanGeneration) return [];
-      return renderBrowserFindings(collected);
+      return renderBrowserFindings(collected, options);
     }
     lastVisualContrastAnalyses = [];
-    return renderBrowserFindings(collectBrowserFindings());
+    return renderBrowserFindings(collectBrowserFindings(), options);
   };
 
   const detect = function(options = {}) {

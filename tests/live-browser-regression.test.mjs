@@ -274,18 +274,23 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function toggleDetect\(\)[\s\S]{0,240}?if \(detectActive\) \{[\s\S]{0,80}?detectAwaitingResult = true;/,
-      'turning Detect on must mark that the next detector result belongs to a user requested scan',
+      /function requestDetectScan\(\)[\s\S]{0,240}?const scanId = String\(\+\+detectScanSeq\);[\s\S]{0,80}?activeDetectScanId = scanId;[\s\S]{0,160}?config: \{ scanId \}/,
+      'Detect scans must send a fresh scan id to the detector',
     );
     assert.match(
       SOURCE,
-      /if \(detectActive && detectAwaitingResult && detectCount === 0\) \{[\s\S]{0,80}?showToast\(DETECT_EMPTY_MESSAGE, 3200\);[\s\S]{0,120}?detectAwaitingResult = false;/,
-      'a zero result scan must use the existing toast UI and clear the pending flag',
+      /if \(!detectActive\) return;[\s\S]{0,80}?if \(activeDetectScanId && e\.data\.scanId !== activeDetectScanId\) return;/,
+      'live detector results must ignore inactive and stale scan ids',
     );
     assert.match(
       SOURCE,
-      /window\.postMessage\(\{ source: 'impeccable-command', action: 'remove' \}, '\*'\);[\s\S]{0,80}?detectAwaitingResult = false;/,
-      'turning Detect off must suppress stale zero result toasts',
+      /if \(detectActive && pendingDetectScanId && detectCount === 0\) \{[\s\S]{0,80}?showToast\(DETECT_EMPTY_MESSAGE, 3200\);[\s\S]{0,120}?pendingDetectScanId = null;/,
+      'a matching zero result scan must use the existing toast UI and clear the pending scan id',
+    );
+    assert.match(
+      SOURCE,
+      /window\.postMessage\(\{ source: 'impeccable-command', action: 'remove' \}, '\*'\);[\s\S]{0,80}?activeDetectScanId = null;[\s\S]{0,80}?pendingDetectScanId = null;/,
+      'turning Detect off must clear scan ids',
     );
   });
 

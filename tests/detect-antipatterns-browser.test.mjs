@@ -577,6 +577,61 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('extension mode echoes scan ids on result messages', async () => {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.goto(`${baseUrl}/fixtures/antipatterns/should-pass.html`, { waitUntil: 'load' });
+      const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
+      await page.evaluate(() => {
+        document.documentElement.dataset.impeccableExtension = 'true';
+        window.__impeccableMessages = [];
+        window.addEventListener('message', event => {
+          if (event.source !== window || !event.data?.source?.startsWith('impeccable-')) return;
+          window.__impeccableMessages.push(event.data);
+        });
+      });
+      await page.evaluate(browserScript);
+      const result = await page.evaluate(async () => {
+        window.postMessage({
+          source: 'impeccable-command',
+          action: 'scan',
+          config: { scanId: 'scan-2' },
+        }, '*');
+        const deadline = Date.now() + 1000;
+        while (
+          Date.now() < deadline &&
+          !window.__impeccableMessages.some(message =>
+            message.source === 'impeccable-results' &&
+            message.scanId === 'scan-2'
+          )
+        ) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        const resultMessage = window.__impeccableMessages.find(message =>
+          message.source === 'impeccable-results' &&
+          message.scanId === 'scan-2'
+        );
+        return {
+          ready: window.__impeccableMessages.some(message => message.source === 'impeccable-ready'),
+          scanId: resultMessage?.scanId || null,
+          count: resultMessage?.count ?? null,
+        };
+      });
+      assert.equal(result.ready, true, `expected extension ready message, got: ${JSON.stringify(result)}`);
+      assert.equal(result.scanId, 'scan-2', `expected scan id echo in results, got: ${JSON.stringify(result)}`);
+      assert.equal(result.count, 0, `expected clean fixture to have no findings, got: ${JSON.stringify(result)}`);
+      await page.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  });
+
   it('browser API: impeccableDetect is pure, impeccableScan decorates', async () => {
     const puppeteer = await import('puppeteer');
     const browser = await puppeteer.default.launch({
