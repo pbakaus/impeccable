@@ -4567,6 +4567,9 @@
           // saving state while the source cleanup is still in flight.
           break;
         case 'error':
+          if (pendingAcceptedSession?.id && msg.id === pendingAcceptedSession.id) {
+            pendingAcceptedSession = null;
+          }
           if (maybeCompleteSteer(msg)) break;
           console.error('[impeccable] Error:', msg.message);
           showToast('Error: ' + msg.message, 5000);
@@ -4979,6 +4982,7 @@
     disableInlineEdit();
     stripManualEditRuntimeState(selectedElement);
 
+    pendingAcceptedSession = null;
     currentSessionId = id8();
     expectedVariants = selectedCount;
     arrivedVariants = 0;
@@ -5714,6 +5718,10 @@ void main() {
   function maybeCompleteAcceptedSession(msg) {
     const pending = pendingAcceptedSession;
     if (!pending || !msg?.id || msg.id !== pending.id) return false;
+    if (currentSessionId && currentSessionId !== pending.id) {
+      pendingAcceptedSession = null;
+      return false;
+    }
     if (pending.finalizing) return true;
     pending.finalizing = true;
 

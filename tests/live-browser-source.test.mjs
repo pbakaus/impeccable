@@ -291,11 +291,21 @@ describe('live-browser source contracts', () => {
       /case 'complete':\s*case 'accept':\s*if \(maybeCompleteAcceptedSession\(msg\)\) break;/,
       'final accepted DOM cleanup should be driven by explicit complete or harness accept replies',
     );
+    assert.match(
+      SOURCE,
+      /case 'error':\s*if \(pendingAcceptedSession\?\.id && msg\.id === pendingAcceptedSession\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,40}?\}[\s\S]{0,80}?if \(maybeCompleteSteer\(msg\)\) break;/,
+      'an SSE error for a queued accept should invalidate pending accept state before delayed completions can act on it',
+    );
     const agentDoneStart = SOURCE.indexOf("case 'agent_done':");
     const errorCaseStart = SOURCE.indexOf("case 'error':", agentDoneStart);
     const agentDoneSource = SOURCE.slice(agentDoneStart, errorCaseStart);
     assert.match(agentDoneSource, /Carbonize accepts are not terminal/);
     assert.match(agentDoneSource, /break;/);
+    assert.match(
+      SOURCE,
+      /function handleGo\(\)[\s\S]{0,900}?pendingAcceptedSession = null;[\s\S]{0,80}?currentSessionId = id8\(\);/,
+      'starting a new generation should clear any stale accepted-session sentinel first',
+    );
     const handleAcceptStart = SOURCE.indexOf('function handleAccept()');
     const maybeCompleteStart = SOURCE.indexOf('function maybeCompleteAcceptedSession', handleAcceptStart);
     const handleAcceptSource = SOURCE.slice(handleAcceptStart, maybeCompleteStart);
@@ -313,6 +323,11 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /if \(!accepted\) \{[\s\S]{0,120}?wrapper\.remove\(\);[\s\S]{0,120}?restoreAcceptedDomFromSnapshot\(pending\);[\s\S]{0,80}?return;/,
       'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
+    );
+    assert.match(
+      SOURCE,
+      /function maybeCompleteAcceptedSession\(msg\)[\s\S]{0,260}?if \(currentSessionId && currentSessionId !== pending\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,80}?return false;/,
+      'stale accepted completions should not clean up a newer active browser session',
     );
     assert.match(
       SOURCE,
