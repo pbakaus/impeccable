@@ -316,14 +316,6 @@
 .designing-kinpaku .designing-loop-wheel {
   display: block;
 }
-/* The wheel is a decorative SVG flourish that sits beside the hero.
-   On narrow viewports it overflows the page (~22px past the right edge);
-   hide it on mobile — the hero copy carries the page without it. */
-@media (max-width: 600px) {
-  .designing-kinpaku .designing-loop-wheel {
-    display: none;
-  }
-}
 .designing-kinpaku .designing-loop-wheel-ring {
   fill: none;
   stroke: var(--ks-kinpaku);
@@ -439,7 +431,11 @@
   }
 
   .designing-kinpaku .designing-loop-wheel {
-    display: none;
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    width: min(56vw, 208px);
+    margin: 0 auto 24px;
   }
 }
 
@@ -500,6 +496,7 @@
 
 @media (max-width: 600px) {
   .designing-kinpaku .designing-phasenav {
+    top: 70px;
     gap: 0.7rem;
     padding: 12px 14px;
   }
