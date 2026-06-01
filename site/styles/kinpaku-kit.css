@@ -796,7 +796,7 @@
     column-gap: 10px;
     flex-direction: column;
     align-items: stretch;
-    gap: 0;
+    row-gap: 0;
     margin: 12px 0 -16px;
     padding: 4px 0 6px;
     background: oklch(4% 0.004 95);
@@ -837,7 +837,7 @@
 
   .kinpaku-chrome .theme-toggle {
     grid-column: 1;
-    margin: 12px 0 6px clamp(16px, 4vw, 24px);
+    margin: 12px 0 6px;
   }
 
   .kinpaku-chrome .site-header-github {
