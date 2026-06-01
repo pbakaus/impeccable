@@ -8837,8 +8837,9 @@ void main() {
       pendingApplyInFlight = false;
     }
     if (globalBarEl) {
-      globalBarEl.style.transform = 'translateY(100%)';
-      setTimeout(() => { if (globalBarEl) globalBarEl.remove(); globalBarEl = null; }, 300);
+      globalBarEl.style.transition = 'none';
+      globalBarEl.remove();
+      globalBarEl = null;
     }
     pageChatEl = null;
     pageChatInput = null;

@@ -376,6 +376,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('Exit removes the global bottom bar without a teardown transition', () => {
+    assert.match(
+      SOURCE,
+      /function teardown\(\)[\s\S]{0,1400}?if \(globalBarEl\) \{\s*globalBarEl\.style\.transition = 'none';\s*globalBarEl\.remove\(\);\s*globalBarEl = null;\s*\}/,
+      'clicking the bottom-bar X should remove live chrome immediately instead of animating it away',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /function teardown\(\)[\s\S]{0,1400}?globalBarEl\.style\.transform = 'translateY\(100%\)'/,
+      'teardown must not drop the global bar transform because that animates down/right from the centered position',
+    );
+  });
+
   it('Accept waits for final poll acknowledgement before confirming the UI', () => {
     assert.match(
       SOURCE,
