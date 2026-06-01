@@ -325,7 +325,7 @@ function buildCarbonizeReplacement({
 function reindentContent(contentLines, fromIndent, toIndent) {
   return contentLines.map((line) => {
     if (line.trim() === '') return '';
-    if (fromIndent && line.startsWith(fromIndent)) return toIndent + line.slice(fromIndent.length);
+    if (line.startsWith(fromIndent)) return toIndent + line.slice(fromIndent.length);
     return toIndent + line.trimStart();
   });
 }

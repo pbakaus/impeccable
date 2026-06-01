@@ -212,6 +212,41 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(inner.includes('@scope ([data-impeccable-variant="1"])'), 'variant-1 scope kept');
   });
 
+  it('carbonize preserves nested JSX indentation when the wrapper starts at column 0', () => {
+    const tsx = `<div data-impeccable-variants="ROOTIND" data-impeccable-variant-count="2" style={{ display: 'contents' }}>
+  {/* impeccable-variants-start ROOTIND */}
+  <div data-impeccable-variant="original">
+    <section className="hook">
+      <span>original</span>
+    </section>
+  </div>
+  <style data-impeccable-css="ROOTIND">{\`@scope ([data-impeccable-variant="1"]) { .hook { color: red; } }\`}</style>
+  <div data-impeccable-variant="1">
+    <section className="hook">
+      <span>nested text</span>
+    </section>
+  </div>
+  <div data-impeccable-variant="2" style={{ display: 'none' }}>
+    <section className="hook">
+      <span>variant two</span>
+    </section>
+  </div>
+  {/* impeccable-variants-end ROOTIND */}
+</div>
+`;
+    writeFileSync(join(tmp, 'Root.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'ROOTIND', '--variant', '1']);
+    assert.equal(result.handled, true, `accept should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'Root.tsx'), 'utf-8');
+    assert.match(
+      after,
+      /<div data-impeccable-variant="1" style=\{\{ display: 'contents' \}\}>\n    <section className="hook">\n      <span>nested text<\/span>\n    <\/section>\n  <\/div>/,
+      'column-0 JSX accept preserves relative indentation inside the carbonize variant wrapper',
+    );
+  });
+
   // Cursor Bugbot regression (PR #118 review): the JSX wrapper places
   // marker comments INSIDE the outer <div>, so block.start sits 2 spaces
   // deeper than the original element. Using block.start as the deindent
