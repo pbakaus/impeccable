@@ -21,6 +21,8 @@ import {
   SENSITIVE_PATH,
   GENERATED_PATH,
   truthy,
+  getConfigPath,
+  getLocalConfigPath,
   readConfig,
   readCache,
   persistCache,
@@ -49,6 +51,7 @@ import {
   clearPending,
   renderCursorFollowup,
   followupPayload,
+  extractFindingIgnoreValue,
 } from '../skill/scripts/hook-lib.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
@@ -146,8 +149,46 @@ describe('readConfig()', () => {
     assert.equal(cfg.enabled, false);
     assert.deepEqual(cfg.ignoreRules, ['side-tab']);
     assert.deepEqual(cfg.ignoreFiles, ['src/legacy/**']);
+    assert.deepEqual(cfg.ignoreValues, []);
     assert.equal(cfg.minSeverity, 'error');
     assert.equal(cfg.limits.maxFindings, 2);
+    assert.equal(cfg.limits.maxChars, 1000);
+  });
+
+  it('merges shared config first and local config second', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      enabled: false,
+      ignoreRules: ['side-tab'],
+      ignoreFiles: ['src/legacy/**'],
+      ignoreValues: [
+        { rule: 'overused-font', value: 'inter', reason: 'team default' },
+      ],
+      minSeverity: 'error',
+      limits: { maxFindings: 2, maxChars: 1000 },
+    }));
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({
+      enabled: true,
+      ignoreRules: ['gradient-text', 'side-tab'],
+      ignoreFiles: ['src/local/**'],
+      ignoreValues: [
+        { rule: 'overused-font', value: 'Roboto' },
+        { rule: 'overused-font', value: 'Inter', reason: 'local override' },
+      ],
+      minSeverity: 'warning',
+      limits: { maxFindings: 4 },
+    }));
+
+    const cfg = readConfig(cwd);
+    assert.equal(cfg.enabled, true);
+    assert.deepEqual(cfg.ignoreRules, ['side-tab', 'gradient-text']);
+    assert.deepEqual(cfg.ignoreFiles, ['src/legacy/**', 'src/local/**']);
+    assert.deepEqual(cfg.ignoreValues, [
+      { rule: 'overused-font', value: 'inter', reason: 'local override' },
+      { rule: 'overused-font', value: 'roboto' },
+    ]);
+    assert.equal(cfg.minSeverity, 'warning');
+    assert.equal(cfg.limits.maxFindings, 4);
     assert.equal(cfg.limits.maxChars, 1000);
   });
 
@@ -156,6 +197,20 @@ describe('readConfig()', () => {
     fs.writeFileSync(path.join(cwd, '.impeccable', 'hook.json'), '{ not json');
     const cfg = readConfig(cwd);
     assert.equal(cfg.enabled, true);
+  });
+
+  it('ignores malformed local config while preserving valid shared config', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      enabled: false,
+      ignoreRules: ['side-tab'],
+      limits: { maxFindings: 3 },
+    }));
+    fs.writeFileSync(getLocalConfigPath(cwd), '{ not json');
+    const cfg = readConfig(cwd);
+    assert.equal(cfg.enabled, false);
+    assert.deepEqual(cfg.ignoreRules, ['side-tab']);
+    assert.equal(cfg.limits.maxFindings, 3);
   });
 });
 
@@ -266,6 +321,86 @@ describe('filterFindings()', () => {
     );
     assert.equal(filtered.length, 0);
   });
+
+  it('drops only matching rule/value pairs from ignoreValues', () => {
+    const findings = [
+      finding('overused-font', 1, { snippet: 'Primary font: Inter (86% of text)' }),
+      finding('overused-font', 2, { snippet: 'Primary font: Roboto' }),
+      finding('side-tab', 3),
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'overused-font', value: 'inter' }],
+      minSeverity: 'warning',
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), ['overused-font:2', 'side-tab:3']);
+  });
+
+  it('extracts overused-font values from primary, CSS, and Google font snippets', () => {
+    assert.equal(
+      extractFindingIgnoreValue(finding('overused-font', 1, { snippet: 'Primary font: Open Sans (80% of text)' })),
+      'open sans',
+    );
+    assert.equal(
+      extractFindingIgnoreValue(finding('overused-font', 1, { snippet: 'body { font-family: "Inter", sans-serif; }' })),
+      'inter',
+    );
+    assert.equal(
+      extractFindingIgnoreValue(finding('overused-font', 1, { snippet: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400' })),
+      'plus jakarta sans',
+    );
+    assert.equal(extractFindingIgnoreValue(finding('side-tab', 1)), '');
+  });
+});
+
+describe('hook-admin.mjs', () => {
+  let cwd;
+  const script = path.resolve('skill', 'scripts', 'hook-admin.mjs');
+
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function runAdmin(args) {
+    return execFileSync(process.execPath, [script, ...args], {
+      cwd,
+      env: { ...process.env },
+      encoding: 'utf-8',
+    });
+  }
+
+  it('ignore-value writes local config by default without creating shared config', () => {
+    const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
+    assert.match(out, /overused-font=inter/);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
+    assert.equal(local.enabled, undefined, 'local ignore should not override shared enabled state');
+    assert.deepEqual(local.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
+      { rule: 'overused-font', value: 'inter', reason: 'User confirmed Inter' },
+    ]);
+    assert.match(local.ignoreValues[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('ignore-value --shared writes shared config', () => {
+    runAdmin(['ignore-value', 'overused-font', 'Open', 'Sans', '--shared', '--reason', 'Brand font']);
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.deepEqual(shared.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
+      { rule: 'overused-font', value: 'open sans', reason: 'Brand font' },
+    ]);
+  });
+
+  it('ignore-value dedupes by normalized rule/value and status reports local ignores', () => {
+    runAdmin(['ignore-value', 'overused-font', 'Inter']);
+    runAdmin(['ignore-value', 'OVERUSED-FONT', '"Inter"', '--reason', 'Still intentional']);
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
+    assert.equal(local.ignoreValues.length, 1);
+    assert.equal(local.ignoreValues[0].reason, 'Still intentional');
+
+    const status = runAdmin(['status']);
+    assert.match(status, /local file:\s+\.impeccable\/hook\.local\.json/);
+    assert.match(status, /ignoreValues:\s+overused-font=inter/);
+  });
 });
 
 describe('renderTemplate()', () => {
@@ -293,6 +428,7 @@ describe('renderTemplate()', () => {
     assert.match(text, /Fix these in your next reply/);
     assert.match(text, /Acknowledge what you changed/);
     assert.match(text, /intentionally bad UI|anti-pattern example|test fixture/);
+    assert.match(text, /ignore-value \.\.\./);
     assert.match(text, /\/impeccable audit/);
   });
 
@@ -958,6 +1094,77 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.followup_message, /side-tab/);
   });
 
+  it('afterFileEdit queues clean results so Cursor stop surfaces a visible ack', () => {
+    const filePath = path.join(cwd, 'src/App.jsx');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
+
+    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'afterFileEdit',
+        cwd,
+        file_path: filePath,
+        conversation_id: 'clean-cursor',
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+        conversation_id: 'clean-cursor',
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.match(payload.followup_message, /Design hook ran during your last turn/);
+    assert.match(payload.followup_message, /Design hook scanned src\/App\.jsx\. No anti-patterns\./);
+    assert.match(payload.followup_message, /typography hierarchy, spacing rhythm, and color contrast/);
+    assert.doesNotMatch(payload.followup_message, /flagged issues/);
+    assert.doesNotMatch(payload.followup_message, /Fix these in your next reply/);
+  });
+
+  it('afterFileEdit does not queue clean results when IMPECCABLE_HOOK_QUIET=1', () => {
+    const filePath = path.join(cwd, 'src/App.jsx');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
+
+    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'afterFileEdit',
+        cwd,
+        file_path: filePath,
+        conversation_id: 'quiet-clean-cursor',
+      }),
+      env: {
+        ...process.env,
+        IMPECCABLE_HOOK_LOG: '',
+        IMPECCABLE_HOOK_QUIET: '1',
+      },
+      encoding: 'utf-8',
+    });
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'stop',
+        cwd,
+        conversation_id: 'quiet-clean-cursor',
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.equal(out, '');
+  });
+
   it('stop honors IMPECCABLE_HOOK_DISABLED before emitting queued findings', () => {
     const filePath = path.join(cwd, 'src/Card.tsx');
     appendPending(cwd, null, {
@@ -1048,12 +1255,32 @@ describe('Cursor hook scripts', () => {
 describe('renderCursorFollowup()', () => {
   it('renders fresh findings with envelope + directive footer', () => {
     const text = renderCursorFollowup([
-      { kind: 'fresh', file: 'src/styles.css', findings: [finding('overused-font', 8, { name: 'Overused font' })] },
+      {
+        kind: 'fresh',
+        file: 'src/styles.css',
+        findings: [finding('overused-font', 8, {
+          name: 'Overused font',
+          snippet: 'body { font-family: Inter, sans-serif; }',
+        })],
+      },
     ], { cwd: '/proj' });
     assert.match(text, new RegExp(`^${ENVELOPE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(text, /Required design corrections in src\/styles\.css/);
     assert.match(text, /overused-font/);
+    assert.match(text, /\/impeccable hooks ignore-value overused-font Inter --reason "User confirmed Inter is intentional"/);
     assert.match(text, /Fix these in your next reply/);
+  });
+
+  it('renders clean queued items without the corrective footer', () => {
+    const text = renderCursorFollowup([
+      { kind: 'clean', file: 'src/App.jsx' },
+    ], { cwd: '/proj' });
+    assert.match(text, new RegExp(`^${ENVELOPE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(text, /Design hook ran during your last turn/);
+    assert.match(text, /Design hook scanned src\/App\.jsx\. No anti-patterns\./);
+    assert.match(text, /typography hierarchy, spacing rhythm, and color contrast/);
+    assert.doesNotMatch(text, /flagged issues/);
+    assert.doesNotMatch(text, /Fix these in your next reply/);
   });
 
   it('includes pending reminders for queued known findings', () => {

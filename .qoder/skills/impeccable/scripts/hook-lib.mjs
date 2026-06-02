@@ -8,7 +8,8 @@
  * Public surface (everything exported is part of the contract):
  *   ENVELOPE_PREFIX, ALLOWED_EXTS, SENSITIVE_PATH, GENERATED_PATH, TRUTHY
  *   truthy(value)
- *   readConfig(cwd) / DEFAULT_CONFIG
+ *   readConfig(cwd) / DEFAULT_CONFIG / getConfigPath(cwd) / getLocalConfigPath(cwd)
+ *   normalizeIgnoreValue(value)
  *   readCache(cwd) / persistCache(cwd, cache)
  *   bumpEditCount(cache, sessionId, filePath) -> number
  *   suppressionNotice(filePath)
@@ -66,6 +67,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
   ignoreRules: [],
   ignoreFiles: [],
+  ignoreValues: [],
   minSeverity: 'warning',
   limits: { maxFindings: 5, maxChars: 8000 },
 });
@@ -87,6 +89,10 @@ function safeReadJson(filePath) {
 
 export function getConfigPath(cwd) {
   return path.join(cwd, '.impeccable', 'hook.json');
+}
+
+export function getLocalConfigPath(cwd) {
+  return path.join(cwd, '.impeccable', 'hook.local.json');
 }
 
 export function getCachePath(cwd) {
@@ -167,23 +173,98 @@ export function resolveProjectCwd(event, fallback = process.cwd()) {
 }
 
 export function readConfig(cwd) {
-  const raw = safeReadJson(getConfigPath(cwd));
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_CONFIG, limits: { ...DEFAULT_CONFIG.limits } };
-  const limits = {
-    maxFindings: numberOr(raw?.limits?.maxFindings, DEFAULT_CONFIG.limits.maxFindings),
-    maxChars: numberOr(raw?.limits?.maxChars, DEFAULT_CONFIG.limits.maxChars),
-  };
-  return {
-    enabled: raw.enabled === false ? false : true,
-    ignoreRules: Array.isArray(raw.ignoreRules) ? raw.ignoreRules.map(String) : [],
-    ignoreFiles: Array.isArray(raw.ignoreFiles) ? raw.ignoreFiles.map(String) : [],
-    minSeverity: typeof raw.minSeverity === 'string' ? raw.minSeverity : DEFAULT_CONFIG.minSeverity,
-    limits,
-  };
+  const config = cloneDefaultConfig();
+  applyConfigSource(config, safeReadJson(getConfigPath(cwd)));
+  applyConfigSource(config, safeReadJson(getLocalConfigPath(cwd)));
+  return config;
 }
 
 function numberOr(value, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function cloneDefaultConfig() {
+  return {
+    ...DEFAULT_CONFIG,
+    ignoreRules: [],
+    ignoreFiles: [],
+    ignoreValues: [],
+    limits: { ...DEFAULT_CONFIG.limits },
+  };
+}
+
+function applyConfigSource(config, raw) {
+  if (!raw || typeof raw !== 'object') return config;
+  if (Object.prototype.hasOwnProperty.call(raw, 'enabled')) {
+    config.enabled = raw.enabled === false ? false : true;
+  }
+  if (Array.isArray(raw.ignoreRules)) {
+    config.ignoreRules = uniqueStrings([...config.ignoreRules, ...raw.ignoreRules]);
+  }
+  if (Array.isArray(raw.ignoreFiles)) {
+    config.ignoreFiles = uniqueStrings([...config.ignoreFiles, ...raw.ignoreFiles]);
+  }
+  if (Array.isArray(raw.ignoreValues)) {
+    config.ignoreValues = mergeIgnoreValues(config.ignoreValues, raw.ignoreValues);
+  }
+  if (typeof raw.minSeverity === 'string') {
+    config.minSeverity = raw.minSeverity;
+  }
+  if (raw.limits && typeof raw.limits === 'object') {
+    config.limits = {
+      maxFindings: numberOr(raw.limits.maxFindings, config.limits.maxFindings),
+      maxChars: numberOr(raw.limits.maxChars, config.limits.maxChars),
+    };
+  }
+  return config;
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set(values.map(String)));
+}
+
+export function normalizeIgnoreValue(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function normalizeIgnoreRule(rule) {
+  return String(rule || '').trim().toLowerCase();
+}
+
+export function normalizeIgnoreValueEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  const out = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+    const rule = normalizeIgnoreRule(entry.rule);
+    const value = normalizeIgnoreValue(entry.value);
+    if (!rule || !value) continue;
+    const normalized = { rule, value };
+    if (typeof entry.reason === 'string' && entry.reason.trim()) {
+      normalized.reason = entry.reason.trim();
+    }
+    if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
+      normalized.createdAt = entry.createdAt.trim();
+    }
+    out.push(normalized);
+  }
+  return out;
+}
+
+function mergeIgnoreValues(existing, incoming) {
+  const map = new Map();
+  for (const entry of normalizeIgnoreValueEntries(existing)) {
+    map.set(`${entry.rule}\0${entry.value}`, entry);
+  }
+  for (const entry of normalizeIgnoreValueEntries(incoming)) {
+    map.set(`${entry.rule}\0${entry.value}`, entry);
+  }
+  return Array.from(map.values());
 }
 
 export function readCache(cwd) {
@@ -345,17 +426,67 @@ function severityRank(s) {
 
 export function filterFindings(findings, content, ext, config) {
   if (!Array.isArray(findings) || findings.length === 0) return [];
-  const ignoreRules = new Set((config.ignoreRules || []).map(String));
+  const ignoreRules = new Set((config.ignoreRules || []).map((rule) => normalizeIgnoreRule(rule)));
+  const ignoreValues = normalizeIgnoreValueEntries(config.ignoreValues || []);
   const minRank = severityRank(config.minSeverity || 'warning');
   const ignores = parseInlineIgnores(content || '', ext);
   return findings.filter((f) => {
     if (!f || typeof f !== 'object') return false;
-    if (ignoreRules.has(f.antipattern)) return false;
+    if (ignoreRules.has(normalizeIgnoreRule(f.antipattern))) return false;
+    if (isIgnoredFindingValue(f, ignoreValues)) return false;
     if (severityRank(f.severity) < minRank) return false;
     const inlineSet = ignores.get(f.line);
     if (inlineSet && (inlineSet.has('*') || inlineSet.has(f.antipattern))) return false;
     return true;
   });
+}
+
+function isIgnoredFindingValue(finding, ignoreValues) {
+  if (!Array.isArray(ignoreValues) || ignoreValues.length === 0) return false;
+  const rule = normalizeIgnoreRule(finding.antipattern);
+  const value = extractFindingIgnoreValue(finding);
+  if (!rule || !value) return false;
+  return ignoreValues.some((entry) => entry.rule === rule && entry.value === value);
+}
+
+export function extractFindingIgnoreValue(finding) {
+  if (!finding || typeof finding !== 'object') return '';
+  const rule = normalizeIgnoreRule(finding.antipattern);
+  if (rule !== 'overused-font') return '';
+  return normalizeIgnoreValue(extractFindingIgnoreValueRaw(finding));
+}
+
+function extractFindingIgnoreValueRaw(finding) {
+  const direct = cleanIgnoreValueDisplay(finding.ignoreValue || finding.value || '');
+  if (direct) return direct;
+
+  const candidates = [finding.detail, finding.snippet].filter((v) => typeof v === 'string' && v);
+  for (const text of candidates) {
+    const primary = text.match(/Primary font:\s*([^()\n;]+)/i);
+    if (primary) return cleanIgnoreValueDisplay(primary[1]);
+
+    const family = text.match(/font-family\s*:\s*["']?([^'",;\n]+)/i);
+    if (family) return cleanIgnoreValueDisplay(family[1]);
+
+    const google = text.match(/[?&]family=([^&:;\n]+)/i);
+    if (google) {
+      try {
+        return cleanIgnoreValueDisplay(decodeURIComponent(google[1]));
+      } catch {
+        return cleanIgnoreValueDisplay(google[1]);
+      }
+    }
+  }
+
+  return '';
+}
+
+function cleanIgnoreValueDisplay(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\+/g, ' ')
+    .replace(/\s+/g, ' ');
 }
 
 export function dedupeAgainstCache(findings, cache, sessionId, filePath) {
@@ -423,21 +554,24 @@ export function renderCursorFollowup(items, opts = {}) {
   const cap = Math.max(1, limits.maxFindings || DEFAULT_CONFIG.limits.maxFindings);
   const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars);
 
-  const header = `${ENVELOPE_PREFIX} Design hook flagged issues during your last turn:`;
   const sections = [];
   let needsDirectiveFooter = false;
+  let hasCorrections = false;
 
   for (const item of items) {
     if (!item || typeof item !== 'object' || typeof item.file !== 'string') continue;
     const display = relativize(item.file, cwd);
     if (item.kind === 'pending' && Array.isArray(item.known) && item.known.length) {
       needsDirectiveFooter = true;
+      hasCorrections = true;
       const count = item.known.length;
       const sample = item.known.slice(0, 3).join(', ');
       const more = count > 3 ? `, +${count - 3} more` : '';
       sections.push(`Still pending in ${display}: ${count} issue(s) flagged earlier this session (${sample}${more}).`);
     } else if (item.kind === 'suppression') {
       sections.push(suppressionNotice(display).replace(`${ENVELOPE_PREFIX} `, ''));
+    } else if (item.kind === 'clean') {
+      sections.push(`Design hook scanned ${display}. No anti-patterns. ${STEER_LINE}`);
     } else if (item.kind === 'fresh' && Array.isArray(item.findings) && item.findings.length) {
       needsDirectiveFooter = true;
       const total = item.findings.length;
@@ -448,12 +582,16 @@ export function renderCursorFollowup(items, opts = {}) {
       if (remaining > 0) {
         sections.push(`... and ${remaining} more in ${display} (see /impeccable audit).`);
       }
+      hasCorrections = true;
     }
   }
 
   if (sections.length === 0) return '';
 
   const footer = directiveFooter();
+  const header = hasCorrections
+    ? `${ENVELOPE_PREFIX} Design hook flagged issues during your last turn:`
+    : `${ENVELOPE_PREFIX} Design hook ran during your last turn:`;
   const blocks = [header, ...sections];
   if (needsDirectiveFooter) blocks.push('', footer);
   let text = blocks.join('\n');
@@ -497,7 +635,28 @@ function formatFindingLine(f) {
   // Description from the registry already ends in punctuation; join with a
   // single space. `name` may have a trailing period already, keep it clean.
   const nameSegment = name ? `${name.replace(/\.+\s*$/, '')}.` : '';
-  return `${prefix} [${f.antipattern}] ${nameSegment} ${desc}`.replace(/\s+/g, ' ').trim();
+  const ignoreCommand = formatFindingIgnoreCommand(f);
+  const ignoreSegment = ignoreCommand
+    ? ` If intentional after user confirmation: \`${ignoreCommand}\`.`
+    : '';
+  return `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.replace(/\s+/g, ' ').trim();
+}
+
+function formatFindingIgnoreCommand(finding) {
+  if (!finding || typeof finding !== 'object') return '';
+  const rule = normalizeIgnoreRule(finding.antipattern);
+  if (!rule) return '';
+  const value = extractFindingIgnoreValueRaw(finding);
+  if (!normalizeIgnoreValue(value)) return '';
+  const valueArg = quoteCommandArg(value);
+  const reason = quoteCommandArg(`User confirmed ${value} is intentional`);
+  return `/impeccable hooks ignore-value ${rule} ${valueArg} --reason ${reason}`;
+}
+
+function quoteCommandArg(value) {
+  const text = String(value || '').trim();
+  if (/^[A-Za-z0-9._:-]+$/.test(text)) return text;
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function relativize(filePath, cwd) {
@@ -790,7 +949,7 @@ function directiveFooter() {
     '',
     'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
     '',
-    'Suppress permanently with `// impeccable: ignore <rule>` inline directives or .impeccable/hook.json. Run /impeccable audit for the full pass.',
+    'If the user confirms a specific value is intentional, run the exact `/impeccable hooks ignore-value ...` command shown next to that finding (local by default; add `--shared` only for team policy). Use `/impeccable hooks ignore-rule` or `ignore-file` for broader exceptions. Run /impeccable audit for the full pass.',
   ].join('\n');
 }
 

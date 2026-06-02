@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
  * `/impeccable hooks <on|off|status|reset>` — manage the design hook
- * via .impeccable/hook.json in the current project.
+ * via .impeccable/hook.json and .impeccable/hook.local.json in the current
+ * project.
  *
  * Usage:
- *   node hook-admin.mjs status                  # print current state
- *   node hook-admin.mjs on                      # set enabled: true
- *   node hook-admin.mjs off                     # set enabled: false
- *   node hook-admin.mjs ignore-rule <rule-id>   # append to ignoreRules
- *   node hook-admin.mjs ignore-file <glob>      # append to ignoreFiles
- *   node hook-admin.mjs reset                   # remove all config + cache
+ *   node hook-admin.mjs status                         # print current state
+ *   node hook-admin.mjs on                             # set enabled: true
+ *   node hook-admin.mjs off                            # set enabled: false
+ *   node hook-admin.mjs ignore-rule <rule-id>          # append to ignoreRules
+ *   node hook-admin.mjs ignore-file <glob>             # append to ignoreFiles
+ *   node hook-admin.mjs ignore-value <rule> <value>    # append to local ignoreValues
+ *   node hook-admin.mjs ignore-value <rule> <value> --shared
+ *   node hook-admin.mjs reset                          # remove all config + cache
  *
  * Designed to be invoked by the LLM from the reference/hooks.md flow.
  * Output is human-readable; the harness will pass it back to the user.
@@ -18,18 +21,35 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getConfigPath, getCachePath, getPendingPath, readConfig, DEFAULT_CONFIG } from './hook-lib.mjs';
+import {
+  getConfigPath,
+  getLocalConfigPath,
+  getCachePath,
+  getPendingPath,
+  readConfig,
+  DEFAULT_CONFIG,
+  normalizeIgnoreValue,
+  normalizeIgnoreValueEntries,
+} from './hook-lib.mjs';
 
-const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'reset']);
+const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'ignore-value', 'reset']);
 
-function readRawConfig(cwd) {
-  const filePath = getConfigPath(cwd);
-  if (!fs.existsSync(filePath)) return null;
-  try { return JSON.parse(fs.readFileSync(filePath, 'utf-8')); } catch { return null; }
+function readRawConfigFile(filePath) {
+  if (!fs.existsSync(filePath)) return { exists: false, malformed: false, raw: null };
+  try {
+    return { exists: true, malformed: false, raw: JSON.parse(fs.readFileSync(filePath, 'utf-8')) };
+  } catch {
+    return { exists: true, malformed: true, raw: null };
+  }
 }
 
-function writeConfig(cwd, config) {
-  const filePath = getConfigPath(cwd);
+function readRawConfig(cwd, opts = {}) {
+  const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
+  return readRawConfigFile(filePath).raw;
+}
+
+function writeConfig(cwd, config, opts = {}) {
+  const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
   return filePath;
@@ -43,6 +63,7 @@ function mergeConfig(existing) {
     enabled: base.enabled === false ? false : true,
     ignoreRules: Array.isArray(base.ignoreRules) ? Array.from(new Set(base.ignoreRules.map(String))) : [],
     ignoreFiles: Array.isArray(base.ignoreFiles) ? Array.from(new Set(base.ignoreFiles.map(String))) : [],
+    ignoreValues: normalizeIgnoreValueEntries(base.ignoreValues || []),
     minSeverity: typeof base.minSeverity === 'string' ? base.minSeverity : DEFAULT_CONFIG.minSeverity,
     limits: {
       maxFindings: Number.isFinite(base?.limits?.maxFindings) ? base.limits.maxFindings : DEFAULT_CONFIG.limits.maxFindings,
@@ -51,21 +72,55 @@ function mergeConfig(existing) {
   };
 }
 
+function mergeLocalConfig(existing) {
+  const base = existing && typeof existing === 'object' ? existing : {};
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(base, 'enabled')) {
+    out.enabled = base.enabled === false ? false : true;
+  }
+  if (Array.isArray(base.ignoreRules)) {
+    out.ignoreRules = Array.from(new Set(base.ignoreRules.map(String)));
+  }
+  if (Array.isArray(base.ignoreFiles)) {
+    out.ignoreFiles = Array.from(new Set(base.ignoreFiles.map(String)));
+  }
+  out.ignoreValues = normalizeIgnoreValueEntries(base.ignoreValues || []);
+  if (typeof base.minSeverity === 'string') {
+    out.minSeverity = base.minSeverity;
+  }
+  if (base.limits && typeof base.limits === 'object') {
+    const limits = {};
+    if (Number.isFinite(base.limits.maxFindings)) limits.maxFindings = base.limits.maxFindings;
+    if (Number.isFinite(base.limits.maxChars)) limits.maxChars = base.limits.maxChars;
+    if (Object.keys(limits).length) out.limits = limits;
+  }
+  return out;
+}
+
 function statusReport(cwd) {
-  const raw = readRawConfig(cwd);
+  const shared = readRawConfigFile(getConfigPath(cwd));
+  const local = readRawConfigFile(getLocalConfigPath(cwd));
   const cfg = readConfig(cwd);
-  const fileExists = raw !== null;
   const envKill = process.env.IMPECCABLE_HOOK_DISABLED;
   const envState = envKill ? `IMPECCABLE_HOOK_DISABLED=${envKill}` : 'unset';
   const cfgPath = path.relative(cwd, getConfigPath(cwd)) || '.impeccable/hook.json';
+  const localPath = path.relative(cwd, getLocalConfigPath(cwd)) || '.impeccable/hook.local.json';
   const cachePath = path.relative(cwd, getCachePath(cwd)) || '.impeccable/hook.cache.json';
+  const fileState = (info, relPath, absent) => {
+    if (info.malformed) return `${relPath} (malformed; ignored)`;
+    if (info.exists) return relPath;
+    return `${relPath} (${absent})`;
+  };
+  const ignoreValues = cfg.ignoreValues.map((entry) => `${entry.rule}=${entry.value}`);
 
   const lines = [
     `Impeccable design hook`,
     `  state:        ${cfg.enabled ? 'enabled' : 'disabled'}`,
-    `  config file:  ${fileExists ? cfgPath : `${cfgPath} (using defaults; file not present)`}`,
+    `  shared file:  ${fileState(shared, cfgPath, 'using defaults; file not present')}`,
+    `  local file:   ${fileState(local, localPath, 'not present')}`,
     `  ignoreRules:  ${cfg.ignoreRules.length ? cfg.ignoreRules.join(', ') : '(none)'}`,
     `  ignoreFiles:  ${cfg.ignoreFiles.length ? cfg.ignoreFiles.join(', ') : '(none)'}`,
+    `  ignoreValues: ${ignoreValues.length ? ignoreValues.join(', ') : '(none)'}`,
     `  minSeverity:  ${cfg.minSeverity}`,
     `  maxFindings:  ${cfg.limits.maxFindings}`,
     `  maxChars:     ${cfg.limits.maxChars}`,
@@ -98,9 +153,70 @@ function addIgnoreFile(cwd, glob) {
   return `Added "${glob}" to ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
 }
 
+function parseIgnoreValueArgs(args) {
+  const positionals = [];
+  let shared = false;
+  let reason = '';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--shared') {
+      shared = true;
+    } else if (arg === '--reason') {
+      const chunks = [];
+      while (i + 1 < args.length && !String(args[i + 1]).startsWith('--')) {
+        chunks.push(args[++i]);
+      }
+      reason = chunks.join(' ').trim();
+    } else if (String(arg).startsWith('--reason=')) {
+      reason = String(arg).slice('--reason='.length).trim();
+    } else {
+      positionals.push(arg);
+    }
+  }
+
+  const [rule, ...valueParts] = positionals;
+  return {
+    rule: String(rule || '').trim().toLowerCase(),
+    value: normalizeIgnoreValue(valueParts.join(' ')),
+    shared,
+    reason,
+  };
+}
+
+function addIgnoreValue(cwd, args) {
+  const parsed = parseIgnoreValueArgs(args);
+  if (!parsed.rule || !parsed.value) {
+    throw new Error('Pass a rule id and value, e.g. /impeccable hooks ignore-value overused-font Inter');
+  }
+
+  const local = !parsed.shared;
+  const config = local
+    ? mergeLocalConfig(readRawConfig(cwd, { local }))
+    : mergeConfig(readRawConfig(cwd, { local }));
+  const key = `${parsed.rule}\0${parsed.value}`;
+  const existing = config.ignoreValues.find((entry) => `${entry.rule}\0${entry.value}` === key);
+
+  if (existing) {
+    if (parsed.reason) existing.reason = parsed.reason;
+  } else {
+    const entry = {
+      rule: parsed.rule,
+      value: parsed.value,
+      createdAt: new Date().toISOString(),
+    };
+    if (parsed.reason) entry.reason = parsed.reason;
+    config.ignoreValues.push(entry);
+  }
+
+  const target = writeConfig(cwd, config, { local });
+  const scope = local ? 'local ignoreValues' : 'shared ignoreValues';
+  return `Added ${parsed.rule}=${parsed.value} to ${scope} (${path.relative(cwd, target) || target}).`;
+}
+
 function reset(cwd) {
   const removed = [];
-  for (const filePath of [getConfigPath(cwd), getCachePath(cwd), getPendingPath(cwd)]) {
+  for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd), getCachePath(cwd), getPendingPath(cwd)]) {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -131,6 +247,7 @@ function main() {
       case 'off':    out = setEnabled(cwd, false); break;
       case 'ignore-rule': out = addIgnoreRule(cwd, rest[0]); break;
       case 'ignore-file': out = addIgnoreFile(cwd, rest[0]); break;
+      case 'ignore-value': out = addIgnoreValue(cwd, rest); break;
       case 'reset':  out = reset(cwd); break;
     }
     process.stdout.write(out + '\n');

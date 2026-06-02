@@ -2,9 +2,9 @@
 /**
  * Impeccable design hook — Cursor afterFileEdit recorder.
  *
- * Runs detection on each agent file edit, queues fresh/pending findings for
- * the stop hook to surface as a one-shot followup_message. Never prints hook
- * output here — Cursor discards postToolUse/afterFileEdit additional_context.
+ * Runs detection on each agent file edit, queues fresh/pending/clean results
+ * for the stop hook to surface as a one-shot followup_message. Never prints
+ * hook output here — Cursor discards postToolUse/afterFileEdit additional_context.
  *
  * Contract: never break a turn. Always exit 0.
  */
@@ -62,7 +62,7 @@ async function main() {
   let queued = false;
   if (
     result.emission
-    && ['fresh', 'pending', 'suppression'].includes(result.emission.kind)
+    && ['fresh', 'pending', 'suppression', 'clean'].includes(result.emission.kind)
   ) {
     appendPending(cwd, conversationId, result.emission);
     queued = true;

@@ -161,4 +161,4 @@ Valid `<command>` is any command from the table above. Report the script's resul
 
 ## Hooks
 
-`/impeccable hooks <on|off|status|ignore-rule|ignore-file|reset>` manages the design detector hook for this project. The hook auto-runs the detector after Edit / Write / MultiEdit on UI files and surfaces findings as system reminders. Full flow is in [reference/hooks.md](reference/hooks.md); load it when the user invokes `/impeccable hooks` with any argument.
+`/impeccable hooks <on|off|status|ignore-rule|ignore-file|ignore-value|reset>` manages the design detector hook for this project. The hook auto-runs the detector after Edit / Write / MultiEdit on UI files and surfaces findings as system reminders. Full flow is in [reference/hooks.md](reference/hooks.md); load it when the user invokes `/impeccable hooks` with any argument.

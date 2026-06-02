@@ -52,6 +52,7 @@ Thumbs.db
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/history/
 .impeccable/hook.cache.json
+.impeccable/hook.local.json
 .impeccable/hook.pending.json
 # Per-run critique snapshots are local artifacts. ignore.md (also under
 # this dir) carries deferrals the user may want to share, so it's
