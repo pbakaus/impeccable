@@ -392,22 +392,24 @@ function copyProviderSkills(bundleDir, root, targets) {
   let written = 0;
   for (const provider of targets) {
     const srcDir = join(bundleDir, provider, 'skills');
-    if (!existsSync(srcDir)) continue;
-    const localSkillsDir = join(root, provider, 'skills');
-    // A previous `npx skills` install may have left this provider's skills dir
-    // as a symlink to another provider's canonical copy. Drop the link so we
-    // write a real, provider-specific directory instead of writing through it.
-    try {
-      if (lstatSync(localSkillsDir).isSymbolicLink()) unlinkSync(localSkillsDir);
-    } catch {}
-    for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
-      if (!skill.isDirectory()) continue;
-      const src = join(srcDir, skill.name);
-      const dest = join(localSkillsDir, skill.name);
-      rmSync(dest, { recursive: true, force: true });
-      copyDirSync(src, dest);
-      written++;
+    if (existsSync(srcDir)) {
+      const localSkillsDir = join(root, provider, 'skills');
+      // A previous `npx skills` install may have left this provider's skills dir
+      // as a symlink to another provider's canonical copy. Drop the link so we
+      // write a real, provider-specific directory instead of writing through it.
+      try {
+        if (lstatSync(localSkillsDir).isSymbolicLink()) unlinkSync(localSkillsDir);
+      } catch {}
+      for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
+        if (!skill.isDirectory()) continue;
+        const src = join(srcDir, skill.name);
+        const dest = join(localSkillsDir, skill.name);
+        rmSync(dest, { recursive: true, force: true });
+        copyDirSync(src, dest);
+        written++;
+      }
     }
+    copyProviderHooks(bundleDir, root, provider);
   }
   return written;
 }
@@ -768,6 +770,9 @@ async function update(flags = []) {
         copyDirSync(src, dest);
         updated++;
       }
+    }
+    for (const provider of providers) {
+      copyProviderHooks(tmpDir, root, provider);
     }
 
     rmSync(tmpDir, { recursive: true, force: true });

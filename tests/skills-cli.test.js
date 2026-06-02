@@ -14,7 +14,7 @@ import { execSync } from 'child_process';
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { migrateUnprefixImpeccable } from '../cli/bin/commands/skills.mjs';
+import { copyProviderHooks, copyProviderSkills, migrateUnprefixImpeccable } from '../cli/bin/commands/skills.mjs';
 
 const CLI = join(import.meta.dir, '..', 'cli', 'bin', 'cli.js');
 
