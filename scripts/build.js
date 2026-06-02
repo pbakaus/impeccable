@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
-import { buildCodexPluginManifest } from './lib/transformers/hooks.js';
+import { buildCodexHooksManifest, buildCodexPluginManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -713,17 +713,66 @@ async function build() {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }
 
-  // Make the same ./plugin/ subtree installable by Codex too. The legacy
-  // marketplace already points at "./plugin"; Codex requires a manifest inside
-  // that plugin root and auto-discovers the existing hooks/hooks.json there.
+  // Build a separate Codex plugin subtree. The Claude marketplace package
+  // above cannot be reused because its hook manifest needs
+  // `${CLAUDE_PLUGIN_ROOT}`, while Codex plugin hooks need `${PLUGIN_ROOT}`.
   if (Object.values(PROVIDERS).some(p => p.emitCodexPlugin)) {
-    fs.mkdirSync(pluginCodexManifestDir, { recursive: true });
+    const codexPluginRoot = path.join(ROOT_DIR, 'plugin-codex');
+    const codexPluginManifestDir = path.join(codexPluginRoot, '.codex-plugin');
+    const codexPluginSkillsDir = path.join(codexPluginRoot, 'skills');
+    const codexPluginHooksDir = path.join(codexPluginRoot, 'hooks');
+
+    if (fs.existsSync(codexPluginRoot)) fs.rmSync(codexPluginRoot, { recursive: true, force: true });
+
+    fs.mkdirSync(codexPluginManifestDir, { recursive: true });
     const codexManifest = buildCodexPluginManifest(rootManifest);
     fs.writeFileSync(
-      path.join(pluginCodexManifestDir, 'plugin.json'),
+      path.join(codexPluginManifestDir, 'plugin.json'),
       JSON.stringify(codexManifest, null, 2) + '\n',
     );
-    console.log('📦 Wrote Codex plugin manifest at ./plugin/.codex-plugin/plugin.json');
+
+    const codexSkillsSrc = path.join(DIST_DIR, 'codex', '.codex', 'skills', 'impeccable');
+    if (fs.existsSync(codexSkillsSrc)) {
+      fs.mkdirSync(codexPluginSkillsDir, { recursive: true });
+      copyDirSync(codexSkillsSrc, path.join(codexPluginSkillsDir, 'impeccable'));
+    }
+
+    fs.mkdirSync(codexPluginHooksDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(codexPluginHooksDir, 'hooks.json'),
+      JSON.stringify(buildCodexHooksManifest(), null, 2) + '\n',
+    );
+
+    const codexMarketplaceDir = path.join(ROOT_DIR, '.agents', 'plugins');
+    fs.mkdirSync(codexMarketplaceDir, { recursive: true });
+    const codexMarketplace = {
+      name: 'impeccable',
+      interface: {
+        displayName: 'Impeccable',
+      },
+      plugins: [
+        {
+          name: 'impeccable',
+          source: {
+            source: 'local',
+            path: './plugin-codex',
+          },
+          policy: {
+            installation: 'AVAILABLE',
+            authentication: 'ON_INSTALL',
+            products: ['CODEX'],
+          },
+          category: 'Design',
+        },
+      ],
+    };
+    fs.writeFileSync(
+      path.join(codexMarketplaceDir, 'marketplace.json'),
+      JSON.stringify(codexMarketplace, null, 2) + '\n',
+    );
+
+    console.log('📦 Built Codex plugin subtree at ./plugin-codex/');
+    console.log('📦 Wrote Codex marketplace at ./.agents/plugins/marketplace.json');
   }
 
   // Generate authoritative counts and validate references

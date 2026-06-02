@@ -6,8 +6,9 @@
  *   - Claude/Codex hook manifests have the right shape, matcher, timeouts,
  *     and command/args. (Pure unit test against the builders — no FS dep.)
  *   - The committed build artifacts (`plugin/hooks/hooks.json`,
- *     `.agents/hooks/hooks.json`, `plugin/.codex-plugin/plugin.json`) exist and
- *     parse, and reference the bundled hook scripts that are also present.
+ *     `plugin-codex/hooks/hooks.json`, `.agents/plugins/marketplace.json`, and
+ *     `.agents/hooks/hooks.json`) exist and parse, and reference the bundled
+ *     hook scripts that are also present.
  *
  * Both halves matter: the builder test catches regressions in the schema we
  * emit, and the artifact test catches "we forgot to commit the regenerated
@@ -175,8 +176,11 @@ describe('hooksJsonFor()', () => {
 
 describe('committed hook artifacts in repo', () => {
   for (const rel of [
-    'plugin/.codex-plugin/plugin.json',
+    'plugin/.claude-plugin/plugin.json',
     'plugin/hooks/hooks.json',
+    'plugin-codex/.codex-plugin/plugin.json',
+    'plugin-codex/hooks/hooks.json',
+    '.agents/plugins/marketplace.json',
     '.agents/hooks/hooks.json',
     '.cursor/hooks.json',
   ]) {
@@ -195,20 +199,52 @@ describe('committed hook artifacts in repo', () => {
     return match[1].replace(`${rootPlaceholder}/`, '');
   };
 
-  it('plugin/.codex-plugin/plugin.json points at plugin-local skills/', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/.codex-plugin/plugin.json'), 'utf-8'));
+  it('plugin/.claude-plugin/plugin.json points at plugin-local skills/', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf-8'));
     assert.equal(manifest.skills, './skills/');
     assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/SKILL.md')));
   });
 
-  it('plugin/hooks/hooks.json references a hook.mjs that is bundled in plugin/skills/', () => {
+  it('plugin/hooks/hooks.json stays Claude-specific and bundles the referenced script', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/hooks/hooks.json'), 'utf-8'));
+    const command = manifest.hooks.PostToolUse[0].hooks[0].command;
+    assert.ok(command.includes('${CLAUDE_PLUGIN_ROOT}'));
+    assert.ok(!command.includes('${PLUGIN_ROOT}'));
     const scriptRel = extractScriptPath(
-      manifest.hooks.PostToolUse[0].hooks[0].command,
+      command,
       '${CLAUDE_PLUGIN_ROOT}',
     );
     const bundledScript = path.join(REPO_ROOT, 'plugin', scriptRel);
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+  });
+
+  it('plugin-codex/.codex-plugin/plugin.json points at plugin-local skills/', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin-codex/.codex-plugin/plugin.json'), 'utf-8'));
+    assert.equal(manifest.skills, './skills/');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/skills/impeccable/SKILL.md')));
+  });
+
+  it('plugin-codex/hooks/hooks.json stays Codex-specific and bundles the referenced script', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin-codex/hooks/hooks.json'), 'utf-8'));
+    const command = manifest.hooks.PostToolUse[0].hooks[0].command;
+    assert.ok(command.includes('${PLUGIN_ROOT}'));
+    assert.ok(!command.includes('${CLAUDE_PLUGIN_ROOT}'));
+    const scriptRel = extractScriptPath(command, '${PLUGIN_ROOT}');
+    const bundledScript = path.join(REPO_ROOT, 'plugin-codex', scriptRel);
+    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+  });
+
+  it('.agents/plugins/marketplace.json points Codex installs at ./plugin-codex', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.agents/plugins/marketplace.json'), 'utf-8'));
+    assert.equal(manifest.name, 'impeccable');
+    assert.equal(manifest.plugins[0].name, 'impeccable');
+    assert.equal(manifest.plugins[0].source.source, 'local');
+    assert.equal(manifest.plugins[0].source.path, './plugin-codex');
+    assert.deepEqual(manifest.plugins[0].policy.products, ['CODEX']);
+  });
+
+  it('plugin/ is not also a Codex plugin package', () => {
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin/.codex-plugin/plugin.json')), false);
   });
 
   it('.agents/hooks/hooks.json references a hook.mjs that is bundled in .agents/skills/', () => {
@@ -235,5 +271,8 @@ describe('committed hook artifacts in repo', () => {
     const scriptDir = path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts');
     assert.ok(fs.existsSync(path.join(scriptDir, 'detector', 'detect-antipatterns.mjs')),
       'detector bundle missing — hook.mjs would fall back to source path and fail in production install');
+    const codexScriptDir = path.join(REPO_ROOT, 'plugin-codex/skills/impeccable/scripts');
+    assert.ok(fs.existsSync(path.join(codexScriptDir, 'detector', 'detect-antipatterns.mjs')),
+      'Codex detector bundle missing — hook.mjs would fall back to source path and fail in production install');
   });
 });

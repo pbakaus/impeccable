@@ -1,0 +1,23 @@
+{
+  "name": "impeccable",
+  "interface": {
+    "displayName": "Impeccable"
+  },
+  "plugins": [
+    {
+      "name": "impeccable",
+      "source": {
+        "source": "local",
+        "path": "./plugin-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": [
+          "CODEX"
+        ]
+      },
+      "category": "Design"
+    }
+  ]
+}

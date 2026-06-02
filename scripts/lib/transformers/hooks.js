@@ -7,17 +7,17 @@
  *      permission rule binds to a single tool name (`Edit(*.tsx)` never
  *      matches Write or MultiEdit), so extension filtering lives in the hook
  *      script on both sides.
- *   2. plugin/.codex-plugin/plugin.json — Codex plugin manifest inside the
- *      shared marketplace plugin root. Codex auto-discovers `hooks/hooks.json`
- *      there, so the manifest itself is intentionally tiny.
+ *   2. plugin-codex/.codex-plugin/plugin.json — Codex plugin manifest inside
+ *      the Codex marketplace plugin root. Codex auto-discovers
+ *      `hooks/hooks.json` there, so the manifest itself is intentionally tiny.
  */
 
 const HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
 
 // Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
-// shared marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex
-// installs the same plugin from our marketplace, so the manifest needs to be
-// portable across both harnesses.
+// Claude marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex gets
+// its own generated `plugin-codex/hooks/hooks.json` because the two runtimes
+// use different plugin-root placeholders.
 //
 // **Shell form, not exec form.** We use `command: "node \"…path…\""` with
 // the path embedded in the command string, not the exec form
