@@ -23,6 +23,7 @@ import {
   truthy,
   getConfigPath,
   getLocalConfigPath,
+  ensureHookGitExcludes,
   readConfig,
   readCache,
   persistCache,
@@ -244,6 +245,31 @@ describe('readCache / persistCache / bumpEditCount', () => {
     assert.equal(Object.keys(reloaded.sessions).length, 8);
     assert.ok(reloaded.sessions['sid-9'], 'newest preserved');
     assert.ok(!reloaded.sessions['sid-0'], 'oldest gc-ed');
+  });
+});
+
+describe('ensureHookGitExcludes()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('adds hook runtime files to local git info exclude, not tracked .gitignore', () => {
+    execFileSync('git', ['init', '-q'], { cwd });
+
+    const result = ensureHookGitExcludes(cwd);
+    assert.equal(result.mode, 'git-info-exclude');
+    assert.equal(result.changed, true);
+    assert.equal(fs.existsSync(path.join(cwd, '.gitignore')), false);
+
+    const exclude = fs.readFileSync(path.join(cwd, '.git', 'info', 'exclude'), 'utf-8');
+    assert.match(exclude, /\.impeccable\/hook\.cache\.json/);
+    assert.match(exclude, /\.impeccable\/hook\.pending\.json/);
+    assert.match(exclude, /\.impeccable\/hook\.local\.json/);
+
+    const second = ensureHookGitExcludes(cwd);
+    assert.equal(second.changed, false);
+    const rewritten = fs.readFileSync(path.join(cwd, '.git', 'info', 'exclude'), 'utf-8');
+    assert.equal((rewritten.match(/impeccable-hook-ignore-start/g) || []).length, 1);
   });
 });
 
@@ -1128,6 +1154,39 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.followup_message, /typography hierarchy, spacing rhythm, and color contrast/);
     assert.doesNotMatch(payload.followup_message, /flagged issues/);
     assert.doesNotMatch(payload.followup_message, /Fix these in your next reply/);
+  });
+
+  it('afterFileEdit git-excludes hook cache and pending files in consumer repos', () => {
+    execFileSync('git', ['init', '-q'], { cwd });
+    const filePath = path.join(cwd, 'src/App.jsx');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
+    execFileSync('git', ['add', 'src/App.jsx'], { cwd });
+
+    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'afterFileEdit',
+        cwd,
+        file_path: filePath,
+        conversation_id: 'git-exclude-cursor',
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const ignored = execFileSync('git', [
+      'check-ignore',
+      '.impeccable/hook.cache.json',
+      '.impeccable/hook.pending.json',
+      '.impeccable/hook.local.json',
+    ], { cwd, encoding: 'utf-8' });
+    assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
+    assert.match(ignored, /\.impeccable\/hook\.pending\.json/);
+    assert.match(ignored, /\.impeccable\/hook\.local\.json/);
+
+    const status = execFileSync('git', ['status', '--short', '--', '.impeccable'], { cwd, encoding: 'utf-8' });
+    assert.equal(status, '');
   });
 
   it('afterFileEdit does not queue clean results when IMPECCABLE_HOOK_QUIET=1', () => {

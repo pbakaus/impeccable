@@ -28,6 +28,7 @@ import {
   getPendingPath,
   readConfig,
   DEFAULT_CONFIG,
+  ensureHookGitExcludes,
   normalizeIgnoreValue,
   normalizeIgnoreValueEntries,
 } from './hook-lib.mjs';
@@ -50,6 +51,7 @@ function readRawConfig(cwd, opts = {}) {
 
 function writeConfig(cwd, config, opts = {}) {
   const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
+  if (opts.local) ensureHookGitExcludes(cwd);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
   return filePath;

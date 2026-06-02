@@ -72,6 +72,14 @@ export const DEFAULT_CONFIG = Object.freeze({
   limits: { maxFindings: 5, maxChars: 8000 },
 });
 
+export const HOOK_LOCAL_IGNORE_PATTERNS = Object.freeze([
+  '.impeccable/hook.cache.json',
+  '.impeccable/hook.pending.json',
+  '.impeccable/hook.local.json',
+]);
+
+const HOOK_IGNORE_MARKER_OPEN = '# impeccable-hook-ignore-start';
+const HOOK_IGNORE_MARKER_CLOSE = '# impeccable-hook-ignore-end';
 const CACHE_MAX_SESSIONS = 8;
 const EDIT_COUNT_THRESHOLD = 6;
 
@@ -121,6 +129,7 @@ function readPendingStore(cwd) {
 function persistPendingStore(cwd, store) {
   const target = getPendingPath(cwd);
   try {
+    ensureHookGitExcludes(cwd);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, JSON.stringify(store));
     return true;
@@ -293,12 +302,89 @@ export function persistCache(cwd, cache) {
   }
   const target = getCachePath(cwd);
   try {
+    ensureHookGitExcludes(cwd);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, JSON.stringify(cache));
     return true;
   } catch {
     return false;
   }
+}
+
+export function ensureHookGitExcludes(cwd = process.cwd()) {
+  try {
+    const target = resolveHookGitExcludeTarget(cwd);
+    if (!target) {
+      return { mode: 'none', changed: false, patterns: [...HOOK_LOCAL_IGNORE_PATTERNS] };
+    }
+
+    const patterns = target.patternPrefix
+      ? HOOK_LOCAL_IGNORE_PATTERNS.map((pattern) => `${target.patternPrefix}/${pattern}`)
+      : [...HOOK_LOCAL_IGNORE_PATTERNS];
+    const markerSuffix = target.patternPrefix || '.';
+    const markerOpen = `${HOOK_IGNORE_MARKER_OPEN} ${markerSuffix}`;
+    const markerClose = `${HOOK_IGNORE_MARKER_CLOSE} ${markerSuffix}`;
+    const existing = fs.existsSync(target.path) ? fs.readFileSync(target.path, 'utf-8') : '';
+    const block = [markerOpen, ...patterns, markerClose].join('\n');
+    const markerRe = new RegExp(`${escapeRegExp(markerOpen)}[\\s\\S]*?${escapeRegExp(markerClose)}`);
+
+    let updated;
+    if (markerRe.test(existing)) {
+      updated = existing.replace(markerRe, block);
+    } else {
+      const prefix = existing.length === 0 ? '' : existing.endsWith('\n') ? existing : `${existing}\n`;
+      updated = `${prefix}${prefix.endsWith('\n\n') || prefix === '' ? '' : '\n'}${block}\n`;
+    }
+
+    if (updated !== existing) {
+      fs.mkdirSync(path.dirname(target.path), { recursive: true });
+      fs.writeFileSync(target.path, updated, 'utf-8');
+    }
+
+    return {
+      mode: 'git-info-exclude',
+      file: path.relative(path.resolve(cwd), target.path).split(path.sep).join('/'),
+      changed: updated !== existing,
+      patterns,
+    };
+  } catch {
+    return { mode: 'error', changed: false, patterns: [...HOOK_LOCAL_IGNORE_PATTERNS] };
+  }
+}
+
+function resolveHookGitExcludeTarget(cwd) {
+  const start = path.resolve(cwd);
+  let dir = start;
+  while (true) {
+    const dotGit = path.join(dir, '.git');
+    if (fs.existsSync(dotGit)) {
+      const gitDir = resolveGitDir(dotGit, dir);
+      if (!gitDir) return null;
+      const relPrefix = path.relative(dir, start).split(path.sep).join('/');
+      return {
+        path: path.join(gitDir, 'info', 'exclude'),
+        patternPrefix: relPrefix && relPrefix !== '.' ? relPrefix : '',
+      };
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function resolveGitDir(dotGit, worktreeDir) {
+  const stat = fs.statSync(dotGit);
+  if (stat.isDirectory()) return dotGit;
+  if (!stat.isFile()) return null;
+
+  const body = fs.readFileSync(dotGit, 'utf-8').trim();
+  const match = body.match(/^gitdir:\s*(.+)$/i);
+  if (!match) return null;
+  return path.isAbsolute(match[1]) ? match[1] : path.resolve(worktreeDir, match[1]);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function ensureSession(cache, sessionId) {
