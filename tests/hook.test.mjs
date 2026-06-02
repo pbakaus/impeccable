@@ -466,6 +466,17 @@ describe('renderTemplate()', () => {
     assert.match(text, /^- \[side-tab\]/m);
   });
 
+  it('does not suggest ignore-value for rules that cannot be value-filtered', () => {
+    const text = renderTemplate(
+      [finding('side-tab', 1, {
+        name: 'Side tab',
+        ignoreValue: 'Inter',
+      })],
+      '/x/a.tsx', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    assert.doesNotMatch(text, /\/impeccable hooks ignore-value side-tab Inter/);
+  });
+
   it('clamps oversize output to maxChars', () => {
     const huge = Array.from({ length: 5 }, (_, i) =>
       finding('side-tab', i + 1, { name: 'X', description: 'y'.repeat(2000) }));

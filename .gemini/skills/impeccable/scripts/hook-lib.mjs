@@ -740,8 +740,9 @@ function formatFindingIgnoreCommand(finding) {
   if (!finding || typeof finding !== 'object') return '';
   const rule = normalizeIgnoreRule(finding.antipattern);
   if (!rule) return '';
+  const normalizedValue = extractFindingIgnoreValue(finding);
+  if (!normalizedValue) return '';
   const value = extractFindingIgnoreValueRaw(finding);
-  if (!normalizeIgnoreValue(value)) return '';
   const valueArg = quoteCommandArg(value);
   const reason = quoteCommandArg(`User confirmed ${value} is intentional`);
   return `/impeccable hooks ignore-value ${rule} ${valueArg} --reason ${reason}`;
