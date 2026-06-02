@@ -2792,6 +2792,66 @@ function checkElementClippedOverflowDOM(el) {
 // ─── Text overflow (browser-only: needs scrollWidth/clientWidth) ──────────────
 const TEXT_OVERFLOW_SKIP_TAGS = new Set(['pre', 'code', 'textarea', 'svg', 'canvas', 'select', 'option', 'marquee']);
 
+function metricLengthPx(value, fontSizePx = 16) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  return resolveLengthPx(value, fontSizePx);
+}
+
+function firstMetricLengthPx(fontSizePx, ...values) {
+  for (const value of values) {
+    const parsed = metricLengthPx(value, fontSizePx);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function expandBoxShorthand(parts) {
+  if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
+  if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
+  if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
+  return [parts[0], parts[1], parts[2], parts[3]];
+}
+
+function clippedByInset(clipPath) {
+  const match = String(clipPath || '').trim().toLowerCase().match(/^inset\s*\(([^)]*)\)$/);
+  if (!match) return false;
+  const beforeRound = match[1].split(/\s+round\s+/)[0].trim();
+  if (!beforeRound) return false;
+  const values = expandBoxShorthand(beforeRound.split(/\s+/).slice(0, 4));
+  const percents = values.map(value => String(value).trim().match(/^(-?\d+(?:\.\d+)?)%$/));
+  if (percents.some(match => !match)) return false;
+  const [top, right, bottom, left] = percents.map(match => parseFloat(match[1]));
+  return top + bottom >= 100 || left + right >= 100;
+}
+
+function clippedByRect(clip) {
+  const match = String(clip || '').trim().toLowerCase().match(/^rect\s*\(([^)]*)\)$/);
+  if (!match) return false;
+  const values = match[1].split(/[,\s]+/).map(value => value.trim()).filter(Boolean);
+  if (values.length !== 4) return false;
+  const [top, right, bottom, left] = values.map(value => metricLengthPx(value, 16));
+  if ([top, right, bottom, left].some(value => value === null)) return false;
+  return bottom <= top || right <= left;
+}
+
+function isScreenReaderOnlyTextStyle(style, metrics = {}) {
+  if (!style) return false;
+  const overflowValues = [style.overflow, style.overflowX, style.overflowY]
+    .map(value => String(value || '').toLowerCase());
+  const clipsOverflow = overflowValues.some(value => value === 'hidden' || value === 'clip');
+
+  const fontSize = metricLengthPx(style.fontSize, 16) || 16;
+  const width = firstMetricLengthPx(fontSize, metrics.width, metrics.clientWidth, style.width, style.inlineSize);
+  const height = firstMetricLengthPx(fontSize, metrics.height, metrics.clientHeight, style.height, style.blockSize);
+  const isTiny = width !== null && height !== null && width <= 2 && height <= 2;
+  const isAbsolutelyHidden = String(style.position || '').toLowerCase() === 'absolute' && isTiny && clipsOverflow;
+
+  const clipPath = String(style.clipPath || style.webkitClipPath || '').trim();
+  const clip = String(style.clip || '').trim();
+  return isAbsolutelyHidden || clippedByInset(clipPath) || clippedByRect(clip);
+}
+
 function checkElementTextOverflowDOM(el) {
   const tag = el.tagName.toLowerCase();
   if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
@@ -2800,6 +2860,13 @@ function checkElementTextOverflowDOM(el) {
   const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
   if (!hasDirectText) return [];
   const style = getComputedStyle(el);
+  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+  if (isScreenReaderOnlyTextStyle(style, {
+    width: rect?.width,
+    height: rect?.height,
+    clientWidth: el.clientWidth,
+    clientHeight: el.clientHeight,
+  })) return [];
   const isScrollRegion = (s) => /(auto|scroll)/.test(s.overflowX || '') || /(auto|scroll)/.test(s.overflow || '');
   if (isScrollRegion(style)) return [];
   // A scrollable ancestor means this overflow is intentional and scrollable.

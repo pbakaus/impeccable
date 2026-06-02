@@ -154,8 +154,8 @@ describe('detectUrl — browser-only fixtures', () => {
     // Browser-only: needs scrollWidth vs clientWidth from real layout.
     // Flag column: a nowrap line and an unbreakable token spilling past a
     // fixed-width box (overflow visible). Pass column: a genuine
-    // overflow-x:auto scroll region, a <pre>, normally wrapping text, and a
-    // long line living inside a scroll ancestor.
+    // overflow-x:auto scroll region, a <pre>, normally wrapping text, a long
+    // line living inside a scroll ancestor, and sr-only accessible text.
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/text-overflow.html`);
     const hits = f.filter(r => r.antipattern === 'text-overflow');
     const flagged = new Set();
@@ -165,7 +165,16 @@ describe('detectUrl — browser-only fixtures', () => {
     }
     assert.ok(flagged.has('flag-nowrap'), 'expected the nowrap overflow case to flag');
     assert.ok(flagged.has('flag-longword'), 'expected the unbreakable-token overflow case to flag');
-    for (const cls of ['pass-scroll', 'pass-pre', 'pass-wrap', 'pass-inside-scroll']) {
+    for (const cls of [
+      'pass-scroll',
+      'pass-pre',
+      'pass-wrap',
+      'pass-inside-scroll',
+      'pass-sr-only-clip-path',
+      'pass-sr-only-legacy',
+      'pass-sr-only-tiny-hidden',
+      'pass-sr-only-clipped-wide',
+    ]) {
       assert.ok(!flagged.has(cls), `".${cls}" should NOT be flagged as text-overflow`);
     }
     assert.equal(hits.length, 2, `expected exactly 2 text-overflow findings, got ${hits.length}: ${JSON.stringify(hits.map(h => h.snippet))}`);
