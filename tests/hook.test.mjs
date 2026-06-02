@@ -614,6 +614,19 @@ describe('runHook()', () => {
     assert.equal(r.audit.reentrant, true);
   });
 
+  it('re-entrancy guard treats numeric CLAUDE_HOOK_DEPTH values as active', async () => {
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: { CLAUDE_HOOK_DEPTH: '2' },
+      cwd,
+      detector: det,
+    });
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.reentrant, true);
+  });
+
   it('IMPECCABLE_HOOK_DISABLED kill switch', async () => {
     const file = writeFixture('src/Card.tsx', 'noop');
     const det = fakeDetector([finding('side-tab', 1)]);
@@ -931,6 +944,19 @@ describe('expandScanTargets()', () => {
     assert.deepEqual(expanded, [path.join(cwd, 'src/Card.jsx'), mod]);
   });
 
+  it('does not follow imports from traversal-looking primary targets', () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-outside-'));
+    try {
+      fs.writeFileSync(path.join(outside, 'App.jsx'), "import './styles.css';\nexport default function App() { return null; }");
+      fs.writeFileSync(path.join(outside, 'styles.css'), "body { font-family: 'Inter', sans-serif; }");
+      const traversalPrimary = `${cwd}/../${path.basename(outside)}/App.jsx`;
+      const expanded = expandScanTargets([traversalPrimary], cwd);
+      assert.deepEqual(expanded, [traversalPrimary]);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('does not expand when the primary target is already a stylesheet', () => {
     const css = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
     assert.deepEqual(expandScanTargets([css], cwd), [css]);
@@ -997,6 +1023,32 @@ describe('runHook() — co-located stylesheet scan', () => {
     });
     assert.match(r.stdout, /Required design corrections/);
     assert.match(r.stdout, /styles\.sass/);
+  });
+
+  it('does not scan imported styles from a traversal-looking primary path', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-outside-'));
+    try {
+      fs.writeFileSync(path.join(outside, 'App.jsx'), "import './styles.css';\nexport default function App() { return null; }");
+      fs.writeFileSync(path.join(outside, 'styles.css'), "body { font-family: 'Inter', sans-serif; }");
+      const traversalPrimary = `${cwd}/../${path.basename(outside)}/App.jsx`;
+      const det = fakeDetector([finding('overused-font', 1, { name: 'Overused font' })]);
+      const r = await runHook({
+        stdinJson: JSON.stringify({
+          session_id: 'co-scan-traversal',
+          cwd,
+          hook_event_name: 'PostToolUse',
+          tool_name: 'Edit',
+          tool_input: { file_path: traversalPrimary },
+        }),
+        env: {},
+        cwd,
+        detector: det,
+      });
+      assert.equal(r.stdout, '');
+      assert.equal(r.audit.skipped, 'sensitive');
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

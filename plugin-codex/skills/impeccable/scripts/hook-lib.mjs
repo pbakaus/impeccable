@@ -87,6 +87,14 @@ export function truthy(value) {
   return typeof value === 'string' && TRUTHY.test(value);
 }
 
+function depthIsSet(value) {
+  if (value === undefined || value === null) return false;
+  const text = String(value).trim();
+  if (!text) return false;
+  if (TRUTHY.test(text)) return true;
+  return /^\d+$/.test(text) && Number(text) > 0;
+}
+
 function safeReadJson(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -855,6 +863,20 @@ const MAX_SCAN_TARGETS = 6;
 
 const STATIC_STYLE_IMPORT_RE = /import\s+(?:[\w*{}\s,$]+\s+from\s+)?['"]([^'"]+\.(?:css|scss|sass|less))['"]/gi;
 
+function hasPathTraversal(filePath) {
+  return typeof filePath === 'string' && filePath.includes('..');
+}
+
+function isInsideProject(filePath, projectCwd) {
+  if (!filePath || !projectCwd || hasPathTraversal(filePath)) return false;
+  try {
+    const rel = path.relative(projectCwd, filePath);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  } catch {
+    return false;
+  }
+}
+
 export function parseStaticStyleImports(content, fromFile, projectCwd) {
   if (!content || typeof content !== 'string') return [];
   const dir = path.dirname(fromFile);
@@ -864,6 +886,7 @@ export function parseStaticStyleImports(content, fromFile, projectCwd) {
     if (!p) continue;
     if (p.startsWith('.')) p = path.resolve(dir, p);
     else if (!path.isAbsolute(p)) p = path.resolve(projectCwd, p);
+    if (!isInsideProject(p, projectCwd)) continue;
     out.push(p);
   }
   return out;
@@ -896,7 +919,7 @@ export function expandScanTargets(primaryTargets, projectCwd) {
   const normalizeTarget = (p) => {
     // Preserve literal `..` segments so downstream sensitive-path checks
     // still fire. path.resolve would collapse `/foo/../etc/passwd`.
-    if (typeof p === 'string' && p.includes('..')) return p;
+    if (hasPathTraversal(p)) return p;
     return path.isAbsolute(p) ? p : path.resolve(baseCwd, p);
   };
   const add = (p) => {
@@ -916,6 +939,7 @@ export function expandScanTargets(primaryTargets, projectCwd) {
 
   for (const p of normalizedPrimaries) {
     if (ordered.length >= MAX_SCAN_TARGETS) break;
+    if (!isInsideProject(p, baseCwd)) continue;
     const ext = path.extname(p).toLowerCase();
     if (STYLE_EXTS.has(ext) || !UI_CODE_EXTS.has(ext)) continue;
 
@@ -1051,7 +1075,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
   try {
     // Re-entrancy guard.
-    if (truthy(env.IMPECCABLE_HOOK_DEPTH) || truthy(env.CLAUDE_HOOK_DEPTH)) {
+    if (depthIsSet(env.IMPECCABLE_HOOK_DEPTH) || depthIsSet(env.CLAUDE_HOOK_DEPTH)) {
       return result({ reentrant: true, durationMs: 0 });
     }
 
@@ -1106,7 +1130,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     for (const filePath of targetFiles) {
       audit.file = filePath;
 
-      if (filePath.includes('..') || SENSITIVE_PATH.test(filePath)) {
+      if (hasPathTraversal(filePath) || SENSITIVE_PATH.test(filePath)) {
         lastSkip = 'sensitive';
         continue;
       }
