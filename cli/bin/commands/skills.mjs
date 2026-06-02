@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
+import extract from 'extract-zip';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -116,7 +117,7 @@ async function downloadAndExtractBundle() {
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
-  execSync(`unzip -qo "${tmpZip}" -d "${tmpDir}"`, { encoding: 'utf8' });
+  await extract(tmpZip, { dir: tmpDir });
   rmSync(tmpZip, { force: true });
   return tmpDir;
 }

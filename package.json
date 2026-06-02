@@ -71,6 +71,7 @@
     "css-select": "^5.2.2",
     "css-tree": "^3.2.1",
     "domutils": "^3.2.2",
+    "extract-zip": "^2.0.1",
     "htmlparser2": "^10.0.0",
     "marked": "^16.4.2"
   },
