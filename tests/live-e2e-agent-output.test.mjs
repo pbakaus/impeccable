@@ -175,6 +175,24 @@ describe('live-e2e agent output translation', () => {
     assert.doesNotMatch(output, /@scope/);
   });
 
+  it('does not leave empty Svelte :global() selectors after accepting variant CSS', () => {
+    const css = [
+      ':global([data-impeccable-variant="3"]) .expense-row { flex-direction: column; }',
+      ':global([data-impeccable-variant="3"] .expense-amount) { font-weight: 800; }',
+      '@scope ([data-impeccable-variant="3"]) {',
+      '  :scope > article { border-color: gold; }',
+      '}',
+    ].join('\n');
+
+    const output = svelteCssForVariant(css, 3, 'article');
+
+    assert.match(output, /\.expense-row\s*\{\s*flex-direction:\s*column;/);
+    assert.match(output, /:global\(\.expense-amount\)\s*\{\s*font-weight:\s*800;/);
+    assert.match(output, /article\s*\{\s*border-color:\s*gold;/);
+    assert.doesNotMatch(output, /:global\(\s*\)/);
+    assert.doesNotMatch(output, /data-impeccable-variant/);
+  });
+
   it('targets only the styled element when same-tag siblings are present', () => {
     const output = normalizeVariantOutput(
       {

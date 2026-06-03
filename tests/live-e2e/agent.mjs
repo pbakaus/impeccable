@@ -1454,7 +1454,7 @@ export function svelteCssForVariant(scopedCss, variantId, tag) {
 }
 
 function rewriteSvelteVariantCss(css, variantId, tag) {
-  return String(css || '')
+  return stripSvelteGlobalVariantSelector(String(css || ''), variantId)
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\]\\s*>\\s*`, 'g'), '')
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\][^{]*>\\s*`, 'g'), '')
     .replace(/:scope(?:\[[^\]]+\])?\s*>\s*/g, '')
@@ -1464,6 +1464,14 @@ function rewriteSvelteVariantCss(css, variantId, tag) {
     .filter((line) => line.trim())
     .join('\n')
     .trim();
+}
+
+function stripSvelteGlobalVariantSelector(css, variantId) {
+  const variantAttr = new RegExp(String.raw`\[data-impeccable-variant=["']${variantId}["']\]`, 'g');
+  return String(css || '').replace(/:global\(([^)]*)\)/g, (_match, inner) => {
+    const cleaned = String(inner || '').replace(variantAttr, '').trim();
+    return cleaned ? `:global(${cleaned})` : '';
+  });
 }
 
 function extractVariantCssChunks(css, variantId) {

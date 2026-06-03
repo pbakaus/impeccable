@@ -1152,6 +1152,7 @@
     barHideSeq += 1;
     if (mode === 'cycling' && !ensureCyclingRenderable('show-bar')) return;
     barEl.innerHTML = '';
+    resetBarChrome();
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
@@ -1184,10 +1185,7 @@
     if (!barEl || barEl.style.display === 'none') return;
     if (mode === 'cycling' && !ensureCyclingRenderable('update-bar')) return;
     barEl.innerHTML = '';
-    // Reset bar styling to the kinpaku picker palette
-    barEl.style.background = BP.surface;
-    barEl.style.border = '1px solid ' + BP.border;
-    barEl.style.boxShadow = BP.shadow;
+    resetBarChrome();
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
@@ -1200,6 +1198,13 @@
       barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
     }
     syncPageChatFocus('update-bar-content');
+  }
+
+  function resetBarChrome() {
+    if (!barEl || !BP) return;
+    barEl.style.background = BP.surface;
+    barEl.style.border = '1px solid ' + BP.border;
+    barEl.style.boxShadow = BP.shadow;
   }
 
   // Configure row

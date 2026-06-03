@@ -219,6 +219,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('resets contextual bar chrome before rebuilding after confirmed state', () => {
+    assert.match(
+      SOURCE,
+      /function showBar\(mode\) \{[\s\S]{0,220}?barEl\.innerHTML = '';[\s\S]{0,80}?resetBarChrome\(\);/,
+      'showBar must reset stale confirmed/success styling before rendering the next configure/generating/cycling row',
+    );
+    assert.match(
+      SOURCE,
+      /function resetBarChrome\(\) \{[\s\S]{0,220}?barEl\.style\.background = BP\.surface;[\s\S]{0,120}?barEl\.style\.border = '1px solid ' \+ BP\.border;[\s\S]{0,120}?barEl\.style\.boxShadow = BP\.shadow;/,
+      'contextual bar reset should restore the dark Astro/kinpaku picker chrome',
+    );
+  });
+
   it('teardown removes auxiliary chrome mounted outside the main bar', () => {
     assert.match(
       SOURCE,
