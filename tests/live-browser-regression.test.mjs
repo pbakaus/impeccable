@@ -677,6 +677,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('Svelte component accept does not leave a cloned preview beside HMR output', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /if \(pending\.isSvelteComponent\) \{[\s\S]{0,160}?commitAcceptedSvelteComponentToDom\(pending\.id\);[\s\S]{0,40}?\}/,
+      'event=live_browser.svelte_accept_duplicate actor=browser operation=accept_svelte_component risk=preview_clone_plus_hmr_card expected=no_immediate_clone_commit actual=commits_mounted_preview_into_dom',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,160}?accepted\?\.isSvelteComponent\) ensureAcceptedSvelteComponentDomClean\(accepted\);[\s\S]{0,120}?else ensureAcceptedDomClean\(accepted\);/,
+      'Svelte component accepts need a dedicated cleanup path instead of skipping DOM cleanup entirely',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,700}?teardownSvelteComponentSession\(false\);[\s\S]{0,500}?pruneEmptySveltePreviewHost\(host\);[\s\S]{0,160}?reloadAfterMissingAcceptedDom\(pending\);/,
+      'accepted Svelte component cleanup removes the preview wrapper without restoring the stale original and reloads only as recovery',
+    );
+  });
+
   it('editing focus timeout does not read a stale inline edit row', () => {
     assert.doesNotMatch(
       SOURCE,

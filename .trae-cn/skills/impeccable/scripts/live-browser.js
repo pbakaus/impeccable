@@ -7191,9 +7191,6 @@ void main() {
     if (pending.finalizing) return true;
     pending.finalizing = true;
     markSessionHandled();
-    if (pending.isSvelteComponent) {
-      commitAcceptedSvelteComponentToDom(pending.id);
-    }
     state = 'CONFIRMED';
     updateBarContent('confirmed');
     scheduleAcceptCleanup(pending);
@@ -7202,13 +7199,25 @@ void main() {
 
   function scheduleAcceptCleanup(accepted) {
     setTimeout(function() {
-      if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+      if (accepted?.isSvelteComponent) ensureAcceptedSvelteComponentDomClean(accepted);
+      else ensureAcceptedDomClean(accepted);
       cleanupAcceptedSession();
     }, 1200);
   }
 
   function snapshotAcceptedVariantDom(sessionId, variantId) {
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    if (wrapper?.dataset?.impeccablePreview === 'svelte-component') {
+      const mount = wrapper.querySelector('[data-impeccable-component-mount]');
+      const root = mount?.firstElementChild || null;
+      return {
+        acceptedHtml: root ? root.outerHTML : '',
+        acceptedSelector: selectorForAcceptedRoot(root, { ignoreSvelteScopedClasses: true }),
+        parentElement: wrapper.parentElement || null,
+        parentSelector: selectorForAcceptedRoot(wrapper.parentElement || null, { ignoreSvelteScopedClasses: true }),
+        nextSibling: wrapper.nextSibling || null,
+      };
+    }
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     const root = accepted?.firstElementChild || null;
     return {
@@ -7220,10 +7229,10 @@ void main() {
     };
   }
 
-  function selectorForAcceptedRoot(root) {
+  function selectorForAcceptedRoot(root, opts = {}) {
     if (!root || !root.tagName) return '';
     const tag = root.tagName.toLowerCase();
-    const classes = [...(root.classList || [])].filter(Boolean);
+    const classes = [...(root.classList || [])].filter((cls) => cls && (!opts.ignoreSvelteScopedClasses || !/^svelte-[\w-]+$/.test(cls)));
     if (classes.length === 0) return tag;
     return tag + classes.map((cls) => '.' + cssIdent(cls)).join('');
   }
@@ -7254,6 +7263,29 @@ void main() {
       parent.insertBefore(accepted.firstChild, wrapper);
     }
     wrapper.remove();
+  }
+
+  function ensureAcceptedSvelteComponentDomClean(pending) {
+    const sessionId = pending?.id;
+    const wrapper = svelteComponentSession?.sessionId === sessionId && svelteComponentSession.wrapperEl?.isConnected
+      ? svelteComponentSession.wrapperEl
+      : document.querySelector('[data-impeccable-variants="' + sessionId + '"][data-impeccable-preview="svelte-component"]');
+    const host = wrapper?.parentElement || (pending?.parentElement?.isConnected ? pending.parentElement : null);
+
+    if (svelteComponentSession?.sessionId === sessionId) {
+      teardownSvelteComponentSession(false);
+    } else if (wrapper) {
+      wrapper.remove();
+    }
+    pruneEmptySveltePreviewHost(host);
+    if (!acceptedDomAlreadyClean(pending)) reloadAfterMissingAcceptedDom(pending);
+  }
+
+  function pruneEmptySveltePreviewHost(host) {
+    if (!host?.isConnected || host.tagName !== 'LI') return;
+    if (host.children.length > 0) return;
+    if ((host.textContent || '').trim()) return;
+    host.remove();
   }
 
   function restoreAcceptedDomFromSnapshot(pending) {
