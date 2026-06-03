@@ -154,6 +154,7 @@ describe('live reference authoring contract', () => {
       /v1\.svelte/,
       /propContract/,
       /componentDir\/params\.json/,
+      /visually distinct from the original and from each other/,
       /Do not add `data-impeccable-\*` attributes/,
       /Do not edit the route source during generation/,
     ]) {

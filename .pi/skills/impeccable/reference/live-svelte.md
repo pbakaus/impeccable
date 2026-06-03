@@ -24,6 +24,8 @@ Write one real Svelte component per variant: `componentDir/v1.svelte`, `componen
 - Keep a single visible top-level root matching the selected element's role and structure.
 - Preserve `propContract`: use `{propName}` in component markup instead of literal snapshot text when the contract provides a binding.
 - Put variant CSS in that component's `<style>` block using semantic classes.
+- Make every variant visually distinct from the original and from each other. Do not ship variants that differ only by inert attributes, hidden params, or class names without CSS that changes the rendered result.
+- Prefer meaningful semantic class hooks for each visual direction; do not rely on generic `data-variant` attributes as the only selector difference.
 - Do not add `data-impeccable-*` attributes.
 - Do not use `@scope` or `data-impeccable-variant` selectors.
 - Reply done with `--file` set to the manifest path returned by the helper.
@@ -35,6 +37,7 @@ The browser dynamically imports and mounts these components, which avoids Svelte
 For insert mode, each `vN.svelte` is net-new content mounted before or after the live anchor.
 
 - The component must contain visible inserted content.
+- Each insert variant must render a visibly different inserted result, not just the same placeholder with a different class or param manifest.
 - Use a single top-level root.
 - Do not copy the anchor unless the design actually needs it.
 - Do not edit the route source during generation.

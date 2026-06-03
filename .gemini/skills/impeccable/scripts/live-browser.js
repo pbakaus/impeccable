@@ -9144,7 +9144,7 @@ void main() {
     if (barEl) { barEl.remove(); barEl = null; }
     if (pickerEl) { pickerEl.remove(); pickerEl = null; }
     if (paramsPanelEl) { paramsPanelEl.remove(); paramsPanelEl = null; paramsPanelInner = null; paramsPanelBody = null; }
-    if (editBadgeProxyRoot) { editBadgeProxyRoot.remove(); editBadgeProxyRoot = null; editBadgeProxyByTarget = new Map(); }
+    removeAuxiliaryLiveChrome();
     if (evtSource) { evtSource.close(); evtSource = null; }
     document.removeEventListener('mousemove', handleMouseMove, true);
     document.removeEventListener('click', handleClick, true);
@@ -9597,6 +9597,38 @@ void main() {
     if (designState.open && designState.present === null && !designState.loading) {
       fetchDesignSystem();
     }
+  }
+
+  function removeAuxiliaryLiveChrome() {
+    if (editBadgeEl) {
+      editBadgeEl.remove();
+      editBadgeEl = null;
+    }
+    if (editBadgeProxyRoot) {
+      editBadgeProxyRoot.remove();
+      editBadgeProxyRoot = null;
+      editBadgeProxyByTarget = new Map();
+    }
+    if (annotOverlayEl) {
+      annotOverlayEl.remove();
+      annotOverlayEl = null;
+    }
+    annotSvgEl = null;
+    annotPinsEl = null;
+    annotClearChipEl = null;
+    placeholderResizeLayerEl = null;
+    placeholderResizeDrag = null;
+    annotState = { comments: [], strokes: [] };
+    annotActive = false;
+    annotPointer = null;
+    annotEditing = null;
+    annotLastPinClick = { idx: -1, time: 0 };
+    if (designHost) {
+      designHost.remove();
+      designHost = null;
+    }
+    designShadow = null;
+    designState.open = false;
   }
 
   async function fetchDesignSystem() {

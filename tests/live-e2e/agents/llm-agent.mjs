@@ -742,6 +742,9 @@ export function parseVariantResponse(text) {
   if (parsed.scopedCss.includes('${')) {
     throw new Error(`LLM agent: scopedCss must not contain template interpolation because JSX targets wrap it in a template literal. Parsed (first 500 chars):\n${previewParsed()}`);
   }
+  if (/:global\(\s*\)/.test(parsed.scopedCss)) {
+    throw new Error(`LLM agent: scopedCss must not include empty Svelte :global() selectors; use concrete component selectors or :global(.selector). Parsed (first 500 chars):\n${previewParsed()}`);
+  }
   const cssError = validateScopedCss(parsed.scopedCss);
   if (cssError) {
     throw new Error(`LLM agent: ${cssError}. Parsed (first 500 chars):\n${previewParsed()}`);

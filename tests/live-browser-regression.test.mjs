@@ -219,6 +219,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('teardown removes auxiliary chrome mounted outside the main bar', () => {
+    assert.match(
+      SOURCE,
+      /function removeAuxiliaryLiveChrome\(\) \{[\s\S]{0,300}?editBadgeEl\.remove\(\);[\s\S]{0,700}?annotOverlayEl\.remove\(\);[\s\S]{0,700}?designHost\.remove\(\);/,
+      'Exit must remove edit badge, annotation overlay, and design panel nodes, not only hide the main live bar',
+    );
+    assert.match(
+      SOURCE,
+      /function teardown\(\) \{[\s\S]{0,1800}?removeAuxiliaryLiveChrome\(\);[\s\S]{0,700}?window\.__IMPECCABLE_LIVE_INIT__ = false;/,
+      'teardown should call the auxiliary-chrome removal before reporting live mode as exited',
+    );
+  });
+
   it('Svelte cycling requires a visible mounted component, not just arrived variants', () => {
     assert.match(
       SOURCE,

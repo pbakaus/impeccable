@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { htmlToJsx, normalizeVariantOutput } from './live-e2e/agent.mjs';
+import { htmlToJsx, normalizeVariantOutput, svelteCssForVariant } from './live-e2e/agent.mjs';
 
 describe('live-e2e agent output translation', () => {
   it('converts HTML class and inline style attributes to JSX syntax', () => {
@@ -132,6 +132,47 @@ describe('live-e2e agent output translation', () => {
 
     assert.match(output.scopedCss, /:scope \[data-impeccable-hoist-id="1"\]\s*\{[^}]*color: red;/);
     assert.match(output.scopedCss, /:scope \[data-impeccable-hoist-id="2"\]\s*\{[^}]*font-weight: 700;/);
+  });
+
+  it('keeps Svelte component-style CSS instead of dropping it as non-variant CSS', () => {
+    const css = [
+      '.expense-row[data-polish="rhythm"] { padding: 18px; }',
+      '.expense-row[data-polish="hierarchy"] { font-weight: 800; }',
+      '[data-p-accent] .expense-row { border-left: 4px solid gold; }',
+      '@scope ([data-impeccable-variant="1"]) {',
+      '  :scope > * { --impeccable-variant-ready: 1; }',
+      '}',
+    ].join('\n');
+
+    const output = svelteCssForVariant(css, 1, 'article');
+
+    assert.match(output, /\.expense-row\[data-polish="rhythm"\]\s*\{/);
+    assert.match(output, /\.expense-row\[data-polish="hierarchy"\]\s*\{/);
+    assert.match(output, /\[data-p-accent\] \.expense-row\s*\{/);
+    assert.match(output, /--impeccable-variant-ready:\s*1/);
+    assert.doesNotMatch(output, /data-impeccable-variant/);
+    assert.doesNotMatch(output, /@scope/);
+  });
+
+  it('still extracts legacy variant-wrapper CSS for Svelte component variants', () => {
+    const css = [
+      '@scope ([data-impeccable-variant="1"]) {',
+      '  :scope > article { color: red; }',
+      '}',
+      '@scope ([data-impeccable-variant="2"]) {',
+      '  :scope > article { font-weight: 900; }',
+      '  :scope[data-p-face="mono"] > article { font-family: ui-monospace, monospace; }',
+      '}',
+    ].join('\n');
+
+    const output = svelteCssForVariant(css, 2, 'article');
+
+    assert.match(output, /article\s*\{\s*font-weight:\s*900;/);
+    assert.match(output, /article\s*\{\s*font-family:\s*ui-monospace,\s*monospace;/);
+    assert.match(output, /--impeccable-variant-ready:\s*1/);
+    assert.doesNotMatch(output, /color:\s*red/);
+    assert.doesNotMatch(output, /data-impeccable-variant/);
+    assert.doesNotMatch(output, /@scope/);
   });
 
   it('targets only the styled element when same-tag siblings are present', () => {

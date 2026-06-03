@@ -1435,11 +1435,26 @@ function mergeTopLevelAttrs(baseMarkup, variantMarkup) {
   return base.replace(baseOpen[0], `${baseOpen[1]}${baseOpen[2]}${variantOpen[2]}${baseOpen[4]}`);
 }
 
-function svelteCssForVariant(scopedCss, variantId, tag) {
+export function svelteCssForVariant(scopedCss, variantId, tag) {
   const css = String(scopedCss || '');
   const chunks = extractVariantCssChunks(css, variantId);
-  const rewritten = chunks
+  const rewrittenVariantCss = rewriteSvelteVariantCss(chunks.join('\n'), variantId, tag);
+  const componentCss = removeVariantCssChunks(css).trim();
+  const readyRule = '* { --impeccable-variant-ready: 1; }';
+  const rewritten = [
+    componentCss,
+    rewrittenVariantCss,
+    /--impeccable-variant-ready\s*:/.test(`${componentCss}\n${rewrittenVariantCss}`) ? '' : readyRule,
+  ]
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
     .join('\n')
+    .trim();
+  return rewritten || readyRule;
+}
+
+function rewriteSvelteVariantCss(css, variantId, tag) {
+  return String(css || '')
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\]\\s*>\\s*`, 'g'), '')
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\][^{]*>\\s*`, 'g'), '')
     .replace(/:scope(?:\[[^\]]+\])?\s*>\s*/g, '')
@@ -1449,7 +1464,6 @@ function svelteCssForVariant(scopedCss, variantId, tag) {
     .filter((line) => line.trim())
     .join('\n')
     .trim();
-  return rewritten || `${tag} {}`;
 }
 
 function extractVariantCssChunks(css, variantId) {
@@ -1477,6 +1491,29 @@ function extractVariantCssChunks(css, variantId) {
     if (depth <= 0) collecting = false;
   }
   return chunks;
+}
+
+function removeVariantCssChunks(css) {
+  const lines = String(css || '').split('\n');
+  const kept = [];
+  let skipping = false;
+  let depth = 0;
+  for (const line of lines) {
+    const startsVariantChunk = /\[data-impeccable-variant=(["'])\d+\1\]/.test(line);
+    if (startsVariantChunk) {
+      skipping = true;
+      depth = braceDelta(line);
+      if (depth <= 0) skipping = false;
+      continue;
+    }
+    if (skipping) {
+      depth += braceDelta(line);
+      if (depth <= 0) skipping = false;
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join('\n');
 }
 
 function braceDelta(line) {

@@ -1644,6 +1644,20 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
     );
   });
 
+  it('rejects empty Svelte :global() selectors before promotion', () => {
+    const body = JSON.stringify({
+      scopedCss: [
+        '.expense-row[data-variant="1"] { border-left: 3px solid #4a90d9; }',
+        ':global() .expense-row[data-variant="1"] { --p-spacing-user: 1; }',
+      ].join('\n'),
+      variants: [{ innerHtml: '<article class="expense-row">x</article>' }],
+    });
+    assert.throws(
+      () => parseVariantResponse(body),
+      /scopedCss must not include empty Svelte :global\(\) selectors/,
+    );
+  });
+
   it('rejects variant HTML that includes its own style tag', () => {
     const body = JSON.stringify({
       scopedCss: '@scope ([data-impeccable-variant="1"]) {}',
