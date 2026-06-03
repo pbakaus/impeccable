@@ -219,6 +219,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('Svelte cycling requires a visible mounted component, not just arrived variants', () => {
+    assert.match(
+      SOURCE,
+      /function hasVisibleSvelteComponentMount\(session = svelteComponentSession\) \{[\s\S]{0,260}?session\.mountedVariant[\s\S]{0,220}?getMountedSvelteComponentAnchor\(session\);/,
+      'Svelte component sessions need an explicit visible-anchor check before the UI can claim a variant is mounted',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureCyclingRenderable\(reason\) \{[\s\S]{0,260}?svelteComponentSession\?\.sessionId === currentSessionId && arrivedVariants > 0[\s\S]{0,260}?hasVisibleSvelteComponentMount\(svelteComponentSession\)[\s\S]{0,180}?recoverEmptySvelteComponentMount\(reason\);/,
+      'cycling controls must not render for Svelte component previews unless the mount target contains a visible anchor',
+    );
+    assert.match(
+      SOURCE,
+      /function recoverEmptySvelteComponentMount\(reason\) \{[\s\S]{0,500}?mountSvelteComponentVariant\(variantToMount\)[\s\S]{0,500}?abortSvelteComponentInjection\(sessionId, 'No visible Svelte variant was mounted\. Please try again\.'\);/,
+      'an empty Svelte mount target should remount the selected variant and abort back to the original element if remount fails',
+    );
+  });
+
   it('global bar includes expandable page chat affordance', () => {
     assert.match(
       SOURCE,

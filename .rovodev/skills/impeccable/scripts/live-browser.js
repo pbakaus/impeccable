@@ -2575,12 +2575,51 @@
   }
 
   function ensureCyclingRenderable(reason) {
+    if (svelteComponentSession?.sessionId === currentSessionId && arrivedVariants > 0) {
+      if (visibleVariant < 1 || visibleVariant > arrivedVariants) visibleVariant = 1;
+      if (hasVisibleSvelteComponentMount(svelteComponentSession)) return true;
+      recoverEmptySvelteComponentMount(reason);
+      return false;
+    }
     if (arrivedVariants > 0) {
       if (visibleVariant < 1 || visibleVariant > arrivedVariants) visibleVariant = 1;
       return true;
     }
     recoverEmptyCycling(reason);
     return false;
+  }
+
+  function recoverEmptySvelteComponentMount(reason) {
+    if (recoveringEmptyCycling) return;
+    recoveringEmptyCycling = true;
+    const sessionId = currentSessionId;
+    const variantToMount = visibleVariant > 0 && visibleVariant <= arrivedVariants
+      ? visibleVariant
+      : (svelteComponentSession?.mountedVariant > 0 ? svelteComponentSession.mountedVariant : 1);
+    console.warn('[impeccable] Refusing to render Svelte cycling state without mounted content:', reason);
+    Promise.resolve()
+      .then(() => mountSvelteComponentVariant(variantToMount))
+      .then((mounted) => {
+        if (svelteComponentSession?.sessionId !== sessionId) return;
+        if (mounted && hasVisibleSvelteComponentMount(svelteComponentSession)) {
+          visibleVariant = svelteComponentSession.mountedVariant || variantToMount;
+          state = 'CYCLING';
+          showOrUpdateCyclingBar();
+          refreshParamsPanel();
+          positionBar();
+          saveSession();
+          return;
+        }
+        abortSvelteComponentInjection(sessionId, 'No visible Svelte variant was mounted. Please try again.');
+      })
+      .catch(() => {
+        if (svelteComponentSession?.sessionId === sessionId) {
+          abortSvelteComponentInjection(sessionId, 'No visible Svelte variant was mounted. Please try again.');
+        }
+      })
+      .finally(() => {
+        recoveringEmptyCycling = false;
+      });
   }
 
   function recoverEmptyCycling(reason) {
@@ -2687,6 +2726,12 @@
     const el = session?.mountTargetEl?.firstElementChild || null;
     if (!el || !document.body.contains(el)) return null;
     return rectIsUsableAnchor(el.getBoundingClientRect()) ? el : null;
+  }
+
+  function hasVisibleSvelteComponentMount(session = svelteComponentSession) {
+    if (!session || session.sessionId !== currentSessionId) return false;
+    if (!session.mountedVariant || session.mountedVariant < 1) return false;
+    return !!getMountedSvelteComponentAnchor(session);
   }
 
   function resolveSvelteComponentAnchor(session = svelteComponentSession) {
