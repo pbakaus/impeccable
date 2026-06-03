@@ -23,9 +23,12 @@ import '../../styles/live-mode-kinpaku.css';
       <span class="live-mode-start-prompt">$</span>
       <code class="live-mode-start-cmd">/impeccable live</code>
       <button class="live-mode-start-copy" type="button" aria-label="Copy command" data-copy="/impeccable live">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="live-mode-start-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+        </svg>
+        <svg class="live-mode-start-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5"></path>
         </svg>
       </button>
     </div>
@@ -228,15 +231,39 @@ import '../../styles/live-mode-kinpaku.css';
 </script>
 
 <script is:inline>
+  const copyResetTimers = new WeakMap();
+
+  function copyWithTextareaFallback(text) {
+    const ta = Object.assign(document.createElement('textarea'), { value: text, style: 'position:fixed;left:-9999px' });
+    document.body.appendChild(ta);
+    ta.select();
+    let copied = true;
+    try { document.execCommand('copy'); } catch { copied = false; }
+    ta.remove();
+    return copied;
+  }
+
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-copy]');
     if (!btn) return;
     const text = btn.getAttribute('data-copy');
     if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      btn.classList.add('is-copied');
-      setTimeout(() => btn.classList.remove('is-copied'), 1500);
-    }).catch(() => {});
+
+    const onCopied = () => {
+      window.clearTimeout(copyResetTimers.get(btn));
+      btn.classList.remove('copied');
+      void btn.offsetWidth;
+      btn.classList.add('copied');
+      copyResetTimers.set(btn, window.setTimeout(() => btn.classList.remove('copied'), 1200));
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(onCopied).catch(() => {
+        if (copyWithTextareaFallback(text)) onCopied();
+      });
+    } else if (copyWithTextareaFallback(text)) {
+      onCopied();
+    }
   });
 
   document.addEventListener('click', (e) => {

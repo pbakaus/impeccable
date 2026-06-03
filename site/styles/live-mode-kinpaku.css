@@ -163,15 +163,75 @@
   place-items: center;
   padding: 4px;
   border-radius: 2px;
-  transition: color 160ms var(--ks-ease);
+  transition:
+    color 160ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
 }
 
 .live-mode-kinpaku .live-mode-start-copy:hover {
   color: var(--ks-kinpaku);
 }
 
-.live-mode-kinpaku .live-mode-start-copy.is-copied {
+.live-mode-kinpaku .live-mode-start-copy:active {
+  transform: scale(0.96);
+}
+
+.live-mode-kinpaku .live-mode-start-copy-icon,
+.live-mode-kinpaku .live-mode-start-check-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.live-mode-kinpaku .live-mode-start-copy-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.live-mode-kinpaku .live-mode-start-check-icon {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.live-mode-kinpaku .live-mode-start-check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.live-mode-kinpaku .live-mode-start-copy.copied {
   color: var(--ks-kinpaku);
+}
+
+.live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-check-icon path {
+  animation: live-mode-check-draw 260ms var(--ks-ease) forwards;
+}
+
+@keyframes live-mode-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-mode-kinpaku .live-mode-start-copy,
+  .live-mode-kinpaku .live-mode-start-copy-icon,
+  .live-mode-kinpaku .live-mode-start-check-icon {
+    transition: none;
+  }
+
+  .live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 
