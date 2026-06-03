@@ -199,6 +199,18 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 // EVENT HANDLERS
 // ============================================
 
+const copyResetTimers = new WeakMap();
+
+function copyWithTextareaFallback(text) {
+	const ta = Object.assign(document.createElement('textarea'), { value: text, style: 'position:fixed;left:-9999px' });
+	document.body.appendChild(ta);
+	ta.select();
+	let copied = true;
+	try { document.execCommand('copy'); } catch { copied = false; }
+	ta.remove();
+	return copied;
+}
+
 // Handle bundle download clicks via event delegation.
 // Each download button carries the full bundle name in data-bundle
 // (currently just "universal") so the handler is just a redirect.
@@ -214,18 +226,18 @@ document.addEventListener("click", (e) => {
 	if (copyBtn) {
 		const textToCopy = copyBtn.dataset.copy;
 		const onCopied = () => {
+			clearTimeout(copyResetTimers.get(copyBtn));
+			copyBtn.classList.remove('copied');
+			void copyBtn.offsetWidth;
 			copyBtn.classList.add('copied');
-			setTimeout(() => copyBtn.classList.remove('copied'), 1500);
+			copyResetTimers.set(copyBtn, setTimeout(() => copyBtn.classList.remove('copied'), 1200));
 		};
 		if (navigator.clipboard?.writeText) {
-			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {});
-		} else {
-			// Fallback for non-HTTPS or older browsers
-			const ta = Object.assign(document.createElement('textarea'), { value: textToCopy, style: 'position:fixed;left:-9999px' });
-			document.body.appendChild(ta);
-			ta.select();
-			try { document.execCommand('copy'); onCopied(); } catch {}
-			ta.remove();
+			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {
+				if (copyWithTextareaFallback(textToCopy)) onCopied();
+			});
+		} else if (copyWithTextareaFallback(textToCopy)) {
+			onCopied();
 		}
 	}
 });

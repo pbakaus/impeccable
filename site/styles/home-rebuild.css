@@ -735,6 +735,7 @@
 /* Compact icon-only copy button nested inside the cmd box, on the right. */
 .home-kinpaku .downloads-rebuild-copy {
   flex: none;
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: 40px;
@@ -744,7 +745,74 @@
   color: var(--card-copy-fg);
   border-radius: 2px;
   cursor: pointer;
-  transition: background 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+  transition:
+    background 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy:active {
+  transform: scale(0.96);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon,
+.home-kinpaku .downloads-rebuild-check-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied {
+  background: var(--card-copy-hover-bg);
+  border-color: currentColor;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+  animation: downloads-check-draw 260ms var(--ks-ease) forwards;
+}
+
+@keyframes downloads-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .downloads-rebuild-copy,
+  .home-kinpaku .downloads-rebuild-copy-icon,
+  .home-kinpaku .downloads-rebuild-check-icon {
+    transition: none;
+  }
+
+  .home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 .home-kinpaku .downloads-rebuild-copy span {
