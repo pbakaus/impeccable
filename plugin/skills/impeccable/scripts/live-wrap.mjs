@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
+import { SVELTE_LIVE_GUIDANCE_REFS } from './live-guidance-refs.mjs';
 import { readBuffer as readManualEditsBuffer } from './live-manual-edits-buffer.mjs';
 import {
   buildSvelteComponentCssAuthoring,
@@ -361,6 +362,7 @@ The agent should insert variant HTML at insertLine.`);
     file: outputRelFile,
     sourceFile: useSvelteComponent ? relTargetFile : undefined,
     previewMode: useSvelteComponent ? 'svelte-component' : undefined,
+    guidanceRefs: useSvelteComponent ? SVELTE_LIVE_GUIDANCE_REFS : undefined,
     componentDir: svelteSession?.componentDir,
     propContract: svelteSession?.propContract,
     sourceStartLine: useSvelteComponent ? startLine + 1 : undefined,

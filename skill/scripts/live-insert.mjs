@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
+import { SVELTE_LIVE_GUIDANCE_REFS } from './live-guidance-refs.mjs';
 import {
   buildSearchQueries,
   findElement,
@@ -217,6 +218,7 @@ Output (JSON):
       file: session.manifestFile,
       sourceFile: relTargetFile,
       previewMode: 'svelte-component',
+      guidanceRefs: SVELTE_LIVE_GUIDANCE_REFS,
       componentDir: session.componentDir,
       propContract: session.propContract,
       insertLine: 1,

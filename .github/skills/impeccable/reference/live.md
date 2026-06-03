@@ -111,7 +111,7 @@ node .github/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVE
 
 The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Write all variants in one edit, then `--reply done`.
 
-For Svelte/SvelteKit targets, `live-insert.mjs` returns `previewMode: "svelte-component"` with `mode: "insert"`, `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each inserted variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`. Insert variants must be non-empty net-new content with a single top-level root, no `data-impeccable-*` attributes, and CSS in each component's `<style>` block. Do **not** edit the route source during generation; the browser mounts the temporary component before/after the live anchor while the user cycles variants. On Accept, `live-accept.mjs` inserts the selected component markup into `sourceFile` immediately and deletes the temp session after the source write succeeds.
+If the helper output includes `guidanceRefs`, read each referenced file before writing variants. If it includes `previewMode: "svelte-component"`, read `reference/live-svelte.md` and follow that adapter contract; the returned `file` is the preview manifest, not the route source.
 
 For non-Svelte targets, on accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
 
@@ -149,26 +149,9 @@ The helper searches ID first, then classes, then tag + class combo. If `event.pa
 
 If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
-Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }`.
+Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring, guidanceRefs? }`.
 
-For Svelte/SvelteKit targets, `live-wrap.mjs` returns `previewMode: "svelte-component"` with `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`; use the `propContract` prop names for dynamic text (`{propName}`), not literal snapshot strings. Put variant CSS in each component's `<style>` block with semantic class selectors (no `@scope`, no `data-impeccable-*`). Reply with `--file` set to the manifest path; the browser dynamically imports and mounts the compiled components so Svelte HMR does not reset page state while the user cycles variants. On Accept, `live-accept.mjs` inlines the accepted component back into `sourceFile` immediately after source promotion succeeds.
-
-**Params on the Svelte component path go in a sidecar, never as an attribute.** Svelte parses `{` inside an attribute value as the start of an expression, so a `data-impeccable-params='[{…}]'` attribute on a component element fails to compile (`Expected token }`). Declare params for this path in `componentDir/params.json`, keyed by variant number, using the exact param schema from section 7:
-
-```json
-{
-  "1": [
-    {"id":"density","kind":"steps","default":"snug","label":"Density","options":[
-      {"value":"airy","label":"Airy"},{"value":"snug","label":"Snug"},{"value":"packed","label":"Packed"}
-    ]}
-  ],
-  "2": [
-    {"id":"accent","kind":"range","min":0,"max":1,"step":0.05,"default":0.5,"label":"Accent"}
-  ]
-}
-```
-
-Author the component `<style>` against `var(--p-<id>, default)` for `range`/`toggle` and `[data-p-<id>="…"]` for `steps`; wrap those selectors in `:global(...)` so the knob values the runtime sets on the mounted root reach your rules. The browser reads `params.json`, docks the panel, and drives `--p-*` / `data-p-*` on the mounted component exactly as it does for the HTML/JSX path.
+If the helper output includes `guidanceRefs`, read each referenced file before writing variants. If it includes `previewMode: "svelte-component"`, read `reference/live-svelte.md` and follow that adapter contract; the returned `file` is the preview manifest, not the route source.
 
 `styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess:
 
@@ -361,7 +344,7 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Hard cap per variant**: at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
 
-**How to declare.** Put a JSON manifest on the variant wrapper (HTML/JSX path). **On the Svelte `svelte-component` path, do not use this attribute** (Svelte can't compile `{` inside an attribute value). Declare params in `componentDir/params.json` keyed by variant number instead (see the Svelte component paragraph in the wrap section). The param schema below is identical for both paths.
+**How to declare.** Put a JSON manifest on the variant wrapper. Adapter paths may use a different carrier; if helper output includes `guidanceRefs`, follow that reference instead. The param schema below stays the same.
 
 ```html
 <div data-impeccable-variant="1" data-impeccable-params='[

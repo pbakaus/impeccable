@@ -35,6 +35,7 @@ import { applySteerEdits } from '../agent.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const LIVE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live.md');
+const LIVE_SVELTE_MD_PATH = path.join(REPO_ROOT, 'skill', 'reference', 'live-svelte.md');
 
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 // DeepSeek model list: https://api-docs.deepseek.com/api/list-models
@@ -241,11 +242,15 @@ export async function createLlmAgent(opts = {}) {
   const log = opts.log || (() => {});
 
   const liveMd = await fs.readFile(LIVE_MD_PATH, 'utf-8');
+  const liveSvelteMd = await fs.readFile(LIVE_SVELTE_MD_PATH, 'utf-8');
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
 
   return {
     async generateVariants(event, context = {}) {
       const isInsert = event.mode === 'insert';
+      const liveSpec = shouldLoadSvelteLiveReference(context)
+        ? `${liveMd}\n\n## Adapter Reference: reference/live-svelte.md\n\n${liveSvelteMd}`
+        : liveMd;
       const baseUserMessage = [
         `Produce variants for the following ${isInsert ? 'insert request' : 'pick'}. Reply with the JSON object only — no prose.`,
         '',
@@ -270,7 +275,7 @@ export async function createLlmAgent(opts = {}) {
                 // per-call volatile content. DeepSeek compatibility support is
                 // provider-reported and best-effort; the usage log below tells us
                 // whether cache reads/writes actually happened.
-                { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
+                { type: 'text', text: liveSpec, cache_control: { type: 'ephemeral' } },
               ],
               messages: [{ role: 'user', content: userMessage }],
             },
@@ -280,7 +285,7 @@ export async function createLlmAgent(opts = {}) {
             },
           );
         } catch (err) {
-          if (attempt === 1) throw err;
+          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw err;
           log(`variant request failed; retrying: ${err.message}`);
           userMessage = [
             baseUserMessage,
@@ -300,7 +305,7 @@ export async function createLlmAgent(opts = {}) {
           `provider=${provider} model=${model} attempt=${attempt + 1} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
         );
         if (!response || !Array.isArray(response.content)) {
-          if (attempt === 1) throw new Error('LLM agent: provider returned an empty variant response');
+          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw new Error('LLM agent: provider returned an empty variant response');
           log('variant response validation failed; retrying: provider returned an empty response');
           userMessage = [
             baseUserMessage,
@@ -320,7 +325,7 @@ export async function createLlmAgent(opts = {}) {
         try {
           parsed = parseVariantResponse(text);
         } catch (err) {
-          if (attempt === 1) throw err;
+          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw err;
           log(`variant response validation failed; retrying: ${err.message.split('\n')[0]}`);
           userMessage = [
             baseUserMessage,
@@ -336,7 +341,7 @@ export async function createLlmAgent(opts = {}) {
           ? validateInsertVariantOutput(parsed, event)
           : (validateVariantVisibleCopy(parsed, event.element) || validateVariantMaterialChange(parsed, event.element));
         if (!validationError) return parsed;
-        if (attempt === 1) throw new Error(`LLM agent: ${validationError}`);
+        if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw new Error(`LLM agent: ${validationError}`);
 
         log(`variant validation failed; retrying: ${validationError}`);
         if (isInsert) {
@@ -360,7 +365,7 @@ export async function createLlmAgent(opts = {}) {
             '',
             'VALIDATION ERROR',
             validationError,
-            `Every variant must preserve this exact normalized visible text: "${expectedText}"`,
+            `Every variant must preserve this exact normalized visible text in the same order: "${expectedText}"`,
             'Use literal visible text in innerHtml, not framework placeholders like {name}, {amount}, ${value}, or {{value}}.',
             'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
             'For non-bare markup, keep the existing visible descendants in place and add a harmless root data attribute or styling hook so the source is not identical.',
@@ -664,6 +669,14 @@ export function validateManualEditPlanningCoverage(parsed, batch) {
   return null;
 }
 
+function shouldLoadSvelteLiveReference(context = {}) {
+  const wrapInfo = context.wrapInfo || {};
+  if (wrapInfo.previewMode === 'svelte-component') return true;
+  if (wrapInfo.styleMode === 'svelte-component') return true;
+  return Array.isArray(wrapInfo.guidanceRefs)
+    && wrapInfo.guidanceRefs.includes('reference/live-svelte.md');
+}
+
 export function buildVariantRequestPayload(event, context = {}) {
   const isInsert = event?.mode === 'insert';
   return {
@@ -684,8 +697,14 @@ export function buildVariantRequestPayload(event, context = {}) {
     } : undefined,
     placeholder: isInsert ? event?.placeholder : undefined,
     wrapInfo: {
+      previewMode: context.wrapInfo?.previewMode,
       styleMode: context.wrapInfo?.styleMode,
       styleTag: context.wrapInfo?.styleTag,
+      file: context.wrapInfo?.file,
+      sourceFile: context.wrapInfo?.sourceFile,
+      componentDir: context.wrapInfo?.componentDir,
+      propContract: context.wrapInfo?.propContract,
+      guidanceRefs: context.wrapInfo?.guidanceRefs,
       cssAuthoring: context.wrapInfo?.cssAuthoring,
     },
   };

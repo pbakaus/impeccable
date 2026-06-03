@@ -1516,7 +1516,7 @@ export async function runAgentLoop({
   while (!signal.aborted) {
     let event;
     try {
-      const res = await fetch(`${base}/poll?token=${token}&timeout=5000`, { signal });
+      const res = await fetch(`${base}/poll?token=${token}&timeout=5000&leaseMs=600000`, { signal });
       event = await res.json();
     } catch (err) {
       if (signal.aborted) return;
@@ -1724,28 +1724,30 @@ export async function runAgentLoop({
         // the accepted content. A real LLM agent would additionally migrate
         // the @scope rules into the project's stylesheet — out of scope for
         // a deterministic test.
+        let completedCarbonizeCleanup = false;
         if (acceptResult.handled === true && acceptResult.carbonize === true && acceptResult.file) {
           if (process.env.IMPECCABLE_E2E_DEBUG) {
             const post = await fs.readFile(path.join(tmp, acceptResult.file), 'utf-8');
             log(`--- post-accept (pre-carbonize) ---\n${post}`);
           }
           await runCarbonizeCleanup({ tmp, file: acceptResult.file, sessionId: event.id, variant: event.variantId });
+          completedCarbonizeCleanup = true;
           log(`carbonize cleanup done on ${acceptResult.file}`);
         }
 
-        const completionType = completionTypeForAcceptResult('accept', acceptResult);
-        await fetch(`${base}/poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token,
-            type: completionType,
-            id: event.id,
-            file: acceptResult.file,
-            message: acceptResult.error,
-            data: acceptResult.carbonize === true ? { carbonize: true, _acceptResult: acceptResult } : { _acceptResult: acceptResult },
-          }),
-          signal,
+        const completionType = completedCarbonizeCleanup
+          ? 'complete'
+          : completionTypeForAcceptResult('accept', acceptResult);
+        await runPollReply({
+          tmp,
+          scriptsDir,
+          id: event.id,
+          status: completionType,
+          file: acceptResult.file,
+          message: acceptResult.error,
+          data: acceptResult.carbonize === true
+            ? { carbonize: true, _acceptResult: acceptResult }
+            : { _acceptResult: acceptResult },
         });
       } catch (err) {
         if (signal.aborted) return;
@@ -1783,8 +1785,9 @@ export async function runAgentLoop({
   }
 }
 
-async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {
+async function runPollReply({ tmp, scriptsDir, id, status, file, message, data }) {
   const args = [path.join(scriptsDir, 'live-poll.mjs'), '--reply', id, status];
+  if (file) args.push('--file', file);
   if (data !== undefined) args.push('--data', JSON.stringify(data));
   if (message) args.push(message);
   await execFileP(process.execPath, args, { cwd: tmp });

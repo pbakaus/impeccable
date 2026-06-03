@@ -95,6 +95,8 @@ The agent should then:
     serverPort: serverInfo.port,
     serverToken: serverInfo.token,
     pageFiles: resolvedFiles,
+    adapter: injectResult.adapter,
+    guidanceRefs: injectResult.guidanceRefs,
     configDrift: drift,
     hasProduct: ctx.hasProduct,
     product: ctx.product,

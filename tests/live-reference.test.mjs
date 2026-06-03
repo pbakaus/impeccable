@@ -129,6 +129,38 @@ describe('live reference authoring contract', () => {
     );
   });
 
+  it('routes Svelte component-preview details through the adapter reference', () => {
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+    const svelteMd = readFileSync(join(ROOT, 'skill/reference/live-svelte.md'), 'utf-8');
+
+    assert.match(liveMd, /guidanceRefs/);
+    assert.match(liveMd, /previewMode: "svelte-component"/);
+    assert.match(liveMd, /reference\/live-svelte\.md/);
+    assert.doesNotMatch(
+      liveMd,
+      /Params on the Svelte component path go in a sidecar/,
+      'Svelte sidecar params details should live in live-svelte.md, not universal live.md',
+    );
+    assert.doesNotMatch(
+      liveMd,
+      /componentDir\/params\.json/,
+      'Universal live.md should not carry Svelte component params file details',
+    );
+
+    for (const pattern of [
+      /adapter: "sveltekit"/,
+      /previewMode: "svelte-component"/,
+      /componentDir/,
+      /v1\.svelte/,
+      /propContract/,
+      /componentDir\/params\.json/,
+      /Do not add `data-impeccable-\*` attributes/,
+      /Do not edit the route source during generation/,
+    ]) {
+      assert.match(svelteMd, pattern, `live-svelte.md missing ${pattern}`);
+    }
+  });
+
   it('passes cssAuthoring into the LLM E2E agent instead of hard-coding scoped CSS', () => {
     const llmAgent = readFileSync(join(ROOT, 'tests/live-e2e/agents/llm-agent.mjs'), 'utf-8');
 
@@ -136,6 +168,16 @@ describe('live reference authoring contract', () => {
       llmAgent,
       /wrapInfo\.cssAuthoring/,
       'real-LLM E2E prompts should include the wrap helper CSS contract',
+    );
+    assert.match(
+      llmAgent,
+      /LIVE_SVELTE_MD_PATH/,
+      'real-LLM E2E prompts should be able to load the Svelte adapter reference',
+    );
+    assert.match(
+      llmAgent,
+      /shouldLoadSvelteLiveReference/,
+      'real-LLM E2E prompts should include live-svelte.md for Svelte component previews',
     );
     assert.doesNotMatch(
       llmAgent,

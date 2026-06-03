@@ -132,6 +132,7 @@ for (const name of listFixtures()) {
         assert.match(ignored, /src\/lib\/impeccable\/__runtime\.js/);
         assert.match(ignored, /src\/lib\/impeccable\/a4ac4e74\/v3\.svelte/);
         if (result.adapter === 'sveltekit') {
+          assert.deepEqual(result.guidanceRefs, ['reference/live-svelte.md']);
           const layout = readFileSync(join(tmp, 'src/routes/+layout.svelte'), 'utf-8');
           const appHtml = readFileSync(join(tmp, 'src/app.html'), 'utf-8');
           const root = readFileSync(join(tmp, 'src/lib/impeccable/ImpeccableLiveRoot.svelte'), 'utf-8');
@@ -161,6 +162,7 @@ for (const name of listFixtures()) {
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'remove succeeded');
         if (result.adapter === 'sveltekit') {
+          assert.deepEqual(result.guidanceRefs, ['reference/live-svelte.md']);
           const layout = readFileSync(join(tmp, 'src/routes/+layout.svelte'), 'utf-8');
           const appHtml = readFileSync(join(tmp, 'src/app.html'), 'utf-8');
           assert.doesNotMatch(layout, /ImpeccableLiveRoot/);
@@ -217,6 +219,46 @@ for (const name of listFixtures()) {
             }
             if (wc.expectedPreviewMode) {
               assert.equal(parsed.previewMode, wc.expectedPreviewMode, `wrap case "${wc.name}": preview mode`);
+            }
+            if (parsed.previewMode === 'svelte-component') {
+              assert.deepEqual(parsed.guidanceRefs, ['reference/live-svelte.md'], `wrap case "${wc.name}": guidance refs`);
+            }
+          }
+        }
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('live-insert routes to the expected source when configured', () => {
+      const { tmp, fixture } = stageFixture(name);
+      try {
+        for (const [i, ic] of (fixture.insertCases || []).entries()) {
+          const flags = [];
+          if (ic.args.elementId) flags.push('--element-id', ic.args.elementId);
+          if (ic.args.classes) flags.push('--classes', ic.args.classes);
+          if (ic.args.tag) flags.push('--tag', ic.args.tag);
+          flags.push('--id', `inserttest${i}`, '--count', '3', '--position', ic.args.position || 'after');
+
+          const out = runScript('live-insert.mjs', flags, { cwd: tmp });
+          const payload = typeof out === 'string' ? out : (out.error || out.stderr);
+          const parsed = JSON.parse(payload.trim().split('\n').pop());
+
+          if (ic.expectsError) {
+            assert.equal(parsed.error, ic.expectsError, `insert case "${ic.name}": expected error ${ic.expectsError}, got ${JSON.stringify(parsed)}`);
+          } else {
+            assert.equal(parsed.file, ic.expectedFile, `insert case "${ic.name}": landed in ${parsed.file}, expected ${ic.expectedFile}`);
+            if (ic.expectedSourceFile) {
+              assert.equal(parsed.sourceFile, ic.expectedSourceFile, `insert case "${ic.name}": source file`);
+            }
+            if (ic.expectedPreviewMode) {
+              assert.equal(parsed.previewMode, ic.expectedPreviewMode, `insert case "${ic.name}": preview mode`);
+            }
+            if (ic.expectedMode) {
+              assert.equal(parsed.mode, ic.expectedMode, `insert case "${ic.name}": mode`);
+            }
+            if (parsed.previewMode === 'svelte-component') {
+              assert.deepEqual(parsed.guidanceRefs, ['reference/live-svelte.md'], `insert case "${ic.name}": guidance refs`);
             }
           }
         }
