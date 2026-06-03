@@ -18,7 +18,10 @@
 <main class="page">
   <header class="expense-header">
     <h1 class="hero-title">Offene Ausgaben</h1>
-    <span class="open-count" data-testid="open-count">{expenses.length} offen</span>
+    <span class="count-pill open-count" data-testid="open-count">
+      <span class="count-pill__num">{expenses.length}</span>
+      <span class="count-pill__label">offen</span>
+    </span>
     <button class="add-button" data-testid="add-expense" type="button" onclick={addExpense}>
       Ausgabe hinzufügen
     </button>
@@ -71,12 +74,20 @@
   }
 
   .open-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     border-radius: 999px;
     background: #eef4ef;
     color: #162820;
     padding: 4px 12px;
     font-size: 13px;
     font-weight: 700;
+  }
+
+  .count-pill__num,
+  .count-pill__label {
+    display: inline-block;
   }
 
   .add-button {

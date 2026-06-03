@@ -4886,6 +4886,7 @@
       wrapper.appendChild(mountTarget);
 
       const insertMode = isSvelteInsertManifest(manifest);
+      const propValues = insertMode ? {} : buildSveltePropValuesFromLiveElement(liveEl, manifest);
       const detachedOriginal = insertMode ? null : liveEl;
       if (insertMode) {
         removeInsertPlaceholderDom();
@@ -4905,7 +4906,7 @@
         mountedInstance: null,
         mountedVariant: 0,
         runtime: null,
-        propValues: buildSveltePropValuesFromLiveElement(detachedOriginal, manifest),
+        propValues,
         paramsByVariant,
       };
       if (pendingSvelteComponentRetryObserver) {
@@ -5096,49 +5097,143 @@
     const map = new Map();
     if (!sourceOriginal || !liveOriginal) return map;
 
-    const sourceNodes = collectTextNodes(sourceOriginal);
-    const liveTexts = collectTextNodes(liveOriginal)
-      .map((node) => normalizePreviewText(node.nodeValue || ''));
+    const bindings = collectSvelteExpressionTextBindings(sourceOriginal);
+    for (const binding of bindings) {
+      const liveParent = elementAtChildPath(liveOriginal, binding.parentPath);
+      const liveText = significantDirectTextAt(liveParent, binding.textIndex);
+      addSvelteTextMappings(map, binding.sourceText, liveText, binding.tokens);
+    }
 
-    for (let sourceIndex = 0; sourceIndex < sourceNodes.length; sourceIndex += 1) {
-      const sourceNode = sourceNodes[sourceIndex];
-      const sourceText = sourceNode.nodeValue || '';
-      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
-      if (tokens.length === 0) continue;
-
-      const liveText = liveTexts[sourceIndex] || '';
-      if (!liveText) continue;
-
-      if (tokens.length === 1) {
-        const token = tokens[0];
-        const normalizedSource = normalizePreviewText(sourceText);
-        if (normalizedSource === token) {
-          map.set(token, liveText);
-          continue;
-        }
-
-        const match = liveText.match(expressionTextMatcher(sourceText, [token]));
-        if (match && match[1]) map.set(token, match[1].trim());
-        continue;
-      }
-
-      if (normalizePreviewText(sourceText) === tokens.join(' ')) {
-        const pieces = liveText.split(/\s+/).filter(Boolean);
-        if (pieces.length === tokens.length) {
-          tokens.forEach((token, tokenIndex) => map.set(token, pieces[tokenIndex]));
-        }
-        continue;
-      }
-
-      const match = liveText.match(expressionTextMatcher(sourceText, tokens));
-      if (match) {
-        tokens.forEach((token, tokenIndex) => {
-          if (match[tokenIndex + 1]) map.set(token, match[tokenIndex + 1].trim());
-        });
-      }
+    const fallback = buildSvelteExpressionTextMapBySignificantOrder(sourceOriginal, liveOriginal);
+    for (const [token, value] of fallback) {
+      if (!map.has(token) || !map.get(token)) map.set(token, value);
     }
 
     return map;
+  }
+
+  function collectSvelteExpressionTextBindings(root) {
+    if (!root) return [];
+    const bindings = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const sourceText = node.nodeValue || '';
+      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+      if (tokens.length > 0 && node.parentElement) {
+        bindings.push({
+          sourceText,
+          tokens,
+          parentPath: elementChildPath(root, node.parentElement),
+          textIndex: significantDirectTextNodeIndex(node),
+        });
+      }
+      node = walker.nextNode();
+    }
+    return bindings;
+  }
+
+  function elementChildPath(root, element) {
+    const path = [];
+    let node = element;
+    while (node && node !== root) {
+      const parent = node.parentElement;
+      if (!parent) return [];
+      path.unshift(Array.prototype.indexOf.call(parent.children, node));
+      node = parent;
+    }
+    return path;
+  }
+
+  function elementAtChildPath(root, path) {
+    let node = root;
+    for (const index of path || []) {
+      if (!node?.children || index < 0 || index >= node.children.length) return null;
+      node = node.children[index];
+    }
+    return node;
+  }
+
+  function significantDirectTextAt(parent, index) {
+    const nodes = significantDirectTextNodes(parent);
+    return normalizePreviewText(nodes[index]?.nodeValue || '');
+  }
+
+  function significantDirectTextNodeIndex(textNode) {
+    if (!textNode?.parentNode) return 0;
+    let index = 0;
+    for (const child of textNode.parentNode.childNodes) {
+      if (child === textNode) return index;
+      if (isSignificantTextNode(child)) index += 1;
+    }
+    return index;
+  }
+
+  function significantDirectTextNodes(parent) {
+    if (!parent) return [];
+    return Array.from(parent.childNodes || []).filter(isSignificantTextNode);
+  }
+
+  function isSignificantTextNode(node) {
+    return node?.nodeType === 3 && normalizePreviewText(node.nodeValue || '');
+  }
+
+  function buildSvelteExpressionTextMapBySignificantOrder(sourceOriginal, liveOriginal) {
+    const map = new Map();
+    const sourceNodes = collectSignificantTextNodes(sourceOriginal);
+    const liveTexts = collectSignificantTextNodes(liveOriginal)
+      .map((node) => normalizePreviewText(node.nodeValue || ''));
+    for (let sourceIndex = 0; sourceIndex < sourceNodes.length; sourceIndex += 1) {
+      const sourceText = sourceNodes[sourceIndex].nodeValue || '';
+      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+      if (tokens.length === 0) continue;
+      addSvelteTextMappings(map, sourceText, liveTexts[sourceIndex] || '', tokens);
+    }
+    return map;
+  }
+
+  function collectSignificantTextNodes(root) {
+    if (!root) return [];
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (isSignificantTextNode(node)) nodes.push(node);
+      node = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  function addSvelteTextMappings(map, sourceText, liveText, tokens) {
+    if (!liveText || !tokens?.length) return;
+
+    if (tokens.length === 1) {
+      const token = tokens[0];
+      const normalizedSource = normalizePreviewText(sourceText);
+      if (normalizedSource === token) {
+        map.set(token, liveText);
+        return;
+      }
+
+      const match = liveText.match(expressionTextMatcher(sourceText, [token]));
+      if (match && match[1] != null) map.set(token, match[1].trim());
+      return;
+    }
+
+    if (normalizePreviewText(sourceText) === tokens.join(' ')) {
+      const pieces = liveText.split(/\s+/).filter(Boolean);
+      if (pieces.length === tokens.length) {
+        tokens.forEach((token, tokenIndex) => map.set(token, pieces[tokenIndex]));
+      }
+      return;
+    }
+
+    const match = liveText.match(expressionTextMatcher(sourceText, tokens));
+    if (match) {
+      tokens.forEach((token, tokenIndex) => {
+        if (match[tokenIndex + 1] != null) map.set(token, match[tokenIndex + 1].trim());
+      });
+    }
   }
 
   function expressionTextMatcher(sourceText, tokens) {
@@ -5153,18 +5248,6 @@
     }
     pattern += escapeRegExp(sourceText.slice(cursor)).replace(/\s+/g, '\\s*') + '$';
     return new RegExp(pattern);
-  }
-
-  function collectTextNodes(root) {
-    if (!root) return [];
-    const nodes = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      nodes.push(node);
-      node = walker.nextNode();
-    }
-    return nodes;
   }
 
   function normalizePreviewText(value) {

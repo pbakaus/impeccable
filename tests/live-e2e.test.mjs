@@ -226,7 +226,7 @@ for (const { name, fixture } of fixtures) {
           });
         } else {
           t.diagnostic(`Picking ${pickSelector}`);
-          await pickElement(page, pickSelector);
+          await pickElement(page, pickSelector, { position: fixture.runtime.pickPosition || null });
 
           if (process.env.IMPECCABLE_E2E_DEBUG) {
             const barText = await page.evaluate(() => {
@@ -351,6 +351,9 @@ for (const { name, fixture } of fixtures) {
             visible = await getVisibleVariant(page);
           }
           assert.equal(visible, targetVariant, `variant ${targetVariant} visible`);
+          if (fixture.runtime.variantTextProbe) {
+            await assertVariantTextProbe(page, fixture.runtime.variantTextProbe, `variant ${targetVariant}`);
+          }
           if (agentMode === 'fake' && targetVariant === 2 && !checkedVariantTwoStyle) {
             await page.waitForFunction((sel) => {
               const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
@@ -1327,6 +1330,15 @@ async function assertStateProbe(page, probe, label, { baseline = null } = {}) {
     }
   }
   return snapshot;
+}
+
+async function assertVariantTextProbe(page, probe, label) {
+  const actual = await page.locator(probe.selector).first().textContent({ timeout: 5_000 });
+  assert.equal(
+    normalizeText(actual),
+    normalizeText(probe.expectedText),
+    `variantTextProbe text ${label}`,
+  );
 }
 
 function normalizeText(value) {

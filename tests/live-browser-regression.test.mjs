@@ -355,7 +355,7 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('Svelte prop text mapping keeps mixed dynamic/static text aligned by source text node', () => {
+  it('Svelte prop text mapping captures live values before replacement and matches significant text structurally', () => {
     assert.doesNotMatch(
       SOURCE,
       /const sourceNodes = collectTextNodes\(sourceOriginal\)\s*\.filter\(\(node\) => \/\{\\\[\^{}\]\+\}\//,
@@ -363,8 +363,38 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /for \(let sourceIndex = 0; sourceIndex < sourceNodes\.length; sourceIndex \+= 1\)[\s\S]{0,260}?const liveText = liveTexts\[sourceIndex\] \|\| '';/,
-      'Svelte prop mapping should align source and live text by text-node index',
+      /const propValues = insertMode \? \{\} : buildSveltePropValuesFromLiveElement\(liveEl, manifest\);[\s\S]{0,600}?replaceChild\(wrapper, liveEl\);/,
+      'Svelte component injection must capture prop values from the connected live element before replacing it with the component mount wrapper',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /propValues: buildSveltePropValuesFromLiveElement\(detachedOriginal, manifest\)/,
+      'Svelte prop values must not be derived from the detached original after DOM replacement',
+    );
+    assert.match(
+      SOURCE,
+      /function collectSvelteExpressionTextBindings\(root\)[\s\S]{0,600}?parentPath: elementChildPath\(root, node\.parentElement\)[\s\S]{0,160}?textIndex: significantDirectTextNodeIndex\(node\)/,
+      'Svelte prop mapping should record each source expression by element-child path and significant text-node index',
+    );
+    assert.match(
+      SOURCE,
+      /function elementAtChildPath\(root, path\)[\s\S]{0,300}?node = node\.children\[index\];/,
+      'Svelte prop mapping should resolve the matching live parent by element-child path instead of raw global text-node order',
+    );
+    assert.match(
+      SOURCE,
+      /function significantDirectTextNodes\(parent\)[\s\S]{0,120}?filter\(isSignificantTextNode\)/,
+      'Svelte prop mapping should ignore indentation-only source text nodes',
+    );
+    assert.match(
+      SOURCE,
+      /function buildSvelteExpressionTextMapBySignificantOrder\(sourceOriginal, liveOriginal\)/,
+      'Svelte prop mapping should keep a significant-text fallback for compact one-line mixed text',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /const liveText = liveTexts\[sourceIndex\] \|\| '';/,
+      'Svelte prop mapping must not depend on raw global text-node indexes, which differ between source whitespace and rendered Svelte DOM',
     );
     assert.match(
       SOURCE,

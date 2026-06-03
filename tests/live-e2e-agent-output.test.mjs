@@ -218,6 +218,30 @@ describe('live-e2e agent output translation', () => {
     );
   });
 
+  it('maps split Svelte dynamic/static text without dropping the state value', () => {
+    const contract = [{ prop: 'length', expr: 'expenses.length' }];
+    const propValues = buildSveltePropTextValues(
+      [
+        '<span data-testid="open-count">',
+        '  <span>{expenses.length}</span>',
+        '  <span>offen</span>',
+        '</span>',
+      ].join('\n'),
+      '<span data-testid="open-count"><span>2</span> <span>offen</span></span>',
+      contract,
+    );
+
+    assert.equal(propValues.get('length'), '2');
+    assert.equal(
+      substituteLiveTextWithProps(
+        '<span data-testid="open-count"><span class="num">2</span><span class="label">offen</span></span>',
+        contract,
+        propValues,
+      ),
+      '<span data-testid="open-count"><span class="num">{length}</span><span class="label">offen</span></span>',
+    );
+  });
+
   it('targets only the styled element when same-tag siblings are present', () => {
     const output = normalizeVariantOutput(
       {
