@@ -337,14 +337,32 @@ function cs(el) {
   return (el.ownerDocument.defaultView || window).getComputedStyle(el);
 }
 
+function parseCssAlpha(raw) {
+  if (raw == null) return 1;
+  const value = String(raw).trim();
+  if (!value) return 1;
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(0, Math.min(1, value.endsWith('%') ? n / 100 : n));
+}
+
+function cssColorAlpha(s) {
+  if (!s) return 0;
+  const value = String(s).trim().toLowerCase();
+  if (!value || value === 'transparent') return 0;
+  const fn = /^(rgba?|hsla?|oklch|oklab|hwb|color)\((.*)\)$/.exec(value);
+  if (!fn) return 1;
+  const body = fn[2].trim();
+  if (body.includes('/')) return parseCssAlpha(body.split('/').pop());
+  const commaParts = body.split(',').map((p) => p.trim());
+  if ((fn[1] === 'rgba' || fn[1] === 'hsla') && commaParts.length >= 4) {
+    return parseCssAlpha(commaParts[3]);
+  }
+  return 1;
+}
+
 function isTransparentColor(s) {
-  if (!s) return true;
-  if (s === 'transparent') return true;
-  const m = /rgba?\(([^)]+)\)/.exec(s);
-  if (!m) return false;
-  const parts = m[1].split(',').map((p) => p.trim());
-  if (parts.length === 4) return parseFloat(parts[3]) === 0;
-  return false;
+  return cssColorAlpha(s) <= 0;
 }
 
 function resolveCanvasBackground(el) {
@@ -426,6 +444,11 @@ function paintsShaderProxySurface(node) {
   return !isTransparentColor(s.backgroundColor)
     || (s.backgroundImage && s.backgroundImage !== 'none')
     || paintsBackdrop(node);
+}
+function paintsOpaqueOwnShaderSurface(el) {
+  const s = cs(el);
+  if (s.backgroundImage && s.backgroundImage !== 'none') return true;
+  return cssColorAlpha(s.backgroundColor) >= 0.98;
 }
 function findShaderProxyCaptureRoot(el) {
   const doc = el.ownerDocument;
@@ -581,10 +604,17 @@ async function captureElementToBlob(el, useAncestorCropProxy = false) {
   const opts = { scale: Math.min(window.devicePixelRatio || 1, 2) };
   if (useAncestorCropProxy) {
     try {
+      if (paintsOpaqueOwnShaderSurface(el)) {
+        const canvas = await ms.domToCanvas(el, opts);
+        const cctx = canvas.getContext('2d', { willReadFrequently: true });
+        const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+        const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+        return { blob, paper, note: 'direct opaque <' + el.tagName.toLowerCase() + '>' };
+      }
       const { blob, paper, root } = await captureElementFromRenderedAncestor(ms, el, opts);
       return { blob, paper, note: 'ancestor crop <' + root.tagName.toLowerCase() + '>' };
     } catch (err) {
-      console.warn('[shader-lab] ancestor crop capture failed, falling back to element capture:', err);
+      console.warn('[shader-lab] shader proxy capture failed, falling back to element capture:', err);
     }
   }
   const bg = resolveCanvasBackground(el);

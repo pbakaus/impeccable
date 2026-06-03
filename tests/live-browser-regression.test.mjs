@@ -74,26 +74,31 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('uses direct shader capture for painted Svelte selections and ancestor crop only for transparent ones', () => {
+  it('uses direct shader capture for opaque Svelte selections and ancestor crop for translucent ones', () => {
     assert.match(
       SOURCE,
-      /function paintsOwnShaderSurface\(el\) \{[\s\S]{0,260}?backgroundColor[\s\S]{0,180}?backgroundImage && s\.backgroundImage !== 'none'/,
-      'painted Svelte selections should be detected by their own background color or background image',
+      /function cssColorAlpha\(s\) \{[\s\S]{0,420}?body\.includes\('\/'\)[\s\S]{0,260}?fn\[1\] === 'rgba' \|\| fn\[1\] === 'hsla'[\s\S]{0,160}?return 1;/,
+      'shader capture must parse CSS alpha values, including modern slash-alpha colors and rgba()/hsla()',
+    );
+    assert.match(
+      SOURCE,
+      /function paintsOpaqueOwnShaderSurface\(el\) \{[\s\S]{0,180}?backgroundImage && s\.backgroundImage !== 'none'[\s\S]{0,120}?cssColorAlpha\(s\.backgroundColor\) >= 0\.98;/,
+      'direct Svelte shader capture should be reserved for opaque own backgrounds or background images',
     );
     assert.match(
       SOURCE,
       /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
-      'transparent Svelte selections may still choose the nearest painted ancestor, not the document root',
+      'translucent or transparent Svelte selections may still choose the nearest painted ancestor, not the document root',
     );
     assert.match(
       SOURCE,
       /async function captureElementDirectForShader\(ms, el, opts\) \{[\s\S]{0,240}?ms\.domToCanvas\(el, opts\)[\s\S]{0,520}?buildShaderCaptureMeta\('direct-selected-element', el, el/,
-      'painted Svelte selections should capture the selected element itself and record direct-selected-element metadata',
+      'opaque Svelte selections should capture the selected element itself and record direct-selected-element metadata',
     );
     assert.match(
       SOURCE,
       /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);[\s\S]{0,420}?buildShaderCaptureMeta\('ancestor-crop', el, captureRoot/,
-      'transparent Svelte selections should render the minimal painted ancestor, crop the selected rect, and record ancestor-crop metadata',
+      'translucent Svelte selections should render the minimal painted ancestor, crop the selected rect, and record ancestor-crop metadata',
     );
     assert.match(
       SOURCE,
@@ -102,8 +107,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,260}?hideCaptureChromeForShaderProxy\(\(\) => paintsOwnShaderSurface\(el\)[\s\S]{0,180}?captureElementDirectForShader\(ms, el, opts\)[\s\S]{0,120}?captureElementFromRenderedAncestor\(ms, el, opts\)[\s\S]{0,180}?lastShaderCaptureMeta = result\.shaderCaptureMeta \|\| null;/,
-      'Svelte shader capture should choose direct capture for painted selections before falling back to the transparent ancestor crop',
+      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,260}?hideCaptureChromeForShaderProxy\(\(\) => paintsOpaqueOwnShaderSurface\(el\)[\s\S]{0,180}?captureElementDirectForShader\(ms, el, opts\)[\s\S]{0,120}?captureElementFromRenderedAncestor\(ms, el, opts\)[\s\S]{0,180}?lastShaderCaptureMeta = result\.shaderCaptureMeta \|\| null;/,
+      'Svelte shader capture should choose direct capture only for opaque selected surfaces before falling back to the composited ancestor crop',
     );
     assert.match(
       SOURCE,
@@ -122,8 +127,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.doesNotMatch(
       SOURCE,
-      /isSemiTransparentOwnBackground|findCompositedBackdropAncestor|compositeRgbOver|cssColorToRgba01/,
-      'the shader fix should not depend on semi-transparent CSS special cases',
+      /function paintsOwnShaderSurface\(el\)/,
+      'do not regress to treating every non-transparent own background as safe for direct shader capture',
     );
   });
 

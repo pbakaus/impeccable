@@ -6348,16 +6348,33 @@
     return inlineFontUrls(chunks.join('\n'));
   }
 
-  // True if `s` is a computed color string that renders as nothing
-  // (explicit `transparent`, or `rgba(...)` with alpha 0).
+  function parseCssAlpha(raw) {
+    if (raw == null) return 1;
+    const value = String(raw).trim();
+    if (!value) return 1;
+    const n = Number.parseFloat(value);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0, Math.min(1, value.endsWith('%') ? n / 100 : n));
+  }
+
+  function cssColorAlpha(s) {
+    if (!s) return 0;
+    const value = String(s).trim().toLowerCase();
+    if (!value || value === 'transparent') return 0;
+    const fn = /^(rgba?|hsla?|oklch|oklab|hwb|color)\((.*)\)$/.exec(value);
+    if (!fn) return 1;
+    const body = fn[2].trim();
+    if (body.includes('/')) return parseCssAlpha(body.split('/').pop());
+    const commaParts = body.split(',').map((p) => p.trim());
+    if ((fn[1] === 'rgba' || fn[1] === 'hsla') && commaParts.length >= 4) {
+      return parseCssAlpha(commaParts[3]);
+    }
+    return 1;
+  }
+
+  // True if `s` is a computed color string that renders as nothing.
   function isTransparentColor(s) {
-    if (!s) return true;
-    if (s === 'transparent') return true;
-    const m = /rgba?\(([^)]+)\)/.exec(s);
-    if (!m) return false;
-    const parts = m[1].split(',').map((p) => p.trim());
-    if (parts.length === 4) return parseFloat(parts[3]) === 0;
-    return false;
+    return cssColorAlpha(s) <= 0;
   }
 
   // modern-screenshot force-sets `background-color: X !important` on the
@@ -6447,11 +6464,11 @@
       || paintsBackdrop(node);
   }
 
-  function paintsOwnShaderSurface(el) {
+  function paintsOpaqueOwnShaderSurface(el) {
     if (!el) return false;
     const s = getComputedStyle(el);
-    return !isTransparentColor(s.backgroundColor)
-      || (s.backgroundImage && s.backgroundImage !== 'none');
+    if (s.backgroundImage && s.backgroundImage !== 'none') return true;
+    return cssColorAlpha(s.backgroundColor) >= 0.98;
   }
 
   function findShaderProxyCaptureRoot(el) {
@@ -6581,13 +6598,13 @@
       };
       if (shouldUseAncestorCropShaderProxy(el)) {
         try {
-          const result = await hideCaptureChromeForShaderProxy(() => paintsOwnShaderSurface(el)
+          const result = await hideCaptureChromeForShaderProxy(() => paintsOpaqueOwnShaderSurface(el)
             ? captureElementDirectForShader(ms, el, opts)
             : captureElementFromRenderedAncestor(ms, el, opts));
           lastShaderCaptureMeta = result.shaderCaptureMeta || null;
           return result;
         } catch (err) {
-          console.warn('[impeccable] Svelte ancestor crop capture failed, falling back to element capture:', err);
+          console.warn('[impeccable] Svelte shader proxy capture failed, falling back to element capture:', err);
         }
       }
       const bg = resolveCanvasBackground(el);
