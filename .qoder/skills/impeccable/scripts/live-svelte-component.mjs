@@ -309,7 +309,7 @@ function bakeParamValuesInCss(cssLines, paramValues) {
 
 function sanitizeAcceptedSvelteCss(cssLines, variantNum, paramValues = null, rootTag = 'div') {
   const css = String((cssLines || []).join('\n'));
-  if (!/data-impeccable-variant|impeccable-variant-ready/.test(css)) return cssLines;
+  if (!/data-impeccable-variant|impeccable-variant-ready|data-p-[A-Za-z0-9_-]+/.test(css)) return cssLines;
 
   const rules = parseCssRules(css);
   const output = [];
@@ -438,17 +438,38 @@ function rewriteParamSelectors(selector, paramValues) {
   const next = selector.replace(/\[data-p-([A-Za-z0-9_-]+)(?:=(["'])(.*?)\2)?\]/g, (_match, key, _quote, expected) => {
     if (!paramValues || !Object.prototype.hasOwnProperty.call(paramValues, key)) return '';
     const actual = paramValues[key];
-    if (expected != null && String(actual) !== String(expected)) {
+    if (expected != null && !paramSelectorValueMatches(actual, expected)) {
       keep = false;
       return '';
     }
-    if (expected == null && (actual === false || actual == null || actual === 'false' || actual === 'off' || actual === '0')) {
+    if (expected == null && !paramValueIsTruthy(actual)) {
       keep = false;
       return '';
     }
     return '';
   });
   return { keep, selector: next };
+}
+
+function paramSelectorValueMatches(actual, expected) {
+  if (String(actual) === String(expected)) return true;
+  const actualBool = normalizeParamBoolean(actual);
+  const expectedBool = normalizeParamBoolean(expected);
+  return actualBool !== null && expectedBool !== null && actualBool === expectedBool;
+}
+
+function paramValueIsTruthy(value) {
+  const normalized = normalizeParamBoolean(value);
+  if (normalized !== null) return normalized;
+  return value != null && String(value) !== '';
+}
+
+function normalizeParamBoolean(value) {
+  if (value === true || value === false) return value;
+  const text = String(value).trim().toLowerCase();
+  if (text === 'true' || text === 'on' || text === '1') return true;
+  if (text === 'false' || text === 'off' || text === '0') return false;
+  return null;
 }
 
 function splitSelectorList(prelude) {

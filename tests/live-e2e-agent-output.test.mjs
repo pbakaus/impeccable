@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { htmlToJsx, normalizeVariantOutput, svelteCssForVariant } from './live-e2e/agent.mjs';
+import {
+  buildSveltePropTextValues,
+  htmlToJsx,
+  normalizeVariantOutput,
+  substituteLiveTextWithProps,
+  svelteCssForVariant,
+} from './live-e2e/agent.mjs';
 
 describe('live-e2e agent output translation', () => {
   it('converts HTML class and inline style attributes to JSX syntax', () => {
@@ -191,6 +197,25 @@ describe('live-e2e agent output translation', () => {
     assert.match(output, /article\s*\{\s*border-color:\s*gold;/);
     assert.doesNotMatch(output, /:global\(\s*\)/);
     assert.doesNotMatch(output, /data-impeccable-variant/);
+  });
+
+  it('maps mixed Svelte dynamic/static text without dropping the static label', () => {
+    const contract = [{ prop: 'length', expr: 'expenses.length' }];
+    const propValues = buildSveltePropTextValues(
+      '<span class="open-count">{expenses.length} offen</span>',
+      '<span class="open-count svelte-1uha8ag">1 offen</span>',
+      contract,
+    );
+
+    assert.equal(propValues.get('length'), '1');
+    assert.equal(
+      substituteLiveTextWithProps(
+        '<span class="open-count"><span class="variant-text">1 offen</span></span>',
+        contract,
+        propValues,
+      ),
+      '<span class="open-count"><span class="variant-text">{length} offen</span></span>',
+    );
   });
 
   it('targets only the styled element when same-tag siblings are present', () => {

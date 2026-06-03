@@ -2795,7 +2795,7 @@
     } else if (param.kind === 'toggle') {
       const on = !!value;
       variantEl.style.setProperty('--p-' + param.id, on ? '1' : '0');
-      if (on) variantEl.setAttribute(attr, 'on');
+      if (on) variantEl.setAttribute(attr, 'true');
       else variantEl.removeAttribute(attr);
     } else if (param.kind === 'steps') {
       variantEl.setAttribute(attr, String(value));
@@ -5096,19 +5096,17 @@
     const map = new Map();
     if (!sourceOriginal || !liveOriginal) return map;
 
-    const sourceNodes = collectTextNodes(sourceOriginal)
-      .filter((node) => /\{[^{}]+\}/.test(node.nodeValue || ''));
+    const sourceNodes = collectTextNodes(sourceOriginal);
     const liveTexts = collectTextNodes(liveOriginal)
-      .map((node) => normalizePreviewText(node.nodeValue || ''))
-      .filter(Boolean);
-    let liveIndex = 0;
+      .map((node) => normalizePreviewText(node.nodeValue || ''));
 
-    for (const sourceNode of sourceNodes) {
+    for (let sourceIndex = 0; sourceIndex < sourceNodes.length; sourceIndex += 1) {
+      const sourceNode = sourceNodes[sourceIndex];
       const sourceText = sourceNode.nodeValue || '';
       const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
       if (tokens.length === 0) continue;
 
-      const liveText = liveTexts[liveIndex++] || '';
+      const liveText = liveTexts[sourceIndex] || '';
       if (!liveText) continue;
 
       if (tokens.length === 1) {
@@ -5125,10 +5123,18 @@
       }
 
       if (normalizePreviewText(sourceText) === tokens.join(' ')) {
-        for (const token of tokens) {
-          const tokenLiveText = liveTexts[liveIndex - 1] || '';
-          if (tokenLiveText) map.set(token, tokenLiveText);
+        const pieces = liveText.split(/\s+/).filter(Boolean);
+        if (pieces.length === tokens.length) {
+          tokens.forEach((token, tokenIndex) => map.set(token, pieces[tokenIndex]));
         }
+        continue;
+      }
+
+      const match = liveText.match(expressionTextMatcher(sourceText, tokens));
+      if (match) {
+        tokens.forEach((token, tokenIndex) => {
+          if (match[tokenIndex + 1]) map.set(token, match[tokenIndex + 1].trim());
+        });
       }
     }
 

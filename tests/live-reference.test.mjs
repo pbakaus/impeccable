@@ -155,6 +155,8 @@ describe('live reference authoring contract', () => {
       /propContract/,
       /componentDir\/params\.json/,
       /visually distinct from the original and from each other/,
+      /mixed dynamic\/static text/,
+      /\{count\} offen/,
       /Do not add `data-impeccable-\*` attributes/,
       /Do not edit the route source during generation/,
     ]) {

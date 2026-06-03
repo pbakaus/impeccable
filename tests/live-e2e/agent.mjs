@@ -1341,14 +1341,20 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
   const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
   const propNames = contract.map((entry) => entry.prop);
   const baseMarkup = isInsert ? '' : substituteSvelteExprsWithProps(manifest.originalMarkup || '', contract).trim();
-  const textValues = isInsert ? [] : extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
+  const propTextValues = isInsert
+    ? new Map()
+    : buildSveltePropTextValues(
+      manifest.originalMarkup || '',
+      event.element?.outerHTML || event.element?.textContent || '',
+      contract,
+    );
   const paramsByVariant = {};
 
   for (let i = 0; i < output.variants.length; i++) {
     const variantId = i + 1;
     const variant = output.variants[i];
     const tag = firstTagName(variant.innerHtml) || firstTagName(baseMarkup) || 'div';
-    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, textValues).trim();
+    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, propTextValues).trim();
     if (!isInsert && contract.length > 0 && !propNames.some((name) => markup.includes(`{${name}}`))) {
       markup = mergeTopLevelAttrs(baseMarkup, variant.innerHtml || '') || baseMarkup;
     }
@@ -1401,13 +1407,67 @@ function substituteSvelteExprsWithProps(markup, contract) {
   return out;
 }
 
-function substituteLiveTextWithProps(markup, contract, textValues) {
-  let out = String(markup || '');
-  for (let i = 0; i < contract.length; i++) {
-    const value = textValues[i];
+export function substituteLiveTextWithProps(markup, contract, propTextValues) {
+  const replacements = contract
+    .map((entry) => ({ entry, value: propTextValues instanceof Map ? propTextValues.get(entry.prop) : propTextValues?.[entry.prop] }))
+    .filter(({ value }) => value);
+  if (replacements.length === 0) return String(markup || '');
+  return String(markup || '')
+    .split(/(<[^>]+>)/g)
+    .map((part) => {
+      if (part.startsWith('<') && part.endsWith('>')) return part;
+      let out = part;
+      for (const { entry, value } of replacements) {
+        out = out.split(htmlEscape(value)).join(`{${entry.prop}}`);
+        out = out.split(value).join(`{${entry.prop}}`);
+      }
+      return out;
+    })
+    .join('');
+}
+
+export function buildSveltePropTextValues(originalMarkup, liveMarkup, contract) {
+  const sourceTexts = extractTextPieces(originalMarkup);
+  const liveTexts = extractTextPieces(liveMarkup);
+  const tokenValues = new Map();
+  for (let i = 0; i < sourceTexts.length; i += 1) {
+    const sourceText = sourceTexts[i] || '';
+    const liveText = liveTexts[i] || '';
+    const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+    if (!tokens.length || !liveText) continue;
+
+    if (tokens.length === 1) {
+      const token = tokens[0];
+      if (normalizeInlineText(sourceText) === token) {
+        tokenValues.set(token, liveText);
+        continue;
+      }
+      const match = liveText.match(expressionTextMatcher(sourceText, [token]));
+      if (match && match[1]) tokenValues.set(token, match[1].trim());
+      continue;
+    }
+
+    const normalizedSource = normalizeInlineText(sourceText);
+    if (normalizedSource === tokens.join(' ')) {
+      const pieces = liveText.split(/\s+/).filter(Boolean);
+      if (pieces.length === tokens.length) {
+        tokens.forEach((token, index) => tokenValues.set(token, pieces[index]));
+      }
+      continue;
+    }
+
+    const match = liveText.match(expressionTextMatcher(sourceText, tokens));
+    if (!match) continue;
+    tokens.forEach((token, index) => {
+      if (match[index + 1]) tokenValues.set(token, match[index + 1].trim());
+    });
+  }
+
+  const out = new Map();
+  for (const entry of contract) {
+    const value = tokenValues.get(`{${entry.expr}}`);
     if (!value) continue;
-    out = out.split(htmlEscape(value)).join(`{${contract[i].prop}}`);
-    out = out.split(value).join(`{${contract[i].prop}}`);
+    out.set(entry.prop, value);
   }
   return out;
 }
@@ -1419,6 +1479,24 @@ function extractTextPieces(html) {
     .split(/<[^>]+>/)
     .map((text) => text.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
+}
+
+function normalizeInlineText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function expressionTextMatcher(sourceText, tokens) {
+  let pattern = '^';
+  let cursor = 0;
+  for (const token of tokens) {
+    const index = sourceText.indexOf(token, cursor);
+    if (index === -1) continue;
+    pattern += escapeRegExp(sourceText.slice(cursor, index)).replace(/\s+/g, '\\s*');
+    pattern += '(.*?)';
+    cursor = index + token.length;
+  }
+  pattern += escapeRegExp(sourceText.slice(cursor)).replace(/\s+/g, '\\s*') + '$';
+  return new RegExp(pattern);
 }
 
 function firstTagName(markup) {

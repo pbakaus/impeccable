@@ -275,6 +275,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('uses boolean-compatible attributes for toggle Tune params', () => {
+    assert.match(
+      SOURCE,
+      /if \(on\) variantEl\.setAttribute\(attr, 'true'\);/,
+      'toggle params should render as data-p-id="true" so boolean selector branches match during live preview',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /if \(on\) variantEl\.setAttribute\(attr, 'on'\);/,
+      'toggle params must not mount as data-p-id="on"; generated CSS commonly uses boolean "true"',
+    );
+  });
+
   it('teardown removes auxiliary chrome mounted outside the main bar', () => {
     assert.match(
       SOURCE,
@@ -339,6 +352,24 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /const mounted = await mountSvelteComponentVariant\(visibleVariant\);[\s\S]{0,900}?state = 'CYCLING';[\s\S]{0,220}?saveSession\(\);[\s\S]{0,80}?queueCheckpoint\('svelte_component_variants_ready'\);/,
       'initial Svelte component injection must checkpoint visibleVariant after the component binds',
+    );
+  });
+
+  it('Svelte prop text mapping keeps mixed dynamic/static text aligned by source text node', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /const sourceNodes = collectTextNodes\(sourceOriginal\)\s*\.filter\(\(node\) => \/\{\\\[\^{}\]\+\}\//,
+      'Svelte prop mapping must not filter source text nodes before pairing with live text nodes; static siblings would shift dynamic values',
+    );
+    assert.match(
+      SOURCE,
+      /for \(let sourceIndex = 0; sourceIndex < sourceNodes\.length; sourceIndex \+= 1\)[\s\S]{0,260}?const liveText = liveTexts\[sourceIndex\] \|\| '';/,
+      'Svelte prop mapping should align source and live text by text-node index',
+    );
+    assert.match(
+      SOURCE,
+      /const pieces = liveText\.split\(\/\\s\+\/\)\.filter\(Boolean\);[\s\S]{0,160}?tokens\.forEach\(\(token, tokenIndex\) => map\.set\(token, pieces\[tokenIndex\]\)\);/,
+      'Svelte prop mapping should split simple multi-token text instead of assigning the whole text node to each prop',
     );
   });
 

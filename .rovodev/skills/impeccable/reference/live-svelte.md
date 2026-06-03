@@ -23,6 +23,7 @@ Write one real Svelte component per variant: `componentDir/v1.svelte`, `componen
 
 - Keep a single visible top-level root matching the selected element's role and structure.
 - Preserve `propContract`: use `{propName}` in component markup instead of literal snapshot text when the contract provides a binding.
+- For mixed dynamic/static text such as `{count} offen`, keep the static text literal and replace only the dynamic segment with its prop, e.g. `{count} offen`. If the user asks for stronger text treatment, wrap or class the visible text so typography changes apply to the text itself, not only to the outer pill/card box.
 - Put variant CSS in that component's `<style>` block using semantic classes.
 - Make every variant visually distinct from the original and from each other. Do not ship variants that differ only by inert attributes, hidden params, or class names without CSS that changes the rendered result.
 - Prefer meaningful semantic class hooks for each visual direction; do not rely on generic `data-variant` attributes as the only selector difference.
