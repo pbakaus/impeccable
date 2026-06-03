@@ -1430,20 +1430,30 @@ export function buildSveltePropTextValues(originalMarkup, liveMarkup, contract) 
   const sourceTexts = extractTextPieces(originalMarkup);
   const liveTexts = extractTextPieces(liveMarkup);
   const tokenValues = new Map();
+  let liveIndex = 0;
   for (let i = 0; i < sourceTexts.length; i += 1) {
     const sourceText = sourceTexts[i] || '';
-    const liveText = liveTexts[i] || '';
     const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
-    if (!tokens.length || !liveText) continue;
+    if (!tokens.length) {
+      if (normalizeInlineText(sourceText) === normalizeInlineText(liveTexts[liveIndex] || '')) {
+        liveIndex += 1;
+      }
+      continue;
+    }
+
+    const liveText = liveTexts[liveIndex] || '';
+    if (!liveText) continue;
 
     if (tokens.length === 1) {
       const token = tokens[0];
       if (normalizeInlineText(sourceText) === token) {
         tokenValues.set(token, liveText);
+        liveIndex += 1;
         continue;
       }
       const match = liveText.match(expressionTextMatcher(sourceText, [token]));
       if (match && match[1]) tokenValues.set(token, match[1].trim());
+      liveIndex += 1;
       continue;
     }
 
@@ -1453,6 +1463,7 @@ export function buildSveltePropTextValues(originalMarkup, liveMarkup, contract) 
       if (pieces.length === tokens.length) {
         tokens.forEach((token, index) => tokenValues.set(token, pieces[index]));
       }
+      liveIndex += 1;
       continue;
     }
 
@@ -1461,6 +1472,7 @@ export function buildSveltePropTextValues(originalMarkup, liveMarkup, contract) 
     tokens.forEach((token, index) => {
       if (match[index + 1]) tokenValues.set(token, match[index + 1].trim());
     });
+    liveIndex += 1;
   }
 
   const out = new Map();
@@ -1478,6 +1490,7 @@ function extractTextPieces(html) {
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .split(/<[^>]+>/)
     .map((text) => text.replace(/\s+/g, ' ').trim())
+    .filter((text) => !/^\{[#:/@][^{}]*\}$/.test(text))
     .filter(Boolean);
 }
 

@@ -74,31 +74,46 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('uses a Svelte-gated painted-ancestor crop proxy for shader capture', () => {
+  it('uses direct shader capture for painted Svelte selections and ancestor crop only for transparent ones', () => {
     assert.match(
       SOURCE,
-      /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
-      'shader proxy should choose the nearest painted ancestor, not the document root',
+      /function paintsOwnShaderSurface\(el\) \{[\s\S]{0,260}?backgroundColor[\s\S]{0,180}?backgroundImage && s\.backgroundImage !== 'none'/,
+      'painted Svelte selections should be detected by their own background color or background image',
     );
     assert.match(
       SOURCE,
-      /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);/,
-      'shader capture should render the minimal painted ancestor and crop the selected element rect',
+      /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
+      'transparent Svelte selections may still choose the nearest painted ancestor, not the document root',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementDirectForShader\(ms, el, opts\) \{[\s\S]{0,240}?ms\.domToCanvas\(el, opts\)[\s\S]{0,520}?buildShaderCaptureMeta\('direct-selected-element', el, el/,
+      'painted Svelte selections should capture the selected element itself and record direct-selected-element metadata',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);[\s\S]{0,420}?buildShaderCaptureMeta\('ancestor-crop', el, captureRoot/,
+      'transparent Svelte selections should render the minimal painted ancestor, crop the selected rect, and record ancestor-crop metadata',
     );
     assert.match(
       SOURCE,
       /function shouldUseAncestorCropShaderProxy\(el\) \{[\s\S]{0,260}?window\.__IMPECCABLE_LIVE_ADAPTER__[\s\S]{0,280}?currentPreviewMode === 'svelte-component' \|\| svelteComponentSession[\s\S]{0,260}?dataset\?\.impeccablePreview === 'svelte-component';/,
-      'ancestor crop proxy must be gated to the Svelte adapter / Svelte component previews',
+      'shader proxy decisions must be gated to the Svelte adapter / Svelte component previews',
     );
     assert.match(
       SOURCE,
-      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,240}?return await hideCaptureChromeForShaderProxy\(\(\) => captureElementFromRenderedAncestor\(ms, el, opts\)\);[\s\S]{0,280}?Svelte ancestor crop capture failed, falling back to element capture/,
-      'Svelte ancestor crop must run before the legacy capture path and hide live chrome while doing so',
+      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,260}?hideCaptureChromeForShaderProxy\(\(\) => paintsOwnShaderSurface\(el\)[\s\S]{0,180}?captureElementDirectForShader\(ms, el, opts\)[\s\S]{0,120}?captureElementFromRenderedAncestor\(ms, el, opts\)[\s\S]{0,180}?lastShaderCaptureMeta = result\.shaderCaptureMeta \|\| null;/,
+      'Svelte shader capture should choose direct capture for painted selections before falling back to the transparent ancestor crop',
     );
     assert.match(
       SOURCE,
       /const paper = dominantRgb01\(cctx, crop\.width, crop\.height\) \|\| averageRgb01\(cctx, crop\.width, crop\.height\);/,
       'shader paper should come from the cropped pixels so framework/backdrop composition is preserved',
+    );
+    assert.match(
+      SOURCE,
+      /debugState: \(\) => \(\{[\s\S]{0,700}?shaderCapture: shaderCaptureDebugState\(\)/,
+      'debugState should expose shader capture metadata for browser regression tests',
     );
     assert.match(
       SOURCE,

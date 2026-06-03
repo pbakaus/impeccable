@@ -318,6 +318,7 @@
       pendingSvelteComponentRetry: !!pendingSvelteComponentRetryObserver,
       recoveryWaitingForAnchor,
       evtSourceReadyState: evtSource ? evtSource.readyState : null,
+      shaderCapture: shaderCaptureDebugState(),
     }),
   };
 
@@ -6446,6 +6447,13 @@
       || paintsBackdrop(node);
   }
 
+  function paintsOwnShaderSurface(el) {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    return !isTransparentColor(s.backgroundColor)
+      || (s.backgroundImage && s.backgroundImage !== 'none');
+  }
+
   function findShaderProxyCaptureRoot(el) {
     const doc = el.ownerDocument || document;
     const er = el.getBoundingClientRect();
@@ -6464,11 +6472,60 @@
     return null;
   }
 
+  function rectForShaderMeta(rect) {
+    if (!rect) return null;
+    return {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  function describeShaderCaptureRoot(node) {
+    if (!node) return null;
+    const className = typeof node.className === 'string'
+      ? node.className
+      : String(node.getAttribute?.('class') || '');
+    return {
+      tag: node.tagName ? node.tagName.toLowerCase() : '',
+      id: node.id || '',
+      classes: className.trim().replace(/\s+/g, ' '),
+    };
+  }
+
+  function buildShaderCaptureMeta(strategy, selectedEl, captureRoot, extra = {}) {
+    return {
+      strategy,
+      selectedRect: rectForShaderMeta(selectedEl?.getBoundingClientRect?.()),
+      captureRootRect: rectForShaderMeta(captureRoot?.getBoundingClientRect?.()),
+      captureRoot: describeShaderCaptureRoot(captureRoot),
+      ...extra,
+    };
+  }
+
   // Capture the element (with current annotations baked in) and return
   // { blob, paper }: the PNG Blob, plus the representative backdrop tone for the
   // shader's halftone ground (so capture, upload, and shader all agree on what
   // sits behind the element). Shared between the Go flow (uploads the blob) and
   // the shader-resume path.
+  async function captureElementDirectForShader(ms, el, opts) {
+    const canvas = await ms.domToCanvas(el, opts);
+    const cctx = canvas.getContext('2d', { willReadFrequently: true });
+    const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('Direct selected-element shader capture failed to produce a PNG blob');
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('direct-selected-element', el, el, {
+        outputSize: { width: canvas.width, height: canvas.height },
+      }),
+    };
+  }
+
   async function captureElementFromRenderedAncestor(ms, el, opts) {
     const doc = el.ownerDocument || document;
     const captureRoot = findShaderProxyCaptureRoot(el);
@@ -6490,11 +6547,19 @@
     const paper = dominantRgb01(cctx, crop.width, crop.height) || averageRgb01(cctx, crop.width, crop.height);
     const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
     if (!blob) throw new Error('Ancestor crop failed to produce a PNG blob');
-    return { blob, paper };
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('ancestor-crop', el, captureRoot, {
+        sourceRect: { sx, sy, sw, sh },
+        outputSize: { width: crop.width, height: crop.height },
+      }),
+    };
   }
 
   async function captureElementToBlob(el, snapshot, rect) {
     try { if (document.fonts?.ready) await document.fonts.ready; } catch {}
+    lastShaderCaptureMeta = null;
     const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
     let annotNode = null;
     let savedPosition = null;
@@ -6516,7 +6581,11 @@
       };
       if (shouldUseAncestorCropShaderProxy(el)) {
         try {
-          return await hideCaptureChromeForShaderProxy(() => captureElementFromRenderedAncestor(ms, el, opts));
+          const result = await hideCaptureChromeForShaderProxy(() => paintsOwnShaderSurface(el)
+            ? captureElementDirectForShader(ms, el, opts)
+            : captureElementFromRenderedAncestor(ms, el, opts));
+          lastShaderCaptureMeta = result.shaderCaptureMeta || null;
+          return result;
         } catch (err) {
           console.warn('[impeccable] Svelte ancestor crop capture failed, falling back to element capture:', err);
         }
@@ -6686,6 +6755,15 @@ void main() {
   // matches the original off-white risograph paper.
   const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
+  let lastShaderCaptureMeta = null;
+
+  function shaderCaptureDebugState() {
+    if (!lastShaderCaptureMeta) return null;
+    return {
+      ...lastShaderCaptureMeta,
+      shaderRect: rectForShaderMeta(shaderState?.canvas?.getBoundingClientRect?.()),
+    };
+  }
 
   // The element's effective background tone, used as the uniform halftone
   // ground so content dissolves into dots over it. Unlike resolveCanvasBackground
@@ -6832,14 +6910,18 @@ void main() {
     });
   }
 
-  function hideShaderOverlay() {
-    if (!shaderState) return;
+  function hideShaderOverlay(clearMeta = true) {
+    if (!shaderState) {
+      if (clearMeta) lastShaderCaptureMeta = null;
+      return;
+    }
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
+    if (clearMeta) lastShaderCaptureMeta = null;
   }
 
   function showShaderBitmapFallback(canvas, blob) {
@@ -6862,7 +6944,7 @@ void main() {
   }
 
   async function showShaderOverlay(el, blob, rect, paper) {
-    hideShaderOverlay();
+    hideShaderOverlay(false);
     if (!blob || !el) return;
     const canvas = document.createElement('canvas');
     canvas.id = PREFIX + '-shader';

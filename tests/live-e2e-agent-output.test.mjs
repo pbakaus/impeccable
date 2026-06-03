@@ -242,6 +242,55 @@ describe('live-e2e agent output translation', () => {
     );
   });
 
+  it('maps Svelte props through block directives without shifting hidden branch text', () => {
+    const originalMarkup = [
+      '<article class="movie-card">',
+      '  <div class="movie-card__poster">',
+      '    {#if movie.posterUrl}',
+      '      <img src={movie.posterUrl} alt="" />',
+      '    {:else}',
+      '      <span>No poster</span>',
+      '    {/if}',
+      '  </div>',
+      '  <div class="movie-card__body">',
+      '    <h3 class="movie-card__title">{movie.title}</h3>',
+      '    <p class="movie-card__meta">',
+      '      <span>{movie.year}</span>',
+      '      <span>·</span>',
+      '      <span>{movie.rating}</span>',
+      '    </p>',
+      '  </div>',
+      '</article>',
+    ].join('\n');
+    const liveMarkup = [
+      '<article class="movie-card svelte-1tcthvq">',
+      '  <div class="movie-card__poster svelte-1tcthvq"><img src="https://image.tmdb.org/t/p/w600/poster.jpg" alt=""></div>',
+      '  <div class="movie-card__body svelte-1tcthvq">',
+      '    <h3 class="movie-card__title svelte-1tcthvq">Castle in the Sky</h3>',
+      '    <p class="movie-card__meta svelte-1tcthvq"><span>1986</span><span>·</span><span>95</span></p>',
+      '  </div>',
+      '</article>',
+    ].join('\n');
+    const contract = [
+      { prop: 'posterUrl', expr: 'movie.posterUrl' },
+      { prop: 'title', expr: 'movie.title' },
+      { prop: 'year', expr: 'movie.year' },
+      { prop: 'rating', expr: 'movie.rating' },
+    ];
+
+    const values = buildSveltePropTextValues(originalMarkup, liveMarkup, contract);
+    assert.equal(values.get('title'), 'Castle in the Sky');
+    assert.equal(values.get('year'), '1986');
+    assert.equal(values.get('rating'), '95');
+    assert.equal(values.has('posterUrl'), false);
+
+    const variantMarkup = '<article class="movie-card"><h3>Castle in the Sky</h3><p><span>1986</span><span>·</span><span>95</span></p></article>';
+    assert.equal(
+      substituteLiveTextWithProps(variantMarkup, contract, values),
+      '<article class="movie-card"><h3>{title}</h3><p><span>{year}</span><span>·</span><span>{rating}</span></p></article>',
+    );
+  });
+
   it('targets only the styled element when same-tag siblings are present', () => {
     const output = normalizeVariantOutput(
       {

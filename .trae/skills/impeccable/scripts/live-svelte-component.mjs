@@ -52,6 +52,7 @@ export function extractMustacheExpressions(text) {
     MUSTACHE_RE.lastIndex = 0;
     while ((match = MUSTACHE_RE.exec(line)) !== null) {
       const expr = match[1].trim();
+      if (isSvelteControlExpression(expr)) continue;
       if (!expr || seen.has(expr)) continue;
       seen.add(expr);
       expressions.push(expr);
@@ -61,14 +62,30 @@ export function extractMustacheExpressions(text) {
 }
 
 export function buildPropContract(expressions) {
+  const usedProps = new Set();
   return expressions.map((expr, index) => {
-    const derived = derivePropName(expr, index);
+    const derived = uniquePropName(derivePropName(expr, index), usedProps);
     return {
       prop: derived,
       expr,
       placeholder: `{${expr}}`,
     };
   });
+}
+
+function isSvelteControlExpression(expr) {
+  return /^[#:/@]/.test(String(expr || '').trim());
+}
+
+function uniquePropName(base, used) {
+  let prop = base || 'prop';
+  let suffix = 2;
+  while (used.has(prop)) {
+    prop = `${base}${suffix}`;
+    suffix += 1;
+  }
+  used.add(prop);
+  return prop;
 }
 
 function derivePropName(expr, index) {
@@ -83,6 +100,8 @@ export function substituteExprsWithProps(markup, contract) {
   let out = String(markup || '');
   for (const entry of contract) {
     out = out.split(entry.placeholder).join(`{${entry.prop}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+${escapeRegExp(entry.expr)}\\s*\\}`, 'g'), `{#if ${entry.prop}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+!\\s*${escapeRegExp(entry.expr)}\\s*\\}`, 'g'), `{#if !${entry.prop}}`);
   }
   return out;
 }
@@ -91,8 +110,14 @@ export function substitutePropsWithExprs(markup, contract) {
   let out = String(markup || '');
   for (const entry of contract) {
     out = out.split(`{${entry.prop}}`).join(`{${entry.expr}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+${escapeRegExp(entry.prop)}\\s*\\}`, 'g'), `{#if ${entry.expr}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+!\\s*${escapeRegExp(entry.prop)}\\s*\\}`, 'g'), `{#if !${entry.expr}}`);
   }
   return out;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function parseSvelteComponentFile(content) {
@@ -512,10 +537,6 @@ function variantSelectorRegex(variantNum) {
 
 function formatCssRule(selector, body) {
   return `${selector} { ${body.trim()} }`;
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function inlineSvelteComponentAccept(manifest, variantNum, paramValues = null, cwd = process.cwd()) {

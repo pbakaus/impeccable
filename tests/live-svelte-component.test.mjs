@@ -4,7 +4,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { inlineSvelteComponentAccept } from '../skill/scripts/live-svelte-component.mjs';
+import {
+  buildPropContract,
+  extractMustacheExpressions,
+  inlineSvelteComponentAccept,
+  substituteExprsWithProps,
+} from '../skill/scripts/live-svelte-component.mjs';
 
 describe('Svelte component live accept', () => {
   let tmp;
@@ -74,5 +79,43 @@ describe('Svelte component live accept', () => {
     assert.match(after, /text-shadow:\s*0 1px 0 black/);
     assert.doesNotMatch(after, /opacity:\s*0\.4/);
     assert.doesNotMatch(after, /data-p-uppercase/);
+  });
+
+  it('does not turn Svelte block markers into component props', () => {
+    const markup = [
+      '<article class="movie-card">',
+      '  <div class="movie-card__poster">',
+      '    {#if movie.posterUrl}',
+      '      <img src={movie.posterUrl} alt="" />',
+      '    {:else}',
+      '      <span>No poster</span>',
+      '    {/if}',
+      '  </div>',
+      '  <h3>{movie.title}</h3>',
+      '  <p><span>{movie.year}</span><span>·</span><span>{movie.rating}</span></p>',
+      '</article>',
+    ].join('\n');
+
+    const expressions = extractMustacheExpressions(markup);
+    assert.deepEqual(expressions, [
+      'movie.posterUrl',
+      'movie.title',
+      'movie.year',
+      'movie.rating',
+    ]);
+
+    const contract = buildPropContract(expressions);
+    assert.deepEqual(contract.map((entry) => entry.prop), ['posterUrl', 'title', 'year', 'rating']);
+    const withProps = substituteExprsWithProps(markup, contract);
+    assert.match(withProps, /\{#if posterUrl\}/);
+    assert.match(withProps, /src=\{posterUrl\}/);
+    assert.match(withProps, /\{title\}/);
+    assert.doesNotMatch(withProps, /#if movie\.posterUrl/);
+    assert.doesNotMatch(withProps, /let \{ posterUrl, posterUrl/);
+  });
+
+  it('deduplicates prop names that share the same expression tail', () => {
+    const contract = buildPropContract(['user.name', 'team.name', 'user.id']);
+    assert.deepEqual(contract.map((entry) => entry.prop), ['name', 'name2', 'id']);
   });
 });
