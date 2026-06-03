@@ -232,6 +232,49 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('keeps Tune popover controls interactive inside shadow-root live chrome', () => {
+    assert.match(
+      SOURCE,
+      /function eventPathContains\(e, el\) \{[\s\S]{0,220}?e\.composedPath[\s\S]{0,120}?path\.includes\(el\);/,
+      'outside-click handling must use composedPath so Tune control clicks retargeted through the shadow host still count as inside the panel',
+    );
+    assert.match(
+      SOURCE,
+      /paramsPanelEl\.addEventListener\('click', \(e\) => e\.stopPropagation\(\)\);/,
+      'Tune panel click events should not leak into host-page outside-click handlers',
+    );
+    assert.match(
+      SOURCE,
+      /function stopTuneControlEvent\(e\) \{[\s\S]{0,80}?e\.stopPropagation\(\);[\s\S]{0,80}?\}/,
+      'Tune controls need an early pointer/mouse propagation guard',
+    );
+    assert.match(
+      SOURCE,
+      /track\.dataset\.paramKind = 'toggle';/,
+      'toggle Tune controls must remain clickable without closing the popover',
+    );
+    assert.match(
+      SOURCE,
+      /track\.addEventListener\('pointerdown', stopTuneControlEvent\);[\s\S]{0,120}?track\.addEventListener\('mousedown', stopTuneControlEvent\);[\s\S]{0,120}?track\.addEventListener\('click',/,
+      'toggle Tune controls must guard pointer/mouse events before handling click',
+    );
+    assert.match(
+      SOURCE,
+      /b\.dataset\.paramKind = 'steps';/,
+      'segmented/radio-style Tune controls must remain clickable without closing the popover',
+    );
+    assert.match(
+      SOURCE,
+      /b\.addEventListener\('pointerdown', stopTuneControlEvent\);[\s\S]{0,120}?b\.addEventListener\('mousedown', stopTuneControlEvent\);[\s\S]{0,120}?b\.addEventListener\('click',/,
+      'segmented/radio-style Tune controls must guard pointer/mouse events before handling click',
+    );
+    assert.match(
+      SOURCE,
+      /tuneOpen[\s\S]{0,280}?!eventPathContains\(e, paramsPanelEl\)[\s\S]{0,220}?!eventPathContains\(e, barEl\)[\s\S]{0,80}?closeTunePopover\(\);/,
+      'outside-click close should ignore clicks inside both the Tune panel and the cycling bar',
+    );
+  });
+
   it('teardown removes auxiliary chrome mounted outside the main bar', () => {
     assert.match(
       SOURCE,

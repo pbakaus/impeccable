@@ -199,6 +199,13 @@
     return el && (el.id?.startsWith(PREFIX) || el.closest?.('[id^="' + PREFIX + '"]'));
   }
 
+  function eventPathContains(e, el) {
+    if (!e || !el) return false;
+    if (e.target && el.contains?.(e.target)) return true;
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    return path.includes(el);
+  }
+
   function pickable(el) {
     if (!el || el.nodeType !== 1) return false;
     if (SKIP_TAGS.has(el.tagName.toLowerCase())) return false;
@@ -2723,6 +2730,7 @@
     // click-through) and 'auto' (open) on its own. Just silence the host's
     // outside-interaction listeners while the panel is open.
     defangOutsideHandlers(paramsPanelEl, { setPointerEvents: false });
+    paramsPanelEl.addEventListener('click', (e) => e.stopPropagation());
     paramsPanelInner = paramsPanelEl; // compatibility alias for the rest of the code
   }
 
@@ -2809,6 +2817,10 @@
     return (max - min) <= 2 ? v.toFixed(2) : String(Math.round(v));
   }
 
+  function stopTuneControlEvent(e) {
+    e.stopPropagation();
+  }
+
   function buildParamsPanel(variantEl, params) {
     const P = paramsPanelPalette || barPaletteForTheme(detectPageTheme());
     paramsPanelBody.innerHTML = '';
@@ -2838,14 +2850,21 @@
         input.max = String(p.max != null ? p.max : 1);
         input.step = String(p.step != null ? p.step : 0.05);
         input.value = String(p.default);
+        input.dataset.paramKind = 'range';
+        input.dataset.paramId = p.id;
+        input.dataset.paramValue = String(p.default);
         Object.assign(input.style, {
           width: '100%', accentColor: C.brand, cursor: 'pointer',
         });
         readout.textContent = formatRangeValue(input);
+        input.addEventListener('pointerdown', stopTuneControlEvent);
+        input.addEventListener('mousedown', stopTuneControlEvent);
+        input.addEventListener('click', stopTuneControlEvent);
         input.addEventListener('input', (e) => {
           e.stopPropagation();
           const v = parseFloat(input.value);
           paramsCurrentValues[p.id] = v;
+          input.dataset.paramValue = String(v);
           readout.textContent = formatRangeValue(input);
           applyParamValue(variantEl, p, v);
           queueCheckpoint('param_changed');
@@ -2862,6 +2881,10 @@
           transition: 'background 0.15s ease',
           alignSelf: 'flex-start',
         });
+        track.type = 'button';
+        track.dataset.paramKind = 'toggle';
+        track.dataset.paramId = p.id;
+        track.dataset.paramValue = String(initial);
         const knob = el('span', {
           position: 'absolute', top: '2px',
           left: initial ? '18px' : '2px',
@@ -2871,10 +2894,13 @@
           boxShadow: '0 1px 2px oklch(0% 0 0 / 0.2)',
         });
         track.appendChild(knob);
+        track.addEventListener('pointerdown', stopTuneControlEvent);
+        track.addEventListener('mousedown', stopTuneControlEvent);
         track.addEventListener('click', (e) => {
           e.stopPropagation();
           const next = !paramsCurrentValues[p.id];
           paramsCurrentValues[p.id] = next;
+          track.dataset.paramValue = String(next);
           track.style.background = next ? C.brand : P.hairline;
           knob.style.left = next ? '18px' : '2px';
           readout.textContent = next ? 'On' : 'Off';
@@ -2905,7 +2931,14 @@
             cursor: 'pointer', whiteSpace: 'nowrap',
             transition: 'background 0.1s ease, color 0.1s ease',
           });
+          b.type = 'button';
           b.textContent = o.label;
+          b.dataset.paramKind = 'steps';
+          b.dataset.paramId = p.id;
+          b.dataset.paramValue = String(o.value);
+          b.dataset.paramSelected = active ? 'true' : 'false';
+          b.addEventListener('pointerdown', stopTuneControlEvent);
+          b.addEventListener('mousedown', stopTuneControlEvent);
           b.addEventListener('click', (e) => {
             e.stopPropagation();
             paramsCurrentValues[p.id] = o.value;
@@ -2914,6 +2947,7 @@
               const on = val === o.value;
               btn.style.background = on ? C.brand : 'transparent';
               btn.style.color = on ? 'oklch(98% 0 0)' : P.text;
+              btn.dataset.paramSelected = on ? 'true' : 'false';
             });
             applyParamValue(variantEl, p, o.value);
             queueCheckpoint('param_changed');
@@ -5682,7 +5716,13 @@
       hideActionPicker();
     }
     // Close Tune popover on outside click (anything outside panel + bar)
-    if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
+    if (
+      tuneOpen
+      && paramsPanelEl
+      && !eventPathContains(e, paramsPanelEl)
+      && barEl
+      && !eventPathContains(e, barEl)
+    ) {
       closeTunePopover();
     }
     // In EDITING: click outside exits the text edit flow without rebuilding configure UI first.
