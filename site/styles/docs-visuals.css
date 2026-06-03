@@ -3327,6 +3327,10 @@
   border-radius: 2px;
 }
 
+.neon-case-command > * {
+  min-width: 0;
+}
+
 .neon-case-command h2 {
   color: var(--ks-champagne);
 }
@@ -3343,6 +3347,8 @@
 .neon-case-command .code-block-wrap {
   position: relative;
   margin: 0;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .neon-case-command .code-block-wrap::after {
@@ -3358,6 +3364,7 @@
 }
 
 .neon-case-command .code-block {
+  max-width: 100%;
   margin: 0;
   padding: var(--spacing-md) 96px var(--spacing-md) var(--spacing-md);
   background: var(--ks-code-block-bg);
