@@ -450,6 +450,12 @@ function paintsOpaqueOwnShaderSurface(el) {
   if (s.backgroundImage && s.backgroundImage !== 'none') return true;
   return cssColorAlpha(s.backgroundColor) >= 0.98;
 }
+function hasTranslucentOwnShaderSurface(el) {
+  const s = cs(el);
+  if (s.backgroundImage && s.backgroundImage !== 'none') return false;
+  const alpha = cssColorAlpha(s.backgroundColor);
+  return alpha > 0 && alpha < 0.98;
+}
 function findShaderProxyCaptureRoot(el) {
   const doc = el.ownerDocument;
   const er = el.getBoundingClientRect();
@@ -466,6 +472,19 @@ function findShaderProxyCaptureRoot(el) {
     node = node.parentElement;
   }
   return null;
+}
+function isDocumentShaderCaptureRoot(node) {
+  const doc = node?.ownerDocument || document;
+  return node === doc.body || node === doc.documentElement;
+}
+function resolveBackdropColorForShaderComposite(el, preferredRoot = null) {
+  let node = preferredRoot || el?.parentElement || null;
+  while (node) {
+    const bg = cs(node).backgroundColor;
+    if (!isTransparentColor(bg)) return bg;
+    node = node.parentElement;
+  }
+  return '#ffffff';
 }
 function averageRgb01(ctx, w, h) {
   const data = ctx.getImageData(0, 0, w, h).data;
@@ -611,8 +630,22 @@ async function captureElementToBlob(el, useAncestorCropProxy = false) {
         const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
         return { blob, paper, note: 'direct opaque <' + el.tagName.toLowerCase() + '>' };
       }
-      const { blob, paper, root } = await captureElementFromRenderedAncestor(ms, el, opts);
-      return { blob, paper, note: 'ancestor crop <' + root.tagName.toLowerCase() + '>' };
+      const root = findShaderProxyCaptureRoot(el);
+      if (hasTranslucentOwnShaderSurface(el) && (!root || isDocumentShaderCaptureRoot(root))) {
+        const source = await ms.domToCanvas(el, opts);
+        const canvas = el.ownerDocument.createElement('canvas');
+        canvas.width = source.width;
+        canvas.height = source.height;
+        const cctx = canvas.getContext('2d', { willReadFrequently: true });
+        cctx.fillStyle = resolveBackdropColorForShaderComposite(el, root);
+        cctx.fillRect(0, 0, canvas.width, canvas.height);
+        cctx.drawImage(source, 0, 0);
+        const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+        const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+        return { blob, paper, note: 'direct composited <' + el.tagName.toLowerCase() + '>' };
+      }
+      const { blob, paper, root: renderedRoot } = await captureElementFromRenderedAncestor(ms, el, opts, root);
+      return { blob, paper, note: 'ancestor crop <' + renderedRoot.tagName.toLowerCase() + '>' };
     } catch (err) {
       console.warn('[shader-lab] shader proxy capture failed, falling back to element capture:', err);
     }
@@ -651,9 +684,9 @@ async function captureElementToBlob(el, useAncestorCropProxy = false) {
   return { blob, paper, note: 'backdrop captured <' + backdrop.className + '>' };
 }
 
-async function captureElementFromRenderedAncestor(ms, el, opts) {
+async function captureElementFromRenderedAncestor(ms, el, opts, captureRoot = null) {
   const doc = el.ownerDocument;
-  const captureRoot = findShaderProxyCaptureRoot(el);
+  captureRoot = captureRoot || findShaderProxyCaptureRoot(el);
   if (!captureRoot) throw new Error('No painted ancestor for shader proxy');
   const rootCanvas = await ms.domToCanvas(captureRoot, opts);
   const S = opts.scale;

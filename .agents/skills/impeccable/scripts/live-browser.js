@@ -6471,6 +6471,14 @@
     return cssColorAlpha(s.backgroundColor) >= 0.98;
   }
 
+  function hasTranslucentOwnShaderSurface(el) {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.backgroundImage && s.backgroundImage !== 'none') return false;
+    const alpha = cssColorAlpha(s.backgroundColor);
+    return alpha > 0 && alpha < 0.98;
+  }
+
   function findShaderProxyCaptureRoot(el) {
     const doc = el.ownerDocument || document;
     const er = el.getBoundingClientRect();
@@ -6487,6 +6495,21 @@
       node = node.parentElement;
     }
     return null;
+  }
+
+  function isDocumentShaderCaptureRoot(node) {
+    const doc = node?.ownerDocument || document;
+    return node === doc.body || node === doc.documentElement;
+  }
+
+  function resolveBackdropColorForShaderComposite(el, preferredRoot = null) {
+    let node = preferredRoot || el?.parentElement || null;
+    while (node) {
+      const bg = getComputedStyle(node).backgroundColor;
+      if (!isTransparentColor(bg)) return bg;
+      node = node.parentElement;
+    }
+    return '#ffffff';
   }
 
   function rectForShaderMeta(rect) {
@@ -6543,9 +6566,35 @@
     };
   }
 
-  async function captureElementFromRenderedAncestor(ms, el, opts) {
+  async function captureElementDirectCompositedForShader(ms, el, opts, backdropRoot = null) {
     const doc = el.ownerDocument || document;
-    const captureRoot = findShaderProxyCaptureRoot(el);
+    const source = await ms.domToCanvas(el, opts);
+    const canvas = doc.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const cctx = canvas.getContext('2d', { willReadFrequently: true });
+    const backdropColor = resolveBackdropColorForShaderComposite(el, backdropRoot);
+    cctx.fillStyle = backdropColor;
+    cctx.fillRect(0, 0, canvas.width, canvas.height);
+    cctx.drawImage(source, 0, 0);
+    const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('Direct composited shader capture failed to produce a PNG blob');
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('direct-composited-backdrop', el, el, {
+        backdropColor,
+        backdropRoot: describeShaderCaptureRoot(backdropRoot),
+        backdropRootRect: rectForShaderMeta(backdropRoot?.getBoundingClientRect?.()),
+        outputSize: { width: canvas.width, height: canvas.height },
+      }),
+    };
+  }
+
+  async function captureElementFromRenderedAncestor(ms, el, opts, captureRoot = null) {
+    const doc = el.ownerDocument || document;
+    captureRoot = captureRoot || findShaderProxyCaptureRoot(el);
     if (!captureRoot) throw new Error('No painted ancestor for Svelte shader proxy');
     const rootCanvas = await ms.domToCanvas(captureRoot, opts);
     const S = opts.scale;
@@ -6598,9 +6647,17 @@
       };
       if (shouldUseAncestorCropShaderProxy(el)) {
         try {
-          const result = await hideCaptureChromeForShaderProxy(() => paintsOpaqueOwnShaderSurface(el)
-            ? captureElementDirectForShader(ms, el, opts)
-            : captureElementFromRenderedAncestor(ms, el, opts));
+          const result = await hideCaptureChromeForShaderProxy(() => {
+            if (paintsOpaqueOwnShaderSurface(el)) return captureElementDirectForShader(ms, el, opts);
+            const captureRoot = findShaderProxyCaptureRoot(el);
+            if (
+              hasTranslucentOwnShaderSurface(el) &&
+              (!captureRoot || isDocumentShaderCaptureRoot(captureRoot))
+            ) {
+              return captureElementDirectCompositedForShader(ms, el, opts, captureRoot);
+            }
+            return captureElementFromRenderedAncestor(ms, el, opts, captureRoot);
+          });
           lastShaderCaptureMeta = result.shaderCaptureMeta || null;
           return result;
         } catch (err) {

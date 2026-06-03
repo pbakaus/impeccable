@@ -87,6 +87,11 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
+      /function hasTranslucentOwnShaderSurface\(el\) \{[\s\S]{0,220}?const alpha = cssColorAlpha\(s\.backgroundColor\);[\s\S]{0,80}?alpha > 0 && alpha < 0\.98;/,
+      'translucent Svelte selections need their own capture branch instead of falling into a document-root crop',
+    );
+    assert.match(
+      SOURCE,
       /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
       'translucent or transparent Svelte selections may still choose the nearest painted ancestor, not the document root',
     );
@@ -97,8 +102,13 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);[\s\S]{0,420}?buildShaderCaptureMeta\('ancestor-crop', el, captureRoot/,
+      /async function captureElementFromRenderedAncestor\(ms, el, opts, captureRoot = null\) \{[\s\S]{0,220}?captureRoot = captureRoot \|\| findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);[\s\S]{0,420}?buildShaderCaptureMeta\('ancestor-crop', el, captureRoot/,
       'translucent Svelte selections should render the minimal painted ancestor, crop the selected rect, and record ancestor-crop metadata',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementDirectCompositedForShader\(ms, el, opts, backdropRoot = null\) \{[\s\S]{0,700}?cctx\.fillRect\(0, 0, canvas\.width, canvas\.height\);[\s\S]{0,120}?cctx\.drawImage\(source, 0, 0\);[\s\S]{0,520}?buildShaderCaptureMeta\('direct-composited-backdrop', el, el/,
+      'translucent selected elements backed only by the document root should be composited directly over the backdrop color, not cropped from the whole page',
     );
     assert.match(
       SOURCE,
@@ -107,8 +117,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,260}?hideCaptureChromeForShaderProxy\(\(\) => paintsOpaqueOwnShaderSurface\(el\)[\s\S]{0,180}?captureElementDirectForShader\(ms, el, opts\)[\s\S]{0,120}?captureElementFromRenderedAncestor\(ms, el, opts\)[\s\S]{0,180}?lastShaderCaptureMeta = result\.shaderCaptureMeta \|\| null;/,
-      'Svelte shader capture should choose direct capture only for opaque selected surfaces before falling back to the composited ancestor crop',
+      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,360}?if \(paintsOpaqueOwnShaderSurface\(el\)\) return captureElementDirectForShader\(ms, el, opts\);[\s\S]{0,260}?hasTranslucentOwnShaderSurface\(el\)[\s\S]{0,120}?isDocumentShaderCaptureRoot\(captureRoot\)[\s\S]{0,180}?captureElementDirectCompositedForShader\(ms, el, opts, captureRoot\)[\s\S]{0,160}?captureElementFromRenderedAncestor\(ms, el, opts, captureRoot\)/,
+      'Svelte shader capture should choose direct capture for opaque surfaces, direct compositing for document-root translucent surfaces, and ancestor crop for local painted parents',
     );
     assert.match(
       SOURCE,
@@ -127,8 +137,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.doesNotMatch(
       SOURCE,
-      /function paintsOwnShaderSurface\(el\)/,
-      'do not regress to treating every non-transparent own background as safe for direct shader capture',
+      /hasTranslucentOwnShaderSurface\(el\)[\s\S]{0,160}?captureElementFromRenderedAncestor\(ms, el, opts\)/,
+      'translucent selected elements must not fall straight into an unconstrained ancestor crop',
     );
   });
 
