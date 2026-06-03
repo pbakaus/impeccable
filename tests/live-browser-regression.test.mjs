@@ -306,6 +306,42 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('Svelte component anchor lookup uses stable attrs before generated classes', () => {
+    assert.match(
+      SOURCE,
+      /function originalStableClassNames\(className\) \{[\s\S]{0,220}?!\/\^svelte-\[\\w-\]\+\$\/\.test\(name\)/,
+      'Svelte component anchor matching must ignore compiler-generated svelte-* classes',
+    );
+    assert.match(
+      SOURCE,
+      /function originalStableAttributeEntries\(el\) \{[\s\S]{0,260}?'data-testid'[\s\S]{0,180}?el\.getAttribute\(name\)/,
+      'Svelte component anchor matching should prefer stable attributes such as data-testid',
+    );
+    assert.match(
+      SOURCE,
+      /const attrSelectors = stableAttrs[\s\S]{0,240}?firstMatchingOriginalCandidate\(attrSelectors, origContent, stableAttrs, expectedClasses, false\);[\s\S]{0,80}?if \(attrMatch\) return attrMatch;/,
+      'stable attribute selectors must run before the class fallback when binding generated Svelte variants',
+    );
+    assert.match(
+      SOURCE,
+      /const classSelectors = \[tag \+ '\.' \+ cssIdent\(expectedClasses\[0\]\)\];[\s\S]{0,120}?firstMatchingOriginalCandidate\(classSelectors, origContent, stableAttrs, expectedClasses, true\);/,
+      'class fallback should use filtered stable classes and require the expected class set',
+    );
+  });
+
+  it('Svelte component mounts checkpoint visible browser state after binding', () => {
+    assert.match(
+      SOURCE,
+      /existingWrapper && svelteComponentSession\?\.sessionId === sessionId[\s\S]{0,700}?state = 'CYCLING';[\s\S]{0,120}?saveSession\(\);[\s\S]{0,80}?queueCheckpoint\('svelte_component_variants_ready'\);/,
+      'remounted Svelte component sessions must checkpoint that a variant is visible in the browser',
+    );
+    assert.match(
+      SOURCE,
+      /const mounted = await mountSvelteComponentVariant\(visibleVariant\);[\s\S]{0,900}?state = 'CYCLING';[\s\S]{0,220}?saveSession\(\);[\s\S]{0,80}?queueCheckpoint\('svelte_component_variants_ready'\);/,
+      'initial Svelte component injection must checkpoint visibleVariant after the component binds',
+    );
+  });
+
   it('global bar includes expandable page chat affordance', () => {
     assert.match(
       SOURCE,

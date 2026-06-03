@@ -4577,29 +4577,86 @@
     return doc.getElementById('impeccable-anchor')?.firstElementChild || null;
   }
 
+  function originalStableClassNames(className) {
+    return String(className || '')
+      .split(/\s+/)
+      .filter((name) => name && !/^svelte-[\w-]+$/.test(name));
+  }
+
+  function originalStableAttributeEntries(el) {
+    const names = ['data-testid', 'data-test', 'data-cy', 'data-qa', 'aria-label', 'role', 'name'];
+    return names
+      .filter((name) => el.hasAttribute?.(name))
+      .map((name) => ({ name, value: el.getAttribute(name) || '' }))
+      .filter((entry) => entry.value !== '');
+  }
+
+  function cssAttrValue(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function queryOriginalCandidateElements(selector) {
+    try {
+      return Array.from(document.querySelectorAll(selector)).filter((el) => !own(el));
+    } catch {
+      return [];
+    }
+  }
+
+  function originalCandidateTextMatches(original, candidate) {
+    const sourceText = normalizePreviewText(original.textContent || '');
+    if (!sourceText || /\{[^{}]+\}/.test(sourceText)) return true;
+    return normalizePreviewText(candidate.textContent || '') === sourceText;
+  }
+
+  function originalCandidateMatches(candidate, original, stableAttrs, expectedClasses, requireClasses) {
+    if (!candidate || own(candidate)) return false;
+    if (candidate.tagName !== original.tagName) return false;
+    for (const attr of stableAttrs) {
+      if (candidate.getAttribute(attr.name) !== attr.value) return false;
+    }
+    if (expectedClasses.length > 0) {
+      const classMatches = expectedClasses.filter((name) => candidate.classList.contains(name));
+      if (requireClasses && classMatches.length !== expectedClasses.length) return false;
+      if (!requireClasses && stableAttrs.length === 0 && classMatches.length === 0) return false;
+    }
+    return originalCandidateTextMatches(original, candidate);
+  }
+
+  function firstMatchingOriginalCandidate(selectors, original, stableAttrs, expectedClasses, requireClasses) {
+    for (const selector of selectors) {
+      const candidates = queryOriginalCandidateElements(selector);
+      for (const candidate of candidates) {
+        if (originalCandidateMatches(candidate, original, stableAttrs, expectedClasses, requireClasses)) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
   function findLiveElementForOriginalMarkup(originalMarkup) {
     const origContent = parseOriginalMarkupElement(originalMarkup);
     if (!origContent) return null;
 
     const tag = origContent.tagName.toLowerCase();
-    const cls = origContent.className;
-    let liveEl = null;
+    const expectedClasses = originalStableClassNames(origContent.className);
+    const stableAttrs = originalStableAttributeEntries(origContent);
     if (origContent.id) {
-      liveEl = document.getElementById(origContent.id);
-    } else if (cls) {
-      const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
-      for (const c of candidates) {
-        if (c.className === cls && !own(c)) { liveEl = c; break; }
-      }
-      if (!liveEl) {
-        const expectedClasses = String(cls).split(/\s+/).filter(Boolean);
-        for (const c of candidates) {
-          if (own(c)) continue;
-          if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
-        }
+      const liveEl = document.getElementById(origContent.id);
+      if (originalCandidateMatches(liveEl, origContent, stableAttrs, expectedClasses, false)) {
+        return liveEl;
       }
     }
-    return liveEl;
+
+    const attrSelectors = stableAttrs
+      .map((attr) => tag + '[' + attr.name + '="' + cssAttrValue(attr.value) + '"]');
+    const attrMatch = firstMatchingOriginalCandidate(attrSelectors, origContent, stableAttrs, expectedClasses, false);
+    if (attrMatch) return attrMatch;
+
+    if (expectedClasses.length === 0) return null;
+    const classSelectors = [tag + '.' + cssIdent(expectedClasses[0])];
+    return firstMatchingOriginalCandidate(classSelectors, origContent, stableAttrs, expectedClasses, true);
   }
 
   function isSvelteInsertManifest(manifest) {
@@ -4791,6 +4848,7 @@
         state = 'CYCLING';
         showOrUpdateCyclingBar();
         saveSession();
+        queueCheckpoint('svelte_component_variants_ready');
         return;
       }
 
@@ -4883,6 +4941,7 @@
       refreshParamsPanel();
       positionBar();
       saveSession();
+      queueCheckpoint('svelte_component_variants_ready');
       console.log('[impeccable] Mounted ' + arrivedVariants + ' Svelte component variants.');
     } catch (err) {
       console.error('[impeccable] Failed to mount Svelte component variants:', err);
