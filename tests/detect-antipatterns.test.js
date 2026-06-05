@@ -1077,6 +1077,25 @@ describe('typography dimension', () => {
       expect(personalizedIds(f)).toContain('non-token-letter-spacing');
     });
   });
+
+  test('personalized typography checks inline styles and fallback declaration text', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'index.html': `<!doctype html><html><body>
+        <p style="font-size: 23px; line-height: 0.98;">Inline typography drift.</p>
+      </body></html>`,
+      'src/Card.tsx': 'const css = `.card { font-size: 23px; line-height: 0.98; }`; export const Card = () => <p className="card">Drift</p>;',
+    }, async ({ file, dir }) => {
+      const htmlFindings = await detectHtml(file, { dimensions: ['typography'] });
+      expect(personalizedIds(htmlFindings)).toContain('non-token-font-size');
+      expect(personalizedIds(htmlFindings)).toContain('non-token-line-height');
+
+      const tsxPath = path.join(dir, 'src', 'Card.tsx');
+      const tsxFindings = detectText(fs.readFileSync(tsxPath, 'utf8'), tsxPath, { dimensions: ['typography'] });
+      expect(personalizedIds(tsxFindings)).toContain('non-token-font-size');
+      expect(personalizedIds(tsxFindings)).toContain('non-token-line-height');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

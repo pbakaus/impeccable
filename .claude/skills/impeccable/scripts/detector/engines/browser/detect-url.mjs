@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { finding } from '../../findings.mjs';
-import { filterFindings, getRuleIdsForDimensions } from '../../registry/antipatterns.mjs';
+import { filterFindings } from '../../registry/antipatterns.mjs';
+import { getRuleIdsForDimensions } from '../../registry/dimensions.mjs';
 import { profileFindingsAsync, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import { captureVisualContrastCandidate } from '../visual/screenshot-contrast.mjs';
 

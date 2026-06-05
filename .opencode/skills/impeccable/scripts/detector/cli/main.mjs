@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createBrowserDetector, detectUrl } from '../engines/browser/detect-url.mjs';
 import { detectHtml } from '../engines/static-html/detect-html.mjs';
 import { detectText } from '../engines/regex/detect-text.mjs';
-import { normalizeDimensions } from '../registry/antipatterns.mjs';
+import { normalizeDimensions } from '../registry/dimensions.mjs';
 import {
   HTML_EXTENSIONS,
   buildImportGraph,

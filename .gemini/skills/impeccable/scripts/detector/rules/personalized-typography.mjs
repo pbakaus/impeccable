@@ -1,24 +1,35 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { generate, parse, walk } from 'css-tree';
 
 import { finding } from '../findings.mjs';
+import { normalizeDimensions } from '../registry/dimensions.mjs';
 import { GENERIC_FONTS } from '../shared/constants.mjs';
-import { normalizeDimensions } from '../registry/antipatterns.mjs';
 
-const PROPERTY_TO_RULE = {
-  'font-size': 'non-token-font-size',
-  'line-height': 'non-token-line-height',
-  'letter-spacing': 'non-token-letter-spacing',
-  'font-family': 'non-token-font-family',
+const TYPOGRAPHY_PROPERTIES = {
+  'font-size': {
+    ruleId: 'non-token-font-size',
+    tokenKey: 'fontSize',
+    label: 'design typography scale',
+  },
+  'line-height': {
+    ruleId: 'non-token-line-height',
+    tokenKey: 'lineHeight',
+    label: 'design typography scale',
+  },
+  'letter-spacing': {
+    ruleId: 'non-token-letter-spacing',
+    tokenKey: 'letterSpacing',
+    label: 'design typography scale',
+  },
+  'font-family': {
+    ruleId: 'non-token-font-family',
+    tokenKey: 'fontFamily',
+    label: 'design typography families',
+  },
 };
 
-const PROPERTY_TO_TOKEN_KEY = {
-  'font-size': 'fontSize',
-  'line-height': 'lineHeight',
-  'letter-spacing': 'letterSpacing',
-  'font-family': 'fontFamily',
-};
-
+const TOKEN_KEYS = new Set(Object.values(TYPOGRAPHY_PROPERTIES).map(meta => meta.tokenKey));
 const SKIPPED_VALUES = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'normal']);
 
 function shouldRunPersonalizedTypography(options = {}) {
@@ -38,18 +49,15 @@ function startDirFor(filePath) {
 }
 
 function findDesignSidecar(filePath) {
-  const starts = [startDirFor(filePath)];
+  let dir = startDirFor(filePath);
   const visited = new Set();
-  for (const start of starts) {
-    let dir = start;
-    while (dir && !visited.has(dir)) {
-      visited.add(dir);
-      const candidate = path.join(dir, '.impeccable', 'design.json');
-      if (fs.existsSync(candidate)) return candidate;
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
+  while (dir && !visited.has(dir)) {
+    visited.add(dir);
+    const candidate = path.join(dir, '.impeccable', 'design.json');
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
   return null;
 }
@@ -96,7 +104,7 @@ function toPx(value) {
   return `${formatNumber(px)}px`;
 }
 
-function canonicalNumericValues(value) {
+function comparableNumericValues(value) {
   const raw = normalizeCssValue(value);
   if (!raw || raw.includes('var(') || raw.includes('{')) return [];
   const values = new Set([raw]);
@@ -131,49 +139,125 @@ function collectTypographyValues(input, byProp) {
     return;
   }
   if (typeof input !== 'object') return;
+
   for (const [key, value] of Object.entries(input)) {
-    if (Object.values(PROPERTY_TO_TOKEN_KEY).includes(key) && (typeof value === 'string' || typeof value === 'number')) {
+    if (TOKEN_KEYS.has(key) && (typeof value === 'string' || typeof value === 'number')) {
       byProp[key].push(String(value));
-    } else if (value && typeof value === 'object') {
-      collectTypographyValues(value, byProp);
+      continue;
     }
+    if (value && typeof value === 'object') collectTypographyValues(value, byProp);
   }
 }
 
 function buildAllowedTypography(typography) {
-  const byProp = {
-    fontSize: [],
-    lineHeight: [],
-    letterSpacing: [],
-    fontFamily: [],
-  };
-  collectTypographyValues(typography, byProp);
+  const tokenValues = Object.fromEntries([...TOKEN_KEYS].map(key => [key, []]));
+  collectTypographyValues(typography, tokenValues);
 
-  const allowed = {
-    'font-size': { comparable: new Set(), display: [] },
-    'line-height': { comparable: new Set(), display: [] },
-    'letter-spacing': { comparable: new Set(), display: [] },
-    'font-family': { comparable: new Set(), display: [] },
-  };
+  const allowed = Object.fromEntries(Object.keys(TYPOGRAPHY_PROPERTIES).map(prop => [
+    prop,
+    { comparable: new Set(), display: [] },
+  ]));
 
-  for (const cssProp of ['font-size', 'line-height', 'letter-spacing']) {
-    const tokenKey = PROPERTY_TO_TOKEN_KEY[cssProp];
-    for (const value of byProp[tokenKey]) {
-      for (const comparable of canonicalNumericValues(value)) allowed[cssProp].comparable.add(comparable);
+  for (const [prop, meta] of Object.entries(TYPOGRAPHY_PROPERTIES)) {
+    for (const value of tokenValues[meta.tokenKey]) {
       const display = displayCssValue(value);
-      if (display && !allowed[cssProp].display.includes(display)) allowed[cssProp].display.push(display);
+      if (display && !allowed[prop].display.includes(display)) allowed[prop].display.push(display);
+
+      if (prop === 'font-family') {
+        const primary = primaryFontName(value);
+        if (primary) allowed[prop].comparable.add(normalizeFontName(primary));
+        continue;
+      }
+
+      for (const comparable of comparableNumericValues(value)) {
+        allowed[prop].comparable.add(comparable);
+      }
     }
   }
 
-  for (const value of byProp.fontFamily) {
-    const primary = primaryFontName(value);
-    if (!primary) continue;
-    const normalized = normalizeFontName(primary);
-    allowed['font-family'].comparable.add(normalized);
-    if (!allowed['font-family'].display.includes(primary)) allowed['font-family'].display.push(primary);
+  return allowed;
+}
+
+function lineAt(text, index) {
+  return text.slice(0, index).split(/\r?\n/).length;
+}
+
+function extractCssSegments(content) {
+  const text = String(content || '');
+  const segments = [];
+  const firstHtmlTag = text.search(/<!doctype|<html|<head|<body/i);
+  const leadingCss = firstHtmlTag === -1 ? text : text.slice(0, firstHtmlTag);
+  if (leadingCss.trim()) segments.push({ text: leadingCss, startLine: 1, context: 'stylesheet' });
+
+  const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+  let match;
+  while ((match = styleBlockRe.exec(text)) !== null) {
+    const cssStart = match.index + match[0].indexOf(match[1]);
+    if (match[1].trim()) {
+      segments.push({ text: match[1], startLine: lineAt(text, cssStart), context: 'stylesheet' });
+    }
   }
 
-  return allowed;
+  const styleAttrRe = /\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi;
+  while ((match = styleAttrRe.exec(text)) !== null) {
+    if (match[2].trim()) {
+      segments.push({ text: match[2], startLine: lineAt(text, match.index), context: 'declarationList' });
+    }
+  }
+
+  return segments.length ? segments : [{ text, startLine: 1, context: 'stylesheet' }];
+}
+
+function parseCssDeclarations(segment) {
+  const declarations = [];
+  const ast = parse(segment.text, {
+    context: segment.context,
+    positions: true,
+    parseValue: true,
+    parseCustomProperty: false,
+  });
+
+  walk(ast, (node) => {
+    if (node.type !== 'Declaration') return;
+    const property = String(node.property || '').toLowerCase();
+    if (!TYPOGRAPHY_PROPERTIES[property]) return;
+    declarations.push({
+      property,
+      value: generate(node.value).trim(),
+      line: segment.startLine + (node.loc?.start?.line || 1) - 1,
+    });
+  });
+
+  return declarations;
+}
+
+function fallbackDeclarations(segment) {
+  const declarations = [];
+  const lines = segment.text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const re = /(^|[;{\s"'])(font-size|line-height|letter-spacing|font-family)\s*:\s*([^;{}]+)/gi;
+    let match;
+    while ((match = re.exec(lines[i])) !== null) {
+      declarations.push({
+        property: match[2].toLowerCase(),
+        value: displayCssValue(match[3]),
+        line: segment.startLine + i,
+      });
+    }
+  }
+  return declarations;
+}
+
+function extractTypographyDeclarations(content) {
+  const declarations = [];
+  for (const segment of extractCssSegments(content)) {
+    try {
+      declarations.push(...parseCssDeclarations(segment));
+    } catch {
+      declarations.push(...fallbackDeclarations(segment));
+    }
+  }
+  return declarations;
 }
 
 function shouldSkipObservedValue(value) {
@@ -188,40 +272,40 @@ function propertyMatchesAllowed(prop, value, allowed) {
     return allowed[prop].comparable.has(normalizeFontName(primary));
   }
 
-  const observedValues = canonicalNumericValues(value);
+  const observedValues = comparableNumericValues(value);
   if (observedValues.length === 0) return true;
   return observedValues.some(candidate => allowed[prop].comparable.has(candidate));
 }
 
 function findingSnippet(prop, value, allowed) {
+  const meta = TYPOGRAPHY_PROPERTIES[prop];
   const allowedText = allowed[prop].display.join(', ');
   if (prop === 'font-family') {
     const primary = primaryFontName(value) || displayCssValue(value);
-    return `font-family: "${primary}" is not in design typography families: ${allowedText}`;
+    return `font-family: "${primary}" is not in ${meta.label}: ${allowedText}`;
   }
-  return `${prop}: ${displayCssValue(value)} is not in design typography scale: ${allowedText}`;
+  return `${prop}: ${displayCssValue(value)} is not in ${meta.label}: ${allowedText}`;
 }
 
 function detectPersonalizedTypography(content, filePath, options = {}) {
   if (!shouldRunPersonalizedTypography(options)) return [];
   const typography = loadTypographyTokens(filePath);
   if (!typography) return [];
+
   const allowed = buildAllowedTypography(typography);
-  const lines = String(content || '').split('\n');
   const findings = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const re = /(^|[;{\s"'])(font-size|line-height|letter-spacing|font-family)\s*:\s*([^;{}]+)/gi;
-    let match;
-    while ((match = re.exec(line)) !== null) {
-      const prop = match[2].toLowerCase();
-      const value = displayCssValue(match[3]);
-      if (shouldSkipObservedValue(value)) continue;
-      if (allowed[prop].comparable.size === 0) continue;
-      if (propertyMatchesAllowed(prop, value, allowed)) continue;
-      findings.push(finding(PROPERTY_TO_RULE[prop], filePath, findingSnippet(prop, value, allowed), i + 1));
-    }
+  for (const declaration of extractTypographyDeclarations(content)) {
+    const { property, value, line } = declaration;
+    if (shouldSkipObservedValue(value)) continue;
+    if (allowed[property].comparable.size === 0) continue;
+    if (propertyMatchesAllowed(property, value, allowed)) continue;
+    findings.push(finding(
+      TYPOGRAPHY_PROPERTIES[property].ruleId,
+      filePath,
+      findingSnippet(property, value, allowed),
+      line,
+    ));
   }
 
   const deduped = [];
@@ -238,6 +322,7 @@ function detectPersonalizedTypography(content, filePath, options = {}) {
 export {
   buildAllowedTypography,
   detectPersonalizedTypography,
+  extractTypographyDeclarations,
   findDesignSidecar,
   loadTypographyTokens,
   shouldRunPersonalizedTypography,
