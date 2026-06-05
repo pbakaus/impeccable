@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createBrowserDetector, detectUrl } from '../engines/browser/detect-url.mjs';
 import { detectHtml } from '../engines/static-html/detect-html.mjs';
 import { detectText } from '../engines/regex/detect-text.mjs';
+import { normalizeDimensions } from '../registry/antipatterns.mjs';
 import {
   HTML_EXTENSIONS,
   buildImportGraph,
@@ -79,10 +80,11 @@ function printUsage() {
 Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
-  --json    Output results as JSON
-  --gpt     Also report GPT-specific provider tells (off by default)
-  --gemini  Also report Gemini-specific provider tells (off by default)
-  --help    Show this help message
+  --json                  Output results as JSON
+  --dimension <name>      Limit results to one detector dimension (for example: typography)
+  --gpt                   Also report GPT-specific provider tells (off by default)
+  --gemini                Also report Gemini-specific provider tells (off by default)
+  --help                  Show this help message
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -93,7 +95,57 @@ Examples:
   impeccable detect src/
   impeccable detect index.html
   impeccable detect https://example.com
-  impeccable detect --json .`);
+  impeccable detect --json .
+  impeccable detect --json --dimension typography index.html`);
+}
+
+function splitOptionList(value) {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function parseDetectArgs(args) {
+  const providers = [];
+  const dimensions = [];
+  const targets = [];
+  let jsonMode = false;
+  let helpMode = false;
+  let fastMode = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--json') { jsonMode = true; continue; }
+    if (arg === '--help') { helpMode = true; continue; }
+    if (arg === '--fast') { fastMode = true; continue; }
+    if (arg === '--gpt') { providers.push('gpt'); continue; }
+    if (arg === '--gemini') { providers.push('gemini'); continue; }
+    if (arg === '--dimension') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) throw new Error('--dimension requires a value');
+      dimensions.push(...splitOptionList(value));
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--dimension=')) {
+      dimensions.push(...splitOptionList(arg.slice('--dimension='.length)));
+      continue;
+    }
+    if (arg.startsWith('--')) continue;
+    targets.push(arg);
+  }
+
+  return {
+    jsonMode,
+    helpMode,
+    fastMode,
+    targets,
+    scanOptions: {
+      providers,
+      dimensions: normalizeDimensions(dimensions),
+    },
+  };
 }
 
 async function detectCli() {
@@ -103,22 +155,23 @@ async function detectCli() {
     return arg;
   });
   if (args[0] === 'detect') args = args.slice(1);
-  const jsonMode = args.includes('--json');
-  const helpMode = args.includes('--help');
+  let parsedArgs;
+  try {
+    parsedArgs = parseDetectArgs(args);
+  } catch (e) {
+    process.stderr.write(`Error: ${e.message}\n`);
+    process.exit(1);
+  }
+  const { jsonMode, helpMode, fastMode, targets, scanOptions } = parsedArgs;
   // --fast (regex-only) is deprecated: since the jsdom removal, the static
   // HTML/CSS analysis is fast and covers every rule, so the regex-only path
   // only loses coverage for no real speed win. Accept the flag for back-compat
   // but ignore it and run the full scan.
-  if (args.includes('--fast')) {
+  if (fastMode) {
     process.stderr.write(
       'Note: --fast is deprecated and ignored. The full scan is fast now and runs every rule.\n',
     );
   }
-  const providers = [];
-  if (args.includes('--gpt')) providers.push('gpt');
-  if (args.includes('--gemini')) providers.push('gemini');
-  const scanOptions = { providers };
-  const targets = args.filter(a => !a.startsWith('--'));
 
   if (helpMode) { printUsage(); process.exit(0); }
 
@@ -241,4 +294,4 @@ async function detectCli() {
   process.exit(0);
 }
 
-export { formatFindings, handleStdin, confirm, printUsage, detectCli };
+export { formatFindings, handleStdin, confirm, printUsage, parseDetectArgs, detectCli };

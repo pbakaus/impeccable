@@ -681,7 +681,7 @@ code {
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -713,7 +713,7 @@ code {
   color: white;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -1034,22 +1034,22 @@ code {
 .foundation-column:hover .anim-res-line-1 { transform: translate(-7px, 4.75px) scaleX(0.65); transition-delay: 0.15s; }
 .foundation-column:hover .anim-res-line-2 { transform: translate(-6px, 4.25px) scaleX(0.6); transition-delay: 0.2s; }
 
-/* Interaction (Gentle wobble + full toggle on hover) */
-.anim-toggle-move { animation: toggle-wobble 3s ease-in-out infinite; }
+/* Interaction (Gentle drift + full toggle on hover) */
+.anim-toggle-move { animation: toggle-drift 3s ease-in-out infinite; }
 .foundation-column:hover .anim-toggle-move { animation: toggle-snap 0.35s var(--ease-in-out) forwards; }
-@keyframes toggle-wobble { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+@keyframes toggle-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
 @keyframes toggle-snap { from { transform: translateX(0); fill: var(--color-mist); } to { transform: translateX(8px); fill: var(--color-accent); } }
 
-/* Motion (Gentle bob + full bounce on hover) */
+/* Motion (Gentle bob + smooth drop on hover) */
 .anim-squash-ball { transform-origin: 20px 20px; animation: ball-bob 2.5s ease-in-out infinite; }
-.foundation-column:hover .anim-squash-ball { animation: bounce-ball 1.5s linear infinite; }
+.foundation-column:hover .anim-squash-ball { animation: ball-drop 1.5s var(--ease-in-out) infinite; }
 @keyframes ball-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
-@keyframes bounce-ball {
+@keyframes ball-drop {
   0% { transform: translateY(0); }
   6% { transform: translateY(0.5px); }
   18% { transform: translateY(4px); }
   35% { transform: translateY(12px); }
-  42% { transform: translateY(12px) scaleX(1.3) scaleY(0.6); }
+  42% { transform: translateY(12px); }
   48% { transform: translateY(12px); }
   65% { transform: translateY(4px); }
   78% { transform: translateY(0.5px); }
@@ -1086,7 +1086,7 @@ code {
   .foundation-card:hover .anim-res-line-1 { transform: translate(-7px, 4.75px) scaleX(0.65); }
   .foundation-card:hover .anim-res-line-2 { transform: translate(-6px, 4.25px) scaleX(0.6); }
   .foundation-card:hover .anim-toggle-move { animation: toggle-snap 0.35s var(--ease-in-out) forwards; }
-  .foundation-card:hover .anim-squash-ball { animation: bounce-ball 1.5s linear infinite; }
+  .foundation-card:hover .anim-squash-ball { animation: ball-drop 1.5s var(--ease-in-out) infinite; }
 }
 
 /* Small tablet: 2-col grid */

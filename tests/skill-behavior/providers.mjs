@@ -14,7 +14,7 @@
  * .env is loaded from the repo root (copied from impeccable-evals). Tests
  * skip cleanly when the matching key is unset rather than failing CI.
  */
-import { anthropic } from '@ai-sdk/anthropic';
+import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import fs from 'node:fs';
@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const DEFAULT_DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com/anthropic';
 
 function loadEnv() {
   const envPath = path.join(REPO_ROOT, '.env');
@@ -46,12 +47,14 @@ export const PROVIDERS = {
   anthropic: { envKey: 'ANTHROPIC_API_KEY', label: 'Anthropic' },
   openai: { envKey: 'OPENAI_API_KEY', label: 'OpenAI' },
   google: { envKey: 'GOOGLE_CLOUD_API_KEY', label: 'Google' },
+  deepseek: { envKey: 'DEEPSEEK_API_KEY', label: 'DeepSeek' },
 };
 
 export function detectProvider(modelId) {
   if (modelId.startsWith('claude-')) return 'anthropic';
   if (modelId.startsWith('gpt-')) return 'openai';
   if (modelId.startsWith('gemini-')) return 'google';
+  if (modelId.startsWith('deepseek-')) return 'deepseek';
   throw new Error(`Unsupported model id: "${modelId}"`);
 }
 
@@ -65,6 +68,13 @@ export function getModel(modelId) {
   const provider = detectProvider(modelId);
   if (provider === 'anthropic') return anthropic(modelId);
   if (provider === 'openai') return openai(modelId);
+  if (provider === 'deepseek') {
+    const deepseek = createAnthropic({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: process.env.DEEPSEEK_API_BASE_URL || DEFAULT_DEEPSEEK_API_BASE_URL,
+    });
+    return deepseek(modelId);
+  }
   if (provider === 'google') {
     // The @ai-sdk/google provider reads GOOGLE_GENERATIVE_AI_API_KEY by
     // default; the evals .env stores the same value under

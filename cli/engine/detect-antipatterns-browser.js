@@ -408,6 +408,42 @@ const ANTIPATTERNS = [
       'Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.',
   },
   {
+    id: 'non-token-font-size',
+    category: 'quality',
+    name: 'Font size outside design system',
+    description:
+      'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'font sizes should match the design typography scale',
+  },
+  {
+    id: 'non-token-line-height',
+    category: 'quality',
+    name: 'Line height outside design system',
+    description:
+      'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'line heights should match the design typography scale',
+  },
+  {
+    id: 'non-token-letter-spacing',
+    category: 'quality',
+    name: 'Letter spacing outside design system',
+    description:
+      'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'letter spacing should match the design typography scale',
+  },
+  {
+    id: 'non-token-font-family',
+    category: 'quality',
+    name: 'Font family outside design system',
+    description:
+      'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'font families should match the design typography scale',
+  },
+  {
     id: 'text-overflow',
     category: 'quality',
     name: 'Content overflowing its container',
@@ -4144,7 +4180,10 @@ if (IS_BROWSER) {
   function collectBrowserFindings() {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
-    const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
+    const _enabled = window.__IMPECCABLE_CONFIG__?.enabledRules || [];
+    const _ruleOk = (id) =>
+      (!_enabled.length || _enabled.includes(id)) &&
+      (!_disabled.length || !_disabled.includes(id));
     // Note: provider-gated rules (--gpt / --gemini) are NOT filtered here. In a
     // real browser env (detector page, live overlay, extension) running every
     // check is free, so we always surface them; the gating is purely a CLI

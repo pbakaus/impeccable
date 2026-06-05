@@ -5,6 +5,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import {
   ANTIPATTERNS, checkElementBorders, checkElementMotion, checkElementGlow, isNeutralColor, isFullPage,
+  getRulesForDimension,
   detectText, detectHtml, extractStyleBlocks, extractCSSinJS,
   walkDir, SCANNABLE_EXTENSIONS,
   buildImportGraph, resolveImport,
@@ -41,6 +42,128 @@ async function withStaticFixture(files, callback) {
 function findingIds(findings) {
   return findings.map(f => f.antipattern);
 }
+
+function personalizedIds(findings) {
+  return findings.map(f => f.antipattern).filter(id => id.startsWith('non-token-'));
+}
+
+function designSidecar(typography) {
+  return JSON.stringify({
+    schemaVersion: 2,
+    generatedAt: '2026-06-05T00:00:00.000Z',
+    title: 'Design System: Test',
+    tokens: { typography },
+    extensions: {},
+    components: [],
+    narrative: {},
+  }, null, 2);
+}
+
+const KEIO_DISTILLED_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Keio Typography Slice</title>
+  <style>
+    :root {
+      --font: "DM Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    }
+    body { font-family: var(--font); font-size: 16px; line-height: 1.5; }
+    .preheading {
+      font-size: 12px; font-weight: 500; letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .brand .word {
+      font-size: 23px; font-weight: 300; letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      margin: 0; font-weight: 200;
+      font-size: clamp(46px, 6.4vw, 98px);
+      line-height: 0.98; letter-spacing: -0.025em;
+    }
+    .hero-lede {
+      max-width: 48ch; margin: 0;
+      font-size: clamp(17px, 1.25vw, 20px); line-height: 1.55;
+      letter-spacing: -0.003em;
+    }
+    .glass-pill {
+      font-size: 12px; font-weight: 500; letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .strip-words span { font-size: 15px; letter-spacing: -0.005em; }
+    .foot-inner { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="brand"><span class="word">Keio</span></header>
+  <main class="hero">
+    <span class="preheading">Floral atelier</span>
+    <h1>Flowers, composed like still life.</h1>
+    <p class="hero-lede">A seasonal studio working in small batches.</p>
+    <span class="glass-pill">Seasonal No. 26</span>
+  </main>
+  <section class="strip-words"><span>Private residences</span></section>
+  <footer class="foot-inner">hello@keio.flowers</footer>
+</body>
+</html>`;
+
+const NARROW_TYPOGRAPHY_TOKENS = {
+  caption: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '12px',
+    lineHeight: 1.4,
+    letterSpacing: '0.16em',
+  },
+  body: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '16px',
+    lineHeight: 1.5,
+    letterSpacing: '0',
+  },
+  title: { fontSize: '20px', lineHeight: 1.2 },
+  display: { fontSize: '32px', lineHeight: 1.1 },
+};
+
+const KEIO_MATCHING_TYPOGRAPHY_TOKENS = {
+  base: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '16px',
+    lineHeight: 1.5,
+  },
+  preheading: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '12px',
+    letterSpacing: '0.18em',
+  },
+  wordmark: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '23px',
+    letterSpacing: '0.16em',
+  },
+  hero: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: 'clamp(46px, 6.4vw, 98px)',
+    lineHeight: 0.98,
+    letterSpacing: '-0.025em',
+  },
+  lede: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: 'clamp(17px, 1.25vw, 20px)',
+    lineHeight: 1.55,
+    letterSpacing: '-0.003em',
+  },
+  strip: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '15px',
+    letterSpacing: '-0.005em',
+  },
+  footer: {
+    fontFamily: '"DM Sans", sans-serif',
+    fontSize: '13px',
+  },
+};
 
 
 // ---------------------------------------------------------------------------
@@ -794,6 +917,165 @@ describe('ANTIPATTERNS registry', () => {
       expect(ap.name).toBeTypeOf('string');
       expect(ap.description).toBeTypeOf('string');
     }
+  });
+
+  test('typography dimension includes explicit rule set independent of skillSection metadata', () => {
+    const ids = new Set(getRulesForDimension('typography').map(rule => rule.id));
+    for (const id of [
+      'overused-font',
+      'single-font',
+      'flat-type-hierarchy',
+      'italic-serif-display',
+      'hero-eyebrow-chip',
+      'repeated-section-kickers',
+      'oversized-h1',
+      'extreme-negative-tracking',
+      'tight-leading',
+      'tiny-text',
+      'justified-text',
+      'all-caps-body',
+      'wide-tracking',
+      'skipped-heading',
+      'line-length',
+      'icon-tile-stack',
+      'non-token-font-size',
+      'non-token-line-height',
+      'non-token-letter-spacing',
+      'non-token-font-family',
+    ]) {
+      expect(ids.has(id)).toBe(true);
+    }
+    expect(ANTIPATTERNS.find(rule => rule.id === 'tight-leading')?.skillSection).toBeUndefined();
+    expect(ANTIPATTERNS.find(rule => rule.id === 'line-length')?.skillSection).toBe('Layout & Space');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Typography dimension and design-token preflight
+// ---------------------------------------------------------------------------
+
+describe('typography dimension', () => {
+  test('detectHtml keeps typography and excludes color, motion, and layout findings', async () => {
+    await withStaticFixture({
+      'index.html': `<!doctype html>
+<html>
+<head>
+  <style>
+    body { font-family: Inter, sans-serif; background: #111827; color: #f9fafb; }
+    h1 { font-size: 18px; }
+    h2 { font-size: 17px; }
+    p { font-size: 16px; color: #9ca3af; background: #3b82f6; }
+    .motion { transition: width 0.3s ease; animation: bounce 1s infinite; }
+    .layout { border-left: 4px solid #3b82f6; border-radius: 12px; padding: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Flat Typography</h1>
+  <h2>Nearly Identical Heading</h2>
+  <p class="motion layout">The page carries typography, color, motion, and layout issues.</p>
+</body>
+</html>`,
+    }, async ({ file }) => {
+      const ids = findingIds(await detectHtml(file, { dimensions: ['typography'] }));
+      expect(ids).toContain('overused-font');
+      expect(ids).toContain('flat-type-hierarchy');
+      for (const excluded of ['gray-on-color', 'low-contrast', 'bounce-easing', 'layout-transition', 'side-tab']) {
+        expect(ids).not.toContain(excluded);
+      }
+    });
+  });
+
+  test('CLI --dimension typography parses as an option and filters output', async () => {
+    await withStaticFixture({
+      'index.html': `<!doctype html>
+<html>
+<head>
+  <style>
+    body { font-family: Inter, sans-serif; background: #111827; color: #f9fafb; }
+    h1 { font-size: 18px; }
+    h2 { font-size: 17px; }
+    p { font-size: 16px; color: #9ca3af; background: #3b82f6; transition: width 0.3s ease; }
+  </style>
+</head>
+<body><h1>Flat Typography</h1><h2>Nearly Identical Heading</h2><p>Text</p></body>
+</html>`,
+    }, async ({ file }) => {
+      const result = spawnSync('node', [SCRIPT, '--json', '--dimension', 'typography', file], {
+        encoding: 'utf-8',
+        timeout: 15000,
+      });
+      expect(result.status).toBe(2);
+      const parsed = JSON.parse(result.stdout.trim());
+      const ids = findingIds(parsed);
+      expect(ids).toContain('overused-font');
+      expect(ids).not.toContain('gray-on-color');
+      expect(result.stderr || '').not.toContain('cannot access typography');
+    });
+  });
+
+  test('Keio distilled fixture flags values outside a narrow typography scale', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'index.html': KEIO_DISTILLED_HTML,
+    }, async ({ file }) => {
+      const f = await detectHtml(file, { dimensions: ['typography'] });
+      const snippets = f.map(item => item.snippet);
+      expect(personalizedIds(f)).toContain('non-token-font-size');
+      expect(personalizedIds(f)).toContain('non-token-line-height');
+      expect(personalizedIds(f)).toContain('non-token-letter-spacing');
+      expect(snippets).toContain('font-size: 23px is not in design typography scale: 12px, 16px, 20px, 32px');
+      expect(snippets).toContain('line-height: 0.98 is not in design typography scale: 1.4, 1.5, 1.2, 1.1');
+      expect(snippets).toContain('letter-spacing: 0.18em is not in design typography scale: 0.16em, 0');
+    });
+  });
+
+  test('Keio control fixture passes when typography tokens match the observed values', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(KEIO_MATCHING_TYPOGRAPHY_TOKENS),
+      'index.html': KEIO_DISTILLED_HTML,
+    }, async ({ file }) => {
+      const f = await detectHtml(file, { dimensions: ['typography'] });
+      expect(personalizedIds(f)).toEqual([]);
+    });
+  });
+
+  test('personalized typography pass cases skip variables, inherited values, and unusable sidecars', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'index.html': `<!doctype html><html><head><style>
+        :root { --body-size: 16px; --body-leading: 1.5; }
+        body { font-family: "DM Sans", sans-serif; font-size: 16px; line-height: 1.5; letter-spacing: 0; }
+        p { font-size: var(--body-size); line-height: inherit; letter-spacing: normal; }
+      </style></head><body><p>Inherited typography.</p></body></html>`,
+    }, async ({ file }) => {
+      expect(personalizedIds(await detectHtml(file, { dimensions: ['typography'] }))).toEqual([]);
+    });
+
+    for (const sidecar of [null, '{', JSON.stringify({ schemaVersion: 2, extensions: {} })]) {
+      const files = {
+        'index.html': `<!doctype html><html><head><style>
+          h1 { font-size: 13px; line-height: 0.9; letter-spacing: 0.3em; }
+        </style></head><body><h1>Unusable sidecar should not flag.</h1></body></html>`,
+      };
+      if (sidecar !== null) files['.impeccable/design.json'] = sidecar;
+      await withStaticFixture(files, async ({ file }) => {
+        expect(personalizedIds(await detectHtml(file, { dimensions: ['typography'] }))).toEqual([]);
+      });
+    }
+  });
+
+  test('detectText runs personalized typography checks for non-HTML sources', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'src/styles.css': '.hero { font-size: 23px; line-height: 0.98; letter-spacing: 0.18em; }',
+      'index.html': '<!doctype html><html><body></body></html>',
+    }, async ({ dir }) => {
+      const cssPath = path.join(dir, 'src', 'styles.css');
+      const f = detectText(fs.readFileSync(cssPath, 'utf8'), cssPath, { dimensions: ['typography'] });
+      expect(personalizedIds(f)).toContain('non-token-font-size');
+      expect(personalizedIds(f)).toContain('non-token-line-height');
+      expect(personalizedIds(f)).toContain('non-token-letter-spacing');
+    });
   });
 });
 

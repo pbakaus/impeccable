@@ -10,6 +10,19 @@ Product: system fonts and familiar sans stacks are legitimate here. One well-tun
 
 ---
 
+## Typography Preflight
+
+Before changing type, run the bundled detector scoped to typography:
+
+```bash
+node .claude/skills/impeccable/scripts/detect.mjs --json --dimension typography <resolved target>
+```
+
+Treat the JSON output as defect evidence, not as the full typography assessment. The flow has two required phases:
+
+1. Fix the auto-detected typography findings first. This includes generic typography anti-patterns and project-personalized token mismatches from `.impeccable/design.json` when present.
+2. Still perform the full typography pass below for hierarchy, rhythm, readability, personality, consistency, and overall type quality. A clean detector result does not mean the typography is done.
+
 ## Assess Current Typography
 
 Analyze what's weak or generic about the current type:

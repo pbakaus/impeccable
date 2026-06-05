@@ -306,6 +306,42 @@ const ANTIPATTERNS = [
       'Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.',
   },
   {
+    id: 'non-token-font-size',
+    category: 'quality',
+    name: 'Font size outside design system',
+    description:
+      'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'font sizes should match the design typography scale',
+  },
+  {
+    id: 'non-token-line-height',
+    category: 'quality',
+    name: 'Line height outside design system',
+    description:
+      'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'line heights should match the design typography scale',
+  },
+  {
+    id: 'non-token-letter-spacing',
+    category: 'quality',
+    name: 'Letter spacing outside design system',
+    description:
+      'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'letter spacing should match the design typography scale',
+  },
+  {
+    id: 'non-token-font-family',
+    category: 'quality',
+    name: 'Font family outside design system',
+    description:
+      'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token or update the design system.',
+    skillSection: 'Typography',
+    skillGuideline: 'font families should match the design typography scale',
+  },
+  {
     id: 'text-overflow',
     category: 'quality',
     name: 'Content overflowing its container',
@@ -390,6 +426,80 @@ function getRuleEngineSupport(engine) {
   return RULE_ENGINE_SUPPORT[engine] || new Set();
 }
 
+const TYPOGRAPHY_RULE_IDS = new Set([
+  'overused-font',
+  'single-font',
+  'flat-type-hierarchy',
+  'italic-serif-display',
+  'hero-eyebrow-chip',
+  'repeated-section-kickers',
+  'oversized-h1',
+  'extreme-negative-tracking',
+  'tight-leading',
+  'tiny-text',
+  'justified-text',
+  'all-caps-body',
+  'wide-tracking',
+  'skipped-heading',
+  'line-length',
+  'icon-tile-stack',
+  'non-token-font-size',
+  'non-token-line-height',
+  'non-token-letter-spacing',
+  'non-token-font-family',
+]);
+
+const DIMENSION_RULE_IDS = {
+  typography: TYPOGRAPHY_RULE_IDS,
+};
+
+const DIMENSION_ALIASES = {
+  type: 'typography',
+  typeset: 'typography',
+  typography: 'typography',
+};
+
+function normalizeDimensions(dimensions = []) {
+  const values = Array.isArray(dimensions) ? dimensions : [dimensions];
+  const normalized = [];
+  for (const value of values) {
+    if (!value) continue;
+    const key = String(value).trim().toLowerCase();
+    if (!key) continue;
+    const dimension = DIMENSION_ALIASES[key] || key;
+    if (!DIMENSION_RULE_IDS[dimension]) {
+      throw new Error(`Unknown detector dimension "${value}". Supported dimensions: ${Object.keys(DIMENSION_RULE_IDS).join(', ')}`);
+    }
+    if (!normalized.includes(dimension)) normalized.push(dimension);
+  }
+  return normalized;
+}
+
+function getRuleIdsForDimensions(dimensions = []) {
+  const normalized = normalizeDimensions(dimensions);
+  if (normalized.length === 0) return null;
+  const ids = new Set();
+  for (const dimension of normalized) {
+    for (const id of DIMENSION_RULE_IDS[dimension]) ids.add(id);
+  }
+  return ids;
+}
+
+function getRulesForDimension(dimension) {
+  const ids = getRuleIdsForDimensions([dimension]);
+  return ids ? ANTIPATTERNS.filter(rule => ids.has(rule.id)) : [];
+}
+
+function findingRuleId(f) {
+  return f?.antipattern || f?.id || f?.type;
+}
+
+function filterByDimensions(findings, dimensions = []) {
+  const ids = getRuleIdsForDimensions(dimensions);
+  if (!ids) return findings;
+  return findings.filter(f => ids.has(findingRuleId(f)));
+}
+
 // Set of provider tags that gate rules off by default (e.g. 'gpt', 'gemini').
 const GATED_PROVIDERS = new Set(
   ANTIPATTERNS.map(rule => rule.gated).filter(Boolean),
@@ -402,18 +512,32 @@ function filterByProviders(findings, providers = []) {
   const enabled = new Set(providers || []);
   if (!GATED_PROVIDERS.size) return findings;
   return findings.filter(f => {
-    const rule = getAntipattern(f.antipattern);
+    const rule = getAntipattern(findingRuleId(f));
     if (!rule || !rule.gated) return true;
     return enabled.has(rule.gated);
   });
+}
+
+function filterFindings(findings, options = {}) {
+  return filterByDimensions(
+    filterByProviders(findings, options?.providers),
+    options?.dimensions,
+  );
 }
 
 export {
   ANTIPATTERNS,
   RULE_ENGINE_SUPPORT,
   GATED_PROVIDERS,
+  TYPOGRAPHY_RULE_IDS,
+  DIMENSION_RULE_IDS,
   getAntipattern,
   getRulesForCategory,
+  getRulesForDimension,
+  getRuleIdsForDimensions,
   getRuleEngineSupport,
+  normalizeDimensions,
   filterByProviders,
+  filterByDimensions,
+  filterFindings,
 };

@@ -1261,7 +1261,10 @@ if (IS_BROWSER) {
   function collectBrowserFindings() {
     const groupMap = new Map();
     const _disabled = EXTENSION_MODE ? (window.__IMPECCABLE_CONFIG__?.disabledRules || []) : [];
-    const _ruleOk = (id) => !_disabled.length || !_disabled.includes(id);
+    const _enabled = window.__IMPECCABLE_CONFIG__?.enabledRules || [];
+    const _ruleOk = (id) =>
+      (!_enabled.length || _enabled.includes(id)) &&
+      (!_disabled.length || !_disabled.includes(id));
     // Note: provider-gated rules (--gpt / --gemini) are NOT filtered here. In a
     // real browser env (detector page, live overlay, extension) running every
     // check is free, so we always surface them; the gating is purely a CLI

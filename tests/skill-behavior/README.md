@@ -15,11 +15,13 @@ contract.
 bun run test:skill-behavior
 IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior   # dump per-scenario traces
 IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-4-6 bun run test:skill-behavior   # scope to one model
+IMPECCABLE_SKILL_BEHAVIOR_MODELS=deepseek-v4-flash bun run test:skill-behavior   # DeepSeek-only feature validation
 ```
 
 Requires `.env` at repo root with at least one of `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`, `GOOGLE_CLOUD_API_KEY`. Providers without a key are
-skipped, not failed.
+`OPENAI_API_KEY`, `GOOGLE_CLOUD_API_KEY`, or `DEEPSEEK_API_KEY`.
+Providers without a key are skipped, not failed. DeepSeek uses
+`https://api.deepseek.com/anthropic` unless `DEEPSEEK_API_BASE_URL` is set.
 
 ## How it works
 

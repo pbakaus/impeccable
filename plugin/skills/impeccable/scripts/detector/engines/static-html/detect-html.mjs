@@ -25,7 +25,8 @@ import {
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
-import { filterByProviders } from '../../registry/antipatterns.mjs';
+import { filterFindings } from '../../registry/antipatterns.mjs';
+import { detectPersonalizedTypography } from '../../rules/personalized-typography.mjs';
 import { detectText, runTextContentAnalyzers } from '../regex/detect-text.mjs';
 import {
   StaticDocument,
@@ -202,7 +203,9 @@ async function detectHtml(filePath, options = {}) {
     }
   }
 
-  return filterByProviders(findings, options.providers);
+  findings.push(...detectPersonalizedTypography(`${cssText}\n${html}`, filePath, options));
+
+  return filterFindings(findings, options);
 }
 
 export { checkStaticPageTypography, STATIC_ELEMENT_RULES, detectHtml };
