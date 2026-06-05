@@ -39,6 +39,20 @@ describe('live-poll accept handling', () => {
       ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
     );
   });
+
+  it('forwards deferred source writes for Svelte component accepts', () => {
+    assert.deepEqual(
+      buildAcceptScriptArgs({
+        type: 'accept',
+        id: 'abc12345',
+        variantId: 2,
+        pageUrl: '/',
+        deferSourceWrite: true,
+        paramValues: { density: 'compact' },
+      }),
+      ['--id', 'abc12345', '--variant', '2', '--page-url', '/', '--defer-source-write', '--param-values', '{"density":"compact"}'],
+    );
+  });
 });
 
 describe('live-poll manual Apply guidance', () => {

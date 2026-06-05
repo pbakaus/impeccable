@@ -221,6 +221,9 @@ export function buildAcceptScriptArgs(event) {
     ? ['--id', String(event.id), '--discard']
     : ['--id', String(event.id), '--variant', String(event.variantId)];
   if (event.pageUrl) scriptArgs.push('--page-url', String(event.pageUrl));
+  if (event.type === 'accept' && event.deferSourceWrite === true) {
+    scriptArgs.push('--defer-source-write');
+  }
   if (event.type === 'accept' && event.paramValues && Object.keys(event.paramValues).length > 0) {
     scriptArgs.push('--param-values', JSON.stringify(event.paramValues));
   }

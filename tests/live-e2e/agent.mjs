@@ -1851,6 +1851,7 @@ export async function runAgentLoop({
           variant: event.variantId,
           paramValues: event.paramValues,
           pageUrl: event.pageUrl,
+          deferSourceWrite: event.deferSourceWrite === true,
         });
 
         // Carbonize cleanup — required after accept per the live skill spec.
@@ -2212,10 +2213,11 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl }) {
+async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl, deferSourceWrite = false }) {
   const args = [path.join(scriptsDir, 'live-accept.mjs'), '--id', id];
   if (discard) args.push('--discard');
   else args.push('--variant', String(variant));
+  if (!discard && deferSourceWrite) args.push('--defer-source-write');
   if (paramValues) args.push('--param-values', JSON.stringify(paramValues));
   if (pageUrl) args.push('--page-url', pageUrl);
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });

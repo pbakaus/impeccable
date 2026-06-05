@@ -5,11 +5,17 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import {
+  applyDeferredSvelteComponentAccepts,
+  deferredAcceptsPath,
+  readDeferredAccepts,
+  writeDeferredAccept,
+} from '../skill/scripts/live-svelte-component.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
@@ -32,7 +38,10 @@ function runAccept(cwd, args) {
 describe('live-accept — style-element edge cases', () => {
   let tmp;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-test-')); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+  afterEach(() => {
+    try { rmSync(deferredAcceptsPath(tmp), { force: true }); } catch {}
+    rmSync(tmp, { recursive: true, force: true });
+  });
 
   // Historical bug: extractVariant flipped into "inStyle" mode on <style and
   // scanned for </style> line-by-line. JSX self-closing <style ... /> has no
@@ -72,6 +81,302 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(!after.includes('variant three'), 'other variant content dropped');
     assert.ok(!after.includes('variant one'), 'other variant content dropped');
     assert.ok(!after.includes('original text'), 'original content dropped');
+  });
+
+  it('queues Svelte component accepts with --defer-source-write and promotes them later', () => {
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/abc12345'), { recursive: true });
+    const source = [
+      '<script>',
+      '  let expenses = [{ id: 1 }];',
+      '</script>',
+      '',
+      '<span class="open-count">{expenses.length} offen</span>',
+      '',
+      '<style>',
+      '.open-count { font-weight: 700; }',
+      '</style>',
+      '',
+    ].join('\n');
+    writeFileSync(join(tmp, 'src.svelte'), source, 'utf-8');
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/abc12345/manifest.json'),
+      JSON.stringify({
+        id: 'abc12345',
+        previewMode: 'svelte-component',
+        sourceFile: 'src.svelte',
+        sourceStartLine: 5,
+        sourceEndLine: 5,
+        count: 1,
+        propContract: [{ prop: 'length', expr: 'expenses.length' }],
+        originalMarkup: '<span class="open-count">{expenses.length} offen</span>',
+        componentDir: 'node_modules/.impeccable-live/abc12345',
+        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+      }, null, 2) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/abc12345/v1.svelte'),
+      [
+        '<script>',
+        '  let { length } = $props();',
+        '</script>',
+        '',
+        '<span class="open-count open-count--accepted"><strong>{length} offen</strong></span>',
+        '',
+        '<style>',
+        '.open-count--accepted { font-size: 18px; }',
+        '</style>',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = runAccept(tmp, ['--id', 'abc12345', '--variant', '1', '--defer-source-write']);
+    assert.equal(result.handled, true, `deferred accept should succeed: ${JSON.stringify(result)}`);
+    assert.equal(result.deferredSourceWrite, true);
+    assert.equal(result.previewMode, 'svelte-component');
+    assert.equal(readFileSync(join(tmp, 'src.svelte'), 'utf-8'), source, 'deferred accept must not mutate route source immediately');
+    assert.ok(existsSync(join(tmp, 'node_modules/.impeccable-live/abc12345/manifest.json')), 'deferred accept keeps temp Svelte files for stop-time promotion');
+
+    const queue = readDeferredAccepts(tmp);
+    assert.deepEqual(
+      queue.accepts.map((entry) => ({ id: entry.id, variantNum: entry.variantNum })),
+      [{ id: 'abc12345', variantNum: '1' }],
+    );
+
+    const flushed = applyDeferredSvelteComponentAccepts(tmp);
+    assert.equal(flushed.applied, 1);
+    assert.equal(flushed.failed, 0);
+    const after = readFileSync(join(tmp, 'src.svelte'), 'utf-8');
+    assert.match(after, /open-count--accepted/);
+    assert.match(after, /\{expenses\.length\} offen/);
+    assert.equal(existsSync(join(tmp, 'node_modules/.impeccable-live/abc12345/manifest.json')), false, 'flush removes temp Svelte component session');
+    assert.deepEqual(readDeferredAccepts(tmp).accepts, []);
+  });
+
+  it('relocates deferred Svelte replace ranges after earlier deferred accepts shift the source', () => {
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/insert-a'), { recursive: true });
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/replace-b'), { recursive: true });
+    mkdirSync(join(tmp, 'src'), { recursive: true });
+
+    const source = [
+      '<script>',
+      '  let expenses = [{ name: "Design snack", amount: "$12" }];',
+      '</script>',
+      '',
+      '<section class="expense-panel">',
+      '  {#if expenses.length === 0}',
+      '    <article class="empty-card">',
+      '      <strong>Keine offenen Ausgaben.</strong>',
+      '      <p>Fügt die nächste gemeinsame Ausgabe hinzu.</p>',
+      '    </article>',
+      '  {:else}',
+      '    <article class="expense-row" data-testid="expense-row">',
+      '      <strong>{expenses[0].name}</strong>',
+      '      <span>{expenses[0].amount}</span>',
+      '    </article>',
+      '  {/if}',
+      '</section>',
+      '',
+      '<style>',
+      '.expense-row { padding: 12px; }',
+      '</style>',
+      '',
+    ].join('\n');
+    writeFileSync(join(tmp, 'src/page.svelte'), source, 'utf-8');
+
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/insert-a/manifest.json'),
+      JSON.stringify({
+        id: 'insert-a',
+        mode: 'insert',
+        previewMode: 'svelte-component',
+        sourceFile: 'src/page.svelte',
+        insertLine: 11,
+        position: 'after',
+        anchorStartLine: 7,
+        anchorEndLine: 10,
+        originalMarkup: [
+          '    <article class="empty-card">',
+          '      <strong>Keine offenen Ausgaben.</strong>',
+          '      <p>Fügt die nächste gemeinsame Ausgabe hinzu.</p>',
+          '    </article>',
+        ].join('\n'),
+        anchorMarkup: [
+          '    <article class="empty-card">',
+          '      <strong>Keine offenen Ausgaben.</strong>',
+          '      <p>Fügt die nächste gemeinsame Ausgabe hinzu.</p>',
+          '    </article>',
+        ].join('\n'),
+        count: 1,
+        propContract: [],
+        componentDir: 'node_modules/.impeccable-live/insert-a',
+        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+      }, null, 2) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/insert-a/v1.svelte'),
+      [
+        '<script>',
+        '  let {} = $props();',
+        '</script>',
+        '<span class="badge-chip">Automatisch synchronisiert</span>',
+        '<style>',
+        '.badge-chip { display: inline-flex; }',
+        '</style>',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/replace-b/manifest.json'),
+      JSON.stringify({
+        id: 'replace-b',
+        previewMode: 'svelte-component',
+        sourceFile: 'src/page.svelte',
+        sourceStartLine: 12,
+        sourceEndLine: 15,
+        count: 1,
+        propContract: [
+          { prop: 'name', expr: 'expenses[0].name' },
+          { prop: 'amount', expr: 'expenses[0].amount' },
+        ],
+        originalMarkup: [
+          '    <article class="expense-row" data-testid="expense-row">',
+          '      <strong>{expenses[0].name}</strong>',
+          '      <span>{expenses[0].amount}</span>',
+          '    </article>',
+        ].join('\n'),
+        componentDir: 'node_modules/.impeccable-live/replace-b',
+        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+      }, null, 2) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/replace-b/v1.svelte'),
+      [
+        '<script>',
+        '  let { name, amount } = $props();',
+        '</script>',
+        '<article class="expense-row" data-testid="expense-row" data-polish="3">',
+        '  <strong>{name}</strong>',
+        '  <span>{amount}</span>',
+        '</article>',
+        '<style>',
+        '.expense-row[data-polish="3"] { gap: 8px; }',
+        '</style>',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    writeDeferredAccept({
+      id: 'insert-a',
+      variantNum: '1',
+      paramValues: {},
+      sourceFile: 'src/page.svelte',
+      componentDir: 'node_modules/.impeccable-live/insert-a',
+      previewMode: 'svelte-component',
+    }, tmp);
+    writeDeferredAccept({
+      id: 'replace-b',
+      variantNum: '1',
+      paramValues: {},
+      sourceFile: 'src/page.svelte',
+      componentDir: 'node_modules/.impeccable-live/replace-b',
+      previewMode: 'svelte-component',
+    }, tmp);
+
+    const flushed = applyDeferredSvelteComponentAccepts(tmp);
+    assert.equal(flushed.applied, 2, JSON.stringify(flushed));
+    assert.equal(flushed.failed, 0, JSON.stringify(flushed));
+
+    const after = readFileSync(join(tmp, 'src/page.svelte'), 'utf-8');
+    assert.match(after, /\{#if expenses\.length === 0\}/);
+    assert.match(after, /\{:else\}/);
+    assert.match(after, /\{\/if\}/);
+    assert.match(after, /<span class="badge-chip">Automatisch synchronisiert<\/span>[\s\S]*\{:else\}[\s\S]*data-polish="3"/);
+    assert.doesNotMatch(after, /\{:else\}[\s\S]*<\/article>\s*<\/article>/, 'replace must not consume the {:else} line after insert shifts source');
+    assert.match(after, /\{expenses\[0\]\.name\}/);
+    assert.match(after, /\{expenses\[0\]\.amount\}/);
+  });
+
+  it('drops unmatched Svelte param selectors instead of emitting empty :global() after deferred promotion', () => {
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/param-global'), { recursive: true });
+    const source = [
+      '<script>',
+      '  const expenses = [{ name: "Design snack", amount: "$12" }];',
+      '</script>',
+      '',
+      '<article class="expense-row" data-testid="expense-row">',
+      '  <strong>{expenses[0].name}</strong>',
+      '  <span>{expenses[0].amount}</span>',
+      '</article>',
+      '',
+      '<style>',
+      '.expense-row { padding: 12px; }',
+      '</style>',
+      '',
+    ].join('\n');
+    writeFileSync(join(tmp, 'src.svelte'), source, 'utf-8');
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/param-global/manifest.json'),
+      JSON.stringify({
+        id: 'param-global',
+        previewMode: 'svelte-component',
+        sourceFile: 'src.svelte',
+        sourceStartLine: 5,
+        sourceEndLine: 8,
+        count: 2,
+        propContract: [
+          { prop: 'name', expr: 'expenses[0].name' },
+          { prop: 'amount', expr: 'expenses[0].amount' },
+        ],
+        originalMarkup: '<article class="expense-row" data-testid="expense-row"><strong>{expenses[0].name}</strong><span>{expenses[0].amount}</span></article>',
+        componentDir: 'node_modules/.impeccable-live/param-global',
+        runtimeModule: '/node_modules/.impeccable-live/__runtime.js',
+      }, null, 2) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/param-global/v2.svelte'),
+      [
+        '<script>',
+        '  let { name, amount } = $props();',
+        '</script>',
+        '',
+        '<article class="expense-row expense-row--card" data-testid="expense-row"><strong>{name}</strong> <span>{amount}</span></article>',
+        '',
+        '<style>',
+        '.expense-row--card { padding: var(--p-density-padding, 12px); }',
+        ':global([data-p-density="compact"]) .expense-row--card { --p-density-padding: 8px; }',
+        ':global([data-p-accent-color="0"]) .expense-row--card { border-left-color: transparent; }',
+        '</style>',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = runAccept(tmp, [
+      '--id',
+      'param-global',
+      '--variant',
+      '2',
+      '--defer-source-write',
+      '--param-values',
+      JSON.stringify({ density: 'compact' }),
+    ]);
+    assert.equal(result.deferredSourceWrite, true);
+    const flushed = applyDeferredSvelteComponentAccepts(tmp);
+    assert.equal(flushed.applied, 1);
+    assert.equal(flushed.failed, 0);
+    const after = readFileSync(join(tmp, 'src.svelte'), 'utf-8');
+    assert.doesNotMatch(after, /:global\(\s*\)/);
+    assert.doesNotMatch(after, /accent-color/);
+    assert.match(after, /\.expense-row--card \{ padding: var\(--p-density-padding, 12px\); \}/);
+    assert.match(after, /\.expense-row--card \{ --p-density-padding: 8px; \}/);
   });
 
   // Variant: same-line <style>…</style> block should also be treated as a

@@ -19,6 +19,7 @@ import {
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
 const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
+const SERVER_SOURCE = readFileSync(SERVER_SCRIPT, 'utf-8');
 // ---------------------------------------------------------------------------
 // Helper: start/stop server for integration tests
 // ---------------------------------------------------------------------------
@@ -100,11 +101,26 @@ it('gitignores local Impeccable runtime artifacts', () => {
     '.impeccable/live/manual-edit-evidence/example.json',
     '.impeccable/hook.cache.json',
     '.impeccable/live/deferred-svelte-component-accepts.json',
+    '.impeccable/live/svelte-tailwind-safelist.json',
   ], { cwd: REPO_ROOT, encoding: 'utf-8' });
   assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
   assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
   assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
+  assert.match(ignored, /\.impeccable\/live\/svelte-tailwind-safelist\.json/);
+});
+
+it('applies deferred Svelte component accepts before deleting preview sessions on exit and shutdown', () => {
+  assert.match(
+    SERVER_SOURCE,
+    /if \(msg\.type === 'exit'\) \{[\s\S]{0,120}?applyDeferredSvelteComponentAcceptsBeforeExit\('exit'\);[\s\S]{0,120}?cleanupSvelteComponentSessionsBeforeExit\(\);/,
+    'browser Exit must promote queued Svelte accepts before deleting temp component sessions',
+  );
+  assert.match(
+    SERVER_SOURCE,
+    /function shutdown\(\) \{[\s\S]{0,120}?applyDeferredSvelteComponentAcceptsBeforeExit\('shutdown'\);[\s\S]{0,120}?cleanupSvelteComponentSessionsBeforeExit\(\);/,
+    'server shutdown must promote queued Svelte accepts before deleting temp component sessions',
+  );
 });
 
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {

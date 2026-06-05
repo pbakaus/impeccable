@@ -44,6 +44,7 @@ const DEFAULT_DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com/anthropic';
 const LLM_REQUEST_MAX_RETRIES = 1;
 const VARIANT_REQUEST_TIMEOUT_MS = 105_000;
 const MANUAL_EDIT_REQUEST_TIMEOUT_MS = 55_000;
+const VARIANT_RESPONSE_MAX_ATTEMPTS = 5;
 const MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS = 3;
 
 export const VARIANT_SYSTEM_INSTRUCTIONS = [
@@ -72,13 +73,14 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '- Insert mode (`event.mode === "insert"`): each variant.innerHtml must be net-new content that honors event.freeformPrompt. It does NOT replace the anchor and does NOT need to use the anchor tag or preserve anchor copy.',
   '- Insert mode variants must contain visible inserted content. Do not return empty roots, placeholder-only roots, inline style= attributes, or test hooks like <div data-impeccable-e2e-variant="1"></div>.',
   '- Replace mode: the single top-level element is the replacement root itself. If the picked element is <section class="hero-copy">...</section>, emit <section class="hero-copy">...</section> with edited children directly; do not wrap a duplicate <section class="hero-copy"> inside another root.',
-  '- Replace mode: PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain exactly class="hero-title"; do not add, remove, or rename classes. This is a hard requirement — mapped-list fixtures depend on the class string staying stable across the variant set.',
+  '- Replace mode: PRESERVE the original root class attribute for non-Svelte targets. If the picked root is <article class="expense-row">, every variant root MUST keep the original expense-row class; never replace it with class="expense-row--...". Prefer generated variant hook classes on child spans/elements. Svelte component-preview variants may add generated root modifier classes only when all original root class tokens remain present.',
   '- Replace mode: PRESERVE all existing visible copy exactly. GO variants change presentation, hierarchy, and styling; they must not rewrite titles, paragraphs, button labels, or user-applied manual copy edits.',
   '- Replace mode: use the visible literal copy from the picked element. Do not emit framework template expressions or placeholders such as {name}, {amount}, ${value}, or {{value}} in innerHtml.',
   '- Replace mode: for bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
   '- Replace mode: PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
-  '- Replace mode: Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
-  '- Replace mode: for non-bare elements where the existing children must stay in place, add a harmless root attribute such as data-impeccable-e2e-variant="1" or another non-copy styling hook so the markup is materially changed without changing visible text.',
+  '- Replace mode: Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy and wrap the full visible copy in one child span with a generated, variant-specific class so Accept persists a real source change. Example: <article class="expense-row"><span class="expense-row__variant expense-row__variant--bold">Design snack $12</span></article>.',
+  '- Replace mode: for non-bare elements where the existing children must stay in place, add generated variant-specific classes to existing child elements or harmless new child spans; do not rely on root class changes or inert data attributes.',
+  '- Variants in the same response must be visibly different from each other in layout, spacing, hierarchy, color, border, or typography. Do not return duplicate-looking treatments. Because the picked root class is fixed, vary child hook classes and scopedCss rules for each variant.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
@@ -260,7 +262,7 @@ export async function createLlmAgent(opts = {}) {
       ].join('\n');
 
       let userMessage = baseUserMessage;
-      for (let attempt = 0; attempt < MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < VARIANT_RESPONSE_MAX_ATTEMPTS; attempt += 1) {
         let response;
         try {
           response = await client.messages.create(
@@ -285,7 +287,7 @@ export async function createLlmAgent(opts = {}) {
             },
           );
         } catch (err) {
-          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw err;
+          if (attempt + 1 >= VARIANT_RESPONSE_MAX_ATTEMPTS) throw err;
           log(`variant request failed; retrying: ${err.message}`);
           userMessage = [
             baseUserMessage,
@@ -305,7 +307,7 @@ export async function createLlmAgent(opts = {}) {
           `provider=${provider} model=${model} attempt=${attempt + 1} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
         );
         if (!response || !Array.isArray(response.content)) {
-          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw new Error('LLM agent: provider returned an empty variant response');
+          if (attempt + 1 >= VARIANT_RESPONSE_MAX_ATTEMPTS) throw new Error('LLM agent: provider returned an empty variant response');
           log('variant response validation failed; retrying: provider returned an empty response');
           userMessage = [
             baseUserMessage,
@@ -325,7 +327,7 @@ export async function createLlmAgent(opts = {}) {
         try {
           parsed = parseVariantResponse(text);
         } catch (err) {
-          if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw err;
+          if (attempt + 1 >= VARIANT_RESPONSE_MAX_ATTEMPTS) throw err;
           log(`variant response validation failed; retrying: ${err.message.split('\n')[0]}`);
           userMessage = [
             baseUserMessage,
@@ -337,11 +339,25 @@ export async function createLlmAgent(opts = {}) {
           continue;
         }
 
+        if (!isInsert && shouldLoadSvelteLiveReference(context)) {
+          repairSvelteVariantRootClasses(parsed, event.element);
+        }
+
         const validationError = isInsert
-          ? validateInsertVariantOutput(parsed, event)
-          : (validateVariantVisibleCopy(parsed, event.element) || validateVariantMaterialChange(parsed, event.element));
+          ? (validateRequestedTuneParams(parsed, event) || validateInsertVariantOutput(parsed, event))
+          : (
+              validateRequestedTuneParams(parsed, event)
+              || validateRequestedTextStyling(parsed, event)
+              || validateVariantRootContract(parsed, event.element, {
+                ignoreSvelteScopedClasses: shouldLoadSvelteLiveReference(context),
+                allowAdditionalRootClasses: shouldLoadSvelteLiveReference(context),
+              })
+              || validateVariantVisibleCopy(parsed, event.element, event)
+              || validateVariantDistinctness(parsed)
+              || validateVariantMaterialChange(parsed, event.element)
+            );
         if (!validationError) return parsed;
-        if (attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS) throw new Error(`LLM agent: ${validationError}`);
+        if (attempt + 1 >= VARIANT_RESPONSE_MAX_ATTEMPTS) throw new Error(`LLM agent: ${validationError}`);
 
         log(`variant validation failed; retrying: ${validationError}`);
         if (isInsert) {
@@ -368,7 +384,9 @@ export async function createLlmAgent(opts = {}) {
             `Every variant must preserve this exact normalized visible text in the same order: "${expectedText}"`,
             'Use literal visible text in innerHtml, not framework placeholders like {name}, {amount}, ${value}, or {{value}}.',
             'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
-            'For non-bare markup, keep the existing visible descendants in place and add a harmless root data attribute or styling hook so the source is not identical.',
+            'Every variant must be visibly different from the other variants; changing only data-variant, params, or other inert attributes is not enough.',
+            'Keep the picked root tag and class verbatim. Add generated, variant-specific child hook classes or child spans, and target those hooks in scopedCss with visibly different rules.',
+            'For non-bare markup, keep the existing visible descendants in place and add generated classes to those descendants or to harmless child spans so the source is not identical.',
             'Return corrected JSON only.',
           ].join('\n');
         }
@@ -837,18 +855,112 @@ function validateVariantInnerHtml(html) {
   return null;
 }
 
-export function validateVariantVisibleCopy(parsed, element) {
+export function validateVariantVisibleCopy(parsed, element, event = {}) {
   const expectedText = normalizeVisibleText(elementVisibleText(element));
   if (!expectedText) return null;
+  const requireExactVisibleSpacing = shouldRequireExactVisibleSpacing(event);
 
   for (const [i, variant] of parsed.variants.entries()) {
     const actualText = normalizeVisibleText(extractVisibleTextFromHtml(variant.innerHtml));
-    if (!actualText.includes(expectedText)) {
+    const compactExpected = compactVisibleText(expectedText);
+    const compactActual = compactVisibleText(actualText);
+    const preservesCopy = actualText.includes(expectedText)
+      || (
+        !requireExactVisibleSpacing
+        &&
+        shouldAllowLayoutSeparatedCopy(expectedText, element)
+        && compactExpected
+        && compactActual.includes(compactExpected)
+      );
+    if (!preservesCopy) {
       return `variant ${i} changed visible copy; expected to include "${expectedText}", got "${actualText}"`;
     }
   }
 
   return null;
+}
+
+export function validateVariantRootContract(parsed, element, opts = {}) {
+  const original = parseRootElementSignature(element?.outerHTML || '', opts);
+  if (!original?.tag) return null;
+
+  for (const [i, variant] of (parsed.variants || []).entries()) {
+    const actual = parseRootElementSignature(variant?.innerHtml || '', opts);
+    if (!actual?.tag) return `variant ${i} must contain a single top-level ${original.tag} root`;
+    if (actual.tag !== original.tag) {
+      return `variant ${i} changed the picked root tag; expected <${original.tag}>, got <${actual.tag}>`;
+    }
+    if (original.classAttr != null) {
+      if (opts.allowAdditionalRootClasses) {
+        const missingClasses = original.classes.filter((className) => !actual.classes.includes(className));
+        if (missingClasses.length > 0) {
+          return `variant ${i} changed the picked root class attribute; expected to keep class token(s) "${missingClasses.join(' ')}", got class="${actual.classAttr || ''}". Keep every original root class token and move replacement classes to child spans/elements.`;
+        }
+      } else if (actual.classAttr !== original.classAttr) {
+        return `variant ${i} changed the picked root class attribute; expected class="${original.classAttr}", got class="${actual.classAttr || ''}". Keep the root class exactly unchanged and move variant-specific classes to child spans/elements.`;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function repairSvelteVariantRootClasses(parsed, element) {
+  const original = parseRootElementSignature(element?.outerHTML || '', { ignoreSvelteScopedClasses: true });
+  if (!original?.classes?.length) return parsed;
+  for (const variant of (parsed?.variants || [])) {
+    const html = String(variant?.innerHtml || '');
+    const actual = parseRootElementSignature(html, { ignoreSvelteScopedClasses: true });
+    if (!actual?.tag || actual.tag !== original.tag) continue;
+    const mergedClasses = [
+      ...original.classes,
+      ...actual.classes.filter((className) => !original.classes.includes(className)),
+    ];
+    const mergedClassAttr = mergedClasses.join(' ');
+    if (mergedClassAttr === actual.classAttr) continue;
+    variant.innerHtml = rewriteRootClassAttr(html, mergedClassAttr);
+  }
+  return parsed;
+}
+
+function parseRootElementSignature(html, opts = {}) {
+  const match = String(html || '').trim().match(/^<([a-z][\w:-]*)(\s[^>]*)?>/i);
+  if (!match) return null;
+  const attrs = match[2] || '';
+  const classMatch = attrs.match(/\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  const classAttr = classMatch
+    ? normalizeRootClassAttr(classMatch[1] ?? classMatch[2] ?? '', opts)
+    : null;
+  return {
+    tag: match[1].toLowerCase(),
+    classAttr,
+    classes: classAttr ? classAttr.split(/\s+/).filter(Boolean) : [],
+  };
+}
+
+function rewriteRootClassAttr(html, classAttr) {
+  return String(html || '').replace(/^<([a-z][\w:-]*)(\s[^>]*)?>/i, (full, tag, attrs = '') => {
+    const escapedClassAttr = String(classAttr || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    if (/\bclass\s*=/.test(attrs)) {
+      return `<${tag}${attrs.replace(/\bclass\s*=\s*(?:"[^"]*"|'[^']*')/i, `class="${escapedClassAttr}"`)}>`;
+    }
+    return `<${tag}${attrs || ''} class="${escapedClassAttr}">`;
+  });
+}
+
+function normalizeRootClassAttr(value, opts = {}) {
+  const classes = String(value || '')
+    .split(/\s+/)
+    .map((className) => className.trim())
+    .filter(Boolean)
+    .filter((className) => !(opts.ignoreSvelteScopedClasses && /^svelte-[\w-]+$/.test(className)));
+  return classes.join(' ');
+}
+
+function shouldRequireExactVisibleSpacing(event = {}) {
+  const prompt = String(event.freeformPrompt || '');
+  return /\bexact visible literal copy\b/i.test(prompt)
+    || /\bexact normalized visible text\b/i.test(prompt);
 }
 
 export function validateInsertVariantOutput(parsed, event = {}) {
@@ -888,6 +1000,158 @@ export function validateVariantMaterialChange(parsed, element) {
   }
 
   return null;
+}
+
+export function validateVariantDistinctness(parsed) {
+  const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+  const seen = new Map();
+  for (const [index, variant] of variants.entries()) {
+    const signature = visualHtmlSignature(variant?.innerHtml || '');
+    if (!signature) continue;
+    const previous = seen.get(signature);
+    if (previous !== undefined) {
+      return `variant ${index + 1} has the same visual HTML structure as variant ${previous + 1}; variants must differ in visible structure/classes, not only params or inert attributes`;
+    }
+    seen.set(signature, index);
+  }
+  return null;
+}
+
+export function validateRequestedTuneParams(parsed, event = {}) {
+  const prompt = String(event.freeformPrompt || '');
+  if (!/\b(?:tunable params|Tune panel|one range|one steps|one toggle|steps\/radio|toggle control)\b/i.test(prompt)) return null;
+  const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+  const allParams = variants.flatMap((variant) => Array.isArray(variant.params) ? variant.params : []);
+  if (allParams.length === 0) return 'prompt requested tunable params, but variants emitted no params';
+
+  const kinds = new Set(allParams.map((param) => param?.kind).filter(Boolean));
+  if (/\bone range\b/i.test(prompt) && !kinds.has('range')) {
+    return 'prompt requested a range param, but variants omitted range params';
+  }
+  if (/\b(?:one steps|steps\/radio|radio\/steps)\b/i.test(prompt) && !kinds.has('steps')) {
+    return 'prompt requested a steps/radio param, but variants omitted steps params';
+  }
+  if (/\b(?:one toggle|toggle control)\b/i.test(prompt) && !kinds.has('toggle')) {
+    return 'prompt requested a toggle param, but variants omitted toggle params';
+  }
+  return null;
+}
+
+export function validateRequestedTextStyling(parsed, event = {}) {
+  const prompt = String(event.freeformPrompt || '');
+  if (!promptRequestsVisibleTextStyling(prompt)) return null;
+
+  const css = String(parsed?.scopedCss || '');
+  const originalClasses = extractClassTokens(event.element?.outerHTML || '');
+  const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+
+  for (const [index, variant] of variants.entries()) {
+    const generatedClasses = [...extractClassTokens(variant?.innerHtml || '')]
+      .filter((className) => !originalClasses.has(className) && !/^svelte-/.test(className));
+
+    if (generatedClasses.length === 0) {
+      return `variant ${index} prompt asks for visible text styling, but the variant added no generated text hook classes`;
+    }
+
+    const styledClass = generatedClasses.find((className) => classHasVisibleTextRule(css, className));
+    if (!styledClass) {
+      return `variant ${index} prompt asks for visible text styling, but none of its generated classes (${generatedClasses.join(', ')}) have visible text-affecting scopedCss rules`;
+    }
+  }
+
+  return null;
+}
+
+function promptRequestsVisibleTextStyling(prompt) {
+  return /\bvisible text itself must change\b/i.test(prompt)
+    || (
+      /\btext\b/i.test(prompt)
+      && /\b(font-size|font-weight|letter spacing|text-transform|uppercase|type treatment|contrasting text color)\b/i.test(prompt)
+    );
+}
+
+function classHasVisibleTextRule(css, className) {
+  const classSelector = `.${cssEscapeRegex(className)}`;
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = rulePattern.exec(css))) {
+    const selector = match[1] || '';
+    const declarations = match[2] || '';
+    if (!new RegExp(`(^|[^-\\w])${classSelector}($|[^-\\w])`).test(selector)) continue;
+    if (hasVisibleTextDeclaration(declarations)) return true;
+  }
+  return false;
+}
+
+function hasVisibleTextDeclaration(declarations) {
+  for (const part of declarations.split(';')) {
+    const colonIndex = part.indexOf(':');
+    if (colonIndex === -1) continue;
+    const prop = part.slice(0, colonIndex).trim().toLowerCase();
+    const value = part.slice(colonIndex + 1).trim().toLowerCase();
+    if (!prop || !value) continue;
+    if (isVisibleTextDeclaration(prop, value)) return true;
+  }
+  return false;
+}
+
+function isVisibleTextDeclaration(prop, value) {
+  if (prop === 'font-size') {
+    if (/^(?:normal|inherit|initial|unset|revert|1(?:\.0+)?em|100%|13px)$/.test(value)) return false;
+    return true;
+  }
+  if (prop === 'font-weight') {
+    if (/^(?:normal|inherit|initial|unset|revert|bold|700)$/.test(value)) return false;
+    const numeric = Number.parseFloat(value);
+    return value === 'bolder' || Number.isFinite(numeric) && numeric >= 800;
+  }
+  if (prop === 'color') {
+    if (/^(?:inherit|initial|unset|revert|currentcolor|current color|transparent)$/.test(value)) return false;
+    return true;
+  }
+  if (prop === 'letter-spacing') {
+    return !/^(?:normal|inherit|initial|unset|revert|0|0px|0em|0rem)$/.test(value);
+  }
+  if (prop === 'text-transform') {
+    return !/^(?:none|inherit|initial|unset|revert)$/.test(value);
+  }
+  if (prop === 'font-style') {
+    return /^(?:italic|oblique)/.test(value);
+  }
+  if (prop === 'line-height') {
+    if (/^(?:normal|inherit|initial|unset|revert|1(?:\.0+)?)$/.test(value)) return false;
+    const numeric = Number.parseFloat(value);
+    return Number.isFinite(numeric) && numeric >= 1.2;
+  }
+  return false;
+}
+
+function extractClassTokens(html) {
+  const classNames = new Set();
+  const pattern = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  let match;
+  while ((match = pattern.exec(String(html || '')))) {
+    const raw = match[1] || match[2] || '';
+    for (const className of raw.split(/\s+/)) {
+      const trimmed = className.trim();
+      if (trimmed) classNames.add(trimmed);
+    }
+  }
+  return classNames;
+}
+
+function cssEscapeRegex(className) {
+  return String(className).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function visualHtmlSignature(html) {
+  return String(html || '')
+    .replace(/<\/?(?:strong|b|em|i|span)(?=[\s>])/gi, (match) => (match.startsWith('</') ? '</inline' : '<inline'))
+    .replace(/\sdata-(?:impeccable-[\w-]+|variant|v|p-[\w-]+)(?:=(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '')
+    .replace(/\saria-hidden=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function htmlHasNonTextVisualContent(html) {
@@ -1472,15 +1736,31 @@ function elementVisibleText(element) {
 }
 
 function extractVisibleTextFromHtml(html) {
-  return decodeBasicHtmlEntities(String(html)
+  const withoutEdgeElementWhitespace = String(html)
+    .replace(/(<[A-Za-z][^>]*>)\s+/g, '$1')
+    .replace(/\s+(<\/[A-Za-z][^>]*>)/g, '$1');
+  return decodeBasicHtmlEntities(withoutEdgeElementWhitespace
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
     .replace(/<style\b[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' '));
+    .replace(/<[^>]+>/g, ''));
 }
 
 function normalizeVisibleText(text) {
   return String(text).replace(/\s+/g, ' ').trim();
+}
+
+function compactVisibleText(text) {
+  return normalizeVisibleText(text).replace(/\s+/g, '');
+}
+
+function shouldAllowLayoutSeparatedCopy(expectedText, element) {
+  const normalized = normalizeVisibleText(expectedText);
+  if (/^\d+\s+\p{L}+$/u.test(normalized)) return false;
+  if (/[·•]|[$€£¥]\s?\d|\d\s?[$€£¥]/.test(normalized)) return true;
+  const outerHtml = String(element?.outerHTML || '');
+  const elementCount = (outerHtml.match(/<[A-Za-z][\w:-]*\b/g) || []).length;
+  return elementCount > 2 && normalized.split(/\s+/).length > 2;
 }
 
 function normalizeManualEditText(text) {

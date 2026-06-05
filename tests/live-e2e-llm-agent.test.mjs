@@ -1511,6 +1511,21 @@ describe('live-e2e LLM agent variant copy validation', () => {
     assert.match(result, /Manual Title Applied/);
   });
 
+  it('rejects spacing loss when the prompt requires exact visible literal copy', () => {
+    const result = validateVariantVisibleCopy(
+      {
+        variants: [
+          { innerHtml: '<article class="tailwind-card"><div><strong>Tailwind balance</strong><span>$24</span></div></article>' },
+        ],
+      },
+      { textContent: 'Tailwind balance $24' },
+      { freeformPrompt: 'Polish this exact Tailwind card while preserving the exact visible literal copy "Tailwind balance $24".' },
+    );
+
+    assert.match(result, /changed visible copy/);
+    assert.match(result, /Tailwind balance \$24/);
+  });
+
   it('uses outerHTML as a fallback when textContent is absent', () => {
     const result = validateVariantVisibleCopy(
       {

@@ -80,11 +80,12 @@ async function clickPickToggle(page, selector) {
  *
  * @param {import('playwright').Page} page
  * @param {number} expectedCount
- * @param {{ agentMode?: string, preActions?: object[], log?: (msg: string) => void }} opts
+ * @param {{ agentMode?: string, preActions?: object[], reloadPreActions?: object[], log?: (msg: string) => void }} opts
  */
 export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
   const agentMode = opts.agentMode || 'fake';
   const preActions = opts.preActions;
+  const reloadPreActions = opts.reloadPreActions ?? preActions;
   const log = opts.log || (() => {});
   const firstPassTimeoutMs = agentMode === 'llm' ? 90_000 : 5_000;
   const finalTimeoutMs = agentMode === 'llm' ? 90_000 : 30_000;
@@ -92,7 +93,7 @@ export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
   if (preActions?.length) {
     try {
       await waitForCycling(page, expectedCount, { timeout: firstPassTimeoutMs });
-      return;
+      return { reloaded: false };
     } catch {
       log(`Cycling not reached in ${firstPassTimeoutMs}ms — retracing preActions`);
       await runPreActions(page, preActions);
@@ -101,7 +102,7 @@ export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
 
   try {
     await waitForCycling(page, expectedCount, { timeout: finalTimeoutMs });
-    return;
+    return { reloaded: false };
   } catch (firstErr) {
     if (process.env.IMPECCABLE_E2E_DEBUG) {
       firstErr.message += '\n\n--- live UI snapshot ---\n' + JSON.stringify(await liveUiSnapshot(page), null, 2);
@@ -112,8 +113,9 @@ export async function waitForCyclingRobust(page, expectedCount, opts = {}) {
   log('Cycling not reached after LLM generate — reloading to pick up HMR');
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
   await installLiveQueryHelpers(page);
-  if (preActions?.length) await runPreActions(page, preActions);
+  if (reloadPreActions?.length) await runPreActions(page, reloadPreActions);
   await waitForCycling(page, expectedCount, { timeout: 60_000 });
+  return { reloaded: true };
 }
 
 async function liveUiSnapshot(page) {

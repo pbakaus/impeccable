@@ -33,6 +33,9 @@
     "pickPosition": { "x": 6, "y": 12 },
     "acceptedSourcePattern": "data-testid=\"open-count\"",
     "variantSequence": [2, 3, 1],
+    "retracePreActionsForCycling": false,
+    "rerunPreActionsAfterCyclingReload": true,
+    "resetStateProbeBaselineAfterCyclingReload": true,
     "preActions": [
       { "type": "click", "selector": "[data-testid='add-expense']" },
       { "type": "wait", "selector": "[data-testid='expense-row']" },

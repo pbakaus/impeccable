@@ -6,8 +6,10 @@ import { tmpdir } from 'node:os';
 
 import {
   buildPropContract,
+  cleanupSvelteComponentTailwindSafelists,
   extractMustacheExpressions,
   inlineSvelteComponentAccept,
+  syncSvelteComponentTailwindSafelist,
   substituteExprsWithProps,
 } from '../skill/scripts/live-svelte-component.mjs';
 
@@ -117,5 +119,48 @@ describe('Svelte component live accept', () => {
   it('deduplicates prop names that share the same expression tail', () => {
     const contract = buildPropContract(['user.name', 'team.name', 'user.id']);
     assert.deepEqual(contract.map((entry) => entry.prop), ['name', 'name2', 'id']);
+  });
+
+  it('safelists generated Tailwind utilities for Svelte component previews', () => {
+    mkdirSync(join(tmp, 'src'), { recursive: true });
+    mkdirSync(join(tmp, 'node_modules/.impeccable-live/tailwind-test'), { recursive: true });
+    writeFileSync(join(tmp, 'src/app.css'), '@import "tailwindcss";\n', 'utf-8');
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/tailwind-test/manifest.json'),
+      JSON.stringify({
+        id: 'tailwind-test',
+        previewMode: 'svelte-component',
+        sourceFile: 'src/routes/+page.svelte',
+        componentDir: 'node_modules/.impeccable-live/tailwind-test',
+        count: 2,
+      }, null, 2) + '\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/tailwind-test/v1.svelte'),
+      '<article><div class="tailwind-v1 bg-amber-100 text-amber-950 border-amber-400 rounded-2xl p-6 shadow-lg min-h-24">Tailwind balance $24</div></article>\n',
+      'utf-8',
+    );
+    writeFileSync(
+      join(tmp, 'node_modules/.impeccable-live/tailwind-test/v2.svelte'),
+      '<article><div class="tailwind-v2 bg-sky-100 text-sky-950 border-sky-400 rounded-2xl p-6 shadow-xl min-h-28">Tailwind balance $24</div></article>\n',
+      'utf-8',
+    );
+
+    const result = syncSvelteComponentTailwindSafelist('node_modules/.impeccable-live/tailwind-test/manifest.json', tmp);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.written, ['src/app.css']);
+
+    const css = readFileSync(join(tmp, 'src/app.css'), 'utf-8');
+    assert.match(css, /impeccable-live-tailwind-safelist:start/);
+    assert.match(css, /@source inline\("p-6"\);/);
+    assert.match(css, /@source inline\("shadow-xl"\);/);
+    assert.match(css, /@source inline\("min-h-28"\);/);
+    assert.doesNotMatch(css, /svelte-/);
+
+    const cleanup = cleanupSvelteComponentTailwindSafelists(tmp);
+    assert.deepEqual(cleanup.cleaned, ['src/app.css']);
+    const cleaned = readFileSync(join(tmp, 'src/app.css'), 'utf-8');
+    assert.equal(cleaned, '@import "tailwindcss";\n');
   });
 });

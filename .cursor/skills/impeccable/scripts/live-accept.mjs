@@ -22,6 +22,7 @@ import {
   findSvelteComponentManifest,
   inlineSvelteComponentAccept,
   removeSvelteComponentSession,
+  writeDeferredAccept,
 } from './live-svelte-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
@@ -48,8 +49,8 @@ Required:
 Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
   --defer-source-write
-                     Deprecated compatibility flag. Svelte component accepts
-                     now write the real source immediately.
+                     Queue Svelte component accepts for promotion when live
+                     mode stops instead of writing route source immediately.
 
 Output (JSON):
   { handled, file, carbonize }`);
@@ -61,6 +62,7 @@ Output (JSON):
   const paramValuesRaw = argVal(args, '--param-values');
   const pageUrl = argVal(args, '--page-url');
   const isDiscard = args.includes('--discard');
+  const deferSourceWrite = args.includes('--defer-source-write');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!isDiscard && !variantNum) { console.error('Need --discard or --variant N'); process.exit(1); }
@@ -89,6 +91,27 @@ Output (JSON):
         carbonize: false,
         previewMode: 'svelte-component',
         componentDir: svelteComponentManifest.componentDir,
+      }));
+      return;
+    }
+
+    if (deferSourceWrite) {
+      writeDeferredAccept({
+        id,
+        variantNum,
+        paramValues,
+        sourceFile: svelteComponentManifest.sourceFile,
+        componentDir: svelteComponentManifest.componentDir,
+        previewMode: 'svelte-component',
+      }, process.cwd());
+      console.log(JSON.stringify({
+        handled: true,
+        file: svelteComponentManifest.sourceFile,
+        sourceFile: svelteComponentManifest.sourceFile,
+        carbonize: false,
+        previewMode: 'svelte-component',
+        componentDir: svelteComponentManifest.componentDir,
+        deferredSourceWrite: true,
       }));
       return;
     }

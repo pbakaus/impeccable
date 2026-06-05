@@ -155,6 +155,19 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('sends the Exit event reliably before tearing down browser chrome', () => {
+    assert.match(
+      SOURCE,
+      /function sendEvent\(msg, opts\) \{[\s\S]{0,500}?keepalive: Boolean\(opts && opts\.keepalive\),/,
+      'sendEvent should support keepalive requests so Exit is not canceled while live chrome is removed',
+    );
+    assert.match(
+      SOURCE,
+      /exitBtn\.addEventListener\('click', async \(e\) => \{[\s\S]{0,260}?await withTimeout\(sendEvent\(\{ type: 'exit' \}, \{ keepalive: true \}\), 1500\);[\s\S]{0,80}?teardown\(\);/,
+      'Exit should wait briefly for the helper event before teardown so deferred Svelte accepts flush deterministically',
+    );
+  });
+
   it('exits inline editing directly on outside click', () => {
     assert.match(
       SOURCE,
@@ -516,6 +529,26 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
+      /function clearHostTextSelection\(\)[\s\S]{0,420}?sel\.removeAllRanges\(\)/,
+      'explicit Pick mode should clear stale host-page text selection left by edit flows',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\)[\s\S]{0,420}?pagePickSkipClick = false;[\s\S]{0,160}?clearHostTextSelection\(\);/,
+      'turning Pick on must clear stale one-shot skip and host text selection so post-accept repick is not inert',
+    );
+    assert.match(
+      SOURCE,
+      /function pickableFromPoint\(x, y, fallbackTarget = null\)[\s\S]{0,420}?document\.elementFromPoint\(x, y\)[\s\S]{0,260}?pickable\(node\)/,
+      'Pick clicks must resolve a fresh pickable target from the click point when hover state is stale after DOM swaps',
+    );
+    assert.match(
+      SOURCE,
+      /const pickTarget = hoveredElement && hoveredElement\.isConnected && pickable\(hoveredElement\)[\s\S]{0,180}?pickableFromPoint\(e\.clientX, e\.clientY, e\.target\);[\s\S]{0,180}?selectedElement = pickTarget;/,
+      'picker click handling must use the click-point fallback target instead of requiring a current hoveredElement',
+    );
+    assert.match(
+      SOURCE,
       /steer-blur-recover/,
       'steer blur should recover focus for type-to-steer when not selecting page text',
     );
@@ -529,7 +562,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function togglePick\(\)[\s\S]{0,200}?saveInteractionPrefs\(\);/,
+      /function togglePick\(\)[\s\S]{0,500}?saveInteractionPrefs\(\);/,
       'togglePick must persist interaction prefs',
     );
     assert.match(
@@ -677,11 +710,57 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('Svelte component accept does not leave a cloned preview beside HMR output', () => {
-    assert.doesNotMatch(
+  it('retries accepted DOM cleanup after late HMR reintroduces variant scaffolding', () => {
+    assert.match(
       SOURCE,
-      /if \(pending\.isSvelteComponent\) \{[\s\S]{0,160}?commitAcceptedSvelteComponentToDom\(pending\.id\);[\s\S]{0,40}?\}/,
-      'event=live_browser.svelte_accept_duplicate actor=browser operation=accept_svelte_component risk=preview_clone_plus_hmr_card expected=no_immediate_clone_commit actual=commits_mounted_preview_into_dom',
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,220}?scheduleAcceptedDomReconcile\(accepted\);/,
+      'accepted non-Svelte sessions need a post-cleanup reconcile pass because HMR can reapply intermediate carbonize markup after the first cleanup',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptedDomReconcile\(accepted\) \{[\s\S]{0,180}?if \(!accepted \|\| accepted\.isSvelteComponent\) return;[\s\S]{0,500}?ensureAcceptedDomClean\(accepted\);[\s\S]{0,260}?setTimeout\(retry, 600 \* attempts\);/,
+      'late HMR reconcile should re-run the existing accepted DOM cleanup for non-Svelte sessions until accepted content is outside variant wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /const wrapper = document\.querySelector\('\[data-impeccable-variants="' \+ sessionId \+ '"\]'\)\s*\|\|\s*document\.querySelector\('\[data-impeccable-carbonize="' \+ sessionId \+ '"\]'\);/,
+      'accepted DOM cleanup must remove intermediate carbonize wrappers as well as live variants wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /matches\.every\(\(el\) => !el\.closest\('\[data-impeccable-variants\],\[data-impeccable-carbonize\],\[data-impeccable-variant\]'\)\)/,
+      'accepted DOM is only clean when no accepted selector remains inside variants, carbonize, or variant scaffolding',
+    );
+  });
+
+  it('normalizes JSX className attributes when recovering variants from source text', () => {
+    assert.match(
+      SOURCE,
+      /function normalizeFrameworkDomAttributes\(root\) \{[\s\S]{0,420}?querySelectorAll\('\[classname\]'\)[\s\S]{0,360}?setAttribute\('class', el\.getAttribute\('classname'\) \|\| ''\);[\s\S]{0,120}?removeAttribute\('classname'\);/,
+      'source-recovered JSX markup is parsed as HTML, so className becomes classname and must be converted back to class before selector checks',
+    );
+    assert.match(
+      SOURCE,
+      /const wrapper = srcWrapper\.cloneNode\(true\);[\s\S]{0,80}?normalizeFrameworkDomAttributes\(wrapper\);/,
+      'variant source recovery should normalize JSX attributes before mounting the recovered wrapper',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending\) \{[\s\S]{0,900}?normalizeFrameworkDomAttributes\(accepted\);[\s\S]{0,120}?while \(accepted\.firstChild\)/,
+      'accepted DOM promotion should normalize recovered JSX attributes before moving accepted nodes out of scaffolding',
+    );
+  });
+
+  it('Svelte component accept defers source writes and commits the mounted preview without reload', () => {
+    assert.match(
+      SOURCE,
+      /const acceptedIsSvelteComponent =[\s\S]{0,260}?if \(acceptedIsSvelteComponent\) acceptPayload\.deferSourceWrite = true;/,
+      'Svelte component accepts must tell live-poll/live-accept to queue source promotion until live-server stops',
+    );
+    assert.match(
+      SOURCE,
+      /pendingAcceptedSession = \{[\s\S]{0,220}?isSvelteComponent: acceptedIsSvelteComponent,[\s\S]{0,120}?deferredSourceWrite: acceptedIsSvelteComponent,/,
+      'the browser cleanup path must remember that this Svelte accept is deferred',
     );
     assert.match(
       SOURCE,
@@ -690,8 +769,49 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,700}?teardownSvelteComponentSession\(false\);[\s\S]{0,500}?pruneEmptySveltePreviewHost\(host\);[\s\S]{0,160}?reloadAfterMissingAcceptedDom\(pending\);/,
-      'accepted Svelte component cleanup removes the preview wrapper without restoring the stale original and reloads only as recovery',
+      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,120}?if \(pending\?\.deferredSourceWrite\) \{[\s\S]{0,120}?commitAcceptedSvelteComponentToDom\(sessionId\);[\s\S]{0,80}?return;/,
+      'deferred Svelte accepts should keep the accepted mounted component in live DOM and return before any HMR/reload recovery path',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /restoreAcceptedSvelteComponentDomFromSnapshot/,
+      'deferred Svelte accept should not add a second DOM reconstruction fallback',
+    );
+    const commitStart = SOURCE.indexOf('function commitAcceptedSvelteComponentToDom(sessionId) {');
+    const commitEnd = SOURCE.indexOf('  async function injectSvelteComponentsFromManifest', commitStart);
+    const commitBody = SOURCE.slice(commitStart, commitEnd);
+    assert.doesNotMatch(
+      commitBody,
+      /runtime\.unmount|replaceChild\(|cloneNode\(/,
+      'deferred Svelte accept must not unmount, clone, or replace the mounted component because that remounts the parent app and drops live state',
+    );
+    assert.match(
+      commitBody,
+      /removeAttribute\('data-impeccable-variants'\)[\s\S]{0,420}?removeAttribute\?\.\('data-impeccable-component-mount'\)/,
+      'deferred Svelte accept should demote live preview markers while keeping the mounted Svelte component in place',
+    );
+    const cleanupStart = SOURCE.indexOf('function ensureAcceptedSvelteComponentDomClean(pending) {');
+    const reloadIndex = SOURCE.indexOf('reloadAfterMissingAcceptedDom(pending)', cleanupStart);
+    const deferredReturnIndex = SOURCE.indexOf('      return;\n    }\n    const wrapper', cleanupStart);
+    assert.ok(cleanupStart >= 0 && deferredReturnIndex > cleanupStart, 'deferred Svelte cleanup branch is present');
+    assert.ok(reloadIndex > deferredReturnIndex, 'reload fallback remains outside the deferred Svelte cleanup branch');
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,900}?teardownSvelteComponentSession\(false\);[\s\S]{0,500}?pruneEmptySveltePreviewHost\(host\);[\s\S]{0,160}?reloadAfterMissingAcceptedDom\(pending\);/,
+      'legacy/immediate Svelte cleanup still has a recovery reload path after removing the preview wrapper',
+    );
+  });
+
+  it('accepted sessions disable page-intercepting pick and insert modes', () => {
+    assert.match(
+      SOURCE,
+      /function cleanupAcceptedSession\(\) \{[\s\S]{0,260}?pickActive = false;[\s\S]{0,80}?insertActive = false;[\s\S]{0,80}?clearInsertPicking\(\);[\s\S]{0,120}?saveInteractionPrefs\(\);/,
+      'after Accept, app clicks should not be intercepted by stale Pick/Insert mode state',
+    );
+    assert.match(
+      SOURCE,
+      /function cleanupAcceptedSession\(\) \{[\s\S]{0,700}?state = 'IDLE';/,
+      'cleanup after Accept should return to idle instead of page-picking with no active mode',
     );
   });
 

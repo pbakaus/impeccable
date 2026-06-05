@@ -183,6 +183,7 @@ for (const { name, fixture } of fixtures) {
         ? pickSelector
         : '[data-impeccable-variant="2"] > :first-child';
       let stateProbeBaseline = null;
+      let runtimePreActionsAlreadyRun = false;
 
       try {
         // 1. Handshake
@@ -203,16 +204,34 @@ for (const { name, fixture } of fixtures) {
           const steerTimeouts = agentMode === 'llm'
             ? { unlockTimeoutMs: 90_000, selectorTimeoutMs: 45_000, runPreActions }
             : { runPreActions };
-          await runSteerSmoke(page, tmp, fixture, (m) => t.diagnostic(m), steerTimeouts);
+          const steerResult = await runSteerSmoke(page, tmp, fixture, (m) => t.diagnostic(m), steerTimeouts);
+          runtimePreActionsAlreadyRun = Boolean(
+            steerResult?.revealActionsApplied && steerResult.revealActionsSource === 'runtime',
+          );
         }
 
         // 2. preActions — fixtures with hidden/conditional content (modals,
         //    tabs, routes) drive the page into the right state before pick.
         if (fixture.runtime.preActions) {
-          t.diagnostic(`Running ${fixture.runtime.preActions.length} preAction(s)`);
-          await runPreActions(page, fixture.runtime.preActions);
-          if (fixture.runtime.stateProbe) {
-            stateProbeBaseline = await assertStateProbe(page, fixture.runtime.stateProbe, 'after preActions');
+          let preActionsReady = false;
+          if (runtimePreActionsAlreadyRun && fixture.runtime.stateProbe) {
+            try {
+              stateProbeBaseline = await assertStateProbe(page, fixture.runtime.stateProbe, 'after Steer preActions');
+              preActionsReady = true;
+              t.diagnostic('preActions already applied during Steer DOM reveal');
+            } catch (err) {
+              t.diagnostic(`Steer preActions did not leave expected state; rerunning preActions (${err.message})`);
+            }
+          } else if (runtimePreActionsAlreadyRun) {
+            preActionsReady = true;
+            t.diagnostic('preActions already applied during Steer DOM reveal');
+          }
+          if (!preActionsReady) {
+            t.diagnostic(`Running ${fixture.runtime.preActions.length} preAction(s)`);
+            await runPreActions(page, fixture.runtime.preActions);
+            if (fixture.runtime.stateProbe) {
+              stateProbeBaseline = await assertStateProbe(page, fixture.runtime.stateProbe, 'after preActions');
+            }
           }
         }
 
@@ -255,11 +274,19 @@ for (const { name, fixture } of fixtures) {
         //    install pressure, so keep this gate patient enough that we do
         //    not retrace while the agent is still writing the variants.
         t.diagnostic(`Waiting for CYCLING state with ${expectedCount} variants`);
-        await waitForCyclingRobust(page, expectedCount, {
+        const cyclingResult = await waitForCyclingRobust(page, expectedCount, {
           agentMode,
-          preActions: fixture.runtime.preActions,
+          preActions: fixture.runtime.retracePreActionsForCycling === false ? null : fixture.runtime.preActions,
+          reloadPreActions: fixture.runtime.rerunPreActionsAfterCyclingReload ? fixture.runtime.preActions : undefined,
           log: (m) => t.diagnostic(m),
         });
+        if (
+          cyclingResult?.reloaded
+          && fixture.runtime.resetStateProbeBaselineAfterCyclingReload
+          && fixture.runtime.stateProbe
+        ) {
+          stateProbeBaseline = await assertStateProbe(page, fixture.runtime.stateProbe, 'after cycling reload recovery');
+        }
         if (fixture.runtime.stateProbe) {
           await assertStateProbe(page, fixture.runtime.stateProbe, 'after variants', { baseline: stateProbeBaseline });
         }
@@ -401,7 +428,8 @@ for (const { name, fixture } of fixtures) {
 
           await waitForCyclingRobust(page, expectedCount, {
             agentMode,
-            preActions: fixture.runtime.preActions,
+            preActions: fixture.runtime.retracePreActionsForCycling === false ? null : fixture.runtime.preActions,
+            reloadPreActions: fixture.runtime.rerunPreActionsAfterCyclingReload ? fixture.runtime.preActions : undefined,
             log: (m) => t.diagnostic(m),
           });
           await waitForVariantCounter(page, visibleBeforeReload, expectedCount, {
@@ -445,8 +473,10 @@ for (const { name, fixture } of fixtures) {
         if (fixture.runtime.stateProbe && !svelteComponent) {
           await assertStateProbe(page, fixture.runtime.stateProbe, 'after accept', { baseline: stateProbeBaseline });
         }
-        if (sourceShadow && typeof session.stopLiveServer === 'function') {
-          t.diagnostic('Stopping live-server to flush deferred accept');
+        if ((sourceShadow || svelteComponent) && typeof session.stopLiveServer === 'function') {
+          t.diagnostic(svelteComponent
+            ? 'Stopping live-server to flush deferred Svelte component accept'
+            : 'Stopping live-server to flush deferred accept');
           session.stopLiveServer();
         }
 
@@ -662,6 +692,10 @@ for (const { name, fixture } of fixtures) {
           assert.equal(await getVisibleVariant(page), 2, 'variant 2 visible after annotated generate');
           await clickAccept(page, { expectedVariant: 2 });
           await waitForBarHidden(page);
+          if (svelteComponentTarget && typeof session.stopLiveServer === 'function') {
+            t.diagnostic('Stopping live-server to flush deferred Svelte component accept');
+            session.stopLiveServer();
+          }
           await waitForSourceClean(sourceFile, 20_000, { svelteComponentTarget });
         } finally {
           await teardown();
@@ -997,7 +1031,11 @@ async function runAcceptedVariantCycle(page, { t, fixture, session, pickSelector
   assert.equal(await getVisibleVariant(page), 2, 'variant 2 visible before manual scenario accept');
   await clickAccept(page, { expectedVariant: 2 });
   const sourceFile = await locateSessionFile(session.tmp);
-  await waitForSourceClean(sourceFile, 20_000);
+  const svelteComponentTarget = svelteComponentTargetFor(sourceFile);
+  if (svelteComponentTarget && typeof session.stopLiveServer === 'function') {
+    session.stopLiveServer();
+  }
+  await waitForSourceClean(sourceFile, 20_000, { svelteComponentTarget });
   await waitForBarHidden(page, { timeout: 10_000 }).catch(() => {});
 
   const expectSelector = fixture.runtime.reloadProbe?.expectSelector || pickSelector;
@@ -1081,19 +1119,44 @@ async function waitForRecoverableVariantSession(page, variant, count, { timeout 
 }
 
 async function waitForAcceptedDom(page, selector, { allowVariantRoot = false, timeout = 20_000 } = {}) {
-  await page.waitForFunction(
-    ({ sel, allowVariantRoot }) => {
-      const all = document.querySelectorAll(sel);
-      if (all.length < 1) return false;
-      for (const el of all) {
-        if (el.closest('[data-impeccable-variants]')) return false;
-        if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
-      }
-      return true;
-    },
-    { sel: selector, allowVariantRoot },
-    { timeout },
-  );
+  try {
+    await page.waitForFunction(
+      ({ sel, allowVariantRoot }) => {
+        const all = document.querySelectorAll(sel);
+        if (all.length < 1) return false;
+        for (const el of all) {
+          if (el.closest('[data-impeccable-variants],[data-impeccable-carbonize]')) return false;
+          if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
+        }
+        return true;
+      },
+      { sel: selector, allowVariantRoot },
+      { timeout },
+    );
+  } catch (err) {
+    const snapshot = await page.evaluate((sel) => {
+      const describe = (el) => el ? {
+        tag: el.tagName,
+        text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+        attrs: [...el.attributes].map((a) => [a.name, a.value]).slice(0, 12),
+        inVariants: Boolean(el.closest('[data-impeccable-variants]')),
+        inCarbonize: Boolean(el.closest('[data-impeccable-carbonize]')),
+        inVariant: Boolean(el.closest('[data-impeccable-variant]')),
+        outerHTML: el.outerHTML.slice(0, 500),
+      } : null;
+      return {
+        selector: sel,
+        matches: [...document.querySelectorAll(sel)].slice(0, 6).map(describe),
+        headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].slice(0, 8).map(describe),
+        wrappers: [...document.querySelectorAll('[data-impeccable-variants],[data-impeccable-carbonize],[data-impeccable-variant]')]
+          .slice(0, 8)
+          .map(describe),
+        bodyText: (document.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300),
+      };
+    }, selector).catch((snapErr) => ({ error: snapErr.message }));
+    const wrapped = new Error(err.message + '\nAccepted DOM snapshot: ' + JSON.stringify(snapshot, null, 2));
+    throw wrapped;
+  }
 }
 
 function assertSourceMissing(tmp, file, text) {

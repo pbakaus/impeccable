@@ -31,7 +31,7 @@ export function resolveSteerSourceFile(tmp, fixture) {
 export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {}) {
   if (fixture.runtime?.steer === false) {
     log('steer skipped (runtime.steer === false)');
-    return;
+    return { revealActionsApplied: false, revealActionsSource: null };
   }
 
   const unlockTimeoutMs = opts.unlockTimeoutMs ?? 15_000;
@@ -43,6 +43,8 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
   const expectSelector = steerCfg.expectSelector || `h1.hero-title[${STEER_MARKER_ATTR}]`;
   const sourceNeedle = steerCfg.expectSourceContains || STEER_MARKER_ATTR;
   const revealActions = steerCfg.preActions ?? fixture.runtime?.preActions;
+  const revealActionsSource = steerCfg.preActions ? 'steer' : (revealActions ? 'runtime' : null);
+  let revealActionsApplied = false;
   const sourceFile = resolveSteerSourceFile(tmp, fixture);
   const sourceBefore = readFileSync(sourceFile, 'utf-8');
 
@@ -79,6 +81,7 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
     if (revealActions?.length && runPreActionsFn) {
       log(`Steer: revealing hero via ${revealActions.length} preAction(s)`);
       await runPreActionsFn(page, revealActions);
+      revealActionsApplied = true;
     }
     await waitForSteerDomMarker(page, expectSelector, { timeout: selectorTimeoutMs });
   };
@@ -95,4 +98,5 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
     }
   }
   log('Steer: DOM marker visible');
+  return { revealActionsApplied, revealActionsSource };
 }
