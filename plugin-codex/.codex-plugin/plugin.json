@@ -1,12 +1,11 @@
 {
   "name": "impeccable",
-  "description": "Design fluency for frontend development. 1 skill with 23 commands (/impeccable polish, /impeccable audit, /impeccable critique, etc.) and curated anti-pattern detection.",
+  "description": "Impeccable design detector hook for Codex. Runs after edits and surfaces UI anti-pattern findings.",
   "version": "3.5.0",
   "author": {
     "name": "Paul Bakaus",
     "email": "paul@paulbakaus.com"
   },
   "homepage": "https://impeccable.style",
-  "repository": "https://github.com/pbakaus/impeccable",
-  "skills": "./skills/"
+  "repository": "https://github.com/pbakaus/impeccable"
 }

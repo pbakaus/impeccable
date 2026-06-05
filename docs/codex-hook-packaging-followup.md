@@ -30,16 +30,18 @@ Risk before the fix:
 - `plugin/hooks/hooks.json` is generated from the Claude hook bundle.
 - That file uses `${CLAUDE_PLUGIN_ROOT}`.
 - Codex plugin hooks should use `${PLUGIN_ROOT}`.
-- The Codex plugin cache observed during testing contained skill files but did not contain a usable Codex hook manifest/script shape.
+- The Codex plugin cache observed during testing did not contain a usable Codex hook manifest/script shape.
 
-Result: a production Codex plugin install could expose the Impeccable skill but fail to expose or run the design hook in `/hooks`.
+Result: a production Codex plugin install could fail to expose or run the design hook in `/hooks`.
 
 ## Implemented Fix
 
 The build now emits two install package roots:
 
 - `plugin/` remains the Claude Code package and keeps `plugin/hooks/hooks.json` with `${CLAUDE_PLUGIN_ROOT}`.
-- `plugin-codex/` is the Codex package and writes `plugin-codex/hooks/hooks.json` with `${PLUGIN_ROOT}`.
+- `plugin-codex/` is the Codex hook-only package and writes `plugin-codex/hooks/hooks.json` with `${PLUGIN_ROOT}`.
+- `plugin-codex/` copies only the hook runtime (`hook.mjs`, `hook-lib.mjs`, and the detector bundle) under `plugin-codex/hooks/runtime/`.
+- The `/impeccable` skill remains installed through the existing skills bundle/install flow, not through this Codex plugin package.
 - `.agents/plugins/marketplace.json` points Codex marketplace installs at `./plugin-codex`.
 
 This keeps each runtime on the placeholder it actually expands and avoids relying on a project-local `.codex/hooks.json` workaround.

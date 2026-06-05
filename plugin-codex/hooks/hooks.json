@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
+            "command": "node \"${PLUGIN_ROOT}/hooks/runtime/hook.mjs\"",
             "timeout": 5,
             "statusMessage": "Scanning design"
           }

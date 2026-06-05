@@ -12,7 +12,8 @@
  *      `hooks/hooks.json` there, so the manifest itself is intentionally tiny.
  */
 
-const HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
+const SKILL_HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
+const CODEX_PLUGIN_HOOK_SCRIPT_REL = 'hooks/runtime/hook.mjs';
 
 // Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
 // Claude marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex gets
@@ -56,7 +57,7 @@ export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLU
           hooks: [
             {
               type: 'command',
-              command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
+              command: `node "${pluginRootPlaceholder}/${SKILL_HOOK_SCRIPT_REL}"`,
               timeout: 5,
               statusMessage: 'Scanning design',
             },
@@ -67,7 +68,10 @@ export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLU
   };
 }
 
-export function buildCodexHooksManifest({ pluginRootPlaceholder = '${PLUGIN_ROOT}' } = {}) {
+export function buildCodexHooksManifest({
+  pluginRootPlaceholder = '${PLUGIN_ROOT}',
+  hookScriptRel = SKILL_HOOK_SCRIPT_REL,
+} = {}) {
   return {
     description: 'Impeccable design detector: runs after Edit/Write/apply_patch on UI files and surfaces findings as system reminders.',
     hooks: {
@@ -79,7 +83,7 @@ export function buildCodexHooksManifest({ pluginRootPlaceholder = '${PLUGIN_ROOT
           hooks: [
             {
               type: 'command',
-              command: `node "${pluginRootPlaceholder}/${HOOK_SCRIPT_REL}"`,
+              command: `node "${pluginRootPlaceholder}/${hookScriptRel}"`,
               timeout: 5,
               statusMessage: 'Scanning design',
             },
@@ -90,17 +94,20 @@ export function buildCodexHooksManifest({ pluginRootPlaceholder = '${PLUGIN_ROOT
   };
 }
 
+export function buildCodexPluginHooksManifest() {
+  return buildCodexHooksManifest({ hookScriptRel: CODEX_PLUGIN_HOOK_SCRIPT_REL });
+}
+
 export function buildCodexPluginManifest(rootManifest) {
   // Tiny on purpose. Codex auto-discovers `hooks/hooks.json` from the plugin
   // root; declaring it in `plugin.json` would duplicate the registration.
   return {
     name: rootManifest.name,
-    description: rootManifest.description,
+    description: 'Impeccable design detector hook for Codex. Runs after edits and surfaces UI anti-pattern findings.',
     version: rootManifest.version,
     author: rootManifest.author,
     homepage: rootManifest.homepage,
     repository: rootManifest.repository,
-    skills: './skills/',
   };
 }
 

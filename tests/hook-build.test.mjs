@@ -19,11 +19,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   buildClaudeHooksManifest,
   buildCodexHooksManifest,
+  buildCodexPluginHooksManifest,
   buildCursorHooksManifest,
   buildCodexPluginManifest,
   hooksJsonFor,
@@ -112,6 +113,16 @@ describe('buildCodexHooksManifest()', () => {
   });
 });
 
+describe('buildCodexPluginHooksManifest()', () => {
+  const m = buildCodexPluginHooksManifest();
+
+  it('uses the hooks-only plugin runtime path', () => {
+    const handler = m.hooks.PostToolUse[0].hooks[0];
+    assert.equal(handler.command, 'node "${PLUGIN_ROOT}/hooks/runtime/hook.mjs"');
+    assert.ok(!handler.command.includes('skills/impeccable/scripts'));
+  });
+});
+
 describe('buildCodexPluginManifest()', () => {
   const root = {
     name: 'impeccable',
@@ -123,10 +134,11 @@ describe('buildCodexPluginManifest()', () => {
   };
   const m = buildCodexPluginManifest(root);
 
-  it('echoes name + version, points skills at ./skills/', () => {
+  it('echoes name + version, does not bundle skills', () => {
     assert.equal(m.name, 'impeccable');
     assert.equal(m.version, '3.2.0');
-    assert.equal(m.skills, './skills/');
+    assert.equal(m.skills, undefined);
+    assert.match(m.description, /design detector hook/i);
   });
 
   it('does NOT declare hooks inline (auto-discovery + duplicate-file guard)', () => {
@@ -191,7 +203,7 @@ describe('committed hook artifacts in repo', () => {
     });
   }
 
-  // Shell-form command shape: `node "${PLUGIN_ROOT}/skills/.../hook.mjs"`.
+  // Shell-form command shape: `node "${PLUGIN_ROOT}/.../hook.mjs"`.
   // Parse out the quoted path so we can verify the script exists on disk.
   const extractScriptPath = (commandStr, rootPlaceholder) => {
     const match = commandStr.match(/"([^"]+)"/);
@@ -218,10 +230,11 @@ describe('committed hook artifacts in repo', () => {
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 
-  it('plugin-codex/.codex-plugin/plugin.json points at plugin-local skills/', () => {
+  it('plugin-codex/.codex-plugin/plugin.json is hooks-only', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin-codex/.codex-plugin/plugin.json'), 'utf-8'));
-    assert.equal(manifest.skills, './skills/');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/skills/impeccable/SKILL.md')));
+    assert.equal(manifest.skills, undefined);
+    assert.match(manifest.description, /design detector hook/i);
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/skills')), false);
   });
 
   it('plugin-codex/hooks/hooks.json stays Codex-specific and bundles the referenced script', () => {
@@ -229,9 +242,15 @@ describe('committed hook artifacts in repo', () => {
     const command = manifest.hooks.PostToolUse[0].hooks[0].command;
     assert.ok(command.includes('${PLUGIN_ROOT}'));
     assert.ok(!command.includes('${CLAUDE_PLUGIN_ROOT}'));
+    assert.ok(command.includes('hooks/runtime/hook.mjs'));
+    assert.ok(!command.includes('skills/impeccable/scripts'));
     const scriptRel = extractScriptPath(command, '${PLUGIN_ROOT}');
     const bundledScript = path.join(REPO_ROOT, 'plugin-codex', scriptRel);
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/hooks/runtime/hook-lib.mjs')),
+      'Codex hook-lib runtime missing');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/hooks/runtime/detector/detect-antipatterns.mjs')),
+      'Codex detector runtime missing');
   });
 
   it('.agents/plugins/marketplace.json points Codex installs at ./plugin-codex', () => {
@@ -267,12 +286,27 @@ describe('committed hook artifacts in repo', () => {
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 
-  it('hook scripts can import the bundled detector via the relative path they use at runtime', () => {
+  it('hook scripts can import the bundled detector via the relative path they use at runtime', async () => {
     const scriptDir = path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts');
     assert.ok(fs.existsSync(path.join(scriptDir, 'detector', 'detect-antipatterns.mjs')),
       'detector bundle missing — hook.mjs would fall back to source path and fail in production install');
-    const codexScriptDir = path.join(REPO_ROOT, 'plugin-codex/skills/impeccable/scripts');
+    const codexScriptDir = path.join(REPO_ROOT, 'plugin-codex/hooks/runtime');
     assert.ok(fs.existsSync(path.join(codexScriptDir, 'detector', 'detect-antipatterns.mjs')),
       'Codex detector bundle missing — hook.mjs would fall back to source path and fail in production install');
+    const codexHookLib = await import(pathToFileURL(path.join(codexScriptDir, 'hook-lib.mjs')));
+    const detector = await codexHookLib.loadDetector();
+    assert.equal(typeof detector.detectText, 'function');
+  });
+
+  it('plugin-codex does not bundle pin/unpin skill management scripts', () => {
+    const stack = [path.join(REPO_ROOT, 'plugin-codex')];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        assert.notEqual(entry.name, 'pin.mjs', `unexpected generated pin script: ${full}`);
+      }
+    }
   });
 });
