@@ -5,6 +5,7 @@ import {
 import { initFrameworkViz } from "./components/framework-viz.js";
 import { initScrollReveal } from "./utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./utils/scroll.js";
+import { initCopyFeedback } from "./utils/copy-feedback.js";
 import { initSectionNav } from "./components/section-nav.js";
 import { initFoundationGrid } from "./components/foundation-grid.js";
 import { initLiveDemo, initGbarPageChat } from "./components/live-demo.js";
@@ -199,18 +200,6 @@ function renderPatternsWithTabs(patterns, antipatterns) {
 // EVENT HANDLERS
 // ============================================
 
-const copyResetTimers = new WeakMap();
-
-function copyWithTextareaFallback(text) {
-	const ta = Object.assign(document.createElement('textarea'), { value: text, style: 'position:fixed;left:-9999px' });
-	document.body.appendChild(ta);
-	ta.select();
-	let copied = true;
-	try { document.execCommand('copy'); } catch { copied = false; }
-	ta.remove();
-	return copied;
-}
-
 // Handle bundle download clicks via event delegation.
 // Each download button carries the full bundle name in data-bundle
 // (currently just "universal") so the handler is just a redirect.
@@ -219,26 +208,6 @@ document.addEventListener("click", (e) => {
 	if (bundleBtn) {
 		const bundleName = bundleBtn.dataset.bundle;
 		window.location.href = `/api/download/bundle/${bundleName}`;
-	}
-
-	// Handle copy button clicks
-	const copyBtn = e.target.closest("[data-copy]");
-	if (copyBtn) {
-		const textToCopy = copyBtn.dataset.copy;
-		const onCopied = () => {
-			clearTimeout(copyResetTimers.get(copyBtn));
-			copyBtn.classList.remove('copied');
-			void copyBtn.offsetWidth;
-			copyBtn.classList.add('copied');
-			copyResetTimers.set(copyBtn, setTimeout(() => copyBtn.classList.remove('copied'), 1200));
-		};
-		if (navigator.clipboard?.writeText) {
-			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {
-				if (copyWithTextareaFallback(textToCopy)) onCopied();
-			});
-		} else if (copyWithTextareaFallback(textToCopy)) {
-			onCopied();
-		}
 	}
 });
 
@@ -273,6 +242,7 @@ function initHeaderScroll() {
 function init() {
 	initAnchorScroll();
 	initHashTracking();
+	initCopyFeedback();
 	initHeaderScroll();
 	initScrollReveal();
 	initGlassTerminal();

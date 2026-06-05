@@ -224,48 +224,16 @@ import '../../styles/live-mode-kinpaku.css';
 
 <script>
   import { initLiveDemo, initGbarPageChat } from "../../scripts/components/live-demo.js";
+  import { initCopyFeedback } from "../../scripts/utils/copy-feedback.js";
+
   document.addEventListener("DOMContentLoaded", () => {
     initLiveDemo();
     initGbarPageChat();
+    initCopyFeedback();
   });
 </script>
 
 <script is:inline>
-  const copyResetTimers = new WeakMap();
-
-  function copyWithTextareaFallback(text) {
-    const ta = Object.assign(document.createElement('textarea'), { value: text, style: 'position:fixed;left:-9999px' });
-    document.body.appendChild(ta);
-    ta.select();
-    let copied = true;
-    try { document.execCommand('copy'); } catch { copied = false; }
-    ta.remove();
-    return copied;
-  }
-
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-copy]');
-    if (!btn) return;
-    const text = btn.getAttribute('data-copy');
-    if (!text) return;
-
-    const onCopied = () => {
-      window.clearTimeout(copyResetTimers.get(btn));
-      btn.classList.remove('copied');
-      void btn.offsetWidth;
-      btn.classList.add('copied');
-      copyResetTimers.set(btn, window.setTimeout(() => btn.classList.remove('copied'), 1200));
-    };
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(onCopied).catch(() => {
-        if (copyWithTextareaFallback(text)) onCopied();
-      });
-    } else if (copyWithTextareaFallback(text)) {
-      onCopied();
-    }
-  });
-
   document.addEventListener('click', (e) => {
     const toggle = e.target.closest('.skills-sidebar-toggle');
     if (!toggle) return;
