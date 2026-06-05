@@ -4,7 +4,7 @@ Status: implemented in this branch after hook testing exposed the packaging gap.
 
 ## Why This Exists
 
-During testing in `impeccable-live-react`, Codex did not show Impeccable in `/hooks` even after the `.agents` hook bundle was installed.
+During testing in `impeccable-live-react`, Codex did not show Impeccable in `/hooks` after the `.agents` hook bundle was installed.
 
 The root cause is that Codex does not discover visible lifecycle hooks from `.agents/hooks`. Codex discovers hooks from:
 
@@ -13,62 +13,43 @@ The root cause is that Codex does not discover visible lifecycle hooks from `.ag
 - inline `[hooks]` tables next to active `config.toml` layers
 - enabled Codex plugins that bundle `hooks/hooks.json`
 
-The temporary local workaround for testing was to add `.codex/hooks.json` in `impeccable-live-react` pointing at:
+The project-local hook path is the right fit for Impeccable's current Codex install story because Codex already reads the skill from `.agents/skills/impeccable`.
+
+## Product Decision
+
+Impeccable no longer ships a separate Codex plugin package in this branch.
+
+The build emits:
+
+- `.agents/skills/impeccable/` for the Codex skill and bundled scripts.
+- `.codex/hooks.json` for the Codex project hook.
+- `plugin/` only for Claude Code plugin packaging.
+- `.cursor/hooks.json` for Cursor.
+
+The generated Codex hook command resolves from the git root:
 
 ```text
-$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs
+node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"
 ```
 
-That makes `/hooks` able to see the project-local hook in that repo.
+That keeps Codex aligned with Cursor and repo-local installs: the project carries the hook manifest and the skill runtime together.
 
-## Product Issue
+## Removed Artifacts
 
-Before this change, the installable Codex plugin packaging needed a real fix.
+The build now removes stale Codex plugin-marketplace artifacts:
 
-Risk before the fix:
+- `plugin-codex/`
+- `.agents/plugins/marketplace.json`
+- `.agents/hooks/hooks.json`
 
-- `plugin/hooks/hooks.json` is generated from the Claude hook bundle.
-- That file uses `${CLAUDE_PLUGIN_ROOT}`.
-- Codex plugin hooks should use `${PLUGIN_ROOT}`.
-- The Codex plugin cache observed during testing did not contain a usable Codex hook manifest/script shape.
-
-Result: a production Codex plugin install could fail to expose or run the design hook in `/hooks`.
-
-## Implemented Fix
-
-The build now emits two install package roots:
-
-- `plugin/` remains the Claude Code package and keeps `plugin/hooks/hooks.json` with `${CLAUDE_PLUGIN_ROOT}`.
-- `plugin-codex/` is the Codex hook-only package and writes `plugin-codex/hooks/hooks.json` with `${PLUGIN_ROOT}`.
-- `plugin-codex/` copies only the hook runtime (`hook.mjs`, `hook-lib.mjs`, and the detector bundle) under `plugin-codex/hooks/runtime/`.
-- The `/impeccable` skill remains installed through the existing skills bundle/install flow, not through this Codex plugin package.
-- `.agents/plugins/marketplace.json` points Codex marketplace installs at `./plugin-codex`.
-
-This keeps each runtime on the placeholder it actually expands and avoids relying on a project-local `.codex/hooks.json` workaround.
-
-## Claude And Cursor Scope
-
-This follow-up is Codex-specific.
-
-Claude does not need the same fix. Its plugin hook manifest is expected to use `${CLAUDE_PLUGIN_ROOT}`, and Claude installs/read hooks from the Claude plugin or `.claude/hooks/hooks.json` path.
-
-Cursor does not need the same fix either. Cursor uses `.cursor/hooks.json` with the `afterFileEdit` plus `stop` flow, not the Codex plugin hook discovery path.
-
-Still add regression checks for all three providers after the Codex packaging fix:
-
-- Claude: hook manifest still uses `${CLAUDE_PLUGIN_ROOT}` and points at bundled `skills/impeccable/scripts/hook.mjs`.
-- Cursor: `.cursor/hooks.json` still contains `afterFileEdit` and `stop`, and both scripts are bundled.
-- Codex: plugin/install hook manifest uses `${PLUGIN_ROOT}` and appears in `/hooks`.
+This prevents Codex from showing Impeccable under both "From Plugins" and "From Projects" for local installs.
 
 ## Regression Checks
 
 The hook build tests assert:
 
-- Codex plugin hook manifest contains `${PLUGIN_ROOT}`.
-- Claude plugin hook manifest contains `${CLAUDE_PLUGIN_ROOT}`.
-- The Codex marketplace points at `./plugin-codex`.
-- The bundled hook scripts exist at the paths referenced by both hook manifests.
-
-## Testing Notes
-
-The `.codex/hooks.json` workaround is still useful in test repos when validating project-local hooks, but it is no longer the product fix.
+- `.codex/hooks.json` exists, parses, and points at `.agents/skills/impeccable/scripts/hook.mjs`.
+- `.agents/skills/impeccable/scripts/hook-lib.mjs` can import its bundled detector.
+- Claude's plugin hook manifest still uses `${CLAUDE_PLUGIN_ROOT}`.
+- Cursor's hook manifest still points at `hook-after-edit.mjs` and `hook-stop.mjs`.
+- `plugin-codex/`, `.agents/plugins/marketplace.json`, and `.agents/hooks/` are absent after `bun run build`.

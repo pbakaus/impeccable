@@ -57,11 +57,11 @@ Notes:
 
 ## Hook surface used by Impeccable
 
-| Harness | PostToolUse hook | SessionStart hook | Manifest location | Notes |
-|---------|:----------------:|:-----------------:|-------------------|-------|
-| Claude Code | Yes | Yes | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit\|apply_patch`. Extension filter in hook script (same as Codex). |
-| Codex CLI | Yes | Yes | `plugin/.codex-plugin/plugin.json` + `plugin/hooks/hooks.json`; repo-local `.agents/hooks/hooks.json` | Marketplace installs use the shared `plugin/` root. Repo-local `.agents` installs use `${PLUGIN_ROOT}`. Matcher: `Edit\|Write\|apply_patch`. Extension filter in hook script. macOS/Linux only. |
-| Cursor | Yes (afterFileEdit + stop) | Yes | `.cursor/hooks.json` | Project-level manifest. `afterFileEdit` records findings to `.impeccable/hook.pending.json`; `stop` emits a one-shot `followup_message` (`loop_limit: 1`). Cursor 3.5.x drops `postToolUse` `additional_context`, so findings reach the model via stop, not inline. `sessionStart` greeting unchanged. Reloads on save; restart Cursor if hooks do not pick up. |
+| Harness | Edit hook | Startup hook | Manifest location | Notes |
+|---------|:---------:|:------------:|-------------------|-------|
+| Claude Code | Yes (`PostToolUse`) | No | `plugin/hooks/hooks.json` | Auto-discovered from `${CLAUDE_PLUGIN_ROOT}`. Matcher: `Edit\|Write\|MultiEdit\|apply_patch`. Extension filter in hook script (same as Codex). |
+| Codex CLI | Yes (`PostToolUse`) | No | `.codex/hooks.json` | Project-local manifest that runs `.agents/skills/impeccable/scripts/hook.mjs` from the git root. Matcher: `Edit\|Write\|apply_patch`. Extension filter in hook script. macOS/Linux only. |
+| Cursor | Yes (`afterFileEdit` + `stop`) | No | `.cursor/hooks.json` | Project-level manifest. `afterFileEdit` records findings to `.impeccable/hook.pending.json`; `stop` emits a one-shot `followup_message` (`loop_limit: 1`). Cursor 3.5.x drops `postToolUse` `additional_context`, so findings reach the model via stop, not inline. Reloads on save; restart Cursor if hooks do not pick up. |
 | All other harnesses | No | No | n/a | No documented hook surface today. Skill and commands still ship. |
 
 ## Skill Directory Structure

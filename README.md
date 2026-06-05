@@ -179,13 +179,16 @@ cp -r dist/gemini/.gemini your-project/
 ```bash
 # Project-local
 cp -r dist/agents/.agents your-project/
+mkdir -p your-project/.codex
+cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
 
-# Or user-wide
+# Or install the skill user-wide. Copy .codex/hooks.json into each project
+# where you want the design hook to run.
 mkdir -p ~/.agents/skills
 cp -r dist/agents/.agents/skills/* ~/.agents/skills/
 ```
 
-> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed.
+> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed. The hook is project-local because Codex discovers hooks from `.codex/hooks.json` next to trusted project config.
 
 **GitHub Copilot:**
 ```bash
@@ -255,7 +258,7 @@ On Claude Code, Codex, and Cursor, Impeccable installs hooks that wrap the desig
 
 **`PostToolUse`** (Claude Code and Codex) fires after direct file edits on UI files. Claude Code sends `tool_input.file_path` on Edit/Write/MultiEdit; Codex `apply_patch` sends the patch in `tool_input.command` (the hook parses `*** Update File:` / `*** Add File:` lines). When you edit a component (`.tsx`, `.jsx`, etc.), the hook also scans static CSS it imports and co-located stylesheets (`styles.css`, `*.module.css`, same basename). Restricted to UI extensions: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`. Tool calls with no resolvable path (Bash, `mcp__node_repl__*`, browser tools) are a silent skip.
 
-**Cursor** uses a different surface because Cursor 3.5.x drops `postToolUse` `additional_context` before it reaches the model. Instead: **`afterFileEdit`** runs detection on each agent file edit and queues fresh/pending findings; **`stop`** drains that queue at end of turn and auto-submits one corrective `followup_message` (`loop_limit: 1`, so at most one nudge per turn). **`sessionStart`** still injects the static greeting via `additional_context` (that channel works).
+**Cursor** uses a different surface because Cursor 3.5.x drops `postToolUse` `additional_context` before it reaches the model. Instead: **`afterFileEdit`** runs detection on each agent file edit and queues fresh/pending findings; **`stop`** drains that queue at end of turn and auto-submits one corrective `followup_message` (`loop_limit: 1`, so at most one nudge per turn).
 
 Every fire that actually scans something emits a developer-role system reminder so the hook stays a conversational presence the model can act on. Three emission states map to three message shapes:
 
@@ -264,8 +267,6 @@ Every fire that actually scans something emits a developer-role system reminder 
 - **Truly clean**: detector returned zero. Short positive ack: `No anti-patterns. Keep typography hierarchy, spacing rhythm, and color contrast intentional on the next change.`
 
 Never blocks an edit. Never silent on a successful scan, with one exception: detector crashes stay silent because we don't know the truth. To restore the old silent-on-clean behavior set `IMPECCABLE_HOOK_QUIET=1` in your shell; findings emissions still fire under QUIET, only the pending and clean acks are suppressed.
-
-**`SessionStart`** is the orientation hook. It fires on session startup and resume (not on compact/clear), gated to projects that look like UI code (a known UI dep in `package.json` or a top-level `index.html`) and throttled to once every 30 days per project. It emits a single-line system reminder telling the model the hook is active and how to disable it. Skipped silently everywhere else.
 
 ### Installing on Cursor
 
@@ -276,28 +277,27 @@ The skills CLI installs the skill tree only. Hooks are a separate file. After `n
 cp -r dist/cursor/.cursor your-project/
 ```
 
-That lands `.cursor/hooks.json` plus `.cursor/skills/impeccable/scripts/` (including `hook*.mjs` and the bundled `detector/`). The manifest wires `afterFileEdit` (recorder), `stop` (one-shot followup), and `sessionStart` (greeting).
+That lands `.cursor/hooks.json` plus `.cursor/skills/impeccable/scripts/` (including `hook*.mjs` and the bundled `detector/`). The manifest wires `afterFileEdit` (recorder) and `stop` (one-shot followup).
 
-Cursor watches `.cursor/hooks.json` and reloads on save; restart the IDE if hooks do not appear. Open **Settings → Hooks** (or the Hooks output channel) to confirm `afterFileEdit`, `stop`, and `sessionStart` are enabled. When the hook finds issues, Cursor auto-submits a follow-up user message at end of turn telling the agent to fix them. The hook runs on macOS, Linux, and Windows.
+Cursor watches `.cursor/hooks.json` and reloads on save; restart the IDE if hooks do not appear. Open **Settings → Hooks** (or the Hooks output channel) to confirm `afterFileEdit` and `stop` are enabled. When the hook finds issues, Cursor auto-submits a follow-up user message at end of turn telling the agent to fix them. The hook runs on macOS, Linux, and Windows.
 
-**Common miss:** `.agents/hooks/hooks.json` is the Codex/Claude plugin format. Cursor ignores it. You need `.cursor/hooks.json` at the project root.
+**Common miss:** hook manifests are harness-specific. Cursor ignores `.codex/hooks.json`; you need `.cursor/hooks.json` at the project root.
 
 ### Installing on Claude Code
 
-`npx skills add impeccable` installs the plugin and both hooks at once. They are on by default.
+`npx skills add impeccable` installs the plugin and its `PostToolUse` hook at once. It is on by default.
 
 ### Installing on Codex
 
-Codex discovers hooks from registered plugins, not from project-local files, so it needs three commands the first time:
+Codex discovers project-local hooks from `.codex/hooks.json`, and discovers skills from `.agents/skills/`. Copy both generated directories into the project:
 
 ```bash
-codex plugin marketplace add https://github.com/pbakaus/impeccable
-codex plugin add impeccable@impeccable
-# then inside an interactive Codex session:
-/hooks   # approve PostToolUse and SessionStart for Plugin · impeccable
+cp -r dist/agents/.agents your-project/
+mkdir -p your-project/.codex
+cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
 ```
 
-You can also do the last step via Settings → Hooks and flip the toggles next to `Plugin · impeccable`. Codex tracks trust per `{plugin}@{marketplace}` identity in `~/.codex/config.toml`, so you re-approve from `/hooks` when the plugin updates. The `hooks` and `plugin_hooks` feature flags are stable and on by default in current Codex builds. Codex hooks are disabled on Windows; the skill and commands still work there. The Claude Code hook runs on macOS, Linux, and Windows.
+Then start Codex in that trusted project and open `/hooks` to review and approve the project hook. Codex tracks trust by hook definition hash in `~/.codex/config.toml`, so re-approve from `/hooks` after updates that change `.codex/hooks.json`. Hooks are enabled by default in current Codex builds and can be disabled globally with `[features].hooks = false`. Codex hooks are disabled on Windows; the skill and commands still work there. The Claude Code hook runs on macOS, Linux, and Windows.
 
 **Disable per project**: run `/impeccable hooks off`. Re-enable with `/impeccable hooks on`. Inspect with `/impeccable hooks status`. The toggle persists in `.impeccable/hook.json`, so check it in if a teammate set it.
 

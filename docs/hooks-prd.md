@@ -114,18 +114,12 @@ Rationale: hooks fire constantly; piping anything to the user's terminal becomes
 
 ### First-run education
 
-A separate `SessionStart` hook prints one line of `additionalContext`, **gated by two checks** so it does not become tax on every session:
+No startup hook ships in the current branch. The generated manifests only speak after edit-time scans:
 
-1. **Project probe.** Skip if the project has no scannable surface. Cheap detection: no `package.json` with a UI dep (`react`, `vue`, `svelte`, `@astrojs/*`, `next`, etc.) AND no `*.html` in the repo root or `src/`. If nothing is scannable, the hook will never fire anyway.
-2. **Per-project throttle.** Show at most once per 30 days, tracked via `.impeccable/hook.cache.json` `lastEducationAt`. Returning users do not need the reminder.
+- Claude Code and Codex use `PostToolUse`.
+- Cursor uses `afterFileEdit` to record results and `stop` to emit the one-shot follow-up.
 
-When the gates pass, emit:
-
-```
-[impeccable@1] Design hook is active. Runs the design detector on .tsx/.jsx/.html/.css/etc. after every Write or Edit and reminds you (via system context) when known design anti-patterns appear. Disable per project: /impeccable hooks off. Disable globally: IMPECCABLE_HOOK_DISABLED=1.
-```
-
-This goes into the model's context, not the user's terminal, so the first time the user asks "why did Claude just mention design issues?" the model can answer accurately. We deliberately do not push a notification at the user.
+The earlier startup reminder design was dropped to keep hook traffic tied to real detector work and to avoid a second cache/throttle path.
 
 ### Kill switches (precedence high to low)
 
@@ -384,30 +378,17 @@ Schema:
 
 ```json
 {
-  "description": "Impeccable design detector: run after Write/Edit, surface findings as system reminders.",
+  "description": "Impeccable design detector: runs after Edit/Write/MultiEdit/apply_patch on UI files and surfaces findings as system reminders.",
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"],
-            "if": "Edit(*.{tsx,jsx,html,vue,svelte,astro,css,scss,sass,less,ts,js})",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook-session-start.mjs"],
-            "timeout": 3
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Scanning design"
           }
         ]
       }
@@ -416,18 +397,18 @@ Schema:
 }
 ```
 
-**Why shell form in the shipped manifest**: Codex substitutes plugin-root placeholders inside the `command` string. The shipped hook uses `node "${CLAUDE_PLUGIN_ROOT}/..."` with a quoted script path so Claude Code and Codex can share `plugin/hooks/hooks.json`; Codex also exports `CLAUDE_PLUGIN_ROOT` for compatibility.
+**Why shell form in the shipped manifest**: The shipped hook uses `node "${CLAUDE_PLUGIN_ROOT}/..."` with a quoted script path so placeholder expansion happens in the command string and paths with spaces remain safe.
 
 ### Codex wiring
 
-Codex needs two things:
+Codex needs two project-local artifacts:
 
-1. `plugin/.codex-plugin/plugin.json` declaring the shared marketplace plugin root.
-2. `plugin/hooks/hooks.json` discoverable from the plugin root. Same script as Claude Code:
+1. `.agents/skills/impeccable/` for the skill and bundled scripts.
+2. `.codex/hooks.json` for lifecycle hook discovery from the trusted project config layer.
 
 ```json
 {
-  "description": "Impeccable design detector",
+  "description": "Impeccable design detector: runs after Edit/Write/apply_patch on UI files and surfaces findings as system reminders.",
   "hooks": {
     "PostToolUse": [
       {
@@ -435,8 +416,9 @@ Codex needs two things:
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs\"",
-            "timeout": 5
+            "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Scanning design"
           }
         ]
       }
@@ -447,23 +429,23 @@ Codex needs two things:
 
 Notes on Codex specifics:
 
-- **`PLUGIN_ROOT` is Codex's native placeholder**; Codex also exports `CLAUDE_PLUGIN_ROOT` for compatibility. Marketplace installs reuse the Claude-compatible `plugin/hooks/hooks.json`; repo-local `.agents/hooks/hooks.json` uses `PLUGIN_ROOT`.
-- **Feature flag**: Codex still ships hooks behind `[features].hooks = true` in `config.toml` (or `[features] codex_hooks = true` on older builds — Codex names have shifted; verify against the version the user is on). Install README must call this out.
+- **Project-local hooks** live in `.codex/hooks.json`; Codex does not discover `.agents/hooks/hooks.json`.
+- **Runtime path**: the project-local hook resolves from the git root and runs `.agents/skills/impeccable/scripts/hook.mjs`.
+- **Feature flag**: Codex uses `[features].hooks = true` in `config.toml`; current builds enable hooks by default. Install README must call out `/hooks` trust review.
 - **Windows is not supported.** Per the [Codex docs](https://developers.openai.com/codex/hooks) and confirmed in the rust-v0.124.0 release notes, hooks are disabled on Windows. v1 ships Codex hooks on macOS and Linux only.
 - **No `if:` glob analog.** The hook script does the extension filter (already required for the kill switches and path safety, so this is "free").
-- **Trust ceremony.** Every change to the hook definition revokes Codex's trust hash and requires another `/hooks` review. Plugin updates that touch the hook script trigger this. Install README must explain this so users do not silently lose the hook after `npm update`.
+- **Trust ceremony.** Every change to the hook definition revokes Codex's trust hash and requires another `/hooks` review. Install README must explain this so users do not silently lose the hook after updating `.codex/hooks.json`.
 
 ### Build pipeline changes
 
-- Add `emitHooks: true` and `emitCodexPlugin: true` to the relevant entries in [`scripts/lib/transformers/providers.js`](../scripts/lib/transformers/providers.js):
+- Add `emitHooks` to the relevant entries in [`scripts/lib/transformers/providers.js`](../scripts/lib/transformers/providers.js):
   - `claude-code`: `emitHooks: 'claude'`
-  - `codex`: `emitHooks: 'codex'`, `emitCodexPlugin: true`
-  - `agents` (Codex CLI install target): `emitHooks: 'codex'`
+  - `codex`: `emitHooks: 'codex'`, `hooksManifestRel: 'hooks.json'`
+  - `agents` (Codex CLI install target): no hook manifest; skills only
 - Add a `writeHooks(skillsDir, providerConfig)` helper in [`scripts/lib/transformers/factory.js`](../scripts/lib/transformers/factory.js) that renders the right `hooks.json` template per provider.
 - Track output files in git:
   - `plugin/hooks/hooks.json` (slim plugin subtree, already tracked)
-  - `.agents/hooks/hooks.json` (new)
-  - `plugin/.codex-plugin/plugin.json` (new)
+  - `.codex/hooks.json` (new)
 - Update `scripts/build.js` validators if needed to skip these files in count checks.
 
 ### Failure modes
@@ -525,19 +507,26 @@ Auto-installed when the user enables the plugin via marketplace. Zero extra step
 
 Setup is three steps the first time:
 
-1. Enable the feature flag (one-time, per machine):
+1. Copy the project-local artifacts:
+   ```bash
+   cp -r dist/agents/.agents your-project/
+   mkdir -p your-project/.codex
+   cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
+   ```
+2. If hooks are disabled by local policy, enable them:
    ```toml
    # ~/.codex/config.toml
    [features]
    hooks = true
    ```
-2. Approve the hook:
+3. Approve the hook:
    ```
    $ codex
    > /hooks
    [review and trust Impeccable's PostToolUse hook]
    ```
-3. After any Impeccable plugin update that changes the hook script (most updates), Codex revokes trust and re-requires `/hooks`. Install README must call this out so users do not silently lose the hook after `npm update`.
+
+After any update that changes `.codex/hooks.json`, Codex revokes trust and re-requires `/hooks`. Install README must call this out so users do not silently lose the hook after updating.
 
 For CI / headless runs, document the `--dangerously-bypass-hook-trust` flag (merged 2026-05-13 in [openai/codex#21768](https://github.com/openai/codex/pull/21768)). The name is intentionally alarming; treat it as opt-in for trusted CI only.
 
@@ -635,7 +624,7 @@ For the implementation branch, not this one.
 
 ### Integration tests (Node test)
 
-- Build pipeline produces expected hook artifacts: `plugin/hooks/hooks.json`, `.agents/hooks/hooks.json`, `plugin/.codex-plugin/plugin.json`.
+- Build pipeline produces expected hook artifacts: `plugin/hooks/hooks.json`, `.codex/hooks.json`, `.cursor/hooks.json`.
 - Generated `hooks.json` parses as valid Claude Code and Codex hook schemas.
 - Hook script in each harness directory imports the detector correctly from its relative path on macOS, Linux, **and Windows** (CI matrix).
 - Audit log file is created on first append, gets one valid NDJSON line per fire, and survives session restart.
@@ -662,10 +651,10 @@ For the implementation branch, not this one.
 |---|---|---|
 | 2026-05-28 | Advisory only, no blocking | Per planning conversation; matches the "course-correct" framing. |
 | 2026-05-28 | Default on, design-files only | Per planning conversation; lowest surprise + highest value tradeoff. |
-| 2026-05-28 | Single hook script for both harnesses | Reduces drift; Codex env vars are aliased to Claude's for compat. |
+| 2026-05-28 | Single hook script for Claude Code and Codex | Reduces drift; each manifest points at the same bundled `hook.mjs` through its own install path. |
 | 2026-05-28 | In-process detector import, not subprocess | Saves the ~150ms `npx impeccable` resolution cost per call. |
-| 2026-05-28 | Shell command string for plugin-root placeholders | Codex substitutes placeholders in `command`; quoted script paths keep plugin roots with spaces safe. |
-| 2026-05-28 | Timeout 5s on PostToolUse, 3s on SessionStart | Community consensus (Claude Code Guides, systemprompt.io, Dotzlaw) is 2–5s ceiling. 10s gives a hung detector enough headroom to feel laggy. |
+| 2026-05-28 | Shell command string for hook launchers | Claude needs placeholder expansion in `command`; Codex needs command substitution for the git-root path. Quoted script paths keep roots with spaces safe. |
+| 2026-05-28 | Timeout 5s on PostToolUse | Community consensus (Claude Code Guides, systemprompt.io, Dotzlaw) is 2-5s ceiling. 10s gives a hung detector enough headroom to feel laggy. |
 | 2026-05-28 | Re-entrancy guard via `IMPECCABLE_HOOK_DEPTH` | Belt-and-suspenders even though v1 spawns nothing. The pattern is universally recommended for any hook that might ever shell out. |
 | 2026-05-28 | Session-scoped dedup as v1 requirement | Token-tax math (~12.5K wasted per chatty session) makes this a v1 must, not an open question. |
 | 2026-05-28 | Per-language inline-ignore syntax | HTML comments don't parse in `.tsx`/`.css`/`.js`; matching ESLint/Stylelint/Biome conventions is what users expect. |
@@ -680,11 +669,11 @@ For the implementation branch, not this one.
 | 2026-05-28 | v4: no-silent-fires policy. Every successful scan emits something to the model | The original design returned empty stdout when `fresh.length === 0`. Real sessions showed the model losing track of unresolved findings after a few tool calls scrolled the prior reminder past the salient window. New three-state emission model: fresh findings → `Required design corrections...` (existing imperative); pending findings (filtered > 0, fresh === 0) → short `Still has N issue(s) flagged earlier this session...` re-nudge; truly clean (filtered === 0) → short positive ack `No anti-patterns. Keep typography, spacing, contrast intentional...`. Sweep variants mirrored the same three states. Detector crashes still stay silent because we can't honestly say "clean" when the scan failed. Opt-out via `IMPECCABLE_HOOK_QUIET=1` for users who want the v1 silent-on-clean behavior; findings emissions still fire under QUIET. |
 | 2026-05-28 | v5: remove the second PostToolUse group and the git-status sweep entirely | The sweep was added in v2 to catch Codex's `mcp__node_repl__*` edits (which carry no `file_path`). In practice the cost outweighed the benefit. v5 collapses back to a single PostToolUse group matching `Edit|Write|MultiEdit|apply_patch`. Events with no resolvable file path hit a silent skip with `reason: no-file-path`. |
 | 2026-05-28 | v6: parse Codex `apply_patch` paths from `tool_input.command` | Per [Codex hooks docs](https://developers.openai.com/codex/hooks), `apply_patch` exposes the patch in `tool_input.command`, not `file_path`. Our hook only read `file_path`, so every Codex PostToolUse fired but exited with empty stdout. Fix: `parseApplyPatchPaths()` + `resolveTargetFiles()`. |
-| 2026-05-28 | v7: Codex manifest parity + SessionStart matcher | Added SessionStart to the Codex `.agents` manifest (was Claude-only). Both manifests now use `matcher: startup|resume` on SessionStart per Codex docs. SessionStart greeting copy corrected (no Bash/MCP false claim). Optional `statusMessage` on handlers. |
+| 2026-05-28 | v7: Codex manifest parity | Earlier draft aligned Codex with Claude and added optional `statusMessage` on handlers. Startup-hook work was later dropped. |
 | 2026-05-28 | v8: co-scan stylesheets when a UI component is edited | PostToolUse only scanned the patched file. React/Vite apps often keep slop in sibling `styles.css` while JSX edits trigger the hook — so `App.jsx` came back clean while `styles.css` still had Inter/bounce/etc. Fix: after resolving the primary target(s), also scan static `import '…css'` dependencies plus co-located stylesheets (`styles.css`, `Component.module.css`, `globals.css`, …) in the same directory. Cap at 6 files per fire. Stylesheet-only edits unchanged. |
 | 2026-05-28 | v9: drop Claude `if: Edit(*.{…})` — script filters on both harnesses | Claude's `if` field is one permission rule per handler; `Edit(*.tsx)` never matches `Write` or `MultiEdit`, so most Claude edits never spawned the hook despite the group matcher. Codex never had `if:`. Extension filter now lives only in `hook-lib.mjs` on both sides. |
-| 2026-05-28 | v10: Cursor hooks via `.cursor/hooks.json` | Cursor uses a flat project manifest (`version: 1`, camelCase events) not Claude's plugin `hooks/hooks.json`. Same hook scripts infer Cursor from event shape (`additional_context`, `tool_input.path`, `conversation_id`). Initial `postToolUse` matcher `Write\|StrReplace`; `sessionStart` for the throttled greeting. CSS co-scan and dedup cache unchanged. |
-| 2026-05-29 | v12: shared marketplace plugin root for Codex | The existing marketplace points at `./plugin`, so Codex's `.codex-plugin/plugin.json` lives under `plugin/` next to the shared `skills/` and `hooks/` trees. The root-level `.codex-plugin` artifact was removed. |
+| 2026-05-28 | v10: Cursor hooks via `.cursor/hooks.json` | Cursor uses a flat project manifest (`version: 1`, camelCase events) not Claude's plugin `hooks/hooks.json`. Same hook scripts infer Cursor from event shape (`additional_context`, `tool_input.path`, `conversation_id`). Initial `postToolUse` matcher `Write\|StrReplace`. CSS co-scan and dedup cache unchanged. |
+| 2026-05-29 | v12: remove Codex marketplace plugin packaging | Codex now uses project-local `.codex/hooks.json` plus `.agents/skills/impeccable`; the build removes `plugin-codex/`, `.agents/plugins/marketplace.json`, and `.agents/hooks/`. Claude keeps the separate `plugin/` package. |
 | 2026-05-29 | v11: Cursor stop-hook followup (drop postToolUse) | Cursor 3.5.x accepts and logs `postToolUse` `additional_context` but does not inject it into model context (confirmed upstream bug). Workaround: `afterFileEdit` records fresh/pending findings to `.impeccable/hook.pending.json`; `stop` drains the queue and emits `followup_message` (auto-submitted as next user message). `loop_limit: 1` plus `loop_count >= 1` guard in `hook-stop.mjs` caps at one nudge per turn. Claude/Codex PostToolUse unchanged. |
 | TBD | `/impeccable hooks` hidden vs visible | Open question 2. |
 | Resolved 2026-05-28 | Bash blind spot policy (open question 1) | v2 added a `Bash\|mcp__.*` sweep; v3 narrowed it to `mcp__node_repl__.*`; v5 removed the sweep group entirely. The conclusion is that Bash / MCP coverage isn't worth the always-on second code path. Pure `Bash` writes (via heredoc/redirect) and `mcp__node_repl__js` writes both go un-scanned at write time; the dedup cache catches them on the next direct edit. |

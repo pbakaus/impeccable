@@ -301,10 +301,9 @@ export function createTransformer(config) {
       }
     }
 
-    // Emit hooks/hooks.json next to the skills tree when the provider opts in.
-    // Claude Code auto-discovers this file from the plugin root and Codex
-    // auto-discovers it from the plugin (or `.agents/`) root. Listing it in
-    // any `plugin.json` would trigger a "duplicate hooks file" error.
+    // Emit the provider hook manifest when the provider opts in.
+    // Claude Code uses `.claude/hooks/hooks.json`, Codex uses project-local
+    // `.codex/hooks.json`, and Cursor uses `.cursor/hooks.json`.
     let hooksEmitted = false;
     if (config.emitHooks) {
       const manifest = hooksJsonFor(config.emitHooks);

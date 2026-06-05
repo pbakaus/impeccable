@@ -6,9 +6,8 @@
  *   - Claude/Codex hook manifests have the right shape, matcher, timeouts,
  *     and command/args. (Pure unit test against the builders — no FS dep.)
  *   - The committed build artifacts (`plugin/hooks/hooks.json`,
- *     `plugin-codex/hooks/hooks.json`, `.agents/plugins/marketplace.json`, and
- *     `.agents/hooks/hooks.json`) exist and parse, and reference the bundled
- *     hook scripts that are also present.
+ *     `.codex/hooks.json`, and `.cursor/hooks.json`) exist and parse, and
+ *     reference the bundled hook scripts that are also present.
  *
  * Both halves matter: the builder test catches regressions in the schema we
  * emit, and the artifact test catches "we forgot to commit the regenerated
@@ -24,9 +23,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildClaudeHooksManifest,
   buildCodexHooksManifest,
-  buildCodexPluginHooksManifest,
   buildCursorHooksManifest,
-  buildCodexPluginManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
 
@@ -49,12 +46,10 @@ describe('buildClaudeHooksManifest()', () => {
   });
 
   it('uses shell-form command with quoted ${CLAUDE_PLUGIN_ROOT}', () => {
-    // Codex only substitutes `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}` inside
-    // the `command` string, not inside `args`. Exec form (command: "node" +
-    // args: [...]) ships the literal placeholder to Node and the hook fails
-    // with MODULE_NOT_FOUND. Every working hook in claude-plugins-official
-    // (posthog, hookify) uses shell form for this reason. Quotes protect
-    // plugin roots that contain spaces.
+    // Claude plugin placeholder expansion happens in the `command` string, not
+    // in `args`. Exec form (command: "node" + args: [...]) can ship a literal
+    // placeholder to Node and make the hook fail with MODULE_NOT_FOUND. Quotes
+    // protect plugin roots that contain spaces.
     const expected = 'node "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"';
     const handler = m.hooks.PostToolUse[0].hooks[0];
     assert.equal(handler.type, 'command');
@@ -89,11 +84,12 @@ describe('buildCodexHooksManifest()', () => {
     assert.equal(ptu[0].matcher, 'Edit|Write|apply_patch');
   });
 
-  it('uses shell-form command with ${PLUGIN_ROOT}, not ${CLAUDE_PLUGIN_ROOT}', () => {
-    const expected = 'node "${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"';
+  it('uses shell-form command resolved from the project git root', () => {
+    const expected = 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"';
     const handler = m.hooks.PostToolUse[0].hooks[0];
     assert.equal(handler.type, 'command');
     assert.equal(handler.command, expected);
+    assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
     assert.ok(!handler.command.includes('CLAUDE_PLUGIN_ROOT'));
     assert.ok(!('args' in handler));
   });
@@ -110,39 +106,6 @@ describe('buildCodexHooksManifest()', () => {
 
   it('does not declare a SessionStart greeting hook', () => {
     assert.equal(m.hooks.SessionStart, undefined);
-  });
-});
-
-describe('buildCodexPluginHooksManifest()', () => {
-  const m = buildCodexPluginHooksManifest();
-
-  it('uses the hooks-only plugin runtime path', () => {
-    const handler = m.hooks.PostToolUse[0].hooks[0];
-    assert.equal(handler.command, 'node "${PLUGIN_ROOT}/hooks/runtime/hook.mjs"');
-    assert.ok(!handler.command.includes('skills/impeccable/scripts'));
-  });
-});
-
-describe('buildCodexPluginManifest()', () => {
-  const root = {
-    name: 'impeccable',
-    description: 'Design fluency',
-    version: '3.2.0',
-    author: { name: 'Paul' },
-    homepage: 'https://impeccable.style',
-    repository: 'x',
-  };
-  const m = buildCodexPluginManifest(root);
-
-  it('echoes name + version, does not bundle skills', () => {
-    assert.equal(m.name, 'impeccable');
-    assert.equal(m.version, '3.2.0');
-    assert.equal(m.skills, undefined);
-    assert.match(m.description, /design detector hook/i);
-  });
-
-  it('does NOT declare hooks inline (auto-discovery + duplicate-file guard)', () => {
-    assert.equal(m.hooks, undefined);
   });
 });
 
@@ -190,10 +153,7 @@ describe('committed hook artifacts in repo', () => {
   for (const rel of [
     'plugin/.claude-plugin/plugin.json',
     'plugin/hooks/hooks.json',
-    'plugin-codex/.codex-plugin/plugin.json',
-    'plugin-codex/hooks/hooks.json',
-    '.agents/plugins/marketplace.json',
-    '.agents/hooks/hooks.json',
+    '.codex/hooks.json',
     '.cursor/hooks.json',
   ]) {
     it(`${rel} exists and is valid JSON`, () => {
@@ -203,8 +163,8 @@ describe('committed hook artifacts in repo', () => {
     });
   }
 
-  // Shell-form command shape: `node "${PLUGIN_ROOT}/.../hook.mjs"`.
-  // Parse out the quoted path so we can verify the script exists on disk.
+  // Shell-form command shape: `node "<root-placeholder>/.../hook.mjs"`.
+  // Parse out the quoted path so we can verify the Claude plugin script exists on disk.
   const extractScriptPath = (commandStr, rootPlaceholder) => {
     const match = commandStr.match(/"([^"]+)"/);
     assert.ok(match, `expected quoted script path in command: ${commandStr}`);
@@ -230,50 +190,28 @@ describe('committed hook artifacts in repo', () => {
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
   });
 
-  it('plugin-codex/.codex-plugin/plugin.json is hooks-only', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin-codex/.codex-plugin/plugin.json'), 'utf-8'));
-    assert.equal(manifest.skills, undefined);
-    assert.match(manifest.description, /design detector hook/i);
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/skills')), false);
-  });
-
-  it('plugin-codex/hooks/hooks.json stays Codex-specific and bundles the referenced script', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin-codex/hooks/hooks.json'), 'utf-8'));
+  it('.codex/hooks.json stays Codex project-local and references the .agents skill runtime', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.codex/hooks.json'), 'utf-8'));
     const command = manifest.hooks.PostToolUse[0].hooks[0].command;
-    assert.ok(command.includes('${PLUGIN_ROOT}'));
+    assert.equal(command, 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"');
+    assert.ok(!command.includes('${PLUGIN_ROOT}'));
     assert.ok(!command.includes('${CLAUDE_PLUGIN_ROOT}'));
-    assert.ok(command.includes('hooks/runtime/hook.mjs'));
-    assert.ok(!command.includes('skills/impeccable/scripts'));
-    const scriptRel = extractScriptPath(command, '${PLUGIN_ROOT}');
-    const bundledScript = path.join(REPO_ROOT, 'plugin-codex', scriptRel);
+    const bundledScript = path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook.mjs');
     assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/hooks/runtime/hook-lib.mjs')),
-      'Codex hook-lib runtime missing');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex/hooks/runtime/detector/detect-antipatterns.mjs')),
-      'Codex detector runtime missing');
-  });
-
-  it('.agents/plugins/marketplace.json points Codex installs at ./plugin-codex', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.agents/plugins/marketplace.json'), 'utf-8'));
-    assert.equal(manifest.name, 'impeccable');
-    assert.equal(manifest.plugins[0].name, 'impeccable');
-    assert.equal(manifest.plugins[0].source.source, 'local');
-    assert.equal(manifest.plugins[0].source.path, './plugin-codex');
-    assert.deepEqual(manifest.plugins[0].policy.products, ['CODEX']);
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-lib.mjs')),
+      'Codex hook-lib runtime missing from .agents skill');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/detector/detect-antipatterns.mjs')),
+      'Codex detector runtime missing from .agents skill');
   });
 
   it('plugin/ is not also a Codex plugin package', () => {
     assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin/.codex-plugin/plugin.json')), false);
   });
 
-  it('.agents/hooks/hooks.json references a hook.mjs that is bundled in .agents/skills/', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.agents/hooks/hooks.json'), 'utf-8'));
-    const scriptRel = extractScriptPath(
-      manifest.hooks.PostToolUse[0].hooks[0].command,
-      '${PLUGIN_ROOT}',
-    );
-    const bundledScript = path.join(REPO_ROOT, '.agents', scriptRel);
-    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+  it('Codex plugin-marketplace artifacts are not generated', () => {
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex')), false);
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.agents/hooks')), false);
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.agents/plugins/marketplace.json')), false);
   });
 
   it('.cursor/hooks.json references hook-after-edit.mjs bundled in .cursor/skills/', () => {
@@ -290,23 +228,11 @@ describe('committed hook artifacts in repo', () => {
     const scriptDir = path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts');
     assert.ok(fs.existsSync(path.join(scriptDir, 'detector', 'detect-antipatterns.mjs')),
       'detector bundle missing — hook.mjs would fall back to source path and fail in production install');
-    const codexScriptDir = path.join(REPO_ROOT, 'plugin-codex/hooks/runtime');
+    const codexScriptDir = path.join(REPO_ROOT, '.agents/skills/impeccable/scripts');
     assert.ok(fs.existsSync(path.join(codexScriptDir, 'detector', 'detect-antipatterns.mjs')),
-      'Codex detector bundle missing — hook.mjs would fall back to source path and fail in production install');
+      'Codex detector bundle missing from .agents skill — hook.mjs would fail in project install');
     const codexHookLib = await import(pathToFileURL(path.join(codexScriptDir, 'hook-lib.mjs')));
     const detector = await codexHookLib.loadDetector();
     assert.equal(typeof detector.detectText, 'function');
-  });
-
-  it('plugin-codex does not bundle pin/unpin skill management scripts', () => {
-    const stack = [path.join(REPO_ROOT, 'plugin-codex')];
-    while (stack.length > 0) {
-      const current = stack.pop();
-      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-        const full = path.join(current, entry.name);
-        if (entry.isDirectory()) stack.push(full);
-        assert.notEqual(entry.name, 'pin.mjs', `unexpected generated pin script: ${full}`);
-      }
-    }
   });
 });

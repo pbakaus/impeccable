@@ -21,7 +21,6 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
-import { buildCodexPluginHooksManifest, buildCodexPluginManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -711,73 +710,6 @@ async function build() {
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
-  }
-
-  // Build a separate Codex plugin subtree. The Claude marketplace package
-  // above cannot be reused because its hook manifest needs
-  // `${CLAUDE_PLUGIN_ROOT}`, while Codex plugin hooks need `${PLUGIN_ROOT}`.
-  if (Object.values(PROVIDERS).some(p => p.emitCodexPlugin)) {
-    const codexPluginRoot = path.join(ROOT_DIR, 'plugin-codex');
-    const codexPluginManifestDir = path.join(codexPluginRoot, '.codex-plugin');
-    const codexPluginHooksDir = path.join(codexPluginRoot, 'hooks');
-    const codexHookRuntimeDir = path.join(codexPluginHooksDir, 'runtime');
-
-    if (fs.existsSync(codexPluginRoot)) fs.rmSync(codexPluginRoot, { recursive: true, force: true });
-
-    fs.mkdirSync(codexPluginManifestDir, { recursive: true });
-    const codexManifest = buildCodexPluginManifest(rootManifest);
-    fs.writeFileSync(
-      path.join(codexPluginManifestDir, 'plugin.json'),
-      JSON.stringify(codexManifest, null, 2) + '\n',
-    );
-
-    const codexScriptSrc = path.join(DIST_DIR, 'codex', '.codex', 'skills', 'impeccable', 'scripts');
-    const codexHookRuntimeFiles = ['hook.mjs', 'hook-lib.mjs'];
-    fs.mkdirSync(codexHookRuntimeDir, { recursive: true });
-    for (const file of codexHookRuntimeFiles) {
-      fs.copyFileSync(path.join(codexScriptSrc, file), path.join(codexHookRuntimeDir, file));
-    }
-    copyDirSync(
-      path.join(codexScriptSrc, 'detector'),
-      path.join(codexHookRuntimeDir, 'detector'),
-    );
-
-    fs.mkdirSync(codexPluginHooksDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(codexPluginHooksDir, 'hooks.json'),
-      JSON.stringify(buildCodexPluginHooksManifest(), null, 2) + '\n',
-    );
-
-    const codexMarketplaceDir = path.join(ROOT_DIR, '.agents', 'plugins');
-    fs.mkdirSync(codexMarketplaceDir, { recursive: true });
-    const codexMarketplace = {
-      name: 'impeccable',
-      interface: {
-        displayName: 'Impeccable',
-      },
-      plugins: [
-        {
-          name: 'impeccable',
-          source: {
-            source: 'local',
-            path: './plugin-codex',
-          },
-          policy: {
-            installation: 'AVAILABLE',
-            authentication: 'ON_INSTALL',
-            products: ['CODEX'],
-          },
-          category: 'Design',
-        },
-      ],
-    };
-    fs.writeFileSync(
-      path.join(codexMarketplaceDir, 'marketplace.json'),
-      JSON.stringify(codexMarketplace, null, 2) + '\n',
-    );
-
-    console.log('📦 Built Codex plugin subtree at ./plugin-codex/');
-    console.log('📦 Wrote Codex marketplace at ./.agents/plugins/marketplace.json');
   }
 
   // Generate authoritative counts and validate references

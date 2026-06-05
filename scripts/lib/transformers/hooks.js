@@ -1,34 +1,29 @@
 /**
  * Build-pipeline emitters for the Impeccable design hook.
  *
- * Two artifacts:
+ * Three artifacts:
  *   1. hooks.json — per-provider hook manifest. PostToolUse shape is the same
  *      on both harnesses: one matcher group, no `if:` field. Claude's `if:`
  *      permission rule binds to a single tool name (`Edit(*.tsx)` never
  *      matches Write or MultiEdit), so extension filtering lives in the hook
  *      script on both sides.
- *   2. plugin-codex/.codex-plugin/plugin.json — Codex plugin manifest inside
- *      the Codex marketplace plugin root. Codex auto-discovers
- *      `hooks/hooks.json` there, so the manifest itself is intentionally tiny.
+ *   2. .codex/hooks.json — Codex project-local hook manifest. Codex discovers
+ *      hooks next to project config layers; the command resolves the repo root
+ *      at runtime and then runs the hook bundled under `.agents/skills`.
+ *   3. .cursor/hooks.json — Cursor's flat project-local hook manifest.
  */
 
 const SKILL_HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
-const CODEX_PLUGIN_HOOK_SCRIPT_REL = 'hooks/runtime/hook.mjs';
+const CODEX_PROJECT_HOOK_COMMAND = 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"';
 
 // Manifest copied verbatim from `dist/claude-code/.claude/hooks/` into the
-// Claude marketplace `plugin/hooks/` subtree by `scripts/build.js`. Codex gets
-// its own generated `plugin-codex/hooks/hooks.json` because the two runtimes
-// use different plugin-root placeholders.
+// Claude marketplace `plugin/hooks/` subtree by `scripts/build.js`.
 //
 // **Shell form, not exec form.** We use `command: "node \"…path…\""` with
-// the path embedded in the command string, not the exec form
-// `command: "node", args: ["…path…"]`. Codex only substitutes the
-// `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}` placeholders inside the
-// `command` string; placeholders in `args` are passed through literally,
-// which makes Node fail to resolve the script path. Every working hook in
-// `claude-plugins-official` (posthog, hookify, etc.) uses shell form for
-// exactly this reason. The quotes around the path keep us safe if the
-// plugin root contains spaces.
+// the path embedded in the command string, not the exec form `command: "node",
+// args: ["…path…"]`. The shell form gives Claude plugin installs placeholder
+// substitution and lets Codex project hooks resolve the git root at runtime.
+// Quotes around the path keep us safe if roots contain spaces.
 //
 // **One matcher group, scoped to direct-edit tools.** Claude Code
 // Edit/Write/MultiEdit carry `tool_input.file_path`. Codex `apply_patch`
@@ -68,10 +63,7 @@ export function buildClaudeHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLU
   };
 }
 
-export function buildCodexHooksManifest({
-  pluginRootPlaceholder = '${PLUGIN_ROOT}',
-  hookScriptRel = SKILL_HOOK_SCRIPT_REL,
-} = {}) {
+export function buildCodexHooksManifest() {
   return {
     description: 'Impeccable design detector: runs after Edit/Write/apply_patch on UI files and surfaces findings as system reminders.',
     hooks: {
@@ -83,7 +75,7 @@ export function buildCodexHooksManifest({
           hooks: [
             {
               type: 'command',
-              command: `node "${pluginRootPlaceholder}/${hookScriptRel}"`,
+              command: CODEX_PROJECT_HOOK_COMMAND,
               timeout: 5,
               statusMessage: 'Scanning design',
             },
@@ -91,23 +83,6 @@ export function buildCodexHooksManifest({
         },
       ],
     },
-  };
-}
-
-export function buildCodexPluginHooksManifest() {
-  return buildCodexHooksManifest({ hookScriptRel: CODEX_PLUGIN_HOOK_SCRIPT_REL });
-}
-
-export function buildCodexPluginManifest(rootManifest) {
-  // Tiny on purpose. Codex auto-discovers `hooks/hooks.json` from the plugin
-  // root; declaring it in `plugin.json` would duplicate the registration.
-  return {
-    name: rootManifest.name,
-    description: 'Impeccable design detector hook for Codex. Runs after edits and surfaces UI anti-pattern findings.',
-    version: rootManifest.version,
-    author: rootManifest.author,
-    homepage: rootManifest.homepage,
-    repository: rootManifest.repository,
   };
 }
 
