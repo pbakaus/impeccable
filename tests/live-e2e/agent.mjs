@@ -1747,6 +1747,10 @@ export async function runAgentLoop({
           }),
           signal,
         });
+        if (completionType === 'agent_done' && acceptResult.handled === true && acceptResult.carbonize === true) {
+          await runLiveComplete({ tmp, scriptsDir, id: event.id });
+          log(`completed carbonize session ${event.id}`);
+        }
       } catch (err) {
         if (signal.aborted) return;
         log('accept failed: ' + err.message);
@@ -1876,20 +1880,32 @@ export async function applySteerEdits(tmp, { file, edits }) {
 async function handleSteerDeterministic(context) {
   const { targetFileAbs, target } = context;
   let body = await fs.readFile(targetFileAbs, 'utf-8');
+  const next = addSteerMarkerToSource(body, target);
+  if (next === body) return;
+  if (!next) {
+    const { classes = 'hero-title', tag = 'h1' } = target;
+    const classToken = classes.split(/\s+/)[0];
+    throw new Error(`steer target <${tag}.${classToken}> not found in ${targetFileAbs}`);
+  }
+  body = next;
+  await fs.writeFile(targetFileAbs, body, 'utf-8');
+}
+
+export function addSteerMarkerToSource(body, target = { classes: 'hero-title', tag: 'h1' }) {
   const attr = `${STEER_MARKER_ATTR}="${STEER_MARKER_VALUE}"`;
-  if (body.includes(attr)) return;
+  if (body.includes(attr)) return body;
 
   const { classes = 'hero-title', tag = 'h1' } = target;
   const classToken = classes.split(/\s+/)[0];
+  const escapedTag = escapeRegExp(tag);
+  const escapedClass = escapeRegExp(classToken);
+  const classValue = `(?:["'][^"']*\\b${escapedClass}\\b[^"']*["']|\\{[^}]*\\b${escapedClass}\\b[^}]*\\})`;
   const openTagRe = new RegExp(
-    `(<${tag}\\b(?=[^>]*\\b(?:className|class)=["'][^"']*\\b${classToken}\\b)[^>]*)(>)`,
+    `(<${escapedTag}\\b(?=[^>]*\\b(?:className|class)\\s*=\\s*${classValue})[^>]*)(>)`,
     'i',
   );
-  if (!openTagRe.test(body)) {
-    throw new Error(`steer target <${tag}.${classToken}> not found in ${targetFileAbs}`);
-  }
-  body = body.replace(openTagRe, `$1 ${attr}$2`);
-  await fs.writeFile(targetFileAbs, body, 'utf-8');
+  if (!openTagRe.test(body)) return null;
+  return body.replace(openTagRe, `$1 ${attr}$2`);
 }
 
 function findSteerTargetFileSync(tmp, target) {
@@ -2082,4 +2098,8 @@ async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, p
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);
+}
+
+async function runLiveComplete({ tmp, scriptsDir, id }) {
+  await execFileP(process.execPath, [path.join(scriptsDir, 'live-complete.mjs'), '--id', id], { cwd: tmp });
 }
