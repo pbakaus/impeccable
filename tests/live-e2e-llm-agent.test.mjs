@@ -10,6 +10,7 @@ import {
   parseManualEditResponse,
   parseVariantResponse,
   resolveLlmAgentConfig,
+  validateCssAuthoringContract,
   validateManualEditCoverage,
   validateManualEditPlanningCoverage,
   validateVariantMaterialChange,
@@ -1737,5 +1738,60 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
         /variants\[0\]\.params must be an array/.test(err.message)
         && /Parsed \(first 500 chars\):/.test(err.message),
     );
+  });
+});
+
+describe('live-e2e LLM agent cssAuthoring validation', () => {
+  const svelteWrapInfo = {
+    previewMode: 'svelte-component',
+    cssAuthoring: { mode: 'svelte-component' },
+    guidanceRefs: ['reference/live-svelte.md'],
+  };
+
+  it('rejects @scope in Svelte component-preview CSS', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '@scope ([data-impeccable-variant]) { .expense-row { padding: 12px; } }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use @scope/);
+  });
+
+  it('rejects data-impeccable selectors in Svelte component-preview CSS', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '[data-impeccable-variant="1"] .expense-row { padding: 12px; }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use data-impeccable-\*/);
+  });
+
+  it('rejects JavaScript-style ternaries in CSS values', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '.expense-row { background: var(--p-bordered, 1) ? #fff : #eee; }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use JavaScript-style ternaries/);
+  });
+
+  it('allows plain Svelte component CSS with data-p param selectors', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: [
+          '.expense-row { padding: var(--p-density, 16px); }',
+          ':global([data-p-strong]) .expense-row__title { font-weight: 800; }',
+        ].join('\n'),
+      },
+      svelteWrapInfo,
+    );
+
+    assert.equal(result, null);
   });
 });

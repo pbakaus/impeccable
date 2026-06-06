@@ -344,9 +344,14 @@ export async function createLlmAgent(opts = {}) {
         }
 
         const validationError = isInsert
-          ? (validateRequestedTuneParams(parsed, event) || validateInsertVariantOutput(parsed, event))
+          ? (
+              validateCssAuthoringContract(parsed, context.wrapInfo)
+              || validateRequestedTuneParams(parsed, event)
+              || validateInsertVariantOutput(parsed, event)
+            )
           : (
-              validateRequestedTuneParams(parsed, event)
+              validateCssAuthoringContract(parsed, context.wrapInfo)
+              || validateRequestedTuneParams(parsed, event)
               || validateRequestedTextStyling(parsed, event)
               || validateVariantRootContract(parsed, event.element, {
                 ignoreSvelteScopedClasses: shouldLoadSvelteLiveReference(context),
@@ -786,6 +791,47 @@ export function parseVariantResponse(text) {
     }
   }
   return parsed;
+}
+
+export function validateCssAuthoringContract(parsed, wrapInfo = {}) {
+  const css = typeof parsed?.scopedCss === 'string' ? parsed.scopedCss : '';
+  if (!css) return null;
+  const mode = wrapInfo?.cssAuthoring?.mode || wrapInfo?.styleMode;
+  const svelteComponent = wrapInfo?.previewMode === 'svelte-component'
+    || mode === 'svelte-component'
+    || wrapInfo?.styleMode === 'svelte-component'
+    || (
+      Array.isArray(wrapInfo?.guidanceRefs)
+      && wrapInfo.guidanceRefs.includes('reference/live-svelte.md')
+    );
+
+  if (svelteComponent) {
+    if (/@scope\b/i.test(css)) {
+      return 'Svelte component scopedCss must not use @scope blocks; put plain component selectors in each component <style> block';
+    }
+    if (/\bdata-impeccable-/i.test(css)) {
+      return 'Svelte component scopedCss must not use data-impeccable-* selectors; target semantic component classes and data-p-* params';
+    }
+  }
+
+  const ternaryDeclaration = findJsStyleCssTernaryDeclaration(css);
+  if (ternaryDeclaration) {
+    return `scopedCss must not use JavaScript-style ternaries in CSS declarations (${ternaryDeclaration}); use normal CSS variables, classes, or attribute selectors`;
+  }
+
+  return null;
+}
+
+function findJsStyleCssTernaryDeclaration(css) {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const declarationRe = /(?:^|[;{}\n])\s*([-\w]+)\s*:\s*([^;{}]*\?[^;{}]*:[^;{}]*);/g;
+  let match;
+  while ((match = declarationRe.exec(withoutComments))) {
+    const value = match[2] || '';
+    if (/url\(\s*["']?[^)"']*\?/.test(value)) continue;
+    return `${match[1]}: ${value.trim()}`;
+  }
+  return null;
 }
 
 function validateScopedCss(css) {
