@@ -5,15 +5,43 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
-    
+    outputs:
+      core: ${{ steps.plan.outputs.core }}
+      detector: ${{ steps.plan.outputs.detector }}
+      live: ${{ steps.plan.outputs.live }}
+      framework: ${{ steps.plan.outputs.framework }}
+      cli_remote_e2e: ${{ steps.plan.outputs.cli_remote_e2e }}
+      live_e2e: ${{ steps.plan.outputs.live_e2e }}
+      skill_behavior: ${{ steps.plan.outputs.skill_behavior }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Detect test plan
+        id: plan
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-test-plan.mjs
+
+  test:
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -27,18 +55,121 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Run core tests
+        run: bun run test:core
+
       - name: Install Puppeteer browser
+        if: needs.changes.outputs.detector == 'true'
         run: bunx puppeteer browsers install chrome
 
-      - name: Run tests
-        run: bun run test
-        
+      - name: Run detector tests
+        if: needs.changes.outputs.detector == 'true'
+        run: bun run test:detector
+
+      - name: Run live unit tests
+        if: needs.changes.outputs.live == 'true'
+        run: bun run test:live
+
+      - name: Run framework fixture tests
+        if: needs.changes.outputs.framework == 'true'
+        run: bun run test:framework
+
+      - name: Rebuild browser detector
+        if: needs.changes.outputs.detector == 'true'
+        run: bun run build:browser
+
+      - name: Rebuild extension detector
+        if: needs.changes.outputs.detector == 'true'
+        run: bun run build:extension
+
       - name: Build
         run: bun run build
-        
+
+      - name: Verify generated tracked outputs
+        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin cli/engine/detect-antipatterns-browser.js
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: impeccable-dist
           path: dist/
           retention-days: 7
+
+  cli-remote-e2e:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.cli_remote_e2e == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run remote CLI E2E smoke
+        run: bun run test:cli-remote-e2e
+
+  live-e2e:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.live_e2e == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run live E2E tests
+        run: bun run test:live-e2e
+
+  skill-behavior:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.skill_behavior == 'true' && github.event_name != 'pull_request'
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_CLOUD_API_KEY: ${{ secrets.GOOGLE_CLOUD_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run skill behavior tests
+        run: bun run test:skill-behavior
