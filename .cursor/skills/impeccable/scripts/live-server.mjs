@@ -21,7 +21,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './design-parser.mjs';
-import { resolveContextDir } from './context.mjs';
+import { loadContext } from './context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
 import { validateEvent } from './live-event-validation.mjs';
 import { LIVE_COMMANDS } from './live-vocabulary.mjs';
@@ -52,7 +52,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
-const CONTEXT_DIR = resolveContextDir(process.cwd());
+const PROJECT_CONTEXT = loadContext(process.cwd());
+const CONTEXT_DIR = PROJECT_CONTEXT.contextDir;
+const DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
+  ? path.resolve(process.cwd(), PROJECT_CONTEXT.designPath)
+  : null;
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
 
@@ -1231,10 +1235,7 @@ function hasProjectContext() {
   // PRODUCT.md carries brand voice / anti-references — that's what determines
   // whether variants are brand-aware. DESIGN.md (visual tokens) is a separate
   // concern, surfaced by the design panel's own empty state.
-  try {
-    fs.accessSync(path.join(CONTEXT_DIR, 'PRODUCT.md'), fs.constants.R_OK);
-    return true;
-  } catch { return false; }
+  return PROJECT_CONTEXT.hasProduct;
 }
 
 function statOrNull(filePath) {
@@ -1413,8 +1414,8 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
 
-      const mdPath = path.join(CONTEXT_DIR, 'DESIGN.md');
-      const jsonPath = resolveDesignSidecarPath(process.cwd(), CONTEXT_DIR) || getDesignSidecarPath(process.cwd());
+      const mdPath = DESIGN_MD_PATH;
+      const jsonPath = resolveDesignSidecarPath(process.cwd(), PROJECT_CONTEXT.designContextDir || CONTEXT_DIR) || getDesignSidecarPath(process.cwd());
       const mdStat = statOrNull(mdPath);
       const jsonStat = statOrNull(jsonPath);
 

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 
 import {
   getDesignSidecarPath,
+  getCritiqueDir,
   getLegacyLiveServerPath,
   getLiveAnnotationsDir,
   getLiveConfigPath,
@@ -78,6 +79,39 @@ describe('impeccable project paths', () => {
     assert.equal(getLiveServerPath(tmp), join(tmp, '.impeccable', 'live', 'server.json'));
     assert.equal(getLiveSessionsDir(tmp), join(tmp, '.impeccable', 'live', 'sessions'));
     assert.equal(getLiveAnnotationsDir(tmp), join(tmp, '.impeccable', 'live', 'annotations'));
+  });
+
+  it('places .impeccable state under the active monorepo child project', () => {
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    mkdirSync(join(tmp, 'apps', 'dashboard', 'src'), { recursive: true });
+    writeFileSync(join(tmp, 'apps', 'dashboard', 'src', 'App.jsx'), 'export default null;\n');
+    const options = { targetPath: 'apps/dashboard/src/App.jsx' };
+    const projectRoot = join(tmp, 'apps', 'dashboard');
+
+    assert.equal(getDesignSidecarPath(tmp, options), join(projectRoot, '.impeccable', 'design.json'));
+    assert.equal(getLiveConfigPath(tmp, options), join(projectRoot, '.impeccable', 'live', 'config.json'));
+    assert.equal(getLiveServerPath(tmp, options), join(projectRoot, '.impeccable', 'live', 'server.json'));
+    assert.equal(getLiveSessionsDir(tmp, options), join(projectRoot, '.impeccable', 'live', 'sessions'));
+    assert.equal(getLiveAnnotationsDir(tmp, options), join(projectRoot, '.impeccable', 'live', 'annotations'));
+    assert.equal(getCritiqueDir(tmp, options), join(projectRoot, '.impeccable', 'critique'));
+    assert.equal(getLegacyLiveServerPath(tmp, options), join(projectRoot, '.impeccable-live.json'));
+    assert.equal(resolveLiveConfigPath({ cwd: tmp, scriptsDir: join(tmp, 'scripts'), env: {}, targetPath: options.targetPath }), getLiveConfigPath(tmp, options));
+  });
+
+  it('does not let a root live config shadow a child project live config path', () => {
+    writeFileSync(join(tmp, 'turbo.json'), '{"tasks":{}}');
+    mkdirSync(join(tmp, 'apps', 'admin', 'src'), { recursive: true });
+    writeFileSync(join(tmp, 'apps', 'admin', 'src', 'App.jsx'), 'export default null;\n');
+    mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(join(tmp, '.impeccable', 'live', 'config.json'), '{"source":"root"}');
+
+    assert.equal(
+      resolveLiveConfigPath({ cwd: tmp, scriptsDir: join(tmp, 'scripts'), env: {}, targetPath: 'apps/admin/src/App.jsx' }),
+      join(tmp, 'apps', 'admin', '.impeccable', 'live', 'config.json'),
+    );
   });
 
   it('reads new live server state before legacy recovery state', () => {

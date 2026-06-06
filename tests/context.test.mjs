@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir } from '../skill/scripts/context.mjs';
+import { loadContext, resolveContextDir, resolveProjectRoot } from '../skill/scripts/context.mjs';
 
 import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
@@ -148,6 +148,113 @@ describe('loadContext', () => {
     assert.equal(ctx.hasProduct, true);
     assert.equal(ctx.contextDir, path.join(scratch, 'docs'));
     assert.equal(ctx.productPath, path.join('docs', 'PRODUCT.md'));
+  });
+});
+
+describe('loadContext (monorepo project context)', () => {
+  function writeMonorepo() {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*', 'packages/*'],
+    }, null, 2));
+    write('turbo.json', JSON.stringify({ tasks: {} }));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    for (const app of ['marketing', 'dashboard', 'admin']) {
+      write(`apps/${app}/src/App.jsx`, `export default function App() { return ${JSON.stringify(app)}; }\n`);
+    }
+  }
+
+  it('inherits root PRODUCT.md and DESIGN.md for child apps without project context', () => {
+    writeMonorepo();
+
+    for (const app of ['marketing', 'dashboard', 'admin']) {
+      const ctx = loadContext(scratch, { targetPath: `apps/${app}/src/App.jsx` });
+      assert.equal(ctx.hasProduct, true);
+      assert.equal(ctx.hasDesign, true);
+      assert.match(ctx.product, /Root product/);
+      assert.match(ctx.design, /Root design/);
+      assert.equal(ctx.productPath, 'PRODUCT.md');
+      assert.equal(ctx.designPath, 'DESIGN.md');
+      assert.equal(ctx.projectRoot, path.join(scratch, 'apps', app));
+      assert.equal(ctx.repoRoot, scratch);
+      assert.equal(ctx.isMonorepo, true);
+    }
+  });
+
+  it('lets child app context override root files independently', () => {
+    writeMonorepo();
+    write('apps/marketing/PRODUCT.md', '# Marketing product\n');
+    write('apps/marketing/DESIGN.md', '# Marketing design\n');
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+
+    const marketing = loadContext(scratch, { targetPath: 'apps/marketing/src/App.jsx' });
+    assert.match(marketing.product, /Marketing product/);
+    assert.match(marketing.design, /Marketing design/);
+    assert.equal(marketing.productPath, path.join('apps', 'marketing', 'PRODUCT.md'));
+    assert.equal(marketing.designPath, path.join('apps', 'marketing', 'DESIGN.md'));
+
+    const dashboard = loadContext(scratch, { targetPath: 'apps/dashboard/src/App.jsx' });
+    assert.match(dashboard.product, /Dashboard product/);
+    assert.match(dashboard.design, /Root design/);
+    assert.equal(dashboard.productPath, path.join('apps', 'dashboard', 'PRODUCT.md'));
+    assert.equal(dashboard.designPath, 'DESIGN.md');
+
+    const admin = loadContext(scratch, { targetPath: 'apps/admin/src/App.jsx' });
+    assert.match(admin.product, /Root product/);
+    assert.match(admin.design, /Root design/);
+    assert.equal(admin.productPath, 'PRODUCT.md');
+    assert.equal(admin.designPath, 'DESIGN.md');
+  });
+
+  it('resolves child project roots from cwd inside a workspace', () => {
+    writeMonorepo();
+    const appDir = path.join(scratch, 'apps', 'dashboard');
+    const ctx = loadContext(appDir);
+    assert.match(ctx.product, /Root product/);
+    assert.match(ctx.design, /Root design/);
+    assert.equal(ctx.productPath, path.join('..', '..', 'PRODUCT.md'));
+    assert.equal(ctx.designPath, path.join('..', '..', 'DESIGN.md'));
+    assert.equal(resolveProjectRoot(appDir), appDir);
+  });
+
+  it('supports pnpm workspace patterns when resolving the active project', () => {
+    write('pnpm-workspace.yaml', 'packages:\n  - "services/*"\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('services/checkout/src/App.jsx');
+
+    const ctx = loadContext(scratch, { targetPath: 'services/checkout/src/App.jsx' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'services', 'checkout'));
+    assert.match(ctx.product, /Root product/);
+    assert.match(ctx.design, /Root design/);
+  });
+
+  it('uses apps and packages folders as a fallback when a monorepo marker exists', () => {
+    write('nx.json', '{}\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('packages/ui/src/index.ts');
+
+    const ctx = loadContext(scratch, { targetPath: 'packages/ui/src/index.ts' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'packages', 'ui'));
+    assert.match(ctx.product, /Root product/);
+    assert.match(ctx.design, /Root design/);
+  });
+
+  it('supports --target in the CLI', async () => {
+    writeMonorepo();
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n\n## Register\n\nproduct\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'apps/dashboard/src/App.jsx'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /# Dashboard product/);
+    assert.match(res.stdout, /# DESIGN\.md\n\n# Root design/);
+    assert.match(res.stdout, /NEXT STEP: This project's register is `product`\./);
   });
 });
 
