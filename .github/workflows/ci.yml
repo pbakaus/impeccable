@@ -157,6 +157,22 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache fixture npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-fixture-npm-
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
       - name: Install dependencies
         run: bun install
 
