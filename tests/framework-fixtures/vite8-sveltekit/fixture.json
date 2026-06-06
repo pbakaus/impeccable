@@ -16,6 +16,16 @@
       "expectedPreviewMode": "svelte-component"
     }
   ],
+  "insertCases": [
+    {
+      "name": "inserts after feature grid in route source",
+      "args": { "classes": "feature-grid", "tag": "section", "position": "after" },
+      "expectedFile": "node_modules/.impeccable-live/inserttest0/manifest.json",
+      "expectedSourceFile": "src/routes/+page.svelte",
+      "expectedPreviewMode": "svelte-component",
+      "expectedMode": "insert"
+    }
+  ],
   "runtime": {
     "styling": "plain-css",
     "install": ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],

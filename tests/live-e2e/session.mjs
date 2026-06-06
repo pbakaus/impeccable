@@ -236,7 +236,11 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
       consoleErrors.push(`pageerror: ${err.message}\n${err.stack || ''}`);
     });
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(`console.error: ${msg.text()}`);
+      if (msg.type() === 'error') {
+        const location = msg.location();
+        const url = location?.url ? ` (${location.url})` : '';
+        consoleErrors.push(`console.error: ${msg.text()}${url}`);
+      }
     });
 
     await page.goto(`${scheme}://127.0.0.1:${devPort}`, {

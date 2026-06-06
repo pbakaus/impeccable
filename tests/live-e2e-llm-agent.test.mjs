@@ -10,6 +10,7 @@ import {
   parseManualEditResponse,
   parseVariantResponse,
   resolveLlmAgentConfig,
+  validateCssAuthoringContract,
   validateManualEditCoverage,
   validateManualEditPlanningCoverage,
   validateVariantMaterialChange,
@@ -1511,6 +1512,21 @@ describe('live-e2e LLM agent variant copy validation', () => {
     assert.match(result, /Manual Title Applied/);
   });
 
+  it('rejects spacing loss when the prompt requires exact visible literal copy', () => {
+    const result = validateVariantVisibleCopy(
+      {
+        variants: [
+          { innerHtml: '<article class="tailwind-card"><div><strong>Tailwind balance</strong><span>$24</span></div></article>' },
+        ],
+      },
+      { textContent: 'Tailwind balance $24' },
+      { freeformPrompt: 'Polish this exact Tailwind card while preserving the exact visible literal copy "Tailwind balance $24".' },
+    );
+
+    assert.match(result, /changed visible copy/);
+    assert.match(result, /Tailwind balance \$24/);
+  });
+
   it('uses outerHTML as a fallback when textContent is absent', () => {
     const result = validateVariantVisibleCopy(
       {
@@ -1644,6 +1660,20 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
     );
   });
 
+  it('rejects empty Svelte :global() selectors before promotion', () => {
+    const body = JSON.stringify({
+      scopedCss: [
+        '.expense-row[data-variant="1"] { border-left: 3px solid #4a90d9; }',
+        ':global() .expense-row[data-variant="1"] { --p-spacing-user: 1; }',
+      ].join('\n'),
+      variants: [{ innerHtml: '<article class="expense-row">x</article>' }],
+    });
+    assert.throws(
+      () => parseVariantResponse(body),
+      /scopedCss must not include empty Svelte :global\(\) selectors/,
+    );
+  });
+
   it('rejects variant HTML that includes its own style tag', () => {
     const body = JSON.stringify({
       scopedCss: '@scope ([data-impeccable-variant="1"]) {}',
@@ -1708,5 +1738,60 @@ describe('live-e2e LLM agent parseVariantResponse', () => {
         /variants\[0\]\.params must be an array/.test(err.message)
         && /Parsed \(first 500 chars\):/.test(err.message),
     );
+  });
+});
+
+describe('live-e2e LLM agent cssAuthoring validation', () => {
+  const svelteWrapInfo = {
+    previewMode: 'svelte-component',
+    cssAuthoring: { mode: 'svelte-component' },
+    guidanceRefs: ['reference/live-svelte.md'],
+  };
+
+  it('rejects @scope in Svelte component-preview CSS', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '@scope ([data-impeccable-variant]) { .expense-row { padding: 12px; } }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use @scope/);
+  });
+
+  it('rejects data-impeccable selectors in Svelte component-preview CSS', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '[data-impeccable-variant="1"] .expense-row { padding: 12px; }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use data-impeccable-\*/);
+  });
+
+  it('rejects JavaScript-style ternaries in CSS values', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: '.expense-row { background: var(--p-bordered, 1) ? #fff : #eee; }',
+      },
+      svelteWrapInfo,
+    );
+
+    assert.match(result, /must not use JavaScript-style ternaries/);
+  });
+
+  it('allows plain Svelte component CSS with data-p param selectors', () => {
+    const result = validateCssAuthoringContract(
+      {
+        scopedCss: [
+          '.expense-row { padding: var(--p-density, 16px); }',
+          ':global([data-p-strong]) .expense-row__title { font-weight: 800; }',
+        ].join('\n'),
+      },
+      svelteWrapInfo,
+    );
+
+    assert.equal(result, null);
   });
 });

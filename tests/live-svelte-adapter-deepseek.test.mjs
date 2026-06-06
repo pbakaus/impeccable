@@ -47,6 +47,7 @@ const FIXTURE_NAME = 'vite8-sveltekit-stateful';
 const ROUTE_FILE = 'src/routes/+page.svelte';
 const LAYOUT_FILE = 'src/routes/+layout.svelte';
 const APP_HTML = 'src/app.html';
+const LIVE_SOURCE_MARKER_RE = /node_modules\/\.impeccable-live|data-impeccable-variants|impeccable-variants-start|data-impeccable-variant=/;
 const EXPECTED_INSERT_PROMPT =
   'Insert a concise muted footnote below the empty expenses card explaining that shared expenses sync automatically.';
 
@@ -135,6 +136,7 @@ describe('Svelte live adapter DeepSeek browser sweep', () => {
 
       const beforeExit = await globalBarSnapshot(page);
       await clickExitLiveMode(page);
+      await waitForDeferredSvelteAcceptsApplied(tmp, [acceptedReplace, acceptedInsert], { timeout: 120_000 });
       const afterExit = await page.evaluate(() => ({
         liveInit: window.__IMPECCABLE_LIVE_INIT__,
         hasGlobalBar: Boolean(window.__impeccableLiveQuery?.('#impeccable-live-global-bar')),
@@ -142,6 +144,7 @@ describe('Svelte live adapter DeepSeek browser sweep', () => {
       assert.ok(beforeExit.hasBar, 'global bottom bar exists before Exit');
       assert.equal(afterExit.liveInit, false, 'live init flag clears after Exit');
       assert.equal(afterExit.hasGlobalBar, false, 'global bottom bar is removed immediately after Exit');
+      assertFinalSourceClean(tmp);
       await evidence.capture('09-exit');
 
       assertNoConsoleErrors(consoleErrors);
@@ -298,12 +301,11 @@ async function runAcceptReplaceFlow({ page, tmp, evidence }) {
   const session = await currentSveltePreviewSession(page, tmp);
   await evidence.capture('replace-before-accept');
   await clickAccept(page, { expectedVariant: 3 });
-  await waitForSvelteAcceptComplete(tmp, session, { timeout: 120_000 });
+  await waitForDeferredSvelteAcceptComplete(tmp, session, { timeout: 120_000 });
   await waitForBarHidden(page, { timeout: 20_000 }).catch(() => {});
   const source = readFileSync(join(tmp, ROUTE_FILE), 'utf-8');
-  assert.match(source, /expense-row/, 'accepted replace stays in real Svelte source');
-  assert.doesNotMatch(source, /data-impeccable-variants|impeccable-variants-start|data-impeccable-variant=/, 'accepted replace source is clean');
-  assert.equal(existsSync(join(tmp, dirname(session.previewFile))), false, 'temp Svelte preview folder deleted after accept');
+  assert.doesNotMatch(source, LIVE_SOURCE_MARKER_RE, 'accepted replace source remains clean while promotion is deferred');
+  assert.equal(existsSync(join(tmp, dirname(session.previewFile))), true, 'deferred replace keeps temp Svelte preview folder until Exit');
   return session;
 }
 
@@ -343,12 +345,11 @@ async function runInsertFlowWithRecovery({ page, tmp, evidence }) {
   );
 
   await clickAccept(page, { expectedVariant: 3 });
-  await waitForSvelteAcceptComplete(tmp, session, { timeout: 120_000 });
+  await waitForDeferredSvelteAcceptComplete(tmp, session, { timeout: 120_000 });
   await waitForBarHidden(page, { timeout: 20_000 }).catch(() => {});
   const source = readFileSync(join(tmp, ROUTE_FILE), 'utf-8');
-  assert.match(source, /automatisch|synchron|sync|abgeglichen|shared expenses/i, 'accepted insert content lands in real source');
-  assert.doesNotMatch(source, /data-impeccable-variants|impeccable-variants-start|data-impeccable-variant=/, 'accepted insert source is clean');
-  assert.equal(existsSync(join(tmp, dirname(session.previewFile))), false, 'insert temp Svelte preview folder deleted after accept');
+  assert.doesNotMatch(source, LIVE_SOURCE_MARKER_RE, 'accepted insert source remains clean while promotion is deferred');
+  assert.equal(existsSync(join(tmp, dirname(session.previewFile))), true, 'deferred insert keeps temp Svelte preview folder until Exit');
   return session;
 }
 
@@ -595,8 +596,7 @@ async function currentSveltePreviewSession(page, tmp) {
   return { ...saved, manifest };
 }
 
-async function waitForSvelteAcceptComplete(tmp, session, { timeout }) {
-  const manifestPath = join(tmp, session.previewFile);
+async function waitForDeferredSvelteAcceptComplete(tmp, session, { timeout }) {
   const sourcePath = join(tmp, ROUTE_FILE);
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -605,14 +605,39 @@ async function waitForSvelteAcceptComplete(tmp, session, { timeout }) {
     if (
       snapshot?.phase === 'completed'
       && snapshot.sourceFile === ROUTE_FILE
-      && !existsSync(manifestPath)
-      && !/data-impeccable-variants|impeccable-variants-start|data-impeccable-variant=/.test(source)
+      && !LIVE_SOURCE_MARKER_RE.test(source)
     ) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`Svelte accept did not complete for ${session.id}; snapshot=${JSON.stringify(readSessionSnapshot(tmp, session.id))}`);
+}
+
+async function waitForDeferredSvelteAcceptsApplied(tmp, sessions, { timeout }) {
+  const sourcePath = join(tmp, ROUTE_FILE);
+  const deadline = Date.now() + timeout;
+  let lastSource = '';
+  let remainingPreviewDirs = [];
+  while (Date.now() < deadline) {
+    lastSource = readFileSync(sourcePath, 'utf-8');
+    remainingPreviewDirs = sessions
+      .map((session) => join(tmp, dirname(session.previewFile)))
+      .filter((dir) => existsSync(dir));
+    if (
+      remainingPreviewDirs.length === 0
+      && /automatisch|synchron|sync|abgeglichen|gemeinsame Ausgaben|shared expenses/i.test(lastSource)
+      && !LIVE_SOURCE_MARKER_RE.test(lastSource)
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    'Deferred Svelte accepts were not applied after Exit; '
+    + `remainingPreviewDirs=${JSON.stringify(remainingPreviewDirs.map((dir) => relative(tmp, dir)))}; `
+    + `sourceTail=${JSON.stringify(lastSource.slice(-1200))}`
+  );
 }
 
 function assertCompletedRealSource(tmp, id) {
@@ -693,7 +718,7 @@ async function assertStateProbeUnchanged(page, expected, message) {
 
 function assertFinalSourceClean(tmp) {
   const source = readFileSync(join(tmp, ROUTE_FILE), 'utf-8');
-  assert.doesNotMatch(source, /node_modules\/\.impeccable-live|data-impeccable-variants|impeccable-variants-start|data-impeccable-variant=/);
+  assert.doesNotMatch(source, LIVE_SOURCE_MARKER_RE);
 }
 
 function latestJournalEvent(tmp, predicate) {

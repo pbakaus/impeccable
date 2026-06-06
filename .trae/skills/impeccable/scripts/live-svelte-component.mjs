@@ -16,6 +16,9 @@ export const SVELTE_RUNTIME_FILE = `${SVELTE_COMPONENT_ROOT}/__runtime.js`;
 export const DEFERRED_ACCEPTS_FILE = '.impeccable/live/deferred-svelte-component-accepts.json';
 
 const MUSTACHE_RE = /\{([^{}]+)\}/g;
+const TAILWIND_SAFELIST_START = '/* impeccable-live-tailwind-safelist:start */';
+const TAILWIND_SAFELIST_END = '/* impeccable-live-tailwind-safelist:end */';
+const TAILWIND_SAFELIST_INDEX = '.impeccable/live/svelte-tailwind-safelist.json';
 
 export function shouldUseSvelteComponentInjection(filePath) {
   if (/^(0|false|no)$/i.test(process.env.IMPECCABLE_LIVE_SVELTE_COMPONENT || '')) return false;
@@ -52,6 +55,7 @@ export function extractMustacheExpressions(text) {
     MUSTACHE_RE.lastIndex = 0;
     while ((match = MUSTACHE_RE.exec(line)) !== null) {
       const expr = match[1].trim();
+      if (isSvelteControlExpression(expr)) continue;
       if (!expr || seen.has(expr)) continue;
       seen.add(expr);
       expressions.push(expr);
@@ -61,14 +65,30 @@ export function extractMustacheExpressions(text) {
 }
 
 export function buildPropContract(expressions) {
+  const usedProps = new Set();
   return expressions.map((expr, index) => {
-    const derived = derivePropName(expr, index);
+    const derived = uniquePropName(derivePropName(expr, index), usedProps);
     return {
       prop: derived,
       expr,
       placeholder: `{${expr}}`,
     };
   });
+}
+
+function isSvelteControlExpression(expr) {
+  return /^[#:/@]/.test(String(expr || '').trim());
+}
+
+function uniquePropName(base, used) {
+  let prop = base || 'prop';
+  let suffix = 2;
+  while (used.has(prop)) {
+    prop = `${base}${suffix}`;
+    suffix += 1;
+  }
+  used.add(prop);
+  return prop;
 }
 
 function derivePropName(expr, index) {
@@ -83,6 +103,8 @@ export function substituteExprsWithProps(markup, contract) {
   let out = String(markup || '');
   for (const entry of contract) {
     out = out.split(entry.placeholder).join(`{${entry.prop}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+${escapeRegExp(entry.expr)}\\s*\\}`, 'g'), `{#if ${entry.prop}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+!\\s*${escapeRegExp(entry.expr)}\\s*\\}`, 'g'), `{#if !${entry.prop}}`);
   }
   return out;
 }
@@ -91,8 +113,14 @@ export function substitutePropsWithExprs(markup, contract) {
   let out = String(markup || '');
   for (const entry of contract) {
     out = out.split(`{${entry.prop}}`).join(`{${entry.expr}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+${escapeRegExp(entry.prop)}\\s*\\}`, 'g'), `{#if ${entry.expr}}`);
+    out = out.replace(new RegExp(`\\{#if\\s+!\\s*${escapeRegExp(entry.prop)}\\s*\\}`, 'g'), `{#if !${entry.expr}}`);
   }
   return out;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function parseSvelteComponentFile(content) {
@@ -309,7 +337,7 @@ function bakeParamValuesInCss(cssLines, paramValues) {
 
 function sanitizeAcceptedSvelteCss(cssLines, variantNum, paramValues = null, rootTag = 'div') {
   const css = String((cssLines || []).join('\n'));
-  if (!/data-impeccable-variant|impeccable-variant-ready/.test(css)) return cssLines;
+  if (!/data-impeccable-variant|impeccable-variant-ready|data-p-[A-Za-z0-9_-]+/.test(css)) return cssLines;
 
   const rules = parseCssRules(css);
   const output = [];
@@ -423,6 +451,7 @@ function rewriteAcceptedSvelteSelectorPart(selector, variantNum, paramValues, ro
   out = paramResult.selector;
 
   out = out
+    .replace(/:global\(\s*\)\s*/g, '')
     .replace(/:scope(?:\[[^\]]+\])?\s*>\s*/g, '')
     .replace(/:scope(?:\[[^\]]+\])?/g, rootTag || '')
     .replace(/\s+/g, ' ')
@@ -436,19 +465,43 @@ function rewriteAcceptedSvelteSelectorPart(selector, variantNum, paramValues, ro
 function rewriteParamSelectors(selector, paramValues) {
   let keep = true;
   const next = selector.replace(/\[data-p-([A-Za-z0-9_-]+)(?:=(["'])(.*?)\2)?\]/g, (_match, key, _quote, expected) => {
-    if (!paramValues || !Object.prototype.hasOwnProperty.call(paramValues, key)) return '';
-    const actual = paramValues[key];
-    if (expected != null && String(actual) !== String(expected)) {
+    if (!paramValues || !Object.prototype.hasOwnProperty.call(paramValues, key)) {
       keep = false;
       return '';
     }
-    if (expected == null && (actual === false || actual == null || actual === 'false' || actual === 'off' || actual === '0')) {
+    const actual = paramValues[key];
+    if (expected != null && !paramSelectorValueMatches(actual, expected)) {
+      keep = false;
+      return '';
+    }
+    if (expected == null && !paramValueIsTruthy(actual)) {
       keep = false;
       return '';
     }
     return '';
   });
   return { keep, selector: next };
+}
+
+function paramSelectorValueMatches(actual, expected) {
+  if (String(actual) === String(expected)) return true;
+  const actualBool = normalizeParamBoolean(actual);
+  const expectedBool = normalizeParamBoolean(expected);
+  return actualBool !== null && expectedBool !== null && actualBool === expectedBool;
+}
+
+function paramValueIsTruthy(value) {
+  const normalized = normalizeParamBoolean(value);
+  if (normalized !== null) return normalized;
+  return value != null && String(value) !== '';
+}
+
+function normalizeParamBoolean(value) {
+  if (value === true || value === false) return value;
+  const text = String(value).trim().toLowerCase();
+  if (text === 'true' || text === 'on' || text === '1') return true;
+  if (text === 'false' || text === 'off' || text === '0') return false;
+  return null;
 }
 
 function splitSelectorList(prelude) {
@@ -493,10 +546,6 @@ function formatCssRule(selector, body) {
   return `${selector} { ${body.trim()} }`;
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export function inlineSvelteComponentAccept(manifest, variantNum, paramValues = null, cwd = process.cwd()) {
   const sourceFile = resolveSourceFile(manifest.sourceFile, cwd);
   const variantPath = path.join(cwd, manifest.componentDir, `v${variantNum}.svelte`);
@@ -534,11 +583,11 @@ export function inlineSvelteComponentAccept(manifest, variantNum, paramValues = 
 
   const sourceContent = fs.readFileSync(sourceFile, 'utf-8');
   const sourceLines = sourceContent.split('\n');
-  const start = Number(manifest.sourceStartLine) - 1;
-  const end = Number(manifest.sourceEndLine) - 1;
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= sourceLines.length) {
+  const range = resolveCurrentSvelteReplaceRange(sourceLines, manifest);
+  if (!range) {
     return { handled: false, error: 'Invalid source line range for ' + manifest.sourceFile, ...resultBase };
   }
+  const { start, end } = range;
 
   const indent = sourceLines[start].match(/^(\s*)/)?.[1] || '';
   const indentedMarkup = restoredMarkup.map((line) => {
@@ -594,7 +643,7 @@ function inlineSvelteComponentInsertAccept({
     .map((line) => line.trimEnd());
   const sourceContent = fs.readFileSync(sourceFile, 'utf-8');
   const sourceLines = sourceContent.split('\n');
-  const insertIndex = Number(manifest.insertLine) - 1;
+  const insertIndex = resolveCurrentSvelteInsertIndex(sourceLines, manifest);
   if (!Number.isInteger(insertIndex) || insertIndex < 0 || insertIndex > sourceLines.length) {
     return { handled: false, error: 'Invalid insert line for ' + manifest.sourceFile, ...resultBase };
   }
@@ -629,6 +678,83 @@ function inlineSvelteComponentInsertAccept({
     handled: true,
     ...resultBase,
   };
+}
+
+function resolveCurrentSvelteReplaceRange(sourceLines, manifest) {
+  const start = Number(manifest.sourceStartLine) - 1;
+  const end = Number(manifest.sourceEndLine) - 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= sourceLines.length) {
+    return null;
+  }
+  const originalLines = String(manifest.originalMarkup || '').split('\n');
+  if (
+    sourceLineRangeMatches(sourceLines, start, originalLines)
+    || sourceRangeMarkupMatches(sourceLines, start, end, manifest.originalMarkup || '')
+  ) {
+    return { start, end };
+  }
+  const relocated = findSourceLineSequence(sourceLines, originalLines)
+    || findSourceMarkupWindow(sourceLines, manifest.originalMarkup || '', end - start + 1);
+  if (relocated) return relocated;
+  return null;
+}
+
+function resolveCurrentSvelteInsertIndex(sourceLines, manifest) {
+  const fallback = Number(manifest.insertLine) - 1;
+  const anchorLines = String(manifest.anchorMarkup || manifest.originalMarkup || '').split('\n').filter((line) => line.length > 0);
+  const anchorRange = findSourceLineSequence(sourceLines, anchorLines);
+  if (anchorRange) {
+    return manifest.position === 'before' ? anchorRange.start : anchorRange.end + 1;
+  }
+  return fallback;
+}
+
+function sourceLineRangeMatches(sourceLines, start, expectedLines) {
+  if (!Array.isArray(expectedLines) || expectedLines.length === 0) return false;
+  if (start < 0 || start + expectedLines.length > sourceLines.length) return false;
+  for (let i = 0; i < expectedLines.length; i += 1) {
+    if (normalizeSourceLineForMatch(sourceLines[start + i]) !== normalizeSourceLineForMatch(expectedLines[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function findSourceLineSequence(sourceLines, expectedLines) {
+  if (!Array.isArray(expectedLines) || expectedLines.length === 0) return null;
+  for (let start = 0; start <= sourceLines.length - expectedLines.length; start += 1) {
+    if (sourceLineRangeMatches(sourceLines, start, expectedLines)) {
+      return { start, end: start + expectedLines.length - 1 };
+    }
+  }
+  return null;
+}
+
+function findSourceMarkupWindow(sourceLines, expectedMarkup, lineCount) {
+  if (!expectedMarkup || !Number.isInteger(lineCount) || lineCount <= 0) return null;
+  for (let start = 0; start <= sourceLines.length - lineCount; start += 1) {
+    const end = start + lineCount - 1;
+    if (sourceRangeMarkupMatches(sourceLines, start, end, expectedMarkup)) {
+      return { start, end };
+    }
+  }
+  return null;
+}
+
+function sourceRangeMarkupMatches(sourceLines, start, end, expectedMarkup) {
+  const actualMarkup = sourceLines.slice(start, end + 1).join('\n');
+  return normalizeMarkupForRangeMatch(actualMarkup) === normalizeMarkupForRangeMatch(expectedMarkup);
+}
+
+function normalizeMarkupForRangeMatch(markup) {
+  return String(markup || '')
+    .replace(/\s+/g, ' ')
+    .replace(/>\s+</g, '><')
+    .trim();
+}
+
+function normalizeSourceLineForMatch(line) {
+  return String(line || '').trimEnd();
 }
 
 function svelteMarkupHasVisibleContent(markup) {
@@ -741,8 +867,193 @@ export function removeAllSvelteComponentSessions(cwd = process.cwd()) {
   }
 }
 
+export function syncSvelteComponentTailwindSafelist(manifestOrPath, cwd = process.cwd()) {
+  const manifest = readManifestInput(manifestOrPath, cwd);
+  if (!manifest?.componentDir || manifest.previewMode !== 'svelte-component') {
+    return { ok: false, reason: 'not_svelte_component_preview' };
+  }
+
+  const stylesheets = findTailwindStylesheets(cwd);
+  if (stylesheets.length === 0) return { ok: false, reason: 'tailwind_stylesheet_not_found' };
+
+  const classTokens = collectSvelteComponentClassTokens(manifest, cwd);
+  if (classTokens.length === 0) return { ok: false, reason: 'no_class_tokens', stylesheets };
+
+  const block = buildTailwindSafelistBlock(classTokens);
+  const written = [];
+  for (const stylesheet of stylesheets) {
+    const file = path.resolve(cwd, stylesheet);
+    const before = fs.readFileSync(file, 'utf-8');
+    const after = upsertTailwindSafelistBlock(before, block);
+    if (after !== before) {
+      fs.writeFileSync(file, after, 'utf-8');
+      written.push(stylesheet);
+    }
+  }
+
+  if (written.length > 0) recordTailwindSafelistStylesheets(written, cwd);
+  return { ok: true, stylesheets, written, classCount: classTokens.length };
+}
+
+export function cleanupSvelteComponentTailwindSafelists(cwd = process.cwd()) {
+  const indexPath = path.join(cwd, TAILWIND_SAFELIST_INDEX);
+  let stylesheets = [];
+  try {
+    const data = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    stylesheets = Array.isArray(data.stylesheets) ? data.stylesheets : [];
+  } catch {
+    stylesheets = findTailwindStylesheets(cwd);
+  }
+
+  const cleaned = [];
+  for (const stylesheet of stylesheets) {
+    const file = path.resolve(cwd, stylesheet);
+    const rel = path.relative(cwd, file);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || !fs.existsSync(file)) continue;
+    const before = fs.readFileSync(file, 'utf-8');
+    const after = removeTailwindSafelistBlock(before);
+    if (after !== before) {
+      fs.writeFileSync(file, after, 'utf-8');
+      cleaned.push(stylesheet);
+    }
+  }
+  try { fs.rmSync(indexPath, { force: true }); } catch {}
+  return { cleaned };
+}
+
+function readManifestInput(manifestOrPath, cwd) {
+  if (manifestOrPath && typeof manifestOrPath === 'object') return manifestOrPath;
+  if (!manifestOrPath || typeof manifestOrPath !== 'string') return null;
+  const normalized = manifestOrPath.split(path.sep).join('/');
+  const full = path.resolve(cwd, normalized);
+  const rel = path.relative(cwd, full);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || !fs.existsSync(full)) return null;
+  try {
+    return readManifest(full);
+  } catch {
+    return null;
+  }
+}
+
+function collectSvelteComponentClassTokens(manifest, cwd) {
+  const dir = path.resolve(cwd, manifest.componentDir);
+  const rel = path.relative(cwd, dir);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel) || !fs.existsSync(dir)) return [];
+  const tokens = new Set();
+  const expected = Number(manifest.count) || 0;
+  const files = expected > 0
+    ? Array.from({ length: expected }, (_, index) => `v${index + 1}.svelte`)
+    : fs.readdirSync(dir).filter((name) => /^v\d+\.svelte$/.test(name));
+  for (const name of files) {
+    const file = path.join(dir, name);
+    if (!fs.existsSync(file)) continue;
+    const source = fs.readFileSync(file, 'utf-8');
+    for (const token of extractStaticClassTokens(source)) {
+      if (isUsefulTailwindSafelistToken(token)) tokens.add(token);
+    }
+  }
+  return [...tokens].sort();
+}
+
+function extractStaticClassTokens(source) {
+  const tokens = [];
+  const re = /\bclass\s*=\s*(["'])([\s\S]*?)\1/g;
+  let match;
+  while ((match = re.exec(String(source || '')))) {
+    tokens.push(...String(match[2] || '').split(/\s+/).filter(Boolean));
+  }
+  return tokens;
+}
+
+function isUsefulTailwindSafelistToken(token) {
+  if (!token || token.length > 160) return false;
+  if (/^svelte-[\w-]+$/.test(token)) return false;
+  if (/^data-/.test(token)) return false;
+  return /^[A-Za-z0-9_:/.[\]#%(),+-]+$/.test(token);
+}
+
+function findTailwindStylesheets(cwd) {
+  const candidates = [];
+  for (const root of ['src', 'app', 'pages']) {
+    const dir = path.join(cwd, root);
+    if (fs.existsSync(dir)) collectCssFiles(dir, cwd, candidates);
+  }
+  return candidates
+    .filter((file) => {
+      try {
+        const text = fs.readFileSync(path.join(cwd, file), 'utf-8');
+        return /@import\s+(?:url\()?["']tailwindcss["']\)?|@tailwind\s+(?:base|components|utilities)/.test(text);
+      } catch {
+        return false;
+      }
+    })
+    .sort();
+}
+
+function collectCssFiles(dir, cwd, out) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === '.svelte-kit' || entry.name === '.git') continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectCssFiles(full, cwd, out);
+    } else if (/\.(css|pcss|postcss)$/i.test(entry.name)) {
+      out.push(path.relative(cwd, full).split(path.sep).join('/'));
+    }
+  }
+}
+
+function buildTailwindSafelistBlock(tokens) {
+  return [
+    TAILWIND_SAFELIST_START,
+    ...tokens.map((token) => `@source inline("${escapeCssString(token)}");`),
+    TAILWIND_SAFELIST_END,
+  ].join('\n');
+}
+
+function upsertTailwindSafelistBlock(source, block) {
+  const cleaned = removeTailwindSafelistBlock(source).trimEnd();
+  return `${cleaned}\n\n${block}\n`;
+}
+
+function removeTailwindSafelistBlock(source) {
+  const text = String(source || '');
+  const start = text.indexOf(TAILWIND_SAFELIST_START);
+  const end = text.indexOf(TAILWIND_SAFELIST_END);
+  if (start === -1 || end === -1 || end < start) return text;
+  return (text.slice(0, start) + text.slice(end + TAILWIND_SAFELIST_END.length))
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd() + '\n';
+}
+
+function recordTailwindSafelistStylesheets(stylesheets, cwd) {
+  const file = path.join(cwd, TAILWIND_SAFELIST_INDEX);
+  let existing = [];
+  try {
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    existing = Array.isArray(data.stylesheets) ? data.stylesheets : [];
+  } catch {}
+  const next = [...new Set([...existing, ...stylesheets])].sort();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({
+    stylesheets: next,
+    updatedAt: new Date().toISOString(),
+  }, null, 2) + '\n', 'utf-8');
+}
+
+function escapeCssString(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export function deferredAcceptsPath(cwd = process.cwd()) {
-  const key = createHash('sha1').update(path.resolve(cwd)).digest('hex').slice(0, 16);
+  let normalizedCwd = path.resolve(cwd);
+  try { normalizedCwd = fs.realpathSync.native(normalizedCwd); } catch {}
+  const key = createHash('sha1').update(normalizedCwd).digest('hex').slice(0, 16);
   return path.join(os.tmpdir(), 'impeccable-live', key, 'deferred-svelte-component-accepts.json');
 }
 

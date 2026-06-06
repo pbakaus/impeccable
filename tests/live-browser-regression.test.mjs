@@ -74,26 +74,51 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('uses a Svelte-gated painted-ancestor crop proxy for shader capture', () => {
+  it('uses direct shader capture for opaque Svelte selections and ancestor crop for translucent ones', () => {
     assert.match(
       SOURCE,
-      /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
-      'shader proxy should choose the nearest painted ancestor, not the document root',
+      /function cssColorAlpha\(s\) \{[\s\S]{0,420}?body\.includes\('\/'\)[\s\S]{0,260}?fn\[1\] === 'rgba' \|\| fn\[1\] === 'hsla'[\s\S]{0,160}?return 1;/,
+      'shader capture must parse CSS alpha values, including modern slash-alpha colors and rgba()/hsla()',
     );
     assert.match(
       SOURCE,
-      /async function captureElementFromRenderedAncestor\(ms, el, opts\) \{[\s\S]{0,360}?const captureRoot = findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);/,
-      'shader capture should render the minimal painted ancestor and crop the selected element rect',
+      /function paintsOpaqueOwnShaderSurface\(el\) \{[\s\S]{0,180}?backgroundImage && s\.backgroundImage !== 'none'[\s\S]{0,120}?cssColorAlpha\(s\.backgroundColor\) >= 0\.98;/,
+      'direct Svelte shader capture should be reserved for opaque own backgrounds or background images',
+    );
+    assert.match(
+      SOURCE,
+      /function hasTranslucentOwnShaderSurface\(el\) \{[\s\S]{0,220}?const alpha = cssColorAlpha\(s\.backgroundColor\);[\s\S]{0,80}?alpha > 0 && alpha < 0\.98;/,
+      'translucent Svelte selections need their own capture branch instead of falling into a document-root crop',
+    );
+    assert.match(
+      SOURCE,
+      /function findShaderProxyCaptureRoot\(el\) \{[\s\S]{0,500}?let node = el\.parentElement;[\s\S]{0,700}?containsElement && paintsShaderProxySurface\(node\)[\s\S]{0,120}?return null;/,
+      'translucent or transparent Svelte selections may still choose the nearest painted ancestor, not the document root',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementDirectForShader\(ms, el, opts\) \{[\s\S]{0,240}?ms\.domToCanvas\(el, opts\)[\s\S]{0,520}?buildShaderCaptureMeta\('direct-selected-element', el, el/,
+      'opaque Svelte selections should capture the selected element itself and record direct-selected-element metadata',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementFromRenderedAncestor\(ms, el, opts, captureRoot = null\) \{[\s\S]{0,220}?captureRoot = captureRoot \|\| findShaderProxyCaptureRoot\(el\);[\s\S]{0,220}?ms\.domToCanvas\(captureRoot, opts\)[\s\S]{0,900}?cctx\.drawImage\(rootCanvas, sx, sy, sw, sh, 0, 0, crop\.width, crop\.height\);[\s\S]{0,420}?buildShaderCaptureMeta\('ancestor-crop', el, captureRoot/,
+      'translucent Svelte selections should render the minimal painted ancestor, crop the selected rect, and record ancestor-crop metadata',
+    );
+    assert.match(
+      SOURCE,
+      /async function captureElementDirectCompositedForShader\(ms, el, opts, backdropRoot = null\) \{[\s\S]{0,700}?cctx\.fillRect\(0, 0, canvas\.width, canvas\.height\);[\s\S]{0,120}?cctx\.drawImage\(source, 0, 0\);[\s\S]{0,520}?buildShaderCaptureMeta\('direct-composited-backdrop', el, el/,
+      'translucent selected elements backed only by the document root should be composited directly over the backdrop color, not cropped from the whole page',
     );
     assert.match(
       SOURCE,
       /function shouldUseAncestorCropShaderProxy\(el\) \{[\s\S]{0,260}?window\.__IMPECCABLE_LIVE_ADAPTER__[\s\S]{0,280}?currentPreviewMode === 'svelte-component' \|\| svelteComponentSession[\s\S]{0,260}?dataset\?\.impeccablePreview === 'svelte-component';/,
-      'ancestor crop proxy must be gated to the Svelte adapter / Svelte component previews',
+      'shader proxy decisions must be gated to the Svelte adapter / Svelte component previews',
     );
     assert.match(
       SOURCE,
-      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,240}?return await hideCaptureChromeForShaderProxy\(\(\) => captureElementFromRenderedAncestor\(ms, el, opts\)\);[\s\S]{0,280}?Svelte ancestor crop capture failed, falling back to element capture/,
-      'Svelte ancestor crop must run before the legacy capture path and hide live chrome while doing so',
+      /if \(shouldUseAncestorCropShaderProxy\(el\)\) \{[\s\S]{0,360}?if \(paintsOpaqueOwnShaderSurface\(el\)\) return captureElementDirectForShader\(ms, el, opts\);[\s\S]{0,260}?hasTranslucentOwnShaderSurface\(el\)[\s\S]{0,120}?isDocumentShaderCaptureRoot\(captureRoot\)[\s\S]{0,180}?captureElementDirectCompositedForShader\(ms, el, opts, captureRoot\)[\s\S]{0,160}?captureElementFromRenderedAncestor\(ms, el, opts, captureRoot\)/,
+      'Svelte shader capture should choose direct capture for opaque surfaces, direct compositing for document-root translucent surfaces, and ancestor crop for local painted parents',
     );
     assert.match(
       SOURCE,
@@ -102,13 +127,18 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
+      /debugState: \(\) => \(\{[\s\S]{0,700}?shaderCapture: shaderCaptureDebugState\(\)/,
+      'debugState should expose shader capture metadata for browser regression tests',
+    );
+    assert.match(
+      SOURCE,
       /const radius = getComputedStyle\(el\)\.borderRadius;[\s\S]{0,420}?borderRadius: radius,[\s\S]{0,80}?overflow: 'hidden'/,
       'the shader canvas should clip to the selected element radius when using a rectangular ancestor crop',
     );
     assert.doesNotMatch(
       SOURCE,
-      /isSemiTransparentOwnBackground|findCompositedBackdropAncestor|compositeRgbOver|cssColorToRgba01/,
-      'the shader fix should not depend on semi-transparent CSS special cases',
+      /hasTranslucentOwnShaderSurface\(el\)[\s\S]{0,160}?captureElementFromRenderedAncestor\(ms, el, opts\)/,
+      'translucent selected elements must not fall straight into an unconstrained ancestor crop',
     );
   });
 
@@ -122,6 +152,19 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function toggleInsert\(\) \{[\s\S]{0,120}?if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}/,
       'Insert must have the same in-flight Apply guard as the other mode toggles',
+    );
+  });
+
+  it('sends the Exit event reliably before tearing down browser chrome', () => {
+    assert.match(
+      SOURCE,
+      /function sendEvent\(msg, opts\) \{[\s\S]{0,500}?keepalive: Boolean\(opts && opts\.keepalive\),/,
+      'sendEvent should support keepalive requests so Exit is not canceled while live chrome is removed',
+    );
+    assert.match(
+      SOURCE,
+      /exitBtn\.addEventListener\('click', async \(e\) => \{[\s\S]{0,260}?await withTimeout\(sendEvent\(\{ type: 'exit' \}, \{ keepalive: true \}\), 1500\);[\s\S]{0,80}?teardown\(\);/,
+      'Exit should wait briefly for the helper event before teardown so deferred Svelte accepts flush deterministically',
     );
   });
 
@@ -219,6 +262,190 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('resets contextual bar chrome before rebuilding after confirmed state', () => {
+    assert.match(
+      SOURCE,
+      /function showBar\(mode\) \{[\s\S]{0,220}?barEl\.innerHTML = '';[\s\S]{0,80}?resetBarChrome\(\);/,
+      'showBar must reset stale confirmed/success styling before rendering the next configure/generating/cycling row',
+    );
+    assert.match(
+      SOURCE,
+      /function resetBarChrome\(\) \{[\s\S]{0,220}?barEl\.style\.background = BP\.surface;[\s\S]{0,120}?barEl\.style\.border = '1px solid ' \+ BP\.border;[\s\S]{0,120}?barEl\.style\.boxShadow = BP\.shadow;/,
+      'contextual bar reset should restore the dark Astro/kinpaku picker chrome',
+    );
+  });
+
+  it('keeps Tune popover controls interactive inside shadow-root live chrome', () => {
+    assert.match(
+      SOURCE,
+      /function eventPathContains\(e, el\) \{[\s\S]{0,220}?e\.composedPath[\s\S]{0,120}?path\.includes\(el\);/,
+      'outside-click handling must use composedPath so Tune control clicks retargeted through the shadow host still count as inside the panel',
+    );
+    assert.match(
+      SOURCE,
+      /paramsPanelEl\.addEventListener\('click', \(e\) => e\.stopPropagation\(\)\);/,
+      'Tune panel click events should not leak into host-page outside-click handlers',
+    );
+    assert.match(
+      SOURCE,
+      /function stopTuneControlEvent\(e\) \{[\s\S]{0,80}?e\.stopPropagation\(\);[\s\S]{0,80}?\}/,
+      'Tune controls need an early pointer/mouse propagation guard',
+    );
+    assert.match(
+      SOURCE,
+      /track\.dataset\.paramKind = 'toggle';/,
+      'toggle Tune controls must remain clickable without closing the popover',
+    );
+    assert.match(
+      SOURCE,
+      /track\.addEventListener\('pointerdown', stopTuneControlEvent\);[\s\S]{0,120}?track\.addEventListener\('mousedown', stopTuneControlEvent\);[\s\S]{0,120}?track\.addEventListener\('click',/,
+      'toggle Tune controls must guard pointer/mouse events before handling click',
+    );
+    assert.match(
+      SOURCE,
+      /b\.dataset\.paramKind = 'steps';/,
+      'segmented/radio-style Tune controls must remain clickable without closing the popover',
+    );
+    assert.match(
+      SOURCE,
+      /b\.addEventListener\('pointerdown', stopTuneControlEvent\);[\s\S]{0,120}?b\.addEventListener\('mousedown', stopTuneControlEvent\);[\s\S]{0,120}?b\.addEventListener\('click',/,
+      'segmented/radio-style Tune controls must guard pointer/mouse events before handling click',
+    );
+    assert.match(
+      SOURCE,
+      /tuneOpen[\s\S]{0,280}?!eventPathContains\(e, paramsPanelEl\)[\s\S]{0,220}?!eventPathContains\(e, barEl\)[\s\S]{0,80}?closeTunePopover\(\);/,
+      'outside-click close should ignore clicks inside both the Tune panel and the cycling bar',
+    );
+  });
+
+  it('uses boolean-compatible attributes for toggle Tune params', () => {
+    assert.match(
+      SOURCE,
+      /if \(on\) variantEl\.setAttribute\(attr, 'true'\);/,
+      'toggle params should render as data-p-id="true" so boolean selector branches match during live preview',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /if \(on\) variantEl\.setAttribute\(attr, 'on'\);/,
+      'toggle params must not mount as data-p-id="on"; generated CSS commonly uses boolean "true"',
+    );
+  });
+
+  it('teardown removes auxiliary chrome mounted outside the main bar', () => {
+    assert.match(
+      SOURCE,
+      /function removeAuxiliaryLiveChrome\(\) \{[\s\S]{0,300}?editBadgeEl\.remove\(\);[\s\S]{0,700}?annotOverlayEl\.remove\(\);[\s\S]{0,700}?designHost\.remove\(\);/,
+      'Exit must remove edit badge, annotation overlay, and design panel nodes, not only hide the main live bar',
+    );
+    assert.match(
+      SOURCE,
+      /function teardown\(\) \{[\s\S]{0,1800}?removeAuxiliaryLiveChrome\(\);[\s\S]{0,700}?window\.__IMPECCABLE_LIVE_INIT__ = false;/,
+      'teardown should call the auxiliary-chrome removal before reporting live mode as exited',
+    );
+  });
+
+  it('Svelte cycling requires a visible mounted component, not just arrived variants', () => {
+    assert.match(
+      SOURCE,
+      /function hasVisibleSvelteComponentMount\(session = svelteComponentSession\) \{[\s\S]{0,260}?session\.mountedVariant[\s\S]{0,220}?getMountedSvelteComponentAnchor\(session\);/,
+      'Svelte component sessions need an explicit visible-anchor check before the UI can claim a variant is mounted',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureCyclingRenderable\(reason\) \{[\s\S]{0,260}?svelteComponentSession\?\.sessionId === currentSessionId && arrivedVariants > 0[\s\S]{0,260}?hasVisibleSvelteComponentMount\(svelteComponentSession\)[\s\S]{0,180}?recoverEmptySvelteComponentMount\(reason\);/,
+      'cycling controls must not render for Svelte component previews unless the mount target contains a visible anchor',
+    );
+    assert.match(
+      SOURCE,
+      /function recoverEmptySvelteComponentMount\(reason\) \{[\s\S]{0,500}?mountSvelteComponentVariant\(variantToMount\)[\s\S]{0,500}?abortSvelteComponentInjection\(sessionId, 'No visible Svelte variant was mounted\. Please try again\.'\);/,
+      'an empty Svelte mount target should remount the selected variant and abort back to the original element if remount fails',
+    );
+  });
+
+  it('Svelte component anchor lookup uses stable attrs before generated classes', () => {
+    assert.match(
+      SOURCE,
+      /function originalStableClassNames\(className\) \{[\s\S]{0,220}?!\/\^svelte-\[\\w-\]\+\$\/\.test\(name\)/,
+      'Svelte component anchor matching must ignore compiler-generated svelte-* classes',
+    );
+    assert.match(
+      SOURCE,
+      /function originalStableAttributeEntries\(el\) \{[\s\S]{0,260}?'data-testid'[\s\S]{0,180}?el\.getAttribute\(name\)/,
+      'Svelte component anchor matching should prefer stable attributes such as data-testid',
+    );
+    assert.match(
+      SOURCE,
+      /const attrSelectors = stableAttrs[\s\S]{0,240}?firstMatchingOriginalCandidate\(attrSelectors, origContent, stableAttrs, expectedClasses, false\);[\s\S]{0,80}?if \(attrMatch\) return attrMatch;/,
+      'stable attribute selectors must run before the class fallback when binding generated Svelte variants',
+    );
+    assert.match(
+      SOURCE,
+      /const classSelectors = \[tag \+ '\.' \+ cssIdent\(expectedClasses\[0\]\)\];[\s\S]{0,120}?firstMatchingOriginalCandidate\(classSelectors, origContent, stableAttrs, expectedClasses, true\);/,
+      'class fallback should use filtered stable classes and require the expected class set',
+    );
+  });
+
+  it('Svelte component mounts checkpoint visible browser state after binding', () => {
+    assert.match(
+      SOURCE,
+      /existingWrapper && svelteComponentSession\?\.sessionId === sessionId[\s\S]{0,700}?state = 'CYCLING';[\s\S]{0,120}?saveSession\(\);[\s\S]{0,80}?queueCheckpoint\('svelte_component_variants_ready'\);/,
+      'remounted Svelte component sessions must checkpoint that a variant is visible in the browser',
+    );
+    assert.match(
+      SOURCE,
+      /const mounted = await mountSvelteComponentVariant\(visibleVariant\);[\s\S]{0,900}?state = 'CYCLING';[\s\S]{0,220}?saveSession\(\);[\s\S]{0,80}?queueCheckpoint\('svelte_component_variants_ready'\);/,
+      'initial Svelte component injection must checkpoint visibleVariant after the component binds',
+    );
+  });
+
+  it('Svelte prop text mapping captures live values before replacement and matches significant text structurally', () => {
+    assert.doesNotMatch(
+      SOURCE,
+      /const sourceNodes = collectTextNodes\(sourceOriginal\)\s*\.filter\(\(node\) => \/\{\\\[\^{}\]\+\}\//,
+      'Svelte prop mapping must not filter source text nodes before pairing with live text nodes; static siblings would shift dynamic values',
+    );
+    assert.match(
+      SOURCE,
+      /const propValues = insertMode \? \{\} : buildSveltePropValuesFromLiveElement\(liveEl, manifest\);[\s\S]{0,600}?replaceChild\(wrapper, liveEl\);/,
+      'Svelte component injection must capture prop values from the connected live element before replacing it with the component mount wrapper',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /propValues: buildSveltePropValuesFromLiveElement\(detachedOriginal, manifest\)/,
+      'Svelte prop values must not be derived from the detached original after DOM replacement',
+    );
+    assert.match(
+      SOURCE,
+      /function collectSvelteExpressionTextBindings\(root\)[\s\S]{0,600}?parentPath: elementChildPath\(root, node\.parentElement\)[\s\S]{0,160}?textIndex: significantDirectTextNodeIndex\(node\)/,
+      'Svelte prop mapping should record each source expression by element-child path and significant text-node index',
+    );
+    assert.match(
+      SOURCE,
+      /function elementAtChildPath\(root, path\)[\s\S]{0,300}?node = node\.children\[index\];/,
+      'Svelte prop mapping should resolve the matching live parent by element-child path instead of raw global text-node order',
+    );
+    assert.match(
+      SOURCE,
+      /function significantDirectTextNodes\(parent\)[\s\S]{0,120}?filter\(isSignificantTextNode\)/,
+      'Svelte prop mapping should ignore indentation-only source text nodes',
+    );
+    assert.match(
+      SOURCE,
+      /function buildSvelteExpressionTextMapBySignificantOrder\(sourceOriginal, liveOriginal\)/,
+      'Svelte prop mapping should keep a significant-text fallback for compact one-line mixed text',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /const liveText = liveTexts\[sourceIndex\] \|\| '';/,
+      'Svelte prop mapping must not depend on raw global text-node indexes, which differ between source whitespace and rendered Svelte DOM',
+    );
+    assert.match(
+      SOURCE,
+      /const pieces = liveText\.split\(\/\\s\+\/\)\.filter\(Boolean\);[\s\S]{0,160}?tokens\.forEach\(\(token, tokenIndex\) => map\.set\(token, pieces\[tokenIndex\]\)\);/,
+      'Svelte prop mapping should split simple multi-token text instead of assigning the whole text node to each prop',
+    );
+  });
+
   it('global bar includes expandable page chat affordance', () => {
     assert.match(
       SOURCE,
@@ -302,6 +529,26 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
+      /function clearHostTextSelection\(\)[\s\S]{0,420}?sel\.removeAllRanges\(\)/,
+      'explicit Pick mode should clear stale host-page text selection left by edit flows',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\)[\s\S]{0,420}?pagePickSkipClick = false;[\s\S]{0,160}?clearHostTextSelection\(\);/,
+      'turning Pick on must clear stale one-shot skip and host text selection so post-accept repick is not inert',
+    );
+    assert.match(
+      SOURCE,
+      /function pickableFromPoint\(x, y, fallbackTarget = null\)[\s\S]{0,420}?document\.elementFromPoint\(x, y\)[\s\S]{0,260}?pickable\(node\)/,
+      'Pick clicks must resolve a fresh pickable target from the click point when hover state is stale after DOM swaps',
+    );
+    assert.match(
+      SOURCE,
+      /const pickTarget = hoveredElement && hoveredElement\.isConnected && pickable\(hoveredElement\)[\s\S]{0,180}?pickableFromPoint\(e\.clientX, e\.clientY, e\.target\);[\s\S]{0,180}?selectedElement = pickTarget;/,
+      'picker click handling must use the click-point fallback target instead of requiring a current hoveredElement',
+    );
+    assert.match(
+      SOURCE,
       /steer-blur-recover/,
       'steer blur should recover focus for type-to-steer when not selecting page text',
     );
@@ -315,7 +562,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function togglePick\(\)[\s\S]{0,200}?saveInteractionPrefs\(\);/,
+      /function togglePick\(\)[\s\S]{0,500}?saveInteractionPrefs\(\);/,
       'togglePick must persist interaction prefs',
     );
     assert.match(
@@ -460,6 +707,111 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function handleAccept\(\)[\s\S]{0,360}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
       'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
+    );
+  });
+
+  it('retries accepted DOM cleanup after late HMR reintroduces variant scaffolding', () => {
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,220}?scheduleAcceptedDomReconcile\(accepted\);/,
+      'accepted non-Svelte sessions need a post-cleanup reconcile pass because HMR can reapply intermediate carbonize markup after the first cleanup',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptedDomReconcile\(accepted\) \{[\s\S]{0,180}?if \(!accepted \|\| accepted\.isSvelteComponent\) return;[\s\S]{0,500}?ensureAcceptedDomClean\(accepted\);[\s\S]{0,260}?setTimeout\(retry, 600 \* attempts\);/,
+      'late HMR reconcile should re-run the existing accepted DOM cleanup for non-Svelte sessions until accepted content is outside variant wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /const wrapper = document\.querySelector\('\[data-impeccable-variants="' \+ sessionId \+ '"\]'\)\s*\|\|\s*document\.querySelector\('\[data-impeccable-carbonize="' \+ sessionId \+ '"\]'\);/,
+      'accepted DOM cleanup must remove intermediate carbonize wrappers as well as live variants wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /matches\.every\(\(el\) => !el\.closest\('\[data-impeccable-variants\],\[data-impeccable-carbonize\],\[data-impeccable-variant\]'\)\)/,
+      'accepted DOM is only clean when no accepted selector remains inside variants, carbonize, or variant scaffolding',
+    );
+  });
+
+  it('normalizes JSX className attributes when recovering variants from source text', () => {
+    assert.match(
+      SOURCE,
+      /function normalizeFrameworkDomAttributes\(root\) \{[\s\S]{0,420}?querySelectorAll\('\[classname\]'\)[\s\S]{0,360}?setAttribute\('class', el\.getAttribute\('classname'\) \|\| ''\);[\s\S]{0,120}?removeAttribute\('classname'\);/,
+      'source-recovered JSX markup is parsed as HTML, so className becomes classname and must be converted back to class before selector checks',
+    );
+    assert.match(
+      SOURCE,
+      /const wrapper = srcWrapper\.cloneNode\(true\);[\s\S]{0,80}?normalizeFrameworkDomAttributes\(wrapper\);/,
+      'variant source recovery should normalize JSX attributes before mounting the recovered wrapper',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending\) \{[\s\S]{0,900}?normalizeFrameworkDomAttributes\(accepted\);[\s\S]{0,120}?while \(accepted\.firstChild\)/,
+      'accepted DOM promotion should normalize recovered JSX attributes before moving accepted nodes out of scaffolding',
+    );
+  });
+
+  it('Svelte component accept defers source writes and commits the mounted preview without reload', () => {
+    assert.match(
+      SOURCE,
+      /const acceptedIsSvelteComponent =[\s\S]{0,260}?if \(acceptedIsSvelteComponent\) acceptPayload\.deferSourceWrite = true;/,
+      'Svelte component accepts must tell live-poll/live-accept to queue source promotion until live-server stops',
+    );
+    assert.match(
+      SOURCE,
+      /pendingAcceptedSession = \{[\s\S]{0,220}?isSvelteComponent: acceptedIsSvelteComponent,[\s\S]{0,120}?deferredSourceWrite: acceptedIsSvelteComponent,/,
+      'the browser cleanup path must remember that this Svelte accept is deferred',
+    );
+    assert.match(
+      SOURCE,
+      /function scheduleAcceptCleanup\(accepted\) \{[\s\S]{0,160}?accepted\?\.isSvelteComponent\) ensureAcceptedSvelteComponentDomClean\(accepted\);[\s\S]{0,120}?else ensureAcceptedDomClean\(accepted\);/,
+      'Svelte component accepts need a dedicated cleanup path instead of skipping DOM cleanup entirely',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,120}?if \(pending\?\.deferredSourceWrite\) \{[\s\S]{0,120}?commitAcceptedSvelteComponentToDom\(sessionId\);[\s\S]{0,80}?return;/,
+      'deferred Svelte accepts should keep the accepted mounted component in live DOM and return before any HMR/reload recovery path',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /restoreAcceptedSvelteComponentDomFromSnapshot/,
+      'deferred Svelte accept should not add a second DOM reconstruction fallback',
+    );
+    const commitStart = SOURCE.indexOf('function commitAcceptedSvelteComponentToDom(sessionId) {');
+    const commitEnd = SOURCE.indexOf('  async function injectSvelteComponentsFromManifest', commitStart);
+    const commitBody = SOURCE.slice(commitStart, commitEnd);
+    assert.doesNotMatch(
+      commitBody,
+      /runtime\.unmount|replaceChild\(|cloneNode\(/,
+      'deferred Svelte accept must not unmount, clone, or replace the mounted component because that remounts the parent app and drops live state',
+    );
+    assert.match(
+      commitBody,
+      /removeAttribute\('data-impeccable-variants'\)[\s\S]{0,420}?removeAttribute\?\.\('data-impeccable-component-mount'\)/,
+      'deferred Svelte accept should demote live preview markers while keeping the mounted Svelte component in place',
+    );
+    const cleanupStart = SOURCE.indexOf('function ensureAcceptedSvelteComponentDomClean(pending) {');
+    const reloadIndex = SOURCE.indexOf('reloadAfterMissingAcceptedDom(pending)', cleanupStart);
+    const deferredReturnIndex = SOURCE.indexOf('      return;\n    }\n    const wrapper', cleanupStart);
+    assert.ok(cleanupStart >= 0 && deferredReturnIndex > cleanupStart, 'deferred Svelte cleanup branch is present');
+    assert.ok(reloadIndex > deferredReturnIndex, 'reload fallback remains outside the deferred Svelte cleanup branch');
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedSvelteComponentDomClean\(pending\) \{[\s\S]{0,900}?teardownSvelteComponentSession\(false\);[\s\S]{0,500}?pruneEmptySveltePreviewHost\(host\);[\s\S]{0,160}?reloadAfterMissingAcceptedDom\(pending\);/,
+      'legacy/immediate Svelte cleanup still has a recovery reload path after removing the preview wrapper',
+    );
+  });
+
+  it('accepted sessions disable page-intercepting pick and insert modes', () => {
+    assert.match(
+      SOURCE,
+      /function cleanupAcceptedSession\(\) \{[\s\S]{0,260}?pickActive = false;[\s\S]{0,80}?insertActive = false;[\s\S]{0,80}?clearInsertPicking\(\);[\s\S]{0,120}?saveInteractionPrefs\(\);/,
+      'after Accept, app clicks should not be intercepted by stale Pick/Insert mode state',
+    );
+    assert.match(
+      SOURCE,
+      /function cleanupAcceptedSession\(\) \{[\s\S]{0,700}?state = 'IDLE';/,
+      'cleanup after Accept should return to idle instead of page-picking with no active mode',
     );
   });
 

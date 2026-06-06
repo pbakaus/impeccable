@@ -1341,14 +1341,20 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
   const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
   const propNames = contract.map((entry) => entry.prop);
   const baseMarkup = isInsert ? '' : substituteSvelteExprsWithProps(manifest.originalMarkup || '', contract).trim();
-  const textValues = isInsert ? [] : extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
+  const propTextValues = isInsert
+    ? new Map()
+    : buildSveltePropTextValues(
+      manifest.originalMarkup || '',
+      event.element?.outerHTML || event.element?.textContent || '',
+      contract,
+    );
   const paramsByVariant = {};
 
   for (let i = 0; i < output.variants.length; i++) {
     const variantId = i + 1;
     const variant = output.variants[i];
     const tag = firstTagName(variant.innerHtml) || firstTagName(baseMarkup) || 'div';
-    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, textValues).trim();
+    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, propTextValues).trim();
     if (!isInsert && contract.length > 0 && !propNames.some((name) => markup.includes(`{${name}}`))) {
       markup = mergeTopLevelAttrs(baseMarkup, variant.innerHtml || '') || baseMarkup;
     }
@@ -1401,13 +1407,79 @@ function substituteSvelteExprsWithProps(markup, contract) {
   return out;
 }
 
-function substituteLiveTextWithProps(markup, contract, textValues) {
-  let out = String(markup || '');
-  for (let i = 0; i < contract.length; i++) {
-    const value = textValues[i];
+export function substituteLiveTextWithProps(markup, contract, propTextValues) {
+  const replacements = contract
+    .map((entry) => ({ entry, value: propTextValues instanceof Map ? propTextValues.get(entry.prop) : propTextValues?.[entry.prop] }))
+    .filter(({ value }) => value);
+  if (replacements.length === 0) return String(markup || '');
+  return String(markup || '')
+    .split(/(<[^>]+>)/g)
+    .map((part) => {
+      if (part.startsWith('<') && part.endsWith('>')) return part;
+      let out = part;
+      for (const { entry, value } of replacements) {
+        out = out.split(htmlEscape(value)).join(`{${entry.prop}}`);
+        out = out.split(value).join(`{${entry.prop}}`);
+      }
+      return out;
+    })
+    .join('');
+}
+
+export function buildSveltePropTextValues(originalMarkup, liveMarkup, contract) {
+  const sourceTexts = extractTextPieces(originalMarkup);
+  const liveTexts = extractTextPieces(liveMarkup);
+  const tokenValues = new Map();
+  let liveIndex = 0;
+  for (let i = 0; i < sourceTexts.length; i += 1) {
+    const sourceText = sourceTexts[i] || '';
+    const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+    if (!tokens.length) {
+      if (normalizeInlineText(sourceText) === normalizeInlineText(liveTexts[liveIndex] || '')) {
+        liveIndex += 1;
+      }
+      continue;
+    }
+
+    const liveText = liveTexts[liveIndex] || '';
+    if (!liveText) continue;
+
+    if (tokens.length === 1) {
+      const token = tokens[0];
+      if (normalizeInlineText(sourceText) === token) {
+        tokenValues.set(token, liveText);
+        liveIndex += 1;
+        continue;
+      }
+      const match = liveText.match(expressionTextMatcher(sourceText, [token]));
+      if (match && match[1]) tokenValues.set(token, match[1].trim());
+      liveIndex += 1;
+      continue;
+    }
+
+    const normalizedSource = normalizeInlineText(sourceText);
+    if (normalizedSource === tokens.join(' ')) {
+      const pieces = liveText.split(/\s+/).filter(Boolean);
+      if (pieces.length === tokens.length) {
+        tokens.forEach((token, index) => tokenValues.set(token, pieces[index]));
+      }
+      liveIndex += 1;
+      continue;
+    }
+
+    const match = liveText.match(expressionTextMatcher(sourceText, tokens));
+    if (!match) continue;
+    tokens.forEach((token, index) => {
+      if (match[index + 1]) tokenValues.set(token, match[index + 1].trim());
+    });
+    liveIndex += 1;
+  }
+
+  const out = new Map();
+  for (const entry of contract) {
+    const value = tokenValues.get(`{${entry.expr}}`);
     if (!value) continue;
-    out = out.split(htmlEscape(value)).join(`{${contract[i].prop}}`);
-    out = out.split(value).join(`{${contract[i].prop}}`);
+    out.set(entry.prop, value);
   }
   return out;
 }
@@ -1418,7 +1490,26 @@ function extractTextPieces(html) {
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .split(/<[^>]+>/)
     .map((text) => text.replace(/\s+/g, ' ').trim())
+    .filter((text) => !/^\{[#:/@][^{}]*\}$/.test(text))
     .filter(Boolean);
+}
+
+function normalizeInlineText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function expressionTextMatcher(sourceText, tokens) {
+  let pattern = '^';
+  let cursor = 0;
+  for (const token of tokens) {
+    const index = sourceText.indexOf(token, cursor);
+    if (index === -1) continue;
+    pattern += escapeRegExp(sourceText.slice(cursor, index)).replace(/\s+/g, '\\s*');
+    pattern += '(.*?)';
+    cursor = index + token.length;
+  }
+  pattern += escapeRegExp(sourceText.slice(cursor)).replace(/\s+/g, '\\s*') + '$';
+  return new RegExp(pattern);
 }
 
 function firstTagName(markup) {
@@ -1435,11 +1526,26 @@ function mergeTopLevelAttrs(baseMarkup, variantMarkup) {
   return base.replace(baseOpen[0], `${baseOpen[1]}${baseOpen[2]}${variantOpen[2]}${baseOpen[4]}`);
 }
 
-function svelteCssForVariant(scopedCss, variantId, tag) {
+export function svelteCssForVariant(scopedCss, variantId, tag) {
   const css = String(scopedCss || '');
   const chunks = extractVariantCssChunks(css, variantId);
-  const rewritten = chunks
+  const rewrittenVariantCss = rewriteSvelteVariantCss(chunks.join('\n'), variantId, tag);
+  const componentCss = removeVariantCssChunks(css).trim();
+  const readyRule = '* { --impeccable-variant-ready: 1; }';
+  const rewritten = [
+    componentCss,
+    rewrittenVariantCss,
+    /--impeccable-variant-ready\s*:/.test(`${componentCss}\n${rewrittenVariantCss}`) ? '' : readyRule,
+  ]
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
     .join('\n')
+    .trim();
+  return rewritten || readyRule;
+}
+
+function rewriteSvelteVariantCss(css, variantId, tag) {
+  return stripSvelteGlobalVariantSelector(String(css || ''), variantId)
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\]\\s*>\\s*`, 'g'), '')
     .replace(new RegExp(String.raw`\\[data-impeccable-variant=["']${variantId}["']\\][^{]*>\\s*`, 'g'), '')
     .replace(/:scope(?:\[[^\]]+\])?\s*>\s*/g, '')
@@ -1449,7 +1555,14 @@ function svelteCssForVariant(scopedCss, variantId, tag) {
     .filter((line) => line.trim())
     .join('\n')
     .trim();
-  return rewritten || `${tag} {}`;
+}
+
+function stripSvelteGlobalVariantSelector(css, variantId) {
+  const variantAttr = new RegExp(String.raw`\[data-impeccable-variant=["']${variantId}["']\]`, 'g');
+  return String(css || '').replace(/:global\(([^)]*)\)/g, (_match, inner) => {
+    const cleaned = String(inner || '').replace(variantAttr, '').trim();
+    return cleaned ? `:global(${cleaned})` : '';
+  });
 }
 
 function extractVariantCssChunks(css, variantId) {
@@ -1477,6 +1590,29 @@ function extractVariantCssChunks(css, variantId) {
     if (depth <= 0) collecting = false;
   }
   return chunks;
+}
+
+function removeVariantCssChunks(css) {
+  const lines = String(css || '').split('\n');
+  const kept = [];
+  let skipping = false;
+  let depth = 0;
+  for (const line of lines) {
+    const startsVariantChunk = /\[data-impeccable-variant=(["'])\d+\1\]/.test(line);
+    if (startsVariantChunk) {
+      skipping = true;
+      depth = braceDelta(line);
+      if (depth <= 0) skipping = false;
+      continue;
+    }
+    if (skipping) {
+      depth += braceDelta(line);
+      if (depth <= 0) skipping = false;
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join('\n');
 }
 
 function braceDelta(line) {
@@ -1516,7 +1652,7 @@ export async function runAgentLoop({
   while (!signal.aborted) {
     let event;
     try {
-      const res = await fetch(`${base}/poll?token=${token}&timeout=5000`, { signal });
+      const res = await fetch(`${base}/poll?token=${token}&timeout=5000&leaseMs=600000`, { signal });
       event = await res.json();
     } catch (err) {
       if (signal.aborted) return;
@@ -1715,6 +1851,7 @@ export async function runAgentLoop({
           variant: event.variantId,
           paramValues: event.paramValues,
           pageUrl: event.pageUrl,
+          deferSourceWrite: event.deferSourceWrite === true,
         });
 
         // Carbonize cleanup — required after accept per the live skill spec.
@@ -1724,28 +1861,30 @@ export async function runAgentLoop({
         // the accepted content. A real LLM agent would additionally migrate
         // the @scope rules into the project's stylesheet — out of scope for
         // a deterministic test.
+        let completedCarbonizeCleanup = false;
         if (acceptResult.handled === true && acceptResult.carbonize === true && acceptResult.file) {
           if (process.env.IMPECCABLE_E2E_DEBUG) {
             const post = await fs.readFile(path.join(tmp, acceptResult.file), 'utf-8');
             log(`--- post-accept (pre-carbonize) ---\n${post}`);
           }
           await runCarbonizeCleanup({ tmp, file: acceptResult.file, sessionId: event.id, variant: event.variantId });
+          completedCarbonizeCleanup = true;
           log(`carbonize cleanup done on ${acceptResult.file}`);
         }
 
-        const completionType = completionTypeForAcceptResult('accept', acceptResult);
-        await fetch(`${base}/poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token,
-            type: completionType,
-            id: event.id,
-            file: acceptResult.file,
-            message: acceptResult.error,
-            data: acceptResult.carbonize === true ? { carbonize: true, _acceptResult: acceptResult } : { _acceptResult: acceptResult },
-          }),
-          signal,
+        const completionType = completedCarbonizeCleanup
+          ? 'complete'
+          : completionTypeForAcceptResult('accept', acceptResult);
+        await runPollReply({
+          tmp,
+          scriptsDir,
+          id: event.id,
+          status: completionType,
+          file: acceptResult.file,
+          message: acceptResult.error,
+          data: acceptResult.carbonize === true
+            ? { carbonize: true, _acceptResult: acceptResult }
+            : { _acceptResult: acceptResult },
         });
       } catch (err) {
         if (signal.aborted) return;
@@ -1783,8 +1922,9 @@ export async function runAgentLoop({
   }
 }
 
-async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {
+async function runPollReply({ tmp, scriptsDir, id, status, file, message, data }) {
   const args = [path.join(scriptsDir, 'live-poll.mjs'), '--reply', id, status];
+  if (file) args.push('--file', file);
   if (data !== undefined) args.push('--data', JSON.stringify(data));
   if (message) args.push(message);
   await execFileP(process.execPath, args, { cwd: tmp });
@@ -2073,10 +2213,11 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl }) {
+async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, pageUrl, deferSourceWrite = false }) {
   const args = [path.join(scriptsDir, 'live-accept.mjs'), '--id', id];
   if (discard) args.push('--discard');
   else args.push('--variant', String(variant));
+  if (!discard && deferSourceWrite) args.push('--defer-source-write');
   if (paramValues) args.push('--param-values', JSON.stringify(paramValues));
   if (pageUrl) args.push('--page-url', pageUrl);
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });

@@ -199,12 +199,28 @@
     return el && (el.id?.startsWith(PREFIX) || el.closest?.('[id^="' + PREFIX + '"]'));
   }
 
+  function eventPathContains(e, el) {
+    if (!e || !el) return false;
+    if (e.target && el.contains?.(e.target)) return true;
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    return path.includes(el);
+  }
+
   function pickable(el) {
     if (!el || el.nodeType !== 1) return false;
     if (SKIP_TAGS.has(el.tagName.toLowerCase())) return false;
     if (own(el)) return false;
     const r = el.getBoundingClientRect();
     return r.width >= 20 && r.height >= 20;
+  }
+
+  function pickableFromPoint(x, y, fallbackTarget = null) {
+    let node = document.elementFromPoint(x, y) || fallbackTarget;
+    while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
+      if (pickable(node)) return node;
+      node = node.parentElement;
+    }
+    return null;
   }
 
   function desc(el) {
@@ -311,6 +327,7 @@
       pendingSvelteComponentRetry: !!pendingSvelteComponentRetryObserver,
       recoveryWaitingForAnchor,
       evtSourceReadyState: evtSource ? evtSource.readyState : null,
+      shaderCapture: shaderCaptureDebugState(),
     }),
   };
 
@@ -1152,6 +1169,7 @@
     barHideSeq += 1;
     if (mode === 'cycling' && !ensureCyclingRenderable('show-bar')) return;
     barEl.innerHTML = '';
+    resetBarChrome();
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
@@ -1184,10 +1202,7 @@
     if (!barEl || barEl.style.display === 'none') return;
     if (mode === 'cycling' && !ensureCyclingRenderable('update-bar')) return;
     barEl.innerHTML = '';
-    // Reset bar styling to the kinpaku picker palette
-    barEl.style.background = BP.surface;
-    barEl.style.border = '1px solid ' + BP.border;
-    barEl.style.boxShadow = BP.shadow;
+    resetBarChrome();
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
@@ -1200,6 +1215,13 @@
       barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
     }
     syncPageChatFocus('update-bar-content');
+  }
+
+  function resetBarChrome() {
+    if (!barEl || !BP) return;
+    barEl.style.background = BP.surface;
+    barEl.style.border = '1px solid ' + BP.border;
+    barEl.style.boxShadow = BP.shadow;
   }
 
   // Configure row
@@ -2575,12 +2597,51 @@
   }
 
   function ensureCyclingRenderable(reason) {
+    if (svelteComponentSession?.sessionId === currentSessionId && arrivedVariants > 0) {
+      if (visibleVariant < 1 || visibleVariant > arrivedVariants) visibleVariant = 1;
+      if (hasVisibleSvelteComponentMount(svelteComponentSession)) return true;
+      recoverEmptySvelteComponentMount(reason);
+      return false;
+    }
     if (arrivedVariants > 0) {
       if (visibleVariant < 1 || visibleVariant > arrivedVariants) visibleVariant = 1;
       return true;
     }
     recoverEmptyCycling(reason);
     return false;
+  }
+
+  function recoverEmptySvelteComponentMount(reason) {
+    if (recoveringEmptyCycling) return;
+    recoveringEmptyCycling = true;
+    const sessionId = currentSessionId;
+    const variantToMount = visibleVariant > 0 && visibleVariant <= arrivedVariants
+      ? visibleVariant
+      : (svelteComponentSession?.mountedVariant > 0 ? svelteComponentSession.mountedVariant : 1);
+    console.warn('[impeccable] Refusing to render Svelte cycling state without mounted content:', reason);
+    Promise.resolve()
+      .then(() => mountSvelteComponentVariant(variantToMount))
+      .then((mounted) => {
+        if (svelteComponentSession?.sessionId !== sessionId) return;
+        if (mounted && hasVisibleSvelteComponentMount(svelteComponentSession)) {
+          visibleVariant = svelteComponentSession.mountedVariant || variantToMount;
+          state = 'CYCLING';
+          showOrUpdateCyclingBar();
+          refreshParamsPanel();
+          positionBar();
+          saveSession();
+          return;
+        }
+        abortSvelteComponentInjection(sessionId, 'No visible Svelte variant was mounted. Please try again.');
+      })
+      .catch(() => {
+        if (svelteComponentSession?.sessionId === sessionId) {
+          abortSvelteComponentInjection(sessionId, 'No visible Svelte variant was mounted. Please try again.');
+        }
+      })
+      .finally(() => {
+        recoveringEmptyCycling = false;
+      });
   }
 
   function recoverEmptyCycling(reason) {
@@ -2679,6 +2740,7 @@
     // click-through) and 'auto' (open) on its own. Just silence the host's
     // outside-interaction listeners while the panel is open.
     defangOutsideHandlers(paramsPanelEl, { setPointerEvents: false });
+    paramsPanelEl.addEventListener('click', (e) => e.stopPropagation());
     paramsPanelInner = paramsPanelEl; // compatibility alias for the rest of the code
   }
 
@@ -2687,6 +2749,12 @@
     const el = session?.mountTargetEl?.firstElementChild || null;
     if (!el || !document.body.contains(el)) return null;
     return rectIsUsableAnchor(el.getBoundingClientRect()) ? el : null;
+  }
+
+  function hasVisibleSvelteComponentMount(session = svelteComponentSession) {
+    if (!session || session.sessionId !== currentSessionId) return false;
+    if (!session.mountedVariant || session.mountedVariant < 1) return false;
+    return !!getMountedSvelteComponentAnchor(session);
   }
 
   function resolveSvelteComponentAnchor(session = svelteComponentSession) {
@@ -2737,7 +2805,7 @@
     } else if (param.kind === 'toggle') {
       const on = !!value;
       variantEl.style.setProperty('--p-' + param.id, on ? '1' : '0');
-      if (on) variantEl.setAttribute(attr, 'on');
+      if (on) variantEl.setAttribute(attr, 'true');
       else variantEl.removeAttribute(attr);
     } else if (param.kind === 'steps') {
       variantEl.setAttribute(attr, String(value));
@@ -2757,6 +2825,10 @@
     const v = parseFloat(input.value);
     if (!isFinite(v)) return input.value;
     return (max - min) <= 2 ? v.toFixed(2) : String(Math.round(v));
+  }
+
+  function stopTuneControlEvent(e) {
+    e.stopPropagation();
   }
 
   function buildParamsPanel(variantEl, params) {
@@ -2788,14 +2860,21 @@
         input.max = String(p.max != null ? p.max : 1);
         input.step = String(p.step != null ? p.step : 0.05);
         input.value = String(p.default);
+        input.dataset.paramKind = 'range';
+        input.dataset.paramId = p.id;
+        input.dataset.paramValue = String(p.default);
         Object.assign(input.style, {
           width: '100%', accentColor: C.brand, cursor: 'pointer',
         });
         readout.textContent = formatRangeValue(input);
+        input.addEventListener('pointerdown', stopTuneControlEvent);
+        input.addEventListener('mousedown', stopTuneControlEvent);
+        input.addEventListener('click', stopTuneControlEvent);
         input.addEventListener('input', (e) => {
           e.stopPropagation();
           const v = parseFloat(input.value);
           paramsCurrentValues[p.id] = v;
+          input.dataset.paramValue = String(v);
           readout.textContent = formatRangeValue(input);
           applyParamValue(variantEl, p, v);
           queueCheckpoint('param_changed');
@@ -2812,6 +2891,10 @@
           transition: 'background 0.15s ease',
           alignSelf: 'flex-start',
         });
+        track.type = 'button';
+        track.dataset.paramKind = 'toggle';
+        track.dataset.paramId = p.id;
+        track.dataset.paramValue = String(initial);
         const knob = el('span', {
           position: 'absolute', top: '2px',
           left: initial ? '18px' : '2px',
@@ -2821,10 +2904,13 @@
           boxShadow: '0 1px 2px oklch(0% 0 0 / 0.2)',
         });
         track.appendChild(knob);
+        track.addEventListener('pointerdown', stopTuneControlEvent);
+        track.addEventListener('mousedown', stopTuneControlEvent);
         track.addEventListener('click', (e) => {
           e.stopPropagation();
           const next = !paramsCurrentValues[p.id];
           paramsCurrentValues[p.id] = next;
+          track.dataset.paramValue = String(next);
           track.style.background = next ? C.brand : P.hairline;
           knob.style.left = next ? '18px' : '2px';
           readout.textContent = next ? 'On' : 'Off';
@@ -2855,7 +2941,14 @@
             cursor: 'pointer', whiteSpace: 'nowrap',
             transition: 'background 0.1s ease, color 0.1s ease',
           });
+          b.type = 'button';
           b.textContent = o.label;
+          b.dataset.paramKind = 'steps';
+          b.dataset.paramId = p.id;
+          b.dataset.paramValue = String(o.value);
+          b.dataset.paramSelected = active ? 'true' : 'false';
+          b.addEventListener('pointerdown', stopTuneControlEvent);
+          b.addEventListener('mousedown', stopTuneControlEvent);
           b.addEventListener('click', (e) => {
             e.stopPropagation();
             paramsCurrentValues[p.id] = o.value;
@@ -2864,6 +2957,7 @@
               const on = val === o.value;
               btn.style.background = on ? C.brand : 'transparent';
               btn.style.color = on ? 'oklch(98% 0 0)' : P.text;
+              btn.dataset.paramSelected = on ? 'true' : 'false';
             });
             applyParamValue(variantEl, p, o.value);
             queueCheckpoint('param_changed');
@@ -4493,29 +4587,86 @@
     return doc.getElementById('impeccable-anchor')?.firstElementChild || null;
   }
 
+  function originalStableClassNames(className) {
+    return String(className || '')
+      .split(/\s+/)
+      .filter((name) => name && !/^svelte-[\w-]+$/.test(name));
+  }
+
+  function originalStableAttributeEntries(el) {
+    const names = ['data-testid', 'data-test', 'data-cy', 'data-qa', 'aria-label', 'role', 'name'];
+    return names
+      .filter((name) => el.hasAttribute?.(name))
+      .map((name) => ({ name, value: el.getAttribute(name) || '' }))
+      .filter((entry) => entry.value !== '');
+  }
+
+  function cssAttrValue(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function queryOriginalCandidateElements(selector) {
+    try {
+      return Array.from(document.querySelectorAll(selector)).filter((el) => !own(el));
+    } catch {
+      return [];
+    }
+  }
+
+  function originalCandidateTextMatches(original, candidate) {
+    const sourceText = normalizePreviewText(original.textContent || '');
+    if (!sourceText || /\{[^{}]+\}/.test(sourceText)) return true;
+    return normalizePreviewText(candidate.textContent || '') === sourceText;
+  }
+
+  function originalCandidateMatches(candidate, original, stableAttrs, expectedClasses, requireClasses) {
+    if (!candidate || own(candidate)) return false;
+    if (candidate.tagName !== original.tagName) return false;
+    for (const attr of stableAttrs) {
+      if (candidate.getAttribute(attr.name) !== attr.value) return false;
+    }
+    if (expectedClasses.length > 0) {
+      const classMatches = expectedClasses.filter((name) => candidate.classList.contains(name));
+      if (requireClasses && classMatches.length !== expectedClasses.length) return false;
+      if (!requireClasses && stableAttrs.length === 0 && classMatches.length === 0) return false;
+    }
+    return originalCandidateTextMatches(original, candidate);
+  }
+
+  function firstMatchingOriginalCandidate(selectors, original, stableAttrs, expectedClasses, requireClasses) {
+    for (const selector of selectors) {
+      const candidates = queryOriginalCandidateElements(selector);
+      for (const candidate of candidates) {
+        if (originalCandidateMatches(candidate, original, stableAttrs, expectedClasses, requireClasses)) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
   function findLiveElementForOriginalMarkup(originalMarkup) {
     const origContent = parseOriginalMarkupElement(originalMarkup);
     if (!origContent) return null;
 
     const tag = origContent.tagName.toLowerCase();
-    const cls = origContent.className;
-    let liveEl = null;
+    const expectedClasses = originalStableClassNames(origContent.className);
+    const stableAttrs = originalStableAttributeEntries(origContent);
     if (origContent.id) {
-      liveEl = document.getElementById(origContent.id);
-    } else if (cls) {
-      const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
-      for (const c of candidates) {
-        if (c.className === cls && !own(c)) { liveEl = c; break; }
-      }
-      if (!liveEl) {
-        const expectedClasses = String(cls).split(/\s+/).filter(Boolean);
-        for (const c of candidates) {
-          if (own(c)) continue;
-          if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
-        }
+      const liveEl = document.getElementById(origContent.id);
+      if (originalCandidateMatches(liveEl, origContent, stableAttrs, expectedClasses, false)) {
+        return liveEl;
       }
     }
-    return liveEl;
+
+    const attrSelectors = stableAttrs
+      .map((attr) => tag + '[' + attr.name + '="' + cssAttrValue(attr.value) + '"]');
+    const attrMatch = firstMatchingOriginalCandidate(attrSelectors, origContent, stableAttrs, expectedClasses, false);
+    if (attrMatch) return attrMatch;
+
+    if (expectedClasses.length === 0) return null;
+    const classSelectors = [tag + '.' + cssIdent(expectedClasses[0])];
+    return firstMatchingOriginalCandidate(classSelectors, origContent, stableAttrs, expectedClasses, true);
   }
 
   function isSvelteInsertManifest(manifest) {
@@ -4661,20 +4812,19 @@
 
   function commitAcceptedSvelteComponentToDom(sessionId) {
     if (!svelteComponentSession || svelteComponentSession.sessionId !== sessionId) return false;
-    const { wrapperEl, runtime, mountedInstance, manifest } = svelteComponentSession;
+    const { wrapperEl, mountTargetEl, manifest } = svelteComponentSession;
     const anchor = getMountedSvelteComponentAnchor(svelteComponentSession);
     if (!anchor || !wrapperEl?.parentElement) return false;
-    const committed = anchor.cloneNode(true);
     if (!isSvelteInsertManifest(manifest)) {
-      applyOriginalAttrsToSvelteAnchor(committed, manifest.originalMarkup || '');
+      applyOriginalAttrsToSvelteAnchor(anchor, manifest.originalMarkup || '');
     }
-    if (mountedInstance && runtime?.unmount) {
-      try { runtime.unmount(mountedInstance); } catch { /* non-fatal */ }
-    }
-    wrapperEl.parentElement.replaceChild(committed, wrapperEl);
+    wrapperEl.removeAttribute('data-impeccable-variants');
+    wrapperEl.removeAttribute('data-impeccable-variant-count');
+    wrapperEl.removeAttribute('data-impeccable-preview');
+    mountTargetEl?.removeAttribute?.('data-impeccable-component-mount');
     svelteComponentSession = null;
     svelteRuntimePromise = null;
-    selectedElement = committed;
+    selectedElement = anchor;
     return true;
   }
 
@@ -4707,6 +4857,7 @@
         state = 'CYCLING';
         showOrUpdateCyclingBar();
         saveSession();
+        queueCheckpoint('svelte_component_variants_ready');
         return;
       }
 
@@ -4744,6 +4895,7 @@
       wrapper.appendChild(mountTarget);
 
       const insertMode = isSvelteInsertManifest(manifest);
+      const propValues = insertMode ? {} : buildSveltePropValuesFromLiveElement(liveEl, manifest);
       const detachedOriginal = insertMode ? null : liveEl;
       if (insertMode) {
         removeInsertPlaceholderDom();
@@ -4763,7 +4915,7 @@
         mountedInstance: null,
         mountedVariant: 0,
         runtime: null,
-        propValues: buildSveltePropValuesFromLiveElement(detachedOriginal, manifest),
+        propValues,
         paramsByVariant,
       };
       if (pendingSvelteComponentRetryObserver) {
@@ -4799,6 +4951,7 @@
       refreshParamsPanel();
       positionBar();
       saveSession();
+      queueCheckpoint('svelte_component_variants_ready');
       console.log('[impeccable] Mounted ' + arrivedVariants + ' Svelte component variants.');
     } catch (err) {
       console.error('[impeccable] Failed to mount Svelte component variants:', err);
@@ -4859,7 +5012,7 @@
    * parse it, extract the variant wrapper, and inject it into the live DOM.
    * This works even when the dev server caches HTML (Bun, static servers).
    */
-  function injectVariantsFromSource(filePath, sessionId) {
+	  function injectVariantsFromSource(filePath, sessionId) {
     if (isSvelteComponentManifestPath(filePath)) {
       injectSvelteComponentsFromManifest(filePath, sessionId);
       return;
@@ -4887,8 +5040,9 @@
           return;
         }
 
-        const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
-        const wrapper = srcWrapper.cloneNode(true);
+	        const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
+	        const wrapper = srcWrapper.cloneNode(true);
+	        normalizeFrameworkDomAttributes(wrapper);
 
         // Wrapper already in DOM (wrap HMR landed, variant insert did not).
         const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
@@ -4953,43 +5107,143 @@
     const map = new Map();
     if (!sourceOriginal || !liveOriginal) return map;
 
-    const sourceNodes = collectTextNodes(sourceOriginal)
-      .filter((node) => /\{[^{}]+\}/.test(node.nodeValue || ''));
-    const liveTexts = collectTextNodes(liveOriginal)
-      .map((node) => normalizePreviewText(node.nodeValue || ''))
-      .filter(Boolean);
-    let liveIndex = 0;
+    const bindings = collectSvelteExpressionTextBindings(sourceOriginal);
+    for (const binding of bindings) {
+      const liveParent = elementAtChildPath(liveOriginal, binding.parentPath);
+      const liveText = significantDirectTextAt(liveParent, binding.textIndex);
+      addSvelteTextMappings(map, binding.sourceText, liveText, binding.tokens);
+    }
 
-    for (const sourceNode of sourceNodes) {
-      const sourceText = sourceNode.nodeValue || '';
-      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
-      if (tokens.length === 0) continue;
-
-      const liveText = liveTexts[liveIndex++] || '';
-      if (!liveText) continue;
-
-      if (tokens.length === 1) {
-        const token = tokens[0];
-        const normalizedSource = normalizePreviewText(sourceText);
-        if (normalizedSource === token) {
-          map.set(token, liveText);
-          continue;
-        }
-
-        const match = liveText.match(expressionTextMatcher(sourceText, [token]));
-        if (match && match[1]) map.set(token, match[1].trim());
-        continue;
-      }
-
-      if (normalizePreviewText(sourceText) === tokens.join(' ')) {
-        for (const token of tokens) {
-          const tokenLiveText = liveTexts[liveIndex - 1] || '';
-          if (tokenLiveText) map.set(token, tokenLiveText);
-        }
-      }
+    const fallback = buildSvelteExpressionTextMapBySignificantOrder(sourceOriginal, liveOriginal);
+    for (const [token, value] of fallback) {
+      if (!map.has(token) || !map.get(token)) map.set(token, value);
     }
 
     return map;
+  }
+
+  function collectSvelteExpressionTextBindings(root) {
+    if (!root) return [];
+    const bindings = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const sourceText = node.nodeValue || '';
+      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+      if (tokens.length > 0 && node.parentElement) {
+        bindings.push({
+          sourceText,
+          tokens,
+          parentPath: elementChildPath(root, node.parentElement),
+          textIndex: significantDirectTextNodeIndex(node),
+        });
+      }
+      node = walker.nextNode();
+    }
+    return bindings;
+  }
+
+  function elementChildPath(root, element) {
+    const path = [];
+    let node = element;
+    while (node && node !== root) {
+      const parent = node.parentElement;
+      if (!parent) return [];
+      path.unshift(Array.prototype.indexOf.call(parent.children, node));
+      node = parent;
+    }
+    return path;
+  }
+
+  function elementAtChildPath(root, path) {
+    let node = root;
+    for (const index of path || []) {
+      if (!node?.children || index < 0 || index >= node.children.length) return null;
+      node = node.children[index];
+    }
+    return node;
+  }
+
+  function significantDirectTextAt(parent, index) {
+    const nodes = significantDirectTextNodes(parent);
+    return normalizePreviewText(nodes[index]?.nodeValue || '');
+  }
+
+  function significantDirectTextNodeIndex(textNode) {
+    if (!textNode?.parentNode) return 0;
+    let index = 0;
+    for (const child of textNode.parentNode.childNodes) {
+      if (child === textNode) return index;
+      if (isSignificantTextNode(child)) index += 1;
+    }
+    return index;
+  }
+
+  function significantDirectTextNodes(parent) {
+    if (!parent) return [];
+    return Array.from(parent.childNodes || []).filter(isSignificantTextNode);
+  }
+
+  function isSignificantTextNode(node) {
+    return node?.nodeType === 3 && normalizePreviewText(node.nodeValue || '');
+  }
+
+  function buildSvelteExpressionTextMapBySignificantOrder(sourceOriginal, liveOriginal) {
+    const map = new Map();
+    const sourceNodes = collectSignificantTextNodes(sourceOriginal);
+    const liveTexts = collectSignificantTextNodes(liveOriginal)
+      .map((node) => normalizePreviewText(node.nodeValue || ''));
+    for (let sourceIndex = 0; sourceIndex < sourceNodes.length; sourceIndex += 1) {
+      const sourceText = sourceNodes[sourceIndex].nodeValue || '';
+      const tokens = sourceText.match(/\{[^{}]+\}/g) || [];
+      if (tokens.length === 0) continue;
+      addSvelteTextMappings(map, sourceText, liveTexts[sourceIndex] || '', tokens);
+    }
+    return map;
+  }
+
+  function collectSignificantTextNodes(root) {
+    if (!root) return [];
+    const nodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (isSignificantTextNode(node)) nodes.push(node);
+      node = walker.nextNode();
+    }
+    return nodes;
+  }
+
+  function addSvelteTextMappings(map, sourceText, liveText, tokens) {
+    if (!liveText || !tokens?.length) return;
+
+    if (tokens.length === 1) {
+      const token = tokens[0];
+      const normalizedSource = normalizePreviewText(sourceText);
+      if (normalizedSource === token) {
+        map.set(token, liveText);
+        return;
+      }
+
+      const match = liveText.match(expressionTextMatcher(sourceText, [token]));
+      if (match && match[1] != null) map.set(token, match[1].trim());
+      return;
+    }
+
+    if (normalizePreviewText(sourceText) === tokens.join(' ')) {
+      const pieces = liveText.split(/\s+/).filter(Boolean);
+      if (pieces.length === tokens.length) {
+        tokens.forEach((token, tokenIndex) => map.set(token, pieces[tokenIndex]));
+      }
+      return;
+    }
+
+    const match = liveText.match(expressionTextMatcher(sourceText, tokens));
+    if (match) {
+      tokens.forEach((token, tokenIndex) => {
+        if (match[tokenIndex + 1] != null) map.set(token, match[tokenIndex + 1].trim());
+      });
+    }
   }
 
   function expressionTextMatcher(sourceText, tokens) {
@@ -5004,18 +5258,6 @@
     }
     pattern += escapeRegExp(sourceText.slice(cursor)).replace(/\s+/g, '\\s*') + '$';
     return new RegExp(pattern);
-  }
-
-  function collectTextNodes(root) {
-    if (!root) return [];
-    const nodes = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      nodes.push(node);
-      node = walker.nextNode();
-    }
-    return nodes;
   }
 
   function normalizePreviewText(value) {
@@ -5511,23 +5753,32 @@
     if (currentSessionId) saveSession();
   }
 
-  function sendEvent(msg, opts) {
-    msg.token = TOKEN;
-    function handleFailure(err) {
-      console.error('[impeccable] Failed to send event:', err);
-      if (opts && opts.throwOnError) throw err;
-      return null;
-    }
-    return fetch('http://localhost:' + PORT + '/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(msg),
-    }).then(async res => {
-      if (res.ok) return res;
-      const body = await res.json().catch(() => ({}));
-      return handleFailure(new Error(body.error || ('HTTP ' + res.status + ' ' + res.statusText)));
-    }).catch(handleFailure);
-  }
+	  function sendEvent(msg, opts) {
+	    msg.token = TOKEN;
+	    function handleFailure(err) {
+	      console.error('[impeccable] Failed to send event:', err);
+	      if (opts && opts.throwOnError) throw err;
+	      return null;
+	    }
+	    return fetch('http://localhost:' + PORT + '/events', {
+	      method: 'POST',
+	      headers: { 'Content-Type': 'application/json' },
+	      body: JSON.stringify(msg),
+	      keepalive: Boolean(opts && opts.keepalive),
+	    }).then(async res => {
+	      if (res.ok) return res;
+	      const body = await res.json().catch(() => ({}));
+	      return handleFailure(new Error(body.error || ('HTTP ' + res.status + ' ' + res.statusText)));
+	    }).catch(handleFailure);
+	  }
+
+	  function withTimeout(promise, ms) {
+	    let timer = null;
+	    const timeout = new Promise((resolve) => {
+	      timer = setTimeout(resolve, ms);
+	    });
+	    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+	  }
 
   function checkpointPayload(reason) {
     return {
@@ -5632,7 +5883,13 @@
       hideActionPicker();
     }
     // Close Tune popover on outside click (anything outside panel + bar)
-    if (tuneOpen && paramsPanelEl && !paramsPanelEl.contains(e.target) && barEl && !barEl.contains(e.target)) {
+    if (
+      tuneOpen
+      && paramsPanelEl
+      && !eventPathContains(e, paramsPanelEl)
+      && barEl
+      && !eventPathContains(e, barEl)
+    ) {
       closeTunePopover();
     }
     // In EDITING: click outside exits the text edit flow without rebuilding configure UI first.
@@ -5686,10 +5943,14 @@
       pagePickSkipClick = false;
       return;
     }
-    if (!hoveredElement || !pickable(hoveredElement)) return;
+    const pickTarget = hoveredElement && hoveredElement.isConnected && pickable(hoveredElement)
+      ? hoveredElement
+      : pickableFromPoint(e.clientX, e.clientY, e.target);
+    if (!pickTarget) return;
     e.preventDefault();
     e.stopPropagation();
-    selectedElement = hoveredElement;
+    hoveredElement = pickTarget;
+    selectedElement = pickTarget;
     state = 'CONFIGURING';
     showHighlight(selectedElement);
     clearAnnotations();
@@ -6109,16 +6370,33 @@
     return inlineFontUrls(chunks.join('\n'));
   }
 
-  // True if `s` is a computed color string that renders as nothing
-  // (explicit `transparent`, or `rgba(...)` with alpha 0).
+  function parseCssAlpha(raw) {
+    if (raw == null) return 1;
+    const value = String(raw).trim();
+    if (!value) return 1;
+    const n = Number.parseFloat(value);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0, Math.min(1, value.endsWith('%') ? n / 100 : n));
+  }
+
+  function cssColorAlpha(s) {
+    if (!s) return 0;
+    const value = String(s).trim().toLowerCase();
+    if (!value || value === 'transparent') return 0;
+    const fn = /^(rgba?|hsla?|oklch|oklab|hwb|color)\((.*)\)$/.exec(value);
+    if (!fn) return 1;
+    const body = fn[2].trim();
+    if (body.includes('/')) return parseCssAlpha(body.split('/').pop());
+    const commaParts = body.split(',').map((p) => p.trim());
+    if ((fn[1] === 'rgba' || fn[1] === 'hsla') && commaParts.length >= 4) {
+      return parseCssAlpha(commaParts[3]);
+    }
+    return 1;
+  }
+
+  // True if `s` is a computed color string that renders as nothing.
   function isTransparentColor(s) {
-    if (!s) return true;
-    if (s === 'transparent') return true;
-    const m = /rgba?\(([^)]+)\)/.exec(s);
-    if (!m) return false;
-    const parts = m[1].split(',').map((p) => p.trim());
-    if (parts.length === 4) return parseFloat(parts[3]) === 0;
-    return false;
+    return cssColorAlpha(s) <= 0;
   }
 
   // modern-screenshot force-sets `background-color: X !important` on the
@@ -6208,6 +6486,21 @@
       || paintsBackdrop(node);
   }
 
+  function paintsOpaqueOwnShaderSurface(el) {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.backgroundImage && s.backgroundImage !== 'none') return true;
+    return cssColorAlpha(s.backgroundColor) >= 0.98;
+  }
+
+  function hasTranslucentOwnShaderSurface(el) {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    if (s.backgroundImage && s.backgroundImage !== 'none') return false;
+    const alpha = cssColorAlpha(s.backgroundColor);
+    return alpha > 0 && alpha < 0.98;
+  }
+
   function findShaderProxyCaptureRoot(el) {
     const doc = el.ownerDocument || document;
     const er = el.getBoundingClientRect();
@@ -6226,14 +6519,104 @@
     return null;
   }
 
+  function isDocumentShaderCaptureRoot(node) {
+    const doc = node?.ownerDocument || document;
+    return node === doc.body || node === doc.documentElement;
+  }
+
+  function resolveBackdropColorForShaderComposite(el, preferredRoot = null) {
+    let node = preferredRoot || el?.parentElement || null;
+    while (node) {
+      const bg = getComputedStyle(node).backgroundColor;
+      if (!isTransparentColor(bg)) return bg;
+      node = node.parentElement;
+    }
+    return '#ffffff';
+  }
+
+  function rectForShaderMeta(rect) {
+    if (!rect) return null;
+    return {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  function describeShaderCaptureRoot(node) {
+    if (!node) return null;
+    const className = typeof node.className === 'string'
+      ? node.className
+      : String(node.getAttribute?.('class') || '');
+    return {
+      tag: node.tagName ? node.tagName.toLowerCase() : '',
+      id: node.id || '',
+      classes: className.trim().replace(/\s+/g, ' '),
+    };
+  }
+
+  function buildShaderCaptureMeta(strategy, selectedEl, captureRoot, extra = {}) {
+    return {
+      strategy,
+      selectedRect: rectForShaderMeta(selectedEl?.getBoundingClientRect?.()),
+      captureRootRect: rectForShaderMeta(captureRoot?.getBoundingClientRect?.()),
+      captureRoot: describeShaderCaptureRoot(captureRoot),
+      ...extra,
+    };
+  }
+
   // Capture the element (with current annotations baked in) and return
   // { blob, paper }: the PNG Blob, plus the representative backdrop tone for the
   // shader's halftone ground (so capture, upload, and shader all agree on what
   // sits behind the element). Shared between the Go flow (uploads the blob) and
   // the shader-resume path.
-  async function captureElementFromRenderedAncestor(ms, el, opts) {
+  async function captureElementDirectForShader(ms, el, opts) {
+    const canvas = await ms.domToCanvas(el, opts);
+    const cctx = canvas.getContext('2d', { willReadFrequently: true });
+    const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('Direct selected-element shader capture failed to produce a PNG blob');
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('direct-selected-element', el, el, {
+        outputSize: { width: canvas.width, height: canvas.height },
+      }),
+    };
+  }
+
+  async function captureElementDirectCompositedForShader(ms, el, opts, backdropRoot = null) {
     const doc = el.ownerDocument || document;
-    const captureRoot = findShaderProxyCaptureRoot(el);
+    const source = await ms.domToCanvas(el, opts);
+    const canvas = doc.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const cctx = canvas.getContext('2d', { willReadFrequently: true });
+    const backdropColor = resolveBackdropColorForShaderComposite(el, backdropRoot);
+    cctx.fillStyle = backdropColor;
+    cctx.fillRect(0, 0, canvas.width, canvas.height);
+    cctx.drawImage(source, 0, 0);
+    const paper = dominantRgb01(cctx, canvas.width, canvas.height) || averageRgb01(cctx, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    if (!blob) throw new Error('Direct composited shader capture failed to produce a PNG blob');
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('direct-composited-backdrop', el, el, {
+        backdropColor,
+        backdropRoot: describeShaderCaptureRoot(backdropRoot),
+        backdropRootRect: rectForShaderMeta(backdropRoot?.getBoundingClientRect?.()),
+        outputSize: { width: canvas.width, height: canvas.height },
+      }),
+    };
+  }
+
+  async function captureElementFromRenderedAncestor(ms, el, opts, captureRoot = null) {
+    const doc = el.ownerDocument || document;
+    captureRoot = captureRoot || findShaderProxyCaptureRoot(el);
     if (!captureRoot) throw new Error('No painted ancestor for Svelte shader proxy');
     const rootCanvas = await ms.domToCanvas(captureRoot, opts);
     const S = opts.scale;
@@ -6252,11 +6635,19 @@
     const paper = dominantRgb01(cctx, crop.width, crop.height) || averageRgb01(cctx, crop.width, crop.height);
     const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
     if (!blob) throw new Error('Ancestor crop failed to produce a PNG blob');
-    return { blob, paper };
+    return {
+      blob,
+      paper,
+      shaderCaptureMeta: buildShaderCaptureMeta('ancestor-crop', el, captureRoot, {
+        sourceRect: { sx, sy, sw, sh },
+        outputSize: { width: crop.width, height: crop.height },
+      }),
+    };
   }
 
   async function captureElementToBlob(el, snapshot, rect) {
     try { if (document.fonts?.ready) await document.fonts.ready; } catch {}
+    lastShaderCaptureMeta = null;
     const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
     let annotNode = null;
     let savedPosition = null;
@@ -6278,9 +6669,21 @@
       };
       if (shouldUseAncestorCropShaderProxy(el)) {
         try {
-          return await hideCaptureChromeForShaderProxy(() => captureElementFromRenderedAncestor(ms, el, opts));
+          const result = await hideCaptureChromeForShaderProxy(() => {
+            if (paintsOpaqueOwnShaderSurface(el)) return captureElementDirectForShader(ms, el, opts);
+            const captureRoot = findShaderProxyCaptureRoot(el);
+            if (
+              hasTranslucentOwnShaderSurface(el) &&
+              (!captureRoot || isDocumentShaderCaptureRoot(captureRoot))
+            ) {
+              return captureElementDirectCompositedForShader(ms, el, opts, captureRoot);
+            }
+            return captureElementFromRenderedAncestor(ms, el, opts, captureRoot);
+          });
+          lastShaderCaptureMeta = result.shaderCaptureMeta || null;
+          return result;
         } catch (err) {
-          console.warn('[impeccable] Svelte ancestor crop capture failed, falling back to element capture:', err);
+          console.warn('[impeccable] Svelte shader proxy capture failed, falling back to element capture:', err);
         }
       }
       const bg = resolveCanvasBackground(el);
@@ -6448,6 +6851,15 @@ void main() {
   // matches the original off-white risograph paper.
   const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
   let shaderState = null; // { canvas, gl, program, texture, rafId, startTime }
+  let lastShaderCaptureMeta = null;
+
+  function shaderCaptureDebugState() {
+    if (!lastShaderCaptureMeta) return null;
+    return {
+      ...lastShaderCaptureMeta,
+      shaderRect: rectForShaderMeta(shaderState?.canvas?.getBoundingClientRect?.()),
+    };
+  }
 
   // The element's effective background tone, used as the uniform halftone
   // ground so content dissolves into dots over it. Unlike resolveCanvasBackground
@@ -6594,14 +7006,18 @@ void main() {
     });
   }
 
-  function hideShaderOverlay() {
-    if (!shaderState) return;
+  function hideShaderOverlay(clearMeta = true) {
+    if (!shaderState) {
+      if (clearMeta) lastShaderCaptureMeta = null;
+      return;
+    }
     if (shaderState.rafId) cancelAnimationFrame(shaderState.rafId);
     if (shaderState.canvas) shaderState.canvas.remove();
     if (shaderState.objectUrl) URL.revokeObjectURL(shaderState.objectUrl);
     const lose = shaderState.gl?.getExtension?.('WEBGL_lose_context');
     try { lose?.loseContext(); } catch {}
     shaderState = null;
+    if (clearMeta) lastShaderCaptureMeta = null;
   }
 
   function showShaderBitmapFallback(canvas, blob) {
@@ -6624,7 +7040,7 @@ void main() {
   }
 
   async function showShaderOverlay(el, blob, rect, paper) {
-    hideShaderOverlay();
+    hideShaderOverlay(false);
     if (!blob || !el) return;
     const canvas = document.createElement('canvas');
     canvas.id = PREFIX + '-shader';
@@ -6764,6 +7180,7 @@ void main() {
     const acceptedVariant = visibleVariant;
     const acceptedIsSvelteComponent = svelteComponentSession?.sessionId === acceptedSessionId
       || acceptWrapper?.dataset?.impeccablePreview === 'svelte-component';
+    if (acceptedIsSvelteComponent) acceptPayload.deferSourceWrite = true;
     const acceptedSnapshot = snapshotAcceptedVariantDom(acceptedSessionId, acceptedVariant);
 
     state = 'SAVING';
@@ -6772,6 +7189,7 @@ void main() {
       id: acceptedSessionId,
       variant: String(acceptedVariant),
       isSvelteComponent: acceptedIsSvelteComponent,
+      deferredSourceWrite: acceptedIsSvelteComponent,
       ...acceptedSnapshot,
       finalizing: false,
     };
@@ -6797,9 +7215,6 @@ void main() {
     if (pending.finalizing) return true;
     pending.finalizing = true;
     markSessionHandled();
-    if (pending.isSvelteComponent) {
-      commitAcceptedSvelteComponentToDom(pending.id);
-    }
     state = 'CONFIRMED';
     updateBarContent('confirmed');
     scheduleAcceptCleanup(pending);
@@ -6808,13 +7223,39 @@ void main() {
 
   function scheduleAcceptCleanup(accepted) {
     setTimeout(function() {
-      if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+      if (accepted?.isSvelteComponent) ensureAcceptedSvelteComponentDomClean(accepted);
+      else ensureAcceptedDomClean(accepted);
       cleanupAcceptedSession();
+      scheduleAcceptedDomReconcile(accepted);
     }, 1200);
+  }
+
+  function scheduleAcceptedDomReconcile(accepted) {
+    if (!accepted || accepted.isSvelteComponent) return;
+    let attempts = 0;
+    const retry = () => {
+      if (acceptedDomAlreadyClean(accepted)) return;
+      ensureAcceptedDomClean(accepted);
+      attempts += 1;
+      if (acceptedDomAlreadyClean(accepted) || attempts >= 4) return;
+      setTimeout(retry, 600 * attempts);
+    };
+    setTimeout(retry, 350);
   }
 
   function snapshotAcceptedVariantDom(sessionId, variantId) {
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    if (wrapper?.dataset?.impeccablePreview === 'svelte-component') {
+      const mount = wrapper.querySelector('[data-impeccable-component-mount]');
+      const root = mount?.firstElementChild || null;
+      return {
+        acceptedHtml: root ? root.outerHTML : '',
+        acceptedSelector: selectorForAcceptedRoot(root, { ignoreSvelteScopedClasses: true }),
+        parentElement: wrapper.parentElement || null,
+        parentSelector: selectorForAcceptedRoot(wrapper.parentElement || null, { ignoreSvelteScopedClasses: true }),
+        nextSibling: wrapper.nextSibling || null,
+      };
+    }
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     const root = accepted?.firstElementChild || null;
     return {
@@ -6826,10 +7267,10 @@ void main() {
     };
   }
 
-  function selectorForAcceptedRoot(root) {
+  function selectorForAcceptedRoot(root, opts = {}) {
     if (!root || !root.tagName) return '';
     const tag = root.tagName.toLowerCase();
-    const classes = [...(root.classList || [])].filter(Boolean);
+    const classes = [...(root.classList || [])].filter((cls) => cls && (!opts.ignoreSvelteScopedClasses || !/^svelte-[\w-]+$/.test(cls)));
     if (classes.length === 0) return tag;
     return tag + classes.map((cls) => '.' + cssIdent(cls)).join('');
   }
@@ -6837,13 +7278,15 @@ void main() {
   function acceptedDomAlreadyClean(pending) {
     if (!pending?.acceptedSelector) return false;
     const matches = [...document.querySelectorAll(pending.acceptedSelector)];
-    return matches.some((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+    return matches.length > 0
+      && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-carbonize],[data-impeccable-variant]'));
   }
 
-  function ensureAcceptedDomClean(pending) {
+	  function ensureAcceptedDomClean(pending) {
     const sessionId = pending?.id;
     const variantId = pending?.variant;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]')
+      || document.querySelector('[data-impeccable-carbonize="' + sessionId + '"]');
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     if (!wrapper) {
       restoreAcceptedDomFromSnapshot(pending);
@@ -6854,12 +7297,40 @@ void main() {
       restoreAcceptedDomFromSnapshot(pending);
       return;
     }
-    const parent = wrapper.parentElement;
-    if (!parent) return;
-    while (accepted.firstChild) {
-      parent.insertBefore(accepted.firstChild, wrapper);
+	    const parent = wrapper.parentElement;
+	    if (!parent) return;
+	    normalizeFrameworkDomAttributes(accepted);
+	    while (accepted.firstChild) {
+	      parent.insertBefore(accepted.firstChild, wrapper);
+	    }
+	    wrapper.remove();
+	  }
+
+  function ensureAcceptedSvelteComponentDomClean(pending) {
+    const sessionId = pending?.id;
+    if (pending?.deferredSourceWrite) {
+      commitAcceptedSvelteComponentToDom(sessionId);
+      return;
     }
-    wrapper.remove();
+    const wrapper = svelteComponentSession?.sessionId === sessionId && svelteComponentSession.wrapperEl?.isConnected
+      ? svelteComponentSession.wrapperEl
+      : document.querySelector('[data-impeccable-variants="' + sessionId + '"][data-impeccable-preview="svelte-component"]');
+    const host = wrapper?.parentElement || (pending?.parentElement?.isConnected ? pending.parentElement : null);
+
+    if (svelteComponentSession?.sessionId === sessionId) {
+      teardownSvelteComponentSession(false);
+    } else if (wrapper) {
+      wrapper.remove();
+    }
+    pruneEmptySveltePreviewHost(host);
+    if (!acceptedDomAlreadyClean(pending)) reloadAfterMissingAcceptedDom(pending);
+  }
+
+  function pruneEmptySveltePreviewHost(host) {
+    if (!host?.isConnected || host.tagName !== 'LI') return;
+    if (host.children.length > 0) return;
+    if ((host.textContent || '').trim()) return;
+    host.remove();
   }
 
   function restoreAcceptedDomFromSnapshot(pending) {
@@ -6875,12 +7346,13 @@ void main() {
       reloadAfterMissingAcceptedDom(pending);
       return;
     }
-    const template = document.createElement('template');
-    template.innerHTML = pending.acceptedHtml;
-    const anchor = pending.nextSibling?.isConnected && pending.nextSibling.parentElement === parent
-      ? pending.nextSibling
-      : null;
-    parent.insertBefore(template.content, anchor);
+	    const template = document.createElement('template');
+	    template.innerHTML = pending.acceptedHtml;
+	    normalizeFrameworkDomAttributes(template.content);
+	    const anchor = pending.nextSibling?.isConnected && pending.nextSibling.parentElement === parent
+	      ? pending.nextSibling
+	      : null;
+	    parent.insertBefore(template.content, anchor);
     if (!acceptedDomAlreadyClean(pending)) reloadAfterMissingAcceptedDom(pending);
   }
 
@@ -6897,6 +7369,12 @@ void main() {
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     stopScrollLock();
     clearScrollY();
+    pickActive = false;
+    insertActive = false;
+    clearInsertPicking();
+    saveInteractionPrefs();
+    updateGlobalBarState();
+    syncPageInteractionCursor();
     clearSession();
     resetSessionFileMeta();
     selectedElement = null;
@@ -6904,7 +7382,7 @@ void main() {
     selectedAction = 'impeccable';
     pendingAcceptedSession = null;
     renderEditBadge('hidden');
-    state = 'PICKING';
+    state = 'IDLE';
   }
 
   function commitAcceptedVariantToDom(sessionId, variantId) {
@@ -6922,12 +7400,25 @@ void main() {
       parent.insertBefore(promotedStyle, wrapper);
     }
 
-    const committed = accepted.cloneNode(true);
-    committed.removeAttribute('hidden');
-    committed.style.display = 'contents';
-    parent.replaceChild(committed, wrapper);
-    return true;
-  }
+	    const committed = accepted.cloneNode(true);
+	    normalizeFrameworkDomAttributes(committed);
+	    committed.removeAttribute('hidden');
+	    committed.style.display = 'contents';
+	    parent.replaceChild(committed, wrapper);
+	    return true;
+	  }
+
+	  function normalizeFrameworkDomAttributes(root) {
+	    if (!root) return;
+	    const elements = [];
+	    if (root.nodeType === 1) elements.push(root);
+	    if (root.querySelectorAll) elements.push(...root.querySelectorAll('[classname]'));
+	    for (const el of elements) {
+	      if (!el.hasAttribute?.('classname')) continue;
+	      if (!el.hasAttribute('class')) el.setAttribute('class', el.getAttribute('classname') || '');
+	      el.removeAttribute('classname');
+	    }
+	  }
 
   function handleDiscard() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
@@ -7580,6 +8071,15 @@ void main() {
     const el = node?.nodeType === 1 ? node : node?.parentElement;
     if (el && own(el)) return false;
     return true;
+  }
+
+  function clearHostTextSelection() {
+    const sel = window.getSelection?.();
+    if (!sel || sel.isCollapsed) return;
+    const node = sel.anchorNode;
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (el && own(el)) return;
+    try { sel.removeAllRanges(); } catch { /* non-fatal */ }
   }
 
   function shouldSteerAutoFocus() {
@@ -8839,12 +9339,20 @@ void main() {
       cursor: 'pointer', transition: 'color 0.12s ease, background 0.12s ease',
     });
     exitBtn.id = PREFIX + '-exit';
-    exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
-    exitBtn.title = 'Exit live mode';
-    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
-    exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
-    exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
-    inner.appendChild(exitBtn);
+	    exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
+	    exitBtn.title = 'Exit live mode';
+	    exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
+	    exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
+	    let exitingLiveMode = false;
+	    exitBtn.addEventListener('click', async (e) => {
+	      e.stopPropagation();
+	      if (exitingLiveMode) return;
+	      exitingLiveMode = true;
+	      exitBtn.disabled = true;
+	      await withTimeout(sendEvent({ type: 'exit' }, { keepalive: true }), 1500);
+	      teardown();
+	    });
+	    inner.appendChild(exitBtn);
 
     // Bar-level hover: expand every toggle's label at once; collapse on leave.
     // Buttons with dataset.active="true" ignore collapse (their label stays).
@@ -8978,6 +9486,9 @@ void main() {
     if (pickActive) {
       insertActive = false;
       clearInsertPicking();
+      pagePickSkipClick = false;
+      clearHostTextSelection();
+      steerFocusSuspended = false;
     }
     saveInteractionPrefs();
     updateGlobalBarState();
@@ -9099,7 +9610,7 @@ void main() {
     if (barEl) { barEl.remove(); barEl = null; }
     if (pickerEl) { pickerEl.remove(); pickerEl = null; }
     if (paramsPanelEl) { paramsPanelEl.remove(); paramsPanelEl = null; paramsPanelInner = null; paramsPanelBody = null; }
-    if (editBadgeProxyRoot) { editBadgeProxyRoot.remove(); editBadgeProxyRoot = null; editBadgeProxyByTarget = new Map(); }
+    removeAuxiliaryLiveChrome();
     if (evtSource) { evtSource.close(); evtSource = null; }
     document.removeEventListener('mousemove', handleMouseMove, true);
     document.removeEventListener('click', handleClick, true);
@@ -9552,6 +10063,38 @@ void main() {
     if (designState.open && designState.present === null && !designState.loading) {
       fetchDesignSystem();
     }
+  }
+
+  function removeAuxiliaryLiveChrome() {
+    if (editBadgeEl) {
+      editBadgeEl.remove();
+      editBadgeEl = null;
+    }
+    if (editBadgeProxyRoot) {
+      editBadgeProxyRoot.remove();
+      editBadgeProxyRoot = null;
+      editBadgeProxyByTarget = new Map();
+    }
+    if (annotOverlayEl) {
+      annotOverlayEl.remove();
+      annotOverlayEl = null;
+    }
+    annotSvgEl = null;
+    annotPinsEl = null;
+    annotClearChipEl = null;
+    placeholderResizeLayerEl = null;
+    placeholderResizeDrag = null;
+    annotState = { comments: [], strokes: [] };
+    annotActive = false;
+    annotPointer = null;
+    annotEditing = null;
+    annotLastPinClick = { idx: -1, time: 0 };
+    if (designHost) {
+      designHost.remove();
+      designHost = null;
+    }
+    designShadow = null;
+    designState.open = false;
   }
 
   async function fetchDesignSystem() {

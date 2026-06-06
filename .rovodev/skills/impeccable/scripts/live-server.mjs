@@ -45,7 +45,9 @@ import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
 import { commitManualEdits } from './live-commit-manual-edits.mjs';
 import {
   applyDeferredSvelteComponentAccepts,
+  cleanupSvelteComponentTailwindSafelists,
   removeAllSvelteComponentSessions,
+  syncSvelteComponentTailwindSafelist,
 } from './live-svelte-component.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1887,6 +1889,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
           }
         }
         if (msg.type === 'exit') {
+          applyDeferredSvelteComponentAcceptsBeforeExit('exit');
           cleanupSvelteComponentSessionsBeforeExit();
         }
         if (msg.type !== 'checkpoint') {
@@ -1997,6 +2000,12 @@ function sessionFileMetadataFromPollReply(file) {
   }
 }
 
+function shouldSyncSvelteTailwindSafelist(msg, replyFileMeta) {
+  if (replyFileMeta?.previewMode !== 'svelte-component' || !replyFileMeta.previewFile) return false;
+  const type = msg?.type || 'done';
+  return type === 'done' || type === 'complete';
+}
+
 function handlePollPost(req, res) {
   let body = '';
   req.on('data', (c) => { body += c; });
@@ -2090,6 +2099,13 @@ function handlePollPost(req, res) {
       return;
     }
     const replyFileMeta = sessionFileMetadataFromPollReply(msg.file);
+    if (shouldSyncSvelteTailwindSafelist(msg, replyFileMeta)) {
+      try {
+        syncSvelteComponentTailwindSafelist(replyFileMeta.previewFile, process.cwd());
+      } catch (err) {
+        console.warn('[impeccable] Svelte Tailwind preview safelist sync failed:', err.message);
+      }
+    }
     if (state.sessionStore && msg.id && !skipJournalReply) {
       try {
         const eventType = msg.type === 'steer_done'
@@ -2138,6 +2154,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
+  applyDeferredSvelteComponentAcceptsBeforeExit('shutdown');
   cleanupSvelteComponentSessionsBeforeExit();
   removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
@@ -2153,7 +2170,23 @@ function shutdown() {
   process.exit(0);
 }
 
+function applyDeferredSvelteComponentAcceptsBeforeExit(reason) {
+  try {
+    const result = applyDeferredSvelteComponentAccepts(process.cwd());
+    if (result.applied > 0 || result.failed > 0) {
+      console.log('[impeccable] applied deferred Svelte component accepts on ' + reason + ':', JSON.stringify(result));
+    }
+  } catch (err) {
+    console.warn('[impeccable] deferred Svelte component accept apply failed on ' + reason + ':', err.message);
+  }
+}
+
 function cleanupSvelteComponentSessionsBeforeExit() {
+  try {
+    cleanupSvelteComponentTailwindSafelists(process.cwd());
+  } catch (err) {
+    console.warn('[impeccable] Svelte Tailwind preview safelist cleanup failed:', err.message);
+  }
   try {
     removeAllSvelteComponentSessions(process.cwd());
   } catch (err) {

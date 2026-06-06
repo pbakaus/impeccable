@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SVELTE_LIVE_GUIDANCE_REFS } from './live-guidance-refs.mjs';
 import { resolveLiveConfigPath } from './impeccable-paths.mjs';
 import {
   applySvelteKitLiveAdapter,
@@ -115,7 +116,12 @@ Output (JSON):
   if (args.includes('--remove')) {
     if (svelteKit) {
       const adapterResult = removeSvelteKitLiveAdapter({ cwd: process.cwd(), config });
-      console.log(JSON.stringify({ ok: true, adapter: 'sveltekit', results: [adapterResult] }));
+      console.log(JSON.stringify({
+        ok: true,
+        adapter: 'sveltekit',
+        guidanceRefs: SVELTE_LIVE_GUIDANCE_REFS,
+        results: [adapterResult],
+      }));
       return;
     }
     const results = resolvedFiles.map((relFile) => {
@@ -147,7 +153,14 @@ Output (JSON):
 
   if (svelteKit) {
     const adapterResult = applySvelteKitLiveAdapter({ cwd: process.cwd(), port, config });
-    console.log(JSON.stringify({ ok: true, port, adapter: 'sveltekit', gitIgnore, results: [adapterResult] }));
+    console.log(JSON.stringify({
+      ok: true,
+      port,
+      adapter: 'sveltekit',
+      guidanceRefs: SVELTE_LIVE_GUIDANCE_REFS,
+      gitIgnore,
+      results: [adapterResult],
+    }));
     return;
   }
 
