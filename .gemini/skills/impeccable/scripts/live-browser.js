@@ -4503,15 +4503,17 @@
     if (origContent.id) {
       liveEl = document.getElementById(origContent.id);
     } else if (cls) {
-      const candidates = document.querySelectorAll(tag + '.' + cls.split(' ')[0]);
+      const candidates = [...document.getElementsByTagName(tag)];
       for (const c of candidates) {
         if (c.className === cls && !own(c)) { liveEl = c; break; }
       }
       if (!liveEl) {
-        const expectedClasses = String(cls).split(/\s+/).filter(Boolean);
-        for (const c of candidates) {
-          if (own(c)) continue;
-          if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
+        const expectedClasses = String(cls).split(/\s+/).filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
+        if (expectedClasses.length > 0) {
+          for (const c of candidates) {
+            if (own(c)) continue;
+            if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
+          }
         }
       }
     }
@@ -4880,7 +4882,7 @@
         const block = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
           ? html.slice(startIdx + startMark.length, endIdx).trim()
           : html;
-        const doc = parser.parseFromString(block, 'text/html');
+        const doc = parser.parseFromString(normalizeSourceFallbackBlock(block, filePath), 'text/html');
         srcWrapper = doc.querySelector('[data-impeccable-variants="' + sessionId + '"]');
         if (!srcWrapper) {
           console.warn('[impeccable] Variant wrapper not found in source file.');
@@ -4947,6 +4949,44 @@
         console.error('[impeccable] Failed to fetch source:', err);
         showToast('Could not load variants. Try refreshing the page.', 5000);
       });
+  }
+
+  function normalizeSourceFallbackBlock(block, filePath) {
+    if (!/\.[cm]?[jt]sx$/i.test(String(filePath || ''))) return block;
+    return String(block)
+      .replace(
+        /<style\b([^>]*)>\s*\{\s*`([\s\S]*?)`\s*\}\s*<\/style>/g,
+        (_match, attrs, css) => '<style' + attrs + '>' + css + '</style>',
+      )
+      .replace(/\bclassName\s*=\s*\{\s*`([^`]*?)`\s*\}/g, (_match, value) => {
+        const literalClasses = value.replace(/\$\{[^}]*\}/g, ' ').replace(/\s+/g, ' ').trim();
+        return literalClasses ? 'class="' + escapeHtml(literalClasses) + '"' : '';
+      })
+      .replace(/\bclassName\s*=/g, 'class=')
+      .replace(/\sstyle=\{\{([\s\S]*?)\}\}/g, (_match, body) => {
+        const css = jsxStyleObjectToCss(body);
+        return css ? ' style="' + escapeHtml(css) + '"' : '';
+      });
+  }
+
+  function jsxStyleObjectToCss(body) {
+    const declarations = [];
+    const re = /(["'][^"']+["']|[A-Za-z_$][\w$-]*)\s*:\s*(?:"([^"]*)"|'([^']*)'|(-?\d+(?:\.\d+)?))/g;
+    let match;
+    while ((match = re.exec(String(body || '')))) {
+      const prop = jsxStylePropToCss(match[1]);
+      const value = match[2] ?? match[3] ?? match[4] ?? '';
+      if (!prop || value === '') continue;
+      declarations.push(prop + ': ' + value);
+    }
+    return declarations.join('; ');
+  }
+
+  function jsxStylePropToCss(prop) {
+    let out = String(prop || '').trim().replace(/^["']|["']$/g, '');
+    if (!out) return '';
+    if (out.startsWith('--')) return out;
+    return out.replace(/[A-Z]/g, (ch) => '-' + ch.toLowerCase()).replace(/^-ms-/, '-ms-');
   }
 
   function buildSvelteExpressionTextMap(sourceOriginal, liveOriginal) {
@@ -5422,7 +5462,11 @@
           }
           // Source fallback when HMR did not land variants in this tab.
           if (msg.file && msg.id && state === 'GENERATING' && msg.id === currentSessionId) {
-            injectVariantsFromSource(msg.file, msg.id);
+            setTimeout(() => {
+              if (arrivedVariants >= expectedVariants && expectedVariants > 0) return;
+              if (state !== 'GENERATING' || msg.id !== currentSessionId) return;
+              injectVariantsFromSource(msg.file, msg.id);
+            }, 750);
             break;
           }
           // Variants are in source but not in the DOM yet. Common when the
@@ -5514,8 +5558,11 @@
   function sendEvent(msg, opts) {
     msg.token = TOKEN;
     function handleFailure(err) {
-      console.error('[impeccable] Failed to send event:', err);
-      if (opts && opts.throwOnError) throw err;
+      if (opts && opts.throwOnError) {
+        console.error('[impeccable] Failed to send event:', err);
+        throw err;
+      }
+      console.debug('[impeccable] Dropped optional live event:', err);
       return null;
     }
     return fetch('http://localhost:' + PORT + '/events', {
