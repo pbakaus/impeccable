@@ -43,6 +43,7 @@ function runCommand(command) {
     for (const file of command.files) {
       const args = ['--test'];
       if (command.timeoutMs) args.push(`--test-timeout=${command.timeoutMs}`);
+      if (command.forceExit) args.push('--test-force-exit');
       args.push(file);
       runProcess(process.execPath, args, { env });
     }

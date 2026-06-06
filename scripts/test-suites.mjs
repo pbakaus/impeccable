@@ -185,6 +185,7 @@ export const SUITES = {
       {
         runner: 'node',
         timeoutMs: 600000,
+        forceExit: true,
         files: ['tests/live-e2e.test.mjs'],
       },
     ],

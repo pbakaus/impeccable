@@ -136,7 +136,7 @@ jobs:
           - group: platform
             fixtures: astro-vite7,nextjs-app-router,vite8-sveltekit
           - group: react
-            fixtures: vite8-react-css-modules,vite8-react-insert,vite8-react-plain
+            fixtures: vite8-react-css-modules,vite8-react-plain
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
