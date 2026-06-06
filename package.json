@@ -68,7 +68,7 @@
     "og-image": "bun run scripts/generate-og-image.js"
   },
   "dependencies": {
-    "css-select": "^5.2.2",
+    "css-select": "^7.0.0",
     "css-tree": "^3.2.1",
     "domutils": "^4.0.2",
     "extract-zip": "^2.0.1",
