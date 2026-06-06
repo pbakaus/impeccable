@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -120,9 +124,25 @@ jobs:
         run: bun run test:cli-remote-e2e
 
   live-e2e:
+    name: live-e2e (${{ matrix.group }})
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.live_e2e == 'true'
+    timeout-minutes: 25
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - group: platform
+            fixtures: astro-vite7,nextjs-app-router,vite8-sveltekit
+          - group: react-a
+            fixtures: vite8-https,vite8-react-base-path,vite8-react-csp-meta,vite8-react-css-modules,vite8-react-emotion
+          - group: react-b
+            fixtures: vite8-react-insert,vite8-react-mapped-list,vite8-react-modal,vite8-react-plain
+          - group: stateful
+            fixtures: vite8-react-radix-dialog,vite8-react-router-spa,vite8-react-styled-components,vite8-react-tabs
+          - group: styling
+            fixtures: vite8-react-tailwindv3,vite8-react-tailwindv4,vite8-react-ts,vite8-react-tsx-repeated-aside,vite8-react-unocss,vite8-react-vanilla-extract
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -145,6 +165,8 @@ jobs:
 
       - name: Run live E2E tests
         run: bun run test:live-e2e
+        env:
+          IMPECCABLE_E2E_ONLY: ${{ matrix.fixtures }}
 
   skill-behavior:
     runs-on: ubuntu-latest

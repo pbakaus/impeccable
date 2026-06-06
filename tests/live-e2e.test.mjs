@@ -76,12 +76,16 @@ function listRuntimeFixtures() {
 
 const allFixtures = listRuntimeFixtures();
 
-// During development of the full-cycle test, a single fixture is much faster
-// to iterate on. Set IMPECCABLE_E2E_ONLY=<name> to scope the run.
-const onlyName = process.env.IMPECCABLE_E2E_ONLY;
-const fixtures = onlyName
-  ? allFixtures.filter((f) => f.name === onlyName)
+// During development of the full-cycle test, a fixture subset is much faster
+// to iterate on. Set IMPECCABLE_E2E_ONLY=<name>[,<name>...] to scope the run.
+const onlyNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_ONLY);
+const fixtures = onlyNames.size > 0
+  ? allFixtures.filter((f) => onlyNames.has(f.name))
   : allFixtures;
+const missingOnlyNames = [...onlyNames].filter((name) => !allFixtures.some((f) => f.name === name));
+if (missingOnlyNames.length > 0) {
+  throw new Error(`Unknown IMPECCABLE_E2E_ONLY fixture(s): ${missingOnlyNames.join(', ')}`);
+}
 
 const manualOnly = process.env.IMPECCABLE_E2E_MANUAL_ONLY === '1'
   || process.env.IMPECCABLE_E2E_MANUAL_ONLY === 'true';
@@ -96,6 +100,15 @@ if (fixtures.length === 0) {
 
 let playwright;
 let browser;
+
+function parseFixtureFilter(value) {
+  return new Set(
+    String(value || '')
+      .split(/[,\s]+/)
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+}
 
 before(async () => {
   if (fixtures.length === 0) return;
