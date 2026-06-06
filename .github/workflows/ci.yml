@@ -177,6 +177,10 @@ jobs:
         run: bun run test:live-e2e
         env:
           IMPECCABLE_E2E_ONLY: ${{ matrix.fixtures }}
+          IMPECCABLE_E2E_SCENARIOS: core
+          IMPECCABLE_E2E_TEST_TIMEOUT_MS: 180000
+          IMPECCABLE_E2E_INSTALL_TIMEOUT_MS: 120000
+          IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS: 60000
 
   live-e2e-full:
     name: live-e2e full (${{ matrix.group }})
@@ -238,6 +242,9 @@ jobs:
         run: bun run test:live-e2e
         env:
           IMPECCABLE_E2E_ONLY: ${{ matrix.fixtures }}
+          IMPECCABLE_E2E_TEST_TIMEOUT_MS: 300000
+          IMPECCABLE_E2E_INSTALL_TIMEOUT_MS: 180000
+          IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS: 120000
 
   skill-behavior:
     runs-on: ubuntu-latest

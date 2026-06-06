@@ -91,6 +91,9 @@ const manualOnly = process.env.IMPECCABLE_E2E_MANUAL_ONLY === '1'
   || process.env.IMPECCABLE_E2E_MANUAL_ONLY === 'true';
 const reloadVariants = process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === '1'
   || process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === 'true';
+const scenarioNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_SCENARIOS);
+const liveE2eTestTimeoutMs = readPositiveIntEnv('IMPECCABLE_E2E_TEST_TIMEOUT_MS');
+const liveE2eTestOptions = liveE2eTestTimeoutMs ? { timeout: liveE2eTestTimeoutMs } : {};
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -108,6 +111,17 @@ function parseFixtureFilter(value) {
       .map((name) => name.trim())
       .filter(Boolean),
   );
+}
+
+function readPositiveIntEnv(name) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function shouldRunScenario(name) {
+  return scenarioNames.size === 0 || scenarioNames.has('all') || scenarioNames.has(name);
 }
 
 before(async () => {
@@ -145,7 +159,11 @@ async function teardownAndResetBrowser(teardown) {
 
 for (const { name, fixture } of fixtures) {
   describe(`live-e2e · ${name} (${fixture.runtime.styling || 'unknown-styling'})`, () => {
-    it('drives the full click → Go → cycle → accept cycle', async (t) => {
+    it('drives the full click → Go → cycle → accept cycle', liveE2eTestOptions, async (t) => {
+      if (!shouldRunScenario('core')) {
+        t.skip('scenario filter excludes core');
+        return;
+      }
       if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
         t.skip('manual scenario filter is active');
         return;
@@ -621,11 +639,11 @@ for (const { name, fixture } of fixtures) {
       }
     });
 
-    if (Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
+    if (shouldRunScenario('manual') && Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
       const manualScenarioFilter = process.env.IMPECCABLE_E2E_MANUAL_SCENARIO || '';
       for (const scenario of fixture.runtime.manualEditScenarios) {
         if (manualScenarioFilter && !scenario.name.includes(manualScenarioFilter)) continue;
-        it(`Edit copy → Save → Apply/commit: ${scenario.name}`, async (t) => {
+        it(`Edit copy → Save → Apply/commit: ${scenario.name}`, liveE2eTestOptions, async (t) => {
           const manualAgent = await createManualScenarioAgent(t, scenario);
           if (!manualAgent) return;
           const { agent, agentMode, probeState } = manualAgent;
@@ -662,8 +680,8 @@ for (const { name, fixture } of fixtures) {
       }
     }
 
-    if (fixture.runtime.liveChrome?.annotations) {
-      it('uploads annotations with generate and still accepts the variant', async (t) => {
+    if (shouldRunScenario('annotations') && fixture.runtime.liveChrome?.annotations) {
+      it('uploads annotations with generate and still accepts the variant', liveE2eTestOptions, async (t) => {
         if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
           t.skip('manual scenario filter is active');
           return;
@@ -731,8 +749,8 @@ for (const { name, fixture } of fixtures) {
       });
     }
 
-    if (fixture.runtime.liveChrome?.bottomBar) {
-      it('Exit removes live chrome cleanly', async (t) => {
+    if (shouldRunScenario('exit') && fixture.runtime.liveChrome?.bottomBar) {
+      it('Exit removes live chrome cleanly', liveE2eTestOptions, async (t) => {
         if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
           t.skip('manual scenario filter is active');
           return;
