@@ -146,12 +146,19 @@ export function startDevServer(tmp, runtime) {
 }
 
 export async function stopDevServer(child) {
-  if (!child || child.killed) return;
-  const exited = new Promise((resolve) => child.once('exit', resolve));
+  if (!child || child.exitCode != null || child.signalCode != null) return;
+  let didExit = false;
+  const exited = new Promise((resolve) => child.once('exit', () => {
+    didExit = true;
+    resolve();
+  }));
   child.kill('SIGTERM');
   const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 5_000));
   await Promise.race([exited, timeoutPromise]);
-  if (!child.killed) child.kill('SIGKILL');
+  if (!didExit && child.exitCode == null && child.signalCode == null) {
+    child.kill('SIGKILL');
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+  }
 }
 
 // ---------------------------------------------------------------------------

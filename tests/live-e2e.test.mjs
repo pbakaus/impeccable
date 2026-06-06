@@ -120,7 +120,7 @@ before(async () => {
     );
   }
   try {
-    browser = await playwright.chromium.launch({ headless: true });
+    browser = await launchLiveE2eBrowser();
   } catch (err) {
     throw new Error(`Failed to launch Chromium (${err.message}). Run: npx playwright install chromium`);
   }
@@ -129,6 +129,19 @@ before(async () => {
 after(async () => {
   if (browser) await browser.close();
 });
+
+async function launchLiveE2eBrowser() {
+  return playwright.chromium.launch({ headless: true });
+}
+
+async function teardownAndResetBrowser(teardown) {
+  try {
+    await teardown();
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    browser = await launchLiveE2eBrowser();
+  }
+}
 
 for (const { name, fixture } of fixtures) {
   describe(`live-e2e · ${name} (${fixture.runtime.styling || 'unknown-styling'})`, () => {
@@ -351,17 +364,18 @@ for (const { name, fixture } of fixtures) {
         const cycleSequence = Array.isArray(fixture.runtime.variantSequence) && fixture.runtime.variantSequence.length > 0
           ? fixture.runtime.variantSequence
           : [2];
-        let visible = await getVisibleVariant(page);
+        let visible = await readVisibleVariantForCycle(page);
         let checkedVariantTwoStyle = false;
         for (const targetVariant of cycleSequence) {
           t.diagnostic(`Cycling to variant ${targetVariant}`);
-          while (visible < targetVariant) {
-            await clickNext(page);
-            visible = await getVisibleVariant(page);
-          }
-          while (visible > targetVariant) {
-            await clickPrev(page);
-            visible = await getVisibleVariant(page);
+          let cycleAttempts = 0;
+          while (visible !== targetVariant) {
+            if (cycleAttempts++ > expectedCount + 6) {
+              throw new Error(`variant ${targetVariant} did not become visible; last visible=${visible}`);
+            }
+            if (visible == null || visible < targetVariant) await clickNext(page);
+            else await clickPrev(page);
+            visible = await readVisibleVariantForCycle(page);
           }
           assert.equal(visible, targetVariant, `variant ${targetVariant} visible`);
           if (agentMode === 'fake' && targetVariant === 2 && !checkedVariantTwoStyle) {
@@ -370,11 +384,49 @@ for (const { name, fixture } of fixtures) {
               const el = query(sel) || document.querySelector(sel);
               return el && getComputedStyle(el).fontWeight === '900';
             }, variantContentSelector, { timeout: 5_000 }).catch(() => {});
-            const variantWeight = await page.evaluate((sel) => {
-              const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
-              const el = query(sel) || document.querySelector(sel);
-              return el ? getComputedStyle(el).fontWeight : null;
-            }, variantContentSelector);
+            const variantWeight = await evaluatePageWithTimeout(
+              page,
+              (sel) => {
+                const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+                const el = query(sel) || document.querySelector(sel);
+                return el ? getComputedStyle(el).fontWeight : null;
+              },
+              variantContentSelector,
+              5_000,
+              'variant font-weight read',
+            );
+            if (variantWeight !== '900') {
+              const styleSnapshot = await evaluatePageWithTimeout(
+                page,
+                (sel) => {
+                  const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+                  const el = query(sel) || document.querySelector(sel);
+                  const styleEl = document.querySelector('style[data-impeccable-css]');
+                  const rules = [];
+                  for (const sheet of [...document.styleSheets]) {
+                    if (sheet.ownerNode !== styleEl) continue;
+                    try {
+                      rules.push(...[...sheet.cssRules].map((rule) => rule.cssText));
+                    } catch (err) {
+                      rules.push(`cssRules error: ${err.message}`);
+                    }
+                  }
+                  return {
+                    selector: sel,
+                    element: el?.outerHTML || null,
+                    parent: el?.parentElement?.outerHTML?.slice(0, 800) || null,
+                    computedWeight: el ? getComputedStyle(el).fontWeight : null,
+                    styleText: styleEl?.textContent || null,
+                    rules,
+                  };
+                },
+                variantContentSelector,
+                5_000,
+                'variant style snapshot',
+              ).catch((err) => ({ error: err.message }));
+              t.diagnostic('--- variant style snapshot ---');
+              t.diagnostic(JSON.stringify(styleSnapshot, null, 2));
+            }
             assert.equal(
               variantWeight,
               '900',
@@ -565,7 +617,7 @@ for (const { name, fixture } of fixtures) {
         }
         throw err;
       } finally {
-        await teardown();
+        await teardownAndResetBrowser(teardown);
       }
     });
 
@@ -604,7 +656,7 @@ for (const { name, fixture } of fixtures) {
               assert.equal(probeState?.applyCalls, 1, 'manual_edit_apply event should not be redelivered after the correct ack');
             }
           } finally {
-            await teardown();
+            await teardownAndResetBrowser(teardown);
           }
         });
       }
@@ -674,7 +726,7 @@ for (const { name, fixture } of fixtures) {
           await waitForBarHidden(page);
           await waitForSourceClean(sourceFile, 20_000, { svelteComponentTarget });
         } finally {
-          await teardown();
+          await teardownAndResetBrowser(teardown);
         }
       });
     }
@@ -1151,6 +1203,25 @@ async function assertVisibleText(page, selector, text, { timeout = 20_000 } = {}
     const actual = await page.evaluate((sel) => document.querySelector(sel)?.textContent || null, selector).catch(() => null);
     throw new Error(`visible text ${selector} did not include ${JSON.stringify(text)}; actual=${JSON.stringify(actual)}; ${err.message}`);
   }
+}
+
+async function readVisibleVariantForCycle(page, { timeout = 5_000 } = {}) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeout) {
+    last = await getVisibleVariant(page);
+    if (Number.isInteger(last) && last > 0) return last;
+    await page.waitForTimeout(250);
+  }
+  return last;
+}
+
+async function evaluatePageWithTimeout(page, fn, arg, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([page.evaluate(fn, arg), timeout]).finally(() => clearTimeout(timer));
 }
 
 async function getServerManualEditStashCount(live, pageUrl = '/') {
