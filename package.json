@@ -76,7 +76,7 @@
     "marked": "^16.4.2"
   },
   "optionalDependencies": {
-    "puppeteer": "^24.42.0"
+    "puppeteer": "^25.1.0"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
