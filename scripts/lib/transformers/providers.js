@@ -28,6 +28,8 @@ export const PROVIDERS = {
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
     agentFormat: 'claude-md',
     emitHooks: 'claude',
+    // Project-local Claude Code hooks live in `.claude/settings.json`.
+    hooksManifestRel: 'settings.json',
   },
   gemini: {
     provider: 'gemini',

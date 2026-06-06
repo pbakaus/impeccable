@@ -59,6 +59,25 @@ const GLOBAL_HARNESS_HINTS = [
 // Last-resort default when nothing is detected: Claude Code + the universal
 // (.agents, also Codex) folder, which covers the most common setups.
 const DEFAULT_TARGETS = ['.claude', '.agents'];
+const IMPECCABLE_HOOK_COMMAND_MARKERS = [
+  'skills/impeccable/scripts/hook-probe.mjs',
+  'skills/impeccable/scripts/hook.mjs',
+  'skills/impeccable/scripts/hook-after-edit.mjs',
+  'skills/impeccable/scripts/hook-stop.mjs',
+];
+const PROVIDER_HOOK_ARTIFACTS = {
+  '.claude': [
+    { sourceProvider: '.claude', rel: 'settings.json', destProvider: '.claude' },
+  ],
+  '.cursor': [
+    { sourceProvider: '.cursor', rel: 'hooks.json', destProvider: '.cursor' },
+  ],
+  // Codex reads skills from `.agents/skills`, but project hooks from
+  // `.codex/hooks.json`, so the `.agents` install target owns this sidecar.
+  '.agents': [
+    { sourceProvider: '.codex', rel: 'hooks.json', destProvider: '.codex' },
+  ],
+};
 
 function ask(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -409,7 +428,6 @@ function copyProviderSkills(bundleDir, root, targets) {
         written++;
       }
     }
-    copyProviderHooks(bundleDir, root, provider);
   }
   return written;
 }
@@ -557,6 +575,21 @@ async function install(flags) {
 
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
+    const targets = providersFlag ? resolveInstallTargets(root, providersFlag.split('=')[1]) : findInstalledProviders(root);
+    const missingHookDests = expectedHookDests(root, targets).filter(dest => !existsSync(dest));
+    if (missingHookDests.length > 0) {
+      let bundleDir;
+      try {
+        bundleDir = await downloadAndExtractBundle();
+        const hookTargets = copyProviderHooks(bundleDir, root, targets);
+        if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
+      } catch (e) {
+        console.error(`Hook install failed: ${e.message}`);
+        process.exit(1);
+      } finally {
+        if (bundleDir) rmSync(bundleDir, { recursive: true, force: true });
+      }
+    }
     console.log('Run with --force to reinstall.\n');
     process.exit(0);
   }
@@ -596,8 +629,10 @@ async function install(flags) {
   migrateUnprefixImpeccable(root);
 
   let written = 0;
+  let hookTargets = [];
   try {
     written = copyProviderSkills(bundleDir, root, targets);
+    hookTargets = copyProviderHooks(bundleDir, root, targets, { force });
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
     console.error(`Install failed: ${e.message}`);
@@ -610,6 +645,7 @@ async function install(flags) {
     process.exit(1);
   }
   console.log(`Installed impeccable into: ${targets.join(', ')}`);
+  if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
 
   console.log('\nDone! Run /impeccable init in your AI harness to set up design context.\n');
 }
@@ -694,6 +730,7 @@ function downloadFile(url, dest) {
 
 async function update(flags = []) {
   const yes = flags.includes('-y') || flags.includes('--yes');
+  const force = flags.includes('--force');
 
   // Download the latest skills directly from impeccable.style.
   // We skip `npx skills update` because it has a known upstream bug
@@ -730,7 +767,9 @@ async function update(flags = []) {
   if (isUpToDate(root, copyProviders, tmpDir)) {
     rmSync(tmpDir, { recursive: true, force: true });
     const v = getSkillsVersion(root);
-    console.log(`Skills are up to date${v ? ` (v${v})` : ''}. Nothing to do.`);
+    console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
+    if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
+    console.log('Nothing else to do.');
     process.exit(0);
   }
 
@@ -771,14 +810,13 @@ async function update(flags = []) {
         updated++;
       }
     }
-    for (const provider of providers) {
-      copyProviderHooks(tmpDir, root, provider);
-    }
+    const hookTargets = copyProviderHooks(tmpDir, root, providers, { force });
 
     rmSync(tmpDir, { recursive: true, force: true });
 
     const v = getSkillsVersion(root);
     console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
+    if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
     console.log('Done!\n');
   } catch (e) {
     console.error(`Update failed: ${e.message}`);

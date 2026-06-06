@@ -1,147 +1,78 @@
 /**
- * Integration tests for the design-hook build pipeline.
+ * Integration tests for provider-native hook probe build artifacts.
  * Run: node --test tests/hook-build.test.mjs
- *
- * Verifies that:
- *   - Claude/Codex hook manifests have the right shape, matcher, timeouts,
- *     and command/args. (Pure unit test against the builders — no FS dep.)
- *   - The committed build artifacts (`plugin/hooks/hooks.json`,
- *     `.codex/hooks.json`, and `.cursor/hooks.json`) exist and parse, and
- *     reference the bundled hook scripts that are also present.
- *
- * Both halves matter: the builder test catches regressions in the schema we
- * emit, and the artifact test catches "we forgot to commit the regenerated
- * files" mistakes before they reach users.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import {
-  buildClaudeHooksManifest,
+  buildClaudeSettingsManifest,
   buildCodexHooksManifest,
   buildCursorHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PROBE_MARKER = 'skills/impeccable/scripts/hook-probe.mjs';
 
-describe('buildClaudeHooksManifest()', () => {
-  const m = buildClaudeHooksManifest();
+function readJson(rel) {
+  return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
+}
 
-  it('declares a single PostToolUse matcher group for direct-edit tools', () => {
-    // Single matcher group covers Edit/Write/MultiEdit on Claude Code
-    // and apply_patch on Codex. Claude sends `tool_input.file_path`;
-    // Codex `apply_patch` sends the patch in `tool_input.command` (parsed
-    // in hook-lib.mjs). The earlier `mcp__node_repl__.*` sweep group was
-    // removed in v5: it required git-status fallback, only worked
-    // inside git repos, and emitted confusing "look at unrelated work"
-    // nudges when the model touched files outside the current task.
-    const ptu = m.hooks.PostToolUse;
-    assert.ok(Array.isArray(ptu) && ptu.length === 1, `expected 1 group, got ${ptu?.length}`);
-    assert.equal(ptu[0].matcher, 'Edit|Write|MultiEdit|apply_patch');
-  });
+function expectProbeCommand(value, providerPath) {
+  assert.equal(typeof value, 'string');
+  assert.ok(value.includes(PROBE_MARKER), `missing probe marker in ${value}`);
+  assert.ok(value.includes(providerPath), `missing provider path ${providerPath} in ${value}`);
+  assert.ok(!value.includes('hook.mjs'), `old detector hook still referenced in ${value}`);
+  assert.ok(!value.includes('hook-after-edit.mjs'), `old Cursor hook still referenced in ${value}`);
+  assert.ok(!value.includes('hook-stop.mjs'), `old Cursor hook still referenced in ${value}`);
+}
 
-  it('uses shell-form command with quoted ${CLAUDE_PLUGIN_ROOT}', () => {
-    // Claude plugin placeholder expansion happens in the `command` string, not
-    // in `args`. Exec form (command: "node" + args: [...]) can ship a literal
-    // placeholder to Node and make the hook fail with MODULE_NOT_FOUND. Quotes
-    // protect plugin roots that contain spaces.
-    const expected = 'node "${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs"';
-    const handler = m.hooks.PostToolUse[0].hooks[0];
+describe('hook manifest builders', () => {
+  it('builds Claude project settings for the harmless probe', () => {
+    const manifest = buildClaudeSettingsManifest();
+    const group = manifest.hooks.PostToolUse[0];
+    const handler = group.hooks[0];
+
+    assert.equal(group.matcher, 'Edit|Write|MultiEdit');
     assert.equal(handler.type, 'command');
-    assert.equal(handler.command, expected);
-    assert.ok(!('args' in handler), 'shell form must not also set args');
+    assert.equal(handler.timeout, 3);
+    expectProbeCommand(handler.command, '.claude/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(handler.command.includes('${CLAUDE_PROJECT_DIR}'));
+    assert.equal(handler.args, undefined);
+    assert.equal(handler.statusMessage, undefined);
   });
 
-  it('does not declare an if: glob (script filters; Edit-only if would skip Write/MultiEdit)', () => {
-    assert.equal(m.hooks.PostToolUse[0].hooks[0].if, undefined);
-  });
+  it('builds Codex project-local hooks for the harmless probe', () => {
+    const manifest = buildCodexHooksManifest();
+    const group = manifest.hooks.PostToolUse[0];
+    const handler = group.hooks[0];
 
-  it('sets PostToolUse timeout to 5s', () => {
-    assert.equal(m.hooks.PostToolUse[0].hooks[0].timeout, 5);
-  });
-
-  it('does not declare a SessionStart greeting hook', () => {
-    assert.equal(m.hooks.SessionStart, undefined);
-  });
-});
-
-describe('buildCodexHooksManifest()', () => {
-  const m = buildCodexHooksManifest();
-
-  it('declares a single PostToolUse matcher group (direct-edit only)', () => {
-    const ptu = m.hooks.PostToolUse;
-    assert.ok(Array.isArray(ptu) && ptu.length === 1);
-    // Codex's direct-edit equivalents. apply_patch is the channel
-    // Codex uses for almost all file mutations; Edit/Write are present
-    // for harness compatibility. The earlier `mcp__node_repl__.*`
-    // sweep group was pulled in v5 — see buildClaudeHooksManifest test
-    // above for rationale.
-    assert.equal(ptu[0].matcher, 'Edit|Write|apply_patch');
-  });
-
-  it('uses shell-form command resolved from the project git root', () => {
-    const expected = 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"';
-    const handler = m.hooks.PostToolUse[0].hooks[0];
+    assert.equal(group.matcher, 'Edit|Write|apply_patch');
     assert.equal(handler.type, 'command');
-    assert.equal(handler.command, expected);
-    assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
-    assert.ok(!handler.command.includes('CLAUDE_PLUGIN_ROOT'));
-    assert.ok(!('args' in handler));
+    assert.equal(handler.timeout, 3);
+    expectProbeCommand(handler.command, '.agents/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(handler.command.includes('git rev-parse --show-toplevel'));
+    assert.equal(handler.statusMessage, undefined);
   });
 
-  it('does not declare an if: glob (Codex has no analog)', () => {
-    assert.equal(m.hooks.PostToolUse[0].hooks[0].if, undefined);
+  it('builds Cursor hooks for the harmless probe', () => {
+    const manifest = buildCursorHooksManifest();
+    const handler = manifest.hooks.afterFileEdit[0];
+
+    assert.equal(manifest.version, 1);
+    assert.ok(Array.isArray(manifest.hooks.afterFileEdit));
+    assert.equal(manifest.hooks.stop, undefined);
+    assert.equal(handler.timeout, 3);
+    expectProbeCommand(handler.command, '.cursor/skills/impeccable/scripts/hook-probe.mjs');
   });
 
-  it('PostToolUse timeout is 5s and exposes statusMessage', () => {
-    const handler = m.hooks.PostToolUse[0].hooks[0];
-    assert.equal(handler.timeout, 5);
-    assert.equal(handler.statusMessage, 'Scanning design');
-  });
-
-  it('does not declare a SessionStart greeting hook', () => {
-    assert.equal(m.hooks.SessionStart, undefined);
-  });
-});
-
-describe('buildCursorHooksManifest()', () => {
-  const m = buildCursorHooksManifest();
-
-  it('uses Cursor hooks.json schema (version 1, camelCase events)', () => {
-    assert.equal(m.version, 1);
-    assert.ok(Array.isArray(m.hooks.afterFileEdit));
-    assert.ok(Array.isArray(m.hooks.stop));
-    assert.equal(m.hooks.sessionStart, undefined);
-    assert.equal(m.hooks.postToolUse, undefined);
-    assert.equal(m.hooks.PostToolUse, undefined);
-  });
-
-  it('afterFileEdit uses a portable node command + hook-after-edit.mjs', () => {
-    const handler = m.hooks.afterFileEdit[0];
-    assert.equal(handler.timeout, 5);
-    assert.match(handler.command, /^node "/);
-    assert.ok(!handler.command.includes('=cursor '));
-    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-after-edit.mjs'));
-  });
-
-  it('stop uses hook-stop.mjs with loop_limit 1', () => {
-    const handler = m.hooks.stop[0];
-    assert.equal(handler.timeout, 5);
-    assert.equal(handler.loop_limit, 1);
-    assert.match(handler.command, /^node "/);
-    assert.ok(!handler.command.includes('=cursor '));
-    assert.ok(handler.command.includes('.cursor/skills/impeccable/scripts/hook-stop.mjs'));
-  });
-
-});
-
-describe('hooksJsonFor()', () => {
-  it('routes claude/codex/cursor; returns null for others', () => {
+  it('routes supported hook builders and leaves other providers alone', () => {
     assert.ok(hooksJsonFor('claude'));
     assert.ok(hooksJsonFor('codex'));
     assert.ok(hooksJsonFor('cursor'));
@@ -149,90 +80,81 @@ describe('hooksJsonFor()', () => {
   });
 });
 
-describe('committed hook artifacts in repo', () => {
+describe('generated hook artifacts in repo', () => {
   for (const rel of [
-    'plugin/.claude-plugin/plugin.json',
-    'plugin/hooks/hooks.json',
-    '.codex/hooks.json',
+    '.claude/settings.json',
     '.cursor/hooks.json',
+    '.codex/hooks.json',
   ]) {
     it(`${rel} exists and is valid JSON`, () => {
       const abs = path.join(REPO_ROOT, rel);
-      assert.ok(fs.existsSync(abs), `${rel} missing — did you forget bun run build?`);
-      assert.doesNotThrow(() => JSON.parse(fs.readFileSync(abs, 'utf-8')));
+      assert.ok(fs.existsSync(abs), `${rel} missing - did you forget bun run build?`);
+      assert.doesNotThrow(() => JSON.parse(fs.readFileSync(abs, 'utf8')));
     });
   }
 
-  // Shell-form command shape: `node "<root-placeholder>/.../hook.mjs"`.
-  // Parse out the quoted path so we can verify the Claude plugin script exists on disk.
-  const extractScriptPath = (commandStr, rootPlaceholder) => {
-    const match = commandStr.match(/"([^"]+)"/);
-    assert.ok(match, `expected quoted script path in command: ${commandStr}`);
-    return match[1].replace(`${rootPlaceholder}/`, '');
-  };
+  it('Claude project settings reference the probe in .claude/skills', () => {
+    const manifest = readJson('.claude/settings.json');
+    const handler = manifest.hooks.PostToolUse[0].hooks[0];
 
-  it('plugin/.claude-plugin/plugin.json points at plugin-local skills/', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf-8'));
-    assert.equal(manifest.skills, './skills/');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/SKILL.md')));
+    expectProbeCommand(handler.command, '.claude/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook-probe.mjs')));
   });
 
-  it('plugin/hooks/hooks.json stays Claude-specific and bundles the referenced script', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin/hooks/hooks.json'), 'utf-8'));
-    const command = manifest.hooks.PostToolUse[0].hooks[0].command;
-    assert.ok(command.includes('${CLAUDE_PLUGIN_ROOT}'));
-    assert.ok(!command.includes('${PLUGIN_ROOT}'));
-    const scriptRel = extractScriptPath(
-      command,
-      '${CLAUDE_PLUGIN_ROOT}',
-    );
-    const bundledScript = path.join(REPO_ROOT, 'plugin', scriptRel);
-    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
+  it('Cursor project hooks reference the probe in .cursor/skills', () => {
+    const manifest = readJson('.cursor/hooks.json');
+    const handler = manifest.hooks.afterFileEdit[0];
+
+    expectProbeCommand(handler.command, '.cursor/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-probe.mjs')));
   });
 
-  it('.codex/hooks.json stays Codex project-local and references the .agents skill runtime', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.codex/hooks.json'), 'utf-8'));
-    const command = manifest.hooks.PostToolUse[0].hooks[0].command;
-    assert.equal(command, 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"');
-    assert.ok(!command.includes('${PLUGIN_ROOT}'));
-    assert.ok(!command.includes('${CLAUDE_PLUGIN_ROOT}'));
-    const bundledScript = path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook.mjs');
-    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-lib.mjs')),
-      'Codex hook-lib runtime missing from .agents skill');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/detector/detect-antipatterns.mjs')),
-      'Codex detector runtime missing from .agents skill');
+  it('Codex project hooks reference the probe in .agents/skills', () => {
+    const manifest = readJson('.codex/hooks.json');
+    const handler = manifest.hooks.PostToolUse[0].hooks[0];
+
+    expectProbeCommand(handler.command, '.agents/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-probe.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/SKILL.md')));
   });
 
-  it('plugin/ is not also a Codex plugin package', () => {
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin/.codex-plugin/plugin.json')), false);
+  it('does not generate old hook runtime scripts into provider skill payloads', () => {
+    for (const providerDir of ['.claude', '.cursor', '.agents']) {
+      const scriptsDir = path.join(REPO_ROOT, providerDir, 'skills', 'impeccable', 'scripts');
+      for (const oldScript of ['hook.mjs', 'hook-lib.mjs', 'hook-admin.mjs', 'hook-after-edit.mjs', 'hook-stop.mjs']) {
+        assert.equal(fs.existsSync(path.join(scriptsDir, oldScript)), false, `${providerDir} still has ${oldScript}`);
+      }
+    }
   });
 
-  it('Codex plugin-marketplace artifacts are not generated', () => {
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, 'plugin-codex')), false);
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.agents/hooks')), false);
-    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.agents/plugins/marketplace.json')), false);
+  it('does not generate plugin or stale Codex hook packaging artifacts', () => {
+    for (const rel of [
+      '.claude/hooks/hooks.json',
+      '.agents/hooks',
+      '.agents/plugins/marketplace.json',
+      'plugin-codex',
+      'plugin/hooks/hooks.json',
+      'plugin/.codex-plugin/plugin.json',
+    ]) {
+      assert.equal(fs.existsSync(path.join(REPO_ROOT, rel)), false, `${rel} should not exist`);
+    }
   });
 
-  it('.cursor/hooks.json references hook-after-edit.mjs bundled in .cursor/skills/', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.cursor/hooks.json'), 'utf-8'));
-    const command = manifest.hooks.afterFileEdit[0].command;
-    const match = command.match(/node "([^"]+)"/);
-    assert.ok(match, `expected quoted script path in command: ${command}`);
-    const scriptRel = match[1];
-    const bundledScript = path.join(REPO_ROOT, scriptRel);
-    assert.ok(fs.existsSync(bundledScript), `bundled hook script missing: ${bundledScript}`);
-  });
+  it('probe scripts execute successfully from all generated provider payloads', () => {
+    for (const rel of [
+      '.claude/skills/impeccable/scripts/hook-probe.mjs',
+      '.cursor/skills/impeccable/scripts/hook-probe.mjs',
+      '.agents/skills/impeccable/scripts/hook-probe.mjs',
+    ]) {
+      const result = spawnSync(process.execPath, [path.join(REPO_ROOT, rel)], {
+        cwd: REPO_ROOT,
+        input: JSON.stringify({ hook_event_name: 'PostToolUse' }),
+        encoding: 'utf8',
+      });
 
-  it('hook scripts can import the bundled detector via the relative path they use at runtime', async () => {
-    const scriptDir = path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts');
-    assert.ok(fs.existsSync(path.join(scriptDir, 'detector', 'detect-antipatterns.mjs')),
-      'detector bundle missing — hook.mjs would fall back to source path and fail in production install');
-    const codexScriptDir = path.join(REPO_ROOT, '.agents/skills/impeccable/scripts');
-    assert.ok(fs.existsSync(path.join(codexScriptDir, 'detector', 'detect-antipatterns.mjs')),
-      'Codex detector bundle missing from .agents skill — hook.mjs would fail in project install');
-    const codexHookLib = await import(pathToFileURL(path.join(codexScriptDir, 'hook-lib.mjs')));
-    const detector = await codexHookLib.loadDetector();
-    assert.equal(typeof detector.detectText, 'function');
+      assert.equal(result.status, 0, `${rel} exited ${result.status}: ${result.stderr}`);
+      assert.equal(result.stdout, '');
+      assert.equal(result.stderr, '');
+    }
   });
 });

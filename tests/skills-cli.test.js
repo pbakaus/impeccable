@@ -14,7 +14,14 @@ import { execSync } from 'child_process';
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { copyProviderHooks, copyProviderSkills, migrateUnprefixImpeccable } from '../cli/bin/commands/skills.mjs';
+import {
+  copyProviderHooks,
+  copyProviderSkills,
+  expectedHookDests,
+  mergeHookManifests,
+  migrateUnprefixImpeccable,
+  resolveInstallTargets,
+} from '../cli/bin/commands/skills.mjs';
 
 const CLI = join(import.meta.dir, '..', 'cli', 'bin', 'cli.js');
 
@@ -109,6 +116,7 @@ describe('skills install: already-installed detection', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-'));
     execSync('git init', { cwd: tmp });
     createFakeSkills(tmp);
+    writeFileSync(join(tmp, '.claude', 'settings.json'), JSON.stringify({ hooks: {} }));
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');
@@ -123,6 +131,7 @@ describe('skills install: already-installed detection', () => {
     const skillDir = join(tmp, '.cursor', 'skills', 'i-impeccable');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: i-impeccable\n---\n');
+    writeFileSync(join(tmp, '.cursor', 'hooks.json'), JSON.stringify({ version: 1, hooks: {} }));
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');

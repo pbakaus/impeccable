@@ -262,6 +262,7 @@ export function createTransformer(config) {
         const scriptsOutDir = path.join(skillDir, 'scripts');
         ensureDir(scriptsOutDir);
         for (const script of skill.scripts) {
+          if (script.name === 'hook-probe.mjs' && !(config.emitHooks || provider === 'agents')) continue;
           writeFile(path.join(scriptsOutDir, script.name), script.content);
           scriptCount++;
         }
@@ -302,7 +303,7 @@ export function createTransformer(config) {
     }
 
     // Emit the provider hook manifest when the provider opts in.
-    // Claude Code uses `.claude/hooks/hooks.json`, Codex uses project-local
+    // Claude Code uses `.claude/settings.json`, Codex uses project-local
     // `.codex/hooks.json`, and Cursor uses `.cursor/hooks.json`.
     let hooksEmitted = false;
     if (config.emitHooks) {

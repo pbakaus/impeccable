@@ -103,9 +103,15 @@ From the root of your project, run:
 npx impeccable skills install
 ```
 
-This auto-detects your harness and writes the build compiled for it to the right location (`.claude/skills/`, `.cursor/skills/`, etc.). Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+This auto-detects your harness and writes the build compiled for it to the right location (`.claude/skills/`, `.cursor/skills/`, etc.). On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
 
-Claude Code users can alternatively install the plugin with `/plugin marketplace add pbakaus/impeccable`. The general-purpose `npx skills add pbakaus/impeccable` also works, though it installs one shared build for all harnesses rather than the one compiled for yours.
+To refresh an existing install, run:
+
+```bash
+npx impeccable skills update
+```
+
+Codex users should open `/hooks` after install or update and approve the project hook when prompted. Codex tracks trust by hook definition, so updates that change `.codex/hooks.json` can require approval again.
 
 ### Option 2: Git Submodule
 
@@ -254,62 +260,26 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 ## Design hook
 
-On Claude Code, Codex, and Cursor, Impeccable installs hooks that wrap the design detector around your edits.
+On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impeccable skills update` install a provider-native hook manifest along with the skill payload. This first release is plumbing only: the hook runs `hook-probe.mjs`, exits 0, and emits no stdout or stderr by default. It does not run the anti-pattern detector yet.
 
-**`PostToolUse`** (Claude Code and Codex) fires after direct file edits on UI files. Claude Code sends `tool_input.file_path` on Edit/Write/MultiEdit; Codex `apply_patch` sends the patch in `tool_input.command` (the hook parses `*** Update File:` / `*** Add File:` lines). When you edit a component (`.tsx`, `.jsx`, etc.), the hook also scans static CSS it imports and co-located stylesheets (`styles.css`, `*.module.css`, same basename). Restricted to UI extensions: `.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`. Tool calls with no resolvable path (Bash, `mcp__node_repl__*`, browser tools) are a silent skip.
+Installed hook surfaces:
 
-**Cursor** uses a different surface because Cursor 3.5.x drops `postToolUse` `additional_context` before it reaches the model. Instead: **`afterFileEdit`** runs detection on each agent file edit and queues fresh/pending findings; **`stop`** drains that queue at end of turn and auto-submits one corrective `followup_message` (`loop_limit: 1`, so at most one nudge per turn).
+- Claude Code: `.claude/settings.json` runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook-probe.mjs`.
+- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-probe.mjs`.
+- Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook-probe.mjs`.
 
-Every fire that actually scans something emits a developer-role system reminder so the hook stays a conversational presence the model can act on. Three emission states map to three message shapes:
+The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
 
-- **Fresh findings**: the imperative `Required design corrections in ...` template, with the directive footer asking the model to fix and acknowledge before finalizing.
-- **Pending findings**: the file still has issues we already told the model about in this session but it hasn't fixed yet. Short re-nudge listing the unresolved rules: `Still has N issue(s) flagged earlier this session (side-tab:3, ...). Address them before finalizing.`
-- **Truly clean**: detector returned zero. Short positive ack: `No anti-patterns. Keep typography hierarchy, spacing rhythm, and color contrast intentional on the next change.`
+For debugging only, set `IMPECCABLE_HOOK_PROBE_LOG=/path/to/probe.ndjson` to write one NDJSON line per hook invocation. Leave it unset for normal use.
 
-Never blocks an edit. Never silent on a successful scan, with one exception: detector crashes stay silent because we don't know the truth. To restore the old silent-on-clean behavior set `IMPECCABLE_HOOK_QUIET=1` in your shell; findings emissions still fire under QUIET, only the pending and clean acks are suppressed.
+Codex requires one platform step that Impeccable cannot safely skip: open `/hooks` after install or update and approve the project hook. There is no Codex marketplace/plugin install flow for this hook.
 
-### Installing on Cursor
-
-The skills CLI installs the skill tree only. Hooks are a separate file. After `npx skills add pbakaus/impeccable`, copy the full Cursor harness (skill scripts **and** hooks manifest):
+Manual copy commands are fallback/debug instructions. The normal path is:
 
 ```bash
-# from impeccable repo after bun run build, or from the downloaded ZIP
-cp -r dist/cursor/.cursor your-project/
+npx impeccable skills install
+npx impeccable skills update
 ```
-
-That lands `.cursor/hooks.json` plus `.cursor/skills/impeccable/scripts/` (including `hook*.mjs` and the bundled `detector/`). The manifest wires `afterFileEdit` (recorder) and `stop` (one-shot followup).
-
-Cursor watches `.cursor/hooks.json` and reloads on save; restart the IDE if hooks do not appear. Open **Settings → Hooks** (or the Hooks output channel) to confirm `afterFileEdit` and `stop` are enabled. When the hook finds issues, Cursor auto-submits a follow-up user message at end of turn telling the agent to fix them. The hook runs on macOS, Linux, and Windows.
-
-**Common miss:** hook manifests are harness-specific. Cursor ignores `.codex/hooks.json`; you need `.cursor/hooks.json` at the project root.
-
-### Installing on Claude Code
-
-`npx skills add impeccable` installs the plugin and its `PostToolUse` hook at once. It is on by default.
-
-### Installing on Codex
-
-Codex discovers project-local hooks from `.codex/hooks.json`, and discovers skills from `.agents/skills/`. Copy both generated directories into the project:
-
-```bash
-cp -r dist/agents/.agents your-project/
-mkdir -p your-project/.codex
-cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
-```
-
-Then start Codex in that trusted project and open `/hooks` to review and approve the project hook. Codex tracks trust by hook definition hash in `~/.codex/config.toml`, so re-approve from `/hooks` after updates that change `.codex/hooks.json`. Hooks are enabled by default in current Codex builds and can be disabled globally with `[features].hooks = false`. Codex hooks are disabled on Windows; the skill and commands still work there. The Claude Code hook runs on macOS, Linux, and Windows.
-
-**Disable per project**: run `/impeccable hooks off`. Re-enable with `/impeccable hooks on`. Inspect with `/impeccable hooks status`. The toggle persists in `.impeccable/hook.json`, so check it in if a teammate set it.
-
-**Disable globally**: set `IMPECCABLE_HOOK_DISABLED=1` in your shell. For CI, this is the cleanest path.
-
-**Lower the chat noise without disabling**: set `IMPECCABLE_HOOK_QUIET=1` to suppress the pending and clean acks. Findings emissions still fire (they're the real signal). Use this if the conversational nudges feel like context bloat for your workflow.
-
-**Tune the hook**: `.impeccable/hook.json` supports `ignoreRules` (skip specific findings), `ignoreFiles` (project-relative globs), `minSeverity`, and `limits.maxFindings` / `limits.maxChars`. Inline suppression uses language-aware comments: `// impeccable: ignore <rule>` for JS/TS, `<!-- impeccable: ignore <rule> -->` for HTML/Vue/Svelte/Astro, `{/* impeccable: ignore <rule> */}` for JSX/TSX, `/* impeccable: ignore <rule> */` for CSS. `*` matches every rule. The directive applies to the next non-blank line. Same convention as ESLint, Stylelint, and Biome.
-
-**Debug**: set `IMPECCABLE_HOOK_LOG=$HOME/.impeccable/hook.ndjson` to get one NDJSON line per fire (event, file, findings count, durationMs, skip reason). Off by default.
-
-The hook covers roughly the slop half of the detector ruleset: anything the regex engine catches without needing a rendered DOM. Layout and a11y rules require running the full audit. `/impeccable audit` is the deeper review; the hook is the always-on first line of defense.
 
 ## CLI
 
