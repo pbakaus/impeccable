@@ -1,0 +1,36 @@
+name: 'Impeccable design scan'
+description: 'Scan a path for UI design anti-patterns and emit SARIF for GitHub code scanning.'
+inputs:
+  path:
+    description: 'File or directory to scan'
+    required: false
+    default: '.'
+  fail-on-findings:
+    description: 'Fail the job if any findings are produced'
+    required: false
+    default: 'false'
+outputs:
+  sarif-file:
+    description: 'Path to the generated SARIF file'
+    value: ${{ steps.scan.outputs.sarif-file }}
+  finding-count:
+    description: 'Number of findings produced'
+    value: ${{ steps.scan.outputs.finding-count }}
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+    - id: scan
+      shell: bash
+      run: |
+        npx --yes impeccable@latest detect --sarif "${{ inputs.path }}" > impeccable.sarif
+        echo "sarif-file=impeccable.sarif" >> "$GITHUB_OUTPUT"
+        count=$(node -e "const s=require('./impeccable.sarif');console.log(s.runs[0].results.length)")
+        echo "finding-count=$count" >> "$GITHUB_OUTPUT"
+        echo "Impeccable found $count finding(s)."
+        if [ "${{ inputs.fail-on-findings }}" = "true" ] && [ "$count" -gt 0 ]; then
+          echo "Failing because fail-on-findings=true and findings > 0"
+          exit 1
+        fi

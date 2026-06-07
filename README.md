@@ -260,6 +260,31 @@ npx impeccable detect --fast --json .        # regex-only, JSON output
 
 The detector catches 24 issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
+### Continuous integration
+
+`detect --sarif` emits a SARIF 2.1.0 document so results show up in GitHub code scanning. A reusable action wraps the scan:
+
+```yaml
+permissions:
+  security-events: write
+  contents: read
+jobs:
+  design-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pbakaus/impeccable@v2
+        id: impeccable
+        with:
+          path: 'src'          # file or directory to scan (default ".")
+          fail-on-findings: 'false'
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.impeccable.outputs.sarif-file }}
+```
+
+Set `fail-on-findings: 'true'` to block the job when any anti-pattern is found. Without an action, `npx impeccable detect --sarif . > impeccable.sarif` produces the same file.
+
 ## Supported Tools
 
 - [Cursor](https://cursor.com)

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { FRAMEWORK_HTTP_PROBE_TIMEOUT_MS, PORT_PROBE_TIMEOUT_MS } from '../shared/thresholds.mjs';
+
 // ---------------------------------------------------------------------------
 // File walker
 // ---------------------------------------------------------------------------
@@ -148,7 +150,7 @@ async function isPortListening(port, fingerprint = null) {
     const net = await import('node:net');
     return new Promise((resolve) => {
       const sock = net.default.createConnection({ port, host: '127.0.0.1' });
-      sock.setTimeout(500);
+      sock.setTimeout(PORT_PROBE_TIMEOUT_MS);
       sock.on('connect', () => { sock.destroy(); resolve({ listening: true, matched: true }); });
       sock.on('error', () => resolve({ listening: false }));
       sock.on('timeout', () => { sock.destroy(); resolve({ listening: false }); });
@@ -158,7 +160,7 @@ async function isPortListening(port, fingerprint = null) {
   // HTTP probe with fingerprint matching
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
+    const timeout = setTimeout(() => controller.abort(), FRAMEWORK_HTTP_PROBE_TIMEOUT_MS);
     const res = await fetch(`http://localhost:${port}/`, { signal: controller.signal, redirect: 'follow' });
     clearTimeout(timeout);
 

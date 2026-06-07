@@ -213,7 +213,7 @@ async function detectUrl(url, options = {}) {
       }, () => browser.close());
     }
   }
-  return filterByProviders(results.map(f => finding(f.id, url, f.snippet)), options.providers);
+  return filterByProviders(results.map(f => finding(f.id, url, f.snippet, f.line ?? 0, 'browser')), options.providers);
 }
 
 async function createBrowserDetector(options = {}) {

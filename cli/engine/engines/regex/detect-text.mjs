@@ -3,6 +3,7 @@ import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
 import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { profileFindings, profileStep } from '../../profile/profiler.mjs';
+import { BORDER_ACCENT_STRONG_WIDTH_PX } from '../../shared/thresholds.mjs';
 
 // ---------------------------------------------------------------------------
 // Regex fallback (non-HTML files: CSS, JSX, TSX, etc.)
@@ -47,26 +48,26 @@ const REGEX_MATCHERS = [
     test: (m, line) => { const n = +m[1]; return hasRounded(line) ? n >= 1 : n >= 4; },
     fmt: (m) => m[0] },
   { id: 'side-tab', regex: /border-(?:left|right)\s*:\s*(\d+)px\s+solid[^;]*/gi,
-    test: (m, line) => { if (isSafeElement(line)) return false; if (isNeutralBorderColor(m[0])) return false; const n = +m[1]; return hasBorderRadius(line) ? n >= 1 : n >= 3; },
+    test: (m, line) => { if (isSafeElement(line)) return false; if (isNeutralBorderColor(m[0])) return false; const n = +m[1]; return hasBorderRadius(line) ? n >= 1 : n >= BORDER_ACCENT_STRONG_WIDTH_PX; },
     fmt: (m) => m[0].replace(/\s*;?\s*$/, '') },
   { id: 'side-tab', regex: /border-(?:left|right)-width\s*:\s*(\d+)px/gi,
-    test: (m, line) => !isSafeElement(line) && +m[1] >= 3,
+    test: (m, line) => !isSafeElement(line) && +m[1] >= BORDER_ACCENT_STRONG_WIDTH_PX,
     fmt: (m) => m[0] },
   { id: 'side-tab', regex: /border-inline-(?:start|end)\s*:\s*(\d+)px\s+solid/gi,
-    test: (m, line) => !isSafeElement(line) && +m[1] >= 3,
+    test: (m, line) => !isSafeElement(line) && +m[1] >= BORDER_ACCENT_STRONG_WIDTH_PX,
     fmt: (m) => m[0] },
   { id: 'side-tab', regex: /border-inline-(?:start|end)-width\s*:\s*(\d+)px/gi,
-    test: (m, line) => !isSafeElement(line) && +m[1] >= 3,
+    test: (m, line) => !isSafeElement(line) && +m[1] >= BORDER_ACCENT_STRONG_WIDTH_PX,
     fmt: (m) => m[0] },
   { id: 'side-tab', regex: /border(?:Left|Right)\s*[:=]\s*["'`](\d+)px\s+solid/g,
-    test: (m) => +m[1] >= 3,
+    test: (m) => +m[1] >= BORDER_ACCENT_STRONG_WIDTH_PX,
     fmt: (m) => m[0] },
   // --- Border accent on rounded ---
   { id: 'border-accent-on-rounded', regex: /\bborder-[tb]-(\d+)\b/g,
     test: (m, line) => hasRounded(line) && +m[1] >= 1,
     fmt: (m) => m[0] },
   { id: 'border-accent-on-rounded', regex: /border-(?:top|bottom)\s*:\s*(\d+)px\s+solid/gi,
-    test: (m, line) => +m[1] >= 3 && hasBorderRadius(line),
+    test: (m, line) => +m[1] >= BORDER_ACCENT_STRONG_WIDTH_PX && hasBorderRadius(line),
     fmt: (m) => m[0] },
   // --- Overused font ---
   { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans|Instrument Serif)\b/gi,
@@ -520,6 +521,7 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
+  for (const f of deduped) f.engine = 'regex';
   return filterByProviders(deduped, options?.providers);
 }
 
