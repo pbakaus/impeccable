@@ -11,6 +11,7 @@ import {
   isPortListening,
   walkDir,
 } from '../node/file-system.mjs';
+import { MANY_FILES_THRESHOLD } from '../shared/thresholds.mjs';
 
 // ---------------------------------------------------------------------------
 // Output formatting
@@ -179,7 +180,7 @@ async function detectCli() {
           const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 
           // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
-          if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
+          if (files.length > MANY_FILES_THRESHOLD && process.stdin.isTTY && !jsonMode) {
             process.stderr.write(
               `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
               `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +

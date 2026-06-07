@@ -18,6 +18,7 @@ import {
   parseRgb,
   relativeLuminance,
 } from '../shared/color.mjs';
+import { DEFAULT_LINE_LENGTH_MAX } from '../shared/thresholds.mjs';
 
 const DETECTOR_IS_BROWSER = typeof window !== 'undefined';
 
@@ -1551,7 +1552,7 @@ function checkElementQualityDOM(el) {
   const lineHeightPx = resolveLengthPx(style.lineHeight, fontSize);
   const letterSpacingPx = resolveLengthPx(style.letterSpacing, fontSize);
   const rect = el.getBoundingClientRect();
-  const lineMax = (typeof window !== 'undefined' && window.__IMPECCABLE_CONFIG__?.lineLengthMax) || 80;
+  const lineMax = (typeof window !== 'undefined' && window.__IMPECCABLE_CONFIG__?.lineLengthMax) || DEFAULT_LINE_LENGTH_MAX;
   const viewportWidth = (typeof window !== 'undefined' ? window.innerWidth : 0) || 0;
   return checkQuality({ el, tag, style, hasDirectText, textLen, fontSize, lineHeightPx, letterSpacingPx, rect, lineMax, viewportWidth, win: typeof window !== 'undefined' ? window : null });
 }
