@@ -12,6 +12,7 @@ import {
   walkDir,
 } from '../node/file-system.mjs';
 import { MANY_FILES_THRESHOLD } from '../shared/thresholds.mjs';
+import { toSarif } from '../output/sarif.mjs';
 
 // ---------------------------------------------------------------------------
 // Output formatting
@@ -82,6 +83,7 @@ Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
   --json    Output results as JSON
+  --sarif   Output results as SARIF 2.1.0 (for CI / code scanning)
   --gpt     Also report GPT-specific provider tells (off by default)
   --gemini  Also report Gemini-specific provider tells (off by default)
   --help    Show this help message
@@ -106,6 +108,7 @@ async function detectCli() {
   });
   if (args[0] === 'detect') args = args.slice(1);
   const jsonMode = args.includes('--json');
+  const sarifMode = args.includes('--sarif');
   const helpMode = args.includes('--help');
   // --fast (regex-only) is deprecated: since the jsdom removal, the static
   // HTML/CSS analysis is fast and covers every rule, so the regex-only path
@@ -151,8 +154,8 @@ async function detectCli() {
         catch { process.stderr.write(`Warning: cannot access ${target}\n`); continue; }
 
         if (stat.isDirectory()) {
-          // Check for framework dev server config (skip in JSON mode to avoid polluting output)
-          if (!jsonMode) {
+          // Check for framework dev server config (skip in JSON/SARIF mode to avoid polluting output)
+          if (!jsonMode && !sarifMode) {
             const fwConfig = detectFrameworkConfig(resolved);
             if (fwConfig) {
               const probe = await isPortListening(fwConfig.port, fwConfig.fingerprint);
@@ -181,7 +184,7 @@ async function detectCli() {
           const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 
           // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
-          if (files.length > MANY_FILES_THRESHOLD && process.stdin.isTTY && !jsonMode) {
+          if (files.length > MANY_FILES_THRESHOLD && process.stdin.isTTY && !jsonMode && !sarifMode) {
             process.stderr.write(
               `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
               `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
@@ -232,6 +235,13 @@ async function detectCli() {
     } finally {
       if (browserDetector) await browserDetector.close();
     }
+  }
+
+  if (sarifMode) {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
+    const sarif = toSarif(allFindings, { version: pkg.version, rootDir: process.cwd() });
+    process.stdout.write(JSON.stringify(sarif, null, 2) + '\n');
+    process.exit(0);
   }
 
   if (allFindings.length > 0) {
