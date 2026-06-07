@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import {
   getDesignSidecarPath,
   getLiveDir,
@@ -46,6 +47,23 @@ function startServer(port = 8499, { cwd = REPO_ROOT, env = {} } = {}) {
     proc.stderr.on('data', (d) => { output += d.toString(); });
     proc.on('error', reject);
     setTimeout(() => reject(new Error('Server start timeout. Output: ' + output)), 5000);
+  });
+}
+
+// Issue a raw HTTP GET with a caller-controlled Host header. fetch()/undici
+// forbids overriding Host, so the DNS-rebinding guard test needs node:http.
+function rawRequest(port, path, hostHeader) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: '127.0.0.1', port, path, method: 'GET', headers: { Host: hostHeader } },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => resolve({ statusCode: res.statusCode, body }));
+      },
+    );
+    req.on('error', reject);
+    req.end();
   });
 }
 
@@ -156,6 +174,22 @@ describe('live-server integration', () => {
     assert.equal(data.mode, 'variant');
     assert.equal(typeof data.hasProjectContext, 'boolean');
     assert.equal(data.connectedClients, 0);
+  });
+
+  it('rejects requests with a non-loopback Host header (DNS-rebinding guard)', async () => {
+    // A hostile website served from a rebound hostname that resolves to
+    // 127.0.0.1 would carry that hostname in the Host header. The server must
+    // refuse it so the token-bearing /live.js and the file-writing endpoints
+    // are unreachable cross-origin.
+    const { statusCode, body } = await rawRequest(server.port, '/live.js', 'attacker.example');
+    assert.equal(statusCode, 403);
+    assert.doesNotMatch(body, /__IMPECCABLE_TOKEN__/);
+  });
+
+  it('does not advertise a wildcard CORS origin (token cannot be cross-origin fetched)', async () => {
+    const res = await fetch(`http://localhost:${server.port}/live.js`);
+    assert.equal(res.status, 200);
+    assert.notEqual(res.headers.get('access-control-allow-origin'), '*');
   });
 
   it('/live.js injects the canonical command vocabulary', async () => {

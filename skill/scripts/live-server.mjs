@@ -60,6 +60,18 @@ const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
 // Port detection
 // ---------------------------------------------------------------------------
 
+// Accept only loopback Host headers matching this server's port. Guards against
+// DNS-rebinding: the server binds 127.0.0.1, so a real request's Host is always
+// 127.0.0.1:<port> or localhost:<port>. A port-less Host (e.g. default :80) can
+// never legitimately reach us, so it is rejected too.
+function isAllowedLoopbackHost(hostHeader, port) {
+  if (!hostHeader || typeof hostHeader !== 'string') return false;
+  const host = hostHeader.toLowerCase();
+  return host === `127.0.0.1:${port}` ||
+         host === `localhost:${port}` ||
+         host === `[::1]:${port}`;
+}
+
 async function findOpenPort(start = 8400) {
   return new Promise((resolve) => {
     const srv = net.createServer();
@@ -1247,7 +1259,23 @@ function statOrNull(filePath) {
 function createRequestHandler({ detectScript, sessionPath, livePath }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // DNS-rebinding / cross-origin defense. The server binds loopback only, so
+    // a legitimate request always carries a loopback Host header. A page served
+    // from a rebound hostname (attacker.com -> 127.0.0.1) would carry that
+    // hostname here; reject it. This is what stops a hostile website from
+    // reaching the file-writing endpoints (or reading the token-bearing
+    // /live.js) via DNS rebinding.
+    if (!isAllowedLoopbackHost(req.headers.host, state.port)) {
+      res.writeHead(403); res.end('Forbidden host'); return;
+    }
+
+    // No `Access-Control-Allow-Origin: *`. The legitimate consumer loads
+    // /live.js via a <script> tag, which executes (and exposes the token to
+    // the page that requested it) WITHOUT needing CORS read permission. A
+    // wildcard ACAO would instead let any cross-origin page fetch() /live.js
+    // and read the session token out of the response body, then drive the
+    // token-gated write endpoints. So we deliberately do not advertise CORS.
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
