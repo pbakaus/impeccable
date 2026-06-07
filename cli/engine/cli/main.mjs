@@ -30,7 +30,8 @@ function formatFindings(findings, jsonMode) {
     const importNote = items[0]?.importedBy?.length ? ` (imported by ${items[0].importedBy.join(', ')})` : '';
     out.push(`\n${file}${importNote}`);
     for (const item of items) {
-      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}] ${item.snippet}`);
+      const tag = item.engine ? ` (${item.category}/${item.engine})` : item.category ? ` (${item.category})` : '';
+      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}]${tag} ${item.snippet}`);
       out.push(`    → ${item.description}`);
     }
   }

@@ -202,6 +202,7 @@ async function detectHtml(filePath, options = {}) {
     }
   }
 
+  for (const f of findings) f.engine = 'static-html';
   return filterByProviders(findings, options.providers);
 }
 

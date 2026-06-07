@@ -520,6 +520,7 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
+  for (const f of deduped) f.engine = 'regex';
   return filterByProviders(deduped, options?.providers);
 }
 
