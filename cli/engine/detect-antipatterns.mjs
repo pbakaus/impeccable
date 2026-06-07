@@ -42,6 +42,7 @@ export {
   FRAMEWORK_CONFIGS,
 } from './node/file-system.mjs';
 export { formatFindings, detectCli } from './cli/main.mjs';
+export { loadConfig, DEFAULT_CONFIG } from './config/load-config.mjs';
 
 const isMainModule = process.argv[1]?.endsWith('detect-antipatterns.mjs') ||
   process.argv[1]?.endsWith('detect-antipatterns.mjs/');
