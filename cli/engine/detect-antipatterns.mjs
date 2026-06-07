@@ -6,6 +6,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Public API facade. Runtime engines live under cli/engine/engines/.
+ *
+ * Type definitions for the public API are published in ./index.d.ts
+ * (Finding, ScanOptions, ImpeccableConfig, detectText/detectHtml/detectUrl).
+ * @see ./index.d.ts
  */
 
 import { detectCli } from './cli/main.mjs';
