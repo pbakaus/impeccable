@@ -11,6 +11,10 @@ import {
   isPortListening,
   walkDir,
 } from '../node/file-system.mjs';
+import { MANY_FILES_THRESHOLD } from '../shared/thresholds.mjs';
+import { loadConfig } from '../config/load-config.mjs';
+import { matchesAnyGlob } from '../config/glob.mjs';
+import { applySuppressions } from '../config/suppress.mjs';
 
 // ---------------------------------------------------------------------------
 // Output formatting
@@ -29,12 +33,53 @@ function formatFindings(findings, jsonMode) {
     const importNote = items[0]?.importedBy?.length ? ` (imported by ${items[0].importedBy.join(', ')})` : '';
     out.push(`\n${file}${importNote}`);
     for (const item of items) {
-      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}] ${item.snippet}`);
+      const tag = item.engine ? ` (${item.category}/${item.engine})` : item.category ? ` (${item.category})` : '';
+      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}]${tag} ${item.snippet}`);
       out.push(`    → ${item.description}`);
     }
   }
   out.push(`\n${findings.length} anti-pattern${findings.length === 1 ? '' : 's'} found.`);
   return out.join('\n');
+}
+
+// Pick the directory to start config discovery from, based on scan targets.
+function resolveConfigRoot(targets) {
+  const fileTargets = targets.filter(t => !/^https?:\/\//i.test(t));
+  if (fileTargets.length === 0) return process.cwd();
+  const first = path.resolve(fileTargets[0]);
+  try {
+    return fs.statSync(first).isDirectory() ? first : path.dirname(first);
+  } catch {
+    return path.dirname(first);
+  }
+}
+
+// Apply project config + inline suppression to the aggregated findings.
+// `sourceByFile` maps an absolute file path to its raw source (used for inline
+// impeccable-disable comments). All paths are no-ops on an empty default config.
+function applyConfigToFindings(findings, config, sourceByFile) {
+  let out = findings;
+  // 1. disabledRules + severity:"off"
+  const off = new Set([
+    ...config.disabledRules,
+    ...Object.entries(config.severity).filter(([, v]) => v === 'off').map(([k]) => k),
+  ]);
+  if (off.size) out = out.filter(f => !off.has(f.antipattern));
+  // 2. severity overrides (note | warning | error)
+  if (Object.keys(config.severity).length) {
+    for (const f of out) {
+      const ov = config.severity[f.antipattern];
+      if (ov && ov !== 'off') f.severity = ov;
+    }
+  }
+  // 3. inline comment suppression (per file, using already-read source)
+  if (sourceByFile && sourceByFile.size) {
+    out = out.filter(f => {
+      const src = sourceByFile.get(f.file);
+      return src ? applySuppressions([f], src).length > 0 : true;
+    });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +167,16 @@ async function detectCli() {
 
   if (helpMode) { printUsage(); process.exit(0); }
 
+  // Resolve config from the scan target (not the cwd where node was launched).
+  // Use the first non-URL target: its own dir if it's a directory, else its
+  // parent. Falls back to cwd when only URLs / no targets are given.
+  const configRoot = resolveConfigRoot(targets);
+  const config = loadConfig(configRoot);
+  if (Number.isFinite(config.lineLengthMax)) scanOptions.lineLengthMax = config.lineLengthMax;
+  // Raw source per scanned file, for inline impeccable-disable comments.
+  const sourceByFile = new Map();
+  const hasIgnore = config.ignore.length > 0;
+
   let allFindings = [];
 
   if (!process.stdin.isTTY && targets.length === 0) {
@@ -175,11 +230,14 @@ async function detectCli() {
             }
           }
 
-          const files = walkDir(resolved);
+          const allWalked = walkDir(resolved);
+          const files = hasIgnore
+            ? allWalked.filter(f => !matchesAnyGlob(path.relative(resolved, f), config.ignore))
+            : allWalked;
           const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 
           // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
-          if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
+          if (files.length > MANY_FILES_THRESHOLD && process.stdin.isTTY && !jsonMode) {
             process.stderr.write(
               `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
               `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
@@ -204,9 +262,12 @@ async function detectCli() {
             const ext = path.extname(file).toLowerCase();
             let fileFindings;
             if (HTML_EXTENSIONS.has(ext)) {
+              try { sourceByFile.set(file, fs.readFileSync(file, 'utf-8')); } catch { /* read for suppression only */ }
               fileFindings = await detectHtml(file, scanOptions);
             } else {
-              fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, scanOptions);
+              const src = fs.readFileSync(file, 'utf-8');
+              sourceByFile.set(file, src);
+              fileFindings = detectText(src, file, scanOptions);
             }
             // Annotate findings with import context
             const importers = importedByMap.get(file);
@@ -221,9 +282,12 @@ async function detectCli() {
         } else if (stat.isFile()) {
           const ext = path.extname(resolved).toLowerCase();
           if (HTML_EXTENSIONS.has(ext)) {
+            try { sourceByFile.set(resolved, fs.readFileSync(resolved, 'utf-8')); } catch { /* read for suppression only */ }
             allFindings.push(...await detectHtml(resolved, scanOptions));
           } else {
-            allFindings.push(...detectText(fs.readFileSync(resolved, 'utf-8'), resolved, scanOptions));
+            const src = fs.readFileSync(resolved, 'utf-8');
+            sourceByFile.set(resolved, src);
+            allFindings.push(...detectText(src, resolved, scanOptions));
           }
         }
       }
@@ -231,6 +295,8 @@ async function detectCli() {
       if (browserDetector) await browserDetector.close();
     }
   }
+
+  allFindings = applyConfigToFindings(allFindings, config, sourceByFile);
 
   if (allFindings.length > 0) {
     if (jsonMode) process.stdout.write(formatFindings(allFindings, true) + '\n');

@@ -260,6 +260,37 @@ npx impeccable detect --fast --json .        # regex-only, JSON output
 
 The detector catches 24 issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
+## Configuration
+
+The CLI reads an optional project config, discovered from the scan target upward. The first file found wins, in this order: `impeccable.config.json`, `.impeccablerc.json`, then an `"impeccable"` key in `package.json`.
+
+```json
+{
+  "disabledRules": ["side-tab", "gradient-text"],
+  "ignore": ["vendor/**", "**/*.min.css"],
+  "severity": { "overused-font": "off", "low-contrast-text": "error" },
+  "lineLengthMax": 100
+}
+```
+
+- `disabledRules`: rule ids to drop from results entirely.
+- `ignore`: glob patterns (`*`, `**`, `?`) matched against paths relative to the scanned directory. Matching files are skipped.
+- `severity`: override a rule's reported level (`note`, `warning`, `error`), or set `off` to disable it.
+- `lineLengthMax`: character budget for the long-line readability check (default 80).
+
+You can also suppress findings inline with a comment, scoped to a line or the rest of the file. List one or more rule ids, or omit them to suppress every rule in scope:
+
+```css
+/* impeccable-disable-next-line side-tab */
+.card { border-left: 4px solid red; }
+
+.badge { color: transparent; } /* impeccable-disable-line gradient-text */
+
+/* impeccable-disable overused-font */  /* from here to end of file */
+```
+
+The same directives work in `//`, `/* */`, and `<!-- -->` comments.
+
 ## Supported Tools
 
 - [Cursor](https://cursor.com)
