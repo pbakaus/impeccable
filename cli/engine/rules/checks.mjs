@@ -18,7 +18,11 @@ import {
   parseRgb,
   relativeLuminance,
 } from '../shared/color.mjs';
-import { DEFAULT_LINE_LENGTH_MAX } from '../shared/thresholds.mjs';
+import {
+  BORDER_ACCENT_MIN_WIDTH_PX,
+  BORDER_ACCENT_STRONG_WIDTH_PX,
+  DEFAULT_LINE_LENGTH_MAX,
+} from '../shared/thresholds.mjs';
 
 const DETECTOR_IS_BROWSER = typeof window !== 'undefined';
 
@@ -35,16 +39,16 @@ function checkBorders(tag, widths, colors, radius) {
 
     const otherSides = sides.filter(s => s !== side);
     const maxOther = Math.max(...otherSides.map(s => widths[s]));
-    if (!(w >= 2 && (maxOther <= 1 || w >= maxOther * 2))) continue;
+    if (!(w >= BORDER_ACCENT_MIN_WIDTH_PX && (maxOther <= 1 || w >= maxOther * 2))) continue;
 
     const sn = side.toLowerCase();
     const isSide = side === 'Left' || side === 'Right';
 
     if (isSide) {
       if (radius > 0) findings.push({ id: 'side-tab', snippet: `border-${sn}: ${w}px + border-radius: ${radius}px` });
-      else if (w >= 3) findings.push({ id: 'side-tab', snippet: `border-${sn}: ${w}px` });
+      else if (w >= BORDER_ACCENT_STRONG_WIDTH_PX) findings.push({ id: 'side-tab', snippet: `border-${sn}: ${w}px` });
     } else {
-      if (radius > 0 && w >= 2) findings.push({ id: 'border-accent-on-rounded', snippet: `border-${sn}: ${w}px + border-radius: ${radius}px` });
+      if (radius > 0 && w >= BORDER_ACCENT_MIN_WIDTH_PX) findings.push({ id: 'border-accent-on-rounded', snippet: `border-${sn}: ${w}px + border-radius: ${radius}px` });
     }
   }
 

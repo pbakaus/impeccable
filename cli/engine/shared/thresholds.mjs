@@ -15,9 +15,20 @@ const FRAMEWORK_HTTP_PROBE_TIMEOUT_MS = 2000;
 // __IMPECCABLE_CONFIG__.lineLengthMax override is present.
 const DEFAULT_LINE_LENGTH_MAX = 80;
 
+// Side-tab / border-accent rule: a colored side border counts as an accent
+// stripe at >= 2px (with a border-radius present), and is "strong" enough to
+// flag on its own (no radius required) at >= 3px. These two values are the
+// canonical side-tab thresholds documented in shared/constants.mjs and are the
+// numbers the static-HTML and regex engines share. (The regex engine also uses
+// coarser radius-aware variants it owns locally.)
+const BORDER_ACCENT_MIN_WIDTH_PX = 2;
+const BORDER_ACCENT_STRONG_WIDTH_PX = 3;
+
 export {
   MANY_FILES_THRESHOLD,
   PORT_PROBE_TIMEOUT_MS,
   FRAMEWORK_HTTP_PROBE_TIMEOUT_MS,
   DEFAULT_LINE_LENGTH_MAX,
+  BORDER_ACCENT_MIN_WIDTH_PX,
+  BORDER_ACCENT_STRONG_WIDTH_PX,
 };
