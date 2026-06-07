@@ -11,6 +11,7 @@ import {
   isPortListening,
   walkDir,
 } from '../node/file-system.mjs';
+import { MANY_FILES_THRESHOLD } from '../shared/thresholds.mjs';
 
 // ---------------------------------------------------------------------------
 // Output formatting
@@ -29,7 +30,8 @@ function formatFindings(findings, jsonMode) {
     const importNote = items[0]?.importedBy?.length ? ` (imported by ${items[0].importedBy.join(', ')})` : '';
     out.push(`\n${file}${importNote}`);
     for (const item of items) {
-      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}] ${item.snippet}`);
+      const tag = item.engine ? ` (${item.category}/${item.engine})` : item.category ? ` (${item.category})` : '';
+      out.push(`  ${item.line ? `line ${item.line}: ` : ''}[${item.antipattern}]${tag} ${item.snippet}`);
       out.push(`    → ${item.description}`);
     }
   }
@@ -179,7 +181,7 @@ async function detectCli() {
           const htmlCount = files.filter(f => HTML_EXTENSIONS.has(path.extname(f).toLowerCase())).length;
 
           // Warn and confirm if scanning many files (static HTML/CSS processes each HTML file)
-          if (files.length > 50 && process.stdin.isTTY && !jsonMode) {
+          if (files.length > MANY_FILES_THRESHOLD && process.stdin.isTTY && !jsonMode) {
             process.stderr.write(
               `\nFound ${files.length} files (${htmlCount} HTML) in ${target}.\n` +
               `Scanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\n` +
