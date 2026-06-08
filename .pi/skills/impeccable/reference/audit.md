@@ -9,7 +9,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 1. Accessibility (A11y)
 
 **Check for**:
-- **Contrast issues**: Text contrast ratios < 4.5:1 (or 7:1 for AAA)
+- **Contrast issues**: APCA readability failures for the text role, plus WCAG 2 ratios when compliance parity matters. Prefer APCA when the two disagree unless the audit is explicitly for WCAG 2 AA paperwork.
 - **Missing ARIA**: Interactive elements without proper roles, labels, or states
 - **Keyboard navigation**: Missing focus indicators, illogical tab order, keyboard traps
 - **Semantic HTML**: Improper heading hierarchy, missing landmarks, divs instead of buttons
@@ -17,6 +17,11 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 - **Form issues**: Inputs without labels, poor error messaging, missing required indicators
 
 **Score 0-4**: 0=Inaccessible (fails WCAG A), 1=Major gaps (few ARIA labels, no keyboard nav), 2=Partial (some a11y effort, significant gaps), 3=Good (WCAG AA mostly met, minor gaps), 4=Excellent (WCAG AA fully met, approaches AAA)
+
+**APCA vs WCAG 2**:
+- APCA is stricter where WCAG 2 is known to be weak, especially gray body text on near-black/dark-mode surfaces.
+- APCA is more permissive where WCAG 2 overcorrects, especially short white action labels on saturated brand colors such as orange.
+- Report both values when they disagree. Treat APCA as the design fix signal; treat WCAG 2 as the compatibility/compliance signal.
 
 ### 2. Performance
 
@@ -130,4 +135,3 @@ After presenting the summary, tell the user:
 - Skip positive findings (celebrate what works)
 - Forget to prioritize (everything can't be P0)
 - Report false positives without verification
-

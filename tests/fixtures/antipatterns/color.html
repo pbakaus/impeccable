@@ -16,6 +16,7 @@
     .styled-pill-low { background-color: rgb(31, 26, 21); color: rgb(91, 79, 68); display: inline-block; padding: 9px 18px; border-radius: 999px; font-weight: 500; font-size: 14px; text-decoration: none; }
     .low-contrast-button { background-color: rgb(55, 65, 81); color: rgb(108, 114, 128); display: inline-block; padding: 10px 20px; border-radius: 8px; border: 0; font-size: 14px; }
     .good-pill-high { background-color: rgb(20, 20, 25); color: rgb(245, 240, 232); display: inline-block; padding: 9px 18px; border-radius: 999px; font-weight: 500; font-size: 14px; text-decoration: none; }
+    .uplinked-orange-action { background-color: rgb(236, 130, 39); color: rgb(255, 255, 255); display: inline-block; padding: 10px 18px; border: 0; border-radius: 8px; font-size: 14px; font-weight: 600; }
     .inline-link-low { color: rgb(170, 170, 170); }
   </style>
 </head>
@@ -47,6 +48,9 @@
       </div>
       <div class="card" style="background: rgb(30, 30, 30);">
         <p style="color: rgb(80, 80, 80);">Dark gray text on near-black — low contrast</p>
+      </div>
+      <div class="card" style="background: rgb(0, 0, 0);">
+        <p style="color: rgb(170, 170, 170); font-size: 16px; font-weight: 400;">Gray body text on black — WCAG ratio passes but APCA fails</p>
       </div>
       <!-- Gradient background — gray heading is unreadable across every stop -->
       <div class="card" style="background: linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%); padding: 16px;">
@@ -150,6 +154,12 @@
            high contrast. The detector exception for styled buttons must
            let the contrast check run, but this case must clearly pass. -->
       <a href="#" class="good-pill-high" data-test="good-pill">High contrast pill</a>
+
+      <h3>APCA-first branded action contrast</h3>
+      <!-- Uplinked's primary orange. WCAG 2 reports white text on this orange
+           as 2.7:1 and pushes the design toward black text or a muddy darker
+           orange. APCA treats this as acceptable for short action text. -->
+      <button class="uplinked-orange-action" data-test="uplinked-orange-action">Start shift</button>
 
       <h3>Emoji on light backgrounds</h3>
       <!-- Emojis render as multicolor glyphs regardless of CSS color, so the

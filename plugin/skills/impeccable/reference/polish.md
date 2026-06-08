@@ -86,7 +86,7 @@ Visual polish on a misshapen flow is wasted work. Match the *shape* of the exper
 
 ### Color & Contrast
 
-- **Contrast ratios**: All text meets WCAG standards
+- **Readable contrast**: Text meets APCA expectations for its role; WCAG 2 ratios are checked when compliance parity is part of the brief
 - **Consistent token usage**: No hard-coded colors, all use design tokens
 - **Theme consistency**: Works in all theme variants
 - **Color meaning**: Same colors mean same things throughout
@@ -195,7 +195,7 @@ Go through systematically:
 - [ ] Loading states are clear
 - [ ] Empty states are welcoming
 - [ ] Touch targets are 44x44px minimum
-- [ ] Contrast ratios meet WCAG AA
+- [ ] Contrast is APCA-readable for the text role; WCAG 2 AA is checked when compliance parity is required
 - [ ] Keyboard navigation works
 - [ ] Focus indicators visible
 - [ ] No console errors or warnings

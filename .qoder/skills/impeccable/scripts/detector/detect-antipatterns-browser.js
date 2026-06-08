@@ -327,7 +327,7 @@ const ANTIPATTERNS = [
     category: 'quality',
     name: 'Low contrast text',
     description:
-      'Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.',
+      'Text does not meet APCA readability contrast for its role. APCA catches WCAG 2 false passes in dark mode and avoids WCAG-only false failures on readable branded action colors.',
   },
   {
     id: 'layout-transition',
@@ -547,6 +547,56 @@ function contrastRatio(c1, c2) {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
+// APCA 0.0.98G constants, matching apca-w3 0.1.9's main contrast path.
+const APCA = {
+  mainTRC: 2.4,
+  sRco: 0.2126729,
+  sGco: 0.7151522,
+  sBco: 0.0721750,
+  normBG: 0.56,
+  normTXT: 0.57,
+  revTXT: 0.62,
+  revBG: 0.65,
+  blkThrs: 0.022,
+  blkClmp: 1.414,
+  scaleBoW: 1.14,
+  scaleWoB: 1.14,
+  loBoWoffset: 0.027,
+  loWoBoffset: 0.027,
+  deltaYmin: 0.0005,
+  loClip: 0.1,
+};
+
+function srgbToApcaY({ r, g, b }) {
+  const toLinear = channel => Math.pow(channel / 255, APCA.mainTRC);
+  return APCA.sRco * toLinear(r) + APCA.sGco * toLinear(g) + APCA.sBco * toLinear(b);
+}
+
+function apcaContrast(textColor, backgroundColor) {
+  if (!textColor || !backgroundColor) return null;
+  let textY = srgbToApcaY(textColor);
+  let backgroundY = srgbToApcaY(backgroundColor);
+  const isOutOfRange = Number.isNaN(textY)
+    || Number.isNaN(backgroundY)
+    || Math.min(textY, backgroundY) < 0
+    || Math.max(textY, backgroundY) > 1.1;
+  if (isOutOfRange) return 0;
+
+  textY = textY > APCA.blkThrs ? textY : textY + Math.pow(APCA.blkThrs - textY, APCA.blkClmp);
+  backgroundY = backgroundY > APCA.blkThrs
+    ? backgroundY
+    : backgroundY + Math.pow(APCA.blkThrs - backgroundY, APCA.blkClmp);
+
+  if (Math.abs(backgroundY - textY) < APCA.deltaYmin) return 0;
+  if (backgroundY > textY) {
+    const contrast = (Math.pow(backgroundY, APCA.normBG) - Math.pow(textY, APCA.normTXT)) * APCA.scaleBoW;
+    return (contrast < APCA.loClip ? 0 : contrast - APCA.loBoWoffset) * 100;
+  }
+
+  const contrast = (Math.pow(backgroundY, APCA.revBG) - Math.pow(textY, APCA.revTXT)) * APCA.scaleWoB;
+  return (contrast > -APCA.loClip ? 0 : contrast + APCA.loWoBoffset) * 100;
+}
+
 function parseGradientColors(bgImage) {
   if (!bgImage || !bgImage.includes('gradient')) return [];
   const colors = [];
@@ -632,8 +682,25 @@ function isEmojiOnlyText(text) {
   return text.replace(EMOJI_CHARS_GLOBAL, '').trim() === '';
 }
 
+function isStyledControl(tag, hasDirectText, bgColor) {
+  return (tag === 'a' || tag === 'button') && hasDirectText && bgColor && bgColor.a > 0.5;
+}
+
+function apcaThresholdForText({ tag, fontSize, fontWeight, directText, bgColor, isStyledButton }) {
+  if (isStyledButton) return 45;
+  if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
+  if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
+
+  const text = (directText || '').trim();
+  const wordCount = text ? text.split(/\s+/).length : 0;
+  const bgLum = bgColor ? relativeLuminance(bgColor) : 1;
+  if (bgLum < 0.02 || wordCount >= 12) return 60;
+
+  return 45;
+}
+
 function checkColors(opts) {
-  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, fontSize, fontWeight, hasDirectText, isEmojiOnly, bgClip, bgImage, classList } = opts;
+  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, fontSize, fontWeight, hasDirectText, directText, isEmojiOnly, bgClip, bgImage, classList } = opts;
   if (SAFE_TAGS.has(tag)) {
     // Exception for <a> and <button> elements styled as buttons. SAFE_TAGS
     // exists to suppress contrast noise on inline links and unstyled controls,
@@ -641,9 +708,7 @@ function checkColors(opts) {
     // ancestor surface is already the intended visual. When the element has
     // its own opaque background and direct text, it is a styled button — and
     // contrast on its own surface is a real, frequent bug worth flagging.
-    const isStyledButton = (tag === 'a' || tag === 'button')
-      && hasDirectText
-      && bgColor && bgColor.a > 0.5;
+    const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
     if (!isStyledButton) return [];
   }
   const findings = [];
@@ -661,14 +726,23 @@ function checkColors(opts) {
         findings.push({ id: 'gray-on-color', snippet: `text ${colorToHex(textColor)} on bg ${bgLabel}` });
       }
 
-      // Low contrast (WCAG AA) — worst case across all bg stops
-      const ratios = bgs.map(b => contrastRatio(textColor, b));
+      // Low contrast — APCA decides readability, WCAG 2 is reported for
+      // compliance parity. This catches WCAG false passes in dark mode and
+      // avoids forcing brand colors into worse-looking WCAG-only fixes.
+      const contrasts = bgs.map(b => {
+        const lc = apcaContrast(textColor, b);
+        const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
+        const threshold = apcaThresholdForText({ tag, fontSize, fontWeight, directText, bgColor: b, isStyledButton });
+        return { bg: b, lc, threshold, ratio: contrastRatio(textColor, b) };
+      });
       let worstIdx = 0;
-      for (let i = 1; i < ratios.length; i++) if (ratios[i] < ratios[worstIdx]) worstIdx = i;
-      const ratio = ratios[worstIdx];
+      for (let i = 1; i < contrasts.length; i++) {
+        if (Math.abs(contrasts[i].lc ?? 0) < Math.abs(contrasts[worstIdx].lc ?? 0)) worstIdx = i;
+      }
+      const { bg, lc, threshold, ratio } = contrasts[worstIdx];
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
-      const threshold = isLargeText ? 3.0 : 4.5;
-      if (ratio < threshold) {
+      const wcagThreshold = isLargeText ? 3.0 : 4.5;
+      if (Math.abs(lc ?? 0) < threshold) {
         // Skip the false-positive class where text has alpha < 1 AND we
         // couldn't find an opaque ancestor (effectiveBg is null, we're
         // comparing against gradient-stop fallback). In jsdom mode the
@@ -681,7 +755,7 @@ function checkColors(opts) {
         // like `text-paper/60` on `bg-ink` sections are the FP pattern.
         const isAlphaFallbackFP = !DETECTOR_IS_BROWSER && !effectiveBg && (textColor.a != null && textColor.a < 1);
         if (!isAlphaFallbackFP) {
-          findings.push({ id: 'low-contrast', snippet: `${ratio.toFixed(1)}:1 (need ${threshold}:1) — text ${colorToHex(textColor)} on ${colorToHex(bgs[worstIdx])}` });
+          findings.push({ id: 'low-contrast', snippet: `APCA Lc ${Math.round(lc ?? 0)} (need ${threshold}; WCAG ${ratio.toFixed(1)}:1/${wcagThreshold}:1) — text ${colorToHex(textColor)} on ${colorToHex(bg)}` });
         }
       }
     }
@@ -1353,6 +1427,7 @@ function checkElementColorsDOM(el) {
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
+    directText,
     isEmojiOnly: isEmojiOnlyText(directText),
     bgClip: style.webkitBackgroundClip || style.backgroundClip || '',
     bgImage: style.backgroundImage || '',
@@ -2245,6 +2320,7 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
+    directText,
     isEmojiOnly: isEmojiOnlyText(directText),
     bgClip: style.webkitBackgroundClip || style.backgroundClip || '',
     bgImage: style.backgroundImage || '',

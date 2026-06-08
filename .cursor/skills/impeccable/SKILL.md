@@ -25,7 +25,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 
 #### Color
 
-- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. Placeholder text needs the same 4.5:1, not the muted-gray default. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp; light gray "for elegance" is the single biggest reason AI designs feel hard to read.
+- **Verify readable contrast with APCA first.** APCA is the design/readability check because it handles dark mode, light-on-dark text, font size/weight, and short UI labels better than WCAG 2 ratios. WCAG 2 is for compliance parity with external scanners. If they disagree, prefer APCA for design decisions unless the user explicitly needs WCAG 2 AA paperwork. Common disagreements: WCAG 2 can pass gray body text on near-black that APCA correctly treats as hard to read, and WCAG 2 can fail readable white action text on saturated brand orange, pushing the design toward black text or a muddy darker orange.
 - Gray text on a colored background looks washed out. Use a darker shade of the background's own hue, or a transparency of the text color.
 
 #### Typography
