@@ -208,6 +208,8 @@ function cleanInstalledImpeccable() {
     '.claude/hooks/hooks.json',
     '.agents/hooks',
     '.agents/plugins/marketplace.json',
+    '.cursor/pre-log.mjs',
+    '.cursor/rules/impeccable-design-hook.mdc',
     'plugin-codex',
   ]) {
     rmSync(join(targetRepo, rel), { recursive: true, force: true });
@@ -306,7 +308,7 @@ function stripImpeccableHookEntry(entry) {
 }
 
 function containsImpeccableHook(value) {
-  if (typeof value === 'string') return value.includes('skills/impeccable/scripts/hook');
+  if (typeof value === 'string') return value.includes('skills/impeccable/scripts/hook') || value.includes('.cursor/pre-log.mjs');
   if (Array.isArray(value)) return value.some(containsImpeccableHook);
   if (value && typeof value === 'object') return Object.values(value).some(containsImpeccableHook);
   return false;
@@ -318,6 +320,7 @@ function verifyInstallShape() {
   const cursor = readText('.cursor/hooks.json');
   assertCount(claude, '.claude/skills/impeccable/scripts/hook.mjs', 1, 'Claude hook.mjs');
   assertCount(codex, '.agents/skills/impeccable/scripts/hook.mjs', 1, 'Codex hook.mjs');
+  assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs', 1, 'Cursor preToolUse');
   assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs', 1, 'Cursor afterFileEdit');
   assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-stop.mjs', 1, 'Cursor stop');
   for (const text of [claude, codex, cursor]) {
@@ -330,6 +333,7 @@ function verifyInstallShape() {
     '.agents/skills/impeccable/scripts/hook.mjs',
     '.agents/skills/impeccable/scripts/hook-lib.mjs',
     '.agents/skills/impeccable/scripts/detector/cli/main.mjs',
+    '.cursor/skills/impeccable/scripts/hook-before-edit.mjs',
     '.cursor/skills/impeccable/scripts/hook-after-edit.mjs',
     '.cursor/skills/impeccable/scripts/hook-stop.mjs',
     '.cursor/skills/impeccable/scripts/hook-lib.mjs',
@@ -407,6 +411,23 @@ function runDirectContractChecks() {
     input: JSON.stringify(postToolUseEvent('direct-codex', file, 'apply_patch')),
   });
   requireFinding('direct Codex hook', `${codex.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
+
+  clearRuntimeState();
+  const pre = run('node', ['.cursor/skills/impeccable/scripts/hook-before-edit.mjs'], {
+    cwd: targetRepo,
+    env,
+    logName: 'direct-cursor-before.log',
+    input: JSON.stringify({
+      hook_event_name: 'preToolUse',
+      cwd: targetRepo,
+      tool_name: 'Write',
+      tool_input: {
+        file_path: join(targetRepo, smokeFiles.direct),
+        content: badFixtureContent(),
+      },
+    }),
+  });
+  requireFinding('direct Cursor preToolUse hook', `${pre.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
 
   clearRuntimeState();
   run('node', ['.cursor/skills/impeccable/scripts/hook-after-edit.mjs'], {
@@ -505,10 +526,23 @@ function runCursorProviderSmoke() {
     throw new Error(res.error ? `agent failed: ${res.error.message}` : `agent exited ${res.status}`);
   }
   const evidence = `${res.stdout}\n${res.stderr}\n${readMaybe(join(smokeDir, 'cursor.ndjson'))}\n${readMaybe(join(targetRepo, '.impeccable', 'hook.pending.json'))}\n${readMaybe(join(targetRepo, '.impeccable', 'hook.cache.json'))}`;
-  requireFile(smokeFiles.cursor, 'Cursor provider fixture');
   requireFinding('Cursor provider hook', evidence);
-  if (!/afterFileEdit|stop/i.test(evidence)) throw new Error('Cursor provider evidence lacks afterFileEdit/stop marker');
-  record('cursor provider', true, 'Cursor agent triggered afterFileEdit/stop hook and side-tab detection');
+  const auditEvents = readAuditEvents(join(smokeDir, 'cursor.ndjson'));
+  if (!auditEvents.some((event) => event.event === 'preToolUse' && event.blocked === true)) {
+    throw new Error('Cursor provider evidence lacks a preToolUse audit entry with blocked=true');
+  }
+  const fixturePath = join(targetRepo, smokeFiles.cursor);
+  const intentionalIgnore = auditEvents.some((event) =>
+    event.event === 'preToolUse'
+    && event.file === fixturePath
+    && event.skipped === 'config-ignore-file'
+  );
+  if (existsSync(fixturePath) && /border-left\s*:\s*[2-9]\d*px/i.test(readFileSync(fixturePath, 'utf8'))) {
+    if (!intentionalIgnore || !/ignoreFiles|ignore-file/i.test(evidence)) {
+      throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file escape hatch');
+    }
+  }
+  record('cursor provider', true, 'Cursor agent triggered preToolUse hook, blocked side-tab, and only proceeded through explicit ignore-file handling for the intentional fixture');
 }
 
 function ensureCursorAgent() {
@@ -535,7 +569,12 @@ function ensureCursorAgent() {
 function writeBadFixture(rel) {
   const abs = join(targetRepo, rel);
   mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, [
+  writeFileSync(abs, badFixtureContent());
+  return abs;
+}
+
+function badFixtureContent() {
+  return [
     '<!doctype html>',
     '<html>',
     '  <body>',
@@ -550,8 +589,7 @@ function writeBadFixture(rel) {
     '  </body>',
     '</html>',
     '',
-  ].join('\n'));
-  return abs;
+  ].join('\n');
 }
 
 function providerPrompt(rel) {
@@ -582,6 +620,17 @@ function requireFinding(label, text) {
   if (!/side-tab/.test(text) || !/Required design corrections|findings?|antipattern|side-tab/.test(text)) {
     throw new Error(`${label} did not show side-tab detector evidence`);
   }
+}
+
+function readAuditEvents(path) {
+  return readMaybe(path)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    })
+    .filter(Boolean);
 }
 
 function readMaybe(path) {

@@ -62,6 +62,7 @@ const DEFAULT_TARGETS = ['.claude', '.agents'];
 const IMPECCABLE_HOOK_COMMAND_MARKERS = [
   'skills/impeccable/scripts/hook-probe.mjs',
   'skills/impeccable/scripts/hook.mjs',
+  'skills/impeccable/scripts/hook-before-edit.mjs',
   'skills/impeccable/scripts/hook-after-edit.mjs',
   'skills/impeccable/scripts/hook-stop.mjs',
 ];

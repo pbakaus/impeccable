@@ -260,12 +260,12 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 ## Design hook
 
-On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impeccable skills update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector after direct UI file edits and surfaces findings back into the agent flow without blocking the edit.
+On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impeccable skills update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector on direct UI file edits and surfaces findings back into the agent flow. Claude Code and Codex surface findings after the edit. Cursor blocks bad proposed writes before they land, then keeps the after-edit/stop hooks as a fallback where Cursor dispatches them.
 
 Installed hook surfaces:
 
 - Claude Code: `.claude/settings.json` runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`.
-- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-after-edit.mjs` and `.cursor/skills/impeccable/scripts/hook-stop.mjs`.
+- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`, `.cursor/skills/impeccable/scripts/hook-after-edit.mjs`, and `.cursor/skills/impeccable/scripts/hook-stop.mjs`.
 - Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
 
 The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.

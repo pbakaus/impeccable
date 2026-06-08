@@ -60,15 +60,19 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.SessionStart, undefined);
   });
 
-  it('builds Cursor hooks for after-edit detection plus stop followup', () => {
+  it('builds Cursor hooks for pre-write blocking plus stop followup fallback', () => {
     const manifest = buildCursorHooksManifest();
+    const beforeEdit = manifest.hooks.preToolUse[0];
     const afterEdit = manifest.hooks.afterFileEdit[0];
     const stop = manifest.hooks.stop[0];
 
     assert.equal(manifest.version, 1);
+    assert.ok(Array.isArray(manifest.hooks.preToolUse));
     assert.ok(Array.isArray(manifest.hooks.afterFileEdit));
     assert.ok(Array.isArray(manifest.hooks.stop));
     assert.equal(manifest.hooks.sessionStart, undefined);
+    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
+    assert.equal(beforeEdit.timeout, 5);
     expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
     assert.equal(afterEdit.timeout, 5);
     expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
@@ -107,13 +111,16 @@ describe('generated hook artifacts in repo', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
-  it('Cursor project hooks reference after-edit and stop runtimes in .cursor/skills', () => {
+  it('Cursor project hooks reference pre-write, after-edit, and stop runtimes in .cursor/skills', () => {
     const manifest = readJson('.cursor/hooks.json');
+    const beforeEdit = manifest.hooks.preToolUse[0];
     const afterEdit = manifest.hooks.afterFileEdit[0];
     const stop = manifest.hooks.stop[0];
 
+    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
     expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
     expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-stop.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-lib.mjs')));

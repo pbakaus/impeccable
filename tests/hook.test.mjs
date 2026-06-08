@@ -1128,6 +1128,103 @@ describe('Cursor hook scripts', () => {
   beforeEach(() => { cwd = mkTmp(); });
   afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
+  it('preToolUse denies proposed writes with detector findings before they land', () => {
+    const logPath = path.join(cwd, 'hook.ndjson');
+    const filePath = path.join(cwd, 'src/Card.html');
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: logPath },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /blocked this write/);
+    assert.match(payload.user_message, /side-tab/);
+    assert.match(payload.agent_message, /Fix these in your next reply/);
+
+    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(entries[0].event, 'preToolUse');
+    assert.equal(entries[0].blocked, true);
+    assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse allows clean proposed writes', () => {
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          path: 'src/Card.jsx',
+          streamContent: 'export default function Card() { return <section className="card">Hello</section>; }',
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+  });
+
+  it('preToolUse denies shell heredoc writes that bypass the Write tool', () => {
+    const filePath = path.join(cwd, 'src/ShellCard.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Shell',
+        tool_input: {
+          command: `cat > "${filePath}" <<'EOF'\n<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>\n<div class="card">Hello</div>\nEOF\n`,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /ShellCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
+  it('preToolUse honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
+    const logPath = path.join(cwd, 'hook.ndjson');
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: '{not-json',
+      env: {
+        ...process.env,
+        IMPECCABLE_HOOK_DISABLED: 'true',
+        IMPECCABLE_HOOK_LOG: logPath,
+      },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(entries[0].event, 'preToolUse');
+    assert.equal(entries[0].skipped, 'env-disabled');
+  });
+
   it('afterFileEdit honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
     const logPath = path.join(cwd, 'hook.ndjson');
 
