@@ -339,7 +339,6 @@ export function initLiveDemo() {
 
 /** Collapsed page-chat pill on marketing gbars — mirrors live-browser.js expand UX. */
 export function initGbarPageChat() {
-	const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 	document.querySelectorAll('[data-demo-gbar-chat]').forEach((chat) => {
 		const input = chat.querySelector('.live-demo-gbar-chat-input');
 		const hint = chat.querySelector('.live-demo-gbar-chat-hint');
@@ -370,8 +369,6 @@ export function initGbarPageChat() {
 				if (hint) hint.hidden = false;
 			}
 		};
-
-		chat.style.transition = `width 0.28s ${EASE}, border-color 0.15s ease`;
 
 		input.addEventListener('input', syncVisual);
 

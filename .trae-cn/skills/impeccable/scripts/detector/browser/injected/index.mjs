@@ -660,6 +660,7 @@ if (IS_BROWSER) {
       if (el.closest('.impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip')) continue;
       if (el.closest('[id^="impeccable-live-"]')) continue;
       if (el === document.body || el === document.documentElement) continue;
+      if (!isRenderedForBrowserRule(el)) continue;
 
       const tag = el.tagName.toLowerCase();
       const style = getComputedStyle(el);
@@ -1091,6 +1092,7 @@ if (IS_BROWSER) {
       return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'stale selector' };
     }
     if (!el) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'missing element' };
+    if (!isRenderedForBrowserRule(el)) return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'hidden element' };
 
     const blockingReason = (candidate.reasons || []).find(reason =>
       reason === 'background-clip text' ||

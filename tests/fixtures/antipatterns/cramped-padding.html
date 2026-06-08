@@ -66,6 +66,16 @@
       border-radius: 4px;
       font-weight: 500;
     }
+    .pass-inline-code-chip {
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      line-height: 2;
+      padding: 0.3em 0.5em;
+      background: #eef2f7;
+      color: #0f172a;
+      border-radius: 4px;
+    }
 
     /* ── PASS: cards at current standards ── */
     .pass-card-min { padding: 8px; background: #f1f5f9; border-radius: 6px; font-size: 16px; line-height: 1.6; }
@@ -156,6 +166,10 @@
       <div class="case">
         <span class="case-label">tag chip: 12px font, 4px / 10px padding</span>
         <span class="pass-chip">design system tag chip</span>
+      </div>
+      <div class="case">
+        <span class="case-label">long inline code chip: compact inline code should not be treated like a padded card</span>
+        <code class="pass-inline-code-chip">npx impeccable skills check</code>
       </div>
 
       <h3>Cards at current standards</h3>

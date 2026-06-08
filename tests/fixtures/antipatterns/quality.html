@@ -116,6 +116,17 @@
       font-weight: 600;
       color: #475569;
     }
+
+    .mock-terminal-title,
+    .mock-terminal-meta,
+    .mock-diff-line {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .mock-terminal-title { font-size: 11px; }
+    .mock-terminal-meta { font-size: 10.8px; }
+    .mock-diff-line { font-size: 11.84px; }
   </style>
 </head>
 <body>
@@ -219,6 +230,14 @@
         <h1 style="font-size: 20px; margin: 0 0 4px;">Top heading</h1>
         <h2 style="font-size: 18px; margin: 0 0 4px;">Second level</h2>
         <h3 style="font-size: 16px; margin: 0;">Third level</h3>
+      </div>
+
+      <h3>Small mockup metadata</h3>
+      <div class="case">
+        <span class="case-label">terminal/diff metadata at tiny sizes</span>
+        <span class="mock-terminal-title">/impeccable polish : scanning codebase</span>
+        <div class="mock-terminal-meta">12 files inspected · 4 visual issues queued</div>
+        <div class="mock-diff-line">+ Replace generic button label with action-specific copy</div>
       </div>
     </div>
   </div>

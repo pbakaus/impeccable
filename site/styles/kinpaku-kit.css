@@ -1202,9 +1202,7 @@
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
-  transition:
-    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .home-kinpaku .live-demo-gbar-chat.is-expanded,

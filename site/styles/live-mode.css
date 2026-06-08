@@ -174,7 +174,7 @@
   border-radius: 8px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 200ms var(--ease-out), top 320ms var(--ease-out), left 320ms var(--ease-out), width 320ms var(--ease-out), height 320ms var(--ease-out);
+  transition: opacity 200ms var(--ease-out);
   box-shadow: 0 0 0 4px var(--color-accent-dim);
 }
 .live-demo-outline.is-visible {
@@ -323,10 +323,7 @@
   opacity: 0;
   margin-left: 0;
   overflow: hidden;
-  transition:
-    max-width 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.2s ease,
-    margin-left 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.2s ease;
 }
 .live-demo-gbar-btn-label--mono {
   font-family: var(--font-mono);
@@ -857,4 +854,3 @@
   font-size: 12px;
   margin-top: 6px;
 }
-

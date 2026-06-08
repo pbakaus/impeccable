@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Oversized H1 browser fixture</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 0; color: #1a1a1a; background: #fff; }
+    main { display: grid; gap: 48px; padding: 32px; }
+    h1 { margin: 0; line-height: 1.04; }
+    .flag-dominating-h1 {
+      max-width: 1040px;
+      font-size: 104px;
+    }
+    .pass-contained-large-h1 {
+      max-width: 1120px;
+      font-size: 83px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 class="flag-dominating-h1">A sweeping product headline that sprawls across the whole viewport and keeps going</h1>
+    <h1 class="pass-contained-large-h1">The missing design vocabulary for agents.</h1>
+  </main>
+  <script src="/js/detect-antipatterns-browser.js"></script>
+</body>
+</html>

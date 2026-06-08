@@ -218,6 +218,83 @@
       height: 80px;
       background: linear-gradient(135deg, #cbd5e1, #94a3b8);
     }
+
+    /* ── PASS: parent has zero padding, but child margins create the visible inset ── */
+    .pass-margin-inset {
+      padding: 0;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+    .pass-margin-inset h4 { margin: 16px 18px 4px; font-size: 14px; color: #0f172a; }
+    .pass-margin-inset p { margin: 0 18px 16px; font-size: 13px; color: #475569; }
+
+    /* ── PASS: an inner shell, not the parent, owns the inset spacing ── */
+    .pass-inner-shell {
+      padding: 0;
+      background: white;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+    .pass-inner-shell .inner-shell {
+      margin: 18px;
+    }
+    .pass-inner-shell h4 { margin: 0 0 4px; font-size: 14px; color: #0f172a; }
+    .pass-inner-shell p { margin: 0; font-size: 13px; color: #475569; }
+
+    /* ── PASS: same background as parent, so the child draws no visible boundary ── */
+    .pass-same-bg-parent {
+      padding: 16px;
+      background: #eef2f7;
+      border-radius: 8px;
+    }
+    .pass-same-bg-child {
+      padding: 0;
+      background: #eef2f7;
+      border: 0;
+      border-radius: 8px;
+    }
+    .pass-same-bg-child h4 { margin: 0; font-size: 14px; color: #0f172a; }
+    .pass-same-bg-child p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+
+    /* ── PASS: full-bleed marquee/surface, not a text card missing padding ── */
+    .pass-marquee-shell {
+      padding: 0;
+      background: #172033;
+      color: white;
+      overflow: hidden;
+      border: 0;
+    }
+    .pass-marquee-track {
+      display: flex;
+      gap: 12px;
+      width: max-content;
+    }
+    .pass-marquee-card {
+      width: 220px;
+      padding: 14px;
+      background: #23304a;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .pass-marquee-card p { margin: 0; font-size: 13px; }
+
+    /* ── PASS: outer scene owns background; inner text surface owns padding ── */
+    .pass-inner-text-surface {
+      padding: 0;
+      background: #0f172a;
+      color: white;
+      overflow: hidden;
+      border: 0;
+    }
+    .pass-inner-text-surface-window {
+      display: grid;
+      gap: 6px;
+      min-height: 92px;
+      padding: 14px;
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+    .pass-inner-text-surface-window p { margin: 0; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -344,6 +421,59 @@
         <span class="case-label">card: padding 0, border all sides; no text means nothing can be flush.</span>
         <div class="pass-image-only">
           <div class="placeholder-img"></div>
+        </div>
+      </div>
+
+      <h3>Child margins provide the inset</h3>
+      <div class="case">
+        <span class="case-label">card: parent padding 0, but text children have margins that create visible inset.</span>
+        <div class="pass-margin-inset">
+          <h4>Title inset by child margin</h4>
+          <p>Body copy is not visually flush even though the parent has zero padding.</p>
+        </div>
+      </div>
+
+      <h3>Inner shell provides the inset</h3>
+      <div class="case">
+        <span class="case-label">card: parent padding 0, but an inner shell is offset from every edge.</span>
+        <div class="pass-inner-shell">
+          <div class="inner-shell">
+            <h4>Title inset by inner shell</h4>
+            <p>The direct child creates the breathing room.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Same background as parent</h3>
+      <div class="case">
+        <span class="case-label">child padding 0, but it has the same background as the parent, so no child boundary is visible.</span>
+        <div class="pass-same-bg-parent">
+          <div class="pass-same-bg-child">
+            <h4>Same-surface visual shell</h4>
+            <p>The text belongs to the parent surface, not to a distinct zero-padding card.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Full-bleed marquee shell</h3>
+      <div class="case">
+        <span class="case-label">marquee shell clips animated cards intentionally; the cards, not the shell, own text padding.</span>
+        <section class="pass-marquee-shell">
+          <div class="pass-marquee-track">
+            <article class="pass-marquee-card"><p>Quote card with its own comfortable padding.</p></article>
+            <article class="pass-marquee-card"><p>Another moving card, also padded inside.</p></article>
+          </div>
+        </section>
+      </div>
+
+      <h3>Inner text surface</h3>
+      <div class="case">
+        <span class="case-label">outer shell has a scene background; the inner window owns the actual text padding.</span>
+        <div class="pass-inner-text-surface">
+          <div class="pass-inner-text-surface-window">
+            <p>Build step running</p>
+            <p>Detector output belongs to the mock window.</p>
+          </div>
         </div>
       </div>
     </div>
