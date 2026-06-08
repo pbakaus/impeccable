@@ -6855,7 +6855,14 @@ void main() {
 
   function scheduleAcceptCleanup(accepted) {
     setTimeout(function() {
-      if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+      if (!accepted?.isSvelteComponent && !acceptedDomAlreadyClean(accepted)) {
+        setTimeout(function() {
+          if (pendingAcceptedSession?.id !== accepted?.id) return;
+          if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+          cleanupAcceptedSession();
+        }, 1800);
+        return;
+      }
       cleanupAcceptedSession();
     }, 1200);
   }
@@ -6884,39 +6891,42 @@ void main() {
   function acceptedDomAlreadyClean(pending) {
     if (!pending?.acceptedSelector) return false;
     const matches = [...document.querySelectorAll(pending.acceptedSelector)];
-    return matches.some((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+    return matches.length > 0
+      && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant],[data-impeccable-carbonize]'));
   }
 
   function ensureAcceptedDomClean(pending) {
+    if (acceptedDomAlreadyClean(pending)) return;
     const sessionId = pending?.id;
     const variantId = pending?.variant;
-    const wrapper = findAcceptedRuntimeWrapper(sessionId);
-    const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
-    if (!wrapper) {
+    const wrappers = findAcceptedRuntimeWrappers(sessionId);
+    if (wrappers.length === 0) {
       restoreAcceptedDomFromSnapshot(pending);
       return;
     }
-    if (acceptedDomAlreadyClean(pending)) {
+    for (const wrapper of wrappers) {
+      if (!wrapper?.isConnected) continue;
+      const accepted = wrapper.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
+      if (!accepted) {
+        wrapper.remove();
+        continue;
+      }
+      const parent = wrapper.parentElement;
+      if (!parent) continue;
+      while (accepted.firstChild) {
+        parent.insertBefore(accepted.firstChild, wrapper);
+      }
       wrapper.remove();
-      return;
     }
-    if (!accepted) {
-      wrapper.remove();
-      restoreAcceptedDomFromSnapshot(pending);
-      return;
-    }
-    const parent = wrapper.parentElement;
-    if (!parent) return;
-    while (accepted.firstChild) {
-      parent.insertBefore(accepted.firstChild, wrapper);
-    }
-    wrapper.remove();
+    if (!acceptedDomAlreadyClean(pending)) restoreAcceptedDomFromSnapshot(pending);
   }
 
-  function findAcceptedRuntimeWrapper(sessionId) {
-    if (!sessionId) return null;
-    return document.querySelector('[data-impeccable-variants="' + sessionId + '"]')
-      || document.querySelector('[data-impeccable-carbonize="' + sessionId + '"]');
+  function findAcceptedRuntimeWrappers(sessionId) {
+    if (!sessionId) return [];
+    return [...new Set([
+      ...document.querySelectorAll('[data-impeccable-variants="' + sessionId + '"]'),
+      ...document.querySelectorAll('[data-impeccable-carbonize="' + sessionId + '"]'),
+    ])];
   }
 
   function restoreAcceptedDomFromSnapshot(pending) {

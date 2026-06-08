@@ -321,17 +321,27 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending\)[\s\S]*?findAcceptedRuntimeWrapper\(sessionId\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?wrapper\.remove\(\);[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);/,
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?acceptedDomAlreadyClean\(accepted\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?\}, 1800\);/,
+      'post-cleanup fallback should give HMR a second chance before mutating React-owned DOM',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
       'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
     );
     assert.match(
       SOURCE,
-      /function findAcceptedRuntimeWrapper\(sessionId\)[\s\S]*?data-impeccable-variants[\s\S]*?data-impeccable-carbonize/,
-      'post-cleanup fallback should also remove stale carbonize wrappers left by React HMR after accept',
+      /function acceptedDomAlreadyClean\(pending\)[\s\S]*?matches\.length > 0[\s\S]*?matches\.every[\s\S]*?data-impeccable-carbonize/,
+      'accepted DOM should not be considered clean while any matching root is still inside a carbonize wrapper',
     );
     assert.match(
       SOURCE,
-      /if \(!accepted\) \{[\s\S]{0,120}?wrapper\.remove\(\);[\s\S]{0,120}?restoreAcceptedDomFromSnapshot\(pending\);[\s\S]{0,80}?return;/,
+      /function findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?querySelectorAll\('\[data-impeccable-variants=[\s\S]*?querySelectorAll\('\[data-impeccable-carbonize=/,
+      'post-cleanup fallback should remove every stale variants/carbonize wrapper left by React HMR after accept',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!accepted\) \{[\s\S]{0,80}?wrapper\.remove\(\);[\s\S]{0,80}?continue;/,
       'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
     );
     assert.match(

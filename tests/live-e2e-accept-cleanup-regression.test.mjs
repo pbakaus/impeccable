@@ -184,7 +184,7 @@ async function waitForAcceptedDomClean(page, selector, { timeoutMs, sourceFile, 
       (sel) => {
         const matches = [...document.querySelectorAll(sel)];
         return matches.length > 0
-          && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+          && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant],[data-impeccable-carbonize]'));
       },
       selector,
       { timeout: timeoutMs },
@@ -204,8 +204,8 @@ async function waitForAcceptedDomClean(page, selector, { timeoutMs, sourceFile, 
 async function collectAcceptedDomDiagnostic(page, selector) {
   return page.evaluate((sel) => {
     const matches = [...document.querySelectorAll(sel)];
-    const clean = matches.filter((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
-    const stale = matches.filter((el) => el.closest('[data-impeccable-variants],[data-impeccable-variant]'));
+    const clean = matches.filter((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant],[data-impeccable-carbonize]'));
+    const stale = matches.filter((el) => el.closest('[data-impeccable-variants],[data-impeccable-variant],[data-impeccable-carbonize]'));
     const local = {};
     for (const key of [
       'impeccable-live-session',
