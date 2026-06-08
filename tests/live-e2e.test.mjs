@@ -1260,6 +1260,7 @@ async function waitForAcceptedDom(page, selector, { allowVariantRoot = false, ti
       if (all.length < 1) return false;
       for (const el of all) {
         if (el.closest('[data-impeccable-variants]')) return false;
+        if (el.closest('[data-impeccable-carbonize]')) return false;
         if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
       }
       return true;

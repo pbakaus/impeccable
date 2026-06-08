@@ -321,8 +321,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);/,
+      /function ensureAcceptedDomClean\(pending\)[\s\S]*?findAcceptedRuntimeWrapper\(sessionId\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?wrapper\.remove\(\);[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);/,
       'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
+    );
+    assert.match(
+      SOURCE,
+      /function findAcceptedRuntimeWrapper\(sessionId\)[\s\S]*?data-impeccable-variants[\s\S]*?data-impeccable-carbonize/,
+      'post-cleanup fallback should also remove stale carbonize wrappers left by React HMR after accept',
     );
     assert.match(
       SOURCE,
