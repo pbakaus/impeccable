@@ -6890,10 +6890,14 @@ void main() {
   function ensureAcceptedDomClean(pending) {
     const sessionId = pending?.id;
     const variantId = pending?.variant;
-    const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+    const wrapper = findAcceptedRuntimeWrapper(sessionId);
     const accepted = wrapper?.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
     if (!wrapper) {
       restoreAcceptedDomFromSnapshot(pending);
+      return;
+    }
+    if (acceptedDomAlreadyClean(pending)) {
+      wrapper.remove();
       return;
     }
     if (!accepted) {
@@ -6907,6 +6911,12 @@ void main() {
       parent.insertBefore(accepted.firstChild, wrapper);
     }
     wrapper.remove();
+  }
+
+  function findAcceptedRuntimeWrapper(sessionId) {
+    if (!sessionId) return null;
+    return document.querySelector('[data-impeccable-variants="' + sessionId + '"]')
+      || document.querySelector('[data-impeccable-carbonize="' + sessionId + '"]');
   }
 
   function restoreAcceptedDomFromSnapshot(pending) {
