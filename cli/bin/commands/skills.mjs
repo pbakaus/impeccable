@@ -158,7 +158,6 @@ async function downloadAndExtractBundle() {
 
   const tmpZip = join(tmpdir(), `impeccable-update-${Date.now()}.zip`);
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
-  await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
   await extract(tmpZip, { dir: tmpDir });
   rmSync(tmpZip, { force: true });

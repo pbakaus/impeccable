@@ -1,5 +1,5 @@
 /**
- * Integration tests for provider-native hook probe build artifacts.
+ * Integration tests for the design-hook build pipeline.
  * Run: node --test tests/hook-build.test.mjs
  */
 
@@ -7,8 +7,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   buildClaudeSettingsManifest,
@@ -18,58 +17,63 @@ import {
 } from '../scripts/lib/transformers/hooks.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PROBE_MARKER = 'skills/impeccable/scripts/hook-probe.mjs';
 
 function readJson(rel) {
   return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'));
 }
 
-function expectProbeCommand(value, providerPath) {
-  assert.equal(typeof value, 'string');
-  assert.ok(value.includes(PROBE_MARKER), `missing probe marker in ${value}`);
-  assert.ok(value.includes(providerPath), `missing provider path ${providerPath} in ${value}`);
-  assert.ok(!value.includes('hook.mjs'), `old detector hook still referenced in ${value}`);
-  assert.ok(!value.includes('hook-after-edit.mjs'), `old Cursor hook still referenced in ${value}`);
-  assert.ok(!value.includes('hook-stop.mjs'), `old Cursor hook still referenced in ${value}`);
+function expectCommand(command, expectedPath) {
+  assert.equal(typeof command, 'string');
+  assert.match(command, /^node "/);
+  assert.ok(command.includes(expectedPath), `missing ${expectedPath} in ${command}`);
+  assert.ok(!command.includes('hook-probe.mjs'), `probe hook still referenced in ${command}`);
 }
 
 describe('hook manifest builders', () => {
-  it('builds Claude project settings for the harmless probe', () => {
+  it('builds Claude project settings for the real detector hook', () => {
     const manifest = buildClaudeSettingsManifest();
     const group = manifest.hooks.PostToolUse[0];
     const handler = group.hooks[0];
 
     assert.equal(group.matcher, 'Edit|Write|MultiEdit');
     assert.equal(handler.type, 'command');
-    assert.equal(handler.timeout, 3);
-    expectProbeCommand(handler.command, '.claude/skills/impeccable/scripts/hook-probe.mjs');
+    assert.equal(handler.timeout, 5);
+    assert.equal(handler.statusMessage, 'Scanning design');
+    expectCommand(handler.command, '.claude/skills/impeccable/scripts/hook.mjs');
     assert.ok(handler.command.includes('${CLAUDE_PROJECT_DIR}'));
     assert.equal(handler.args, undefined);
-    assert.equal(handler.statusMessage, undefined);
+    assert.equal(manifest.hooks.SessionStart, undefined);
   });
 
-  it('builds Codex project-local hooks for the harmless probe', () => {
+  it('builds Codex project-local hooks for the real detector hook', () => {
     const manifest = buildCodexHooksManifest();
     const group = manifest.hooks.PostToolUse[0];
     const handler = group.hooks[0];
 
     assert.equal(group.matcher, 'Edit|Write|apply_patch');
     assert.equal(handler.type, 'command');
-    assert.equal(handler.timeout, 3);
-    expectProbeCommand(handler.command, '.agents/skills/impeccable/scripts/hook-probe.mjs');
+    assert.equal(handler.timeout, 5);
+    assert.equal(handler.statusMessage, 'Scanning design');
+    expectCommand(handler.command, '.agents/skills/impeccable/scripts/hook.mjs');
     assert.ok(handler.command.includes('git rev-parse --show-toplevel'));
-    assert.equal(handler.statusMessage, undefined);
+    assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
+    assert.equal(manifest.hooks.SessionStart, undefined);
   });
 
-  it('builds Cursor hooks for the harmless probe', () => {
+  it('builds Cursor hooks for after-edit detection plus stop followup', () => {
     const manifest = buildCursorHooksManifest();
-    const handler = manifest.hooks.afterFileEdit[0];
+    const afterEdit = manifest.hooks.afterFileEdit[0];
+    const stop = manifest.hooks.stop[0];
 
     assert.equal(manifest.version, 1);
     assert.ok(Array.isArray(manifest.hooks.afterFileEdit));
-    assert.equal(manifest.hooks.stop, undefined);
-    assert.equal(handler.timeout, 3);
-    expectProbeCommand(handler.command, '.cursor/skills/impeccable/scripts/hook-probe.mjs');
+    assert.ok(Array.isArray(manifest.hooks.stop));
+    assert.equal(manifest.hooks.sessionStart, undefined);
+    expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
+    assert.equal(afterEdit.timeout, 5);
+    expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
+    assert.equal(stop.timeout, 5);
+    assert.equal(stop.loop_limit, 1);
   });
 
   it('routes supported hook builders and leaves other providers alone', () => {
@@ -93,37 +97,44 @@ describe('generated hook artifacts in repo', () => {
     });
   }
 
-  it('Claude project settings reference the probe in .claude/skills', () => {
+  it('Claude project settings reference hook.mjs in .claude/skills', () => {
     const manifest = readJson('.claude/settings.json');
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
 
-    expectProbeCommand(handler.command, '.claude/skills/impeccable/scripts/hook-probe.mjs');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook-probe.mjs')));
+    expectCommand(handler.command, '.claude/skills/impeccable/scripts/hook.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
-  it('Cursor project hooks reference the probe in .cursor/skills', () => {
+  it('Cursor project hooks reference after-edit and stop runtimes in .cursor/skills', () => {
     const manifest = readJson('.cursor/hooks.json');
-    const handler = manifest.hooks.afterFileEdit[0];
+    const afterEdit = manifest.hooks.afterFileEdit[0];
+    const stop = manifest.hooks.stop[0];
 
-    expectProbeCommand(handler.command, '.cursor/skills/impeccable/scripts/hook-probe.mjs');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-probe.mjs')));
+    expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
+    expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-stop.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
-  it('Codex project hooks reference the probe in .agents/skills', () => {
+  it('Codex project hooks reference hook.mjs in the .agents skill payload', () => {
     const manifest = readJson('.codex/hooks.json');
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
 
-    expectProbeCommand(handler.command, '.agents/skills/impeccable/scripts/hook-probe.mjs');
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-probe.mjs')));
+    expectCommand(handler.command, '.agents/skills/impeccable/scripts/hook.mjs');
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/SKILL.md')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
-  it('does not generate old hook runtime scripts into provider skill payloads', () => {
-    for (const providerDir of ['.claude', '.cursor', '.agents']) {
-      const scriptsDir = path.join(REPO_ROOT, providerDir, 'skills', 'impeccable', 'scripts');
-      for (const oldScript of ['hook.mjs', 'hook-lib.mjs', 'hook-admin.mjs', 'hook-after-edit.mjs', 'hook-stop.mjs']) {
-        assert.equal(fs.existsSync(path.join(scriptsDir, oldScript)), false, `${providerDir} still has ${oldScript}`);
-      }
+  it('does not generate probe scripts into provider skill payloads', () => {
+    for (const providerDir of ['.claude', '.cursor', '.agents', 'plugin']) {
+      const probe = path.join(REPO_ROOT, providerDir, 'skills', 'impeccable', 'scripts', 'hook-probe.mjs');
+      assert.equal(fs.existsSync(probe), false, `${providerDir} still has hook-probe.mjs`);
     }
   });
 
@@ -140,21 +151,19 @@ describe('generated hook artifacts in repo', () => {
     }
   });
 
-  it('probe scripts execute successfully from all generated provider payloads', () => {
-    for (const rel of [
-      '.claude/skills/impeccable/scripts/hook-probe.mjs',
-      '.cursor/skills/impeccable/scripts/hook-probe.mjs',
-      '.agents/skills/impeccable/scripts/hook-probe.mjs',
+  it('generated hook runtime can import the bundled detector', async () => {
+    for (const scriptDir of [
+      '.claude/skills/impeccable/scripts',
+      '.cursor/skills/impeccable/scripts',
+      '.agents/skills/impeccable/scripts',
+      'plugin/skills/impeccable/scripts',
     ]) {
-      const result = spawnSync(process.execPath, [path.join(REPO_ROOT, rel)], {
-        cwd: REPO_ROOT,
-        input: JSON.stringify({ hook_event_name: 'PostToolUse' }),
-        encoding: 'utf8',
-      });
-
-      assert.equal(result.status, 0, `${rel} exited ${result.status}: ${result.stderr}`);
-      assert.equal(result.stdout, '');
-      assert.equal(result.stderr, '');
+      const abs = path.join(REPO_ROOT, scriptDir);
+      assert.ok(fs.existsSync(path.join(abs, 'detector', 'detect-antipatterns.mjs')),
+        `detector bundle missing in ${scriptDir}`);
+      const hookLib = await import(pathToFileURL(path.join(abs, 'hook-lib.mjs')));
+      const detector = await hookLib.loadDetector();
+      assert.equal(typeof detector.detectText, 'function');
     }
   });
 });

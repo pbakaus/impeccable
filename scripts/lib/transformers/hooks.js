@@ -1,12 +1,26 @@
-export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook-probe.mjs';
+/**
+ * Build-pipeline emitters for the Impeccable design hook.
+ *
+ * The hook install path in this PR is project-local:
+ *   - Claude Code: `.claude/settings.json`
+ *   - Codex: `.codex/hooks.json`
+ *   - Cursor: `.cursor/hooks.json`
+ *
+ * No provider marketplace or Codex plugin packaging is emitted here.
+ */
 
-const TIMEOUT_SECONDS = 3;
-const CLAUDE_PROJECT_PROBE = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook-probe.mjs';
-const CURSOR_PROJECT_PROBE = '.cursor/skills/impeccable/scripts/hook-probe.mjs';
-const CODEX_PROJECT_PROBE = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook-probe.mjs';
+export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook.mjs';
+
+const TIMEOUT_SECONDS = 5;
+const SKILL_HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
+const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
+const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
+const CURSOR_AFTER_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-after-edit.mjs';
+const CURSOR_STOP_SCRIPT = '.cursor/skills/impeccable/scripts/hook-stop.mjs';
 
 export function buildClaudeSettingsManifest() {
   return {
+    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
     hooks: {
       PostToolUse: [
         {
@@ -14,8 +28,30 @@ export function buildClaudeSettingsManifest() {
           hooks: [
             {
               type: 'command',
-              command: `node "${CLAUDE_PROJECT_PROBE}"`,
+              command: `node "${CLAUDE_PROJECT_HOOK}"`,
               timeout: TIMEOUT_SECONDS,
+              statusMessage: 'Scanning design',
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+export function buildClaudePluginHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLUGIN_ROOT}' } = {}) {
+  return {
+    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
+    hooks: {
+      PostToolUse: [
+        {
+          matcher: 'Edit|Write|MultiEdit',
+          hooks: [
+            {
+              type: 'command',
+              command: `node "${pluginRootPlaceholder}/${SKILL_HOOK_SCRIPT_REL}"`,
+              timeout: TIMEOUT_SECONDS,
+              statusMessage: 'Scanning design',
             },
           ],
         },
@@ -26,6 +62,7 @@ export function buildClaudeSettingsManifest() {
 
 export function buildCodexHooksManifest() {
   return {
+    description: 'Impeccable design detector: runs after Edit/Write/apply_patch on UI files and surfaces findings as system reminders.',
     hooks: {
       PostToolUse: [
         {
@@ -33,8 +70,9 @@ export function buildCodexHooksManifest() {
           hooks: [
             {
               type: 'command',
-              command: `node "${CODEX_PROJECT_PROBE}"`,
+              command: `node "${CODEX_PROJECT_HOOK}"`,
               timeout: TIMEOUT_SECONDS,
+              statusMessage: 'Scanning design',
             },
           ],
         },
@@ -49,8 +87,15 @@ export function buildCursorHooksManifest() {
     hooks: {
       afterFileEdit: [
         {
-          command: `node "${CURSOR_PROJECT_PROBE}"`,
+          command: `node "${CURSOR_AFTER_EDIT_SCRIPT}"`,
           timeout: TIMEOUT_SECONDS,
+        },
+      ],
+      stop: [
+        {
+          command: `node "${CURSOR_STOP_SCRIPT}"`,
+          timeout: TIMEOUT_SECONDS,
+          loop_limit: 1,
         },
       ],
     },

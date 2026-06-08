@@ -260,17 +260,17 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 ## Design hook
 
-On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impeccable skills update` install a provider-native hook manifest along with the skill payload. This first release is plumbing only: the hook runs `hook-probe.mjs`, exits 0, and emits no stdout or stderr by default. It does not run the anti-pattern detector yet.
+On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impeccable skills update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector after direct UI file edits and surfaces findings back into the agent flow without blocking the edit.
 
 Installed hook surfaces:
 
-- Claude Code: `.claude/settings.json` runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook-probe.mjs`.
-- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-probe.mjs`.
-- Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook-probe.mjs`.
+- Claude Code: `.claude/settings.json` runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`.
+- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-after-edit.mjs` and `.cursor/skills/impeccable/scripts/hook-stop.mjs`.
+- Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
 
 The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
 
-For debugging only, set `IMPECCABLE_HOOK_PROBE_LOG=/path/to/probe.ndjson` to write one NDJSON line per hook invocation. Leave it unset for normal use.
+For debugging, set `IMPECCABLE_HOOK_LOG=/path/to/hook.ndjson` to write one NDJSON line per hook invocation. Leave it unset for normal use.
 
 Codex requires one platform step that Impeccable cannot safely skip: open `/hooks` after install or update and approve the project hook. There is no Codex marketplace/plugin install flow for this hook.
 

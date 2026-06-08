@@ -262,7 +262,6 @@ export function createTransformer(config) {
         const scriptsOutDir = path.join(skillDir, 'scripts');
         ensureDir(scriptsOutDir);
         for (const script of skill.scripts) {
-          if (script.name === 'hook-probe.mjs' && !(config.emitHooks || provider === 'agents')) continue;
           writeFile(path.join(scriptsOutDir, script.name), script.content);
           scriptCount++;
         }
