@@ -71,6 +71,42 @@ apps/
 - Run focused checks: `node --test tests/context.test.mjs` and `node --test tests/impeccable-paths.test.mjs`.
 - Finish with `bun run build` and `bun run test`.
 
+## Headless Provider Mega Test
+
+Add a local-only mega test harness under `tmp/issue-202-headless-harness/`. The repo already ignores `tmp/`, so the harness, linked provider files, logs, and disposable monorepo projects stay out of git.
+
+The harness should create one scratch monorepo with this shape:
+
+```text
+PRODUCT.md
+DESIGN.md
+apps/
+|-- marketing/
+|-- dashboard/
+`-- admin/
+```
+
+Then run the same behavior against headless Claude, Cursor, and Codex provider installs:
+
+- Link the local worktree skill into provider-specific scratch workspaces with the local CLI, for example `node ./cli/bin/cli.js skills link --source=. --providers=claude,cursor,codex --force -y`.
+- Drive the installed headless agent CLIs where available: Claude Code, Cursor, and Codex. Discover the exact local command shape from each CLI's `--help` output inside the harness instead of baking in a brittle command.
+- Give each agent the same scratch monorepo and a machine-readable prompt asking it to resolve context for `apps/marketing`, `apps/dashboard`, and `apps/admin`.
+- Also run the provider-linked `context.mjs` scripts headlessly, not the source-tree script directly, so generated provider output is tested with deterministic assertions even if an agent CLI is unavailable or produces noisy prose.
+- Assert inheritance when child apps do not have `PRODUCT.md` / `DESIGN.md`: `marketing`, `dashboard`, and `admin` all resolve root product and design context.
+- Assert per-file overrides when `marketing` has both files, `dashboard` has only `PRODUCT.md`, and `admin` has none:
+  - `marketing` resolves child product and child design.
+  - `dashboard` resolves child product and root design.
+  - `admin` resolves root product and root design.
+- Assert active child `.impeccable` paths are scoped under `apps/<app>/.impeccable/...` for each provider install.
+
+Repeat/fix loop:
+
+- Run the mega test.
+- If Claude, Cursor, or Codex fails, inspect the harness output and provider-linked files.
+- Fix source files in `skill/`, `skill/scripts/`, `scripts/`, or docs as needed.
+- Re-run focused checks, `bun run build`, and the mega test.
+- Repeat until all three headless provider harnesses pass, then finish with `bun run test`.
+
 ## Assumptions
 
 - "Three other repos" means the issue body's three child projects inside one monorepo, not Git submodules.
