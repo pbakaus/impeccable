@@ -32,6 +32,9 @@ const smokeFiles = {
   claude: 'src/__impeccable_provider_smoke_claude.html',
   codex: 'src/__impeccable_provider_smoke_codex.html',
   cursor: 'src/__impeccable_provider_smoke_cursor.html',
+  confirmedClaude: 'src/__impeccable_provider_smoke_confirmed_claude.html',
+  confirmedCodex: 'src/__impeccable_provider_smoke_confirmed_codex.html',
+  confirmedCursor: 'src/__impeccable_provider_smoke_confirmed_cursor.html',
 };
 
 const results = [];
@@ -56,6 +59,9 @@ async function main() {
   checked('install shape', 'install shape', verifyInstallShape);
 
   if (selectedProviders.includes('direct')) checked('direct script contracts', 'direct script failed', runDirectContractChecks);
+  if (selectedProviders.some((provider) => ['claude', 'codex', 'cursor'].includes(provider))) {
+    checked('confirmed exception persistence', 'confirmed exception persistence failed', runConfirmedExceptionPersistenceChecks);
+  }
   if (selectedProviders.includes('claude')) checked('claude provider', 'provider did not fire or did not surface output', runClaudeProviderSmoke);
   if (selectedProviders.includes('codex')) checked('codex provider', 'provider did not fire or did not surface output', runCodexProviderSmoke);
   if (selectedProviders.includes('cursor')) checked('cursor provider', 'provider did not fire or did not surface output', runCursorProviderSmoke);
@@ -436,6 +442,112 @@ function runDirectContractChecks() {
   record('direct script contracts', true, 'Claude, Codex, and Cursor preToolUse scripts detect side-tab');
 }
 
+function runConfirmedExceptionPersistenceChecks() {
+  const providers = selectedProviders.filter((provider) => ['claude', 'codex', 'cursor'].includes(provider));
+  for (const provider of providers) {
+    runConfirmedExceptionForProvider(provider);
+  }
+  record('confirmed exception persistence', true, `${providers.join(', ')} persisted confirmed ignore-file exceptions through hook-admin`);
+}
+
+function runConfirmedExceptionForProvider(provider) {
+  clearRuntimeState();
+  const rel = confirmedSmokeFile(provider);
+  const file = writeBadFixture(rel);
+  const configPath = join(targetRepo, '.impeccable', 'hook.json');
+  const beforeLog = `${provider}-confirmed-before.ndjson`;
+  const afterLog = `${provider}-confirmed-after.ndjson`;
+
+  rmSync(join(smokeDir, beforeLog), { force: true });
+  rmSync(join(smokeDir, afterLog), { force: true });
+
+  const first = runInstalledProviderHook(provider, file, beforeLog);
+  requireFinding(`${provider} confirmed exception first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`);
+  if (existsSync(configPath)) {
+    throw new Error(`${provider} hook wrote .impeccable/hook.json before explicit confirmation`);
+  }
+
+  run('node', [providerAdminScript(provider), 'ignore-file', rel], {
+    cwd: targetRepo,
+    logName: `${provider}-confirmed-admin.log`,
+    timeoutMs: 60 * 1000,
+  });
+
+  const config = readJson(configPath);
+  if (!Array.isArray(config.ignoreFiles) || !config.ignoreFiles.includes(rel)) {
+    throw new Error(`${provider} confirmed ignore-file was not persisted to .impeccable/hook.json`);
+  }
+
+  clearTransientHookState();
+  const second = runInstalledProviderHook(provider, file, afterLog);
+  if (provider === 'cursor') {
+    const payload = JSON.parse(second.stdout || '{}');
+    if (payload.permission !== 'allow') {
+      throw new Error('Cursor confirmed ignore-file did not allow the proposed write');
+    }
+  } else if ((second.stdout || '').trim()) {
+    throw new Error(`${provider} confirmed ignore-file emitted a correction after persistence`);
+  }
+
+  const afterEvents = readAuditEvents(join(smokeDir, afterLog));
+  if (!afterEvents.some((event) => event.skipped === 'config-ignore-file' && event.file === file)) {
+    throw new Error(`${provider} confirmed ignore-file did not produce config-ignore-file audit evidence`);
+  }
+
+  clearRuntimeState();
+}
+
+function runInstalledProviderHook(provider, file, logName) {
+  const env = { IMPECCABLE_HOOK_LOG: join(smokeDir, logName) };
+  if (provider === 'claude') {
+    return run('node', ['.claude/skills/impeccable/scripts/hook.mjs'], {
+      cwd: targetRepo,
+      env,
+      logName: `direct-${provider}-confirmed-${logName.replace(/\.ndjson$/, '.log')}`,
+      input: JSON.stringify(postToolUseEvent(`confirmed-${provider}`, file, 'Edit')),
+    });
+  }
+  if (provider === 'codex') {
+    return run('node', ['.agents/skills/impeccable/scripts/hook.mjs'], {
+      cwd: targetRepo,
+      env,
+      logName: `direct-${provider}-confirmed-${logName.replace(/\.ndjson$/, '.log')}`,
+      input: JSON.stringify(postToolUseEvent(`confirmed-${provider}`, file, 'apply_patch')),
+    });
+  }
+  if (provider === 'cursor') {
+    return run('node', ['.cursor/skills/impeccable/scripts/hook-before-edit.mjs'], {
+      cwd: targetRepo,
+      env,
+      logName: `direct-${provider}-confirmed-${logName.replace(/\.ndjson$/, '.log')}`,
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd: targetRepo,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: file,
+          content: badFixtureContent(),
+        },
+      }),
+    });
+  }
+  throw new Error(`Unsupported confirmed exception provider: ${provider}`);
+}
+
+function confirmedSmokeFile(provider) {
+  if (provider === 'claude') return smokeFiles.confirmedClaude;
+  if (provider === 'codex') return smokeFiles.confirmedCodex;
+  if (provider === 'cursor') return smokeFiles.confirmedCursor;
+  throw new Error(`Unsupported confirmed exception provider: ${provider}`);
+}
+
+function providerAdminScript(provider) {
+  if (provider === 'claude') return '.claude/skills/impeccable/scripts/hook-admin.mjs';
+  if (provider === 'codex') return '.agents/skills/impeccable/scripts/hook-admin.mjs';
+  if (provider === 'cursor') return '.cursor/skills/impeccable/scripts/hook-admin.mjs';
+  throw new Error(`Unsupported admin provider: ${provider}`);
+}
+
 function runClaudeProviderSmoke() {
   clearRuntimeState();
   const env = { IMPECCABLE_HOOK_LOG: join(smokeDir, 'claude.ndjson') };
@@ -635,6 +747,10 @@ function readMaybe(path) {
   }
 }
 
+function readJson(path) {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
 function cleanSmokeArtifacts() {
   rmSync(smokeDir, { recursive: true, force: true });
   mkdirSync(smokeDir, { recursive: true });
@@ -653,6 +769,15 @@ function clearRuntimeState() {
     '.impeccable/hook.pending.json',
     '.impeccable/hook.json',
     '.impeccable/hook.local.json',
+  ]) {
+    rmSync(join(targetRepo, rel), { force: true });
+  }
+}
+
+function clearTransientHookState() {
+  for (const rel of [
+    '.impeccable/hook.cache.json',
+    '.impeccable/hook.pending.json',
   ]) {
     rmSync(join(targetRepo, rel), { force: true });
   }

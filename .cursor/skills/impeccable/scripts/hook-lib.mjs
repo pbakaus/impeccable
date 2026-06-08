@@ -559,7 +559,7 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   const more = remaining > 0
     ? `... and ${remaining} more (see /impeccable audit).`
     : null;
-  const footer = directiveFooter();
+  const footer = directiveFooter(display);
 
   const blocks = [header, ...lines];
   if (more) blocks.push(more);
@@ -605,7 +605,7 @@ function formatFindingLine(f) {
   const nameSegment = name ? `${name.replace(/\.+\s*$/, '')}.` : '';
   const ignoreCommand = formatFindingIgnoreCommand(f);
   const ignoreSegment = ignoreCommand
-    ? ` If intentional after user confirmation: \`${ignoreCommand}\`.`
+    ? ` If the user explicitly confirms this value is intentional: \`${ignoreCommand}\`.`
     : '';
   return `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.replace(/\s+/g, ' ').trim();
 }
@@ -917,13 +917,14 @@ export function renderPendingAck(filePath, knownFindings, opts = {}) {
 //      developer-role context, not a chat turn, so the user never sees the
 //      raw envelope. Asking the model to surface the fix in its reply is
 //      the cheapest way to make the feedback loop visible to the user.
-function directiveFooter() {
+function directiveFooter(display) {
+  const ignoreFileCommand = `/impeccable hooks ignore-file ${quoteCommandArg(display)}`;
   return [
     'Fix these in your next reply before finalizing. Acknowledge what you changed so the user sees the correction.',
     '',
     'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
     '',
-    'If the user confirms a specific value is intentional, run the exact `/impeccable hooks ignore-value ...` command shown next to that finding (local by default; add `--shared` only for team policy). Use `/impeccable hooks ignore-rule` or `ignore-file` for broader exceptions. Run /impeccable audit for the full pass.',
+    `Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ...\` command shown next to a value-specific finding; for file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole rule. Run /impeccable audit for the full pass.`,
   ].join('\n');
 }
 

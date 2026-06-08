@@ -422,6 +422,32 @@ describe('hook-admin.mjs', () => {
     assert.match(status, /local file:\s+\.impeccable\/hook\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
   });
+
+  it('ignore-file writes shared config that suppresses a later hook run', async () => {
+    const file = path.join(cwd, 'src/ConfirmedCard.html');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '<div style="border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px;">Card</div>');
+
+    runAdmin(['ignore-file', 'src/ConfirmedCard.html']);
+
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.deepEqual(shared.ignoreFiles, ['src/ConfirmedCard.html']);
+
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'confirmed-ignore-file',
+        cwd,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: file },
+      }),
+      env: {},
+      cwd,
+      detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.skipped, 'config-ignore-file');
+  });
 });
 
 describe('renderTemplate()', () => {
@@ -437,7 +463,7 @@ describe('renderTemplate()', () => {
     assert.ok(text.length <= DEFAULT_CONFIG.limits.maxChars);
   });
 
-  it('emits a directive footer (imperative + exception clause + ack)', () => {
+  it('emits a directive footer (imperative + exception clause + confirmed ignore guidance)', () => {
     // Steers the model: imperative "fix", explicit exception for
     // intentional bad UI / fixtures, and "acknowledge" so the user
     // sees the correction in the chat reply. See `directiveFooter()`
@@ -449,7 +475,10 @@ describe('renderTemplate()', () => {
     assert.match(text, /Fix these in your next reply/);
     assert.match(text, /Acknowledge what you changed/);
     assert.match(text, /intentionally bad UI|anti-pattern example|test fixture/);
+    assert.match(text, /Do not add hook ignores unless the user explicitly confirms/);
     assert.match(text, /ignore-value \.\.\./);
+    assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
+    assert.match(text, /ignore-rule <id>/);
     assert.match(text, /\/impeccable audit/);
   });
 

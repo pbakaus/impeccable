@@ -36,18 +36,30 @@ The first argument is the action. Defaults to `status`.
 
 3. If `<action>` is `off`, follow up with a one-line note: "Done. New edits will not trigger the design hook in this project until you run `/impeccable hooks on`."
 4. If `<action>` is `on`, follow up with: "Done. The design hook will fire after the next Edit/Write/MultiEdit on a UI file."
-5. If `<action>` is `ignore-value`, just print the script output. The default is local-only; add `--shared` only when the user explicitly asks for team/shared policy.
+5. If `<action>` is `ignore-value`, `ignore-file`, or `ignore-rule`, just print the script output. The `ignore-value` default is local-only; add `--shared` only when the user explicitly asks for team/shared policy.
 6. If `<action>` is `status`, just print the script output. Do not add commentary unless the user asked a follow-up question.
 
 ## Intentional findings
 
-If the hook flags a value and the user explicitly insists that value is intentional, prefer a value ignore over inline source comments. Example:
+The hook itself never writes ignore config. Persist an exception only after the user explicitly confirms the flagged issue is intentional, and always go through `hook-admin.mjs`.
+
+Prefer the narrowest exception:
+
+- If the finding line shows an exact `ignore-value` command, run that command. This is local-only by default.
+- If the finding has no value-specific command, such as `side-tab`, prefer `ignore-file <path>` for the current file.
+- Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project.
+
+Example value-specific exception:
 
 ```bash
 node .opencode/skills/impeccable/scripts/hook-admin.mjs ignore-value overused-font Inter --reason "User confirmed Inter is intentional"
 ```
 
-Only use `ignore-rule` for broad project-level exceptions and `ignore-file` for legacy/generated sections that should not be checked at all.
+Example file-scoped exception:
+
+```bash
+node .opencode/skills/impeccable/scripts/hook-admin.mjs ignore-file "src/legacy/Card.tsx"
+```
 
 ## Constraints
 
