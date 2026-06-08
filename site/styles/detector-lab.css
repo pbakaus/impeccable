@@ -170,7 +170,7 @@
 }
 
 .detector-fixture-button:focus-visible {
-  outline: 2px solid var(--ks-rule-strong);
+  outline: 2px solid var(--ks-kinpaku);
   outline-offset: 2px;
 }
 
@@ -253,7 +253,7 @@
   justify-content: center;
   min-height: 36px;
   padding: 0 16px;
-  border: 1px solid var(--ks-rule-strong);
+  border: 1px solid var(--ks-kinpaku);
   border-radius: 2px;
   background: transparent;
   color: var(--ks-kinpaku);

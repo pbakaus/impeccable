@@ -93,14 +93,18 @@ async function stashManualEdit(server, entry) {
   return res.json();
 }
 
-it('gitignores local manual Apply runtime artifacts', () => {
+it('gitignores local Impeccable runtime artifacts', () => {
   const ignored = execFileSync('git', [
     'check-ignore',
     '.impeccable/live/manual-edit-apply-transaction.json',
     '.impeccable/live/manual-edit-evidence/example.json',
+    '.impeccable/hook.cache.json',
+    '.impeccable/live/deferred-svelte-component-accepts.json',
   ], { cwd: REPO_ROOT, encoding: 'utf-8' });
   assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
+  assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
+  assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
 });
 
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
@@ -152,6 +156,17 @@ describe('live-server integration', () => {
     assert.equal(data.mode, 'variant');
     assert.equal(typeof data.hasProjectContext, 'boolean');
     assert.equal(data.connectedClients, 0);
+  });
+
+  it('/live.js injects the canonical command vocabulary', async () => {
+    // live-browser.js builds its action picker from window.__IMPECCABLE_VOCAB__
+    // rather than an inline copy, so the server must serialize the canonical
+    // vocabulary into /live.js (next to the token/port).
+    const { LIVE_COMMANDS } = await import('../skill/scripts/live-vocabulary.mjs');
+    const body = await (await fetch(`http://localhost:${server.port}/live.js`)).text();
+    assert.match(body, /window\.__IMPECCABLE_VOCAB__\s*=/);
+    const injected = JSON.parse(body.match(/window\.__IMPECCABLE_VOCAB__\s*=\s*(\[.*?\]);/s)[1]);
+    assert.deepEqual(injected, LIVE_COMMANDS);
   });
 
   it('/status returns durable recovery state', async () => {

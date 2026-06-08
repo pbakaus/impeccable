@@ -59,13 +59,11 @@
 	--ks-text-mute-deep: oklch(52% 0 0);         /* disabled */
 
 	/* ============================================================
-	   Rules. The default hairline is neutral so borders/dividers/labels
-	   don't carry warmth (warmth lives in the gold accents and surfaces).
-	   "strong" stays gold — it appears on focus, active state, and
-	   structural brand anchors where the gold is the signal.
+	   Rules. The hairline is neutral so borders/dividers/labels don't
+	   carry warmth (warmth lives in the gold accents and surfaces). For a
+	   gold accent border, use --ks-kinpaku directly, not a muddy variant.
 	   ============================================================ */
 	--ks-rule:           oklch(78% 0 0 / 0.16);
-	--ks-rule-strong:    oklch(74% 0.09 82 / 0.6);
 
 	/* ============================================================
 	   Code. One treatment site-wide. Inline code is a neutral graphite
@@ -197,7 +195,6 @@ html.light {
 
 	/* Rules — dark hairlines. */
 	--ks-rule:           oklch(25% 0.02 95 / 0.12);
-	--ks-rule-strong:    oklch(61% 0.085 78 / 0.45);
 
 	/* Code — light chips, dark text. */
 	--ks-code-fg:         oklch(28% 0.02 95);

@@ -32,7 +32,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
 - Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces.
 - Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights.
-- No all-caps body copy. Reserve uppercase for short labels (≤4 words), section eyebrows (used sparingly per the Absolute bans), and badges. Sentences in ALL CAPS are unreadable at body sizes.
+- No all-caps body copy. Sentences in ALL CAPS are unreadable at body sizes.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
 - Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed".
 - Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans.
@@ -67,7 +67,7 @@ Two hard typographic ceilings you currently miss:
 
 - Every word earns its place. No restated headings, no intros that repeat the title.
 - **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
-- **No aphoristic-cadence body copy as a default voice.** Don't fall into the rhythm of "serious statement, then punchy short negation" as the page's recurring voice. If three or more section copy blocks on the page land on a short rebuttal-shaped sentence, rewrite. Specific, not aphoristic.
+- **No aphoristic-cadence body copy as a default voice.** If multiple section copy blocks share a single repeating sentence rhythm, especially a contrarian-sounding closer, rewrite. Specific, not aphoristic.
 - **No marketing buzzwords.** The streamline / empower / supercharge / leverage / unleash / transform / seamless / world-class / enterprise-grade / next-generation / cutting-edge / game-changer / mission-critical family of phrases. Pick a specific noun and a verb that describes what the product literally does.
 - Button labels: verb + object. "Save changes" beats "OK"; "Delete project" beats "Yes". The label should say what will happen.
 - Link text needs standalone meaning. "View pricing plans" beats "Click here"; screen readers announce links out of context.
@@ -105,7 +105,7 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 - **`border-radius: 32px+` on cards / sections / inputs.** You over-round. Cards top out at 12–16px; full-pill is fine for tags/buttons. Picking 24/28/32/40px on a card is the codex tell; no brand wants "insanely rounded".
 - **Hand-drawn / sketchy SVG illustrations.** Class names like `loose-sketch`, `*-sketch`, `doodle`, `wavy`; `feTurbulence` / `feDisplacementMap` "paper grain" filters; 5-to-30 path crude scenes meant to depict a tangible subject (an otter, a table-and-fork, an album cover). All of these read as amateurish, not whimsical. If you can't render the scene with real assets, ship no illustration. Don't attempt sketchy SVG as a fallback.
 - **`repeating-linear-gradient(...)` stripe backgrounds.** Diagonal stripes in `body:before` or section backgrounds are pure codex decoration. Don't.
-- **"X theater" / "actually X" / "not just X, it's Y" copy.** "Productivity theater", "engagement theater", "growth theater": instant AI slop. Choose a specific noun, not a meta-criticism phrase.
+- **Meta-criticism copy.** Naming a concept then layering an ironic modifier, or staging a strawman to "correct" it. Make the specific claim instead.
 
 ### The AI slop test
 

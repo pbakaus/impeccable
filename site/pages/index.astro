@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import LiveDemoPalette from '../components/LiveDemoPalette.astro';
 import Testimonials from '../components/Testimonials.astro';
 import LiveDemoGbar from '../components/LiveDemoGbar.astro';
 import '../styles/main.css';
@@ -54,12 +55,12 @@ import '../styles/testimonials.css';
     <div class="hero-rebuild-art" aria-hidden="true"></div>
     <div class="hero-rebuild-container">
       <div class="hero-rebuild-left">
-        <h1 class="hero-rebuild-title">Tune interfaces<br>while they run.</h1>
+        <h1 class="hero-rebuild-title">The missing design<br>vocabulary for agents.</h1>
 
         <p class="hero-rebuild-body">
-          Your AI ships generic frontend by default. Impeccable is an agent skill that teaches it
-          to design: a real visual vocabulary, slop detection, and live iteration in your production
-          codebase. A CLI and Chrome extension extend it into your CI and browser.
+          It's why AI frontends all share one look: no words for hierarchy, contrast, or restraint.
+          Impeccable gives your agent the designer's vocabulary, and gives you the same commands,
+          so you both stop guessing and start directing, live, in your production codebase.
         </p>
 
         <div class="hero-rebuild-actions">
@@ -206,6 +207,7 @@ import '../styles/testimonials.css';
                   <button type="button" class="live-demo-ctx-count">×3</button>
                   <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">→</span></button>
                 </div>
+                <LiveDemoPalette pick="colorize" />
                 <div class="live-demo-ctx-row live-demo-ctx-row--generating">
                   <span class="live-demo-ctx-spinner" aria-hidden="true"></span>
                   <span>Generating variants…</span>
@@ -405,7 +407,7 @@ import '../styles/testimonials.css';
           <article class="ks-bento-tile ks-bento-tile--span-4" id="why-designmd">
             <span class="ks-bento-num" data-color="kinpaku">03</span>
             <h3 class="why-panel-title">Travels as DESIGN.md.</h3>
-            <p class="why-panel-body"><code>/impeccable document</code> writes one in the <a href="https://stitch.withgoogle.com/docs/design-md/format/" target="_blank" rel="noopener">Google Stitch format</a>. Your visual system becomes portable.</p>
+            <p class="why-panel-body"><code>/impeccable document</code> writes one in the <a href="https://stitch.withgoogle.com/docs/design-md/overview/" target="_blank" rel="noopener">Google Stitch format</a>. Your visual system becomes portable.</p>
             <div class="why-visual why-visual--designmd-v2">
               <div class="why-dm-header">
                 <span class="why-dm-filename">DESIGN.md</span>
@@ -595,9 +597,12 @@ import '../styles/testimonials.css';
             <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
             <code>npx impeccable skills install</code>
             <button class="downloads-rebuild-copy" type="button" aria-label="Copy install command" data-copy="npx impeccable skills install">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              <svg class="downloads-rebuild-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"/>
               </svg>
               <span>Copy</span>
             </button>
@@ -610,9 +615,12 @@ import '../styles/testimonials.css';
             <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
             <code>npx impeccable skills update</code>
             <button class="downloads-rebuild-copy" type="button" aria-label="Copy update command" data-copy="npx impeccable skills update">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              <svg class="downloads-rebuild-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"/>
               </svg>
               <span>Copy</span>
             </button>
@@ -632,9 +640,12 @@ import '../styles/testimonials.css';
             <div class="downloads-rebuild-cmd downloads-rebuild-cmd--alt">
               <code>/plugin marketplace add pbakaus/impeccable</code>
               <button class="downloads-rebuild-copy" type="button" aria-label="Copy Claude Code plugin command" data-copy="/plugin marketplace add pbakaus/impeccable">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2"/>
                   <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                <svg class="downloads-rebuild-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5"/>
                 </svg>
                 <span>Copy</span>
               </button>
@@ -647,9 +658,12 @@ import '../styles/testimonials.css';
             <div class="downloads-rebuild-cmd downloads-rebuild-cmd--alt">
               <code>npx skills add pbakaus/impeccable</code>
               <button class="downloads-rebuild-copy" type="button" aria-label="Copy npx skills command" data-copy="npx skills add pbakaus/impeccable">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2"/>
                   <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                <svg class="downloads-rebuild-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5"/>
                 </svg>
                 <span>Copy</span>
               </button>

@@ -54,6 +54,9 @@
   backdrop-filter: saturate(calc(1 + 0.3 * var(--hp))) blur(calc(16px * var(--hp)));
 }
 
+/* The wide-viewport seam treatment is light-only and lives in light-mode.css.
+   Dark mode needs none: the cream nav text reads fine over the darker seam. */
+
 .hero-rebuild-art {
   position: absolute;
   inset: 0;
@@ -366,7 +369,7 @@
 }
 
 .home-kinpaku .slop-teaser-card:hover {
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-kinpaku);
   transform: translateY(-2px);
 }
 
@@ -735,6 +738,7 @@
 /* Compact icon-only copy button nested inside the cmd box, on the right. */
 .home-kinpaku .downloads-rebuild-copy {
   flex: none;
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: 40px;
@@ -744,7 +748,74 @@
   color: var(--card-copy-fg);
   border-radius: 2px;
   cursor: pointer;
-  transition: background 180ms var(--ks-ease), border-color 180ms var(--ks-ease);
+  transition:
+    background 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy:active {
+  transform: scale(0.96);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon,
+.home-kinpaku .downloads-rebuild-check-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied {
+  background: var(--card-copy-hover-bg);
+  border-color: currentColor;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+  animation: downloads-check-draw 260ms var(--ks-ease) forwards;
+}
+
+@keyframes downloads-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .downloads-rebuild-copy,
+  .home-kinpaku .downloads-rebuild-copy-icon,
+  .home-kinpaku .downloads-rebuild-check-icon {
+    transition: none;
+  }
+
+  .home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 .home-kinpaku .downloads-rebuild-copy span {
@@ -1203,7 +1274,12 @@
   gap: 6px;
   padding: 22px 24px;
 }
-.hotel-hero-eyebrow {
+/* The hotel hero text sits on dark teal/gold photos, so it stays light in both
+   themes. These carry an extra .hotel-hero class purely for specificity: the
+   global `.home-kinpaku h2`/`p` color rules (0,1,1) otherwise win and, in light
+   mode, drag the headline to the dark --ks-champagne ink — illegible on the
+   photo. The slop variant's own dark overrides still win on source order. */
+.hotel-hero .hotel-hero-eyebrow {
   margin: 0;
   font-family: var(--h-sans);
   font-size: 10px;
@@ -1211,7 +1287,7 @@
   text-transform: uppercase;
   color: oklch(91% 0.05 85);
 }
-.hotel-hero-title {
+.hotel-hero .hotel-hero-title {
   margin: 0;
   font-family: var(--h-serif);
   font-weight: 500;
@@ -1220,7 +1296,7 @@
   letter-spacing: -0.01em;
   color: oklch(98% 0.01 85);
 }
-.hotel-hero-sub {
+.hotel-hero .hotel-hero-sub {
   margin: 0;
   font-family: var(--h-sans);
   font-size: 12px;

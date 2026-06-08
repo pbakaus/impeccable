@@ -69,12 +69,15 @@ const resolvedOgDescription = ogDescription || description;
       try {
         var t = localStorage.getItem('impeccable-theme');
         var root = document.documentElement;
-        if (t === 'light') {
-          root.classList.add('light');
+        var pref = (t === 'light' || t === 'dark') ? t : 'auto';
+        var resolved = pref === 'auto'
+          ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : pref;
+        root.classList.add(resolved);
+        root.setAttribute('data-theme-pref', pref);
+        if (resolved === 'light') {
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', '#f7f4ef');
-        } else {
-          root.classList.add('dark');
         }
       } catch (e) {}
     })();

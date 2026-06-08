@@ -6,8 +6,8 @@
 @import "./kinpaku-tokens.css";
 
 .home-kinpaku {
-  /* --ks-rule / --ks-rule-strong inherit the global tokens (neutral default,
-     gold strong); the homepage no longer diverges on border color. */
+  /* --ks-rule inherits the global token (neutral hairline); the homepage no
+     longer diverges on border color. */
 
   /* Legacy alias — homepage code reads --ks-muted; map it to the global muted
      text token (no divergent value). */
@@ -776,7 +776,7 @@
 }
 
 .home-kinpaku .impeccable-card {
-  border: 1px solid var(--ks-rule-strong);
+  border: 1px solid var(--ks-kinpaku);
   background:
     linear-gradient(135deg, oklch(78% 0.12 82 / 0.11), transparent 42%),
     linear-gradient(180deg, oklch(14% 0.008 95 / 0.98), oklch(9% 0.006 95 / 0.98));
@@ -964,12 +964,30 @@
   color: var(--ks-lacquer-deep);
 }
 
+/* Divider accent follows the section's category identity (the same gold/teal
+   grouping the category labels use) and stays vibrant — no muddy kinpaku-pale/
+   -deep or undefined oxide. The brand's decorative accents are exactly two:
+   kinpaku gold (create/refine/simplify) and patina verdigris (evaluate/harden);
+   system stays neutral as the meta category. */
 .home-kinpaku .magazine-spread[data-category="create"] { --spread-accent: var(--ks-kinpaku); }
 .home-kinpaku .magazine-spread[data-category="evaluate"] { --spread-accent: var(--ks-patina); }
-.home-kinpaku .magazine-spread[data-category="refine"] { --spread-accent: var(--ks-kinpaku-pale); }
-.home-kinpaku .magazine-spread[data-category="simplify"] { --spread-accent: var(--ks-kinpaku-deep); }
-.home-kinpaku .magazine-spread[data-category="harden"] { --spread-accent: var(--ks-oxide); }
+.home-kinpaku .magazine-spread[data-category="refine"] { --spread-accent: var(--ks-kinpaku); }
+.home-kinpaku .magazine-spread[data-category="simplify"] { --spread-accent: var(--ks-kinpaku); }
+.home-kinpaku .magazine-spread[data-category="harden"] { --spread-accent: var(--ks-patina); }
 .home-kinpaku .magazine-spread[data-category="system"] { --spread-accent: var(--ks-muted); }
+
+/* In the command palette the section accent (--spread-accent) carries the whole
+   category identity: the kicker, the skill name (big title + active list item),
+   and the divider. The slash before /impeccable is demoted to the namespace's
+   muted ink — it's punctuation, not identity. (Light mode re-applies these accent
+   colors in light-mode.css to clear that file's :is() eyebrow rule.) */
+.home-kinpaku .magazine-container :is(.spread-command-name, .spread-category-label, .fisheye-item.is-active) {
+  color: var(--spread-accent);
+}
+
+.home-kinpaku .magazine-container .spread-command-name .spread-slash {
+  color: var(--color-ash);
+}
 
 /* Card-swap to G pattern: the OUTER spread carries the single tinted-plinth
    surface (flat oklch(0.17 0 0), no border, no shadow). All inner demo

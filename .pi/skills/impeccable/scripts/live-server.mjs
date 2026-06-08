@@ -24,6 +24,7 @@ import { parseDesignMd } from './design-parser.mjs';
 import { resolveContextDir } from './context.mjs';
 import { createLiveSessionStore } from './live-session-store.mjs';
 import { validateEvent } from './live-event-validation.mjs';
+import { LIVE_COMMANDS } from './live-vocabulary.mjs';
 import {
   getDesignSidecarPath,
   getLiveDir,
@@ -42,6 +43,10 @@ import {
 } from './live-manual-edits-buffer.mjs';
 import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
 import { commitManualEdits } from './live-commit-manual-edits.mjs';
+import {
+  applyDeferredSvelteComponentAccepts,
+  removeAllSvelteComponentSessions,
+} from './live-svelte-component.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
@@ -103,6 +108,7 @@ const MIN_MANUAL_EDIT_APPLY_CHUNK_SIZE = 1;
 const MAX_MANUAL_EDIT_APPLY_CHUNK_SIZE = 20;
 const MANUAL_APPLY_COMPACT_TEXT_LIMIT = 240;
 const MANUAL_APPLY_COMPACT_NEARBY_LIMIT = 4;
+const POLL_LEASE_EXPIRY_TIMER_GRACE_MS = 2;
 const DEBUG_MANUAL_EDIT_EVENTS = /^(1|true|yes)$/i.test(process.env.IMPECCABLE_LIVE_DEBUG_EVENTS || '');
 
 function tombstoneTimedOutApplyId(eventId, details = {}) {
@@ -897,6 +903,8 @@ function leaseEvent(entry, leaseMs) {
     return entry.event;
   }
   entry.leaseUntil = Date.now() + leaseMs;
+  scheduleLeaseFlush();
+  broadcastAgentPollingIfChanged();
   return entry.event;
 }
 
@@ -907,7 +915,14 @@ function acknowledgePendingEvent(id) {
   const acknowledged = state.pendingEvents[idx].event;
   state.pendingEvents.splice(idx, 1);
   scheduleLeaseFlush();
+  broadcastAgentPollingIfChanged();
   return acknowledged;
+}
+
+function findPendingEventById(id) {
+  if (!id) return null;
+  const entry = state.pendingEvents.find((item) => item.event?.id === id);
+  return entry?.event || null;
 }
 
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
@@ -953,6 +968,42 @@ function summarizePendingEventForStatus(entry) {
     summary.manualApplySummary = summarizeManualApplyEvent(event, state.pendingApplyDeferreds.get(event.id)?.batch || event.batch);
   }
   return summary;
+}
+
+function summarizeActiveSessionForClient(snapshot = {}) {
+  return {
+    id: snapshot.id,
+    phase: snapshot.phase,
+    pageUrl: snapshot.pageUrl ?? null,
+    sourceFile: snapshot.sourceFile ?? null,
+    previewFile: snapshot.previewFile ?? null,
+    previewMode: snapshot.previewMode ?? null,
+    expectedVariants: snapshot.expectedVariants ?? 0,
+    arrivedVariants: snapshot.arrivedVariants ?? 0,
+    visibleVariant: snapshot.visibleVariant ?? null,
+    checkpointRevision: snapshot.checkpointRevision ?? 0,
+    paramValues: snapshot.paramValues || {},
+  };
+}
+
+function activeSessionSummaries() {
+  if (!state.sessionStore) return [];
+  return state.sessionStore.listActiveSessions().map((snapshot) => summarizeActiveSessionForClient(snapshot));
+}
+
+function cancelQueuedAnonymousExitEvents() {
+  let removed = 0;
+  for (let i = state.pendingEvents.length - 1; i >= 0; i -= 1) {
+    const event = state.pendingEvents[i]?.event;
+    if (event?.type !== 'exit' || event.id) continue;
+    state.pendingEvents.splice(i, 1);
+    removed += 1;
+  }
+  if (removed > 0) {
+    scheduleLeaseFlush();
+    broadcastAgentPollingIfChanged();
+  }
+  return removed;
 }
 
 function cancelPendingManualApplyEvents(pageUrl, reason = 'manual_edit_discarded') {
@@ -1001,7 +1052,6 @@ function scheduleLeaseFlush() {
     clearTimeout(state.leaseTimer);
     state.leaseTimer = null;
   }
-  if (state.pendingPolls.length === 0) return;
   const now = Date.now();
   const nextLeaseUntil = state.pendingEvents
     .map((entry) => entry.leaseUntil || 0)
@@ -1011,7 +1061,8 @@ function scheduleLeaseFlush() {
   state.leaseTimer = setTimeout(() => {
     state.leaseTimer = null;
     flushPendingPolls();
-  }, Math.max(0, nextLeaseUntil - now));
+    broadcastAgentPollingIfChanged();
+  }, Math.max(0, nextLeaseUntil - now + POLL_LEASE_EXPIRY_TIMER_GRACE_MS));
 }
 
 function flushPendingPolls() {
@@ -1032,7 +1083,9 @@ function flushPendingPolls() {
 }
 
 function agentPollingConnected() {
-  return state.pendingPolls.length > 0;
+  const now = Date.now();
+  return state.pendingPolls.length > 0
+    || state.pendingEvents.some((entry) => entry.leaseUntil && entry.leaseUntil > now);
 }
 
 function broadcastAgentPollingIfChanged() {
@@ -1220,6 +1273,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       const body =
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
+        // Canonical command vocabulary (values + labels + icons). live-browser.js
+        // builds its action picker from this instead of an inline copy.
+        `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(LIVE_COMMANDS)};\n` +
         sessionScript + '\n' +
         liveScript;
       res.writeHead(200, {
@@ -1318,7 +1374,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/status') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
-      const sessions = state.sessionStore ? state.sessionStore.listActiveSessions() : [];
+      const sessions = activeSessionSummaries();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'ok',
@@ -1423,6 +1479,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/events' && req.method === 'GET') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      clearTimeout(state.exitTimer);
+      state.exitTimer = null;
+      cancelQueuedAnonymousExitEvents();
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -1432,10 +1491,10 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         type: 'connected',
         hasProjectContext: hasProjectContext(),
         agentPolling: agentPollingConnected(),
+        activeSessions: activeSessionSummaries(),
       }) + '\n\n');
 
       state.sseClients.add(res);
-      clearTimeout(state.exitTimer);
 
       // Keepalive: SSE comment every 30s prevents silent connection drops.
       const heartbeat = setInterval(() => {
@@ -1827,6 +1886,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             return;
           }
         }
+        if (msg.type === 'exit') {
+          cleanupSvelteComponentSessionsBeforeExit();
+        }
         if (msg.type !== 'checkpoint') {
           enqueueEvent(msg);
         }
@@ -1905,6 +1967,36 @@ function handlePollGet(req, res, url) {
   });
 }
 
+function sessionFileMetadataFromPollReply(file) {
+  if (!file || typeof file !== 'string') return { file };
+  const normalized = file.split(path.sep).join('/');
+  const base = { file: normalized };
+  if (!normalized.endsWith('/manifest.json') && normalized !== 'manifest.json') return base;
+  if (!normalized.includes('node_modules/.impeccable-live/') && !normalized.includes('src/lib/impeccable/')) return base;
+
+  let full;
+  try {
+    full = path.resolve(process.cwd(), normalized);
+    const rel = path.relative(process.cwd(), full);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return base;
+  } catch {
+    return base;
+  }
+
+  try {
+    const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
+    if (manifest?.previewMode !== 'svelte-component' || !manifest.sourceFile) return base;
+    return {
+      file: String(manifest.sourceFile).split(path.sep).join('/'),
+      sourceFile: String(manifest.sourceFile).split(path.sep).join('/'),
+      previewFile: normalized,
+      previewMode: 'svelte-component',
+    };
+  } catch {
+    return base;
+  }
+}
+
 function handlePollPost(req, res) {
   let body = '';
   req.on('data', (c) => { body += c; });
@@ -1965,6 +2057,16 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
       return;
     }
+    const pendingEventBeforeAck = findPendingEventById(msg.id);
+    if (pendingEventBeforeAck?.type === 'steer' && msg.type === 'steer_done'
+        && !msg.file && !(typeof msg.message === 'string' && msg.message.trim())) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'steer_done_requires_file_or_message',
+        hint: 'Reply with --file after writing source, or include a message explaining an intentional no-op.',
+      }));
+      return;
+    }
     const acknowledgedEvent = acknowledgePendingEvent(msg.id);
     let skipJournalReply = false;
     let existingSession = null;
@@ -1987,6 +2089,7 @@ function handlePollPost(req, res) {
       }));
       return;
     }
+    const replyFileMeta = sessionFileMetadataFromPollReply(msg.file);
     if (state.sessionStore && msg.id && !skipJournalReply) {
       try {
         const eventType = msg.type === 'steer_done'
@@ -2001,7 +2104,10 @@ function handlePollPost(req, res) {
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,
-          file: msg.file,
+          file: replyFileMeta.file,
+          sourceFile: replyFileMeta.sourceFile,
+          previewFile: replyFileMeta.previewFile,
+          previewMode: replyFileMeta.previewMode,
           message: msg.message,
           sourceEventType: acknowledgedEvent?.type,
           carbonize: msg.data?.carbonize === true,
@@ -2010,7 +2116,16 @@ function handlePollPost(req, res) {
     }
     flushPendingPolls();
     // Forward the reply to the browser via SSE
-    broadcast({ type: msg.type || 'done', id: msg.id, message: msg.message, file: msg.file, data: msg.data });
+    broadcast({
+      type: msg.type || 'done',
+      id: msg.id,
+      message: msg.message,
+      file: msg.file,
+      sourceFile: replyFileMeta.sourceFile,
+      previewFile: replyFileMeta.previewFile,
+      previewMode: replyFileMeta.previewMode,
+      data: msg.data,
+    });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -2023,6 +2138,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
+  cleanupSvelteComponentSessionsBeforeExit();
   removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
   state.leaseTimer = null;
@@ -2035,6 +2151,25 @@ function shutdown() {
   state.pendingPolls.length = 0;
   if (httpServer) httpServer.close();
   process.exit(0);
+}
+
+function cleanupSvelteComponentSessionsBeforeExit() {
+  try {
+    removeAllSvelteComponentSessions(process.cwd());
+  } catch (err) {
+    console.warn('[impeccable] Svelte component session cleanup failed:', err.message);
+  }
+}
+
+function applyLegacyDeferredAcceptsOnStartup() {
+  try {
+    const result = applyDeferredSvelteComponentAccepts(process.cwd());
+    if (result.applied > 0 || result.failed > 0) {
+      console.log('[impeccable] applied legacy deferred Svelte component accepts:', JSON.stringify(result));
+    }
+  } catch (err) {
+    console.warn('[impeccable] legacy deferred Svelte component accept apply failed:', err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2162,6 +2297,7 @@ rollbackManualApplyTransaction({
   cwd: process.cwd(),
   reason: 'manual_edit_server_start_recovered_abandoned_transaction',
 });
+applyLegacyDeferredAcceptsOnStartup();
 restorePendingEventsFromStore();
 pruneStaleManualApplyEvidence(process.cwd());
 const portArg = args.find(a => a.startsWith('--port='));

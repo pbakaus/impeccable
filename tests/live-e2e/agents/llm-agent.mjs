@@ -55,7 +55,7 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '  "scopedCss": "string — contents of the preview CSS block, authored according to wrapInfo.cssAuthoring",',
   '  "variants": [',
   '    {',
-  '      "innerHtml": "string — single top-level HTML element matching the picked element\'s tag, e.g. <h1 class=\\"hero-title\\">Title</h1>",',
+  '      "innerHtml": "string — single top-level HTML element; replace mode matches the picked element tag, insert mode is net-new content",',
   '      "params": [/* optional 0-4 ParamSpec entries */]',
   '    }',
   '  ]',
@@ -67,13 +67,17 @@ export const VARIANT_SYSTEM_INSTRUCTIONS = [
   '  { "id": "string", "kind": "toggle", "default": boolean, "label": "string" }',
   '',
   'REQUIREMENTS',
-  '- Each variant.innerHtml must be a single top-level HTML element. Use the EXACT same tag as the picked element.',
-  '- The single top-level element is the replacement root itself. If the picked element is <section class="hero-copy">...</section>, emit <section class="hero-copy">...</section> with edited children directly; do not wrap a duplicate <section class="hero-copy"> inside another root.',
-  '- PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain exactly class="hero-title"; do not add, remove, or rename classes. This is a hard requirement — mapped-list fixtures depend on the class string staying stable across the variant set.',
-  '- PRESERVE all existing visible copy exactly. GO variants change presentation, hierarchy, and styling; they must not rewrite titles, paragraphs, button labels, or user-applied manual copy edits.',
-  '- For bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
-  '- PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
-  '- Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
+  '- Replace mode: each variant.innerHtml must be a single top-level HTML element using the EXACT same tag as the picked element.',
+  '- Insert mode (`event.mode === "insert"`): each variant.innerHtml must be net-new content that honors event.freeformPrompt. It does NOT replace the anchor and does NOT need to use the anchor tag or preserve anchor copy.',
+  '- Insert mode variants must contain visible inserted content. Do not return empty roots, placeholder-only roots, inline style= attributes, or test hooks like <div data-impeccable-e2e-variant="1"></div>.',
+  '- Replace mode: the single top-level element is the replacement root itself. If the picked element is <section class="hero-copy">...</section>, emit <section class="hero-copy">...</section> with edited children directly; do not wrap a duplicate <section class="hero-copy"> inside another root.',
+  '- Replace mode: PRESERVE the original element\'s className verbatim. If the picked element\'s outerHTML contains class="hero-title", every variant\'s innerHtml MUST contain exactly class="hero-title"; do not add, remove, or rename classes. This is a hard requirement — mapped-list fixtures depend on the class string staying stable across the variant set.',
+  '- Replace mode: PRESERVE all existing visible copy exactly. GO variants change presentation, hierarchy, and styling; they must not rewrite titles, paragraphs, button labels, or user-applied manual copy edits.',
+  '- Replace mode: use the visible literal copy from the picked element. Do not emit framework template expressions or placeholders such as {name}, {amount}, ${value}, or {{value}} in innerHtml.',
+  '- Replace mode: for bare text elements, keep the full visible copy in one editable text node. If you add child markup for styling, wrap the entire copy; never split the copy across sibling text nodes.',
+  '- Replace mode: PRESERVE existing class-bearing descendant elements in place. If the picked element contains <h1 class="hero-title"> and <p class="hero-hook">, keep those elements/classes as direct descendants of the replacement root; do not wrap them in a new structural div such as <div class="hero-inner">.',
+  '- Replace mode: Do not return source-identical variants. For a bare text element, preserve the root tag/class/copy but add a small child span or styling hook so Accept persists a real source change.',
+  '- Replace mode: for non-bare elements where the existing children must stay in place, add a harmless root attribute such as data-impeccable-e2e-variant="1" or another non-copy styling hook so the markup is materially changed without changing visible text.',
   '- Generate exactly event.count variants — no more, no fewer.',
   '- Mix the param kinds across the variant set: include at least one range, one steps, and one toggle when count >= 3.',
   '- The scopedCss must follow wrapInfo.cssAuthoring exactly: use its selector strategy, rulePattern, requirements, and forbidden patterns.',
@@ -175,6 +179,7 @@ const STEER_SYSTEM_INSTRUCTIONS = [
   '- Use exact find strings copied from context.sourceExcerpt or context.tagLine. Do not guess whitespace.',
   '- Prefer a single edit on the hero opening tag (h1 with the hero class). Preserve all existing classes and inner content.',
   '- file must match context.targetFile unless the excerpt clearly shows a different path is wrong.',
+  '- Never edit temporary preview or scratch paths such as node_modules/.impeccable-live; Steer edits must land in the real app source file.',
   '- edits must be non-empty; find must match exactly once in the file.',
   '',
   'CONTEXT — live-mode skill spec follows for steer semantics (Handle steer section).',
@@ -240,30 +245,12 @@ export async function createLlmAgent(opts = {}) {
 
   return {
     async generateVariants(event, context = {}) {
+      const isInsert = event.mode === 'insert';
       const baseUserMessage = [
-        'Produce variants for the following pick. Reply with the JSON object only — no prose.',
+        `Produce variants for the following ${isInsert ? 'insert request' : 'pick'}. Reply with the JSON object only — no prose.`,
         '',
         '```json',
-        JSON.stringify(
-          {
-            id: event.id,
-            action: event.action,
-            count: event.count,
-            element: {
-              outerHTML: event.element?.outerHTML,
-              tagName: event.element?.tagName,
-              className: event.element?.className,
-              textContent: event.element?.textContent?.slice(0, 200),
-            },
-            wrapInfo: {
-              styleMode: context.wrapInfo?.styleMode,
-              styleTag: context.wrapInfo?.styleTag,
-              cssAuthoring: context.wrapInfo?.cssAuthoring,
-            },
-          },
-          null,
-          2,
-        ),
+        JSON.stringify(buildVariantRequestPayload(event, context), null, 2),
         '```',
       ].join('\n');
 
@@ -345,25 +332,41 @@ export async function createLlmAgent(opts = {}) {
           continue;
         }
 
-        const materialError = validateVariantMaterialChange(parsed, event.element);
-        const copyError = validateVariantVisibleCopy(parsed, event.element);
-        const validationError = copyError || materialError;
+        const validationError = isInsert
+          ? validateInsertVariantOutput(parsed, event)
+          : (validateVariantVisibleCopy(parsed, event.element) || validateVariantMaterialChange(parsed, event.element));
         if (!validationError) return parsed;
         if (attempt === 1) throw new Error(`LLM agent: ${validationError}`);
 
-        const expectedText = normalizeVisibleText(
-          elementVisibleText(event.element),
-        );
         log(`variant validation failed; retrying: ${validationError}`);
-        userMessage = [
-          baseUserMessage,
-          '',
-          'VALIDATION ERROR',
-          validationError,
-          `Every variant must preserve this exact normalized visible text: "${expectedText}"`,
-          'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
-          'Return corrected JSON only.',
-        ].join('\n');
+        if (isInsert) {
+          userMessage = [
+            baseUserMessage,
+            '',
+            'VALIDATION ERROR',
+            validationError,
+            `The inserted content must visibly satisfy this prompt: "${event.freeformPrompt || ''}"`,
+            'Do not preserve or copy the anchor text unless the prompt asks for it. This is net-new content inserted near the anchor.',
+            'Do not use data-impeccable-* attributes or empty test-hook-only roots.',
+            'Do not use inline style= attributes; put all visual rules in scopedCss.',
+            'Return corrected JSON only.',
+          ].join('\n');
+        } else {
+          const expectedText = normalizeVisibleText(
+            elementVisibleText(event.element),
+          );
+          userMessage = [
+            baseUserMessage,
+            '',
+            'VALIDATION ERROR',
+            validationError,
+            `Every variant must preserve this exact normalized visible text: "${expectedText}"`,
+            'Use literal visible text in innerHtml, not framework placeholders like {name}, {amount}, ${value}, or {{value}}.',
+            'Every variant must also be materially different from the picked element source. For bare text, keep the full copy in one text node; wrap the entire text in one child span or add a real styling hook.',
+            'For non-bare markup, keep the existing visible descendants in place and add a harmless root data attribute or styling hook so the source is not identical.',
+            'Return corrected JSON only.',
+          ].join('\n');
+        }
       }
 
       throw new Error('LLM agent: variant generation failed');
@@ -661,6 +664,33 @@ export function validateManualEditPlanningCoverage(parsed, batch) {
   return null;
 }
 
+export function buildVariantRequestPayload(event, context = {}) {
+  const isInsert = event?.mode === 'insert';
+  return {
+    id: event?.id,
+    mode: event?.mode || 'replace',
+    action: event?.action,
+    freeformPrompt: event?.freeformPrompt,
+    count: event?.count,
+    element: isInsert ? null : {
+      outerHTML: event?.element?.outerHTML,
+      tagName: event?.element?.tagName,
+      className: event?.element?.className,
+      textContent: event?.element?.textContent?.slice(0, 200),
+    },
+    insert: isInsert ? {
+      position: event?.insert?.position,
+      anchor: event?.insert?.anchor,
+    } : undefined,
+    placeholder: isInsert ? event?.placeholder : undefined,
+    wrapInfo: {
+      styleMode: context.wrapInfo?.styleMode,
+      styleTag: context.wrapInfo?.styleTag,
+      cssAuthoring: context.wrapInfo?.cssAuthoring,
+    },
+  };
+}
+
 /**
  * Parse and validate a model response into the variant-output schema. Throws
  * with a `Parsed (first 500 chars): ...` echo on every schema failure so the
@@ -776,8 +806,10 @@ function validateScopedCss(css) {
 function validateVariantInnerHtml(html) {
   if (/<!--[\s\S]*?-->/.test(html)) return 'must not include HTML comments';
   if (/<\/?script\b/i.test(html)) return 'must not include a <script> tag';
+  if (/<\/?style\b/i.test(html)) return 'must not include a <style> tag';
   if (/\bclassName\s*=/.test(html)) return 'must use HTML class= attributes, not JSX className=';
   if (/\bstyle\s*=\s*\{\{/.test(html)) return 'must use HTML style="..." syntax, not JSX style={{...}}';
+  if (/\{[^}]+\}/.test(html)) return 'must use literal visible copy, not framework template expressions such as {name}';
   if (/\bdata-impeccable-variants?\s*=/.test(html)) return 'must not include Impeccable wrapper attributes';
   if (/<\/?>/.test(html)) return 'must not use JSX fragments';
   return null;
@@ -797,6 +829,27 @@ export function validateVariantVisibleCopy(parsed, element) {
   return null;
 }
 
+export function validateInsertVariantOutput(parsed, event = {}) {
+  for (const [i, variant] of parsed.variants.entries()) {
+    const html = variant.innerHtml || '';
+    if (/\bdata-impeccable-[\w-]*\s*=/.test(html)) {
+      return `insert variant ${i} contains preview-only data-impeccable attributes`;
+    }
+    if (/\sstyle\s*=/.test(html)) {
+      return `insert variant ${i} uses inline style attributes; put CSS in scopedCss`;
+    }
+    if (!hasSingleTopLevelElement(html)) {
+      return `insert variant ${i} must have a single top-level root element`;
+    }
+    const text = normalizeVisibleText(extractVisibleTextFromHtml(html));
+    if (!text && !htmlHasNonTextVisualContent(html)) {
+      return `insert variant ${i} has no visible inserted content`;
+    }
+  }
+  if (event.freeformPrompt && parsed.variants.length > 0) return null;
+  return null;
+}
+
 export function validateVariantMaterialChange(parsed, element) {
   const originalHtml = normalizeVariantHtml(element?.outerHTML || '');
   if (!originalHtml) return null;
@@ -813,6 +866,36 @@ export function validateVariantMaterialChange(parsed, element) {
   }
 
   return null;
+}
+
+function htmlHasNonTextVisualContent(html) {
+  return /<(img|svg|canvas|video|audio|picture|input|button|select|textarea)\b/i.test(html || '');
+}
+
+function hasSingleTopLevelElement(html) {
+  const trimmed = String(html || '').trim();
+  const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  const tagRe = /<\/?([A-Za-z][\w:-]*)(?:\s[^>]*)?\/?>/g;
+  let depth = 0;
+  let roots = 0;
+  let match;
+  while ((match = tagRe.exec(trimmed)) !== null) {
+    const full = match[0];
+    const name = match[1].toLowerCase();
+    const closing = full.startsWith('</');
+    const selfClosing = full.endsWith('/>') || voidTags.has(name);
+    if (closing) {
+      if (depth <= 0) return false;
+      depth -= 1;
+      continue;
+    }
+    if (depth === 0) {
+      roots += 1;
+      if (roots > 1) return false;
+    }
+    if (!selfClosing) depth += 1;
+  }
+  return roots === 1 && depth === 0;
 }
 
 function bareTextElementText(html) {
@@ -1406,7 +1489,56 @@ function decodeBasicHtmlEntities(text) {
  * Strip a single optional fence, leave anything else alone.
  */
 function stripCodeFence(s) {
-  return s
-    .replace(/^```(?:json)?\s*\n/, '')
-    .replace(/\n```\s*$/, '');
+  const text = String(s).trim();
+  const exactFence = text.match(/^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/);
+  const candidate = exactFence ? exactFence[1].trim() : text;
+  return extractFirstJsonValue(candidate) || candidate;
+}
+
+function extractFirstJsonValue(text) {
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch !== '{' && ch !== '[') continue;
+    const end = findJsonValueEnd(text, i);
+    if (end !== -1) return text.slice(i, end + 1);
+  }
+  return null;
+}
+
+function findJsonValueEnd(text, start) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === '}' || ch === ']') {
+      const expected = ch === '}' ? '{' : '[';
+      if (stack.pop() !== expected) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+
+  return -1;
 }

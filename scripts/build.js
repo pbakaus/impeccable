@@ -19,6 +19,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
+import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
@@ -460,97 +461,6 @@ These are hidden folders (dotfiles). Press Cmd+Shift+. in Finder to see them.
 }
 
 /**
- * Generate static API data for Cloudflare Pages deployment.
- * Pre-builds all API responses as JSON files so they can be served
- * as static assets via _redirects rewrites (no function invocations needed).
- */
-function generateApiData(buildDir, skills, patterns) {
-  const apiDir = path.join(buildDir, '_data', 'api');
-  fs.mkdirSync(apiDir, { recursive: true });
-
-  // skills.json
-  const skillsData = skills.map(s => ({
-    id: path.basename(path.dirname(s.filePath)),
-    name: s.name,
-    description: s.description,
-    userInvocable: s.userInvocable,
-  }));
-  fs.writeFileSync(path.join(apiDir, 'skills.json'), JSON.stringify(skillsData));
-
-  // commands.json - after v3.0 consolidation, commands are sub-commands of
-  // /impeccable. Load them from command-metadata.json and include the root
-  // impeccable skill itself so UI surfaces like the cheatsheet can list them.
-  // Each entry also picks up a short `tagline` from its editorial file
-  // (site/content/skills/<id>.md) when one exists. Taglines are used by UI
-  // surfaces that need a human-friendly one-liner, while `description` stays
-  // optimized for auto-trigger keyword matching in the AI harness.
-  const readTagline = (id) => {
-    const editorialPath = path.join(ROOT_DIR, 'site/content/skills', `${id}.md`);
-    if (!fs.existsSync(editorialPath)) return null;
-    const raw = fs.readFileSync(editorialPath, 'utf-8');
-    const match = raw.match(/^---\n([\s\S]*?)\n---/);
-    if (!match) return null;
-    const taglineMatch = match[1].match(/tagline:\s*"([^"]+)"/);
-    return taglineMatch ? taglineMatch[1] : null;
-  };
-
-  const metadataPath = path.join(ROOT_DIR, 'skill/scripts/command-metadata.json');
-  if (!fs.existsSync(metadataPath)) {
-    throw new Error(`command-metadata.json is missing at ${metadataPath}. This file is required to generate the commands API.`);
-  }
-  const impeccable = skills.find(s => s.name === 'impeccable');
-  if (!impeccable) {
-    throw new Error('impeccable skill not found at skill/SKILL.src.md. The build system expects exactly one skill at that path.');
-  }
-
-  const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
-  const commandsData = [
-    {
-      id: 'impeccable',
-      name: 'impeccable',
-      description: impeccable.description,
-      tagline: readTagline('impeccable'),
-      userInvocable: true,
-    },
-    ...Object.entries(metadata).map(([id, meta]) => ({
-      id,
-      name: id,
-      description: meta.description,
-      tagline: readTagline(id),
-      userInvocable: true,
-    })),
-  ];
-  fs.writeFileSync(path.join(apiDir, 'commands.json'), JSON.stringify(commandsData));
-
-  // patterns.json
-  fs.writeFileSync(path.join(apiDir, 'patterns.json'), JSON.stringify(patterns));
-
-  // version.json - a tiny endpoint the installed skill polls on boot
-  // (skill/scripts/context.mjs) to nudge users toward `npx impeccable skills
-  // update`. Kept deliberately small so the boot-time check is cheap, unlike
-  // the full bundle download `skills check` performs. The skills version is
-  // the canonical one in the Claude plugin manifest.
-  const pluginManifestPath = path.join(ROOT_DIR, '.claude-plugin/plugin.json');
-  const skillsVersion = JSON.parse(fs.readFileSync(pluginManifestPath, 'utf-8')).version;
-  fs.writeFileSync(path.join(apiDir, 'version.json'), JSON.stringify({ skills: skillsVersion }));
-
-  // command-source/{id}.json (one per skill)
-  const cmdSourceDir = path.join(apiDir, 'command-source');
-  fs.mkdirSync(cmdSourceDir, { recursive: true });
-  for (const skill of skills) {
-    const id = path.basename(path.dirname(skill.filePath));
-    const content = fs.readFileSync(skill.filePath, 'utf-8');
-    fs.writeFileSync(
-      path.join(cmdSourceDir, `${id}.json`),
-      JSON.stringify({ content })
-    );
-  }
-
-  const skillWord = skillsData.length === 1 ? 'skill' : 'skills';
-  console.log(`✓ Generated static API data (${skillsData.length} ${skillWord}, ${commandsData.length} commands)`);
-}
-
-/**
  * Copy dist files to build output for Cloudflare Pages Functions access.
  * Download functions use env.ASSETS.fetch() to read these files.
  */
@@ -703,7 +613,7 @@ async function build() {
   // Astro wipes build/ before writing, so anything written directly to build/
   // during build:skills would be destroyed when build:site runs.
   const publicDir = path.join(ROOT_DIR, 'site', 'public');
-  generateApiData(publicDir, skills, patterns);
+  generateApiData(publicDir, skills, patterns, ROOT_DIR);
   generateCFConfig(publicDir);
 
   // Copy all provider outputs to project root for local testing.

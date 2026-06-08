@@ -44,15 +44,18 @@
   display: block;
 }
 
+/* Three-way switcher: show the icon for the active preference (auto / light /
+   dark), not the resolved theme. Keyed on data-theme-pref so the icon reflects
+   that "auto" is its own state rather than collapsing into whatever the OS picked. */
+.theme-toggle .theme-toggle-icon--auto,
+.theme-toggle .theme-toggle-icon--light,
 .theme-toggle .theme-toggle-icon--dark {
   display: none;
 }
 
-html.light .theme-toggle .theme-toggle-icon--light {
-  display: none;
-}
-
-html.light .theme-toggle .theme-toggle-icon--dark {
+html[data-theme-pref='auto'] .theme-toggle .theme-toggle-icon--auto,
+html[data-theme-pref='light'] .theme-toggle .theme-toggle-icon--light,
+html[data-theme-pref='dark'] .theme-toggle .theme-toggle-icon--dark {
   display: block;
 }
 
@@ -61,6 +64,9 @@ html.light .theme-toggle .theme-toggle-icon--dark {
   color: var(--ks-champagne);
 }
 
+/* Light mode: the toggle and the GitHub pill both read as refined hairline
+   chips — neutral --ks-rule border, no fill. The contextual seam scrim (below)
+   carries them over the bright hero corner, so neither needs a solid backing. */
 html.light .kinpaku-chrome .theme-toggle {
   border-color: var(--ks-rule);
   color: var(--ks-text-muted);
@@ -81,6 +87,33 @@ html.light .kinpaku-chrome .site-header {
   border-bottom-color: var(--ks-rule);
 }
 
+/* Light-only seam treatment. The hero's bright kintsugi seam sits in the
+   top-right corner, under the nav cluster (Live + the hairline toggle/GitHub
+   chips, which carry no fill of their own). In light mode the dark text fights
+   the gold, so a strong radial scrim lifts it off — opaque at the top-right
+   corner, feathering to nothing by 70% so there's no hard edge. It's contextual,
+   not a blanket bar: localized to the corner and faded via --hp the instant the
+   header glasses in on scroll. Above the mobile drawer breakpoint only; dark
+   mode needs none (cream text reads over the seam). */
+@media (min-width: 761px) {
+  html.light .home-kinpaku .site-header::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: -24px;
+    width: min(720px, 50%);
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      150% 170% at 100% 0%,
+      oklch(99% 0.01 95 / calc(0.95 * (1 - var(--hp)))) 0%,
+      oklch(99% 0.01 95 / calc(0.6 * (1 - var(--hp)))) 45%,
+      transparent 70%
+    );
+  }
+}
+
 html.light .kinpaku-chrome .site-header-menu {
   border-color: var(--ks-rule);
   color: var(--ks-text);
@@ -96,8 +129,8 @@ html.light .kinpaku-chrome .site-header-menu-line {
 }
 
 html.light .kinpaku-chrome .site-header-github {
-  border-color: var(--ks-rule-strong);
-  background: oklch(99% 0.008 95 / 0.88);
+  border-color: var(--ks-rule);
+  background: transparent;
   color: var(--ks-text);
   height: 36px;
   min-height: 36px;
@@ -201,6 +234,20 @@ html.light :is(
   color: var(--ks-kinpaku-ink);
 }
 
+/* Command palette (magazine spread). The kicker, skill name (big title + active
+   list item) all read in the section accent (--spread-accent) — gold for
+   create/refine/simplify, verdigris for evaluate/harden, neutral for system —
+   matching the divider. On the near-white card these read fine. This clears the
+   muddier kinpaku-ink the shared eyebrow :is() rule above assigns; scoped under
+   .magazine-container so its specificity ties/beats that rule (and only touches
+   the palette). Other eyebrows keep kinpaku-ink for paper. Dark mode gets the
+   same accent colors via home-kinpaku.css. */
+html.light .home-kinpaku .magazine-container .spread-command-name,
+html.light .home-kinpaku .magazine-container .spread-category-label,
+html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
+  color: var(--spread-accent);
+}
+
 /* ============================================================
    Homepage — hero, scroll glass header, section shells
    ============================================================ */
@@ -258,7 +305,7 @@ html.light .hero-rebuild-art {
 
 html.light .hero-rebuild-demo-shell {
   background: oklch(99% 0.008 95 / 0.92);
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-rule);
 }
 
 html.light .hero-rebuild-demo-shell:hover {
@@ -745,10 +792,43 @@ html.light .live-mode-kinpaku .live-mode-terminal {
     0 20px 48px -14px oklch(25% 0.02 95 / 0.12);
 }
 
-html.light .changelog-faq-kinpaku .changelog-entry,
-html.light .changelog-faq-kinpaku .faq-item {
+/* Changelog + FAQ cards (cf-*). These pages paint their card / panel / pill
+   backgrounds with literal dark oklch values that don't flip with the theme, so
+   in light mode the cards stayed near-black on the light page. The earlier
+   override here was dead twice over: it targeted a .changelog-faq-kinpaku
+   wrapper that is never on the body, and the wrong (.faq-item / .changelog-entry)
+   element names — the real classes are cf-prefixed. Flip the actual surfaces to
+   the shared light card treatment, and drop the bright-kinpaku accents to
+   --ks-kinpaku-ink so they stay legible on paper (matching the .cf-eyebrow). */
+html.light .cf-entry,
+html.light .cf-stats,
+html.light .cf-faq-item {
+  background:
+    linear-gradient(135deg, oklch(77% 0.13 82 / 0.06), transparent 44%),
+    var(--ks-lacquer-raised);
+  box-shadow: inset 0 0 0 1px oklch(77% 0.13 82 / 0.05);
+}
+
+html.light .cf-entry--current {
+  background:
+    linear-gradient(135deg, oklch(77% 0.13 82 / 0.12), transparent 52%),
+    var(--ks-lacquer-raised);
+}
+
+html.light .cf-ba-shot {
   background: var(--ks-lacquer-raised);
-  border-color: var(--ks-rule);
+}
+
+html.light .cf-ba-tag--before {
+  background: oklch(99% 0.008 95 / 0.7);
+}
+
+html.light .cf-version,
+html.light .cf-stat-num,
+html.light .cf-current-badge,
+html.light .cf-ba-tag--after,
+html.light .cf-faq-question {
+  color: var(--ks-kinpaku-ink);
 }
 
 /* ============================================================
@@ -842,7 +922,6 @@ html.light .prose blockquote {
 
 html.light .home-kinpaku .foundation-card,
 html.light .home-kinpaku .magazine-container,
-html.light .home-kinpaku #framework-viz-container .ptable-cell,
 html.light .home-kinpaku .gallery-stack-card,
 html.light .home-kinpaku .language-view-toggle,
 html.light .home-kinpaku .demo-toggle-switch,
@@ -856,6 +935,29 @@ html.light .home-kinpaku .terminal-header {
 
 html.light .home-kinpaku .language-view-tab.is-active {
   color: oklch(14% 0.018 95);
+}
+
+/* Periodic-table view (#framework-viz-container). The dark styles hardcode a
+   black stage and near-black tiles with !important, so in light mode the tiles
+   stayed black while the symbol/name text flipped to dark ink — black on black.
+   Mirror the dark "crisp neutral card" idea for light: a soft light stage with
+   raised near-white tiles and neutral hairline borders. Symbol (champagne) and
+   name (text-muted) already flip to dark, and category stays cued by the
+   group labels (the --cat-*-text tokens are re-themed for light above).
+   !important is required to override the dark rules' !important. */
+html.light .home-kinpaku .language-view--periodic .solution-visual-interactive {
+  background: var(--ks-lacquer-deep) !important;
+}
+
+html.light .home-kinpaku #framework-viz-container .ptable-element {
+  background: var(--ks-lacquer-raised) !important;
+  border-color: var(--ks-rule) !important;
+  box-shadow: 0 1px 3px oklch(25% 0.02 95 / 0.06) !important;
+}
+
+html.light .home-kinpaku #framework-viz-container .ptable-element:is(:hover, :focus-visible) {
+  border-color: oklch(25% 0.02 95 / 0.32) !important;
+  box-shadow: 0 4px 14px oklch(25% 0.02 95 / 0.10) !important;
 }
 
 html.light .home-kinpaku .install-primary-main,
@@ -915,7 +1017,7 @@ html.light .home-kinpaku .terminal-preview .demo-split-comparison .split-after {
 
 html.light .home-kinpaku .hero-rebuild-right .split-label-item {
   background: oklch(99% 0.008 95 / 0.88);
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-rule);
   color: var(--ks-champagne);
 }
 
@@ -1017,8 +1119,15 @@ html.light .live-mode-kinpaku .live-demo-frame {
 
 html.light .hero-live-demo .live-demo-pin-note {
   background: var(--ks-lacquer-raised);
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-rule);
   box-shadow: 0 8px 22px oklch(25% 0.02 95 / 0.10);
+  /* The base note text is near-white for the dark bar; on the pale bubble it
+     has to flip to ink or the comment is invisible. */
+  color: var(--ks-text);
+}
+
+html.light .hero-live-demo .live-demo-pin-caret {
+  background: var(--ks-kinpaku-ink);
 }
 
 html.light .hero-live-demo .live-demo-annot-clear {
@@ -1181,15 +1290,21 @@ html.light .live-mode-kinpaku .live-demo-ctx {
   box-shadow: 0 16px 36px -12px oklch(25% 0.02 95 / 0.14);
 }
 
+/* Standalone brand mark (no wordmark) reads as the header logo does in light
+   mode — crisp near-black ink, not the muddy mid-gold that --ks-kinpaku-ink
+   washes to on a pale bar. */
 html.light .home-kinpaku .live-demo-gbar-brand,
 html.light .live-mode-kinpaku .live-demo-gbar-brand {
-  color: var(--ks-kinpaku-ink);
+  color: var(--ks-champagne);
 }
 
+/* Active tool: a solid kinpaku chip with dark ink, matching the gold Go button.
+   The dark-mode active is a graphite chip + gold text; on a pale bar that chip
+   reads as a heavy black smudge, so the light analog flips to gold fill. */
 html.light .home-kinpaku .live-demo-gbar-btn.is-active,
 html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active {
-  background: oklch(22% 0.02 95);
-  color: var(--ks-kinpaku-pale);
+  background: var(--ks-kinpaku);
+  color: oklch(14% 0.018 95);
 }
 
 html.light .home-kinpaku .live-demo-gbar-btn.is-active svg,
@@ -1201,8 +1316,8 @@ html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active .live-demo-gbar-btn-
 
 html.light .home-kinpaku .live-demo-gbar-chat,
 html.light .live-mode-kinpaku .live-demo-gbar-chat {
-  background: oklch(88% 0.014 95);
-  border-color: var(--ks-rule);
+  background: oklch(97.5% 0.004 95);
+  border-color: oklch(25% 0.02 95 / 0.14);
 }
 
 html.light .home-kinpaku .live-demo-gbar-chat.is-expanded,
@@ -1215,14 +1330,18 @@ html.light .live-mode-kinpaku .live-demo-gbar-chat-input {
   color: var(--ks-text);
 }
 
+/* Control chips (adapt pill, refine input, ×3 count). The old 88%/0.014 fill
+   was an 11%-darker olive-cast block that read as heavy and unrefined on the
+   white bar. A barely-there warm off-white recess with a crisp hairline reads
+   as polished product chrome — the border does the separating, not a gray slab. */
 html.light .home-kinpaku .live-demo-ctx-pill,
 html.light .home-kinpaku .live-demo-ctx-input,
 html.light .home-kinpaku .live-demo-ctx-count,
 html.light .live-mode-kinpaku .live-demo-ctx-pill,
 html.light .live-mode-kinpaku .live-demo-ctx-input,
 html.light .live-mode-kinpaku .live-demo-ctx-count {
-  background: oklch(88% 0.014 95);
-  border-color: var(--ks-rule);
+  background: oklch(97.5% 0.004 95);
+  border-color: oklch(25% 0.02 95 / 0.14);
   color: var(--ks-text);
 }
 
@@ -1231,6 +1350,20 @@ html.light .home-kinpaku .live-demo-ctx-accept,
 html.light .live-mode-kinpaku .live-demo-ctx-go,
 html.light .live-mode-kinpaku .live-demo-ctx-accept {
   color: oklch(14% 0.018 95);
+}
+
+/* Palette switcher — light surface, kinpaku-tinted highlight (the dark graphite
+   chip would be a black smudge on the pale menu). */
+html.light .home-kinpaku .live-demo-ctx-palette,
+html.light .live-mode-kinpaku .live-demo-ctx-palette {
+  background: var(--ks-lacquer-raised);
+  border-color: var(--ks-rule);
+  box-shadow: 0 18px 40px -14px oklch(25% 0.02 95 / 0.18);
+}
+html.light .home-kinpaku .live-demo-ctx-palette-chip.is-highlight,
+html.light .live-mode-kinpaku .live-demo-ctx-palette-chip.is-highlight {
+  background: oklch(78% 0.12 82 / 0.16);
+  color: var(--ks-kinpaku-ink);
 }
 
 html.light .home-kinpaku .live-demo-ctx-caret,

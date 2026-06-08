@@ -3159,7 +3159,7 @@
 
 .neon-case-secondary {
   color: var(--ks-kinpaku);
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-kinpaku);
 }
 
 .neon-case-primary:hover,
@@ -3188,7 +3188,7 @@
 
 .neon-case-hero-shot:hover {
   transform: translateY(-3px);
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-kinpaku);
 }
 
 .neon-case-hero-shot img {
@@ -3323,8 +3323,12 @@
   align-items: end;
   padding: clamp(2rem, 5vw, 4rem);
   background: var(--ks-lacquer-deep);
-  border: 1px solid var(--ks-rule-strong);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
+}
+
+.neon-case-command > * {
+  min-width: 0;
 }
 
 .neon-case-command h2 {
@@ -3341,12 +3345,28 @@
 }
 
 .neon-case-command .code-block-wrap {
+  position: relative;
   margin: 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.neon-case-command .code-block-wrap::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 31px;
+  width: 142px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--ks-code-block-bg) 74%);
+  z-index: 1;
 }
 
 .neon-case-command .code-block {
+  max-width: 100%;
   margin: 0;
-  padding: var(--spacing-md);
+  padding: var(--spacing-md) 96px var(--spacing-md) var(--spacing-md);
   background: var(--ks-code-block-bg);
   color: var(--ks-code-block-fg);
   border: 1px solid var(--ks-code-block-border);
@@ -3365,10 +3385,101 @@
   font-size: inherit;
 }
 
-.neon-case-command .code-block-copy.is-copied {
-  background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
-  border-color: var(--ks-kinpaku);
+.neon-case-command .code-block-copy {
+  top: 0;
+  right: 14px;
+  bottom: 17px;
+  margin: auto 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  opacity: 1;
+  background: oklch(5% 0.004 95 / 0.94);
+  border: 1px solid var(--ks-code-block-border);
+  border-radius: 3px;
+  color: var(--ks-kinpaku);
+  transform: none;
+  transition:
+    background 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
+}
+
+.neon-case-command .code-block-copy::before {
+  content: none;
+}
+
+.neon-case-command .code-block-copy:hover {
+  background: oklch(8% 0.006 95);
+  border-color: currentColor;
+  color: var(--ks-kinpaku);
+}
+
+.neon-case-command .code-block-copy:active {
+  transform: scale(0.96);
+}
+
+.neon-case-command .code-block-copy-icon,
+.neon-case-command .code-block-check-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.neon-case-command .code-block-copy-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.neon-case-command .code-block-check-icon {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.neon-case-command .code-block-check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.neon-case-command .code-block-copy.copied {
+  background: oklch(8% 0.006 95);
+  border-color: currentColor;
+}
+
+.neon-case-command .code-block-copy.copied .code-block-copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.neon-case-command .code-block-copy.copied .code-block-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.neon-case-command .code-block-copy.copied .code-block-check-icon path {
+  animation: neon-case-check-draw 260ms var(--ks-ease) forwards;
+}
+
+@keyframes neon-case-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neon-case-command .code-block-copy,
+  .neon-case-command .code-block-copy-icon,
+  .neon-case-command .code-block-check-icon {
+    transition: none;
+  }
+
+  .neon-case-command .code-block-copy.copied .code-block-check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 @media (max-width: 980px) {

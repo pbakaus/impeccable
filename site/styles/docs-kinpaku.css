@@ -540,7 +540,7 @@
   display: grid;
   place-items: center;
   width: 36px;
-  color: var(--ks-rule-strong);
+  color: var(--ks-kinpaku);
 }
 
 .docs-kinpaku .docs-flow-arrow svg {
@@ -628,7 +628,7 @@
 }
 
 .docs-kinpaku .docs-chain-arrow {
-  color: var(--ks-rule-strong);
+  color: var(--ks-kinpaku);
   font-size: 1.1em;
 }
 

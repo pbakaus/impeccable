@@ -113,6 +113,35 @@ for (const name of listFixtures()) {
         const out = runScript('live-inject.mjs', ['--port', '9999'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'inject succeeded');
+        assert.equal(result.gitIgnore?.mode, 'git-info-exclude', 'live runtime ignores are installed locally');
+        const ignored = execFileSync('git', [
+          'check-ignore',
+          '.impeccable/live/server.json',
+          '.impeccable/live/sessions/example.jsonl',
+          '.impeccable/live/previews/example/v1.html',
+          '.impeccable/live/deferred-svelte-component-accepts.json',
+          'src/lib/impeccable/ImpeccableLiveRoot.svelte',
+          'src/lib/impeccable/__runtime.js',
+          'src/lib/impeccable/a4ac4e74/v3.svelte',
+        ], { cwd: tmp, encoding: 'utf-8' });
+        assert.match(ignored, /\.impeccable\/live\/server\.json/);
+        assert.match(ignored, /\.impeccable\/live\/sessions\/example\.jsonl/);
+        assert.match(ignored, /\.impeccable\/live\/previews\/example\/v1\.html/);
+        assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
+        assert.match(ignored, /src\/lib\/impeccable\/ImpeccableLiveRoot\.svelte/);
+        assert.match(ignored, /src\/lib\/impeccable\/__runtime\.js/);
+        assert.match(ignored, /src\/lib\/impeccable\/a4ac4e74\/v3\.svelte/);
+        if (result.adapter === 'sveltekit') {
+          const layout = readFileSync(join(tmp, 'src/routes/+layout.svelte'), 'utf-8');
+          const appHtml = readFileSync(join(tmp, 'src/app.html'), 'utf-8');
+          const root = readFileSync(join(tmp, 'src/lib/impeccable/ImpeccableLiveRoot.svelte'), 'utf-8');
+          assert.match(layout, /impeccable-live-svelte-start/, 'SvelteKit layout got the adapter marker');
+          assert.match(layout, /ImpeccableLiveRoot/, 'SvelteKit layout renders the adapter host');
+          assert.doesNotMatch(appHtml, /impeccable-live-start/, 'SvelteKit app.html must remain untouched');
+          assert.doesNotMatch(appHtml, /localhost:9999\/live\.js/, 'SvelteKit app.html must not own live.js');
+          assert.match(root, /localhost:9999\/live\.js/, 'SvelteKit root component loads live.js');
+          return;
+        }
         for (const r of result.results) {
           assert.ok(r.inserted, `${r.file} got the tag (result: ${JSON.stringify(r)})`);
           const body = readFileSync(join(tmp, r.file), 'utf-8');
@@ -131,6 +160,15 @@ for (const name of listFixtures()) {
         const out = runScript('live-inject.mjs', ['--remove'], { cwd: tmp });
         const result = JSON.parse(typeof out === 'string' ? out : out.error);
         assert.equal(result.ok, true, 'remove succeeded');
+        if (result.adapter === 'sveltekit') {
+          const layout = readFileSync(join(tmp, 'src/routes/+layout.svelte'), 'utf-8');
+          const appHtml = readFileSync(join(tmp, 'src/app.html'), 'utf-8');
+          assert.doesNotMatch(layout, /ImpeccableLiveRoot/);
+          assert.doesNotMatch(layout, /impeccable-live-svelte-start/);
+          assert.doesNotMatch(appHtml, /impeccable-live-start/);
+          assert.equal(existsSync(join(tmp, 'src/lib/impeccable/ImpeccableLiveRoot.svelte')), false);
+          return;
+        }
         for (const r of result.results) {
           const body = readFileSync(join(tmp, r.file), 'utf-8');
           assert.doesNotMatch(body, /impeccable-live-start/);
@@ -174,6 +212,12 @@ for (const name of listFixtures()) {
             assert.equal(parsed.error, wc.expectsError, `wrap case "${wc.name}": expected error ${wc.expectsError}, got ${JSON.stringify(parsed)}`);
           } else {
             assert.equal(parsed.file, wc.expectedFile, `wrap case "${wc.name}": landed in ${parsed.file}, expected ${wc.expectedFile}`);
+            if (wc.expectedSourceFile) {
+              assert.equal(parsed.sourceFile, wc.expectedSourceFile, `wrap case "${wc.name}": source file`);
+            }
+            if (wc.expectedPreviewMode) {
+              assert.equal(parsed.previewMode, wc.expectedPreviewMode, `wrap case "${wc.name}": preview mode`);
+            }
           }
         }
       } finally {

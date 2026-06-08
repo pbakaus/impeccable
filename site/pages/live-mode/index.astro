@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import LiveDemoGbar from '../../components/LiveDemoGbar.astro';
+import LiveDemoPalette from '../../components/LiveDemoPalette.astro';
 import '../../styles/sub-pages.css';
 import '../../styles/live-mode.css';
 import '../../styles/live-mode-kinpaku.css';
@@ -23,9 +24,12 @@ import '../../styles/live-mode-kinpaku.css';
       <span class="live-mode-start-prompt">$</span>
       <code class="live-mode-start-cmd">/impeccable live</code>
       <button class="live-mode-start-copy" type="button" aria-label="Copy command" data-copy="/impeccable live">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="live-mode-start-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+        </svg>
+        <svg class="live-mode-start-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5"></path>
         </svg>
       </button>
     </div>
@@ -103,7 +107,7 @@ import '../../styles/live-mode-kinpaku.css';
           <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
             <div class="live-demo-ctx-row live-demo-ctx-row--configure">
               <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
-                <span data-demo-cmd-name>delight</span>
+                <span data-demo-cmd-name>adapt</span>
                 <span class="live-demo-ctx-pill-caret" aria-hidden="true">&#x25BE;</span>
               </button>
               <span class="live-demo-ctx-input" data-demo-input>
@@ -112,6 +116,7 @@ import '../../styles/live-mode-kinpaku.css';
               <button type="button" class="live-demo-ctx-count">&times;3</button>
               <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">&rarr;</span></button>
             </div>
+            <LiveDemoPalette pick="delight" />
             <div class="live-demo-ctx-row live-demo-ctx-row--generating">
               <span class="live-demo-ctx-spinner" aria-hidden="true"></span>
               <span>Generating variants&hellip;</span>
@@ -221,24 +226,16 @@ import '../../styles/live-mode-kinpaku.css';
 
 <script>
   import { initLiveDemo, initGbarPageChat } from "../../scripts/components/live-demo.js";
+  import { initCopyFeedback } from "../../scripts/utils/copy-feedback.js";
+
   document.addEventListener("DOMContentLoaded", () => {
     initLiveDemo();
     initGbarPageChat();
+    initCopyFeedback();
   });
 </script>
 
 <script is:inline>
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-copy]');
-    if (!btn) return;
-    const text = btn.getAttribute('data-copy');
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      btn.classList.add('is-copied');
-      setTimeout(() => btn.classList.remove('is-copied'), 1500);
-    }).catch(() => {});
-  });
-
   document.addEventListener('click', (e) => {
     const toggle = e.target.closest('.skills-sidebar-toggle');
     if (!toggle) return;

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createFakeAgent, findSteerTargetFile, runAgentLoop, STEER_MARKER_ATTR } from './live-e2e/agent.mjs';
+import { addSteerMarkerToSource, createFakeAgent, findSteerTargetFile, runAgentLoop, STEER_MARKER_ATTR } from './live-e2e/agent.mjs';
 import { stageFixture, startLiveServer, stopLiveServer, FIXTURES_DIR } from './live-e2e/session.mjs';
 import { SCRIPTS_DIR } from './live-e2e/session.mjs';
 
@@ -47,6 +47,18 @@ describe('live-e2e steer agent handler', () => {
     assert.match(file, /App\.jsx$/);
     const body = readFileSync(file, 'utf-8');
     assert.match(body, /hero-title/);
+  });
+
+  it('marks JSX template-expression className attributes', () => {
+    const source = [
+      'export default function App() {',
+      '  return <h1 className={`hero-title ${styles.heroTitle}`}>Fixture</h1>;',
+      '}',
+    ].join('\n');
+    const updated = addSteerMarkerToSource(source);
+
+    assert.match(updated, new RegExp(STEER_MARKER_ATTR + '="e2e"'));
+    assert.match(updated, /className=\{`hero-title \$\{styles\.heroTitle\}`\}/);
   });
 
   it('agent loop handles steer POST and writes the marker', async () => {

@@ -87,21 +87,22 @@ import '../../styles/sub-pages.css';
       <h2>Use craft when the output has to feel designed.</h2>
       <p><code>/impeccable craft</code> is the right command when a feature needs shaping, visual direction, implementation, and browser iteration in one run.</p>
     </div>
-    <div class="code-block-wrap"><pre class="code-block"><code>/impeccable craft retro-futurist AI design conference website</code></pre><button class="code-block-copy" type="button" data-copy="/impeccable craft retro-futurist AI design conference website" aria-label="Copy to clipboard"></button></div>
+    <div class="code-block-wrap"><pre class="code-block"><code>/impeccable craft retro-futurist AI design conference website</code></pre><button class="code-block-copy" type="button" data-copy="/impeccable craft retro-futurist AI design conference website" aria-label="Copy to clipboard">
+      <svg class="code-block-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+      </svg>
+      <svg class="code-block-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    </button></div>
   </section>
   </div>
 
-  <script is:inline>
-    document.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-copy]');
-      if (!button) return;
-      const text = button.getAttribute('data-copy');
-      if (!text) return;
-      navigator.clipboard.writeText(text).then(() => {
-        button.classList.add('is-copied');
-        setTimeout(() => button.classList.remove('is-copied'), 1500);
-      }).catch(() => {});
-    });
+  <script>
+    import { initCopyFeedback } from "../../scripts/utils/copy-feedback.js";
+
+    initCopyFeedback();
   </script>
 
 </Base>

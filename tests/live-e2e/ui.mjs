@@ -25,8 +25,16 @@ const PICK_TOGGLE = '#impeccable-live-pick-toggle';
 // continue to resolve to the same selector as the older PICK_TOGGLE name.
 const PICK_TOGGLE_ID = PICK_TOGGLE;
 const INSERT_TOGGLE = '#impeccable-live-insert-toggle';
+const DETECT_TOGGLE = '#impeccable-live-detect-toggle';
+const DETECT_BADGE = '#impeccable-live-detect-badge';
+const DESIGN_TOGGLE = '#impeccable-live-design-toggle';
+const DESIGN_HOST = '#impeccable-live-design-host';
+const EXIT_BUTTON = '#impeccable-live-exit';
 const INSERT_INPUT_ID = '#impeccable-live-insert-input';
 const INSERT_CREATE_ID = '#impeccable-live-insert-create';
+const ANNOTATION_ID = '#impeccable-live-annot';
+const ANNOTATION_PINS_ID = '#impeccable-live-annot-pins';
+const ANNOTATION_CLEAR_ID = '#impeccable-live-annot-clear';
 
 /**
  * Wait for the live handshake to complete:
@@ -41,12 +49,341 @@ export async function waitForHandshake(page, { timeout = 20_000 } = {}) {
     () => window.__IMPECCABLE_LIVE_INIT__ === true,
     { timeout },
   );
-  await page.waitForSelector(GLOBAL_BAR_ID, { timeout });
+  await installLiveQueryHelpers(page);
+  await page.waitForFunction(
+    (sel) => Boolean(window.__impeccableLiveQuery?.(sel)),
+    GLOBAL_BAR_ID,
+    { timeout },
+  );
   // Wait for the picker mode to be active (live.js flips state PICKING after
   // SSE 'connected' arrives). We can detect it via the global bar's pick
   // toggle being in its ready state. Soft wait — fall through after a beat
   // even if the toggle hasn't visibly shifted.
   await page.waitForTimeout(250);
+}
+
+export async function assertBottomBarIdle(page, { timeout = 5_000 } = {}) {
+  await installLiveQueryHelpers(page);
+  await page.waitForFunction(
+    ({ ids }) => ids.every((sel) => Boolean(window.__impeccableLiveQuery(sel))),
+    {
+      ids: [
+        GLOBAL_BAR_ID,
+        PICK_TOGGLE,
+        INSERT_TOGGLE,
+        DETECT_TOGGLE,
+        DESIGN_TOGGLE,
+        STEER_CHAT_ID,
+        STEER_INPUT_ID,
+        '#impeccable-live-page-chat-voice',
+        EXIT_BUTTON,
+      ],
+    },
+    { timeout },
+  );
+  const snapshot = await page.evaluate(({ pickSel, insertSel, detectSel, designSel }) => {
+    const q = window.__impeccableLiveQuery;
+    return {
+      pick: controlSnapshot(q(pickSel)),
+      insert: controlSnapshot(q(insertSel)),
+      detect: controlSnapshot(q(detectSel)),
+      design: controlSnapshot(q(designSel)),
+    };
+
+    function controlSnapshot(el) {
+      return {
+        exists: !!el,
+        text: (el?.textContent || '').replace(/\s+/g, ' ').trim(),
+        ariaLabel: el?.getAttribute('aria-label') || '',
+        active: el?.dataset?.active || null,
+        disabled: !!el?.disabled,
+      };
+    }
+  }, {
+    pickSel: PICK_TOGGLE,
+    insertSel: INSERT_TOGGLE,
+    detectSel: DETECT_TOGGLE,
+    designSel: DESIGN_TOGGLE,
+  });
+  for (const [name, value] of Object.entries(snapshot)) {
+    if (!value.exists) throw new Error(`bottom bar ${name} control is missing`);
+    if (value.disabled) throw new Error(`bottom bar ${name} control unexpectedly disabled`);
+  }
+}
+
+export async function runLiveChromeBottomBarSmoke(page, {
+  expectDetectMinCount = 1,
+  designTitle = '',
+  designRawText = '',
+} = {}) {
+  await assertBottomBarIdle(page);
+  await runPickInsertToggleSmoke(page);
+  await runDetectSmoke(page, { expectMinCount: expectDetectMinCount });
+  await runDesignPanelSmoke(page, { title: designTitle, rawText: designRawText });
+}
+
+function installLiveQueryHelpersInPage() {
+  window.__impeccableLiveQuery = (selector) => {
+    const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+      || window.__IMPECCABLE_LIVE_UI_ROOT__
+      || null;
+    return root?.querySelector?.(selector) || document.querySelector(selector);
+  };
+  window.__impeccableLiveQueryAll = (selector) => {
+    const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+      || window.__IMPECCABLE_LIVE_UI_ROOT__
+      || null;
+    const fromRoot = root?.querySelectorAll ? [...root.querySelectorAll(selector)] : [];
+    const fromDoc = [...document.querySelectorAll(selector)];
+    return [...new Set([...fromRoot, ...fromDoc])];
+  };
+}
+
+export async function installLiveQueryHelpers(page, { timeout = 5_000 } = {}) {
+  await page.addInitScript(installLiveQueryHelpersInPage).catch(() => {});
+  await withTimeout(
+    page.evaluate(installLiveQueryHelpersInPage),
+    timeout,
+    'install live query helpers',
+  );
+}
+
+function withTimeout(promise, timeout, label) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
+async function clickLiveControl(page, selector) {
+  await installLiveQueryHelpers(page);
+  const clicked = await page.evaluate((sel) => {
+    const el = window.__impeccableLiveQuery(sel);
+    if (!el || el.disabled) return false;
+    el.click();
+    return true;
+  }, selector);
+  if (clicked) return;
+  await page.locator(selector).click({ timeout: 5_000 });
+}
+
+async function readControlActive(page, selector) {
+  await installLiveQueryHelpers(page);
+  return page.evaluate((sel) => window.__impeccableLiveQuery(sel)?.dataset.active === 'true', selector);
+}
+
+async function ensureLiveControlActive(page, selector, active) {
+  if (await readControlActive(page, selector) === active) return;
+  await clickLiveControl(page, selector);
+  await page.waitForFunction(
+    ({ sel, expected }) => window.__impeccableLiveQuery(sel)?.dataset.active === (expected ? 'true' : 'false'),
+    { sel: selector, expected: active },
+    { timeout: 5_000 },
+  );
+}
+
+export async function runPickInsertToggleSmoke(page) {
+  await ensureLiveControlActive(page, PICK_TOGGLE, true);
+  await page.waitForFunction(
+    ({ pickSel, insertSel }) =>
+      window.__impeccableLiveQuery(pickSel)?.dataset.active === 'true'
+      && window.__impeccableLiveQuery(insertSel)?.dataset.active === 'false',
+    { pickSel: PICK_TOGGLE, insertSel: INSERT_TOGGLE },
+    { timeout: 5_000 },
+  );
+
+  await ensureLiveControlActive(page, INSERT_TOGGLE, true);
+  await page.waitForFunction(
+    ({ pickSel, insertSel }) =>
+      window.__impeccableLiveQuery(pickSel)?.dataset.active === 'false'
+      && window.__impeccableLiveQuery(insertSel)?.dataset.active === 'true',
+    { pickSel: PICK_TOGGLE, insertSel: INSERT_TOGGLE },
+    { timeout: 5_000 },
+  );
+
+  await ensureLiveControlActive(page, INSERT_TOGGLE, false);
+  await ensureLiveControlActive(page, PICK_TOGGLE, false);
+}
+
+export async function runDetectSmoke(page, { expectMinCount = 1 } = {}) {
+  await ensureLiveControlActive(page, DETECT_TOGGLE, true);
+  await page.waitForFunction(
+    ({ badgeSel, expectMin }) => {
+      const badge = window.__impeccableLiveQuery(badgeSel);
+      const count = parseInt(badge?.textContent || '0', 10);
+      const overlays = document.querySelectorAll('.impeccable-overlay').length;
+      return count >= expectMin && overlays >= expectMin && badge?.style.display !== 'none';
+    },
+    { badgeSel: DETECT_BADGE, expectMin: expectMinCount },
+    { timeout: 15_000 },
+  );
+
+  await ensureLiveControlActive(page, PICK_TOGGLE, true);
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.impeccable-overlay')]
+      .every((overlay) => overlay.style.pointerEvents === 'none'),
+    { timeout: 5_000 },
+  );
+  await ensureLiveControlActive(page, PICK_TOGGLE, false);
+
+  await ensureLiveControlActive(page, DETECT_TOGGLE, false);
+  await page.waitForFunction(
+    ({ badgeSel }) => {
+      const badge = window.__impeccableLiveQuery(badgeSel);
+      return document.querySelectorAll('.impeccable-overlay').length === 0
+        && (!badge || badge.style.display === 'none' || (badge.textContent || '') === '0');
+    },
+    { badgeSel: DETECT_BADGE },
+    { timeout: 5_000 },
+  );
+}
+
+export async function runDesignPanelSmoke(page, { title = '', rawText = '' } = {}) {
+  await ensureLiveControlActive(page, DESIGN_TOGGLE, true);
+  await page.waitForFunction(
+    ({ hostSel, titleText }) => {
+      const host = window.__impeccableLiveQuery(hostSel);
+      const root = host?.shadowRoot;
+      const panel = root?.querySelector('.panel');
+      const bodyText = root?.querySelector('#panel-body')?.textContent || '';
+      return panel?.getAttribute('data-open') === 'true'
+        && bodyText.trim().length > 0
+        && !bodyText.includes('Loading design system')
+        && !bodyText.includes('No DESIGN.md yet')
+        && !bodyText.includes('Failed to load design system')
+        && (!titleText || bodyText.includes(titleText));
+    },
+    { hostSel: DESIGN_HOST, titleText: title },
+    { timeout: 15_000 },
+  );
+
+  await page.evaluate((hostSel) => {
+    const root = window.__impeccableLiveQuery(hostSel)?.shadowRoot;
+    const raw = [...(root?.querySelectorAll('.tab') || [])].find((btn) => /Raw/i.test(btn.textContent || ''));
+    raw?.click();
+  }, DESIGN_HOST);
+  await page.waitForFunction(
+    ({ hostSel, expected }) => {
+      const text = window.__impeccableLiveQuery(hostSel)?.shadowRoot?.textContent || '';
+      return !expected || text.includes(expected);
+    },
+    { hostSel: DESIGN_HOST, expected: rawText },
+    { timeout: 10_000 },
+  );
+
+  await page.evaluate((hostSel) => {
+    const root = window.__impeccableLiveQuery(hostSel)?.shadowRoot;
+    root?.querySelector('.panel-close')?.click();
+  }, DESIGN_HOST);
+  await page.waitForFunction(
+    ({ hostSel, toggleSel }) => {
+      const panel = window.__impeccableLiveQuery(hostSel)?.shadowRoot?.querySelector('.panel');
+      const toggle = window.__impeccableLiveQuery(toggleSel);
+      return panel?.getAttribute('data-open') === 'false' && toggle?.dataset.active === 'false';
+    },
+    { hostSel: DESIGN_HOST, toggleSel: DESIGN_TOGGLE },
+    { timeout: 5_000 },
+  );
+}
+
+export async function clickExitLiveMode(page) {
+  await clickLiveControl(page, EXIT_BUTTON);
+  await page.waitForFunction(
+    ({ barSel }) => {
+      const bar = window.__impeccableLiveQuery?.(barSel);
+      return window.__IMPECCABLE_LIVE_INIT__ === false && (!bar || !bar.isConnected);
+    },
+    { barSel: GLOBAL_BAR_ID },
+    { timeout: 5_000 },
+  );
+}
+
+export async function drawAnnotationPinAndStroke(page, {
+  comment = 'Make this area easier to scan',
+} = {}) {
+  await installLiveQueryHelpers(page);
+  const rect = await waitForAnnotationRect(page);
+  const pinPoint = {
+    x: rect.left + Math.min(28, Math.max(12, rect.width * 0.2)),
+    y: rect.top + Math.min(28, Math.max(12, rect.height * 0.35)),
+  };
+  await page.mouse.click(pinPoint.x, pinPoint.y);
+  await page.waitForFunction(
+    (pinsSel) => Boolean(window.__impeccableLiveQuery(pinsSel)?.querySelector('input')),
+    ANNOTATION_PINS_ID,
+    { timeout: 5_000 },
+  );
+  await page.evaluate(({ pinsSel, value }) => {
+    const input = window.__impeccableLiveQuery(pinsSel)?.querySelector('input');
+    if (!input) return false;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  }, { pinsSel: ANNOTATION_PINS_ID, value: comment });
+  await page.waitForFunction(
+    ({ pinsSel, expected }) => {
+      const pins = window.__impeccableLiveQuery(pinsSel);
+      return pins && pins.textContent.includes(expected);
+    },
+    { pinsSel: ANNOTATION_PINS_ID, expected: comment },
+    { timeout: 5_000 },
+  );
+
+  const strokeStart = { x: rect.left + rect.width * 0.58, y: rect.top + rect.height * 0.28 };
+  const strokeEnd = { x: rect.left + rect.width * 0.86, y: rect.top + rect.height * 0.72 };
+  await page.mouse.move(strokeStart.x, strokeStart.y);
+  await page.mouse.down();
+  await page.mouse.move((strokeStart.x + strokeEnd.x) / 2, (strokeStart.y + strokeEnd.y) / 2, { steps: 4 });
+  await page.mouse.move(strokeEnd.x, strokeEnd.y, { steps: 4 });
+  await page.mouse.up();
+
+  await page.waitForFunction(
+    ({ annotSel, clearSel }) => {
+      const annot = window.__impeccableLiveQuery(annotSel);
+      const clear = window.__impeccableLiveQuery(clearSel);
+      const stroke = annot?.querySelector('[data-annot-stroke]');
+      return Boolean(stroke) && clear?.style.display !== 'none';
+    },
+    { annotSel: ANNOTATION_ID, clearSel: ANNOTATION_CLEAR_ID },
+    { timeout: 5_000 },
+  );
+}
+
+export async function assertAnnotationUploadEvent(event) {
+  if (!event) throw new Error('expected recorded generate event');
+  if (!Array.isArray(event.comments) || event.comments.length < 1) {
+    throw new Error('expected generate event to include annotation comments');
+  }
+  if (!Array.isArray(event.strokes) || event.strokes.length < 1) {
+    throw new Error('expected generate event to include annotation strokes');
+  }
+  if (!event.screenshotPath || typeof event.screenshotPath !== 'string') {
+    throw new Error('expected generate event to include screenshotPath');
+  }
+}
+
+async function waitForAnnotationRect(page) {
+  await page.waitForFunction(
+    (sel) => {
+      const el = window.__impeccableLiveQuery(sel);
+      if (!el || el.style.display === 'none') return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 20 && rect.height > 20;
+    },
+    ANNOTATION_ID,
+    { timeout: 5_000 },
+  );
+  return page.evaluate((sel) => {
+    const rect = window.__impeccableLiveQuery(sel).getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  }, ANNOTATION_ID);
 }
 
 /**
@@ -94,7 +431,7 @@ export async function pickElement(page, selector, opts = {}) {
   // populates the row.
   await page.waitForFunction(
     (barSel) => {
-      const bar = document.querySelector(barSel);
+      const bar = window.__impeccableLiveQuery(barSel);
       if (!bar) return false;
       const btns = [...bar.querySelectorAll('button')];
       return btns.some((b) => /Go\b/.test(b.textContent || ''));
@@ -106,7 +443,7 @@ export async function pickElement(page, selector, opts = {}) {
 
 async function hideAnnotationOverlay(page) {
   await page.evaluate(() => {
-    const annot = document.querySelector('#impeccable-live-annot');
+    const annot = window.__impeccableLiveQuery('#impeccable-live-annot');
     if (annot) annot.style.display = 'none';
   }).catch(() => {});
 }
@@ -131,7 +468,7 @@ async function ensurePickerActive(page) {
   if (active) return;
 
   const clicked = await page.evaluate((sel) => {
-    const btn = document.querySelector(sel);
+    const btn = window.__impeccableLiveQuery(sel);
     if (!btn) return false;
     btn.click();
     return true;
@@ -140,7 +477,7 @@ async function ensurePickerActive(page) {
     await page.locator(PICK_TOGGLE_ID).click({ timeout: 5_000 });
   }
   await page.waitForFunction(
-    (sel) => document.querySelector(sel)?.dataset.active === 'true',
+    (sel) => window.__impeccableLiveQuery(sel)?.dataset.active === 'true',
     PICK_TOGGLE_ID,
     { timeout: 5_000 },
   );
@@ -152,14 +489,14 @@ async function resetPickMode(page) {
   await page.keyboard.press('Escape').catch(() => {});
   await page.waitForTimeout(100);
   await page.evaluate((sel) => {
-    const btn = document.querySelector(sel);
+    const btn = window.__impeccableLiveQuery(sel);
     if (!btn) return;
     const active = btn.dataset.active === 'true';
     if (active) btn.click();
     btn.click();
   }, PICK_TOGGLE_ID).catch(() => {});
   await page.waitForFunction(
-    (sel) => document.querySelector(sel)?.dataset.active === 'true',
+    (sel) => window.__impeccableLiveQuery(sel)?.dataset.active === 'true',
     PICK_TOGGLE_ID,
     { timeout: 5_000 },
   ).catch(() => {});
@@ -173,7 +510,7 @@ export async function setCount(page, count) {
   if (count < 2 || count > 4) throw new Error('count must be 2..4');
   for (let i = 0; i < 4; i++) {
     const current = await page.evaluate((barSel) => {
-      const bar = document.querySelector(barSel);
+      const bar = window.__impeccableLiveQuery(barSel);
       if (!bar) return null;
       const btns = [...bar.querySelectorAll('button')];
       const btn = btns.find((b) => /^×\d+$/.test((b.textContent || '').trim()));
@@ -198,7 +535,7 @@ export async function clickGo(page) {
     await clickBarButton(page, /Go\b/);
     const advanced = await page.waitForFunction(
       (barSel) => {
-        const bar = document.querySelector(barSel);
+        const bar = window.__impeccableLiveQuery(barSel);
         if (!bar) return false;
         const text = bar.textContent || '';
         if (/Generating\b/.test(text)) return true;
@@ -226,9 +563,11 @@ export async function clickGo(page) {
  * we give it a generous window.
  */
 export async function waitForCycling(page, expectedCount, { timeout = 30_000 } = {}) {
-  await page.waitForFunction(
+  await installLiveQueryHelpers(page);
+  try {
+    await page.waitForFunction(
     ({ barSel, expected }) => {
-      const bar = document.querySelector(barSel);
+      const bar = window.__impeccableLiveQuery(barSel);
       if (!bar) return false;
       const text = bar.textContent || '';
       // Counter format: "1/3", "2/3" etc. Look for any "i/N" with N matching.
@@ -238,7 +577,32 @@ export async function waitForCycling(page, expectedCount, { timeout = 30_000 } =
     },
     { barSel: BAR_ID, expected: expectedCount },
     { timeout },
-  );
+    );
+  } catch (err) {
+    if (process.env.IMPECCABLE_E2E_DEBUG) {
+      const snapshot = await page.evaluate((barSel) => {
+        const query = window.__impeccableLiveQuery || ((sel) => document.querySelector(sel));
+        const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.() || window.__IMPECCABLE_LIVE_UI_ROOT__ || null;
+        const bar = query(barSel);
+        const toast = query('#impeccable-live-toast');
+        const wrapper = document.querySelector('[data-impeccable-variants]');
+        return {
+          liveInit: window.__IMPECCABLE_LIVE_INIT__,
+          adapter: window.__IMPECCABLE_LIVE_ADAPTER__,
+          rootText: root?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 600) || null,
+          bar: bar ? { display: bar.style.display, text: bar.textContent } : null,
+          toast: toast?.textContent || null,
+          wrapper: wrapper ? { preview: wrapper.dataset.impeccablePreview, count: wrapper.dataset.impeccableVariantCount, html: wrapper.outerHTML.slice(0, 600) } : null,
+          debugState: window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.() || null,
+          storage: localStorage.getItem('impeccable-live-session'),
+          scripts: document.querySelectorAll('script[data-impeccable-live-script]').length,
+          bodyText: document.body.textContent.replace(/\s+/g, ' ').trim().slice(0, 600),
+        };
+      }, BAR_ID).catch((snapErr) => ({ error: snapErr.message }));
+      console.error('--- waitForCycling snapshot ---\n' + JSON.stringify(snapshot, null, 2));
+    }
+    throw err;
+  }
 }
 
 /**
@@ -253,13 +617,14 @@ export async function clickPrev(page) {
 }
 
 async function clickBarButton(page, label) {
-  const button = page.locator(`${BAR_ID} button`, { hasText: label });
   const textMatch = label instanceof RegExp
     ? { kind: 'regex', source: label.source, flags: label.flags }
     : { kind: 'text', value: String(label) };
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      await installLiveQueryHelpers(page);
+      const button = page.locator(`${BAR_ID} button`, { hasText: label });
       await button.click({ timeout: 5_000 });
       return;
     } catch (err) {
@@ -284,14 +649,23 @@ async function clickBarButton(page, label) {
 }
 
 async function dispatchBarButton(page, label) {
-  const textMatch = label instanceof RegExp
-    ? { kind: 'regex', source: label.source, flags: label.flags }
-    : { kind: 'text', value: String(label) };
-  return page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
+  try {
+    await installLiveQueryHelpers(page);
+    const textMatch = label instanceof RegExp
+      ? { kind: 'regex', source: label.source, flags: label.flags }
+      : { kind: 'text', value: String(label) };
+    return await withTimeout(
+      page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch }),
+      5_000,
+      'dispatch bar button',
+    );
+  } catch {
+    return false;
+  }
 }
 
 function findAndClickBarButton({ barSel, textMatch }) {
-  const bar = document.querySelector(barSel);
+  const bar = window.__impeccableLiveQuery(barSel);
   if (!bar) return false;
   const btn = [...bar.querySelectorAll('button')]
     .find((candidate) => {
@@ -308,19 +682,28 @@ function findAndClickBarButton({ barSel, textMatch }) {
  * Read the currently visible variant index (the "i" in "i/N").
  */
 export async function getVisibleVariant(page) {
-  return page.evaluate((barSel) => {
-    const wrapper = document.querySelector('[data-impeccable-variants]');
-    if (wrapper) {
-      const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
-      const visible = variants.find((variant) => variant.style.display !== 'none');
-      const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
-      if (idx > 0) return idx;
-    }
-    const bar = document.querySelector(barSel);
-    if (!bar) return null;
-    const m = (bar.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
-    return m ? parseInt(m[1], 10) : null;
-  }, BAR_ID);
+  try {
+    await installLiveQueryHelpers(page);
+    return await withTimeout(
+      page.evaluate((barSel) => {
+        const wrapper = window.__impeccableLiveQuery('[data-impeccable-variants]');
+        if (wrapper) {
+          const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
+          const visible = variants.find((variant) => variant.style.display !== 'none');
+          const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
+          if (idx > 0) return idx;
+        }
+        const bar = window.__impeccableLiveQuery(barSel);
+        if (!bar) return null;
+        const m = (bar.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+        return m ? parseInt(m[1], 10) : null;
+      }, BAR_ID),
+      5_000,
+      'read visible variant',
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -364,7 +747,7 @@ export async function clickDiscard(page) {
 export async function clickEditCopy(page) {
   await clickEditBadgeButton(page, 'Edit copy');
   await page.waitForFunction(
-    () => document.querySelector('[data-impeccable-editable="true"]')?.isContentEditable === true,
+    () => window.__impeccableLiveQuery('[data-impeccable-editable="true"]')?.isContentEditable === true,
     { timeout: 5_000 },
   );
 }
@@ -388,19 +771,31 @@ async function resolveEditableLeaf(page, leafSelector) {
 export async function clickSaveEdit(page) {
   await clickEditBadgeButton(page, 'Save');
   await page.waitForFunction(
-    () => !document.querySelector('[data-impeccable-editable="true"]'),
+    () => !window.__impeccableLiveQuery('[data-impeccable-editable="true"]'),
     { timeout: 5_000 },
   );
 }
 
 async function clickEditBadgeButton(page, label) {
+  const proxyRect = await page.evaluate((text) => {
+    const proxies = [...document.querySelectorAll('[data-impeccable-edit-badge-proxy="true"]')];
+    const proxy = proxies.find((candidate) => (candidate.title || '').includes(text));
+    if (!proxy) return null;
+    const rect = proxy.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, label).catch(() => null);
+  if (proxyRect) {
+    await page.mouse.click(proxyRect.x, proxyRect.y);
+    return;
+  }
   const button = page.locator(`${EDIT_BADGE_ID} button`, { hasText: label });
   try {
     await button.click({ timeout: 5_000 });
     return;
   } catch (err) {
     const clicked = await page.evaluate(({ badgeSel, text }) => {
-      const badge = document.querySelector(badgeSel);
+      const badge = window.__impeccableLiveQuery(badgeSel);
       const btn = [...(badge?.querySelectorAll('button') || [])].find((candidate) =>
         (candidate.textContent || '').includes(text)
       );
@@ -415,7 +810,7 @@ async function clickEditBadgeButton(page, label) {
 export async function assertApplyDockVisible(page, expectedCount, { timeout = 5_000 } = {}) {
   await page.waitForFunction(
     ({ dockSel, expected }) => {
-      const dock = document.querySelector(dockSel);
+      const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return false;
       const pill = [...dock.querySelectorAll('button')].find((btn) =>
         /Apply copy edit/.test(btn.textContent || '')
@@ -432,7 +827,7 @@ export async function assertApplyDockVisible(page, expectedCount, { timeout = 5_
 export async function waitForApplyDockHidden(page, { timeout = 10_000 } = {}) {
   await page.waitForFunction(
     (dockSel) => {
-      const dock = document.querySelector(dockSel);
+      const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return true;
       const pill = [...dock.querySelectorAll('button')].find((btn) =>
         /Apply copy edit/.test(btn.textContent || '')
@@ -447,7 +842,7 @@ export async function waitForApplyDockHidden(page, { timeout = 10_000 } = {}) {
 export async function assertApplyDockLoading(page, { timeout = 5_000 } = {}) {
   await page.waitForFunction(
     (dockSel) => {
-      const dock = document.querySelector(dockSel);
+      const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return false;
       const pill = [...dock.querySelectorAll('button')].find((btn) =>
         /Apply copy edit|Applying|Verifying|Fixing apply issue/.test(btn.textContent || '')
@@ -486,9 +881,10 @@ export function assertSourceApplied(tmp, file, originalText, newText) {
  * Wait for the bar to go away (after accept/discard the bar hides on confirm).
  */
 export async function waitForBarHidden(page, { timeout = 10_000 } = {}) {
+  await installLiveQueryHelpers(page);
   await page.waitForFunction(
     (barSel) => {
-      const bar = document.querySelector(barSel);
+      const bar = window.__impeccableLiveQuery(barSel);
       return !bar || bar.style.display === 'none';
     },
     BAR_ID,
@@ -502,30 +898,33 @@ export async function waitForBarHidden(page, { timeout = 10_000 } = {}) {
  */
 export async function preparePageForBarInteraction(page) {
   await page.evaluate(() => {
-    for (const el of document.querySelectorAll('astro-dev-toolbar')) {
+    for (const el of window.__impeccableLiveQueryAll('astro-dev-toolbar')) {
       el.style.setProperty('display', 'none', 'important');
       el.style.setProperty('pointer-events', 'none', 'important');
     }
   });
 }
 
-async function focusSteerInput(page) {
-  return page.evaluate(({ chatSel, inputSel }) => {
-    const chat = document.querySelector(chatSel);
-    const input = document.querySelector(inputSel);
-    if (!chat || !input) return false;
-    chat.dataset.expanded = 'true';
-    chat.style.width = 'min(280px, 38vw)';
-    chat.style.cursor = 'text';
-    input.disabled = false;
-    input.style.pointerEvents = 'auto';
-    input.style.opacity = '1';
-    input.style.width = 'auto';
-    input.style.padding = '0 6px';
-    try { window.focus(); } catch { /* embed may block */ }
-    try { input.focus({ preventScroll: true }); } catch { input.focus(); }
-    return document.activeElement === input;
-  }, { chatSel: STEER_CHAT_ID, inputSel: STEER_INPUT_ID });
+export async function waitForSteerInputFocused(page, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    (inputSel) => {
+      const input = window.__impeccableLiveQuery(inputSel);
+      const active = window.__IMPECCABLE_LIVE_CHROME_CORE__?.activeElementDeep?.()
+        || input?.getRootNode?.()?.activeElement
+        || document.activeElement;
+      return Boolean(input && active === input && input.style.pointerEvents !== 'none' && input.style.opacity !== '0');
+    },
+    STEER_INPUT_ID,
+    { timeout },
+  );
+}
+
+export async function waitForSteerInputValue(page, value, { timeout = 5_000 } = {}) {
+  await page.waitForFunction(
+    ({ inputSel, value: expected }) => window.__impeccableLiveQuery(inputSel)?.value === expected,
+    { inputSel: STEER_INPUT_ID, value },
+    { timeout },
+  );
 }
 
 /**
@@ -534,21 +933,21 @@ async function focusSteerInput(page) {
  * (e.g. Astro dev toolbar) intercept pointer events — same outcome as keyboard focus.
  */
 export async function submitSteer(page, message) {
+  await installLiveQueryHelpers(page);
   await preparePageForBarInteraction(page);
-  await page.locator(STEER_CHAT_ID).waitFor({ state: 'visible', timeout: 5_000 });
+  const chat = page.locator(STEER_CHAT_ID);
+  await chat.waitFor({ state: 'visible', timeout: 5_000 });
 
   try {
-    await page.locator(STEER_CHAT_ID).click({ timeout: 2_500 });
+    await chat.click({ timeout: 2_500 });
   } catch {
-    await focusSteerInput(page);
+    await chat.click({ force: true, timeout: 2_500 });
   }
-  if (!(await focusSteerInput(page))) {
-    await page.locator(STEER_CHAT_ID).click({ force: true, timeout: 2_500 }).catch(() => {});
-    await focusSteerInput(page);
-  }
+  await waitForSteerInputFocused(page);
 
   const input = page.locator(STEER_INPUT_ID);
-  await input.fill(message, { timeout: 5_000 });
+  await input.type(message, { timeout: 5_000 });
+  await waitForSteerInputValue(page, message);
   await input.press('Enter');
 }
 
@@ -566,7 +965,7 @@ export async function waitForSteerDomMarker(page, selector, { timeout = 20_000 }
  */
 export async function waitForSteerLocked(page, { timeout = 5_000 } = {}) {
   await page.waitForFunction(
-    (sel) => document.querySelector(sel)?.dataset.processing === 'true',
+    (sel) => window.__impeccableLiveQuery(sel)?.dataset.processing === 'true',
     STEER_CHAT_ID,
     { timeout },
   );
@@ -578,8 +977,8 @@ export async function waitForSteerLocked(page, { timeout = 5_000 } = {}) {
 export async function waitForSteerUnlocked(page, { timeout = 15_000 } = {}) {
   await page.waitForFunction(
     (sel) => {
-      const chat = document.querySelector(sel);
-      const input = document.querySelector('#impeccable-live-page-chat-input');
+      const chat = window.__impeccableLiveQuery(sel);
+      const input = window.__impeccableLiveQuery('#impeccable-live-page-chat-input');
       return chat?.dataset.processing !== 'true' && input && !input.disabled;
     },
     STEER_CHAT_ID,
@@ -588,11 +987,12 @@ export async function waitForSteerUnlocked(page, { timeout = 15_000 } = {}) {
 }
 
 async function ensureToggleActive(page, selector, shouldBeActive) {
+  await installLiveQueryHelpers(page);
   const isActive = await page.locator(selector).evaluate((el) => el?.dataset.active === 'true');
   if (isActive === shouldBeActive) return;
   await page.locator(selector).click({ timeout: 5_000 });
   await page.waitForFunction(
-    ({ sel, active }) => document.querySelector(sel)?.dataset.active === (active ? 'true' : 'false'),
+    ({ sel, active }) => window.__impeccableLiveQuery(sel)?.dataset.active === (active ? 'true' : 'false'),
     { sel: selector, active: shouldBeActive },
     { timeout: 5_000 },
   );
@@ -626,31 +1026,51 @@ export async function runInsertFlow(page, {
   const y = position === 'before' ? box.y + 4 : box.y + box.height - 4;
   await page.mouse.move(x, y);
   await page.waitForFunction(() => {
-    const line = document.getElementById('impeccable-live-insert-line');
+    const line = window.__impeccableLiveQuery('#impeccable-live-insert-line');
     return line && line.style.display !== 'none';
   }, { timeout: 5_000 });
   await page.mouse.click(x, y);
 
-  await page.waitForSelector(INSERT_INPUT_ID, { state: 'visible', timeout: 5_000 });
-  await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 5_000 });
+  await installLiveQueryHelpers(page);
+  await page.waitForFunction(
+    ({ inputSel, barSel }) => {
+      const input = window.__impeccableLiveQuery(inputSel);
+      const bar = window.__impeccableLiveQuery(barSel);
+      if (!input || !bar) return false;
+      const rect = input.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && bar.style.display !== 'none';
+    },
+    { inputSel: INSERT_INPUT_ID, barSel: BAR_ID },
+    { timeout: 5_000 },
+  );
 
-  await page.evaluate(({ sel, value }) => {
-    const el = document.querySelector(sel);
-    if (!el) return;
-    el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, { sel: INSERT_INPUT_ID, value: prompt });
+  const focused = await page.evaluate((sel) => {
+    const el = window.__impeccableLiveQuery(sel);
+    if (!el) return false;
+    try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+    let active = document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    return active === el;
+  }, INSERT_INPUT_ID);
+  if (!focused) throw new Error('Insert prompt input did not receive focus');
+
+  await page.keyboard.type(prompt);
+  await page.waitForFunction(
+    ({ sel, value }) => window.__impeccableLiveQuery(sel)?.value === value,
+    { sel: INSERT_INPUT_ID, value: prompt },
+    { timeout: 5_000 },
+  );
 
   await page.waitForFunction(
     (sel) => {
-      const btn = document.querySelector(sel);
+      const btn = window.__impeccableLiveQuery(sel);
       return btn && !btn.disabled;
     },
     INSERT_CREATE_ID,
     { timeout: 5_000 },
   );
   const clicked = await page.evaluate((sel) => {
-    const btn = document.querySelector(sel);
+    const btn = window.__impeccableLiveQuery(sel);
     if (!btn || btn.disabled) return false;
     btn.click();
     return true;

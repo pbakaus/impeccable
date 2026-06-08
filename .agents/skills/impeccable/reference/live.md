@@ -113,7 +113,9 @@ node .agents/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVE
 
 The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Write all variants in one edit, then `--reply done`.
 
-On accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
+For Svelte/SvelteKit targets, `live-insert.mjs` returns `previewMode: "svelte-component"` with `mode: "insert"`, `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each inserted variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`. Insert variants must be non-empty net-new content with a single top-level root, no `data-impeccable-*` attributes, and CSS in each component's `<style>` block. Do **not** edit the route source during generation; the browser mounts the temporary component before/after the live anchor while the user cycles variants. On Accept, `live-accept.mjs` inserts the selected component markup into `sourceFile` immediately and deletes the temp session after the source write succeeds.
+
+For non-Svelte targets, on accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
 
 ### Replace mode (default)
 
@@ -150,6 +152,25 @@ The helper searches ID first, then classes, then tag + class combo. If `event.pa
 If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
 Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }`.
+
+For Svelte/SvelteKit targets, `live-wrap.mjs` returns `previewMode: "svelte-component"` with `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`; use the `propContract` prop names for dynamic text (`{propName}`), not literal snapshot strings. Put variant CSS in each component's `<style>` block with semantic class selectors (no `@scope`, no `data-impeccable-*`). Reply with `--file` set to the manifest path; the browser dynamically imports and mounts the compiled components so Svelte HMR does not reset page state while the user cycles variants. On Accept, `live-accept.mjs` inlines the accepted component back into `sourceFile` immediately after source promotion succeeds.
+
+**Params on the Svelte component path go in a sidecar, never as an attribute.** Svelte parses `{` inside an attribute value as the start of an expression, so a `data-impeccable-params='[{…}]'` attribute on a component element fails to compile (`Expected token }`). Declare params for this path in `componentDir/params.json`, keyed by variant number, using the exact param schema from section 7:
+
+```json
+{
+  "1": [
+    {"id":"density","kind":"steps","default":"snug","label":"Density","options":[
+      {"value":"airy","label":"Airy"},{"value":"snug","label":"Snug"},{"value":"packed","label":"Packed"}
+    ]}
+  ],
+  "2": [
+    {"id":"accent","kind":"range","min":0,"max":1,"step":0.05,"default":0.5,"label":"Accent"}
+  ]
+}
+```
+
+Author the component `<style>` against `var(--p-<id>, default)` for `range`/`toggle` and `[data-p-<id>="…"]` for `steps`; wrap those selectors in `:global(...)` so the knob values the runtime sets on the mounted root reach your rules. The browser reads `params.json`, docks the panel, and drives `--p-*` / `data-p-*` on the mounted component exactly as it does for the HTML/JSX path.
 
 `styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess:
 
@@ -342,7 +363,7 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Hard cap per variant**: at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
 
-**How to declare.** Put a JSON manifest on the variant wrapper:
+**How to declare.** Put a JSON manifest on the variant wrapper (HTML/JSX path). **On the Svelte `svelte-component` path, do not use this attribute** (Svelte can't compile `{` inside an attribute value). Declare params in `componentDir/params.json` keyed by variant number instead (see the Svelte component paragraph in the wrap section). The param schema below is identical for both paths.
 
 ```html
 <div data-impeccable-variant="1" data-impeccable-params='[
@@ -456,7 +477,7 @@ Do these five steps in the current thread, synchronously, before the next poll. 
 1. **Locate the carbonize block** in the source file (`_acceptResult.file`). It's bracketed by `<!-- impeccable-carbonize-start SESSION_ID -->` and `<!-- impeccable-carbonize-end SESSION_ID -->` and contains a `<style data-impeccable-css="SESSION_ID">` element. If the variant declared parameters, an `<!-- impeccable-param-values SESSION_ID: {...} -->` comment sits alongside the style tag with the user's chosen values; read it first; it drives steps 3 and 4 below.
 2. **Move the CSS rules** into the project's real stylesheet. Which stylesheet depends on the project (e.g. `site/styles/workflow.css` for an Astro project, or the component's co-located CSS file for a Vite/Next project; pick whichever already owns styling for the surrounding element).
 3. **Bake in parameter values while rewriting selectors.** For `@scope ([data-impeccable-variant="N"])` wrappers: retarget to real, semantic classes on the accepted HTML (`.why-visual--v2 .v2-label { … }`). For `:scope[data-p-<id>="VALUE"]` selectors: keep only the branch matching the chosen value from the param-values comment; drop the others (they're dead after accept). For `var(--p-<id>, DEFAULT)` in the CSS: either substitute the literal value, or if the param is still useful as a knob going forward, leave the var and update its initial declaration to the chosen value.
-4. **Unwrap the accepted content.** Delete the `<div data-impeccable-variant="N" style="display: contents">` that wraps it. Drop `data-impeccable-params` and any `data-p-*` attributes from it; those are live-mode plumbing, not source.
+4. **Unwrap the accepted content.** Delete the inner `<div data-impeccable-variant="N" style="display: contents">` that wraps it. On JSX/TSX, also delete the outer `<div data-impeccable-carbonize="SESSION_ID" style={{ display: 'contents' }}>` wrapper if present (accept adds it so ternary/`return` slots keep a single root). Drop `data-impeccable-params` and any `data-p-*` attributes; those are live-mode plumbing, not source.
 5. **Delete the inline `<style>` block, the `<!-- impeccable-param-values -->` comment if present, and both `<!-- impeccable-carbonize-start/end -->` markers.** Also drop any `@scope` rules for variants other than the accepted one; those are dead code now.
 
 After the file is clean, run `live-complete.mjs --id SESSION_ID`, verify it reports `phase: "completed"`, then poll again.

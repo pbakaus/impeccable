@@ -4,23 +4,43 @@
  * Usage:
  *   impeccable skills help      Show all available skills and commands
  *   impeccable skills install   Install compiled skills from the universal bundle
+ *   impeccable skills link      Symlink compiled skills from a local checkout
  *   impeccable skills update    Update skills to latest version
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
+import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
+import extract from 'extract-zip';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev'];
+const PROVIDER_ALIASES = {
+  agents: '.agents',
+  claude: '.claude',
+  'claude-code': '.claude',
+  codex: '.agents',
+  copilot: '.github',
+  cursor: '.cursor',
+  gemini: '.gemini',
+  github: '.github',
+  kiro: '.kiro',
+  opencode: '.opencode',
+  pi: '.pi',
+  qoder: '.qoder',
+  'rovo-dev': '.rovodev',
+  rovodev: '.rovodev',
+  trae: '.trae',
+  'trae-cn': '.trae-cn',
+};
 
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
@@ -33,6 +53,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
   { home: '.qoder', provider: '.qoder' },
+  { home: '.rovodev', provider: '.rovodev' },
 ];
 
 // Last-resort default when nothing is detected: Claude Code + the universal
@@ -60,6 +81,7 @@ async function showHelp() {
 
   console.log('\n  Impeccable Skills & Commands\n');
   console.log('  Install:  npx impeccable skills install');
+  console.log('  Link:     npx impeccable skills link --source=.impeccable');
   console.log('  Update:   npx impeccable skills update');
   console.log('  Docs:     https://impeccable.style/cheatsheet\n');
   console.log(`  ${pad('Command', 22)} Description`);
@@ -112,12 +134,33 @@ function hashSkillsDir(skillsDir) {
  * Caller is responsible for cleanup.
  */
 async function downloadAndExtractBundle() {
+  const localBundle = process.env.IMPECCABLE_BUNDLE_PATH;
+  if (localBundle) return copyOrExtractLocalBundle(localBundle);
+
   const tmpZip = join(tmpdir(), `impeccable-update-${Date.now()}.zip`);
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
-  execSync(`unzip -qo "${tmpZip}" -d "${tmpDir}"`, { encoding: 'utf8' });
+  await extract(tmpZip, { dir: tmpDir });
   rmSync(tmpZip, { force: true });
+  return tmpDir;
+}
+
+async function copyOrExtractLocalBundle(sourceValue) {
+  const source = resolve(sourceValue);
+  if (!existsSync(source)) {
+    throw new Error(`Local bundle not found: ${source}`);
+  }
+
+  const tmpDir = join(tmpdir(), `impeccable-local-bundle-${process.pid}-${Date.now()}`);
+  mkdirSync(tmpDir, { recursive: true });
+
+  if (statSync(source).isDirectory()) {
+    cpSync(source, tmpDir, { recursive: true });
+    return tmpDir;
+  }
+
+  await extract(source, { dir: tmpDir });
   return tmpDir;
 }
 
@@ -290,6 +333,25 @@ function migrateUnprefixImpeccable(root) {
   return migrated;
 }
 
+function getFlagValue(flags, name) {
+  const prefix = `${name}=`;
+  const inline = flags.find(f => f.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = flags.indexOf(name);
+  if (index !== -1 && flags[index + 1] && !flags[index + 1].startsWith('-')) {
+    return flags[index + 1];
+  }
+  return null;
+}
+
+function normalizeProviderName(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (PROVIDER_DIRS.includes(raw)) return raw;
+  const key = raw.replace(/^\./, '').toLowerCase();
+  return PROVIDER_ALIASES[key] || null;
+}
+
 /**
  * Decide which provider folders to install into.
  *  1. An explicit --providers=.claude,.cursor list wins.
@@ -303,8 +365,8 @@ function resolveInstallTargets(root, providersValue) {
       .split(',')
       .map(s => s.trim())
       .filter(Boolean)
-      .map(s => (s.startsWith('.') ? s : `.${s}`))
-      .filter(p => PROVIDER_DIRS.includes(p));
+      .map(normalizeProviderName)
+      .filter(Boolean);
     return [...new Set(wanted)];
   }
 
@@ -350,10 +412,144 @@ function copyProviderSkills(bundleDir, root, targets) {
   return written;
 }
 
+function resolveLinkSource(sourceValue, root) {
+  const sourcePath = sourceValue || '.impeccable';
+  const checkoutRoot = isAbsolute(sourcePath) ? sourcePath : resolve(root, sourcePath);
+  const universalRoot = join(checkoutRoot, 'dist', 'universal');
+  if (existsSync(universalRoot)) {
+    return { checkoutRoot, bundleRoot: universalRoot };
+  }
+  if (PROVIDER_DIRS.some(provider => existsSync(join(checkoutRoot, provider, 'skills')))) {
+    return { checkoutRoot, bundleRoot: checkoutRoot };
+  }
+  throw new Error(`Could not find compiled skills in ${sourcePath}. Expected dist/universal/ or provider skill folders.`);
+}
+
+function pathExistsOrLink(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSymlinkTo(dest, expectedSource) {
+  try {
+    if (!lstatSync(dest).isSymbolicLink()) return false;
+    const target = readlinkSync(dest);
+    const resolvedTarget = resolve(dirname(dest), target);
+    return realpathSync(resolvedTarget) === realpathSync(expectedSource);
+  } catch {
+    return false;
+  }
+}
+
+function resolveUniqueLinkTargets(root, targets) {
+  const seen = new Set();
+  const unique = [];
+  for (const provider of targets) {
+    const localSkillsDir = join(root, provider, 'skills');
+    mkdirSync(localSkillsDir, { recursive: true });
+    const real = realpathSync(localSkillsDir);
+    if (seen.has(real)) continue;
+    seen.add(real);
+    unique.push({ provider, localSkillsDir });
+  }
+  return unique;
+}
+
+function linkProviderSkills(bundleRoot, root, targets, { force = false } = {}) {
+  let linked = 0;
+  let already = 0;
+  let skipped = 0;
+
+  for (const { provider, localSkillsDir } of resolveUniqueLinkTargets(root, targets)) {
+    const srcDir = join(bundleRoot, provider, 'skills');
+    if (!existsSync(srcDir)) continue;
+
+    for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
+      if (!skill.isDirectory()) continue;
+      const src = join(srcDir, skill.name);
+      const dest = join(localSkillsDir, skill.name);
+
+      if (pathExistsOrLink(dest)) {
+        if (isSymlinkTo(dest, src)) {
+          already++;
+          continue;
+        }
+        if (!force) {
+          console.warn(`Skipped existing ${provider}/skills/${skill.name}. Use --force to replace it with a link.`);
+          skipped++;
+          continue;
+        }
+        rmSync(dest, { recursive: true, force: true });
+      }
+
+      const target = relative(dirname(dest), src) || '.';
+      symlinkSync(target, dest, 'dir');
+      linked++;
+    }
+  }
+
+  return { linked, already, skipped };
+}
+
+async function link(flags) {
+  const force = flags.includes('--force');
+  const yes = flags.includes('-y') || flags.includes('--yes');
+  const sourceValue = getFlagValue(flags, '--source');
+  const providersValue = getFlagValue(flags, '--providers');
+  const root = findProjectRoot();
+
+  let source;
+  try {
+    source = resolveLinkSource(sourceValue, root);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+
+  const targets = resolveInstallTargets(root, providersValue);
+  if (targets.length === 0) {
+    console.error('Could not determine a target harness folder.');
+    console.error('Pass one explicitly, e.g. --providers=claude,cursor');
+    process.exit(1);
+  }
+
+  if (!yes) {
+    console.log(`Source checkout: ${source.checkoutRoot}`);
+    console.log(`Target harness folder(s): ${targets.join(', ')}`);
+    const ans = await ask(`Link impeccable skills into ${targets.length} folder(s)? (Y/n) `);
+    if (ans === 'n' || ans === 'no') {
+      console.log('Aborted. Re-run with --providers=<names> to choose explicitly (e.g. --providers=claude,cursor).');
+      process.exit(0);
+    }
+  }
+
+  const result = linkProviderSkills(source.bundleRoot, root, targets, { force });
+  if (result.linked === 0 && result.already === 0) {
+    if (result.skipped > 0) {
+      console.error('Nothing was linked because matching skill folders already exist.');
+      console.error('Existing skills were left untouched. Re-run with --force to replace them with links.');
+    } else {
+      console.error(`Nothing was linked: ${source.bundleRoot} had no variants for ${targets.join(', ')}.`);
+    }
+    process.exit(1);
+  }
+
+  const parts = [];
+  if (result.linked > 0) parts.push(`${result.linked} linked`);
+  if (result.already > 0) parts.push(`${result.already} already linked`);
+  if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+  console.log(`Linked impeccable into: ${targets.join(', ')} (${parts.join(', ')}).`);
+  console.log('Update with `git submodule update --remote` from your project root, then rerun this command if new skills are added.\n');
+}
+
 async function install(flags) {
   const force = flags.includes('--force');
   const yes = flags.includes('-y') || flags.includes('--yes');
-  const providersFlag = flags.find(f => f.startsWith('--providers='));
+  const providersValue = getFlagValue(flags, '--providers');
   const root = findProjectRoot();
   const existing = isAlreadyInstalled(root);
 
@@ -368,7 +564,7 @@ async function install(flags) {
   // to `npx skills add`: its name-based discovery can install the uncompiled
   // source, and its symlink default points every harness at one shared variant.
   // Copying per-provider variants is the only correct install for this skill.
-  const targets = resolveInstallTargets(root, providersFlag ? providersFlag.split('=')[1] : null);
+  const targets = resolveInstallTargets(root, providersValue);
   if (targets.length === 0) {
     console.error('Could not determine a target harness folder.');
     console.error('Pass one explicitly, e.g. --providers=.claude,.cursor');
@@ -452,6 +648,17 @@ function findInstalledProviders(root) {
   return found;
 }
 
+function findLinkedProviders(root, providers) {
+  return providers.filter(provider => {
+    const skillDir = join(root, provider, 'skills', 'impeccable');
+    try {
+      return lstatSync(skillDir).isSymbolicLink();
+    } catch {
+      return false;
+    }
+  });
+}
+
 function getModifiedSkillFiles(root, providerDirs) {
   // Use git to check if any skill files have local modifications
   const modified = [];
@@ -516,11 +723,20 @@ async function update(flags = []) {
   // (vercel-labs/skills#775) where it can't find the lock file.
   const root = findProjectRoot();
   const providers = findInstalledProviders(root);
+  const linkedProviders = findLinkedProviders(root, providers);
+  const copyProviders = providers.filter(provider => !linkedProviders.includes(provider));
 
   if (providers.length === 0) {
     console.log('No impeccable skill folders found in this project.');
     console.log('Run `npx impeccable skills install` to install first.');
     process.exit(1);
+  }
+
+  if (linkedProviders.length > 0) {
+    console.log(`Linked skills found in: ${linkedProviders.join(', ')}`);
+    console.log('Update the source checkout with `git submodule update --remote`, then rerun `npx impeccable skills link --source=.impeccable` if new skills are added.');
+    if (copyProviders.length === 0) process.exit(0);
+    console.log(`Continuing with copied installs in: ${copyProviders.join(', ')}\n`);
   }
 
   console.log('Checking for updates...');
@@ -534,17 +750,17 @@ async function update(flags = []) {
   }
 
   // Compare local vs remote -- skip if already up to date
-  if (isUpToDate(root, providers, tmpDir)) {
+  if (isUpToDate(root, copyProviders, tmpDir)) {
     rmSync(tmpDir, { recursive: true, force: true });
     const v = getSkillsVersion(root);
     console.log(`Skills are up to date${v ? ` (v${v})` : ''}. Nothing to do.`);
     process.exit(0);
   }
 
-  console.log(`Found skills in: ${providers.join(', ')}`);
+  console.log(`Found skills in: ${copyProviders.join(', ')}`);
 
   if (!yes) {
-    const ans = await ask(`Update skills in ${providers.length} provider folder(s)? (Y/n) `);
+    const ans = await ask(`Update skills in ${copyProviders.length} provider folder(s)? (Y/n) `);
     if (ans === 'n' || ans === 'no') {
       rmSync(tmpDir, { recursive: true, force: true });
       console.log('Aborted.');
@@ -562,7 +778,7 @@ async function update(flags = []) {
     // Copy from the bundle to each unique provider folder.
     // Deduplicate so symlinked dirs (e.g. .claude/skills -> .agents/skills)
     // are only written once with the correct provider's content.
-    const unique = deduplicateProviders(root, providers);
+    const unique = deduplicateProviders(root, copyProviders);
     let updated = 0;
     for (const { provider, localSkillsDir } of unique) {
       const srcDir = join(tmpDir, provider, 'skills');
@@ -615,7 +831,7 @@ function copyDirSync(src, dest) {
 // ─── Test surface ───────────────────────────────────────────────────────────
 // Exported so the test suite exercises the real implementation rather than a
 // reimplementation in a helper script (which is how bugs slip through).
-export { migrateUnprefixImpeccable };
+export { migrateUnprefixImpeccable, linkProviderSkills, resolveLinkSource };
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
@@ -626,6 +842,8 @@ export async function run(args) {
     await showHelp();
   } else if (sub === 'install') {
     await install(args.slice(1));
+  } else if (sub === 'link') {
+    await link(args.slice(1));
   } else if (sub === 'update') {
     await update(args.slice(1));
   } else if (sub === 'check') {

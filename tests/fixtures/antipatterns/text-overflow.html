@@ -8,6 +8,27 @@
     .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; align-items: start; }
     .col { padding: 16px; }
     .box { width: 160px; border: 1px solid #ddd; margin: 0 0 24px; padding: 8px; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      white-space: nowrap;
+      border-width: 0;
+    }
+    .sr-only-clip-path { clip-path: inset(50%); }
+    .sr-only-legacy-clip { clip: rect(0, 0, 0, 0); }
+    .sr-only-tiny-hidden { clip: auto; }
+    .sr-only-clipped-wide {
+      position: absolute;
+      width: 160px;
+      height: 20px;
+      overflow: visible;
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
   </style>
 </head>
 <body>
@@ -24,6 +45,10 @@
       <pre class="box pass-pre" style="overflow: visible">a-very-long-preformatted-code-line-that-intentionally-extends-beyond-the-box-width</pre>
       <div class="box pass-wrap">Ordinary wrapping paragraph text that stays comfortably within its container.</div>
       <div class="box" style="overflow-x: auto"><span class="pass-inside-scroll" style="white-space: nowrap; display: inline-block">A long line living inside a scroll ancestor, which must not be flagged.</span></div>
+      <span class="pass-sr-only-clip-path sr-only sr-only-clip-path">A screen-reader-only label with long text that should never draw a visible overflow finding.</span>
+      <span class="pass-sr-only-legacy sr-only sr-only-legacy-clip">A legacy clipped screen-reader-only label with long text that should not be flagged.</span>
+      <span class="pass-sr-only-tiny-hidden sr-only sr-only-tiny-hidden">A tiny overflow-hidden screen-reader-only label without a clip declaration should not be flagged.</span>
+      <span class="pass-sr-only-clipped-wide sr-only-clipped-wide">A fully clipped label with a normal-sized box and overflowing text should not be flagged.</span>
     </section>
   </div>
 </body>

@@ -5,6 +5,7 @@ import {
 import { initFrameworkViz } from "./components/framework-viz.js";
 import { initScrollReveal } from "./utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./utils/scroll.js";
+import { initCopyFeedback } from "./utils/copy-feedback.js";
 import { initSectionNav } from "./components/section-nav.js";
 import { initFoundationGrid } from "./components/foundation-grid.js";
 import { initLiveDemo, initGbarPageChat } from "./components/live-demo.js";
@@ -208,26 +209,6 @@ document.addEventListener("click", (e) => {
 		const bundleName = bundleBtn.dataset.bundle;
 		window.location.href = `/api/download/bundle/${bundleName}`;
 	}
-
-	// Handle copy button clicks
-	const copyBtn = e.target.closest("[data-copy]");
-	if (copyBtn) {
-		const textToCopy = copyBtn.dataset.copy;
-		const onCopied = () => {
-			copyBtn.classList.add('copied');
-			setTimeout(() => copyBtn.classList.remove('copied'), 1500);
-		};
-		if (navigator.clipboard?.writeText) {
-			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {});
-		} else {
-			// Fallback for non-HTTPS or older browsers
-			const ta = Object.assign(document.createElement('textarea'), { value: textToCopy, style: 'position:fixed;left:-9999px' });
-			document.body.appendChild(ta);
-			ta.select();
-			try { document.execCommand('copy'); onCopied(); } catch {}
-			ta.remove();
-		}
-	}
 });
 
 
@@ -261,6 +242,7 @@ function initHeaderScroll() {
 function init() {
 	initAnchorScroll();
 	initHashTracking();
+	initCopyFeedback();
 	initHeaderScroll();
 	initScrollReveal();
 	initGlassTerminal();

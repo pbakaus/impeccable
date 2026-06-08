@@ -21,6 +21,11 @@ import {
   buildCssAuthoring,
   buildCssSelectorPrefixExamples,
 } from './live-wrap.mjs';
+import {
+  buildSvelteComponentCssAuthoring,
+  scaffoldSvelteComponentInsertSession,
+  shouldUseSvelteComponentInjection,
+} from './live-svelte-component.mjs';
 
 const INSERT_POSITIONS = new Set(['before', 'after']);
 
@@ -192,6 +197,41 @@ Output (JSON):
   const styleMode = detectStyleMode(targetFile);
   const isJsx = commentSyntax.open === '{/*';
   const spliceIndex = computeInsertLine(startLine, endLine, position);
+  const relTargetFile = path.relative(process.cwd(), targetFile).split(path.sep).join('/');
+
+  if (shouldUseSvelteComponentInjection(targetFile)) {
+    const session = scaffoldSvelteComponentInsertSession({
+      id,
+      count,
+      sourceFile: relTargetFile,
+      insertLine: spliceIndex + 1,
+      position,
+      anchorStartLine: startLine + 1,
+      anchorEndLine: endLine + 1,
+      anchorLines: lines.slice(startLine, endLine + 1),
+      cwd: process.cwd(),
+    });
+    console.log(JSON.stringify({
+      mode: 'insert',
+      position,
+      file: session.manifestFile,
+      sourceFile: relTargetFile,
+      previewMode: 'svelte-component',
+      componentDir: session.componentDir,
+      propContract: session.propContract,
+      insertLine: 1,
+      sourceInsertLine: spliceIndex + 1,
+      anchorStartLine: startLine + 1,
+      anchorEndLine: endLine + 1,
+      commentSyntax,
+      styleMode: 'svelte-component',
+      styleTag: null,
+      cssSelectorPrefixExamples: [],
+      cssAuthoring: buildSvelteComponentCssAuthoring(count),
+    }));
+    return;
+  }
+
   const indent = lines[spliceIndex]?.match(/^(\s*)/)?.[1]
     ?? lines[startLine]?.match(/^(\s*)/)?.[1]
     ?? '';
@@ -216,7 +256,7 @@ Output (JSON):
   console.log(JSON.stringify({
     mode: 'insert',
     position,
-    file: path.relative(process.cwd(), targetFile),
+    file: relTargetFile,
     insertLine: insertLine + 1,
     commentSyntax,
     styleMode: styleMode.mode,

@@ -401,7 +401,7 @@
   font-size: 0.66rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  border: 1px solid var(--ks-rule-strong);
+  border: 1px solid var(--ks-kinpaku);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -1301,7 +1301,7 @@
   position: relative;
   aspect-ratio: 16 / 10;
   overflow: hidden;
-  border: 1px solid var(--ks-rule-strong);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
   background:
     linear-gradient(180deg, oklch(8% 0.006 95), oklch(5% 0.004 95));
@@ -1366,7 +1366,7 @@
 }
 
 .ks-mini-ui-after {
-  border-color: var(--ks-rule-strong);
+  border-color: var(--ks-kinpaku);
 }
 .ks-mini-ui-after .ks-mini-rule {
   width: 64px;

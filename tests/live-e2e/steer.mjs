@@ -43,6 +43,8 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
   const expectSelector = steerCfg.expectSelector || `h1.hero-title[${STEER_MARKER_ATTR}]`;
   const sourceNeedle = steerCfg.expectSourceContains || STEER_MARKER_ATTR;
   const revealActions = steerCfg.preActions ?? fixture.runtime?.preActions;
+  const sourceFile = resolveSteerSourceFile(tmp, fixture);
+  const sourceBefore = readFileSync(sourceFile, 'utf-8');
 
   log(`Steer: submitting ${JSON.stringify(message)}`);
   await submitSteer(page, message);
@@ -51,7 +53,6 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
   await waitForSteerUnlocked(page, { timeout: unlockTimeoutMs });
   log('Steer: unlocked');
 
-  const sourceFile = resolveSteerSourceFile(tmp, fixture);
   const waitForSource = async () => {
     const deadline = Date.now() + selectorTimeoutMs;
     while (Date.now() < deadline) {
@@ -63,7 +64,10 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
       `steer marker missing from ${sourceFile} after ${selectorTimeoutMs}ms (expected ${JSON.stringify(sourceNeedle)})`,
     );
   };
-  await waitForSource();
+  const sourceAfter = await waitForSource();
+  if (!sourceBefore.includes(sourceNeedle) && sourceAfter === sourceBefore) {
+    throw new Error(`steer source did not change in ${sourceFile}`);
+  }
   log('Steer: source marker present');
 
   if (steerCfg.expectDom === false) {

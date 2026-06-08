@@ -15,6 +15,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './is-generated.mjs';
 import { readBuffer as readManualEditsBuffer } from './live-manual-edits-buffer.mjs';
+import {
+  buildSvelteComponentCssAuthoring,
+  scaffoldSvelteComponentSession,
+  shouldUseSvelteComponentInjection,
+} from './live-svelte-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -262,6 +267,8 @@ The agent should insert variant HTML at insertLine.`);
     .map((l) => (l.trim() === '' ? '' : indent + extra + l.slice(originalBaseIndent)))
     .join('\n');
   const originalIndented = reindentOriginal('    ');
+  const relTargetFile = path.relative(process.cwd(), targetFile).split(path.sep).join('/');
+  const useSvelteComponent = shouldUseSvelteComponentInjection(targetFile);
 
   // Wrapper attributes differ by syntax. HTML allows plain string attrs;
   // JSX requires object-literal style and parses string attrs as HTML (which
@@ -302,38 +309,75 @@ The agent should insert variant HTML at insertLine.`);
     indent + commentSyntax.open + ' impeccable-variants-end ' + id + ' ' + commentSyntax.close,
   ];
 
-  // Replace the original element with the wrapper
-  const newLines = [
-    ...lines.slice(0, startLine),
-    ...wrapperLines,
-    ...lines.slice(endLine + 1),
-  ];
-  fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+  let outputFile = targetFile;
+  let outputLines;
+  let outputStartLine = startLine + 1;
+  let outputEndLine = startLine + wrapperLines.length + (originalLines.length - 1);
+  let insertLine;
+  let svelteSession = null;
 
-  // Calculate insert line (the "insert below this line" comment).
-  // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
-  // the insert marker (HTML: start-comment + outer-div + Original-comment +
-  // original-div + content + close-original-div; JSX: outer-div +
-  // start-comment + Original-comment + original-div + content +
-  // close-original-div). Multi-line originals push the marker by their
-  // extra line count.
-  const insertLine = startLine + 6 + (originalLines.length - 1);
+  if (useSvelteComponent) {
+    // Svelte/SvelteKit resets component-local state on markup HMR updates.
+    // Keep generation source-neutral: agents write real variant components
+    // under the generated componentDir, the browser mounts them into the live
+    // DOM, and live-accept.mjs inlines the accepted variant back into the route.
+    svelteSession = scaffoldSvelteComponentSession({
+      id,
+      count,
+      sourceFile: relTargetFile,
+      sourceStartLine: startLine + 1,
+      sourceEndLine: endLine + 1,
+      originalLines,
+      cwd: process.cwd(),
+    });
+    outputFile = path.resolve(process.cwd(), svelteSession.manifestFile);
+    outputStartLine = 1;
+    outputEndLine = 1;
+    insertLine = 1;
+  } else {
+    // Replace the original element with the wrapper
+    const newLines = [
+      ...lines.slice(0, startLine),
+      ...wrapperLines,
+      ...lines.slice(endLine + 1),
+    ];
+    fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+
+    // Calculate insert line (the "insert below this line" comment).
+    // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
+    // the insert marker (HTML: start-comment + outer-div + Original-comment +
+    // original-div + content + close-original-div; JSX: outer-div +
+    // start-comment + Original-comment + original-div + content +
+    // close-original-div). Multi-line originals push the marker by their
+    // extra line count.
+    insertLine = startLine + 6 + (originalLines.length - 1) + 1;
+  }
+
+  const outputRelFile = path.relative(process.cwd(), outputFile).split(path.sep).join('/');
+
+  const svelteComponentAuthoring = useSvelteComponent ? buildSvelteComponentCssAuthoring(count) : null;
 
   console.log(JSON.stringify({
-    file: path.relative(process.cwd(), targetFile),
-    startLine: startLine + 1,       // 1-indexed for the agent
+    file: outputRelFile,
+    sourceFile: useSvelteComponent ? relTargetFile : undefined,
+    previewMode: useSvelteComponent ? 'svelte-component' : undefined,
+    componentDir: svelteSession?.componentDir,
+    propContract: svelteSession?.propContract,
+    sourceStartLine: useSvelteComponent ? startLine + 1 : undefined,
+    sourceEndLine: useSvelteComponent ? endLine + 1 : undefined,
+    startLine: outputStartLine,       // 1-indexed for the agent
     // wrapperLines is an array but one element (the original-content slot)
     // is a `\n`-joined multi-line string, so the actual file-row count is
     // wrapperLines.length + (originalLines.length - 1). Without the offset,
     // endLine pointed inside the wrapper for any picked element that
     // spanned more than one source line.
-    endLine: startLine + wrapperLines.length + (originalLines.length - 1), // 1-indexed
-    insertLine: insertLine + 1,     // 1-indexed: where variants go
+    endLine: outputEndLine, // 1-indexed
+    insertLine,            // 1-indexed: where variants go
     commentSyntax: commentSyntax,
-    styleMode: styleMode.mode,
-    styleTag: styleMode.styleTag,
-    cssSelectorPrefixExamples: buildCssSelectorPrefixExamples(styleMode.mode, count),
-    cssAuthoring: buildCssAuthoring(styleMode, count),
+    styleMode: useSvelteComponent ? 'svelte-component' : styleMode.mode,
+    styleTag: useSvelteComponent ? null : styleMode.styleTag,
+    cssSelectorPrefixExamples: useSvelteComponent ? [] : buildCssSelectorPrefixExamples(styleMode.mode, count),
+    cssAuthoring: useSvelteComponent ? svelteComponentAuthoring : buildCssAuthoring(styleMode, count),
     originalLineCount: originalLines.length,
   }));
 }
@@ -525,6 +569,14 @@ function buildSearchQueries(elementId, classes, tag, query) {
 
 function splitClassList(classes) {
   return String(classes).split(/[,\s]+/).map(c => c.trim()).filter(Boolean);
+}
+
+function attrEscapeDouble(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function detectCommentSyntax(filePath) {

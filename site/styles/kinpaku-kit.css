@@ -1368,6 +1368,79 @@
   border: 0;
 }
 
+/* Command-palette switcher — the picker's design vocabulary. Mirrors the real
+   action picker in live-browser.js: a 4-column grid of icon-over-label chips,
+   the selected chip on a soft kinpaku wash with its icon recolored to brand.
+   This is the move that makes the live approach unique, so the demo shows it. */
+.home-kinpaku .live-demo-ctx-palette,
+.live-mode-kinpaku .live-demo-ctx-palette {
+  position: absolute;
+  left: 6px;
+  bottom: calc(100% + 8px);
+  z-index: 2;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--ks-lacquer-deep);
+  border: 1px solid oklch(92% 0 0 / 0.13);
+  box-shadow: 0 18px 40px -14px oklch(0% 0 0 / 0.7);
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transform-origin: bottom left;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.home-kinpaku .live-demo-ctx-palette.is-open,
+.live-mode-kinpaku .live-demo-ctx-palette.is-open {
+  opacity: 1;
+  transform: none;
+}
+.home-kinpaku .live-demo-ctx-palette-grid,
+.live-mode-kinpaku .live-demo-ctx-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+.home-kinpaku .live-demo-ctx-palette-chip,
+.live-mode-kinpaku .live-demo-ctx-palette-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 62px;
+  padding: 9px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.home-kinpaku .live-demo-ctx-palette-ico,
+.live-mode-kinpaku .live-demo-ctx-palette-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  opacity: 0.82;
+}
+.home-kinpaku .live-demo-ctx-palette-name,
+.live-mode-kinpaku .live-demo-ctx-palette-name {
+  line-height: 1;
+}
+.home-kinpaku .live-demo-ctx-palette-chip.is-highlight,
+.live-mode-kinpaku .live-demo-ctx-palette-chip.is-highlight {
+  background: oklch(78% 0.12 82 / 0.16);
+  color: var(--ks-kinpaku);
+}
+.home-kinpaku .live-demo-ctx-palette-chip.is-highlight .live-demo-ctx-palette-ico,
+.live-mode-kinpaku .live-demo-ctx-palette-chip.is-highlight .live-demo-ctx-palette-ico {
+  opacity: 1;
+}
+
 .home-kinpaku .live-demo-ctx-nav,
 .live-mode-kinpaku .live-demo-ctx-nav {
   background: transparent;

@@ -14,11 +14,17 @@ const PHASE = {
 };
 
 const TIMELINE = [
-	{ dt: 400,  action: 'cursor-show' },
-	{ dt: 400,  action: 'cursor-to-target' },
-	{ dt: 800,  action: 'outline-show', caption: 'Pick any element on your live page.' },
-	{ dt: 450,  action: 'cursor-click' },
-	{ dt: 200,  action: 'open-ctx' },
+	{ dt: 220,  action: 'cursor-show' },
+	{ dt: 260,  action: 'cursor-to-target' },
+	{ dt: 560,  action: 'outline-show', caption: 'Pick any element on your live page.' },
+	{ dt: 300,  action: 'cursor-click' },
+	{ dt: 180,  action: 'open-ctx' },
+	{ dt: 340,  action: 'cursor-to-cmd' },
+	{ dt: 320,  action: 'open-palette', caption: 'Open the command palette: the design vocabulary.' },
+	{ dt: 950,  action: 'browse-palette', cmd: 'bolder' },
+	{ dt: 700,  action: 'browse-palette', cmd: 'typeset' },
+	{ dt: 700,  action: 'browse-target' },
+	{ dt: 1000, action: 'pick-target', caption: 'Pick a design verb, or just describe it.' },
 	{ dt: 560,  action: 'cursor-to-button' },
 	{ dt: 250,  action: 'draw-circle', caption: 'Circle what’s off-brand…' },
 	{ dt: 700,  action: 'drop-pin' },
@@ -34,6 +40,11 @@ const TIMELINE = [
 	{ dt: 1800, action: 'reset', caption: 'Pick any element on your live page.' },
 ];
 
+// Steps that drive the command-palette switcher. Pages whose context bar has no
+// [data-demo-palette] (e.g. /live-mode) get these filtered out of the timeline,
+// so they don't sit through dead pauses for a UI they don't render.
+const PALETTE_ACTIONS = new Set(['cursor-to-cmd', 'open-palette', 'browse-palette', 'browse-target', 'pick-target']);
+
 export function initLiveDemo() {
 	const root = document.getElementById('live-demo');
 	if (!root) return;
@@ -46,6 +57,11 @@ export function initLiveDemo() {
 	const ctx = root.querySelector('[data-demo-ctx]');
 	const inputText = root.querySelector('[data-demo-input-text]');
 	const noteText = root.querySelector('[data-demo-note-text]');
+	const palette = root.querySelector('[data-demo-palette]');
+	const cmdName = root.querySelector('[data-demo-cmd-name]');
+	const defaultCmd = cmdName ? cmdName.textContent : '';
+	// Drop the palette-switcher beats on pages that don't render the palette.
+	const timeline = palette ? TIMELINE : TIMELINE.filter((s) => !PALETTE_ACTIONS.has(s.action));
 	const counter = root.querySelector('[data-demo-counter]');
 	const captionLabel = root.querySelector('[data-demo-caption-label]');
 	const variants = Array.from(root.querySelectorAll('.live-demo-variant'));
@@ -140,11 +156,27 @@ export function initLiveDemo() {
 		annotations.classList.remove('is-visible', 'is-pin-visible', 'is-note-visible');
 		if (noteText) noteText.textContent = '';
 		if (inputText) inputText.textContent = '';
+		if (palette) palette.classList.remove('is-open');
+		if (palette) palette.querySelectorAll('.live-demo-ctx-palette-chip').forEach((r) => r.classList.remove('is-highlight'));
+		if (cmdName) cmdName.textContent = defaultCmd;
 		showVariant(0);
 	};
 
 	const clearAnnotations = () =>
 		annotations.classList.remove('is-visible', 'is-pin-visible', 'is-note-visible');
+
+	const setPalette = (open) => {
+		if (!palette) return;
+		palette.classList.toggle('is-open', open);
+		if (!open) palette.querySelectorAll('.live-demo-ctx-palette-chip').forEach((r) => r.classList.remove('is-highlight'));
+	};
+
+	const highlightCmd = (cmd) => {
+		if (!palette) return null;
+		const chip = palette.querySelector(`[data-cmd="${cmd}"]`);
+		palette.querySelectorAll('.live-demo-ctx-palette-chip').forEach((r) => r.classList.toggle('is-highlight', r === chip));
+		return chip;
+	};
 
 	const setCaption = (text) => {
 		if (text && captionLabel) captionLabel.textContent = text;
@@ -182,6 +214,29 @@ export function initLiveDemo() {
 				break;
 			case 'open-ctx':
 				setCtxPhase(PHASE.CONFIGURING);
+				break;
+			case 'cursor-to-cmd':
+				moveCursor(root.querySelector('[data-demo-ctx-pill]'));
+				break;
+			case 'open-palette':
+				setPalette(true);
+				break;
+			case 'browse-palette': {
+				const chip = highlightCmd(s.cmd);
+				if (chip) moveCursor(chip);
+				break;
+			}
+			case 'browse-target': {
+				// The verb each page lands on, declared via data-demo-pick on the palette.
+				const chip = highlightCmd(palette && palette.dataset.demoPick);
+				if (chip) moveCursor(chip);
+				break;
+			}
+			case 'pick-target':
+				cursor.classList.add('is-click');
+				setTimeout(() => cursor.classList.remove('is-click'), 220);
+				if (cmdName && palette && palette.dataset.demoPick) cmdName.textContent = palette.dataset.demoPick;
+				setPalette(false);
 				break;
 			case 'cursor-to-button':
 				// Over the purple "Book Now" button (lower-left).
@@ -243,7 +298,7 @@ export function initLiveDemo() {
 		const myToken = ++cancelToken;
 		while (running && myToken === cancelToken) {
 			reset();
-			for (const s of TIMELINE) {
+			for (const s of timeline) {
 				const stillMe = await sleep(s.dt, myToken);
 				if (!stillMe || !running) return;
 				await step(s);

@@ -1,0 +1,26 @@
+{
+  "name": "Vite 8 + SvelteKit stateful page",
+  "config": {
+    "files": ["src/app.html"],
+    "insertBefore": "</body>",
+    "commentSyntax": "html"
+  },
+  "sourceFiles": ["DESIGN.md", "src/app.html", "src/routes/+page.svelte", "src/routes/+layout.svelte", "svelte.config.js", "vite.config.js"],
+  "generatedFiles": [],
+  "wrapCases": [
+    {
+      "name": "wraps hero title through Svelte component preview",
+      "args": { "classes": "hero-title", "tag": "h1" },
+      "expectedFile": "node_modules/.impeccable-live/wraptest0/manifest.json",
+      "expectedSourceFile": "src/routes/+page.svelte",
+      "expectedPreviewMode": "svelte-component"
+    },
+    {
+      "name": "wraps stateful expense row through Svelte component preview",
+      "args": { "classes": "expense-row", "tag": "article" },
+      "expectedFile": "node_modules/.impeccable-live/wraptest1/manifest.json",
+      "expectedSourceFile": "src/routes/+page.svelte",
+      "expectedPreviewMode": "svelte-component"
+    }
+  ]
+}

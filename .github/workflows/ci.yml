@@ -5,19 +5,53 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
-    
+    outputs:
+      core: ${{ steps.plan.outputs.core }}
+      detector: ${{ steps.plan.outputs.detector }}
+      live: ${{ steps.plan.outputs.live }}
+      framework: ${{ steps.plan.outputs.framework }}
+      cli_remote_e2e: ${{ steps.plan.outputs.cli_remote_e2e }}
+      live_e2e: ${{ steps.plan.outputs.live_e2e }}
+      live_e2e_accept_cleanup: ${{ steps.plan.outputs.live_e2e_accept_cleanup }}
+      skill_behavior: ${{ steps.plan.outputs.skill_behavior }}
+      live_svelte_adapter_deepseek: ${{ steps.plan.outputs.live_svelte_adapter_deepseek }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        
-      - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/checkout@v6
         with:
-          node-version: 22
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Detect test plan
+        id: plan
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-test-plan.mjs
+
+  test:
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -27,23 +61,48 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run tests
-        run: bun run test
-        
+      - name: Run core tests
+        run: bun run test:core
+
+      - name: Install Puppeteer browser
+        if: needs.changes.outputs.detector == 'true'
+        run: bunx puppeteer browsers install chrome
+
+      - name: Run detector tests
+        if: needs.changes.outputs.detector == 'true'
+        run: bun run test:detector
+
+      - name: Run live unit tests
+        if: needs.changes.outputs.live == 'true'
+        run: bun run test:live
+
+      - name: Run framework fixture tests
+        if: needs.changes.outputs.framework == 'true'
+        run: bun run test:framework
+
+      - name: Rebuild browser detector
+        if: needs.changes.outputs.detector == 'true'
+        run: bun run build:browser
+
       - name: Build
         run: bun run build
 
       - name: Build extension
+        if: needs.changes.outputs.detector == 'true'
         run: bun run build:extension
 
       - name: Lint Firefox extension (web-ext)
+        if: needs.changes.outputs.detector == 'true'
         # Pinned for reproducible CI. Fails on AMO errors; innerHTML style
         # warnings in the panel renderer are non-blocking and not promoted to
         # errors here.
         run: npx --yes web-ext@8 lint --source-dir dist/extension-firefox
 
+      - name: Verify generated tracked outputs
+        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin cli/engine/detect-antipatterns-browser.js extension/detector
+
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: impeccable-dist
           # Ship the packaged zips, not the unpacked Firefox staging tree.
@@ -51,3 +110,319 @@ jobs:
             dist/
             !dist/extension-firefox/
           retention-days: 7
+
+  cli-remote-e2e:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.cli_remote_e2e == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run remote CLI E2E smoke
+        run: bun run test:cli-remote-e2e
+
+  live-e2e-smoke:
+    name: live-e2e smoke (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.live_e2e == 'true' && github.event_name != 'workflow_dispatch'
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - group: platform
+            fixtures: astro-vite7,nextjs-app-router,vite8-sveltekit
+          - group: react
+            fixtures: vite8-react-css-modules,vite8-react-insert,vite8-react-plain
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache fixture npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-fixture-npm-
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run live E2E tests
+        run: bun run test:live-e2e
+        env:
+          IMPECCABLE_E2E_ONLY: ${{ matrix.fixtures }}
+          IMPECCABLE_E2E_SCENARIOS: core
+          IMPECCABLE_E2E_TEST_TIMEOUT_MS: 180000
+          IMPECCABLE_E2E_INSTALL_TIMEOUT_MS: 120000
+          IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS: 60000
+          IMPECCABLE_E2E_ARTIFACT_DIR: test-results/live-e2e/${{ matrix.group }}
+
+      - name: Upload live E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-e2e-smoke-${{ matrix.group }}-artifacts
+          path: test-results/live-e2e
+          if-no-files-found: ignore
+
+  live-e2e-full:
+    name: live-e2e full (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.live_e2e == 'true' && github.event_name == 'workflow_dispatch'
+    timeout-minutes: 25
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - group: platform
+            fixtures: astro-vite7,nextjs-app-router,vite8-sveltekit
+          - group: react-a
+            fixtures: vite8-https,vite8-react-base-path,vite8-react-csp-meta,vite8-react-css-modules,vite8-react-emotion
+          - group: react-b
+            fixtures: vite8-react-insert,vite8-react-mapped-list,vite8-react-modal,vite8-react-plain
+          - group: stateful
+            fixtures: vite8-react-radix-dialog,vite8-react-router-spa,vite8-react-styled-components,vite8-react-tabs
+          - group: styling
+            fixtures: vite8-react-tailwindv3,vite8-react-tailwindv4,vite8-react-ts,vite8-react-tsx-repeated-aside,vite8-react-unocss,vite8-react-vanilla-extract
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache fixture npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-fixture-npm-
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run live E2E tests
+        run: bun run test:live-e2e
+        env:
+          IMPECCABLE_E2E_ONLY: ${{ matrix.fixtures }}
+          IMPECCABLE_E2E_TEST_TIMEOUT_MS: 300000
+          IMPECCABLE_E2E_INSTALL_TIMEOUT_MS: 180000
+          IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS: 120000
+          IMPECCABLE_E2E_ARTIFACT_DIR: test-results/live-e2e/${{ matrix.group }}
+
+      - name: Upload live E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-e2e-full-${{ matrix.group }}-artifacts
+          path: test-results/live-e2e
+          if-no-files-found: ignore
+
+  live-e2e-accept-cleanup:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.live_e2e_accept_cleanup == 'true'
+    timeout-minutes: 15
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Skip without provider key
+        if: ${{ env.ANTHROPIC_API_KEY == '' && env.DEEPSEEK_API_KEY == '' }}
+        run: echo "Skipping provider-backed accept-cleanup regression because no provider API key is configured."
+
+      - name: Checkout repository
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache fixture npm downloads
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-fixture-npm-
+
+      - name: Cache Playwright Chromium
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
+      - name: Install dependencies
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        run: bun install
+
+      - name: Install Playwright Chromium
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        run: npx playwright install chromium
+
+      - name: Run accept cleanup regression
+        if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        run: |
+          if [ -n "$DEEPSEEK_API_KEY" ]; then
+            export IMPECCABLE_E2E_LLM_PROVIDER=deepseek
+          else
+            export IMPECCABLE_E2E_LLM_PROVIDER=anthropic
+          fi
+          bun run test:live-e2e-accept-cleanup
+
+  live-svelte-adapter-deepseek:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.live_svelte_adapter_deepseek == 'true'
+    timeout-minutes: 25
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Skip without DeepSeek key
+        if: ${{ env.DEEPSEEK_API_KEY == '' }}
+        run: echo "Skipping Svelte adapter DeepSeek sweep because DEEPSEEK_API_KEY is not configured."
+
+      - name: Checkout repository
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache fixture npm downloads
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-fixture-npm-
+
+      - name: Cache Playwright Chromium
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-chromium-
+
+      - name: Install dependencies
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        run: bun install
+
+      - name: Install Playwright Chromium
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        run: npx playwright install chromium
+
+      - name: Run Svelte adapter DeepSeek sweep
+        if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        run: bun run test:live-svelte-adapter-deepseek
+
+  skill-behavior:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.skill_behavior == 'true' && github.event_name != 'pull_request'
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_CLOUD_API_KEY: ${{ secrets.GOOGLE_CLOUD_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run skill behavior tests
+        run: bun run test:skill-behavior

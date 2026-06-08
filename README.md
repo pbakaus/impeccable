@@ -105,11 +105,31 @@ This auto-detects your harness and writes the build compiled for it to the right
 
 Claude Code users can alternatively install the plugin with `/plugin marketplace add pbakaus/impeccable`. The general-purpose `npx skills add pbakaus/impeccable` also works, though it installs one shared build for all harnesses rather than the one compiled for yours.
 
-### Option 2: Download from Website
+### Option 2: Git Submodule
+
+For teams that want to keep Impeccable vendored and updated through Git, add this repo as a submodule and link the compiled provider build into your harness folders:
+
+```bash
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+npx impeccable skills link --source=.impeccable --providers=claude,cursor
+git add .gitmodules .impeccable .claude .cursor
+git commit -m "Add Impeccable skills"
+```
+
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, or `rovo-dev`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+
+To update later:
+
+```bash
+git submodule update --remote .impeccable
+npx impeccable skills link --source=.impeccable --providers=claude,cursor
+```
+
+### Option 3: Download from Website
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 3: Copy from Repository
+### Option 4: Copy from Repository
 
 **Cursor:**
 ```bash

@@ -3,14 +3,15 @@
  *
  * Creates real temp directories, runs the CLI, and verifies results.
  *
- * Pure blocks (already-installed detection, unprefix migration) run in the
- * default `bun run test`. Network blocks that download the universal bundle use
- * `describeNet` and run only under `bun run test:cli-e2e` (IMPECCABLE_CLI_E2E=1),
- * skipping gracefully when impeccable.style is unreachable.
+ * Deterministic install/update coverage uses a local universal bundle override
+ * and runs in the default suite. Remote smoke blocks that download the
+ * production universal bundle use `describeRemote` and run only under
+ * `bun run test:cli-remote-e2e` (IMPECCABLE_CLI_REMOTE_E2E=1), skipping
+ * gracefully when impeccable.style is unreachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { execSync } from 'child_process';
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { migrateUnprefixImpeccable } from '../cli/bin/commands/skills.mjs';
@@ -51,6 +52,30 @@ function writeSkill(root, provider, name) {
   writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\n---\nRun /${name}.\n`);
 }
 
+function createFakeLinkSource(root, providers = ['.claude']) {
+  for (const provider of providers) {
+    writeSkill(join(root, '.impeccable', 'dist', 'universal'), provider, 'impeccable');
+  }
+}
+
+function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cursor']) {
+  const bundleRoot = join(root, 'universal-bundle');
+  for (const provider of providers) {
+    const skillDir = join(bundleRoot, provider, 'skills', 'impeccable');
+    mkdirSync(join(skillDir, 'scripts'), { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: impeccable',
+      'version: 9.9.9-local',
+      '---',
+      '',
+      `Local deterministic bundle for ${provider}.`,
+    ].join('\n'));
+    writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("local bundle context");\n');
+  }
+  return bundleRoot;
+}
+
 /**
  * Simulate an install from the era when the CLI offered a command prefix: the
  * skill lives at `<prefix>impeccable`. Optionally drop in a third-party skill
@@ -65,19 +90,19 @@ function createPrefixedInstall(root, { prefix = 'i-', providers = ['.claude'], f
 
 // ─── Already-installed detection ─────────────────────────────────────────────
 
-// Network e2e blocks (real bundle downloads from impeccable.style) run only
-// under `bun run test:cli-e2e` (IMPECCABLE_CLI_E2E=1). The default `bun run test`
-// skips them so it stays fast and works offline; when opted in they still skip
-// gracefully if the bundle endpoint is unreachable.
-const WANT_CLI_E2E = process.env.IMPECCABLE_CLI_E2E === '1';
+// Remote e2e blocks (real bundle downloads from impeccable.style) run only
+// under `bun run test:cli-remote-e2e` (IMPECCABLE_CLI_REMOTE_E2E=1). The default
+// suite skips them so it stays offline and stable; when opted in they still
+// skip gracefully if the bundle endpoint is unreachable.
+const WANT_CLI_REMOTE_E2E = process.env.IMPECCABLE_CLI_REMOTE_E2E === '1';
 let bundleReachable = false;
-if (WANT_CLI_E2E) {
+if (WANT_CLI_REMOTE_E2E) {
   try {
     execSync('curl -sfIL --max-time 10 https://impeccable.style/api/download/bundle/universal -o /dev/null', { stdio: 'pipe' });
     bundleReachable = true;
   } catch {}
 }
-const describeNet = (WANT_CLI_E2E && bundleReachable) ? describe : describe.skip;
+const describeRemote = (WANT_CLI_REMOTE_E2E && bundleReachable) ? describe : describe.skip;
 
 describe('skills install: already-installed detection', () => {
   test('detects impeccable sentinel and bails', () => {
@@ -101,6 +126,109 @@ describe('skills install: already-installed detection', () => {
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+});
+
+// ─── Submodule/link installs ────────────────────────────────────────────────
+
+describe('skills link: submodule installs', () => {
+  test('creates relative skill symlinks from dist/universal', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.claude', '.cursor']);
+
+    const output = run('skills link --source=.impeccable --providers=claude,cursor -y', { cwd: tmp });
+    expect(output).toContain('Linked impeccable into: .claude, .cursor');
+
+    for (const provider of ['.claude', '.cursor']) {
+      const dest = join(tmp, provider, 'skills', 'impeccable');
+      const src = join(tmp, '.impeccable', 'dist', 'universal', provider, 'skills', 'impeccable');
+      expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(dest).startsWith('/')).toBe(false);
+      expect(realpathSync(dest)).toBe(realpathSync(src));
+    }
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('is idempotent when links already point at the same source', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-again-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp);
+
+    run('skills link --source=.impeccable --providers=claude -y', { cwd: tmp });
+    const before = readlinkSync(join(tmp, '.claude', 'skills', 'impeccable'));
+    const output = run('skills link --source=.impeccable --providers=claude -y', { cwd: tmp });
+
+    expect(output).toContain('already linked');
+    expect(readlinkSync(join(tmp, '.claude', 'skills', 'impeccable'))).toBe(before);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('does not overwrite an existing real skill unless forced', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-existing-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp);
+    writeSkill(tmp, '.claude', 'impeccable');
+
+    expect(() => run('skills link --source=.impeccable --providers=claude -y', { cwd: tmp })).toThrow();
+    const dest = join(tmp, '.claude', 'skills', 'impeccable');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+
+    const output = run('skills link --source=.impeccable --providers=claude -y --force', { cwd: tmp });
+    expect(output).toContain('1 linked');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('maps codex and rovo-dev provider aliases to their install folders', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-alias-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.agents', '.rovodev']);
+
+    run('skills link --source=.impeccable --providers=codex,rovo-dev -y', { cwd: tmp });
+
+    expect(lstatSync(join(tmp, '.agents', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(tmp, '.rovodev', 'skills', 'impeccable')).isSymbolicLink()).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update leaves linked installs on the submodule path', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-update-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp);
+    run('skills link --source=.impeccable --providers=claude -y', { cwd: tmp });
+
+    const dest = join(tmp, '.claude', 'skills', 'impeccable');
+    const before = readlinkSync(dest);
+    const output = run('skills update -y', { cwd: tmp });
+
+    expect(output).toContain('Linked skills found in: .claude');
+    expect(readlinkSync(dest)).toBe(before);
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('deduplicates providers that share one skills directory', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-shared-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp, ['.claude', '.agents']);
+    mkdirSync(join(tmp, '.agents', 'skills'), { recursive: true });
+    mkdirSync(join(tmp, '.claude'), { recursive: true });
+    symlinkSync('../.agents/skills', join(tmp, '.claude', 'skills'), 'dir');
+
+    run('skills link --source=.impeccable --providers=claude,codex -y', { cwd: tmp });
+
+    const dest = join(tmp, '.agents', 'skills', 'impeccable');
+    const src = join(tmp, '.impeccable', 'dist', 'universal', '.claude', 'skills', 'impeccable');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+    expect(realpathSync(dest)).toBe(realpathSync(src));
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -182,9 +310,77 @@ describe('skills: unprefix migration', () => {
   });
 });
 
-// ─── Update fallback (direct download) ───────────────────────────────────────
+// ─── Install/update from local universal bundle ──────────────────────────────
 
-describeNet('skills update: refreshes from the universal bundle', () => {
+describe('skills install/update: local universal bundle e2e', () => {
+  test('installs provider-specific skills into a fresh project', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-install-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp);
+
+    const output = run('skills install -y --providers=claude,codex,cursor', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Done!');
+
+    for (const provider of ['.claude', '.agents', '.cursor']) {
+      const skillDir = join(tmp, provider, 'skills', 'impeccable');
+      expect(existsSync(join(skillDir, 'SKILL.md'))).toBe(true);
+      expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain(`Local deterministic bundle for ${provider}.`);
+      expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
+    }
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('updates stale copied skills from the local bundle', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-update-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: impeccable\nstale: true\n---\nOld content.\n');
+
+    const output = run('skills update -y', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Updated');
+
+    const content = readFileSync(join(skillDir, 'SKILL.md'), 'utf8');
+    expect(content).not.toContain('stale: true');
+    expect(content).toContain('version: 9.9.9-local');
+    expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('--force reinstall over an old prefixed install lands on canonical impeccable', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-force-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    const prefixed = join(tmp, '.claude', 'skills', 'i-impeccable');
+    mkdirSync(prefixed, { recursive: true });
+    writeFileSync(join(prefixed, 'SKILL.md'), '---\nname: i-impeccable\n---\n');
+
+    run('skills install -y --force --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    const skills = readdirSync(join(tmp, '.claude', 'skills'));
+    expect(skills).toContain('impeccable');
+    expect(skills).not.toContain('i-impeccable');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+});
+
+// ─── Update fallback (remote direct download smoke) ──────────────────────────
+
+describeRemote('skills update: refreshes from the production universal bundle', () => {
   let tmp;
 
   beforeAll(() => {
@@ -219,9 +415,9 @@ describeNet('skills update: refreshes from the universal bundle', () => {
   });
 });
 
-// ─── Full install e2e (downloads the universal bundle) ───────────────────────
+// ─── Full install remote smoke (downloads the production universal bundle) ───
 
-describeNet('skills install: full e2e (universal bundle download)', () => {
+describeRemote('skills install: production universal bundle download', () => {
   let tmp;
 
   beforeAll(() => {
