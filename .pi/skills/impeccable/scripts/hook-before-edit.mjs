@@ -10,6 +10,7 @@
  * errors, allow the tool and exit 0.
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -70,12 +71,12 @@ function proposedFilePath(event, cwd) {
   const raw = input.file_path || input.path || input.target_file || event?.file_path;
   const candidate = typeof raw === 'string' && raw.trim()
     ? raw
-    : shellRedirectPath(shellCommand(input));
+    : shellWriteDestination(shellCommand(input));
   if (typeof candidate !== 'string' || !candidate.trim()) return '';
   return path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
 }
 
-function proposedContent(event) {
+function proposedContent(event, cwd) {
   const input = toolInput(event);
   for (const key of ['content', 'streamContent', 'new_string', 'newString', 'new_str', 'replacement', 'text']) {
     if (typeof input[key] === 'string') return input[key];
@@ -90,6 +91,8 @@ function proposedContent(event) {
   }
   const shellContent = shellHereDocContent(shellCommand(input));
   if (shellContent) return shellContent;
+  const copiedContent = shellCopiedFileContent(shellCommand(input), cwd);
+  if (copiedContent) return copiedContent;
   return '';
 }
 
@@ -103,6 +106,50 @@ function shellRedirectPath(command) {
   if (!command || typeof command !== 'string') return '';
   const match = command.match(/(?:^|[\s;&|])(?:>|1>)\s*(?:"([^"]+)"|'([^']+)'|([^<>\s]+))/);
   return (match?.[1] || match?.[2] || match?.[3] || '').trim();
+}
+
+function shellWriteDestination(command) {
+  return shellRedirectPath(command) || shellCopyPaths(command)?.dest || '';
+}
+
+function shellCopiedFileContent(command, cwd) {
+  const source = shellCopyPaths(command)?.source;
+  if (!source) return '';
+  const sourcePath = path.isAbsolute(source) ? source : path.resolve(cwd, source);
+  if (!isInsideProject(sourcePath, cwd)) return '';
+  if (SENSITIVE_PATH.test(sourcePath) || GENERATED_PATH.test(sourcePath)) return '';
+  try {
+    const stat = fs.statSync(sourcePath);
+    if (!stat.isFile() || stat.size > 1024 * 1024) return '';
+    return fs.readFileSync(sourcePath, 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function shellCopyPaths(command) {
+  const words = shellWords(command);
+  if (words.length < 3 || path.basename(words[0]) !== 'cp') return null;
+  const args = [];
+  for (const word of words.slice(1)) {
+    if (['&&', '||', ';', '|'].includes(word)) break;
+    if (word === '--') continue;
+    if (word.startsWith('-')) continue;
+    args.push(word);
+  }
+  if (args.length < 2) return null;
+  return { source: args[args.length - 2], dest: args[args.length - 1] };
+}
+
+function shellWords(command) {
+  if (!command || typeof command !== 'string') return [];
+  const words = [];
+  const re = /"((?:\\"|[^"])*)"|'((?:\\'|[^'])*)'|([^\s]+)/g;
+  let match;
+  while ((match = re.exec(command))) {
+    words.push((match[1] ?? match[2] ?? match[3] ?? '').replace(/\\(["'])/g, '$1'));
+  }
+  return words;
 }
 
 function shellHereDocContent(command) {
@@ -169,7 +216,7 @@ async function main() {
   const cwd = resolveProjectCwd(event);
   const started = Date.now();
   const filePath = proposedFilePath(event, cwd);
-  const content = proposedContent(event);
+  const content = proposedContent(event, cwd);
   const audit = {
     harness: 'cursor',
     tool: event.tool_name || null,

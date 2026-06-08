@@ -47,11 +47,6 @@ import {
   coLocatedStylesheets,
   runHook,
   payload,
-  appendPending,
-  drainPending,
-  clearPending,
-  renderCursorFollowup,
-  followupPayload,
   extractFindingIgnoreValue,
 } from '../skill/scripts/hook-lib.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
@@ -885,7 +880,6 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
   it('routes explicit env and Cursor conversation_id to cursor harness', () => {
     assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'cursor' }), 'cursor');
     assert.equal(resolveHarness({}, { conversation_id: 'c1' }), 'cursor');
-    assert.equal(resolveHarness({}, { hook_event_name: 'stop' }), 'cursor');
     assert.equal(resolveHarness({}), 'claude');
   });
 
@@ -1089,40 +1083,6 @@ describe('runHook() — events without file_path', () => {
   });
 });
 
-describe('appendPending() / drainPending() / clearPending()', () => {
-  let cwd;
-  beforeEach(() => { cwd = mkTmp(); });
-  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
-
-  it('keys queue entries by conversation_id', () => {
-    appendPending(cwd, 'conv-a', { kind: 'fresh', file: 'src/a.css', findings: [finding('overused-font', 1)] });
-    appendPending(cwd, 'conv-b', { kind: 'fresh', file: 'src/b.css', findings: [finding('side-tab', 2)] });
-
-    const a = drainPending(cwd, 'conv-a');
-    assert.equal(a.length, 1);
-    assert.equal(a[0].file, 'src/a.css');
-
-    const b = drainPending(cwd, 'conv-b');
-    assert.equal(b.length, 1);
-    assert.equal(b[0].file, 'src/b.css');
-  });
-
-  it('falls back to _default bucket when conversation_id is absent', () => {
-    appendPending(cwd, null, { kind: 'pending', file: 'src/x.tsx', known: ['side-tab:3'] });
-    const items = drainPending(cwd, null);
-    assert.equal(items.length, 1);
-    assert.equal(items[0].kind, 'pending');
-    assert.deepEqual(items[0].known, ['side-tab:3']);
-  });
-
-  it('drain clears the bucket; clearPending removes without returning', () => {
-    appendPending(cwd, 'conv-x', { kind: 'fresh', file: 'src/y.css', findings: [finding('overused-font', 4)] });
-    clearPending(cwd, 'conv-x');
-    const items = drainPending(cwd, 'conv-x');
-    assert.equal(items.length, 0);
-  });
-});
-
 describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
@@ -1205,6 +1165,35 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.user_message, /side-tab/);
   });
 
+  it('preToolUse denies shell copy writes when copied content has detector findings', () => {
+    const sourcePath = path.join(cwd, 'src/SourceCard.html');
+    const destPath = path.join(cwd, 'src/CopiedCard.html');
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, `
+      <style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>
+      <div class="card">Hello</div>
+    `);
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Shell',
+        tool_input: {
+          command: `cp "${sourcePath}" "${destPath}"`,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /CopiedCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
   it('preToolUse honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
     const logPath = path.join(cwd, 'hook.ndjson');
 
@@ -1225,306 +1214,6 @@ describe('Cursor hook scripts', () => {
     assert.equal(entries[0].skipped, 'env-disabled');
   });
 
-  it('afterFileEdit honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {
-    const logPath = path.join(cwd, 'hook.ndjson');
-
-    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-      cwd: path.resolve('.'),
-      input: '{not-json',
-      env: {
-        ...process.env,
-        IMPECCABLE_HOOK_DISABLED: 'true',
-        IMPECCABLE_HOOK_LOG: logPath,
-      },
-      encoding: 'utf-8',
-    });
-
-    const entries = fs.readFileSync(logPath, 'utf-8').trim().split('\n').map((line) => JSON.parse(line));
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].event, 'afterFileEdit');
-    assert.equal(entries[0].skipped, 'env-disabled');
-  });
-
-  it('afterFileEdit and stop share the default pending bucket when Cursor omits ids', () => {
-    const filePath = path.join(cwd, 'index.html');
-    fs.writeFileSync(filePath, `
-      <style>
-        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
-      </style>
-      <div class="card">Hello</div>
-    `);
-
-    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'afterFileEdit',
-        cwd,
-        file_path: filePath,
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const payload = JSON.parse(out);
-    assert.match(payload.followup_message, /Required design corrections/);
-    assert.match(payload.followup_message, /side-tab/);
-  });
-
-  it('afterFileEdit queues clean results so Cursor stop surfaces a visible ack', () => {
-    const filePath = path.join(cwd, 'src/App.jsx');
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
-
-    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'afterFileEdit',
-        cwd,
-        file_path: filePath,
-        conversation_id: 'clean-cursor',
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-        conversation_id: 'clean-cursor',
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const payload = JSON.parse(out);
-    assert.match(payload.followup_message, /Design hook ran during your last turn/);
-    assert.match(payload.followup_message, /Design hook scanned src\/App\.jsx\. No anti-patterns\./);
-    assert.match(payload.followup_message, /typography hierarchy, spacing rhythm, and color contrast/);
-    assert.doesNotMatch(payload.followup_message, /flagged issues/);
-    assert.doesNotMatch(payload.followup_message, /Fix these in your next reply/);
-  });
-
-  it('afterFileEdit git-excludes hook cache and pending files in consumer repos', () => {
-    execFileSync('git', ['init', '-q'], { cwd });
-    const filePath = path.join(cwd, 'src/App.jsx');
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
-    execFileSync('git', ['add', 'src/App.jsx'], { cwd });
-
-    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'afterFileEdit',
-        cwd,
-        file_path: filePath,
-        conversation_id: 'git-exclude-cursor',
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const ignored = execFileSync('git', [
-      'check-ignore',
-      '.impeccable/hook.cache.json',
-      '.impeccable/hook.pending.json',
-      '.impeccable/hook.local.json',
-    ], { cwd, encoding: 'utf-8' });
-    assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
-    assert.match(ignored, /\.impeccable\/hook\.pending\.json/);
-    assert.match(ignored, /\.impeccable\/hook\.local\.json/);
-
-    const status = execFileSync('git', ['status', '--short', '--', '.impeccable'], { cwd, encoding: 'utf-8' });
-    assert.equal(status, '');
-  });
-
-  it('afterFileEdit does not queue clean results when IMPECCABLE_HOOK_QUIET=1', () => {
-    const filePath = path.join(cwd, 'src/App.jsx');
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, 'export default function App() { return <main>Hello</main>; }');
-
-    execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'afterFileEdit',
-        cwd,
-        file_path: filePath,
-        conversation_id: 'quiet-clean-cursor',
-      }),
-      env: {
-        ...process.env,
-        IMPECCABLE_HOOK_LOG: '',
-        IMPECCABLE_HOOK_QUIET: '1',
-      },
-      encoding: 'utf-8',
-    });
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-        conversation_id: 'quiet-clean-cursor',
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    assert.equal(out, '');
-  });
-
-  it('stop honors IMPECCABLE_HOOK_DISABLED before emitting queued findings', () => {
-    const filePath = path.join(cwd, 'src/Card.tsx');
-    appendPending(cwd, null, {
-      kind: 'fresh',
-      file: filePath,
-      findings: [finding('side-tab', 12)],
-    });
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-      }),
-      env: {
-        ...process.env,
-        IMPECCABLE_HOOK_DISABLED: 'yes',
-        IMPECCABLE_HOOK_LOG: '',
-      },
-      encoding: 'utf-8',
-    });
-
-    assert.equal(out, '');
-    assert.deepEqual(drainPending(cwd, null), []);
-  });
-
-  it('stop honors disabled hook config before emitting queued findings', () => {
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    fs.writeFileSync(path.join(cwd, '.impeccable', 'hook.json'), JSON.stringify({ enabled: false }));
-    appendPending(cwd, null, {
-      kind: 'fresh',
-      file: path.join(cwd, 'src/Card.tsx'),
-      findings: [finding('side-tab', 12)],
-    });
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    assert.equal(out, '');
-    assert.deepEqual(drainPending(cwd, null), []);
-  });
-
-  it('afterFileEdit queues suppression notices for stop followup', () => {
-    const filePath = path.join(cwd, 'index.html');
-    fs.writeFileSync(filePath, `
-      <style>
-        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
-      </style>
-      <div class="card">Hello</div>
-    `);
-
-    for (let i = 0; i < 7; i++) {
-      execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-after-edit.mjs')], {
-        cwd: path.resolve('.'),
-        input: JSON.stringify({
-          hook_event_name: 'afterFileEdit',
-          cwd,
-          file_path: filePath,
-        }),
-        env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-        encoding: 'utf-8',
-      });
-    }
-
-    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-stop.mjs')], {
-      cwd: path.resolve('.'),
-      input: JSON.stringify({
-        hook_event_name: 'stop',
-        cwd,
-      }),
-      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
-      encoding: 'utf-8',
-    });
-
-    const payload = JSON.parse(out);
-    assert.match(payload.followup_message, /Suppressing further design hints on index\.html/);
-    assert.match(payload.followup_message, /Run \/impeccable audit/);
-  });
-});
-
-describe('renderCursorFollowup()', () => {
-  it('renders fresh findings with envelope + directive footer', () => {
-    const text = renderCursorFollowup([
-      {
-        kind: 'fresh',
-        file: 'src/styles.css',
-        findings: [finding('overused-font', 8, {
-          name: 'Overused font',
-          snippet: 'body { font-family: Inter, sans-serif; }',
-        })],
-      },
-    ], { cwd: '/proj' });
-    assert.match(text, new RegExp(`^${ENVELOPE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-    assert.match(text, /Required design corrections in src\/styles\.css/);
-    assert.match(text, /overused-font/);
-    assert.match(text, /\/impeccable hooks ignore-value overused-font Inter --reason "User confirmed Inter is intentional"/);
-    assert.match(text, /Fix these in your next reply/);
-  });
-
-  it('renders clean queued items without the corrective footer', () => {
-    const text = renderCursorFollowup([
-      { kind: 'clean', file: 'src/App.jsx' },
-    ], { cwd: '/proj' });
-    assert.match(text, new RegExp(`^${ENVELOPE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-    assert.match(text, /Design hook ran during your last turn/);
-    assert.match(text, /Design hook scanned src\/App\.jsx\. No anti-patterns\./);
-    assert.match(text, /typography hierarchy, spacing rhythm, and color contrast/);
-    assert.doesNotMatch(text, /flagged issues/);
-    assert.doesNotMatch(text, /Fix these in your next reply/);
-  });
-
-  it('includes pending reminders for queued known findings', () => {
-    const text = renderCursorFollowup([
-      { kind: 'pending', file: 'src/Card.tsx', known: ['side-tab:12', 'low-contrast:4'] },
-    ], { cwd: '/proj' });
-    assert.match(text, /Still pending in src\/Card\.tsx/);
-    assert.match(text, /side-tab:12/);
-  });
-
-  it('includes suppression notices', () => {
-    const text = renderCursorFollowup([
-      { kind: 'suppression', file: '/proj/src/Card.tsx' },
-    ], { cwd: '/proj' });
-    assert.match(text, /Suppressing further design hints on src\/Card\.tsx/);
-    assert.match(text, /Run \/impeccable audit/);
-    assert.doesNotMatch(text, /Fix these in your next reply/);
-  });
-});
-
-describe('followupPayload()', () => {
-  it('wraps text as Cursor stop followup_message JSON', () => {
-    const out = followupPayload('fix the font');
-    assert.deepEqual(JSON.parse(out), { followup_message: 'fix the font' });
-  });
 });
 
 describe('runHook() — emission enrichment', () => {
@@ -1545,10 +1234,10 @@ describe('runHook() — emission enrichment', () => {
       stdinJson: JSON.stringify({
         session_id: 'emit-fresh',
         cwd,
-        hook_event_name: 'afterFileEdit',
+        hook_event_name: 'PostToolUse',
         file_path: path.join(cwd, 'src/styles.css'),
       }),
-      env: { IMPECCABLE_HOOK_HARNESS: 'cursor' },
+      env: { IMPECCABLE_HOOK_HARNESS: 'claude' },
       cwd,
       detector: fakeDetector([finding('overused-font', 8)]),
     });

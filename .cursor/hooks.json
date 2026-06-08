@@ -6,19 +6,6 @@
         "command": "node \".cursor/skills/impeccable/scripts/hook-before-edit.mjs\"",
         "timeout": 5
       }
-    ],
-    "afterFileEdit": [
-      {
-        "command": "node \".cursor/skills/impeccable/scripts/hook-after-edit.mjs\"",
-        "timeout": 5
-      }
-    ],
-    "stop": [
-      {
-        "command": "node \".cursor/skills/impeccable/scripts/hook-stop.mjs\"",
-        "timeout": 5,
-        "loop_limit": 1
-      }
     ]
   }
 }

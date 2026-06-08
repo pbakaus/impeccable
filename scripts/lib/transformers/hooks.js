@@ -16,8 +16,6 @@ const SKILL_HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
-const CURSOR_AFTER_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-after-edit.mjs';
-const CURSOR_STOP_SCRIPT = '.cursor/skills/impeccable/scripts/hook-stop.mjs';
 
 export function buildClaudeSettingsManifest() {
   return {
@@ -90,19 +88,6 @@ export function buildCursorHooksManifest() {
         {
           command: `node "${CURSOR_BEFORE_EDIT_SCRIPT}"`,
           timeout: TIMEOUT_SECONDS,
-        },
-      ],
-      afterFileEdit: [
-        {
-          command: `node "${CURSOR_AFTER_EDIT_SCRIPT}"`,
-          timeout: TIMEOUT_SECONDS,
-        },
-      ],
-      stop: [
-        {
-          command: `node "${CURSOR_STOP_SCRIPT}"`,
-          timeout: TIMEOUT_SECONDS,
-          loop_limit: 1,
         },
       ],
     },

@@ -2,13 +2,13 @@
 
 Manage the **design detector hook** for the current project.
 
-The hook runs the impeccable design detector on direct file edits to design-relevant files (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`). Claude Code and Codex use `PostToolUse` and push a short system reminder into the agent's context after the edit. Cursor uses `preToolUse` to block bad proposed writes before they land, with `afterFileEdit` and `stop` as fallback follow-up hooks. Findings get a correction prompt, pending issues get a re-nudge, and clean files get a short ack unless `IMPECCABLE_HOOK_QUIET=1` is set.
+The hook runs the impeccable design detector on direct file edits to design-relevant files (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`). Claude Code and Codex use `PostToolUse` and push a short system reminder into the agent's context after the edit; findings get a correction prompt, pending issues get a re-nudge, and clean files get a short ack unless `IMPECCABLE_HOOK_QUIET=1` is set. Cursor uses `preToolUse` to block bad proposed writes before they land and stays silent when it allows a clean write.
 
 This command toggles the hook **per project** by editing `.impeccable/hook.json`. Local-only ignore policy lives in `.impeccable/hook.local.json`, which is gitignored. To disable globally, set `IMPECCABLE_HOOK_DISABLED=1` in your shell environment.
 
 Supported harnesses: Claude Code (`.claude/settings.json` in the project), Codex (`.codex/hooks.json` in the project), and Cursor (`.cursor/hooks.json` in the project).
 
-On **Cursor**, `preToolUse` is the primary path: it checks proposed Write/Edit content and denies only when the real detector finds an issue. The denial message is visible to the agent as the tool error. `afterFileEdit` records findings and `stop` can surface a one-shot followup message where Cursor dispatches it.
+On **Cursor**, `preToolUse` checks proposed Write/Edit/Shell write content and denies only when the real detector finds an issue. The denial message is visible to the agent as the tool error, so the agent can reconsider before the bad write lands.
 
 ## Routing
 
@@ -52,7 +52,7 @@ Only use `ignore-rule` for broad project-level exceptions and `ignore-file` for 
 ## Constraints
 
 - Never modify `.impeccable/hook.json` or `.impeccable/hook.local.json` by hand from this command. Always go through `hook-admin.mjs` so writes stay validated and the file shape stays consistent.
-- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-before-edit.mjs`, `hook-after-edit.mjs`, `hook-stop.mjs`) from this flow. Those are skill plumbing.
+- Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-before-edit.mjs`) from this flow. Those are skill plumbing.
 - Cursor can block a proposed write when the detector finds a real issue. Claude Code and Codex do not block the edit; they emit a post-edit reminder instead. Disabling stops both blocking and reminders.
 - The hook is bundled with the Impeccable skill and installed through project-local manifests: `.claude/settings.json`, `.codex/hooks.json`, and `.cursor/hooks.json`. On Codex, the user must approve the hook via `/hooks` the first time. On Cursor, confirm hooks are enabled under Settings -> Hooks.
 

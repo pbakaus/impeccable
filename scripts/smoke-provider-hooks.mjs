@@ -321,8 +321,8 @@ function verifyInstallShape() {
   assertCount(claude, '.claude/skills/impeccable/scripts/hook.mjs', 1, 'Claude hook.mjs');
   assertCount(codex, '.agents/skills/impeccable/scripts/hook.mjs', 1, 'Codex hook.mjs');
   assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs', 1, 'Cursor preToolUse');
-  assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs', 1, 'Cursor afterFileEdit');
-  assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-stop.mjs', 1, 'Cursor stop');
+  assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs', 0, 'Cursor afterFileEdit');
+  assertCount(cursor, '.cursor/skills/impeccable/scripts/hook-stop.mjs', 0, 'Cursor stop');
   for (const text of [claude, codex, cursor]) {
     if (text.includes('hook-probe.mjs')) throw new Error('hook-probe.mjs still appears in hook manifests');
   }
@@ -334,12 +334,16 @@ function verifyInstallShape() {
     '.agents/skills/impeccable/scripts/hook-lib.mjs',
     '.agents/skills/impeccable/scripts/detector/cli/main.mjs',
     '.cursor/skills/impeccable/scripts/hook-before-edit.mjs',
-    '.cursor/skills/impeccable/scripts/hook-after-edit.mjs',
-    '.cursor/skills/impeccable/scripts/hook-stop.mjs',
     '.cursor/skills/impeccable/scripts/hook-lib.mjs',
     '.cursor/skills/impeccable/scripts/detector/cli/main.mjs',
   ]) {
     assertPath(join(targetRepo, rel), rel);
+  }
+  for (const rel of [
+    '.cursor/skills/impeccable/scripts/hook-after-edit.mjs',
+    '.cursor/skills/impeccable/scripts/hook-stop.mjs',
+  ]) {
+    if (existsSync(join(targetRepo, rel))) throw new Error(`${rel} should not exist in Cursor payload`);
   }
   if (findFiles(['.claude', '.cursor', '.agents'], 'hook-probe.mjs').length > 0) {
     throw new Error('hook-probe.mjs still exists in installed payloads');
@@ -429,22 +433,7 @@ function runDirectContractChecks() {
   });
   requireFinding('direct Cursor preToolUse hook', `${pre.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
 
-  clearRuntimeState();
-  run('node', ['.cursor/skills/impeccable/scripts/hook-after-edit.mjs'], {
-    cwd: targetRepo,
-    env,
-    logName: 'direct-cursor-after.log',
-    input: JSON.stringify({ hook_event_name: 'afterFileEdit', cwd: targetRepo, file_path: file }),
-  });
-  const stop = run('node', ['.cursor/skills/impeccable/scripts/hook-stop.mjs'], {
-    cwd: targetRepo,
-    env,
-    logName: 'direct-cursor-stop.log',
-    input: JSON.stringify({ hook_event_name: 'stop', cwd: targetRepo }),
-  });
-  requireFinding('direct Cursor hook', `${stop.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
-
-  record('direct script contracts', true, 'all installed scripts detect side-tab');
+  record('direct script contracts', true, 'Claude, Codex, and Cursor preToolUse scripts detect side-tab');
 }
 
 function runClaudeProviderSmoke() {
@@ -537,12 +526,17 @@ function runCursorProviderSmoke() {
     && event.file === fixturePath
     && event.skipped === 'config-ignore-file'
   );
-  if (existsSync(fixturePath) && /border-left\s*:\s*[2-9]\d*px/i.test(readFileSync(fixturePath, 'utf8'))) {
-    if (!intentionalIgnore || !/ignoreFiles|ignore-file/i.test(evidence)) {
-      throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file escape hatch');
+  if (existsSync(fixturePath)) {
+    const fixtureContent = readFileSync(fixturePath, 'utf8');
+    const inlineIgnore = /impeccable:\s*ignore\s+(?:side-tab|\*)/i.test(fixtureContent)
+      && /impeccable:\s*ignore\s+(?:side-tab|\*)|inline hook ignore/i.test(evidence);
+    if (/border-left\s*:\s*[2-9]\d*px/i.test(fixtureContent) && !inlineIgnore) {
+      if (!intentionalIgnore || !/ignoreFiles|ignore-file/i.test(evidence)) {
+        throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file or inline-ignore escape hatch');
+      }
     }
   }
-  record('cursor provider', true, 'Cursor agent triggered preToolUse hook, blocked side-tab, and only proceeded through explicit ignore-file handling for the intentional fixture');
+  record('cursor provider', true, 'Cursor agent triggered preToolUse hook, blocked side-tab, and only proceeded through explicit ignore handling for the intentional fixture');
 }
 
 function ensureCursorAgent() {

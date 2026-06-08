@@ -119,69 +119,6 @@ export function getPendingPath(cwd) {
   return path.join(cwd, '.impeccable', 'hook.pending.json');
 }
 
-function pendingBucketKey(conversationId) {
-  return conversationId && String(conversationId) ? String(conversationId) : '_default';
-}
-
-function readPendingStore(cwd) {
-  const raw = safeReadJson(getPendingPath(cwd));
-  if (!raw || typeof raw !== 'object' || raw.version !== 1) {
-    return { version: 1, buckets: {} };
-  }
-  return {
-    version: 1,
-    buckets: raw.buckets && typeof raw.buckets === 'object' ? raw.buckets : {},
-  };
-}
-
-function persistPendingStore(cwd, store) {
-  const target = getPendingPath(cwd);
-  try {
-    ensureHookGitExcludes(cwd);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, JSON.stringify(store));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Append one emission item for Cursor stop-hook followup. */
-export function appendPending(cwd, conversationId, item) {
-  if (!item || typeof item !== 'object') return false;
-  const store = readPendingStore(cwd);
-  const key = pendingBucketKey(conversationId);
-  if (!Array.isArray(store.buckets[key])) store.buckets[key] = [];
-  store.buckets[key].push({
-    file: item.file,
-    kind: item.kind,
-    findings: item.findings || undefined,
-    known: item.known || undefined,
-  });
-  return persistPendingStore(cwd, store);
-}
-
-/** Drain and clear the pending queue for a conversation (or default bucket). */
-export function drainPending(cwd, conversationId) {
-  const store = readPendingStore(cwd);
-  const key = pendingBucketKey(conversationId);
-  const items = Array.isArray(store.buckets[key]) ? store.buckets[key].slice() : [];
-  if (items.length > 0) {
-    delete store.buckets[key];
-    persistPendingStore(cwd, store);
-  }
-  return items;
-}
-
-/** Clear pending queue without emitting (loop guard). */
-export function clearPending(cwd, conversationId) {
-  const store = readPendingStore(cwd);
-  const key = pendingBucketKey(conversationId);
-  if (!store.buckets[key]) return false;
-  delete store.buckets[key];
-  return persistPendingStore(cwd, store);
-}
-
 export function resolveProjectCwd(event, fallback = process.cwd()) {
   return event?.cwd
     || (Array.isArray(event?.workspace_roots) && event.workspace_roots[0])
@@ -636,69 +573,6 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
   return text;
 }
 
-/**
- * Render a Cursor stop-hook followup_message from queued afterFileEdit items.
- * Uses the same envelope + directive footer as renderTemplate.
- */
-export function renderCursorFollowup(items, opts = {}) {
-  if (!Array.isArray(items) || items.length === 0) return '';
-  const cwd = opts.cwd || process.cwd();
-  const config = opts.config || DEFAULT_CONFIG;
-  const limits = config?.limits || DEFAULT_CONFIG.limits;
-  const cap = Math.max(1, limits.maxFindings || DEFAULT_CONFIG.limits.maxFindings);
-  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars);
-
-  const sections = [];
-  let needsDirectiveFooter = false;
-  let hasCorrections = false;
-
-  for (const item of items) {
-    if (!item || typeof item !== 'object' || typeof item.file !== 'string') continue;
-    const display = relativize(item.file, cwd);
-    if (item.kind === 'pending' && Array.isArray(item.known) && item.known.length) {
-      needsDirectiveFooter = true;
-      hasCorrections = true;
-      const count = item.known.length;
-      const sample = item.known.slice(0, 3).join(', ');
-      const more = count > 3 ? `, +${count - 3} more` : '';
-      sections.push(`Still pending in ${display}: ${count} issue(s) flagged earlier this session (${sample}${more}).`);
-    } else if (item.kind === 'suppression') {
-      sections.push(suppressionNotice(display).replace(`${ENVELOPE_PREFIX} `, ''));
-    } else if (item.kind === 'clean') {
-      sections.push(`Design hook scanned ${display}. No anti-patterns. ${STEER_LINE}`);
-    } else if (item.kind === 'fresh' && Array.isArray(item.findings) && item.findings.length) {
-      needsDirectiveFooter = true;
-      const total = item.findings.length;
-      const shown = item.findings.slice(0, cap);
-      const remaining = total - shown.length;
-      sections.push(`Required design corrections in ${display} (${total} issue(s)):`);
-      sections.push(...shown.map((f) => formatFindingLine(f)));
-      if (remaining > 0) {
-        sections.push(`... and ${remaining} more in ${display} (see /impeccable audit).`);
-      }
-      hasCorrections = true;
-    }
-  }
-
-  if (sections.length === 0) return '';
-
-  const footer = directiveFooter();
-  const header = hasCorrections
-    ? `${ENVELOPE_PREFIX} Design hook flagged issues during your last turn:`
-    : `${ENVELOPE_PREFIX} Design hook ran during your last turn:`;
-  const blocks = [header, ...sections];
-  if (needsDirectiveFooter) blocks.push('', footer);
-  let text = blocks.join('\n');
-  if (text.length > maxChars) {
-    text = `${text.slice(0, maxChars - 16)}\n...(truncated)`;
-  }
-  return text;
-}
-
-export function followupPayload(text) {
-  return JSON.stringify({ followup_message: text });
-}
-
 function clampToBudget(header, lines, more, footer, maxChars) {
   const assemble = (linesArr, moreText) => {
     const blocks = [header, ...linesArr];
@@ -804,7 +678,6 @@ export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
   if (explicit === 'claude' || explicit === 'codex') return 'claude';
-  if (['afterFileEdit', 'stop'].includes(event?.hook_event_name)) return 'cursor';
   if (typeof event?.conversation_id === 'string' && event.conversation_id) return 'cursor';
   return 'claude';
 }
@@ -817,16 +690,6 @@ export function normalizeHookEvent(event, projectCwd, harness = 'claude') {
     || envProjectDir(projectCwd)
     || projectCwd;
   const sessionId = event.session_id || event.conversation_id || 'unknown';
-
-  if (event.hook_event_name === 'afterFileEdit' && typeof event.file_path === 'string') {
-    return {
-      ...event,
-      cwd,
-      session_id: sessionId,
-      tool_name: 'Write',
-      tool_input: { file_path: event.file_path },
-    };
-  }
 
   const ti = event.tool_input && typeof event.tool_input === 'object' ? event.tool_input : {};
   const filePath = ti.file_path || ti.path || event.file_path;

@@ -60,24 +60,18 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.SessionStart, undefined);
   });
 
-  it('builds Cursor hooks for pre-write blocking plus stop followup fallback', () => {
+  it('builds one Cursor pre-write blocking hook', () => {
     const manifest = buildCursorHooksManifest();
     const beforeEdit = manifest.hooks.preToolUse[0];
-    const afterEdit = manifest.hooks.afterFileEdit[0];
-    const stop = manifest.hooks.stop[0];
 
     assert.equal(manifest.version, 1);
     assert.ok(Array.isArray(manifest.hooks.preToolUse));
-    assert.ok(Array.isArray(manifest.hooks.afterFileEdit));
-    assert.ok(Array.isArray(manifest.hooks.stop));
+    assert.equal(Object.keys(manifest.hooks).length, 1);
+    assert.equal(manifest.hooks.afterFileEdit, undefined);
+    assert.equal(manifest.hooks.stop, undefined);
     assert.equal(manifest.hooks.sessionStart, undefined);
     expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
     assert.equal(beforeEdit.timeout, 5);
-    expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
-    assert.equal(afterEdit.timeout, 5);
-    expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
-    assert.equal(stop.timeout, 5);
-    assert.equal(stop.loop_limit, 1);
   });
 
   it('routes supported hook builders and leaves other providers alone', () => {
@@ -111,18 +105,15 @@ describe('generated hook artifacts in repo', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
-  it('Cursor project hooks reference pre-write, after-edit, and stop runtimes in .cursor/skills', () => {
+  it('Cursor project hooks reference only the pre-write runtime in .cursor/skills', () => {
     const manifest = readJson('.cursor/hooks.json');
     const beforeEdit = manifest.hooks.preToolUse[0];
-    const afterEdit = manifest.hooks.afterFileEdit[0];
-    const stop = manifest.hooks.stop[0];
 
+    assert.equal(Object.keys(manifest.hooks).length, 1);
     expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
-    expectCommand(afterEdit.command, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs');
-    expectCommand(stop.command, '.cursor/skills/impeccable/scripts/hook-stop.mjs');
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs')));
-    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-stop.mjs')));
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-after-edit.mjs')), false);
+    assert.equal(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-stop.mjs')), false);
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-lib.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
