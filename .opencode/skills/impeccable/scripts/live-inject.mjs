@@ -383,9 +383,15 @@ function insertTag(content, config, port, filePath) {
   const idx = content.indexOf(config.insertAfter);
   if (idx === -1) return content;
   const after = idx + config.insertAfter.length;
-  // Preserve a single trailing newline if the anchor didn't end with one
-  const prefix = content[after] === '\n' ? content.slice(0, after + 1) : content.slice(0, after) + '\n';
-  return prefix + block + content.slice(prefix.length);
+  // Preserve a single trailing newline if the anchor didn't end with one.
+  // Slice the remainder from the original anchor offset, not prefix.length:
+  // in the no-newline case prefix is one char longer than the anchor (the
+  // appended '\n'), so slicing by prefix.length would drop the first real
+  // character after the anchor (#227).
+  const hadNewline = content[after] === '\n';
+  const prefix = hadNewline ? content.slice(0, after + 1) : content.slice(0, after) + '\n';
+  const rest = content.slice(hadNewline ? after + 1 : after);
+  return prefix + block + rest;
 }
 
 /**

@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { insertTag } from '../skill/scripts/live-inject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
@@ -340,5 +341,32 @@ const title = 'Test';
 
     const after = readFileSync(file, 'utf-8');
     assert.equal(after, original, 'column-0 anchor should round-trip cleanly too');
+  });
+});
+
+describe('live-inject — insertTag preserves the character after an insertAfter anchor (#227)', () => {
+  it('does not drop the first character when the anchor has no trailing newline', () => {
+    const result = insertTag(
+      '<head>X</head>',
+      { insertAfter: '<head>', commentSyntax: 'html' },
+      8400,
+      'index.html'
+    );
+
+    assert.ok(
+      result.includes('X</head>'),
+      `the character immediately after <head> must survive injection, got:\n${result}`
+    );
+  });
+
+  it('keeps the anchor-followed-by-newline case intact', () => {
+    const result = insertTag(
+      '<head>\n  <title>X</title>\n</head>',
+      { insertAfter: '<head>', commentSyntax: 'html' },
+      8400,
+      'index.html'
+    );
+
+    assert.ok(result.includes('<title>X</title>'), 'newline case must be unaffected');
   });
 });
