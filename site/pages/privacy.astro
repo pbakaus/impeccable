@@ -19,10 +19,13 @@ import '../styles/sub-pages.css';
 
 <div class="privacy-content">
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: April 6, 2026</p>
+  <p class="updated">Last updated: June 8, 2026</p>
 
   <h2>What Impeccable is</h2>
-  <p>Impeccable is an open-source collection of agent skills (text files) that run locally in your AI coding tool. The skills themselves collect no data, make no network requests, and have no analytics.</p>
+  <p>Impeccable is an open-source collection of agent skills (text files) that run locally in your AI coding tool. The skills themselves collect no data, send no project content to Impeccable, and have no analytics. The only network request made by the skill is an optional, GET-only version check described below.</p>
+
+  <h2>Skill version check</h2>
+  <p>When an agent loads the Impeccable skill, <code>scripts/context.mjs</code> may make a best-effort <code>GET</code> request to <code>https://impeccable.style/api/version</code> at most once per day to check whether a newer skill version is available. The request sends no project files, prompts, page content, detection results, or personal information. It is silent on failure and can be disabled by setting <code>IMPECCABLE_NO_UPDATE_CHECK=1</code>.</p>
 
   <h2>Website analytics</h2>
   <p>The Impeccable website (<a href="https://impeccable.style">impeccable.style</a>) uses Google Analytics to understand traffic patterns (page views, referrers, country). No personal information is collected beyond what Google Analytics provides by default. No cookies are used for advertising.</p>
