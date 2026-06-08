@@ -1992,26 +1992,12 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   }
 
   // 2. Unwrap the temporary `<div data-impeccable-variant="N" ...>` placed
-  // around the accepted content. live-accept emits this wrapper with
-  // `style="display: contents"` so it doesn't affect layout. We strip the
-  // wrapper open/close lines and keep what's between.
-  // Match the opening div (any single line) followed by inner content
-  // followed by `</div>`, where the open carries data-impeccable-variant
-  // and is NOT inside a data-impeccable-variants wrapper (the variants
-  // wrapper has the trailing `s`).
-  body = body.replace(
-    /^([ \t]*)<div\b[^>]*\bdata-impeccable-variant="[^"]+"[^>]*>\n([\s\S]*?)\n[ \t]*<\/div>\n/m,
-    (match, indent, inner) => {
-      // Re-indent inner content to the wrapper's indent level.
-      const innerLines = inner.split('\n');
-      const innerIndent = (innerLines[0].match(/^\s*/) || [''])[0];
-      const dedented = innerLines.map((l) => {
-        if (l.startsWith(innerIndent)) return indent + l.slice(innerIndent.length);
-        return l;
-      }).join('\n');
-      return expandAcceptedVariantMarkup(dedented, indent) + '\n';
-    },
-  );
+  // around the accepted content. For JSX targets, live-accept also adds an
+  // outer `<div data-impeccable-carbonize>` so the carbonize block and accepted
+  // node occupy one child slot; strip that shell after the accepted node is
+  // clean.
+  body = unwrapDivAttributeWrapper(body, 'data-impeccable-variant', { expandSingleLineContainer: true });
+  body = unwrapDivAttributeWrapper(body, 'data-impeccable-carbonize');
 
   // 3. Strip any `data-impeccable-hoist-id` attributes the normalize step
   // may have injected when the model emitted inline styles. The hoisted
@@ -2021,6 +2007,49 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   body = body.replace(/\s+data-impeccable-hoist-id="[^"]*"/g, '');
 
   await fs.writeFile(filePath, body, 'utf-8');
+}
+
+function unwrapDivAttributeWrapper(body, attrName, { expandSingleLineContainer = false } = {}) {
+  const lines = String(body).split('\n');
+  const attrRe = new RegExp(`\\b${escapeRegExp(attrName)}=`);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/<div\b/.test(lines[i]) || !attrRe.test(lines[i])) continue;
+
+    const indent = (lines[i].match(/^(\s*)/) || [''])[1];
+    let depth = countDivDepthDelta(lines[i]);
+    for (let j = i + 1; j < lines.length; j++) {
+      depth += countDivDepthDelta(lines[j]);
+      if (depth !== 0) continue;
+
+      let replacement = reindentWrapperBody(lines.slice(i + 1, j), indent).join('\n');
+      if (expandSingleLineContainer) {
+        replacement = expandAcceptedVariantMarkup(replacement, indent);
+      }
+      lines.splice(i, j - i + 1, ...replacement.split('\n'));
+      return lines.join('\n');
+    }
+  }
+
+  return body;
+}
+
+function countDivDepthDelta(line) {
+  return countMatches(line, /<div\b/g) - countMatches(line, /<\/div>/g);
+}
+
+function countMatches(value, re) {
+  return [...String(value || '').matchAll(re)].length;
+}
+
+function reindentWrapperBody(lines, indent) {
+  const firstContentLine = lines.find((line) => line.trim() !== '');
+  const innerIndent = (firstContentLine?.match(/^(\s*)/) || [''])[1] || '';
+  return lines.map((line) => {
+    if (line.trim() === '') return '';
+    if (innerIndent && line.startsWith(innerIndent)) return indent + line.slice(innerIndent.length);
+    return indent + line.trimStart();
+  });
 }
 
 function expandAcceptedVariantMarkup(source, indent) {

@@ -22,8 +22,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createFakeAgent } from './live-e2e/agent.mjs';
@@ -227,6 +227,7 @@ for (const { name, fixture } of fixtures) {
         ? pickSelector
         : '[data-impeccable-variant="2"] > :first-child';
       let stateProbeBaseline = null;
+      let sourceFile = null;
 
       try {
         // 1. Handshake
@@ -309,7 +310,7 @@ for (const { name, fixture } of fixtures) {
         }
 
         // 5. Source-side check: wrapper + style + variants are present
-        const sourceFile = await locateSessionFile(tmp);
+        sourceFile = await locateSessionFile(tmp);
         const after = readFileSync(sourceFile, 'utf-8');
         const svelteComponentSession = svelteComponentTargetFor(sourceFile);
         if (svelteComponentSession) {
@@ -547,6 +548,7 @@ for (const { name, fixture } of fixtures) {
         assert.doesNotMatch(final, /impeccable-variants-start/,      'variants-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-start/,     'carbonize-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-end/,       'carbonize-end marker removed');
+        assert.doesNotMatch(final, /data-impeccable-carbonize=/,     'carbonize wrapper removed');
         assert.doesNotMatch(final, /data-impeccable-variant="/,      'no leftover variant scaffolding');
         if (isInsert) {
           if (agentMode === 'fake') {
@@ -627,6 +629,14 @@ for (const { name, fixture } of fixtures) {
           );
         }
       } catch (err) {
+        await captureLiveE2eFailure({
+          name,
+          fixture,
+          session,
+          sourceFile,
+          error: err,
+          log: (m) => t.diagnostic(m),
+        });
         if (knownLimitation) {
           t.diagnostic(`KNOWN LIMITATION: ${knownLimitation}`);
           t.diagnostic(`Failure: ${err.message?.split('\n')[0] || err}`);
@@ -786,6 +796,89 @@ function recordGenerateEvents(agent, events) {
       return agent.generateVariants(event, context);
     },
   };
+}
+
+async function captureLiveE2eFailure({ name, fixture, session, sourceFile, error, log = () => {} }) {
+  const root = process.env.IMPECCABLE_E2E_ARTIFACT_DIR;
+  if (!root || !session?.tmp) return;
+
+  try {
+    const tmp = session.tmp;
+    const dir = join(root, `${safeArtifactName(name)}-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+
+    writeFileSync(join(dir, 'error.txt'), String(error?.stack || error?.message || error || ''), 'utf-8');
+    writeFileSync(join(dir, 'fixture.json'), JSON.stringify(fixture, null, 2), 'utf-8');
+    writeFileSync(join(dir, 'console-errors.log'), (session.consoleErrors || []).join('\n'), 'utf-8');
+    writeFileSync(join(dir, 'dev-server.log'), session.dev?.log?.() || '', 'utf-8');
+    writeCommandOutput(dir, 'git-status.txt', tmp, ['status', '--short']);
+    writeCommandOutput(dir, 'git-diff.patch', tmp, ['diff', '--', '.']);
+
+    const locatedSource = sourceFile || await locateSessionFile(tmp).catch(() => null);
+    if (locatedSource && existsSync(locatedSource)) {
+      writeFileSync(join(dir, 'source-file.txt'), relative(tmp, locatedSource), 'utf-8');
+      copyFileFromTmp(tmp, locatedSource, join(dir, 'sources'));
+      const sourceShadow = sourceShadowTargetFor(locatedSource);
+      if (sourceShadow && existsSync(sourceShadow)) copyFileFromTmp(tmp, sourceShadow, join(dir, 'sources'));
+      const svelteTarget = svelteComponentTargetFor(locatedSource);
+      if (svelteTarget?.sourceFile && existsSync(svelteTarget.sourceFile)) {
+        copyFileFromTmp(tmp, svelteTarget.sourceFile, join(dir, 'sources'));
+      }
+    }
+
+    for (const file of walkSources(tmp)) copyFileFromTmp(tmp, file, join(dir, 'sources'));
+    copyDirIfExists(join(tmp, '.impeccable', 'live'), join(dir, 'impeccable-live'));
+    copyDirIfExists(join(tmp, 'node_modules', '.impeccable-live'), join(dir, 'impeccable-live-preview'));
+
+    if (session.page) {
+      const html = await withCaptureTimeout(session.page.content(), 5_000, 'page content').catch((err) => `capture failed: ${err.message}`);
+      writeFileSync(join(dir, 'page.html'), html, 'utf-8');
+      await withCaptureTimeout(
+        session.page.screenshot({ path: join(dir, 'page.png'), fullPage: true }),
+        5_000,
+        'page screenshot',
+      ).catch((err) => writeFileSync(join(dir, 'screenshot-error.txt'), err.message, 'utf-8'));
+    }
+
+    log(`Failure artifacts written to ${dir}`);
+  } catch (captureErr) {
+    log(`Failure artifact capture failed: ${captureErr.message}`);
+  }
+}
+
+function writeCommandOutput(dir, fileName, cwd, args) {
+  try {
+    const output = execFileSync('git', args, { cwd, encoding: 'utf-8' });
+    writeFileSync(join(dir, fileName), output, 'utf-8');
+  } catch (err) {
+    writeFileSync(join(dir, fileName), [err.stdout, err.stderr, err.message].filter(Boolean).join('\n'), 'utf-8');
+  }
+}
+
+function copyFileFromTmp(tmp, file, destRoot) {
+  const rel = relative(tmp, file);
+  if (!rel || rel.startsWith('..')) return;
+  const dest = join(destRoot, rel);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(file, dest);
+}
+
+function copyDirIfExists(from, to) {
+  if (!existsSync(from)) return;
+  mkdirSync(dirname(to), { recursive: true });
+  cpSync(from, to, { recursive: true });
+}
+
+function safeArtifactName(name) {
+  return String(name || 'fixture').replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'fixture';
+}
+
+function withCaptureTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function createManualScenarioAgent(t, scenario = {}) {
@@ -1335,6 +1428,7 @@ async function waitForSourceClean(filePath, timeoutMs, { svelteComponentTarget: 
       last.includes('data-impeccable-variants=') ||
       last.includes('impeccable-variants-start') ||
       last.includes('impeccable-carbonize-start') ||
+      last.includes('data-impeccable-carbonize=') ||
       last.includes('data-impeccable-variant=');
     if (!dirty) return last;
     await new Promise((r) => setTimeout(r, 100));

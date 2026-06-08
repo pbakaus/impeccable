@@ -19,6 +19,8 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.live, 'false');
     assert.equal(outputs.framework, 'false');
     assert.equal(outputs.live_e2e, 'false');
+    assert.equal(outputs.live_e2e_accept_cleanup, 'false');
+    assert.equal(outputs.live_svelte_adapter_deepseek, 'false');
   });
 
   it('routes detector changes to detector tests only', () => {
@@ -40,6 +42,8 @@ describe('ci-test-plan', () => {
 
     assert.equal(outputs.live, 'true');
     assert.equal(outputs.live_e2e, 'true');
+    assert.equal(outputs.live_e2e_accept_cleanup, 'true');
+    assert.equal(outputs.live_svelte_adapter_deepseek, 'true');
     assert.equal(outputs.detector, 'false');
   });
 
@@ -66,6 +70,8 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.framework, 'true');
     assert.equal(outputs.cli_remote_e2e, 'false');
     assert.equal(outputs.live_e2e, 'false');
+    assert.equal(outputs.live_e2e_accept_cleanup, 'false');
+    assert.equal(outputs.live_svelte_adapter_deepseek, 'false');
   });
 
   it('enables remote smoke suites on manual dispatch', () => {
@@ -76,7 +82,18 @@ describe('ci-test-plan', () => {
 
     assert.equal(outputs.cli_remote_e2e, 'true');
     assert.equal(outputs.live_e2e, 'true');
+    assert.equal(outputs.live_e2e_accept_cleanup, 'true');
     assert.equal(outputs.skill_behavior, 'true');
+    assert.equal(outputs.live_svelte_adapter_deepseek, 'true');
+  });
+
+  it('exposes planned opt-in suite outputs to workflow jobs', () => {
+    const workflow = readFileSync('.github/workflows/ci.yml', 'utf-8');
+
+    assert.match(workflow, /live_e2e_accept_cleanup:\s*\$\{\{\s*steps\.plan\.outputs\.live_e2e_accept_cleanup\s*\}\}/);
+    assert.match(workflow, /live_svelte_adapter_deepseek:\s*\$\{\{\s*steps\.plan\.outputs\.live_svelte_adapter_deepseek\s*\}\}/);
+    assert.match(workflow, /live-e2e-accept-cleanup:/);
+    assert.match(workflow, /live-svelte-adapter-deepseek:/);
   });
 });
 

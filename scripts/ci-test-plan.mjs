@@ -83,6 +83,7 @@ function printSummary(outputs, files) {
     [
       `cli_remote_e2e=${outputs.cli_remote_e2e}`,
       `live_e2e=${outputs.live_e2e}`,
+      `live_e2e_accept_cleanup=${outputs.live_e2e_accept_cleanup}`,
       `skill_behavior=${outputs.skill_behavior}`,
       `deepseek=${outputs.live_svelte_adapter_deepseek}`,
     ].join(' '),
