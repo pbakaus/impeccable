@@ -695,14 +695,14 @@ Test the interface through the eyes of 5 distinct user archetypes. Each persona 
 - Tabs through the interface linearly
 - Relies on ARIA labels and heading structure
 - Cannot see hover states or visual-only indicators
-- Needs adequate color contrast (4.5:1 minimum)
+- Needs adequate contrast for the project target stored in `PRODUCT.md`: APCA readability, WCAG 2 AA compliance, or both
 - May use browser zoom up to 200%
 
 **Test Questions**:
 - Can the entire primary flow be completed keyboard-only?
 - Are all interactive elements focusable with visible focus indicators?
 - Do images have meaningful alt text?
-- Is color contrast WCAG AA compliant (4.5:1 for text)?
+- Is the contrast target stored in `PRODUCT.md`, and does the UI meet it?
 - Does the screen reader announce state changes (loading, success, errors)?
 
 **Red Flags** (report these specifically):

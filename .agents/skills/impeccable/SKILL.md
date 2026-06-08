@@ -23,7 +23,7 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 
 #### Color
 
-- **Verify contrast.** Body text must hit ≥4.5:1 against its background; large text (≥18px or bold ≥14px) needs ≥3:1. Placeholder text needs the same 4.5:1, not the muted-gray default. The most common failure: muted gray body text on a tinted near-white. If the contrast is even close, bump the body color toward the ink end of the ramp; light gray "for elegance" is the single biggest reason AI designs feel hard to read.
+- **Follow the project's contrast target.** Read `PRODUCT.md`'s `Accessibility & Inclusion` section first. If it names WCAG 2 AA, APCA, or both, carry that choice through every color, audit, polish, and design-system decision. If the project has no stored contrast target and the task involves color or readability, ask once using the three init options, then update `PRODUCT.md` before continuing.
 - Gray text on a colored background looks washed out. Use a darker shade of the background's own hue, or a transparency of the text color.
 
 #### Typography

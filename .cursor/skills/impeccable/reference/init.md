@@ -56,11 +56,11 @@ If the repo is empty or the user's brief is sparse, run a short interview before
 - Use inferred answers as hypotheses or options, not as finished facts.
 - Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
 - Round 1 should establish register, users/purpose, and desired outcome.
-- Round 2 should establish brand personality or references, anti-references, and accessibility needs.
+- Round 2 should establish brand personality or references, anti-references, accessibility needs, and the project contrast target.
 
 ### Minimum viable interview
 
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
+Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, accessibility needs, and contrast target unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
 
 ### Register (ask first; it shapes everything below)
 
@@ -85,6 +85,10 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Accessibility & Inclusion
 - Specific accessibility requirements? (WCAG level, known user needs)
 - Considerations for reduced motion, color blindness, or other accommodations?
+- Which contrast target should this project use? Explain the choices before asking:
+  - **WCAG 2 AA compliance**: best when external audits, procurement, legal review, or existing scanner parity matter. Downside: the ratio can give poor design advice, especially for dark mode and saturated brand colors.
+  - **APCA readability**: best when the goal is practical legibility and better color decisions. It handles dark mode, light-on-dark text, font size/weight, and short UI labels better. Downside: it is not the current WCAG 2 compliance standard, so scanners may still fail combinations APCA accepts.
+  - **Both**: best default when the project cares about design quality and formal checks. Use APCA for design/readability decisions, and keep WCAG 2 AA results visible for compliance.
 
 Skip questions where the answer is already clear. **Do NOT ask about colors, fonts, radii, or visual styling here.** Those belong in DESIGN.md, not PRODUCT.md.
 
@@ -117,7 +121,8 @@ product
 [3-5 strategic principles derived from the conversation. Principles like "practice what you preach", "show, don't tell", "expert confidence". NOT visual rules like "use OKLCH" or "magenta accent".]
 
 ## Accessibility & Inclusion
-[WCAG level, known user needs, considerations]
+Contrast target: [WCAG 2 AA compliance / APCA readability / Both: APCA for design/readability, WCAG 2 AA for compliance]
+[Known user needs, reduced motion, color blindness, other accommodations]
 ```
 
 Register is either `brand` or `product` as a bare value. No prose, no commentary.

@@ -225,7 +225,7 @@ For each component, lead with a short character line, then specify shape, color 
 
 ## 6. Do's and Don'ts
 
-Concrete, forceful guardrails. Lead each with "Do" or "Don't". Be specific: include exact colors, pixel values, and named anti-patterns the user mentioned in PRODUCT.md. **Every anti-reference in PRODUCT.md should show up here as a "Don't" with the same language**, so the visual spec carries the strategic line through. Quote PRODUCT.md directly where possible: if PRODUCT.md says *"avoid dark mode with purple gradients, neon accents, glassmorphism"*, the Don'ts here should repeat that by name.
+Concrete, forceful guardrails. Lead each with "Do" or "Don't". Be specific: include exact colors, pixel values, contrast target, and named anti-patterns the user mentioned in PRODUCT.md. **Every anti-reference in PRODUCT.md should show up here as a "Don't" with the same language**, so the visual spec carries the strategic line through. If PRODUCT.md stores a contrast target, carry it here as a Do: "Do evaluate contrast with [stored target]." Quote PRODUCT.md directly where possible: if PRODUCT.md says *"avoid dark mode with purple gradients, neon accents, glassmorphism"*, the Don'ts here should repeat that by name.
 
 ### Do:
 - **Do** [specific prescription with exact values / named rule].

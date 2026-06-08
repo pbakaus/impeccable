@@ -129,7 +129,8 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     const f = await detectHtml(path.join(FIXTURES, 'color.html'));
     const inlineLinkFalsePositive = f.some(r =>
       r.antipattern === 'low-contrast' &&
-      /#aaaaaa/i.test(r.snippet || '')
+      /#aaaaaa/i.test(r.snippet || '') &&
+      /#fafafa/i.test(r.snippet || '')
     );
     assert.equal(
       inlineLinkFalsePositive, false,
@@ -149,6 +150,30 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(
       goodPillFalsePositive, false,
       'styled <a> with high contrast must not flag'
+    );
+  });
+
+  it('color: APCA handles branded orange action text and WCAG dark-mode false passes', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'color.html'));
+    const wcagOnlyFalsePositive = f.some(r =>
+      r.antipattern === 'low-contrast' &&
+      /#ffffff/i.test(r.snippet || '') &&
+      /#ec8227/i.test(r.snippet || '')
+    );
+    assert.equal(
+      wcagOnlyFalsePositive,
+      false,
+      'white action text on Uplinked orange should not be flagged by the APCA readability detector even though WCAG 2 reports 2.7:1'
+    );
+
+    const apcaDarkModeFinding = f.some(r =>
+      r.antipattern === 'low-contrast' &&
+      /#aaaaaa/i.test(r.snippet || '') &&
+      /#000000/i.test(r.snippet || '')
+    );
+    assert.ok(
+      apcaDarkModeFinding,
+      'gray body text on black should be flagged by the APCA readability detector even though WCAG 2 reports a high ratio'
     );
   });
 

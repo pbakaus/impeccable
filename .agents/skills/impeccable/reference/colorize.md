@@ -111,7 +111,7 @@ Ensure color addition improves rather than overwhelms:
 - **Neutrals** (remaining): Gray/black/white for structure
 
 ### Accessibility
-- **Contrast ratios**: Ensure WCAG compliance (4.5:1 for text, 3:1 for UI components)
+- **Readable contrast**: Follow `PRODUCT.md`'s stored contrast target. If none is stored, ask once and update `PRODUCT.md`: WCAG 2 AA compliance, APCA readability, or both. Use the stored choice for color decisions throughout the project.
 - **Don't rely on color alone**: Use icons, labels, or patterns alongside color
 - **Test for color blindness**: Verify red/green combinations work for all users
 
@@ -206,9 +206,10 @@ The common mistake: using the accent color everywhere because it's "the brand co
 
 | Content Type | AA Minimum | AAA Target |
 |--------------|------------|------------|
-| Body text | 4.5:1 | 7:1 |
-| Large text (18px+ or 14px bold) | 3:1 | 4.5:1 |
-| UI components, icons | 3:1 | 4.5:1 |
+| Body/fluent text | APCA for readability; WCAG 2 for AA compliance |
+| Large text/headlines | APCA can account for size/weight; WCAG 2 for AA compliance |
+| Short action labels | APCA can preserve readable saturated brand colors that WCAG 2 rejects |
+| UI components, icons | APCA for visual discernibility; WCAG 2 when required by the audit target |
 | Non-essential decorations | None | None |
 
 ##### Dangerous Color Combinations

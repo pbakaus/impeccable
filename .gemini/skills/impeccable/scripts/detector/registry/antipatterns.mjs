@@ -225,7 +225,7 @@ const ANTIPATTERNS = [
     category: 'quality',
     name: 'Low contrast text',
     description:
-      'Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.',
+      'Text does not meet the APCA readability target used by the detector. This helps expose WCAG 2 false passes in dark mode and readable branded action colors that WCAG 2 may reject.',
   },
   {
     id: 'layout-transition',

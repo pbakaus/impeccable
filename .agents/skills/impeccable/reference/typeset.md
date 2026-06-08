@@ -107,7 +107,7 @@ Build a clear type scale:
 - **Consistency**: Are same-role elements styled identically throughout?
 - **Personality**: Does the typography reflect the brand?
 - **Performance**: Are web fonts loading efficiently without layout shift?
-- **Accessibility**: Does text meet WCAG contrast ratios? Is it zoomable to 200%?
+- **Accessibility**: Does text meet the contrast target stored in `PRODUCT.md`, APCA readability, WCAG 2 AA compliance, or both? Is it zoomable to 200%?
 
 When the type carries the hierarchy on its own, hand off to `$impeccable polish` for the final pass.
 
@@ -267,7 +267,7 @@ Name tokens semantically (`--text-body`, `--text-heading`), not by value (`--fon
 
 #### Accessibility Considerations
 
-Beyond contrast ratios (which are well-documented), consider:
+Beyond color-pair checks, consider:
 
 - **Never disable zoom**: `user-scalable=no` breaks accessibility. If your layout breaks at 200% zoom, fix the layout.
 - **Use rem/em for font sizes**: This respects user browser settings. Never `px` for body text.
