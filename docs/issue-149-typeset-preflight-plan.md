@@ -1,8 +1,8 @@
-# Issue 149: `/typeset` Typography Preflight
+# Issue 149: `/impeccable typeset` Typography Preflight
 
 ## Summary
 
-Implement Paul's composite solution: `/typeset` runs deterministic typography preflights first, including project-personalized checks from `.impeccable/design.json`, then still performs a full LLM typography judgment. Detector output is evidence to fix, not a completion signal.
+Implement Paul's composite solution: `/impeccable typeset` runs deterministic typography preflights first, including project-personalized checks from `.impeccable/design.json`, then still performs a full LLM typography judgment. Detector output is evidence to fix, not a completion signal.
 
 ## Key Changes
 
@@ -11,7 +11,7 @@ Implement Paul's composite solution: `/typeset` runs deterministic typography pr
 - Add shared dimension filtering across CLI, regex scans, static HTML scans, browser URL scans, and browser injected scans.
 - Extend `.impeccable/design.json` with `tokens.typography` as a denormalized snapshot from `DESIGN.md` frontmatter; `DESIGN.md` remains the source of truth.
 - Add personalized typography findings for font size, line height, letter spacing, and font family values outside the project typography tokens.
-- Update `/typeset` to run `node {{scripts_path}}/detect.mjs --json --dimension typography <resolved target>`, then require a second full LLM typography pass for hierarchy, rhythm, readability, personality, and overall type quality.
+- Update `/impeccable typeset` to run `node {{scripts_path}}/detect.mjs --json --dimension typography <resolved target>`, then require a second full LLM typography pass for hierarchy, rhythm, readability, personality, and overall type quality.
 
 ## Test Plan
 

@@ -241,7 +241,7 @@ Concrete, forceful guardrails. Lead each with "Do" or "Don't". Be specific: incl
 
 The frontmatter owns token primitives (colors, typography, rounded, spacing, components). The sidecar at `.impeccable/design.json` mostly carries **what Stitch's schema can't hold**: tonal ramps per color, shadow/elevation tokens, motion tokens, breakpoints, full component HTML/CSS snippets (the panel renders these into a shadow DOM), and narrative (north star, rules, do's/don'ts).
 
-One exception is intentional: write `tokens.typography` as a denormalized snapshot of the `DESIGN.md` frontmatter `typography` object. `/typeset` detector preflight reads this snapshot so it can compare observed font-size, line-height, letter-spacing, and font-family values against the project scale without parsing Markdown frontmatter. `DESIGN.md` remains the source of truth; the sidecar snapshot is derived data.
+One exception is intentional: write `tokens.typography` as a denormalized snapshot of the `DESIGN.md` frontmatter `typography` object. `/impeccable typeset` detector preflight reads this snapshot so it can compare observed font-size, line-height, letter-spacing, and font-family values against the project scale without parsing Markdown frontmatter. `DESIGN.md` remains the source of truth; the sidecar snapshot is derived data.
 
 Regenerate the sidecar whenever you regenerate root `DESIGN.md`. If the user only asks to refresh the sidecar (e.g., from the live panel's stale-hint), preserve `DESIGN.md` and write only `.impeccable/design.json`.
 
