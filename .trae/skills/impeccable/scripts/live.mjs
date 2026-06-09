@@ -31,11 +31,42 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function liveCli() {
   const args = process.argv.slice(2);
   const liveTarget = resolveLiveTarget(process.cwd(), args);
-  const ctx = loadContext(liveTarget.originalCwd, liveTarget.targetOptions);
-  const activeCwd = ctx.projectRoot || liveTarget.projectRoot;
-  const forwardedTargetArgs = liveTarget.absoluteTargetPath
-    ? ['--target', liveTarget.absoluteTargetPath]
-    : [];
+  const existingServer = !liveTarget.targetPath
+    ? readLiveServerInfo(liveTarget.originalCwd)
+    : null;
+  if (existingServer?.ambiguous) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: 'ambiguous_live_servers',
+      candidates: existingServer.candidates || [],
+      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
+    }, null, 2));
+    process.exit(1);
+  }
+
+  const existingChild = existingServer?.info?.projectRoot
+    && path.resolve(existingServer.info.projectRoot) !== path.resolve(liveTarget.originalCwd)
+    ? existingServer.info
+    : null;
+  const discoveredTargetPath = existingChild?.targetPath
+    ? path.isAbsolute(existingChild.targetPath)
+      ? existingChild.targetPath
+      : path.resolve(existingChild.projectRoot, existingChild.targetPath)
+    : null;
+  const contextCwd = existingChild && !discoveredTargetPath
+    ? existingChild.projectRoot
+    : liveTarget.originalCwd;
+  const contextOptions = discoveredTargetPath
+    ? { targetPath: discoveredTargetPath }
+    : liveTarget.targetOptions;
+  const ctx = loadContext(contextCwd, contextOptions);
+  const activeCwd = ctx.projectRoot || existingChild?.projectRoot || liveTarget.projectRoot;
+  const forwardedTargetArgs = discoveredTargetPath
+    ? ['--target', discoveredTargetPath]
+    : liveTarget.absoluteTargetPath
+      ? ['--target', liveTarget.absoluteTargetPath]
+      : [];
+  const outputTargetPath = liveTarget.targetPath || existingChild?.targetPath || null;
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live.mjs
@@ -66,7 +97,7 @@ The agent should then:
   if (!checkResult || !checkResult.ok) {
     console.log(JSON.stringify({
       ...(checkResult || { ok: false, error: 'check_failed', raw: checkOut }),
-      targetPath: liveTarget.targetPath,
+      targetPath: outputTargetPath,
       projectRoot: ctx.projectRoot,
       repoRoot: ctx.repoRoot,
     }));
@@ -116,7 +147,7 @@ The agent should then:
     pageFiles: resolvedFiles,
     liveConfigPath: checkResult.path,
     configDrift: drift,
-    targetPath: liveTarget.targetPath,
+    targetPath: outputTargetPath,
     projectRoot: ctx.projectRoot,
     repoRoot: ctx.repoRoot,
     hasProduct: ctx.hasProduct,

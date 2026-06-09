@@ -1046,7 +1046,17 @@ if (args.includes('stop')) {
   const keepInject = args.includes('--keep-inject');
   let info = null;
   try {
-    info = readLiveServerInfo(process.cwd())?.info || null;
+    const record = readLiveServerInfo(process.cwd());
+    if (record?.ambiguous) {
+      console.log(JSON.stringify({
+        ok: false,
+        error: 'ambiguous_live_servers',
+        candidates: record.candidates || [],
+        hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to stop.',
+      }, null, 2));
+      process.exit(1);
+    }
+    info = record?.info || null;
     const res = await fetch(`http://localhost:${info.port}/stop?token=${info.token}`);
     if (res.ok) console.log(`Stopped live server on port ${info.port}.`);
   } catch {

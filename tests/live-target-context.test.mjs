@@ -110,17 +110,31 @@ describe('live target-aware monorepo context', () => {
     }
   });
 
+  it('routes root live through the single discovered child server before config and inject', () => {
+    writeRootLiveConfig(tmp);
+    writeChildLiveConfig(tmp);
+
+    const childPayload = bootLive(tmp);
+    try {
+      const res = runNode(LIVE_SCRIPT, [], tmp);
+      assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+      const payload = JSON.parse(res.stdout);
+
+      assert.equal(payload.ok, true);
+      assert.equal(payload.serverPort, childPayload.serverPort);
+      assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+      assert.equal(payload.liveConfigPath, join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'config.json'));
+      assert.deepEqual(payload.pageFiles, ['public/index.html']);
+      assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
+    } finally {
+      stopLive(tmp);
+    }
+  });
+
   it('does not start a root live server when multiple child servers are running', () => {
     writeRootLiveConfig(tmp);
     for (const app of ['dashboard', 'marketing']) {
-      const childRoot = join(tmp, 'apps', app);
-      write(tmp, `apps/${app}/.impeccable/live/server.json`, JSON.stringify({
-        pid: process.pid,
-        port: app === 'dashboard' ? 8401 : 8402,
-        token: app,
-        projectRoot: childRoot,
-        repoRoot: tmp,
-      }, null, 2));
+      writeChildServerInfo(tmp, app, app === 'dashboard' ? 8401 : 8402);
     }
 
     const res = runNode(LIVE_SCRIPT, [], tmp);
@@ -130,6 +144,20 @@ describe('live target-aware monorepo context', () => {
     assert.equal(payload.error, 'ambiguous_live_servers');
     assert.equal(payload.candidates.length, 2);
     assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
+  });
+
+  it('reports ambiguous child live servers when stopping from the monorepo root', () => {
+    for (const app of ['dashboard', 'marketing']) {
+      writeChildServerInfo(tmp, app, app === 'dashboard' ? 8401 : 8402);
+    }
+
+    const res = runNode(LIVE_SERVER_SCRIPT, ['stop', '--keep-inject'], tmp);
+    assert.equal(res.status, 1, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, 'ambiguous_live_servers');
+    assert.equal(payload.candidates.length, 2);
+    assert.match(payload.hint, /--target <path>/);
   });
 });
 
@@ -159,6 +187,17 @@ function writeChildLiveConfig(root) {
     files: ['public/index.html'],
     insertBefore: '</body>',
     commentSyntax: 'html',
+  }, null, 2));
+}
+
+function writeChildServerInfo(root, app, port) {
+  const childRoot = join(root, 'apps', app);
+  write(root, `apps/${app}/.impeccable/live/server.json`, JSON.stringify({
+    pid: process.pid,
+    port,
+    token: app,
+    projectRoot: childRoot,
+    repoRoot: root,
   }, null, 2));
 }
 
