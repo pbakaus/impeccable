@@ -119,7 +119,13 @@ export function resolveProject(cwd = process.cwd(), options = {}) {
   const cached = projectResolutionCache.get(cacheKey);
   if (cached) return { ...cached };
   const targetDir = resolveTargetDir(absCwd, options);
-  const repoRoot = findMonorepoRoot(targetDir);
+  let repoRoot = findMonorepoRoot(targetDir);
+  if (!repoRoot && targetDir !== absCwd) {
+    const cwdRepoRoot = findMonorepoRoot(absCwd);
+    if (cwdRepoRoot && isPathInside(targetDir, cwdRepoRoot)) {
+      repoRoot = cwdRepoRoot;
+    }
+  }
   if (!repoRoot) {
     const project = {
       targetDir,
@@ -138,6 +144,11 @@ export function resolveProject(cwd = process.cwd(), options = {}) {
   };
   projectResolutionCache.set(cacheKey, project);
   return { ...project };
+}
+
+function isPathInside(candidate, root) {
+  const rel = path.relative(root, candidate);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 function projectResolutionCacheKey(cwd, options = {}) {

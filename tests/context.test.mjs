@@ -251,6 +251,28 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.designPath, null);
   });
 
+  it('resolves an explicit root target into a nested-git workspace child', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['repos/*'],
+    }, null, 2));
+    write('PRODUCT.md', '# Outer product\n');
+    write('DESIGN.md', '# Outer design\n');
+    write('repos/standalone/.git/HEAD', 'ref: refs/heads/main\n');
+    write('repos/standalone/PRODUCT.md', '# Standalone product\n');
+    write('repos/standalone/src/App.jsx', 'export default null;\n');
+
+    const project = path.join(scratch, 'repos', 'standalone');
+    const ctx = loadContext(scratch, { targetPath: 'repos/standalone/src/App.jsx' });
+    assert.equal(ctx.isMonorepo, true);
+    assert.equal(ctx.projectRoot, project);
+    assert.equal(ctx.repoRoot, scratch);
+    assert.match(ctx.product, /Standalone product/);
+    assert.match(ctx.design, /Outer design/);
+    assert.equal(ctx.productPath, path.join('repos', 'standalone', 'PRODUCT.md'));
+    assert.equal(ctx.designPath, 'DESIGN.md');
+  });
+
   it('supports double-star workspace patterns by resolving the shallow child project', () => {
     write('package.json', JSON.stringify({
       private: true,

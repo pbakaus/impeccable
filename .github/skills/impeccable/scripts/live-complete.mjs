@@ -23,12 +23,13 @@ function parseArgs(argv) {
 
 export async function completeCli() {
   const rawArgs = process.argv.slice(2);
-  chdirToLiveTarget(rawArgs);
+  const liveTarget = chdirToLiveTarget(rawArgs);
   const args = parseArgs(stripTargetArgs(rawArgs));
   if (args.help || !args.id) {
     console.log(`Usage: node live-complete.mjs --id SESSION_ID [--discarded|--error MESSAGE]\n\nAppend the final durable session acknowledgement. Use after accept/discard cleanup is verified.`);
     process.exit(args.help ? 0 : 1);
   }
+  if (!liveTarget.targetPath) chdirToSingleDiscoveredProjectRoot();
 
   const serverInfo = readServerInfo();
   const serverResult = serverInfo ? await completeThroughServer(serverInfo, args) : null;
@@ -56,6 +57,12 @@ function readServerInfo() {
     process.exit(1);
   }
   return record?.info || null;
+}
+
+function chdirToSingleDiscoveredProjectRoot() {
+  const record = readLiveServerInfo(process.cwd());
+  if (!record?.info?.projectRoot) return;
+  if (record.info.projectRoot !== process.cwd()) process.chdir(record.info.projectRoot);
 }
 
 async function completeThroughServer(info, args) {

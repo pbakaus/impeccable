@@ -26,7 +26,8 @@ async function fetchServerStatus(info) {
 }
 
 export async function statusCli() {
-  chdirToLiveTarget(process.argv.slice(2));
+  const liveTarget = chdirToLiveTarget(process.argv.slice(2));
+  if (!liveTarget.targetPath) chdirToSingleDiscoveredProjectRoot();
   const info = readServerInfo();
   const ambiguous = info?.ambiguous ? info : null;
   const server = ambiguous ? null : await fetchServerStatus(info);
@@ -60,6 +61,12 @@ function findPendingManualApply(server, activeSessions) {
     ?.map((session) => session.pendingEvent)
     .find((event) => event?.type === 'manual_edit_apply');
   return fromSession || null;
+}
+
+function chdirToSingleDiscoveredProjectRoot() {
+  const record = readLiveServerInfo(process.cwd());
+  if (!record?.info?.projectRoot) return;
+  if (record.info.projectRoot !== process.cwd()) process.chdir(record.info.projectRoot);
 }
 
 const _running = process.argv[1];
