@@ -21,8 +21,8 @@ The first argument is the action. Defaults to `status`.
 | `off` | Set `enabled: false` in `.impeccable/hook.json`. |
 | `ignore-rule <id>` | Append `<id>` to `ignoreRules`. |
 | `ignore-file <glob>` | Append `<glob>` to `ignoreFiles`. |
-| `ignore-value <id> <value> [--reason "..."]` | Append a rule/value suppression to local `.impeccable/hook.local.json`. |
-| `ignore-value <id> <value> --shared [--reason "..."]` | Append a rule/value suppression to shared `.impeccable/hook.json`. |
+| `ignore-value <id> <value> [--shared] [--reason "..."]` | Append a rule/value suppression to shared `.impeccable/hook.json`. |
+| `ignore-value <id> <value> --local [--reason "..."]` | Append a private rule/value suppression to `.impeccable/hook.local.json`. |
 | `reset` | Delete the project config, dedup cache, and Cursor pending queue. |
 
 ## Flow
@@ -36,7 +36,7 @@ The first argument is the action. Defaults to `status`.
 
 3. If `<action>` is `off`, follow up with a one-line note: "Done. New edits will not trigger the design hook in this project until you run `{{command_prefix}}impeccable hooks on`."
 4. If `<action>` is `on`, follow up with: "Done. The design hook will fire after the next Edit/Write/MultiEdit on a UI file."
-5. If `<action>` is `ignore-value`, `ignore-file`, or `ignore-rule`, just print the script output. The `ignore-value` default is local-only; add `--shared` only when the user explicitly asks for team/shared policy.
+5. If `<action>` is `ignore-value`, `ignore-file`, or `ignore-rule`, just print the script output. The default scope is shared `.impeccable/hook.json`; add `--local` only when the user explicitly asks for a private exception.
 6. If `<action>` is `status`, just print the script output. Do not add commentary unless the user asked a follow-up question.
 
 ## Intentional findings
@@ -45,14 +45,15 @@ The hook itself never writes ignore config. Persist an exception only after the 
 
 Prefer the narrowest exception:
 
-- If the finding line shows an exact `ignore-value` command, run that command. This is local-only by default.
+- If the finding line shows an exact `ignore-value` command, run that command. This writes shared `.impeccable/hook.json` by default.
 - If the finding has no value-specific command, such as `side-tab`, prefer `ignore-file <path>` for the current file.
 - Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project.
+- Do not add source comments such as `impeccable: ignore`; inline comments pollute code and are not a supported suppression mechanism.
 
 Example value-specific exception:
 
 ```bash
-node {{scripts_path}}/hook-admin.mjs ignore-value overused-font Inter --reason "User confirmed Inter is intentional"
+node {{scripts_path}}/hook-admin.mjs ignore-value overused-font Inter --shared --reason "User confirmed Inter is intentional"
 ```
 
 Example file-scoped exception:

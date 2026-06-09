@@ -181,6 +181,14 @@ describe('detectUrl — browser-only fixtures', () => {
     }
   });
 
+  it('overused-font: hook inline-ignore comments do not suppress browser findings', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/hook-inline-ignore.html`);
+    assert.ok(
+      f.some(r => r.antipattern === 'overused-font' || r.type === 'overused-font' || r.id === 'overused-font'),
+      `expected browser scan to include overused-font despite inline comments: ${JSON.stringify(f)}`,
+    );
+  });
+
   it('body-text-viewport-edge: 3 flag paragraphs/list-items, 0 pass cases', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/body-text-viewport-edge.html`);
     const edges = f.filter(r => r.antipattern === 'body-text-viewport-edge');

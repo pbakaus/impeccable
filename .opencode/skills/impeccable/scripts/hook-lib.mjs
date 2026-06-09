@@ -20,7 +20,6 @@
  *   writeAuditLog(env, entry)
  *   loadDetector() -> Promise<{ detectText, detectHtml }>
  *   matchesAnyGlob(filePath, globs)
- *   parseInlineIgnores(content, ext) -> Map<lineNum, Set<ruleId|'*'>>
  *   runHook(deps) -> { exitCode, stdout, audit, reason? }
  *
  * Design notes:
@@ -412,62 +411,22 @@ export function matchesAnyGlob(filePath, globs) {
   return false;
 }
 
-// Per-language inline ignore syntax.
-//   HTML/Vue template/Svelte markup/Astro markup → `<!-- impeccable: ignore RULE -->`
-//   JSX/TSX expressions                           → `{/* impeccable: ignore RULE */}`
-//   CSS/SCSS/LESS                                 → `/* impeccable: ignore RULE */`
-//   JS/TS                                         → `// impeccable: ignore RULE`
-// Each directive applies to the NEXT NON-BLANK LINE so scope is unambiguous.
-// `*` matches all rules.
-const IGNORE_PATTERNS = [
-  /<!--\s*impeccable\s*:\s*ignore\s+([\w*-]+)\s*-->/i,
-  /\{\s*\/\*\s*impeccable\s*:\s*ignore\s+([\w*-]+)\s*\*\/\s*\}/i,
-  /\/\*\s*impeccable\s*:\s*ignore\s+([\w*-]+)\s*\*\//i,
-  /\/\/\s*impeccable\s*:\s*ignore\s+([\w*-]+)/i,
-];
-
-export function parseInlineIgnores(content, _ext) {
-  const lines = content.split('\n');
-  const result = new Map();
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    let ruleId = null;
-    for (const pattern of IGNORE_PATTERNS) {
-      const m = line.match(pattern);
-      if (m) { ruleId = m[1]; break; }
-    }
-    if (!ruleId) continue;
-    // Find the next non-blank line.
-    let target = i + 1;
-    while (target < lines.length && lines[target].trim() === '') target += 1;
-    if (target >= lines.length) continue;
-    const lineNumber = target + 1;
-    const set = result.get(lineNumber) || new Set();
-    set.add(ruleId);
-    result.set(lineNumber, set);
-  }
-  return result;
-}
-
 const SEVERITY_ORDER = { advisory: 0, warning: 1, error: 2 };
 
 function severityRank(s) {
   return SEVERITY_ORDER[s] ?? SEVERITY_ORDER.warning;
 }
 
-export function filterFindings(findings, content, ext, config) {
+export function filterFindings(findings, _content, _ext, config) {
   if (!Array.isArray(findings) || findings.length === 0) return [];
   const ignoreRules = new Set((config.ignoreRules || []).map((rule) => normalizeIgnoreRule(rule)));
   const ignoreValues = normalizeIgnoreValueEntries(config.ignoreValues || []);
   const minRank = severityRank(config.minSeverity || 'warning');
-  const ignores = parseInlineIgnores(content || '', ext);
   return findings.filter((f) => {
     if (!f || typeof f !== 'object') return false;
     if (ignoreRules.has(normalizeIgnoreRule(f.antipattern))) return false;
     if (isIgnoredFindingValue(f, ignoreValues)) return false;
     if (severityRank(f.severity) < minRank) return false;
-    const inlineSet = ignores.get(f.line);
-    if (inlineSet && (inlineSet.has('*') || inlineSet.has(f.antipattern))) return false;
     return true;
   });
 }
@@ -619,7 +578,7 @@ function formatFindingIgnoreCommand(finding) {
   const value = extractFindingIgnoreValueRaw(finding);
   const valueArg = quoteCommandArg(value);
   const reason = quoteCommandArg(`User confirmed ${value} is intentional`);
-  return `/impeccable hooks ignore-value ${rule} ${valueArg} --reason ${reason}`;
+  return `/impeccable hooks ignore-value ${rule} ${valueArg} --shared --reason ${reason}`;
 }
 
 function quoteCommandArg(value) {
@@ -924,7 +883,7 @@ function directiveFooter(display) {
     '',
     'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
     '',
-    `Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ...\` command shown next to a value-specific finding; for file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole rule. Run /impeccable audit for the full pass.`,
+    `Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding; for file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole rule. Run /impeccable audit for the full pass.`,
   ].join('\n');
 }
 

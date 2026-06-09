@@ -10,8 +10,8 @@
  *   node hook-admin.mjs off                            # set enabled: false
  *   node hook-admin.mjs ignore-rule <rule-id>          # append to ignoreRules
  *   node hook-admin.mjs ignore-file <glob>             # append to ignoreFiles
- *   node hook-admin.mjs ignore-value <rule> <value>    # append to local ignoreValues
- *   node hook-admin.mjs ignore-value <rule> <value> --shared
+ *   node hook-admin.mjs ignore-value <rule> <value>    # append to shared ignoreValues
+ *   node hook-admin.mjs ignore-value <rule> <value> --local
  *   node hook-admin.mjs reset                          # remove all config + cache
  *
  * Designed to be invoked by the LLM from the reference/hooks.md flow.
@@ -158,12 +158,15 @@ function addIgnoreFile(cwd, glob) {
 function parseIgnoreValueArgs(args) {
   const positionals = [];
   let shared = false;
+  let local = false;
   let reason = '';
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--shared') {
       shared = true;
+    } else if (arg === '--local') {
+      local = true;
     } else if (arg === '--reason') {
       const chunks = [];
       while (i + 1 < args.length && !String(args[i + 1]).startsWith('--')) {
@@ -182,6 +185,7 @@ function parseIgnoreValueArgs(args) {
     rule: String(rule || '').trim().toLowerCase(),
     value: normalizeIgnoreValue(valueParts.join(' ')),
     shared,
+    local,
     reason,
   };
 }
@@ -192,10 +196,14 @@ function addIgnoreValue(cwd, args) {
     throw new Error('Pass a rule id and value, e.g. /impeccable hooks ignore-value overused-font Inter');
   }
 
-  const local = !parsed.shared;
+  if (parsed.shared && parsed.local) {
+    throw new Error('Pass only one scope flag: --shared or --local');
+  }
+
+  const local = parsed.local;
   const config = local
-    ? mergeLocalConfig(readRawConfig(cwd, { local }))
-    : mergeConfig(readRawConfig(cwd, { local }));
+    ? mergeLocalConfig(readRawConfig(cwd, { local: true }))
+    : mergeConfig(readRawConfig(cwd, { local: false }));
   const key = `${parsed.rule}\0${parsed.value}`;
   const existing = config.ignoreValues.find((entry) => `${entry.rule}\0${entry.value}` === key);
 

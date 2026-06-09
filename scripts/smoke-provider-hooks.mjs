@@ -447,13 +447,13 @@ function runConfirmedExceptionPersistenceChecks() {
   for (const provider of providers) {
     runConfirmedExceptionForProvider(provider);
   }
-  record('confirmed exception persistence', true, `${providers.join(', ')} persisted confirmed ignore-file exceptions through hook-admin`);
+  record('confirmed exception persistence', true, `${providers.join(', ')} ignored confirmed overused-font values through shared hook.json, not source comments`);
 }
 
 function runConfirmedExceptionForProvider(provider) {
   clearRuntimeState();
   const rel = confirmedSmokeFile(provider);
-  const file = writeBadFixture(rel);
+  const file = writeConfirmedFixture(rel);
   const configPath = join(targetRepo, '.impeccable', 'hook.json');
   const beforeLog = `${provider}-confirmed-before.ndjson`;
   const afterLog = `${provider}-confirmed-after.ndjson`;
@@ -462,20 +462,30 @@ function runConfirmedExceptionForProvider(provider) {
   rmSync(join(smokeDir, afterLog), { force: true });
 
   const first = runInstalledProviderHook(provider, file, beforeLog);
-  requireFinding(`${provider} confirmed exception first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`);
+  requireRuleFinding(`${provider} confirmed exception first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`, 'overused-font');
   if (existsSync(configPath)) {
     throw new Error(`${provider} hook wrote .impeccable/hook.json before explicit confirmation`);
   }
 
-  run('node', [providerAdminScript(provider), 'ignore-file', rel], {
+  run('node', [
+    providerAdminScript(provider),
+    'ignore-value',
+    'overused-font',
+    'Roboto',
+    '--shared',
+    '--reason',
+    `Provider smoke confirmed Roboto is intentional for ${provider}`,
+  ], {
     cwd: targetRepo,
     logName: `${provider}-confirmed-admin.log`,
     timeoutMs: 60 * 1000,
   });
 
   const config = readJson(configPath);
-  if (!Array.isArray(config.ignoreFiles) || !config.ignoreFiles.includes(rel)) {
-    throw new Error(`${provider} confirmed ignore-file was not persisted to .impeccable/hook.json`);
+  const ignoredValue = Array.isArray(config.ignoreValues)
+    && config.ignoreValues.some((entry) => entry.rule === 'overused-font' && entry.value === 'roboto');
+  if (!ignoredValue) {
+    throw new Error(`${provider} confirmed ignore-value was not persisted to .impeccable/hook.json`);
   }
 
   clearTransientHookState();
@@ -483,15 +493,22 @@ function runConfirmedExceptionForProvider(provider) {
   if (provider === 'cursor') {
     const payload = JSON.parse(second.stdout || '{}');
     if (payload.permission !== 'allow') {
-      throw new Error('Cursor confirmed ignore-file did not allow the proposed write');
+      throw new Error('Cursor confirmed ignore-value did not allow the proposed write');
     }
-  } else if ((second.stdout || '').trim()) {
-    throw new Error(`${provider} confirmed ignore-file emitted a correction after persistence`);
+  } else if (/overused-font|Required design corrections/.test(second.stdout || '')) {
+    throw new Error(`${provider} confirmed ignore-value emitted a correction after persistence`);
   }
 
   const afterEvents = readAuditEvents(join(smokeDir, afterLog));
-  if (!afterEvents.some((event) => event.skipped === 'config-ignore-file' && event.file === file)) {
-    throw new Error(`${provider} confirmed ignore-file did not produce config-ignore-file audit evidence`);
+  const suppressed = afterEvents.some((event) =>
+    event.file === file
+    && (
+      (Number(event.findings) > 0 && Number(event.freshFindings) === 0)
+      || (Number(event.findings) > 0 && Number(event.blockedFindings) === 0)
+    )
+  );
+  if (!suppressed) {
+    throw new Error(`${provider} confirmed ignore-value did not produce suppression audit evidence`);
   }
 
   clearRuntimeState();
@@ -526,7 +543,7 @@ function runInstalledProviderHook(provider, file, logName) {
         tool_name: 'Write',
         tool_input: {
           file_path: file,
-          content: badFixtureContent(),
+          content: readFileSync(file, 'utf8'),
         },
       }),
     });
@@ -640,11 +657,9 @@ function runCursorProviderSmoke() {
   );
   if (existsSync(fixturePath)) {
     const fixtureContent = readFileSync(fixturePath, 'utf8');
-    const inlineIgnore = /impeccable:\s*ignore\s+(?:side-tab|\*)/i.test(fixtureContent)
-      && /impeccable:\s*ignore\s+(?:side-tab|\*)|inline hook ignore/i.test(evidence);
-    if (/border-left\s*:\s*[2-9]\d*px/i.test(fixtureContent) && !inlineIgnore) {
+    if (/border-left\s*:\s*[2-9]\d*px/i.test(fixtureContent)) {
       if (!intentionalIgnore || !/ignoreFiles|ignore-file/i.test(evidence)) {
-        throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file or inline-ignore escape hatch');
+        throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file escape hatch');
       }
     }
   }
@@ -679,6 +694,13 @@ function writeBadFixture(rel) {
   return abs;
 }
 
+function writeConfirmedFixture(rel) {
+  const abs = join(targetRepo, rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, confirmedFixtureContent());
+  return abs;
+}
+
 function badFixtureContent() {
   return [
     '<!doctype html>',
@@ -692,6 +714,23 @@ function badFixtureContent() {
     '      }',
     '    </style>',
     '    <div class="card">Temporary Impeccable provider smoke fixture</div>',
+    '  </body>',
+    '</html>',
+    '',
+  ].join('\n');
+}
+
+function confirmedFixtureContent() {
+  return [
+    '<!doctype html>',
+    '<html>',
+    '  <body>',
+    '    <style>',
+    '      /* impeccable: ignore overused-font */',
+    '      body { font-family: "Roboto", ui-sans-serif, system-ui, sans-serif; }',
+    '      .card { border-radius: 16px; padding: 16px; }',
+    '    </style>',
+    '    <div class="card">Temporary Impeccable confirmed exception fixture using Roboto.</div>',
     '  </body>',
     '</html>',
     '',
@@ -723,8 +762,13 @@ function requireFile(rel, label) {
 }
 
 function requireFinding(label, text) {
-  if (!/side-tab/.test(text) || !/Required design corrections|findings?|antipattern|side-tab/.test(text)) {
-    throw new Error(`${label} did not show side-tab detector evidence`);
+  requireRuleFinding(label, text, 'side-tab');
+}
+
+function requireRuleFinding(label, text, rule) {
+  const rulePattern = new RegExp(rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!rulePattern.test(text) || !/Required design corrections|findings?|antipattern|side-tab|overused-font/.test(text)) {
+    throw new Error(`${label} did not show ${rule} detector evidence`);
   }
 }
 

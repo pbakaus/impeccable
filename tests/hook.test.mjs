@@ -4,7 +4,7 @@
  *
  * Exercises hook-lib.mjs through `runHook()` with an injected detector so the
  * suite stays fast and detector-independent. A second block exercises the
- * library helpers (config, cache, filter, render, inline ignores) directly.
+ * library helpers (config, cache, filter, render) directly.
  */
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -31,7 +31,6 @@ import {
   rememberFindings,
   dedupeAgainstCache,
   filterFindings,
-  parseInlineIgnores,
   renderTemplate,
   renderCleanAck,
   renderPendingAck,
@@ -281,47 +280,15 @@ describe('matchesAnyGlob()', () => {
   });
 });
 
-describe('parseInlineIgnores()', () => {
-  it('attaches the directive to the next non-blank line', () => {
-    const content = [
-      'const x = 1;',
-      '// impeccable: ignore side-tab',
-      '',
-      'const y = "border-l-4 border-purple-500";',
-      'const z = "noop";',
-    ].join('\n');
-    const map = parseInlineIgnores(content, '.tsx');
-    // The directive is on line 2 → applies to line 4 (next non-blank).
-    assert.ok(map.has(4));
-    assert.ok(map.get(4).has('side-tab'));
-    assert.ok(!map.has(5));
-  });
-
-  it('recognizes HTML, JSX, CSS, JS shapes; `*` matches all', () => {
-    const html = parseInlineIgnores('<!-- impeccable: ignore side-tab -->\n<div>x</div>', '.html');
-    assert.ok(html.get(2).has('side-tab'));
-
-    const jsx = parseInlineIgnores('{/* impeccable: ignore * */}\n<Foo />', '.tsx');
-    assert.ok(jsx.get(2).has('*'));
-
-    const css = parseInlineIgnores('/* impeccable: ignore gradient-text */\n.a { color: red; }', '.css');
-    assert.ok(css.get(2).has('gradient-text'));
-
-    const js = parseInlineIgnores('// impeccable: ignore overused-font\nfont-family: "Inter"', '.ts');
-    assert.ok(js.get(2).has('overused-font'));
-  });
-});
-
 describe('filterFindings()', () => {
-  it('drops by ignoreRules, minSeverity, and inline-ignore', () => {
+  it('drops by ignoreRules and minSeverity', () => {
     const content = [
       'a',                                          // line 1
-      '// impeccable: ignore gradient-text',        // line 2 directive
-      'b',                                          // line 3 — protected
+      'b',                                          // line 2
     ].join('\n');
     const findings = [
       finding('side-tab', 1, { severity: 'warning' }),
-      finding('gradient-text', 3, { severity: 'warning' }),
+      finding('gradient-text', 2, { severity: 'warning' }),
       finding('overused-font', 5, { severity: 'advisory' }),
     ];
     const filtered = filterFindings(findings, content, '.ts', {
@@ -329,18 +296,22 @@ describe('filterFindings()', () => {
       minSeverity: 'warning',
       limits: DEFAULT_CONFIG.limits,
     });
-    assert.equal(filtered.length, 0,
-      'side-tab dropped by rule, gradient-text dropped by inline, overused-font dropped by severity');
+    assert.deepEqual(filtered.map((f) => f.antipattern), ['gradient-text']);
   });
 
-  it('inline ignore `*` covers any rule on the next line', () => {
-    const content = '{/* impeccable: ignore * */}\n<Foo />';
+  it('does not treat source comments as hook suppression', () => {
+    const content = [
+      '/* impeccable: ignore * */',
+      '.card { font-family: "Roboto", sans-serif; }',
+      '<!-- impeccable: ignore side-tab -->',
+      '<div style="border-left: 4px solid #7c3aed; border-radius: 16px;">Card</div>',
+    ].join('\n');
     const filtered = filterFindings(
-      [finding('side-tab', 2), finding('gradient-text', 2)],
-      content, '.tsx',
+      [finding('overused-font', 2), finding('side-tab', 4)],
+      content, '.html',
       { ignoreRules: [], minSeverity: 'warning', limits: DEFAULT_CONFIG.limits }
     );
-    assert.equal(filtered.length, 0);
+    assert.deepEqual(filtered.map((f) => f.antipattern), ['overused-font', 'side-tab']);
   });
 
   it('drops only matching rule/value pairs from ignoreValues', () => {
@@ -390,19 +361,19 @@ describe('hook-admin.mjs', () => {
     });
   }
 
-  it('ignore-value writes local config by default without creating shared config', () => {
+  it('ignore-value writes shared config by default without creating local config', () => {
     const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
     assert.match(out, /overused-font=inter/);
-    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
-    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
-    assert.equal(local.enabled, undefined, 'local ignore should not override shared enabled state');
-    assert.deepEqual(local.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
+    assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.equal(shared.enabled, true);
+    assert.deepEqual(shared.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
       { rule: 'overused-font', value: 'inter', reason: 'User confirmed Inter' },
     ]);
-    assert.match(local.ignoreValues[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(shared.ignoreValues[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('ignore-value --shared writes shared config', () => {
+  it('ignore-value --shared remains accepted for shared config', () => {
     runAdmin(['ignore-value', 'overused-font', 'Open', 'Sans', '--shared', '--reason', 'Brand font']);
     assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
     const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
@@ -411,16 +382,25 @@ describe('hook-admin.mjs', () => {
     ]);
   });
 
-  it('ignore-value dedupes by normalized rule/value and status reports local ignores', () => {
-    runAdmin(['ignore-value', 'overused-font', 'Inter']);
-    runAdmin(['ignore-value', 'OVERUSED-FONT', '"Inter"', '--reason', 'Still intentional']);
+  it('ignore-value --local writes private config and status reports local ignores', () => {
+    runAdmin(['ignore-value', 'overused-font', 'Inter', '--local']);
+    runAdmin(['ignore-value', 'OVERUSED-FONT', '"Inter"', '--local', '--reason', 'Still intentional']);
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
     const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
+    assert.equal(local.enabled, undefined, 'local ignore should not override shared enabled state');
     assert.equal(local.ignoreValues.length, 1);
     assert.equal(local.ignoreValues[0].reason, 'Still intentional');
 
     const status = runAdmin(['status']);
     assert.match(status, /local file:\s+\.impeccable\/hook\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
+  });
+
+  it('ignore-value rejects conflicting scope flags', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', 'Inter', '--shared', '--local']),
+      /Pass only one scope flag/,
+    );
   });
 
   it('ignore-file writes shared config that suppresses a later hook run', async () => {
@@ -476,7 +456,8 @@ describe('renderTemplate()', () => {
     assert.match(text, /Acknowledge what you changed/);
     assert.match(text, /intentionally bad UI|anti-pattern example|test fixture/);
     assert.match(text, /Do not add hook ignores unless the user explicitly confirms/);
-    assert.match(text, /ignore-value \.\.\./);
+    assert.match(text, /Do not add source comments such as `impeccable: ignore`/);
+    assert.match(text, /ignore-value \.\.\. --shared/);
     assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
     assert.match(text, /ignore-rule <id>/);
     assert.match(text, /\/impeccable audit/);
