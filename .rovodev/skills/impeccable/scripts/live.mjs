@@ -75,6 +75,15 @@ The agent should then:
 
   // 2. Start server (or reuse existing)
   const serverInfo = ensureServerRunning(activeCwd, forwardedTargetArgs);
+  if (serverInfo?.ambiguous) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: 'ambiguous_live_servers',
+      candidates: serverInfo.candidates || [],
+      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
+    }, null, 2));
+    process.exit(1);
+  }
   if (!serverInfo) {
     console.log(JSON.stringify({ ok: false, error: 'server_start_failed' }));
     process.exit(1);
@@ -236,7 +245,9 @@ function safeParse(out) {
 function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
   // Try to reuse an existing server
   try {
-    const existing = readLiveServerInfo(cwd)?.info;
+    const record = readLiveServerInfo(cwd);
+    if (record?.ambiguous) return record;
+    const existing = record?.info;
     if (existing && existing.pid) {
       try {
         process.kill(existing.pid, 0); // throws if dead

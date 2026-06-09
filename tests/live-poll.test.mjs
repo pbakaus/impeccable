@@ -8,6 +8,7 @@ import {
   manualApplyPollBanner,
   parseReplyArgs,
   requiresAgentReply,
+  resolveAcceptScriptCwd,
 } from '../skill/scripts/live-poll.mjs';
 
 describe('live-poll reply payloads', () => {
@@ -47,6 +48,23 @@ describe('live-poll accept handling', () => {
         id: 'abc12345',
       }, { targetPath: '/repo/apps/dashboard/src/App.jsx' }),
       ['--id', 'abc12345', '--discard', '--target', '/repo/apps/dashboard/src/App.jsx'],
+    );
+  });
+
+  it('runs live-accept from the discovered child project when server info has no targetPath', () => {
+    assert.equal(
+      resolveAcceptScriptCwd({ projectRoot: '/repo/apps/dashboard' }),
+      '/repo/apps/dashboard',
+    );
+  });
+
+  it('keeps cwd when targetPath is available because live-accept will resolve the target itself', () => {
+    assert.equal(
+      resolveAcceptScriptCwd({
+        targetPath: '/repo/apps/dashboard/src/App.jsx',
+        projectRoot: '/repo/apps/dashboard',
+      }),
+      process.cwd(),
     );
   });
 });

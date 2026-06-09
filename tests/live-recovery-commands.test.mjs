@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -98,6 +98,30 @@ describe('live recovery CLI commands', () => {
       /Finish carbonize cleanup in src\/App\.jsx/,
       'event=live_resume.carbonize_next_action actor=agent operation=recover_carbonize risk=carbonize_cleanup_hidden_after_accept expected=cleanup-specific action actual=' + resume.nextAction,
     );
+  }));
+
+  it('resumes the single discovered child live server from a monorepo root', () => withTempProject((cwd) => {
+    writeFileSync(join(cwd, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    const childRoot = join(cwd, 'apps', 'dashboard');
+    mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(join(childRoot, '.impeccable', 'live', 'server.json'), JSON.stringify({
+      pid: process.pid,
+      port: 8401,
+      token: 'child',
+      projectRoot: childRoot,
+      repoRoot: cwd,
+    }));
+
+    const store = createLiveSessionStore({ cwd: childRoot });
+    store.appendEvent({ type: 'generate', id: 'child-recover-1', action: 'impeccable', count: 2, pageUrl: '/', element: { outerHTML: '<section>Dashboard</section>' } });
+
+    const resume = runJson(RESUME_SCRIPT, ['--id', 'child-recover-1'], cwd);
+    assert.equal(resume.active, true);
+    assert.equal(resume.snapshot.id, 'child-recover-1');
+    assert.match(resume.nextAction, /Inspect child-recover-1/);
   }));
 
   it('marks a session completed through the canonical completion command', () => withTempProject((cwd) => {

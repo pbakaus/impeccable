@@ -193,12 +193,13 @@ export async function augmentEventWithAcceptHandling(event, base, token, options
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const acceptScript = path.join(__dirname, 'live-accept.mjs');
   const scriptArgs = buildAcceptScriptArgs(event, options);
+  const cwd = resolveAcceptScriptCwd(options);
 
   try {
     const out = execFileSync(
       'node',
       [acceptScript, ...scriptArgs],
-      { encoding: 'utf-8', cwd: process.cwd(), timeout: 30_000 },
+      { encoding: 'utf-8', cwd, timeout: 30_000 },
     );
     event._acceptResult = JSON.parse(out.trim());
   } catch (err) {
@@ -222,6 +223,11 @@ export async function augmentEventWithAcceptHandling(event, base, token, options
   }
 
   return event;
+}
+
+export function resolveAcceptScriptCwd({ targetPath = null, projectRoot = null } = {}) {
+  if (!targetPath && projectRoot) return String(projectRoot);
+  return process.cwd();
 }
 
 export function buildAcceptScriptArgs(event, { targetPath = null } = {}) {
@@ -249,10 +255,14 @@ export function printPollEvent(event) {
   console.log(JSON.stringify(event));
 }
 
-export async function runPollOnce(base, token, { totalTimeout = 600_000, targetPath = null } = {}) {
+export async function runPollOnce(base, token, {
+  totalTimeout = 600_000,
+  targetPath = null,
+  projectRoot = null,
+} = {}) {
   const deadline = Date.now() + totalTimeout;
   const event = await fetchNextEvent(base, token, { totalDeadline: deadline });
-  await augmentEventWithAcceptHandling(event, base, token, { targetPath });
+  await augmentEventWithAcceptHandling(event, base, token, { targetPath, projectRoot });
   writeCarbonizeBanner(event);
   printPollEvent(event);
   return event;
@@ -262,13 +272,14 @@ export async function runPollStream(base, token, {
   ackTimeoutMs = 600_000,
   ackPollIntervalMs = 400,
   targetPath = null,
+  projectRoot = null,
   shouldContinue = () => true,
 } = {}) {
   process.stderr.write('[impeccable-poll] stream mode: one JSON object per line on stdout; use --reply while this process stays running\n');
 
   while (shouldContinue()) {
     const event = await fetchNextEvent(base, token);
-    await augmentEventWithAcceptHandling(event, base, token, { targetPath });
+    await augmentEventWithAcceptHandling(event, base, token, { targetPath, projectRoot });
     writeCarbonizeBanner(event);
     printPollEvent(event);
 
@@ -373,13 +384,21 @@ Harness note:
 
   try {
     if (streamMode) {
-      await runPollStream(base, info.token, { ackTimeoutMs, targetPath: info.targetPath || null });
+      await runPollStream(base, info.token, {
+        ackTimeoutMs,
+        targetPath: info.targetPath || null,
+        projectRoot: info.projectRoot || null,
+      });
       return;
     }
 
     const timeoutArg = args.find((a) => a.startsWith('--timeout='));
     const totalTimeout = timeoutArg ? parseInt(timeoutArg.split('=')[1], 10) : 600_000;
-    await runPollOnce(base, info.token, { totalTimeout, targetPath: info.targetPath || null });
+    await runPollOnce(base, info.token, {
+      totalTimeout,
+      targetPath: info.targetPath || null,
+      projectRoot: info.projectRoot || null,
+    });
   } catch (err) {
     handlePollError(err);
   }

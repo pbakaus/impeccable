@@ -109,6 +109,28 @@ describe('live target-aware monorepo context', () => {
       stopLive(tmp);
     }
   });
+
+  it('does not start a root live server when multiple child servers are running', () => {
+    writeRootLiveConfig(tmp);
+    for (const app of ['dashboard', 'marketing']) {
+      const childRoot = join(tmp, 'apps', app);
+      write(tmp, `apps/${app}/.impeccable/live/server.json`, JSON.stringify({
+        pid: process.pid,
+        port: app === 'dashboard' ? 8401 : 8402,
+        token: app,
+        projectRoot: childRoot,
+        repoRoot: tmp,
+      }, null, 2));
+    }
+
+    const res = runNode(LIVE_SCRIPT, [], tmp);
+    assert.equal(res.status, 1, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, 'ambiguous_live_servers');
+    assert.equal(payload.candidates.length, 2);
+    assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
+  });
 });
 
 function setupMonorepo(root) {
@@ -129,6 +151,7 @@ function writeRootLiveConfig(root) {
     insertBefore: '</body>',
     commentSyntax: 'html',
   }, null, 2));
+  write(root, 'public/root.html', '<!doctype html><html><body><main>Root</main></body></html>\n');
 }
 
 function writeChildLiveConfig(root) {
