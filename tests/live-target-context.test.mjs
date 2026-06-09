@@ -131,6 +131,25 @@ describe('live target-aware monorepo context', () => {
     }
   });
 
+  it('resolves a repo-relative stored child target before root live reuses the server', () => {
+    writeRootLiveConfig(tmp);
+    writeChildLiveConfig(tmp);
+    writeChildServerInfo(tmp, 'dashboard', 8401, { targetPath: TARGET });
+
+    const res = runNode(LIVE_SCRIPT, [], tmp);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.serverPort, 8401);
+    assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+    assert.equal(payload.liveConfigPath, join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'config.json'));
+    assert.equal(payload.targetPath, TARGET);
+    assert.deepEqual(payload.pageFiles, ['public/index.html']);
+    assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
+    assert.match(readFileSync(join(tmp, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /8401\/live\.js/);
+  });
+
   it('does not start a root live server when multiple child servers are running', () => {
     writeRootLiveConfig(tmp);
     for (const app of ['dashboard', 'marketing']) {
@@ -190,7 +209,7 @@ function writeChildLiveConfig(root) {
   }, null, 2));
 }
 
-function writeChildServerInfo(root, app, port) {
+function writeChildServerInfo(root, app, port, overrides = {}) {
   const childRoot = join(root, 'apps', app);
   write(root, `apps/${app}/.impeccable/live/server.json`, JSON.stringify({
     pid: process.pid,
@@ -198,6 +217,7 @@ function writeChildServerInfo(root, app, port) {
     token: app,
     projectRoot: childRoot,
     repoRoot: root,
+    ...overrides,
   }, null, 2));
 }
 

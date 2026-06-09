@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { loadContext } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
-import { resolveLiveTarget } from './live-target.mjs';
+import { resolveLiveTarget, resolveStoredTargetPath } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,11 +48,7 @@ async function liveCli() {
     && path.resolve(existingServer.info.projectRoot) !== path.resolve(liveTarget.originalCwd)
     ? existingServer.info
     : null;
-  const discoveredTargetPath = existingChild?.targetPath
-    ? path.isAbsolute(existingChild.targetPath)
-      ? existingChild.targetPath
-      : path.resolve(existingChild.projectRoot, existingChild.targetPath)
-    : null;
+  const discoveredTargetPath = resolveStoredTargetPath(existingChild);
   const contextCwd = existingChild && !discoveredTargetPath
     ? existingChild.projectRoot
     : liveTarget.originalCwd;

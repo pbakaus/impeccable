@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { completionAckForAcceptResult, completionTypeForAcceptResult } from './live/completion.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
+import { chdirToLiveTarget, resolveStoredTargetPath, stripTargetArgs } from './live-target.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -354,6 +354,7 @@ Harness note:
 
   const info = readServerInfo();
   const base = `http://localhost:${info.port}`;
+  const targetPath = resolveStoredTargetPath(info);
 
   // Reply mode: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]
   if (args.includes('--reply')) {
@@ -386,7 +387,7 @@ Harness note:
     if (streamMode) {
       await runPollStream(base, info.token, {
         ackTimeoutMs,
-        targetPath: info.targetPath || null,
+        targetPath,
         projectRoot: info.projectRoot || null,
       });
       return;
@@ -396,7 +397,7 @@ Harness note:
     const totalTimeout = timeoutArg ? parseInt(timeoutArg.split('=')[1], 10) : 600_000;
     await runPollOnce(base, info.token, {
       totalTimeout,
-      targetPath: info.targetPath || null,
+      targetPath,
       projectRoot: info.projectRoot || null,
     });
   } catch (err) {

@@ -50,7 +50,7 @@ import {
   applyDeferredSvelteComponentAccepts,
   removeAllSvelteComponentSessions,
 } from './live/svelte-component.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
+import { chdirToLiveTarget, resolveStoredTargetPath, stripTargetArgs } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
@@ -547,7 +547,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       res.end(JSON.stringify({
         status: 'ok', port: state.port, mode: 'variant',
         hasProjectContext: hasProjectContext(),
-        targetPath: LIVE_TARGET.targetPath,
+        targetPath: LIVE_TARGET.absoluteTargetPath || LIVE_TARGET.targetPath,
         projectRoot: process.cwd(),
         repoRoot: PROJECT_CONTEXT.repoRoot,
         connectedClients: state.sseClients.size,
@@ -1066,7 +1066,7 @@ if (args.includes('stop')) {
     const injectPath = path.join(__dirname, 'live-inject.mjs');
     const removeTargetArgs = targetForwardArgs();
     if (removeTargetArgs.length === 0 && info?.targetPath) {
-      removeTargetArgs.push('--target', info.targetPath);
+      removeTargetArgs.push('--target', resolveStoredTargetPath(info) || info.targetPath);
     }
     try {
       const out = execFileSync(process.execPath, [injectPath, '--remove', ...removeTargetArgs], {
@@ -1166,7 +1166,7 @@ httpServer.listen(state.port, '127.0.0.1', () => {
     pid: process.pid,
     port: state.port,
     token: state.token,
-    targetPath: LIVE_TARGET.targetPath,
+    targetPath: LIVE_TARGET.absoluteTargetPath || LIVE_TARGET.targetPath,
     projectRoot: process.cwd(),
     repoRoot: PROJECT_CONTEXT.repoRoot,
   });

@@ -10,6 +10,7 @@ import {
   requiresAgentReply,
   resolveAcceptScriptCwd,
 } from '../skill/scripts/live-poll.mjs';
+import { resolveStoredTargetPath } from '../skill/scripts/live-target.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -65,6 +66,25 @@ describe('live-poll accept handling', () => {
         projectRoot: '/repo/apps/dashboard',
       }),
       process.cwd(),
+    );
+  });
+
+  it('normalizes stored server targets before forwarding them to live-accept', () => {
+    assert.equal(
+      resolveStoredTargetPath({
+        targetPath: 'apps/dashboard/src/App.jsx',
+        projectRoot: '/repo/apps/dashboard',
+        repoRoot: '/repo',
+      }),
+      '/repo/apps/dashboard/src/App.jsx',
+    );
+    assert.equal(
+      resolveStoredTargetPath({
+        targetPath: 'src/App.jsx',
+        projectRoot: '/repo/apps/dashboard',
+        repoRoot: '/repo',
+      }),
+      '/repo/apps/dashboard/src/App.jsx',
     );
   });
 });
