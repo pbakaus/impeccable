@@ -355,7 +355,7 @@ export function bumpEditCount(cache, sessionId, filePath) {
 }
 
 export function suppressionNotice(filePath) {
-  return `${ENVELOPE_PREFIX} Suppressing further design hints on ${filePath}. ${EDIT_COUNT_THRESHOLD} edits in this session reached. Run /impeccable audit to revisit.`;
+  return `${ENVELOPE_PREFIX} Suppressing further design hints on ${filePath}. More than ${EDIT_COUNT_THRESHOLD} edits in this session reached. Run /impeccable audit to revisit.`;
 }
 
 // Glob → RegExp. Supports `**`, `*`, `?`, and `{a,b}` alternation.
@@ -531,6 +531,69 @@ export function renderTemplate(findings, filePath, config, opts = {}) {
     text = clampToBudget(header, lines, more, footer, maxChars);
   }
   return text;
+}
+
+function renderGroupedTemplate(groups, config, opts = {}) {
+  const realGroups = groups.filter((group) => Array.isArray(group.findings) && group.findings.length > 0);
+  if (realGroups.length === 0) return '';
+  if (realGroups.length === 1) {
+    const [group] = realGroups;
+    return renderTemplate(group.findings, group.filePath, config, opts);
+  }
+
+  const limits = config?.limits || DEFAULT_CONFIG.limits;
+  const cap = Math.max(1, limits.maxFindings || DEFAULT_CONFIG.limits.maxFindings);
+  const maxChars = Math.max(500, limits.maxChars || DEFAULT_CONFIG.limits.maxChars);
+  const cwd = opts.cwd || process.cwd();
+  const total = realGroups.reduce((sum, group) => sum + group.findings.length, 0);
+  const header = `${ENVELOPE_PREFIX} Required design corrections across ${realGroups.length} files (${total} issue(s)):`;
+  const lines = [];
+  let shownCount = 0;
+
+  for (const group of realGroups) {
+    const display = relativize(group.filePath, cwd);
+    lines.push(`${display} (${group.findings.length} issue(s)):`);
+    const remainingCap = Math.max(0, cap - shownCount);
+    const shown = group.findings.slice(0, remainingCap);
+    for (const finding of shown) {
+      lines.push(formatFindingLine(finding));
+    }
+    shownCount += shown.length;
+    const hidden = group.findings.length - shown.length;
+    if (hidden > 0) {
+      lines.push(`- ... ${hidden} more in ${display} (see /impeccable audit).`);
+    }
+  }
+
+  const footer = directiveFooter('the affected files', { grouped: true });
+  let text = [header, ...lines, '', footer].join('\n');
+  if (text.length > maxChars) {
+    text = clampGroupedToBudget(header, lines, footer, maxChars);
+  }
+  return text;
+}
+
+function clampGroupedToBudget(header, lines, footer, maxChars) {
+  const assemble = (linesArr, omitted) => [
+    header,
+    ...linesArr,
+    ...(omitted ? ['... and more (see /impeccable audit).'] : []),
+    '',
+    footer,
+  ].join('\n');
+
+  let working = lines.slice();
+  let omitted = false;
+  let assembled = assemble(working, omitted);
+  while (assembled.length > maxChars && working.length > 1) {
+    working.pop();
+    omitted = true;
+    assembled = assemble(working, omitted);
+  }
+  if (assembled.length > maxChars) {
+    assembled = `${assembled.slice(0, maxChars - 1)}…`;
+  }
+  return assembled;
 }
 
 function clampToBudget(header, lines, more, footer, maxChars) {
@@ -898,14 +961,17 @@ export function renderPendingAck(filePath, knownFindings, opts = {}) {
 //      developer-role context, not a chat turn, so the user never sees the
 //      raw envelope. Asking the model to surface the fix in its reply is
 //      the cheapest way to make the feedback loop visible to the user.
-function directiveFooter(display) {
+function directiveFooter(display, opts = {}) {
   const ignoreFileCommand = `/impeccable hooks ignore-file ${quoteCommandArg(display)}`;
+  const fileIgnoreGuidance = opts.grouped
+    ? 'run `/impeccable hooks ignore-file <path>` for the specific file'
+    : `run \`${ignoreFileCommand}\``;
   return [
     'Fix these in your next reply before finalizing. Acknowledge what you changed so the user sees the correction.',
     '',
     'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
     '',
-    `Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
+    `Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
   ].join('\n');
 }
 
@@ -971,7 +1037,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
     let pendingWinner = null;
     let cleanWinner = null;
-    let freshWinner = null;
+    const freshGroups = [];
     let suppressionWinner = null;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
@@ -1037,9 +1103,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
       if (fresh.length > 0) {
         rememberFindings(cache, sessionId, filePath, fresh);
-        if (!freshWinner) {
-          freshWinner = { filePath, findings: fresh };
-        }
+        freshGroups.push({ filePath, findings: fresh });
         continue;
       }
 
@@ -1058,16 +1122,25 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
     persistCache(projectCwd, cache);
 
-    if (freshWinner) {
-      const text = renderTemplate(freshWinner.findings, freshWinner.filePath, config, { cwd: projectCwd });
+    if (freshGroups.length > 0) {
+      const firstGroup = freshGroups[0];
+      const text = renderGroupedTemplate(freshGroups, config, { cwd: projectCwd });
+      const allFindings = freshGroups.flatMap((group) => group.findings);
       return {
         exitCode: 0,
         stdout: payload(text, 'PostToolUse', harness),
-        emission: { kind: 'fresh', file: freshWinner.filePath, findings: freshWinner.findings },
+        emission: {
+          kind: 'fresh',
+          file: firstGroup.filePath,
+          findings: firstGroup.findings,
+          groups: freshGroups,
+        },
         audit: {
           ...audit,
-          file: freshWinner.filePath,
+          file: firstGroup.filePath,
           emitted: true,
+          freshFiles: freshGroups.length,
+          freshFindings: allFindings.length,
           chars: text.length,
           durationMs: Date.now() - started,
         },

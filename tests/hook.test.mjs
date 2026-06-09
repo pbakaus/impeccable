@@ -774,6 +774,7 @@ describe('runHook()', () => {
       });
     }
     assert.ok(r.stdout.includes('Suppressing further design hints'));
+    assert.match(r.stdout, /More than 6 edits in this session reached/);
     assert.match(r.stdout, /Run \/impeccable audit to revisit/);
   });
 
@@ -852,6 +853,7 @@ describe('suppressionNotice()', () => {
   it('starts with envelope and mentions /impeccable audit', () => {
     const text = suppressionNotice('src/Card.tsx');
     assert.ok(text.startsWith(ENVELOPE_PREFIX));
+    assert.match(text, /More than 6 edits in this session reached/);
     assert.match(text, /\/impeccable audit/);
   });
 });
@@ -1086,7 +1088,7 @@ describe('runHook() — co-located stylesheet scan', () => {
     assert.match(r.stdout, /styles\.sass/);
   });
 
-  it('continues scanning co-located styles after the primary file has fresh findings', async () => {
+  it('emits fresh findings for every file scanned in the same hook run', async () => {
     const app = write('src/App.jsx', 'export default function App() { return <main className="border-l-4 border-blue-500" />; }');
     const styles = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
     const seen = [];
@@ -1115,8 +1117,12 @@ describe('runHook() — co-located stylesheet scan', () => {
 
     assert.match(r.stdout, /Required design corrections/);
     assert.match(r.stdout, /App\.jsx/);
+    assert.match(r.stdout, /styles\.css/);
+    assert.match(r.stdout, /side-tab/);
+    assert.match(r.stdout, /overused-font/);
     assert.ok(seen.includes(app), 'primary file should be scanned');
     assert.ok(seen.includes(styles), 'co-located stylesheet should still be scanned');
+    assert.equal(r.emission.groups.length, 2);
     const cache = readCache(cwd);
     const files = cache.sessions['co-scan-fresh-primary'].files;
     assert.deepEqual(files[app].findings, ['side-tab:1']);
