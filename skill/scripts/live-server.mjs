@@ -24,6 +24,7 @@ import { parseDesignMd } from './lib/design-parser.mjs';
 import { resolveContextDir } from './context.mjs';
 import { createLiveSessionStore } from './live/session-store.mjs';
 import { validateEvent } from './live/event-validation.mjs';
+import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
 import { LIVE_COMMANDS } from './live/vocabulary.mjs';
 import {
   getDesignSidecarPath,
@@ -34,21 +35,11 @@ import {
   resolveDesignSidecarPath,
   writeLiveServerInfo,
 } from './lib/impeccable-paths.mjs';
-import {
-  countByPage as countPendingByPage,
-  readBuffer as readManualEditsBuffer,
-  removeEntries as removeManualEditEntries,
-  stageEntry as stageManualEditEntry,
-  truncateBuffer as truncateManualEditsBuffer,
-} from './live/manual-edits-buffer.mjs';
+import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
 import {
   createManualApplyController,
   summarizeManualApplyFailures,
-  summarizeManualDiagnostics,
-  summarizeManualLogFile,
 } from './live/manual-apply.mjs';
-import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
-import { commitManualEdits } from './live-commit-manual-edits.mjs';
 import {
   applyDeferredSvelteComponentAccepts,
   removeAllSvelteComponentSessions,
@@ -119,6 +110,16 @@ const manualApply = createManualApplyController({
   flushPendingPolls,
   recordManualEditActivity,
   cwd: () => process.cwd(),
+});
+
+const manualEditRoutes = createManualEditRoutes({
+  getToken: () => state.token,
+  manualApply,
+  recordManualEditActivity,
+  getManualEditStatus,
+  chatAgentLikelyActive,
+  cwd: () => process.cwd(),
+  env: () => process.env,
 });
 
 function chatAgentLikelyActive() {
@@ -324,20 +325,6 @@ function getManualEditStatus() {
       lastActivity: state.manualEditActivity,
       error: err.message,
     };
-  }
-}
-
-function summarizePendingManualEditBatch(pageUrl = null) {
-  try {
-    const buffer = readManualEditsBuffer(process.cwd());
-    const entries = (buffer.entries || [])
-      .filter((entry) => !pageUrl || entry.pageUrl === pageUrl);
-    return {
-      pendingEntryCount: entries.length,
-      pendingOpCount: entries.reduce((sum, entry) => sum + (entry.ops?.length || 0), 0),
-    };
-  } catch (err) {
-    return { pendingSummaryError: err.message || String(err) };
   }
 }
 
@@ -662,329 +649,7 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       return;
     }
 
-    // --- Manual copy edits: Save stages entries, Apply commits the staged
-    // page batch through the local AI copy-edit runner.
-    if (p === '/manual-edit-stash' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (c) => { body += c; });
-      req.on('end', () => {
-        let msg;
-        try { msg = JSON.parse(body); } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          return;
-        }
-        if (msg.token !== state.token) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Unauthorized' }));
-          return;
-        }
-        const error = validateEvent({ ...msg, type: 'manual_edits' });
-        if (error) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error }));
-          return;
-        }
-        try {
-          stageManualEditEntry(process.cwd(), {
-            id: msg.id,
-            pageUrl: msg.pageUrl,
-            element: msg.element,
-            ops: msg.ops,
-          });
-        } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'stash_write_failed', message: err.message }));
-          return;
-        }
-        const { totalCount, perPage } = countPendingByPage(process.cwd());
-        const pendingCount = perPage[msg.pageUrl] || 0;
-        recordManualEditActivity('manual_edit_stashed', {
-          id: msg.id,
-          pageUrl: msg.pageUrl,
-          opCount: msg.ops.length,
-          pendingCount,
-          totalCount,
-          hintedFileCount: new Set((msg.ops || []).map((op) => summarizeManualLogFile(op.sourceHint?.file)).filter(Boolean)).size,
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, pendingCount, totalCount, perPage }));
-      });
-      return;
-    }
-
-    // GET /manual-edit-stash?pageUrl=<url>  →  { count, totalCount, perPage, entries }
-    if (p === '/manual-edit-stash' && req.method === 'GET') {
-      const token = url.searchParams.get('token');
-      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
-      const pageUrl = url.searchParams.get('pageUrl') || '';
-      const { totalCount, perPage } = countPendingByPage(process.cwd());
-      const buffer = readManualEditsBuffer(process.cwd());
-      const entriesForPage = pageUrl ? buffer.entries.filter((e) => e.pageUrl === pageUrl) : buffer.entries;
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        count: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
-        totalCount,
-        perPage,
-        entries: entriesForPage,
-      }));
-      return;
-    }
-
-    // POST /manual-edit-commit?pageUrl=<url>  →  ask the AI to apply the staged page batch.
-    if (p === '/manual-edit-commit' && req.method === 'POST') {
-      const token = url.searchParams.get('token');
-      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
-      const pageUrl = url.searchParams.get('pageUrl');
-      const asyncMode = /^(1|true|yes)$/i.test(url.searchParams.get('async') || '');
-      const repairOnly = /^(1|true|yes)$/i.test(url.searchParams.get('repair') || '');
-      const existingTransaction = manualApply.readTransaction();
-      if (repairOnly && !existingTransaction) {
-        res.writeHead(409, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'manual_edit_repair_transaction_missing' }));
-        return;
-      }
-      const recoveredTransaction = repairOnly ? null : manualApply.rollbackTransaction({
-        pageUrl,
-        reason: 'manual_edit_commit_recovered_abandoned_transaction',
-      });
-      const before = getManualEditStatus();
-      const pendingCount = pageUrl ? (before.perPage[pageUrl] || 0) : before.totalCount;
-      recordManualEditActivity('manual_edit_commit_started', {
-        pageUrl,
-        repairOnly,
-        pendingCount,
-        totalCount: before.totalCount,
-        recoveredTransaction: recoveredTransaction ? {
-          id: recoveredTransaction.id,
-          reason: recoveredTransaction.reason,
-          skipped: recoveredTransaction.skipped,
-          rolledBackFiles: recoveredTransaction.rolledBackFiles,
-          rollbackFailures: summarizeManualDiagnostics(recoveredTransaction.rollbackFailures),
-        } : null,
-        ...summarizePendingManualEditBatch(pageUrl),
-      });
-      if (asyncMode) {
-        res.writeHead(202, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          status: 'started',
-          pendingCount,
-          totalCount: before.totalCount,
-          perPage: before.perPage,
-        }));
-      }
-      (async () => {
-        let result;
-        let routedProvider = 'subprocess';
-        let transaction = null;
-        let commitBatch = null;
-        try {
-          if (pendingCount > 0) {
-            const transactionBatch = buildManualEditEvidence({ cwd: process.cwd(), pageUrl });
-            commitBatch = transactionBatch;
-            if (!repairOnly && manualApply.countOps(transactionBatch) > 0) {
-              transaction = manualApply.writeTransaction({
-                pageUrl,
-                batch: transactionBatch,
-              });
-            } else if (repairOnly && existingTransaction) {
-              transaction = existingTransaction;
-            }
-          }
-          const requestedMode = (process.env.IMPECCABLE_LIVE_COPY_AGENT || 'auto').trim().toLowerCase();
-          const useChatRoute = requestedMode === 'chat'
-            || (requestedMode === 'auto' && chatAgentLikelyActive());
-          if (useChatRoute) {
-            routedProvider = 'chat';
-            const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
-            result = await commitManualEdits({
-              cwd: process.cwd(),
-              pageUrl,
-              provider: 'chat',
-              env: process.env,
-              timeoutMs,
-              chatAvailable: chatAgentLikelyActive,
-              applyBatchToSource: (batch, context) => manualApply.pushBatchInChunksAndWait(batch, pageUrl, context),
-              repairOnly,
-              transactionId: transaction?.id || existingTransaction?.id || null,
-              batch: commitBatch,
-            });
-          } else {
-            const timeoutMs = Number(process.env.IMPECCABLE_LIVE_COPY_AGENT_TIMEOUT_MS || 120000);
-            const provider = ['codex', 'claude', 'mock'].includes(requestedMode) ? requestedMode : undefined;
-            result = await commitManualEdits({
-              cwd: process.cwd(),
-              pageUrl,
-              provider,
-              env: process.env,
-              timeoutMs,
-              chatAvailable: chatAgentLikelyActive,
-              repairOnly,
-              transactionId: transaction?.id || existingTransaction?.id || null,
-              batch: commitBatch,
-            });
-          }
-        } catch (err) {
-          if (transaction) {
-            manualApply.rollbackTransaction({
-              pageUrl,
-              reason: 'manual_edit_commit_exception',
-            });
-          }
-          const message = err.stderr?.toString?.() || err.message;
-          recordManualEditActivity('manual_edit_commit_failed', {
-            pageUrl,
-            provider: routedProvider,
-            error: 'manual_edit_commit_failed',
-            message,
-            transactionId: transaction?.id || null,
-          });
-          if (!asyncMode) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              error: 'manual_edit_commit_failed',
-              message,
-            }));
-          }
-          return;
-        } finally {
-          if (transaction) {
-            const shouldKeepTransaction = result?.needsManualDecision === true;
-            if (!shouldKeepTransaction) manualApply.clearTransaction(transaction.id);
-          }
-        }
-        const { totalCount, perPage } = countPendingByPage(process.cwd());
-        if (result?.needsManualDecision) {
-          recordManualEditActivity('manual_edit_repair_needs_decision', {
-            pageUrl,
-            provider: routedProvider,
-            transactionId: transaction?.id || existingTransaction?.id || null,
-            repair: result.repair || null,
-            failed: summarizeManualApplyFailures(result.failed),
-            files: Array.isArray(result.files) ? result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
-            remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
-            totalCount,
-          });
-        } else {
-          recordManualEditActivity('manual_edit_commit_done', {
-            pageUrl,
-            provider: routedProvider,
-            reason: result.reason || null,
-            repair: result.repair || null,
-            appliedCount: Array.isArray(result.applied) ? result.applied.length : 0,
-            failedCount: Array.isArray(result.failed) ? result.failed.length : 0,
-            failed: summarizeManualApplyFailures(result.failed),
-            files: Array.isArray(result.files) ? result.files.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
-            warnings: summarizeManualDiagnostics(result.warnings),
-            rolledBackFiles: Array.isArray(result.rolledBackFiles) ? result.rolledBackFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : [],
-            rollbackFailures: summarizeManualDiagnostics(result.rollbackFailures),
-            unreportedFiles: Array.isArray(result.unreportedFiles) ? result.unreportedFiles.slice(0, 20).map(summarizeManualLogFile).filter(Boolean) : undefined,
-            noteCount: Array.isArray(result.notes) ? result.notes.length : 0,
-            cleared: result.cleared || 0,
-            remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
-            totalCount,
-          });
-        }
-        if (!asyncMode) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ...result, totalCount, perPage }));
-        }
-      })();
-      return;
-    }
-
-    // POST /manual-edit-repair-decision  →  user resolves an exhausted repair loop.
-    if (p === '/manual-edit-repair-decision' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk; });
-      req.on('end', () => {
-        let payload = {};
-        try { payload = body ? JSON.parse(body) : {}; } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          return;
-        }
-        const token = payload.token || url.searchParams.get('token');
-        if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
-        const pageUrl = payload.pageUrl || url.searchParams.get('pageUrl') || null;
-        const action = String(payload.action || url.searchParams.get('action') || '').trim().toLowerCase();
-        if (action !== 'rollback') {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'unsupported_manual_edit_repair_decision', action }));
-          return;
-        }
-        const rollback = manualApply.rollbackTransaction({
-          pageUrl,
-          reason: 'manual_edit_user_requested_rollback',
-        });
-        const { totalCount, perPage } = countPendingByPage(process.cwd());
-        const response = {
-          action,
-          pageUrl,
-          rollback,
-          remainingCount: pageUrl ? (perPage[pageUrl] || 0) : totalCount,
-          totalCount,
-          perPage,
-        };
-        recordManualEditActivity('manual_edit_repair_rollback_done', response);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response));
-      });
-      return;
-    }
-
-    // POST /manual-edit-discard?pageUrl=<url>  →  drops entries (all if no pageUrl)
-    if (p === '/manual-edit-discard' && req.method === 'POST') {
-      const token = url.searchParams.get('token');
-      if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
-      const pageUrl = url.searchParams.get('pageUrl');
-      let discarded;
-      let discardedEntries = [];
-      let canceledApplyEvents = [];
-      let transactionRollback = null;
-      try {
-        const buffer = readManualEditsBuffer(process.cwd());
-        transactionRollback = manualApply.rollbackTransaction({
-          pageUrl,
-          reason: 'manual_edit_discarded',
-        });
-        if (pageUrl) {
-          discardedEntries = buffer.entries.filter((entry) => entry.pageUrl === pageUrl);
-          discarded = removeManualEditEntries(process.cwd(), (entry) => entry.pageUrl === pageUrl);
-        } else {
-          discardedEntries = buffer.entries;
-          discarded = truncateManualEditsBuffer(process.cwd());
-        }
-        canceledApplyEvents = manualApply.cancelPendingEvents(pageUrl);
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'discard_failed', message: err.message }));
-        return;
-      }
-      const { totalCount, perPage } = countPendingByPage(process.cwd());
-      recordManualEditActivity('manual_edit_discarded', {
-        pageUrl,
-        discarded,
-        canceledApplyIds: canceledApplyEvents.map((event) => event.id),
-        transactionRollback: transactionRollback ? {
-          id: transactionRollback.id,
-          rolledBackFiles: transactionRollback.rolledBackFiles?.map(summarizeManualLogFile).filter(Boolean) || [],
-          rollbackFailures: summarizeManualDiagnostics(transactionRollback.rollbackFailures),
-          skipped: transactionRollback.skipped,
-        } : undefined,
-        totalCount,
-      });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ discarded, entries: discardedEntries, canceledApplyEvents, totalCount, perPage }));
-      return;
-    }
-
-    // Defense in depth: redirect any stragglers from the old /manual-edit endpoint.
-    if (p === '/manual-edit' && req.method === 'POST') {
-      res.writeHead(410, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: '/manual-edit is removed; use /manual-edit-stash and /manual-edit-commit for staged copy edits.' }));
-      return;
-    }
+    if (manualEditRoutes(req, res, url)) return;
 
     // --- Browser→server events (replaces WebSocket messages) ---
     if (p === '/events' && req.method === 'POST') {
