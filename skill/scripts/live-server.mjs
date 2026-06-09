@@ -22,6 +22,12 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './lib/design-parser.mjs';
 import { resolveContextDir } from './context.mjs';
+import {
+  assembleLiveBrowserScript,
+  assertLiveBrowserScriptParts,
+  readLiveBrowserScriptParts,
+  resolveLiveBrowserScriptParts,
+} from './live/browser-script-parts.mjs';
 import { createLiveSessionStore } from './live/session-store.mjs';
 import { validateEvent } from './live/event-validation.mjs';
 import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
@@ -347,19 +353,18 @@ function loadBrowserScripts() {
     try { detectScript = fs.readFileSync(p, 'utf-8'); break; } catch { /* try next */ }
   }
 
-  // live-browser.js: DO NOT cache. Return the path so the /live.js handler
-  // can re-read on every request. Editing the browser script during iteration
-  // should land on the next tab reload, not require a server restart.
-  const sessionPath = path.join(__dirname, 'live-browser-session.js');
-  const livePath = path.join(__dirname, 'live-browser.js');
-  for (const p of [sessionPath, livePath]) {
-    if (!fs.existsSync(p)) {
-      process.stderr.write('Error: live browser script not found at ' + p + '\n');
-      process.exit(1);
-    }
+  // Browser script parts: DO NOT cache. Return paths so the /live.js handler
+  // can re-read every part on each request. Editing browser code during
+  // iteration should land on the next tab reload, not require a server restart.
+  const liveScriptParts = resolveLiveBrowserScriptParts(__dirname);
+  try {
+    assertLiveBrowserScriptParts(liveScriptParts);
+  } catch (err) {
+    process.stderr.write('Error: ' + err.message + '\n');
+    process.exit(1);
   }
 
-  return { detectScript, sessionPath, livePath };
+  return { detectScript, liveScriptParts };
 }
 
 function hasProjectContext() {
@@ -379,7 +384,7 @@ function statOrNull(filePath) {
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
-function createRequestHandler({ detectScript, sessionPath, livePath }) {
+function createRequestHandler({ detectScript, liveScriptParts }) {
   return (req, res) => {
     const url = new URL(req.url, `http://localhost:${state.port}`);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -395,24 +400,20 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       // the next tab reload. No-store headers prevent browser caching across
       // sessions — during iteration, a cached old script silently breaks
       // every subsequent session.
-      let sessionScript;
-      let liveScript;
+      let parts;
       try {
-        sessionScript = fs.readFileSync(sessionPath, 'utf-8');
-        liveScript = fs.readFileSync(livePath, 'utf-8');
+        parts = readLiveBrowserScriptParts(liveScriptParts);
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Error reading live browser scripts: ' + err.message);
         return;
       }
-      const body =
-        `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
-        `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
-        // Canonical command vocabulary (values + labels + icons). live-browser.js
-        // builds its action picker from this instead of an inline copy.
-        `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(LIVE_COMMANDS)};\n` +
-        sessionScript + '\n' +
-        liveScript;
+      const body = assembleLiveBrowserScript({
+        token: state.token,
+        port: state.port,
+        vocabulary: LIVE_COMMANDS,
+        parts,
+      });
       res.writeHead(200, {
         'Content-Type': 'application/javascript',
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -1116,8 +1117,8 @@ const annotRoot = getLiveAnnotationsDir(process.cwd());
 fs.mkdirSync(annotRoot, { recursive: true });
 state.sessionDir = fs.mkdtempSync(path.join(annotRoot, 'session-'));
 
-const { detectScript, sessionPath, livePath } = loadBrowserScripts();
-httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
+const { detectScript, liveScriptParts } = loadBrowserScripts();
+httpServer = http.createServer(createRequestHandler({ detectScript, liveScriptParts }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
   writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });
