@@ -109,7 +109,7 @@ const KEIO_DISTILLED_HTML = `<!doctype html>
 </body>
 </html>`;
 
-const NARROW_TYPOGRAPHY_TOKENS = {
+const ROLE_ONLY_TYPOGRAPHY_TOKENS = {
   caption: {
     fontFamily: '"DM Sans", sans-serif',
     fontSize: '12px',
@@ -126,42 +126,43 @@ const NARROW_TYPOGRAPHY_TOKENS = {
   display: { fontSize: '32px', lineHeight: 1.1 },
 };
 
+const NARROW_TYPOGRAPHY_TOKENS = {
+  roles: ROLE_ONLY_TYPOGRAPHY_TOKENS,
+  scale: {
+    fontSize: ['12px', '16px', '20px', '32px'],
+    lineHeight: [1.4, 1.5, 1.2, 1.1],
+    letterSpacing: ['0.16em', '0'],
+    fontFamily: ['"DM Sans", sans-serif'],
+  },
+};
+
 const KEIO_MATCHING_TYPOGRAPHY_TOKENS = {
-  base: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: '16px',
-    lineHeight: 1.5,
+  roles: {
+    base: {
+      fontFamily: '"DM Sans", sans-serif',
+      fontSize: '16px',
+      lineHeight: 1.5,
+    },
+    hero: {
+      fontFamily: '"DM Sans", sans-serif',
+      fontSize: 'clamp(46px, 6.4vw, 98px)',
+      lineHeight: 0.98,
+      letterSpacing: '-0.025em',
+    },
   },
-  preheading: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: '12px',
-    letterSpacing: '0.18em',
-  },
-  wordmark: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: '23px',
-    letterSpacing: '0.16em',
-  },
-  hero: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: 'clamp(46px, 6.4vw, 98px)',
-    lineHeight: 0.98,
-    letterSpacing: '-0.025em',
-  },
-  lede: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: 'clamp(17px, 1.25vw, 20px)',
-    lineHeight: 1.55,
-    letterSpacing: '-0.003em',
-  },
-  strip: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: '15px',
-    letterSpacing: '-0.005em',
-  },
-  footer: {
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: '13px',
+  scale: {
+    fontSize: [
+      '16px',
+      '12px',
+      '23px',
+      'clamp(46px, 6.4vw, 98px)',
+      'clamp(17px, 1.25vw, 20px)',
+      '15px',
+      '13px',
+    ],
+    lineHeight: [1.5, 0.98, 1.55],
+    letterSpacing: ['0.18em', '0.16em', '-0.025em', '-0.003em', '-0.005em'],
+    fontFamily: ['"DM Sans", sans-serif'],
   },
 };
 
@@ -1013,7 +1014,17 @@ describe('typography dimension', () => {
     });
   });
 
-  test('Keio distilled fixture flags values outside a narrow typography scale', async () => {
+  test('semantic role-only typography snapshots do not enable personalized checks', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(ROLE_ONLY_TYPOGRAPHY_TOKENS),
+      'index.html': KEIO_DISTILLED_HTML,
+    }, async ({ file }) => {
+      const f = await detectHtml(file, { dimensions: ['typography'] });
+      expect(personalizedIds(f)).toEqual([]);
+    });
+  });
+
+  test('Keio distilled fixture flags values outside an explicit narrow typography scale', async () => {
     await withStaticFixture({
       '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
       'index.html': KEIO_DISTILLED_HTML,
@@ -1036,6 +1047,36 @@ describe('typography dimension', () => {
     }, async ({ file }) => {
       const f = await detectHtml(file, { dimensions: ['typography'] });
       expect(personalizedIds(f)).toEqual([]);
+    });
+  });
+
+  test('personalized typography reports real HTML line numbers and ignores linked CSS source', async () => {
+    const html = `<!doctype html>
+<html>
+<head>
+  <link rel="stylesheet" href="linked.css">
+  <style>
+    .hero { font-size: 23px; line-height: 0.98; }
+  </style>
+</head>
+<body>
+  <h1 class="hero">Line numbers stay real.</h1>
+</body>
+</html>`;
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'linked.css': '.linked { font-size: 99px; }',
+      'index.html': html,
+    }, async ({ file }) => {
+      const lineCount = fs.readFileSync(file, 'utf8').split(/\r?\n/).length;
+      const f = await detectHtml(file, { dimensions: ['typography'] });
+      const personalized = f.filter(item => item.antipattern.startsWith('non-token-'));
+      expect(personalized.length).toBeGreaterThan(0);
+      expect(personalized.some(item => item.snippet.includes('font-size: 99px'))).toBe(false);
+      for (const item of personalized) {
+        expect(item.line).toBeGreaterThanOrEqual(1);
+        expect(item.line).toBeLessThanOrEqual(lineCount);
+      }
     });
   });
 
@@ -1062,6 +1103,12 @@ describe('typography dimension', () => {
         expect(personalizedIds(await detectHtml(file, { dimensions: ['typography'] }))).toEqual([]);
       });
     }
+  });
+
+  test('repo dogfood typography roles do not create personalized findings without scale', () => {
+    const cssPath = path.join(import.meta.dir, '..', 'site', 'styles', 'main.css');
+    const f = detectText(fs.readFileSync(cssPath, 'utf8'), cssPath, { dimensions: ['typography'] });
+    expect(personalizedIds(f)).toEqual([]);
   });
 
   test('detectText runs personalized typography checks for non-HTML sources', async () => {

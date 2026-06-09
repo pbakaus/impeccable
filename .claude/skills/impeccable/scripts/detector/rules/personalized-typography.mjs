@@ -132,26 +132,24 @@ function primaryFontName(value) {
   }) || '';
 }
 
-function collectTypographyValues(input, byProp) {
-  if (!input) return;
-  if (Array.isArray(input)) {
-    for (const item of input) collectTypographyValues(item, byProp);
-    return;
-  }
-  if (typeof input !== 'object') return;
+function typographyScale(typography) {
+  const scale = typography?.scale;
+  return scale && typeof scale === 'object' && !Array.isArray(scale) ? scale : null;
+}
 
-  for (const [key, value] of Object.entries(input)) {
-    if (TOKEN_KEYS.has(key) && (typeof value === 'string' || typeof value === 'number')) {
-      byProp[key].push(String(value));
-      continue;
-    }
-    if (value && typeof value === 'object') collectTypographyValues(value, byProp);
-  }
+function scaleValues(scale, tokenKey) {
+  const value = scale?.[tokenKey];
+  if (Array.isArray(value)) return value.filter(item => typeof item === 'string' || typeof item === 'number');
+  if (typeof value === 'string' || typeof value === 'number') return [value];
+  return [];
 }
 
 function buildAllowedTypography(typography) {
+  const scale = typographyScale(typography);
   const tokenValues = Object.fromEntries([...TOKEN_KEYS].map(key => [key, []]));
-  collectTypographyValues(typography, tokenValues);
+  if (scale) {
+    for (const key of TOKEN_KEYS) tokenValues[key].push(...scaleValues(scale, key).map(String));
+  }
 
   const allowed = Object.fromEntries(Object.keys(TYPOGRAPHY_PROPERTIES).map(prop => [
     prop,
@@ -176,6 +174,10 @@ function buildAllowedTypography(typography) {
   }
 
   return allowed;
+}
+
+function hasAllowedTypography(allowed) {
+  return Object.values(allowed).some(entry => entry.comparable.size > 0);
 }
 
 function lineAt(text, index) {
@@ -293,6 +295,7 @@ function detectPersonalizedTypography(content, filePath, options = {}) {
   if (!typography) return [];
 
   const allowed = buildAllowedTypography(typography);
+  if (!hasAllowedTypography(allowed)) return [];
   const findings = [];
 
   for (const declaration of extractTypographyDeclarations(content)) {
@@ -324,6 +327,8 @@ export {
   detectPersonalizedTypography,
   extractTypographyDeclarations,
   findDesignSidecar,
+  hasAllowedTypography,
   loadTypographyTokens,
   shouldRunPersonalizedTypography,
+  typographyScale,
 };

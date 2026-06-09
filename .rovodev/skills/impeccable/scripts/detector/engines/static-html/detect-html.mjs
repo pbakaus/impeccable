@@ -203,7 +203,7 @@ async function detectHtml(filePath, options = {}) {
     }
   }
 
-  findings.push(...detectPersonalizedTypography(`${cssText}\n${html}`, filePath, options));
+  findings.push(...detectPersonalizedTypography(html, filePath, options));
 
   return filterFindings(findings, options);
 }

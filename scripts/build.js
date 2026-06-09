@@ -51,7 +51,11 @@ function generateCounts(rootDir, skills, buildDir) {
   }
 
   // Count detection rules from the detector registry.
-  const detectionCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
+  const detectionCount = new Set(
+    ANTIPATTERNS
+      .filter(rule => !rule.conditional)
+      .map(rule => rule.id)
+  ).size;
 
   // Write generated counts module
   const genDir = path.join(rootDir, 'site/public/js/generated');
