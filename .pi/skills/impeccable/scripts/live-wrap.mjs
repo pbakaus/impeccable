@@ -13,7 +13,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isGeneratedFile } from './is-generated.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
+import { readBuffer as readManualEditsBuffer } from './live/manual-edits-buffer.mjs';
+import {
+  buildSvelteComponentCssAuthoring,
+  scaffoldSvelteComponentSession,
+  shouldUseSvelteComponentInjection,
+} from './live/svelte-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -31,7 +37,7 @@ Required:
 
 Element identification (at least one required):
   --element-id ID    HTML id attribute of the element
-  --classes A,B,C    Comma-separated CSS class names
+  --classes A,B,C    Comma- or space-separated CSS class names
   --tag TAG          Tag name (div, section, etc.)
   --query TEXT       Fallback: raw text to search for
 
@@ -41,6 +47,9 @@ Optional:
                      classes/tag match multiple sibling elements (e.g. a list
                      of <Card>s with the same className). Pass the first ~80
                      chars of event.element.textContent.
+  --page-url URL     Current page URL. Required when pending manual edits may
+                     affect the picked source block. Pending edits are filtered
+                     to this page so an edit on /a doesn't bleed into /b.
   --help             Show this help message
 
 Output (JSON):
@@ -58,6 +67,7 @@ The agent should insert variant HTML at insertLine.`);
   const query = argVal(args, '--query');
   const filePath = argVal(args, '--file');
   const text = argVal(args, '--text');
+  const pageUrl = argVal(args, '--page-url');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!elementId && !classes && !query) {
@@ -196,12 +206,69 @@ The agent should insert variant HTML at insertLine.`);
   // the inner element at its parent's depth instead of nested inside it.
   // Strip only the COMMON minimum leading whitespace across the picked lines;
   // `deindentContent` on the accept side already mirrors this convention.
-  const originalLines = lines.slice(startLine, endLine + 1);
+  let originalLines = lines.slice(startLine, endLine + 1);
+
+  // Buffer-aware "original" content: if the user has pending manual edits for
+  // this page whose originalText appears in the picked source range, apply
+  // them so the wrap block's "original" variant reflects what the user was
+  // looking at (their edited DOM), not the raw source. Source itself stays
+  // untouched here — only the wrap block's embedded "original" copy is
+  // adjusted. The pending edits remain in the buffer until committed.
+  //
+  // Apply buffered edits only when the browser provided the current page URL.
+  // Without it, fail if pending edits plausibly touch this exact source range;
+  // otherwise skip buffer awareness so unrelated staged edits on another page
+  // do not block normal wrap work.
+  let pendingBuffer = { entries: [] };
+  try { pendingBuffer = readManualEditsBuffer(process.cwd()); } catch {}
+  const pendingEntriesForTarget = pageUrl
+    ? []
+    : pendingEntriesThatMayAffectWrap(pendingBuffer.entries, targetFile, originalLines, startLine, process.cwd());
+  if (pendingEntriesForTarget.length > 0) {
+    console.error(JSON.stringify({
+      error: 'missing_page_url_with_pending_edits',
+      pendingEntries: pendingEntriesForTarget.length,
+      hint: 'Pending manual edits may affect the selected source block. Pass --page-url=$event.pageUrl so the wrap block reflects the user\'s staged DOM.',
+    }));
+    process.exit(1);
+  }
+  if (pageUrl) {
+    const failedBufferedOps = [];
+    for (const entry of pendingBuffer.entries || []) {
+      if (entry.pageUrl !== pageUrl) continue;
+      for (const op of entry.ops || []) {
+        const mayAffectWrap = manualEditMayAffectWrap(op, targetFile, originalLines, startLine, process.cwd());
+        const result = applyBufferedManualEditToLines(originalLines, startLine, op);
+        if (result.changed) {
+          originalLines = result.lines;
+          continue;
+        }
+        if (!mayAffectWrap) continue;
+        failedBufferedOps.push({
+          entryId: entry.id,
+          ref: op?.ref || null,
+          originalText: op?.originalText || null,
+          reason: 'ambiguous_or_unmatched_pending_edit',
+        });
+      }
+    }
+    if (failedBufferedOps.length > 0) {
+      console.error(JSON.stringify({
+        error: 'manual_edit_buffer_apply_failed',
+        pendingOps: failedBufferedOps,
+        hint: 'A staged copy edit appears to affect the selected source block, but could not be applied unambiguously to the wrap original. Apply or discard copy edits first, or write the wrapper manually.',
+      }));
+      process.exit(1);
+    }
+  }
+
   const originalBaseIndent = minLeadingSpaces(originalLines);
   const reindentOriginal = (extra) => originalLines
     .map((l) => (l.trim() === '' ? '' : indent + extra + l.slice(originalBaseIndent)))
     .join('\n');
   const originalIndented = reindentOriginal('    ');
+  const relTargetFile = path.relative(process.cwd(), targetFile).split(path.sep).join('/');
+  const useSvelteComponent = shouldUseSvelteComponentInjection(targetFile);
 
   // Wrapper attributes differ by syntax. HTML allows plain string attrs;
   // JSX requires object-literal style and parses string attrs as HTML (which
@@ -242,38 +309,75 @@ The agent should insert variant HTML at insertLine.`);
     indent + commentSyntax.open + ' impeccable-variants-end ' + id + ' ' + commentSyntax.close,
   ];
 
-  // Replace the original element with the wrapper
-  const newLines = [
-    ...lines.slice(0, startLine),
-    ...wrapperLines,
-    ...lines.slice(endLine + 1),
-  ];
-  fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+  let outputFile = targetFile;
+  let outputLines;
+  let outputStartLine = startLine + 1;
+  let outputEndLine = startLine + wrapperLines.length + (originalLines.length - 1);
+  let insertLine;
+  let svelteSession = null;
 
-  // Calculate insert line (the "insert below this line" comment).
-  // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
-  // the insert marker (HTML: start-comment + outer-div + Original-comment +
-  // original-div + content + close-original-div; JSX: outer-div +
-  // start-comment + Original-comment + original-div + content +
-  // close-original-div). Multi-line originals push the marker by their
-  // extra line count.
-  const insertLine = startLine + 6 + (originalLines.length - 1);
+  if (useSvelteComponent) {
+    // Svelte/SvelteKit resets component-local state on markup HMR updates.
+    // Keep generation source-neutral: agents write real variant components
+    // under the generated componentDir, the browser mounts them into the live
+    // DOM, and live-accept.mjs inlines the accepted variant back into the route.
+    svelteSession = scaffoldSvelteComponentSession({
+      id,
+      count,
+      sourceFile: relTargetFile,
+      sourceStartLine: startLine + 1,
+      sourceEndLine: endLine + 1,
+      originalLines,
+      cwd: process.cwd(),
+    });
+    outputFile = path.resolve(process.cwd(), svelteSession.manifestFile);
+    outputStartLine = 1;
+    outputEndLine = 1;
+    insertLine = 1;
+  } else {
+    // Replace the original element with the wrapper
+    const newLines = [
+      ...lines.slice(0, startLine),
+      ...wrapperLines,
+      ...lines.slice(endLine + 1),
+    ];
+    fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
+
+    // Calculate insert line (the "insert below this line" comment).
+    // 0-indexed file position. Both HTML and JSX wrappers have 6 lines above
+    // the insert marker (HTML: start-comment + outer-div + Original-comment +
+    // original-div + content + close-original-div; JSX: outer-div +
+    // start-comment + Original-comment + original-div + content +
+    // close-original-div). Multi-line originals push the marker by their
+    // extra line count.
+    insertLine = startLine + 6 + (originalLines.length - 1) + 1;
+  }
+
+  const outputRelFile = path.relative(process.cwd(), outputFile).split(path.sep).join('/');
+
+  const svelteComponentAuthoring = useSvelteComponent ? buildSvelteComponentCssAuthoring(count) : null;
 
   console.log(JSON.stringify({
-    file: path.relative(process.cwd(), targetFile),
-    startLine: startLine + 1,       // 1-indexed for the agent
+    file: outputRelFile,
+    sourceFile: useSvelteComponent ? relTargetFile : undefined,
+    previewMode: useSvelteComponent ? 'svelte-component' : undefined,
+    componentDir: svelteSession?.componentDir,
+    propContract: svelteSession?.propContract,
+    sourceStartLine: useSvelteComponent ? startLine + 1 : undefined,
+    sourceEndLine: useSvelteComponent ? endLine + 1 : undefined,
+    startLine: outputStartLine,       // 1-indexed for the agent
     // wrapperLines is an array but one element (the original-content slot)
     // is a `\n`-joined multi-line string, so the actual file-row count is
     // wrapperLines.length + (originalLines.length - 1). Without the offset,
     // endLine pointed inside the wrapper for any picked element that
     // spanned more than one source line.
-    endLine: startLine + wrapperLines.length + (originalLines.length - 1), // 1-indexed
-    insertLine: insertLine + 1,     // 1-indexed: where variants go
+    endLine: outputEndLine, // 1-indexed
+    insertLine,            // 1-indexed: where variants go
     commentSyntax: commentSyntax,
-    styleMode: styleMode.mode,
-    styleTag: styleMode.styleTag,
-    cssSelectorPrefixExamples: buildCssSelectorPrefixExamples(styleMode.mode, count),
-    cssAuthoring: buildCssAuthoring(styleMode, count),
+    styleMode: useSvelteComponent ? 'svelte-component' : styleMode.mode,
+    styleTag: useSvelteComponent ? null : styleMode.styleTag,
+    cssSelectorPrefixExamples: useSvelteComponent ? [] : buildCssSelectorPrefixExamples(styleMode.mode, count),
+    cssAuthoring: useSvelteComponent ? svelteComponentAuthoring : buildCssAuthoring(styleMode, count),
     originalLineCount: originalLines.length,
   }));
 }
@@ -283,8 +387,138 @@ The agent should insert variant HTML at insertLine.`);
 // ---------------------------------------------------------------------------
 
 function argVal(args, flag) {
+  const prefix = flag + '=';
+  for (const arg of args) {
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
+  }
   const idx = args.indexOf(flag);
   return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
+}
+
+function pendingEntriesThatMayAffectWrap(entries, targetFile, originalLines, selectionStartLine, cwd) {
+  const targetAbs = path.resolve(cwd, targetFile);
+  return (entries || []).filter((entry) => {
+    return (entry.ops || []).some((op) => {
+      return manualEditMayAffectWrap(op, targetAbs, originalLines, selectionStartLine, cwd);
+    });
+  });
+}
+
+function manualEditMayAffectWrap(op, targetFile, originalLines, selectionStartLine, cwd) {
+  const targetAbs = path.resolve(cwd, targetFile);
+  if (manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd)) return true;
+  if (manualEditLocatorMatchesSelection(op, originalLines)) return true;
+  if (typeof op?.originalText === 'string' && op.originalText.length > 0) {
+    return originalLines.join('\n').includes(op.originalText);
+  }
+  return false;
+}
+
+function manualEditHintFallsInsideSelection(op, targetAbs, originalLines, selectionStartLine, cwd) {
+  const hintFile = op?.sourceHint?.file;
+  const hintedLine = Number(op?.sourceHint?.line);
+  if (!hintFile || !Number.isFinite(hintedLine)) return false;
+  const hintAbs = path.isAbsolute(hintFile) ? hintFile : path.resolve(cwd, hintFile);
+  if (path.resolve(hintAbs) !== targetAbs) return false;
+  const hintedIndex = hintedLine - 1 - selectionStartLine;
+  return hintedIndex >= 0
+    && hintedIndex < originalLines.length
+    && typeof op?.originalText === 'string'
+    && originalLines[hintedIndex].includes(op.originalText);
+}
+
+function manualEditLocatorMatchesSelection(op, originalLines) {
+  if (!op || typeof op.originalText !== 'string' || op.originalText.length === 0) return false;
+  return originalLines.some((line) => (
+    line.includes(op.originalText) && lineMatchesManualEditLocator(line, op)
+  ));
+}
+
+function applyBufferedManualEditToLines(originalLines, selectionStartLine, op) {
+  if (
+    !op
+    || typeof op.originalText !== 'string'
+    || op.originalText.length === 0
+    || typeof op.newText !== 'string'
+  ) {
+    return { lines: originalLines, changed: false };
+  }
+
+  const replaceLine = (lineIndex) => ({
+    lines: originalLines.map((line, index) => (
+      index === lineIndex ? replaceOnce(line, op.originalText, op.newText) : line
+    )),
+    changed: true,
+  });
+
+  const hintedLine = Number(op.sourceHint?.line);
+  if (Number.isFinite(hintedLine)) {
+    const hintedIndex = hintedLine - 1 - selectionStartLine;
+    if (hintedIndex >= 0 && hintedIndex < originalLines.length && originalLines[hintedIndex].includes(op.originalText)) {
+      return replaceLine(hintedIndex);
+    }
+  }
+
+  const locatorMatches = [];
+  for (let index = 0; index < originalLines.length; index += 1) {
+    const line = originalLines[index];
+    if (!line.includes(op.originalText)) continue;
+    if (!lineMatchesManualEditLocator(line, op)) continue;
+    locatorMatches.push(index);
+  }
+  if (locatorMatches.length === 1) return replaceLine(locatorMatches[0]);
+
+  const originalBlock = originalLines.join('\n');
+  if (countOccurrences(originalBlock, op.originalText) === 1) {
+    return {
+      lines: replaceOnce(originalBlock, op.originalText, op.newText).split('\n'),
+      changed: true,
+    };
+  }
+
+  return { lines: originalLines, changed: false };
+}
+
+function lineMatchesManualEditLocator(line, op) {
+  if (op.tag) {
+    const tagRe = new RegExp('<\\s*' + escapeRegExp(op.tag) + '(?=[\\s>/]|$)', 'i');
+    if (!tagRe.test(line)) return false;
+  }
+
+  if (op.elementId) {
+    const id = escapeRegExp(op.elementId);
+    const idRe = new RegExp('\\bid\\s*=\\s*["\']' + id + '["\']');
+    if (!idRe.test(line)) return false;
+  }
+
+  const classes = Array.isArray(op.classes) ? op.classes.filter(Boolean) : [];
+  for (const className of classes) {
+    if (!line.includes(className)) return false;
+  }
+
+  return true;
+}
+
+function replaceOnce(value, needle, replacement) {
+  const index = value.indexOf(needle);
+  if (index === -1) return value;
+  return value.slice(0, index) + replacement + value.slice(index + needle.length);
+}
+
+function countOccurrences(value, needle) {
+  if (!needle) return 0;
+  let count = 0;
+  let index = 0;
+  while (true) {
+    index = value.indexOf(needle, index);
+    if (index === -1) return count;
+    count += 1;
+    index += needle.length;
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -303,13 +537,15 @@ function buildSearchQueries(elementId, classes, tag, query) {
   // Emit both class="..." (HTML) and className="..." (React/JSX) so whichever
   // convention the file uses will match.
   if (classes) {
-    const classList = classes.split(',').map(c => c.trim()).filter(Boolean);
+    const classList = splitClassList(classes);
     if (classList.length > 1) {
       const joined = classList.join(' ');
       const sorted = [...classList].sort((a, b) => b.length - a.length);
       queries.push('class="' + joined + '"');
       queries.push('className="' + joined + '"');
-      queries.push(sorted[0]); // most distinctive single class, fallback
+      for (const className of sorted) {
+        queries.push(className);
+      }
     } else if (classList.length === 1) {
       queries.push(classList[0]);
     }
@@ -318,7 +554,7 @@ function buildSearchQueries(elementId, classes, tag, query) {
   // 3. Tag + class combo (e.g., <section class="hero">).
   // Same dual-emit for JSX compatibility.
   if (tag && classes) {
-    const firstClass = classes.split(',')[0].trim();
+    const firstClass = splitClassList(classes)[0];
     queries.push('<' + tag + ' class="' + firstClass);
     queries.push('<' + tag + ' className="' + firstClass);
   }
@@ -329,6 +565,18 @@ function buildSearchQueries(elementId, classes, tag, query) {
   }
 
   return queries;
+}
+
+function splitClassList(classes) {
+  return String(classes).split(/[,\s]+/).map(c => c.trim()).filter(Boolean);
+}
+
+function attrEscapeDouble(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function detectCommentSyntax(filePath) {
@@ -370,11 +618,14 @@ function buildCssAuthoring(styleMode, count) {
       selectorExamples: variantNumbers.map((n) => `[data-impeccable-variant="${n}"] > .variant-class`),
       requirements: [
         'Use the styleTag exactly; the is:inline attribute is required for this file.',
+        'Put raw CSS directly between the styleTag opening and a plain </style> close.',
         'Prefix every preview selector with the matching [data-impeccable-variant="N"] selector.',
         'Keep selectors anchored to the generated variant wrapper; do not rely on component CSS scoping for preview rules.',
       ],
       forbidden: [
         'Do not use @scope for this styleMode.',
+        'Do not wrap style content in a JSX/TSX template literal ({` ... `}); that syntax is for .tsx/.jsx only.',
+        'Do not put { immediately after the style opening tag; Astro parses { as expression syntax.',
       ],
     };
   }
@@ -629,4 +880,15 @@ if (_running?.endsWith('live-wrap.mjs') || _running?.endsWith('live-wrap.mjs/'))
 }
 
 // Test exports (used by tests/live-wrap.test.mjs)
-export { buildSearchQueries, findElement, findClosingLine, detectCommentSyntax };
+export {
+  buildSearchQueries,
+  findElement,
+  findClosingLine,
+  detectCommentSyntax,
+  findAllElements,
+  filterByText,
+  findFileWithQuery,
+  detectStyleMode,
+  buildCssAuthoring,
+  buildCssSelectorPrefixExamples,
+};

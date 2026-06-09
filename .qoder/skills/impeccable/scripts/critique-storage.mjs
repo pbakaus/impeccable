@@ -27,8 +27,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { getCritiqueDir } from './impeccable-paths.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { getCritiqueDir } from './lib/impeccable-paths.mjs';
 
 const SLUG_MAX = 50;
 
@@ -222,10 +222,21 @@ function main(argv) {
   }
 }
 
-// Why pathToFileURL: on Windows, import.meta.url is file:///D:/... (forward
-// slashes) while process.argv[1] is D:\... (backslashes), so the naive
-// `file://${process.argv[1]}` compare fails and main() never runs — the
-// script silently exits 0. pathToFileURL normalizes both. (issue #155)
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    // pathToFileURL normalizes Windows paths; keep it as a fallback for any
+    // environment where realpath is unavailable.
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  }
+}
+
+// Why the realpath check: generated skills are often reached through symlinked
+// harness directories (for example a demo repo's `.agents` -> source `.agents`).
+// Node resolves import.meta.url to the real file, while process.argv[1] keeps
+// the symlink path. Comparing canonical paths prevents a silent exit-0 no-op.
+if (isMainModule()) {
   main(process.argv.slice(2));
 }

@@ -71,16 +71,16 @@ tagline: "Generate a spec-compliant DESIGN.md that captures your visual system s
 
 ## When to use it
 
-Run `/impeccable document` once you have enough of a visual system to document: colors, typography, at least a button and a card. The command scans your codebase, extracts the tokens and component patterns it finds, and writes a `DESIGN.md` at the project root that follows the [Google Stitch DESIGN.md format](https://stitch.withgoogle.com/docs/design-md/format/), six sections in a fixed order, interoperable with every other DESIGN.md-aware tool.
+Run `/impeccable document` once you have enough of a visual system to document: colors, typography, at least a button and a card. The command scans your codebase, extracts the tokens and component patterns it finds, and writes a `DESIGN.md` at the project root that follows the [Google Stitch DESIGN.md format](https://stitch.withgoogle.com/docs/design-md/overview/), six sections in a fixed order, interoperable with every other DESIGN.md-aware tool.
 
 Reach for it when:
 
-- **You just ran `/impeccable teach`** and `PRODUCT.md` now exists. Document is the matching visual-side file.
+- **You just ran `/impeccable init`** and `PRODUCT.md` now exists. Document is the matching visual-side file.
 - **A command nudged you toward it.** Live, craft, and polish all read DESIGN.md. If it is missing, the skill suggests running document first.
 - **The design has drifted** from an older DESIGN.md and the file no longer describes the live system.
 - **Before a large redesign**, to capture current state as a reference for the next direction.
 
-For projects with no code yet (fresh `teach` run, nothing built), there is a seed mode: `/impeccable document --seed` asks five quick strategic questions (color strategy, type direction, motion energy, references, anti-references) and writes a scaffold. Re-run in scan mode once there is code.
+For projects with no code yet (fresh `init` run, nothing built), there is a seed mode: `/impeccable document --seed` asks five quick strategic questions (color strategy, type direction, motion style, references, anti-references) and writes a scaffold. Re-run in scan mode once there is code.
 
 ## How it works
 

@@ -1,0 +1,94 @@
+---
+import Base from '../layouts/Base.astro';
+import '../styles/sub-pages.css';
+import '../styles/changelog-faq-kinpaku.css';
+---
+
+<Base
+  title="FAQ | Impeccable"
+  description="Answers to common questions about installing Impeccable, updating, pinning commands, troubleshooting, and onboarding to AI harnesses."
+  activeNav="docs"
+  canonicalPath="/faq"
+  bodyClass="sub-page kinpaku-chrome kinpaku-surface"
+>
+  <div class="cf-page">
+    <p class="cf-eyebrow">Support</p>
+    <h1 class="cf-title">Frequently Asked Questions</h1>
+    <p class="cf-lede">Installation, updates, troubleshooting, and the questions newcomers ask first. Each answer is deep-linkable.</p>
+
+    <div class="cf-faq-list">
+      <details id="install-location" class="cf-faq-item">
+        <summary class="cf-faq-question">Where do I put the downloaded files?</summary>
+        <div class="cf-faq-answer">
+          <p>The easiest way is <code>npx impeccable skills install</code>, which detects your AI harness and installs the build compiled for it.</p>
+          <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, <code>.agents/</code>, and <code>.github/</code>.</p>
+          <p>Project-level installation takes precedence and lets you version control your skills.</p>
+        </div>
+      </details>
+
+      <details id="update" class="cf-faq-item">
+        <summary class="cf-faq-question">How do I update to the latest version?</summary>
+        <div class="cf-faq-answer">
+          <p>Run <code>npx impeccable skills update</code> from your project root. It downloads the latest skills and cleans up deprecated files. Not sure you're behind? <code>npx impeccable skills check</code> compares what you have installed against the latest release first.</p>
+          <ul>
+            <li><strong>Reinstall:</strong> <code>npx impeccable skills install --force</code> installs fresh.</li>
+            <li><strong>Claude Code plugin:</strong> Open <code>/plugin</code> in Claude Code.</li>
+            <li><strong>npx skills:</strong> <code>npx skills add pbakaus/impeccable</code> also works, but installs one shared build for all harnesses rather than the one compiled for yours.</li>
+            <li><strong>Manual ZIP:</strong> Download from the homepage and extract to the project root.</li>
+          </ul>
+          <p>Your <code>PRODUCT.md</code> and <code>DESIGN.md</code> context files are never overwritten.</p>
+        </div>
+      </details>
+
+      <details id="pin" class="cf-faq-item">
+        <summary class="cf-faq-question">I used to type <code>/critique</code> directly. How do I get that back?</summary>
+        <div class="cf-faq-answer">
+          <p>Pinning is built in. Run <code>/impeccable pin critique</code> and <code>/critique</code> becomes a standalone shortcut again, without reversing the consolidation.</p>
+          <p>Under the hood it writes a lightweight redirect skill that delegates to <code>/impeccable critique</code>, so updates to the parent skill flow through automatically. It works for every command.</p>
+          <p><strong>Examples:</strong></p>
+          <ul>
+            <li><code>/impeccable pin polish</code> &rarr; <code>/polish</code> works again</li>
+            <li><code>/impeccable pin audit</code> &rarr; <code>/audit</code> works again</li>
+            <li><code>/impeccable pin live</code> &rarr; <code>/live</code> works again</li>
+          </ul>
+          <p>To remove: <code>/impeccable unpin critique</code>. To see your current pins, check your harness skills directory (<code>.claude/skills/</code>, <code>.cursor/skills/</code>, etc.) for directories named after the command you pinned, like <code>.claude/skills/critique/</code>.</p>
+        </div>
+      </details>
+
+      <details id="missing-commands" class="cf-faq-item">
+        <summary class="cf-faq-question">Commands or skills aren't appearing. What do I do?</summary>
+        <div class="cf-faq-answer">
+          <p><strong>For commands:</strong> Type <code>/impeccable</code> in your AI harness and look for commands like <code>/impeccable audit</code>, <code>/impeccable polish</code>, etc. If they don't appear, double-check the files are in the correct location.</p>
+          <p><strong>For skills:</strong> Skills are applied automatically when relevant. To verify, explicitly mention "use the impeccable skill" in your prompt. This forces the AI to acknowledge and apply it.</p>
+          <p><strong>Tool-specific setup:</strong></p>
+          <ul>
+            <li><strong>Cursor:</strong> Requires Nightly channel + Agent Skills enabled in Settings → Rules</li>
+            <li><strong>Gemini CLI:</strong> Requires <code>@google/gemini-cli@preview</code> + Skills enabled via <code>/settings</code></li>
+            <li><strong>Codex:</strong> Skills do not appear in the normal <code>/</code> command picker. Open <code>/skills</code> or type <code>$</code>. Repo installs live in <code>.agents/skills/</code>, user installs live in <code>~/.agents/skills/</code>. Restart Codex if a new skill does not show up.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details id="new-to-harnesses" class="cf-faq-item">
+        <summary class="cf-faq-question">I'm new to AI harnesses. Where do I start?</summary>
+        <div class="cf-faq-answer">
+          <p>Skills and commands are intermediate features. If you're just getting started, learn the basics first:</p>
+          <ul>
+            <li><strong>Claude Code:</strong> <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" rel="noopener">Official Documentation</a></li>
+            <li><strong>Cursor:</strong> <a href="https://docs.cursor.com" target="_blank" rel="noopener">Cursor Docs</a></li>
+            <li><strong>Gemini CLI:</strong> <a href="https://geminicli.com/docs/" target="_blank" rel="noopener">Gemini CLI Docs</a></li>
+            <li><strong>Codex CLI:</strong> <a href="https://github.com/openai/codex" target="_blank" rel="noopener">Codex GitHub</a></li>
+          </ul>
+          <p>Once you're comfortable with basic prompting and code generation, come back and give Impeccable a try.</p>
+        </div>
+      </details>
+
+      <details id="pricing" class="cf-faq-item">
+        <summary class="cf-faq-question">Is Impeccable free?</summary>
+        <div class="cf-faq-answer">
+          <p>Yes. Everything is <strong>Apache 2.0</strong>: skills, commands, CLI, and the detection engine. Fully open source, free for everyone.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</Base>

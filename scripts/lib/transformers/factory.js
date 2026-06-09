@@ -1,5 +1,14 @@
 import path from 'path';
-import { cleanDir, ensureDir, writeFile, generateYamlFrontmatter, generateYamlDocument, replacePlaceholders } from '../utils.js';
+import {
+  cleanDir,
+  ensureDir,
+  writeFile,
+  generateYamlFrontmatter,
+  generateYamlDocument,
+  replacePlaceholders,
+  compileProviderBlocks,
+  stripRuleMarkers,
+} from '../utils.js';
 import { SKILL_CATEGORIES, CATEGORY_ORDER } from '../sub-pages-data.js';
 
 /**
@@ -39,6 +48,12 @@ const FIELD_SPECS = {
     yamlKey: 'allowed-tools',
   },
 };
+
+// Provider builds that Codex loads as a skill (it reads skills from .agents/skills,
+// and the .codex build mirrors it). For these, the Codex subagent .toml travels
+// INSIDE the skill's agents/ folder, which Codex auto-discovers once the skill is
+// installed -- so no separate .codex/agents/ sidecar copy is needed.
+const CODEX_SKILL_PROVIDERS = new Set(['agents', 'codex']);
 
 function humanizeSkillName(name) {
   return name
@@ -138,7 +153,17 @@ function buildAgentFile(config, agent, body) {
  * @returns {Function} transform(skills, distDir, options?)
  */
 export function createTransformer(config) {
-  const { provider, configDir, displayName, frontmatterFields = [], bodyTransform, placeholderProvider, writeOpenAIMetadata = false, includeVersion = true } = config;
+  const {
+    provider,
+    configDir,
+    displayName,
+    frontmatterFields = [],
+    bodyTransform,
+    placeholderProvider,
+    providerTags = [provider],
+    writeOpenAIMetadata = false,
+    includeVersion = true,
+  } = config;
   const placeholderKey = placeholderProvider || provider;
 
   const activeFields = frontmatterFields
@@ -200,7 +225,9 @@ export function createTransformer(config) {
       const frontmatter = generateYamlFrontmatter(frontmatterObj);
 
       // Build body
-      let skillBody = replacePlaceholders(skill.body, placeholderKey, commandNames, allSkillNames);
+      let skillBody = compileProviderBlocks(skill.body, providerTags);
+      skillBody = replacePlaceholders(skillBody, placeholderKey, commandNames, allSkillNames);
+      skillBody = stripRuleMarkers(skillBody);
 
       // Replace {{scripts_path}} with provider-aware path to skill's scripts directory
       const scriptsPath = `${configDir}/skills/${skillName}/scripts`;
@@ -220,7 +247,9 @@ export function createTransformer(config) {
         const refDir = path.join(skillDir, 'reference');
         ensureDir(refDir);
         for (const ref of skill.references) {
-          let refContent = replacePlaceholders(ref.content, placeholderKey, [], allSkillNames);
+          let refContent = compileProviderBlocks(ref.content, providerTags);
+          refContent = replacePlaceholders(refContent, placeholderKey, [], allSkillNames);
+          refContent = stripRuleMarkers(refContent);
           refContent = refContent.replace(/\{\{scripts_path\}\}/g, scriptsPath);
           writeFile(path.join(refDir, `${ref.name}.md`), refContent);
           refCount++;
@@ -236,6 +265,21 @@ export function createTransformer(config) {
           scriptCount++;
         }
       }
+
+      // Bundle the Codex subagent .toml inside the skill's agents/ folder for the
+      // variants Codex loads as a skill. Codex auto-discovers agents nested in an
+      // installed skill, so this in-skill copy is the whole delivery -- the
+      // skills/ install carries it and no .codex/agents/ sidecar copy is required.
+      if (CODEX_SKILL_PROVIDERS.has(provider)) {
+        for (const agent of skill.agents || []) {
+          if (agent.providers && !agent.providers.includes('codex')) continue;
+          let agentBody = compileProviderBlocks(agent.body, providerTags);
+          agentBody = replacePlaceholders(agentBody, placeholderKey, [], allSkillNames);
+          const filename = `${agent.codexName || agent.name.replace(/-/g, '_')}.toml`;
+          ensureDir(path.join(skillDir, 'agents'));
+          writeFile(path.join(skillDir, 'agents', filename), buildCodexAgent(agent, agentBody));
+        }
+      }
     }
 
     if (config.agentFormat) {
@@ -245,7 +289,8 @@ export function createTransformer(config) {
           // Agents can declare `providers: <list>` to limit which harnesses
           // they emit to. Default (no field) ships everywhere with agentFormat.
           if (agent.providers && !agent.providers.includes(provider)) continue;
-          const body = replacePlaceholders(agent.body, placeholderKey, [], allSkillNames);
+          let body = compileProviderBlocks(agent.body, providerTags);
+          body = replacePlaceholders(body, placeholderKey, [], allSkillNames);
           const agentFile = buildAgentFile(config, agent, body);
           if (!agentFile) continue;
           ensureDir(agentsDir);

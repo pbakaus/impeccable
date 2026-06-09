@@ -1,0 +1,97 @@
+name: Sync Generated Provider Output
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".claude-plugin/**"
+      - "cli/engine/**"
+      - "skill/**"
+      - "scripts/**"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-generated-output
+  cancel-in-progress: false
+
+env:
+  GENERATED_PATHS: >-
+    .agents
+    .claude
+    .cursor
+    .gemini
+    .github/skills
+    .kiro
+    .opencode
+    .pi
+    .qoder
+    .rovodev
+    .trae
+    .trae-cn
+    plugin
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # Optional PAT or GitHub App token. With the default GITHUB_TOKEN,
+          # GitHub suppresses follow-up workflow runs from the generated commit.
+          token: ${{ secrets.SYNC_GENERATED_OUTPUT_TOKEN || github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release output
+        run: bun run build:release
+
+      - name: Check generated output drift
+        id: drift
+        run: |
+          changes="$(git status --porcelain -- $GENERATED_PATHS)"
+          if [ -z "$changes" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No generated provider output drift."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$changes"
+          fi
+
+      - name: Commit generated output
+        if: steps.drift.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $GENERATED_PATHS
+          git commit -m "Sync generated provider output"
+
+          git fetch origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::main advanced while generated output was building; rerun this workflow on the latest main."
+            exit 1
+          fi
+
+          git push origin HEAD:main
+
+      - name: Summarize generated output commit
+        if: steps.drift.outputs.changed == 'true'
+        run: |
+          echo "Committed generated provider output directly to main." >> "$GITHUB_STEP_SUMMARY"

@@ -386,7 +386,7 @@ Skill instructions here.`;
 
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const { skills } = readSourceFiles(testRootDir);
 
@@ -408,7 +408,7 @@ Audit the code.`;
 
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const { skills } = readSourceFiles(testRootDir);
 
@@ -427,7 +427,7 @@ Audit the code.`;
 
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const { skills } = readSourceFiles(testRootDir);
 
@@ -445,7 +445,7 @@ Impeccable design instructions.`;
 
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const refDir = path.join(skillDir, 'reference');
     ensureDir(refDir);
@@ -464,7 +464,7 @@ Impeccable design instructions.`;
   test('should fall back to "impeccable" when frontmatter has no name', () => {
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), 'Just body, no frontmatter.');
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), 'Just body, no frontmatter.');
 
     const { skills } = readSourceFiles(testRootDir);
 
@@ -475,7 +475,7 @@ Impeccable design instructions.`;
   test('should ignore non-md files in skill/reference', () => {
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: test-skill\n---\nBody');
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), '---\nname: test-skill\n---\nBody');
 
     const refDir = path.join(skillDir, 'reference');
     ensureDir(refDir);
@@ -487,6 +487,25 @@ Impeccable design instructions.`;
     expect(skills).toHaveLength(1);
     expect(skills[0].references).toHaveLength(1);
     expect(skills[0].references[0].name).toBe('typography');
+  });
+
+  test('should read nested skill script files with portable relative names', () => {
+    const skillDir = path.join(testRootDir, 'skill');
+    ensureDir(skillDir);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), '---\nname: test-skill\n---\nBody');
+
+    const scriptsDir = path.join(skillDir, 'scripts');
+    ensureDir(path.join(scriptsDir, 'live'));
+    fs.writeFileSync(path.join(scriptsDir, 'context.mjs'), 'export const context = true;\n');
+    fs.writeFileSync(path.join(scriptsDir, 'live/session-store.mjs'), 'export const nested = true;\n');
+    fs.writeFileSync(path.join(scriptsDir, 'config.json'), '{"local":true}\n');
+
+    const { skills } = readSourceFiles(testRootDir);
+    const scripts = skills[0].scripts;
+    const scriptNames = scripts.map(script => script.name).sort();
+
+    expect(scriptNames).toEqual(['context.mjs', 'live/session-store.mjs']);
+    expect(scripts.find(script => script.name === 'live/session-store.mjs').content).toContain('nested = true');
   });
 
   test('should handle missing skill directory', () => {
@@ -508,7 +527,7 @@ Body content.`;
 
     const skillDir = path.join(testRootDir, 'skill');
     ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const { skills } = readSourceFiles(testRootDir);
 
@@ -534,90 +553,39 @@ describe('readPatterns', () => {
     }
   });
 
-  test('should extract DO and DON\'T patterns from SKILL.md', () => {
-    const skillContent = `---
-name: impeccable
----
-
-### Typography
-**DO**: Use variable fonts for flexibility.
-**DON'T**: Use system fonts like Arial.
-
-### Color & Contrast
-**DO**: Ensure WCAG AA compliance.
-**DON'T**: Use gray text on colored backgrounds.
-
-### Layout & Space
-**DO**: Use consistent spacing scale.
-**DON'T**: Nest cards inside cards.`;
-
-    const skillDir = path.join(testRootDir, 'skill');
-    ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
-
+  test('returns the curated DO/DON\'T pattern categories', () => {
+    // v3.0: readPatterns no longer parses SKILL.md. It returns a hand-curated
+    // catalog (CURATED_CATEGORIES) that powers the homepage Antidote teaser.
     const { patterns, antipatterns } = readPatterns(testRootDir);
 
-    expect(patterns).toHaveLength(3);
-    expect(antipatterns).toHaveLength(3);
+    expect(patterns).toHaveLength(6);
+    expect(antipatterns).toHaveLength(6);
 
     expect(patterns[0].name).toBe('Typography');
-    expect(patterns[0].items).toContain('Use variable fonts for flexibility.');
-    expect(antipatterns[0].items).toContain('Use system fonts like Arial.');
+    expect(patterns[0].items.length).toBeGreaterThan(0);
+    expect(antipatterns[0].name).toBe('Typography');
+    expect(antipatterns[0].items.length).toBeGreaterThan(0);
   });
 
-  test('should normalize "Color & Theme" to "Color & Contrast"', () => {
-    const skillContent = `---
-name: impeccable
----
-
-### Color & Theme
-**DO**: Use OKLCH color space.
-**DON'T**: Use pure black.`;
-
-    const skillDir = path.join(testRootDir, 'skill');
-    ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
-
-    const { patterns, antipatterns } = readPatterns(testRootDir);
-
-    expect(patterns[0].name).toBe('Color & Contrast');
-  });
-
-  test('should handle missing SKILL.md file', () => {
-    ensureDir(path.join(testRootDir, 'skill'));
-
-    const { patterns, antipatterns } = readPatterns(testRootDir);
-
-    expect(patterns).toEqual([]);
-    expect(antipatterns).toEqual([]);
-  });
-
-  test('should return patterns in consistent section order', () => {
-    const skillContent = `---
-name: impeccable
----
-
-### Motion
-**DO**: Use ease-out for natural movement.
-
-### Typography
-**DO**: Use modular scale.
-
-### Color & Contrast
-**DO**: Use tinted neutrals.`;
-
-    const skillDir = path.join(testRootDir, 'skill');
-    ensureDir(skillDir);
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
-
+  test('returns categories in the curated order', () => {
     const { patterns } = readPatterns(testRootDir);
+    expect(patterns.map((p) => p.name)).toEqual([
+      'Typography',
+      'Color & Contrast',
+      'Layout & Space',
+      'Visual Details',
+      'Motion',
+      'Interaction',
+    ]);
+  });
 
-    // Patterns are returned in predefined section order, not source order
-    // Only sections with content are included
-    expect(patterns[0].name).toBe('Typography');
-    expect(patterns[1].name).toBe('Color & Contrast');
-    expect(patterns[2].name).toBe('Motion');
-    expect(patterns.length).toBe(3);
+  test('ignores its arguments (curated, not extracted from any SKILL.md)', () => {
+    const fromBogusRoot = readPatterns('/nonexistent/path/xyz');
+    const fromRealRoot = readPatterns(testRootDir);
+    expect(fromBogusRoot.patterns.map((p) => p.name)).toEqual(
+      fromRealRoot.patterns.map((p) => p.name)
+    );
+    expect(fromBogusRoot.patterns).toHaveLength(6);
   });
 });
 
@@ -658,24 +626,18 @@ describe('replacePlaceholders', () => {
     expect(result).toBe('Commands: /audit, /polish');
   });
 
-  test('should exclude i-impeccable from {{available_commands}}', () => {
-    const result = replacePlaceholders('Commands: {{available_commands}}', 'claude-code', ['i-audit', 'i-impeccable', 'i-polish']);
-    expect(result).toBe('Commands: /i-audit, /i-polish');
-  });
-
   test('should exclude legacy teach-impeccable from {{available_commands}}', () => {
     const result = replacePlaceholders('Commands: {{available_commands}}', 'claude-code', ['audit', 'teach-impeccable', 'polish']);
     expect(result).toBe('Commands: /audit, /polish');
   });
 
-  test('should exclude legacy i-teach-impeccable from {{available_commands}}', () => {
-    const result = replacePlaceholders('Commands: {{available_commands}}', 'claude-code', ['i-audit', 'i-teach-impeccable', 'i-polish']);
-    expect(result).toBe('Commands: /i-audit, /i-polish');
-  });
-
-  test('should produce empty string for {{available_commands}} with no commands', () => {
-    const result = replacePlaceholders('Commands: {{available_commands}}.', 'claude-code', []);
-    expect(result).toBe('Commands: .');
+  test('lists /impeccable sub-commands for {{available_commands}} when no command names are passed', () => {
+    // v3.0 single-skill architecture: with no command names, the list falls back
+    // to the IMPECCABLE_SUB_COMMANDS sub-commands rendered as `/impeccable <sub>`.
+    const result = replacePlaceholders('Commands: {{available_commands}}', 'claude-code', []);
+    expect(result.startsWith('Commands: /impeccable ')).toBe(true);
+    expect(result).toContain('/impeccable audit');
+    expect(result).toContain('/impeccable polish');
   });
 
   test('should replace multiple placeholders in the same string', () => {
@@ -693,4 +655,3 @@ describe('replacePlaceholders', () => {
     expect(result).toBe('the model .cursorrules');
   });
 });
-

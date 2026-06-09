@@ -2,13 +2,13 @@ import {
 	initGlassTerminal,
 	renderTerminalLayout,
 } from "./components/glass-terminal.js";
-import { initLensEffect } from "./components/lens.js";
 import { initFrameworkViz } from "./components/framework-viz.js";
 import { initScrollReveal } from "./utils/reveal.js";
 import { initAnchorScroll, initHashTracking } from "./utils/scroll.js";
+import { initCopyFeedback } from "./utils/copy-feedback.js";
 import { initSectionNav } from "./components/section-nav.js";
 import { initFoundationGrid } from "./components/foundation-grid.js";
-import { initLiveDemo } from "./components/live-demo.js";
+import { initLiveDemo, initGbarPageChat } from "./components/live-demo.js";
 
 // ============================================
 // STATE
@@ -209,26 +209,6 @@ document.addEventListener("click", (e) => {
 		const bundleName = bundleBtn.dataset.bundle;
 		window.location.href = `/api/download/bundle/${bundleName}`;
 	}
-
-	// Handle copy button clicks
-	const copyBtn = e.target.closest("[data-copy]");
-	if (copyBtn) {
-		const textToCopy = copyBtn.dataset.copy;
-		const onCopied = () => {
-			copyBtn.classList.add('copied');
-			setTimeout(() => copyBtn.classList.remove('copied'), 1500);
-		};
-		if (navigator.clipboard?.writeText) {
-			navigator.clipboard.writeText(textToCopy).then(onCopied).catch(() => {});
-		} else {
-			// Fallback for non-HTTPS or older browsers
-			const ta = Object.assign(document.createElement('textarea'), { value: textToCopy, style: 'position:fixed;left:-9999px' });
-			document.body.appendChild(ta);
-			ta.select();
-			try { document.execCommand('copy'); onCopied(); } catch {}
-			ta.remove();
-		}
-	}
 });
 
 
@@ -236,10 +216,34 @@ document.addEventListener("click", (e) => {
 // STARTUP
 // ============================================
 
+// Fade the header's glass background in px-by-px as the user scrolls off the
+// hero, by writing scroll progress (0 → 1 over RANGE px) to a --hp custom
+// property the CSS interpolates against.
+function initHeaderScroll() {
+	const header = document.querySelector("[data-site-header]");
+	if (!header) return;
+	const RANGE = 200;
+	let ticking = false;
+	const apply = () => {
+		const p = Math.min(1, window.scrollY / RANGE);
+		header.style.setProperty("--hp", p.toFixed(4));
+		ticking = false;
+	};
+	const onScroll = () => {
+		if (!ticking) {
+			ticking = true;
+			requestAnimationFrame(apply);
+		}
+	};
+	apply();
+	window.addEventListener("scroll", onScroll, { passive: true });
+}
+
 function init() {
 	initAnchorScroll();
 	initHashTracking();
-	initLensEffect();
+	initCopyFeedback();
+	initHeaderScroll();
 	initScrollReveal();
 	initGlassTerminal();
 	initFrameworkViz();
@@ -248,6 +252,7 @@ function init() {
 	initWhyTabs();
 	initLanguageTabs();
 	initLiveDemo();
+	initGbarPageChat();
 	loadContent();
 
 	document.body.classList.add("loaded");

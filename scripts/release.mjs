@@ -5,7 +5,7 @@
 // Usage: node scripts/release.mjs <skill|cli|extension> [--dry-run]
 //
 // Refuses on a dirty tree, an unpushed HEAD, or a missing changelog entry.
-// For the skill component, also reruns `bun run build` and refuses if the
+// For the skill component, also reruns `bun run build:release` and refuses if the
 // regenerated harness directories drift from what is committed.
 
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
@@ -23,7 +23,7 @@ const COMPONENTS = {
     tagPrefix: 'skill-v',
     label: 'Skill',
     changelogLabel: 'v',
-    buildCmd: 'bun run build',
+    buildCmd: 'bun run build:release',
     artifacts: ['dist/universal.zip'],
     postReleaseHint: null,
     tweetHeader: (v) => `Impeccable v${v} is out.`,
@@ -46,9 +46,10 @@ const COMPONENTS = {
     label: 'Extension',
     changelogLabel: 'Extension v',
     buildCmd: 'bun run build:extension',
-    artifacts: ['dist/extension.zip'],
-    postReleaseHint: 'Upload `dist/extension.zip` to the Chrome Web Store dashboard to publish.',
-    tweetHeader: (v) => `Impeccable Chrome extension v${v} is out.`,
+    artifacts: ['dist/extension.zip', 'dist/extension-firefox.zip'],
+    postReleaseHint:
+      'Upload `dist/extension.zip` to the Chrome Web Store dashboard, and `dist/extension-firefox.zip` to addons.mozilla.org (AMO), to publish.',
+    tweetHeader: (v) => `Impeccable browser extension v${v} is out.`,
     tweetCta: null,
   },
 };
@@ -149,18 +150,20 @@ if (remoteTags.split('\n').some((line) => line.endsWith(`refs/tags/${tag}`))) {
 ok('tag is free');
 
 step(`Extracting changelog entry for "${cfg.changelogLabel}${version}"`);
-const changelogSource = path.join(repoRoot, 'site/pages/index.astro');
-const indexHtml = readFileSync(changelogSource, 'utf8');
-const expectedHeader = `<span class="changelog-version">${cfg.changelogLabel}${version}</span>`;
-const headerIdx = indexHtml.indexOf(expectedHeader);
+const changelogSource = path.join(repoRoot, 'site/pages/changelog.astro');
+const changelogHtml = readFileSync(changelogSource, 'utf8');
+const expectedHeader = `<span class="cf-version">${cfg.changelogLabel}${version}</span>`;
+const headerIdx = changelogHtml.indexOf(expectedHeader);
 if (headerIdx === -1) {
-  fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/index.astro. Add one before releasing.`);
+  fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/changelog.astro. Add one before releasing.`);
 }
-const entryStart = indexHtml.lastIndexOf('<div class="changelog-entry"', headerIdx);
-const ulEnd = indexHtml.indexOf('</ul>', headerIdx);
-if (entryStart === -1 || ulEnd === -1) fail('Changelog entry markup is malformed.');
-const entryEnd = indexHtml.indexOf('</div>', ulEnd) + '</div>'.length;
-const entryHtml = indexHtml.slice(entryStart, entryEnd);
+// Notes are the entry's bullet list. Scoping to <ul class="cf-items">
+// skips the optional lead paragraph, before/after figure, and stat row
+// that the headline release (v3.5.0) carries, so release notes stay clean.
+const listStart = changelogHtml.indexOf('<ul class="cf-items">', headerIdx);
+const listEnd = changelogHtml.indexOf('</ul>', listStart);
+if (listStart === -1 || listEnd === -1) fail('Changelog entry markup is malformed.');
+const entryHtml = changelogHtml.slice(listStart, listEnd + '</ul>'.length);
 
 const notes = htmlToMarkdown(entryHtml);
 ok('extracted');

@@ -8,13 +8,13 @@
 
 chrome.devtools.panels.create(
   'Impeccable',
-  'icons/icon-32.png',
-  'devtools/panel.html'
+  '/icons/icon-32.png',
+  '/devtools/panel.html'
 );
 
 // Sidebar pane in the Elements panel: shows findings for the currently selected element
 chrome.devtools.panels.elements.createSidebarPane('Impeccable', (sidebar) => {
-  sidebar.setPage('devtools/sidebar.html');
+  sidebar.setPage('/devtools/sidebar.html');
   sidebar.setHeight('200px');
 });
 

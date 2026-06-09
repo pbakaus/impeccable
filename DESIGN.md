@@ -1,74 +1,92 @@
 ---
 name: Impeccable
-description: Warm-paper editorial sanctuary — committed serif display, one decisive magenta, flat surfaces at rest.
+description: Neo kinpaku system. Two brand anchors, kinpaku gold and verdigris patina, sit on dark warm-black lacquer. Restraint in chrome, brilliance in texture.
 
-# Colors use OKLCH per `The OKLCH-Only Rule` in §2. Stitch's linter validates
-# hex sRGB only, so it will warn on these entries — deliberate trade for one
-# source of truth and full wide-gamut fidelity. Our own parser accepts strings.
+# All values below mirror site/styles/kinpaku-tokens.css verbatim. That file
+# is the source of truth; this frontmatter is the portable export. If a token
+# changes there, update both.
 colors:
-  editorial-magenta: "oklch(60% 0.25 350)"
-  editorial-magenta-deep: "oklch(52% 0.25 350)"
-  warm-ash-cream: "oklch(96% 0.005 350)"
-  crisp-paper-white: "oklch(98% 0 0)"
-  deep-graphite: "oklch(10% 0 0)"
-  soft-charcoal: "oklch(25% 0 0)"
-  mid-ash: "oklch(55% 0 0)"
-  paper-mist: "oklch(92% 0 0)"
-  magenta-whisper: "oklch(60% 0.25 350 / 0.15)"
-  magenta-veil: "oklch(60% 0.25 350 / 0.25)"
+  # Brand anchors
+  kinpaku-gold: "oklch(84% 0.19 80.46)"       # primary accent
+  verdigris-patina: "oklch(70% 0.12 188)"     # secondary accent / state
+
+  # Surfaces
+  lacquer-black: "oklch(7% 0.006 95)"         # page ground
+  lacquer-deep: "oklch(4% 0.004 95)"          # deepest inset
+  raised-lacquer: "oklch(11% 0.006 95)"       # panels and inputs
+  graphite: "oklch(15% 0.008 95)"             # inactive states
+  graphite-2: "oklch(19% 0.008 95)"           # one step up from graphite
+
+  # Text
+  champagne: "oklch(91% 0 0)"                 # headlines, <strong> — neutral white (name kept for compat)
+  text-warm: "oklch(88% 0 0)"                 # body — neutral near-white
+  text-muted: "oklch(72% 0 0)"                # captions, meta
+  text-faint: "oklch(62% 0 0)"                # subdued
+  text-mute-deep: "oklch(52% 0 0)"            # disabled
+
+  # Gold ramp
+  kinpaku-pale: "oklch(86% 0.07 84)"          # hover lift, pale fills
+  kinpaku-rich: "oklch(77% 0.13 82)"          # active CTA, severity-medium
+  kinpaku-deep: "oklch(61% 0.085 78)"         # borders against the brand
+  gold-hairline: "oklch(78% 0 0 / 0.16)"      # default rule — neutral (name kept for compat)
+  gold-hairline-strong: "oklch(74% 0.09 82 / 0.6)" # active rule — gold
+
+  # Patina ramp
+  patina-pale: "oklch(82% 0.07 188)"          # hover lift on patina
+  patina-deep: "oklch(49% 0.08 188)"          # deep oxide, dark variants
+
+  # State (warning only, used sparingly)
+  vermilion-warning: "oklch(58% 0.15 35)"
 
 typography:
-  display:
-    fontFamily: "Cormorant Garamond, Georgia, serif"
-    fontSize: "clamp(2.5rem, 7vw, 4.5rem)"
-    fontWeight: 300
+  wordmark:
+    # Solid Alumni Sans (token --ks-font-wordmark), the weightable sibling of
+    # the pinstripe display face. The pinstripe itself is single-weight and
+    # reads too thin in the small lockup, so the wordmark uses the solid cut.
+    fontFamily: "Alumni Sans, Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif"
+    fontSize: "1.3rem"
+    fontWeight: 400
+    letterSpacing: "0.15em"
     lineHeight: 1
+  display:
+    fontFamily: "Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif"
+    fontSize: "clamp(3.4rem, 6.5vw, 5.6rem)"
+    fontWeight: 300
+    letterSpacing: "-0.01em"
+    lineHeight: 1.02
   headline:
-    fontFamily: "Cormorant Garamond, Georgia, serif"
-    fontSize: "clamp(1.75rem, 4vw, 2.5rem)"
-    fontWeight: 400
-    lineHeight: 1.2
+    fontFamily: "Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif"
+    fontSize: "clamp(2.6rem, 4vw, 3.4rem)"
+    fontWeight: 600
+    letterSpacing: "0"
+    lineHeight: 1.04
   title:
-    fontFamily: "Cormorant Garamond, Georgia, serif"
-    fontSize: "clamp(1.125rem, 2.5vw, 1.75rem)"
-    fontWeight: 400
-    lineHeight: 1.3
+    fontFamily: "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif"
+    fontSize: "1.18rem"
+    fontWeight: 500
+    lineHeight: 1.35
   body:
-    fontFamily: "Instrument Sans, system-ui, sans-serif"
-    fontSize: "1rem"
+    fontFamily: "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif"
+    fontSize: "1.02rem"
     fontWeight: 400
-    lineHeight: 1.6
-  body-lead:
-    fontFamily: "Instrument Sans, system-ui, sans-serif"
-    fontSize: "1.0625rem"
-    fontWeight: 400
-    lineHeight: 1.65
-  supporting:
-    fontFamily: "Instrument Sans, system-ui, sans-serif"
-    fontSize: "0.875rem"
-    fontWeight: 400
-    lineHeight: 1.6
-  label:
-    fontFamily: "Instrument Sans, system-ui, sans-serif"
-    fontSize: "0.9rem"
+    lineHeight: 1.8
+  eyebrow:
+    fontFamily: "SFMono-Regular, Roboto Mono, Consolas, monospace"
+    fontSize: "0.7rem"
     fontWeight: 500
-    letterSpacing: "0.05em"
-  micro-label:
-    fontFamily: "Instrument Sans, system-ui, sans-serif"
-    fontSize: "0.6875rem"
-    fontWeight: 500
-    letterSpacing: "0.1em"
+    letterSpacing: "0.18em"
   mono:
-    fontFamily: "Space Grotesk, monospace"
-    fontSize: "0.75rem"
-    fontWeight: 400
+    fontFamily: "SFMono-Regular, Roboto Mono, Consolas, monospace"
+    fontSize: "0.72rem"
+    fontWeight: 500
+    letterSpacing: "0.22em"
 
 rounded:
   none: "0"
+  xs: "2px"
   sm: "4px"
-  md: "8px"
-  lg: "12px"
-  xl: "16px"
+  md: "6px"
+  lg: "8px"
 
 spacing:
   xs: "8px"
@@ -77,221 +95,331 @@ spacing:
   lg: "32px"
   xl: "48px"
   "2xl": "80px"
-  "3xl": "120px"
+  "3xl": "112px"
 
 components:
   button-primary:
-    backgroundColor: "{colors.deep-graphite}"
-    textColor: "{colors.crisp-paper-white}"
-    typography: "{typography.label}"
-    rounded: "{rounded.none}"
-    padding: "16px 48px"
+    backgroundColor: "{colors.kinpaku-gold}"
+    textColor: "{colors.lacquer-deep}"
+    typography: "{typography.title}"
+    rounded: "{rounded.xs}"
+    padding: "0 38px"
   button-primary-hover:
-    backgroundColor: "{colors.editorial-magenta}"
-    textColor: "{colors.crisp-paper-white}"
-  input-text:
+    backgroundColor: "{colors.kinpaku-pale}"
+    textColor: "{colors.lacquer-deep}"
+  button-secondary:
     backgroundColor: "transparent"
-    textColor: "{colors.deep-graphite}"
+    textColor: "{colors.kinpaku-gold}"
+    borderColor: "{colors.gold-hairline-strong}"
+    rounded: "{rounded.xs}"
+    padding: "0 38px"
+  input-text:
+    backgroundColor: "{colors.lacquer-deep}"
+    textColor: "{colors.champagne}"
+    borderColor: "{colors.gold-hairline}"
     rounded: "{rounded.sm}"
-    padding: "8px 12px"
+    padding: "14px 16px"
   card:
-    backgroundColor: "{colors.warm-ash-cream}"
-    textColor: "{colors.deep-graphite}"
-    rounded: "{rounded.md}"
+    backgroundColor: "{colors.raised-lacquer}"
+    textColor: "{colors.text-warm}"
+    borderColor: "{colors.gold-hairline}"
+    rounded: "{rounded.sm}"
     padding: "24px"
-  card-feature:
-    backgroundColor: "{colors.crisp-paper-white}"
-    textColor: "{colors.deep-graphite}"
-    rounded: "{rounded.lg}"
-    padding: "48px"
   nav-link:
-    textColor: "{colors.deep-graphite}"
+    textColor: "{colors.champagne}"
     typography: "{typography.body}"
   nav-link-hover:
-    textColor: "{colors.editorial-magenta}"
+    textColor: "{colors.kinpaku-gold}"
+  live-picker-bar:
+    backgroundColor: "{colors.lacquer-deep}"
+    textColor: "{colors.champagne}"
+    borderColor: "{colors.kinpaku-gold}"
+    rounded: "{rounded.sm}"
+    padding: "4px 5px"
+  live-picker-toggle-active:
+    backgroundColor: "oklch(78% 0.12 82 / 0.18)"
+    textColor: "{colors.kinpaku-gold}"
 ---
 
 # Design System: Impeccable
 
-## 1. Overview: The Editorial Sanctuary
+## 1. Overview: Neo Kinpaku
 
-**Creative North Star: "The Editorial Sanctuary"**
+**Creative North Star: "Neo Kinpaku"**
 
-The Impeccable site reads more like a printed design publication than a SaaS landing page. Committed typography, generous breathing room, and a single decisive accent that cuts through warm paper. The interface feels **considered, unhurried, and expert** — the work of someone who has made the calls a thousand times and has zero interest in chasing the current AI-tool aesthetic.
+Impeccable is now a dark lacquer interface marked by Japanese gold leaf and precise technical geometry. The brand should feel like a crafted object: black urushi, irregular kinpaku seams, quiet measurement marks, circuit traces, and controlled verdigris oxidation. It is refined, technical, and physical.
 
-The aesthetic philosophy is **restraint in service of craft**. Every element earns its place. Nothing is decorative without function. The palette is dominated by warm paper tones with one vibrant voice. The typography pairs a stately italic serif with a clean neutral sans. Motion is reserved for moments that actually communicate state. The site is the demo — it must pass the same anti-pattern audit it asks its users to run on their own work.
+This direction replaces the old warm-paper editorial system. No italic serif hero. No magenta accent. No generic AI-tool neon. The page should feel expensive and deliberate, but still useful: comparisons, command demos, live audit tables, and documentation modules remain the product proof.
 
-This system explicitly rejects the AI-tool visual vocabulary that surrounds the product: dark mode with purple gradients, neon accents, glassmorphism, glowing cyan-on-black, SaaS hero-metric layouts, and identical-card feature grids. When in doubt, do less than a marketing site would, more than a portfolio would.
+**Key characteristics**
 
-**Key Characteristics:**
-- Warm off-white paper tones with an almost-imperceptible magenta tint for subliminal palette cohesion.
-- A single decisive magenta accent used on no more than 10% of any screen. Its rarity is the point.
-- Italic serif for display type; clean neutral sans for body at 1.6+ line-height.
-- Sharp, uppercase, letter-tracked primary CTAs — no rounded-rectangle-with-drop-shadow defaults.
-- Flat surfaces at rest. Shadows appear only as a response to state (hover, elevation, focus).
-- Asymmetric magazine-scale spacing; intentionally skips the 4px step.
+- Dark mineral and lacquer surfaces, never pure black.
+- Kinpaku gold as the primary accent, with true leaf texture where an element carries brand weight.
+- Verdigris patina as the secondary accent for state, contrast, and "improved" signals.
+- A geometric sans voice with a widely tracked wordmark, not a serif editorial voice.
+- Thin calibration lines, circuit geometry, and gold seams used as functional structure.
+- Small radii, restrained borders, and almost no decorative shadow.
 
-## 2. Colors: The Warm-Paper Palette
+## 2. The Kit: One Vocabulary For Every Page
 
-A two-chord palette: warm paper neutrals carrying a near-invisible magenta tint, plus one decisive accent in the same hue family. No secondary or tertiary accents in the core system — the restraint is doctrinal.
+The site ships a global component kit at `site/styles/kinpaku-kit.css`, imported from `Base.astro` so every page gets it for free. The kit primitives are listed below. The live demos are on `/design-system`.
 
-### Primary
-- **Editorial Magenta** (oklch(60% 0.25 350)): The one vibrant voice. Primary CTAs, active navigation states, live-state indicators, rare editorial emphasis. Never used as a gradient, never as a background wash, never as text fill. Rarity is the design choice.
+### The Kit Consumption Rule
 
-### Neutral
-- **Warm Ash Cream** (oklch(96% 0.005 350)): Primary page background. Near-white with a near-imperceptible magenta tint that creates subconscious cohesion with Editorial Magenta. Used on `body` and standard surfaces.
-- **Crisp Paper White** (oklch(98% 0 0)): Pure background. Used for inverted text moments (white-on-dark CTAs) and surfaces needing maximum contrast. Almost never the page background — too cold alone.
-- **Deep Graphite** (oklch(10% 0 0)): Primary text for body copy and headlines. Softer than pure black, reads as confident-but-not-aggressive on warm paper. Background of the primary CTA.
-- **Soft Charcoal** (oklch(25% 0 0)): Secondary text — taglines, hook paragraphs, supporting copy. Clearly subordinate to Deep Graphite without being washed out.
-- **Mid Ash** (oklch(55% 0 0)): Tertiary text — micro-labels, captions, meta lines, "works with" labels. At small sizes reads as intentionally recessed metadata.
-- **Paper Mist** (oklch(92% 0 0)): Hairline borders, section dividers, the barely-visible structural seams.
+When building a new page or refactoring an existing one, reach for a kit primitive before inventing a new class. Specifically:
 
-### Accent Alpha Variants
-- **Editorial Magenta Deep** (oklch(52% 0.25 350)): Hover/active state for Editorial Magenta. Small darkening, confirms interaction without shouting.
-- **Magenta Whisper** (oklch(60% 0.25 350 / 0.15)): Glow backdrop under accent elements on hover (diffuse shadows only), subtle selection highlights.
-- **Magenta Veil** (oklch(60% 0.25 350 / 0.25)): Slightly stronger translucent tint for focus rings and emphasis shells.
+- **Buttons**: use `.ks-button` + a variant (`.ks-button-primary`, `-secondary`, `-ghost`, `-disabled`). Do not write a new `.hero-cta-primary` / `.footer-cta` / `.section-action-button` class — those are the bespoke vocabularies the kit is meant to replace.
+- **Grouping content**: use `.ks-bento` + `.ks-bento-tile` (with `--span-4` / `--span-6` / `--span-8` across a 12-column grid). This is the canonical answer to "how do I group 2-6 items without nesting cards?" Do not invent yet another card class.
+- **Section scaffolding**: use `.ks-section` for the container, `.ks-section-head` for the header, `<h2>` inside that (the kit styles it), and `.ks-section-sub` for the subhead. Eyebrow above the h2 is optional via `.ks-section-eyebrow` — skip it on editorial walkthroughs where every-section eyebrows read as AI scaffolding.
+- **Status, tags, toasts, modals, tooltips, empty states, pagination, skeletons, changelog rows**: use the kit primitive. Listed in the cheatsheet below.
 
-### Command Category Tints (fenced — do not extend)
-A separate six-tint vocabulary used exclusively to color-code the periodic-table visualization of impeccable's 23 commands. These tints predate the OKLCH system and live in one component. **Do not extend this vocabulary elsewhere.**
+Invent only when the kit truly doesn't cover the shape. When you do invent, flag it — a new pattern that solves a real recurring need belongs in the kit, not in page-specific CSS. Page CSS is for genuinely page-specific scenery (hero illustrations, unique editorial visuals), not for reinventing primitives the kit already has.
 
-- **Create** (bg `#fdf2f8` / border `#ec4899` / text `#be185d`)
-- **Evaluate** (bg `#fdf4ff` / border `#d946ef` / text `#a21caf`)
-- **Refine** (bg `#eff6ff` / border `#3b82f6` / text `#1d4ed8`)
-- **Simplify** (bg `#fffbeb` / border `#f59e0b` / text `#b45309`)
-- **Harden** (bg `#f0fdf4` / border `#22c55e` / text `#15803d`)
-- **System** (bg `#f5f5f4` / border `#78716c` / text `#44403c`)
+### What's In The Kit (cheatsheet)
 
-### Named Rules
+Every class below is a global primitive. Drop it on any element on any page using `<Base.astro>`; the styles resolve through `kinpaku-tokens.css` so they inherit the current brand values automatically.
 
-**The One Voice Rule.** Editorial Magenta is the only vibrant color in the system. No supporting accent is added, ever, no matter how much a layout "wants" a second color. If a second emphasis point is needed, use scale or weight, never a second hue.
+**Brand lockup**
 
-**The Paper-Not-White Rule.** The page background is Warm Ash Cream, never Crisp Paper White. Pure white is reserved for specific inverted surfaces. Warmth is load-bearing — without it, the site reads as generic and the decisive magenta reads as abrasive rather than decisive.
+- `.ks-brand` — wrapper for the brand mark + wordmark lockup (anchor or div).
+- `.ks-mark` — the carved-tile glyph (a solid kinpaku square split by a diagonal slash), 38×38, no container border.
+- `.ks-wordmark` — the IMPECCABLE wordmark text, solid Alumni Sans (`--ks-font-wordmark`), uppercase, weight 400, letter-spacing 0.15em.
 
-**The OKLCH-Only Rule.** All new colors must be declared in OKLCH. Legacy hex values exist only in the fenced Command Category Tints. Do not introduce new hex-declared colors into the system.
+**Section scaffolding**
 
-## 3. Typography: The Italic-and-Ink Voice
+- `.ks-section` — page-level section container, 1320px max-width, kit gutters.
+- `.ks-section-head` — the section header block.
+- `.ks-section-eyebrow` — small mono eyebrow above the h2 (optional).
+- `.ks-section-head h2` — auto-styles any h2 inside `.ks-section-head` to the section title scale (weight 600, kit display family).
+- `.ks-section-sub` — subhead paragraph below the h2.
+- `.ks-subsection` — nested grouping inside a section.
+- `.ks-subsection-label` — small mono label above a subsection's content.
 
-**Display Font:** Cormorant Garamond (with Georgia fallback)
-**Body Font:** Instrument Sans (with system-ui fallback)
-**Label/Mono Font:** Space Grotesk (used as a geometric mono, not for code blocks)
+**Buttons**
 
-**Character:** The display face is a refined transitional serif used in its **italic** cut — stately without being stuffy, drawing on long-form editorial headline traditions. The body face is a clean neutral sans with subtle geometric warmth, chosen to set long paragraphs without visual overhead. The "mono" is a contemporary grotesque reserved for small labels and metadata where a machine-adjacent feel reinforces the command-line product story.
+- `.ks-button.ks-button-primary` — filled kinpaku CTA, dark text. Both classes required.
+- `.ks-button.ks-button-secondary` — outlined kinpaku CTA.
+- `.ks-button.ks-button-ghost` — text-only kinpaku button.
+- `.ks-button[disabled]` or `.ks-button.ks-button-disabled` — disabled state.
+- `.ks-button-arrow` — wrapper for an arrow SVG inside a button (sized correctly).
+- `.ks-button-row` — flex row helper for horizontal button groups.
+
+**Form controls**
+
+- `.ks-form-sample` — vertical form layout.
+- `.ks-toggle` — switch (checkbox underneath, label visible).
+- `.ks-checkbox` — checkbox with label.
+- `.ks-select` — dropdown.
+
+**Tabs**
+
+- `.ks-tabs` — tab container.
+- `.ks-tab-list` — tab buttons row.
+- `.ks-tab-panel` — tab content panel.
+
+**Status, tags, and feedback**
+
+- `.ks-badge` + `.is-detected` / `.is-improved` / `.is-ready` — pill badge with dot.
+- `.ks-badge-row` — flex row helper.
+- `.ks-tag` + `.is-detected` / `.is-improved` / `.is-neutral` / `.is-ready` — slim tag, no dot.
+- `.ks-tag-row` — flex row helper.
+- `.ks-toast` + `.is-success` / `.is-warning` — alert toast with icon + dismiss.
+- `.ks-toast-icon` / `.ks-toast-close` — inner parts.
+- `.ks-modal` + `.ks-modal-actions` / `.ks-modal-close` — dialog box.
+- `.ks-empty` + `.ks-empty-icon` — empty-state block.
+- `.ks-skeleton` — loading shimmer.
+- `.ks-pagination` — paged-list nav.
+- `.ks-icon-button` + `.ks-tooltip` — circular icon button with hover tooltip.
+
+**Containers**
+
+- `.ks-bento` — 12-column grid with dark plinth + 8px gutters.
+- `.ks-bento-tile` — single tile within a bento.
+- `.ks-bento-tile--span-4` / `--span-6` / `--span-8` — sizing (e.g. 8/4, 6/6, 4/8).
+- `.ks-bento-num` — tiny mono caps marker for tile numbering. Add `data-color="patina"` to flip to verdigris.
+
+**Changelog**
+
+- `.ks-changelog` — vertical list wrapper.
+- `.ks-changelog-entry` — single dated entry.
+- `.ks-changelog-date` — left-column date.
+- `.ks-changelog-body` — right-column content. Use `<em>` inside `<strong>` for a small "NEW" badge.
+
+### Tokens vs Classes
+
+The kit primitives consume the tokens from `site/styles/kinpaku-tokens.css`. When you need a color, type scale value, easing, or rule alpha outside a kit primitive, read the token directly:
+
+- Colors: `var(--ks-kinpaku)`, `var(--ks-patina)`, `var(--ks-lacquer)`, `var(--ks-champagne)`, etc.
+- Type scale: `var(--ks-type-display-size)`, `var(--ks-type-headline-weight)`, etc.
+- Rules: `var(--ks-rule)`, `var(--ks-rule-strong)`.
+- Motion: `var(--ks-ease)`.
+
+Do not hand-type oklch values or font sizes in page CSS. If a value isn't in the token file, it's either a token that needs adding or a sign that the visual moment is bespoke enough to live page-locally — either way, the decision needs to be deliberate.
+
+## 3. Colors: Lacquer, Gold, Patina
+
+### Ground and Surface
+
+- **Lacquer Black** (`oklch(7% 0.006 95)`): Default page ground. It is warm and mineral, not neutral black.
+- **Lacquer Deep** (`oklch(4% 0.004 95)`): Deepest inset surfaces and footer depth.
+- **Raised Lacquer** (`oklch(11% 0.006 95)`): Panels, cards, demo frames, and dark UI surfaces.
+- **Graphite** (`oklch(15% 0.008 95)`): Input fields, inactive tiles, and subtle internal surfaces.
+- **Graphite 2** (`oklch(19% 0.008 95)`): One step above graphite; context pills, inactive chrome inside live mode bars.
+
+### Gold System
+
+- **Kinpaku Gold** (`oklch(84% 0.19 80.46)`): Primary accent. CTAs, active state, wordmark, key rules, command focus.
+- **Kinpaku Rich** (`oklch(77% 0.13 82)`): Active CTA fill and severity-medium markers.
+- **Kinpaku Deep** (`oklch(61% 0.085 78)`): Secondary gold for borders, subdued icons, and large technical diagrams.
+- **Kinpaku Pale** (`oklch(86% 0.07 84)`): Hover lift and pale fills.
+- **Default Hairline** (`oklch(78% 0 0 / 0.16)`): Default border and divider. Neutral, so borders and labels don't carry warmth (token name `gold-hairline` / `--ks-rule` is legacy).
+- **Strong Gold Hairline** (`oklch(74% 0.09 82 / 0.6)`): Active borders, focus outlines, and structural anchors. Stays gold — this is where the hairline is meant to read as brand.
+
+### Text
+
+- **Champagne** (`oklch(91% 0 0)`): Headlines, `<strong>`, important labels. The brightest text tier, fully neutral (token name is legacy). Text carries no warmth at any tier; the gold accents and surfaces do.
+- **Body Text** (`oklch(88% 0 0)`): Body copy on dark surfaces. Neutral and bright so reading copy reads crisp, not mushy.
+- **Muted Text** (`oklch(72% 0 0)`): Metadata, captions, secondary labels.
+- **Faint Text** (`oklch(62% 0 0)`): Subdued labels.
+- **Mute Deep** (`oklch(52% 0 0)`): Disabled copy.
+
+### Secondary and State
+
+- **Verdigris Patina** (`oklch(70% 0.12 188)`): Secondary accent. Improved states, live indicators, hover emphasis, and contrast point.
+- **Patina Pale** (`oklch(82% 0.07 188)`): Hover lift on patina surfaces.
+- **Patina Deep** (`oklch(49% 0.08 188)`): Deep oxide. Background texture and dark patina variants.
+- **Vermilion Warning** (`oklch(58% 0.15 35)`): Error or anti-pattern warning only. Use sparingly.
+
+### Color Rules
+
+**The Gold Carries Brand Rule.** Kinpaku gold is the primary brand signal. If a single accent must represent Impeccable, use gold, not magenta or cyan.
+
+**The Patina Has Meaning Rule.** Verdigris is secondary. It marks improvement, live state, or contrast against gold. Do not use it as a generic decoration field.
+
+**The Texture Budget Rule.** Leaf and patina textures are for brand-bearing moments: hero seams, CTA fills, dividers, major swatches, and select system modules. Generic cards stay mostly flat.
+
+**The OKLCH-Only Rule.** New colors are declared in OKLCH. Hex appears only inside third-party examples or imported assets.
+
+## 4. Typography: Two faces, weight inversion at the top
+
+**Display font:** Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif (pinstripe horizontal strikes carry the brand at display sizes)
+**Body and UI font:** Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif
+**Mono font:** SFMono-Regular, Roboto Mono, Consolas, monospace
+
+The voice is geometric and restrained. The pinstripe display face is reserved for the hero h1 and section h2s; the brand wordmark uses its solid sibling (Alumni Sans). Everything else (body, UI labels, controls, code) uses Albert Sans. The faces pair cleanly because they share humanist proportions without fighting for attention.
 
 ### Hierarchy
 
-- **Display** (display family, weight 300, italic, clamp(2.5rem, 7vw, 4.5rem), line-height 1): Hero title only. The light weight + italic cursive reads as an author signature rather than a marketing headline.
-- **Headline** (display family, weight 400, clamp(1.75rem, 4vw, 2.5rem), line-height 1.2): Section headings. Larger editorial moments.
-- **Title** (display family, weight 400, italic, clamp(1.125rem, 2.5vw, 1.75rem), line-height 1.3): Hero tagline / section leads. A quieter second display voice.
-- **Body** (body family, weight 400, 1rem, line-height 1.6): Paragraph copy. Capped at 65–75ch for readability.
-- **Body Lead** (body family, weight 400, 1rem–1.0625rem, line-height 1.6–1.65): The one or two "lead" paragraphs on each page. Slightly relaxed leading.
-- **Supporting** (body family, weight 400, 0.875rem, line-height 1.6): Captions, footnotes, supporting context.
-- **Label** (body family, weight 500, 0.9rem, `text-transform: uppercase`, `letter-spacing: 0.05em`): CTA labels. Short, declarative.
-- **Micro-Label** (body family, weight 500, 0.625–0.6875rem, `text-transform: uppercase`, `letter-spacing: 0.1em`): "Works with", "What's Included", "v3.0 Changelog".
-- **Monospace Meta** (mono family, weight 400–500, 0.6875–0.8125rem): Command names in inline prose, periodic-table tile labels.
+- **Wordmark**: solid Alumni Sans (`--ks-font-wordmark`), weight 400, uppercase, `1.3rem`, letter-spacing `0.15em`. Brand lockup only. The pinstripe sibling reads too thin at lockup size, so the wordmark uses the weightable cut.
+- **Display · h1**: Alumni Sans Pinstripe, `clamp(3.4rem, 6.5vw, 5.6rem)`, **weight 300**, line-height 1.02, letter-spacing `-0.01em`. Hero and major statements.
+- **Headline · h2**: Alumni Sans Pinstripe, `clamp(2.6rem, 4vw, 3.4rem)`, **weight 600**, line-height 1.04. Section titles.
+- **Title · h3**: Albert Sans, `1.18rem`, weight 500, line-height 1.35. Component and panel headings.
+- **Body**: Albert Sans, `1.02rem`, weight 400, line-height 1.8. Long copy on dark surfaces needs air.
+- **Eyebrow**: Mono, `0.7rem`, weight 500, uppercase, letter-spacing `0.18em`. Small markers above titles.
+- **Mono label**: Mono, `0.72rem`, letter-spacing `0.22em`. Category labels, nav metadata, table headers, audit lines.
 
-### Named Rules
+### Typography Rules
 
-**The Italic-Is-Voice Rule.** Italic is used as a voice choice for display type, not as emphasis within body copy. Body emphasis is carried by weight or by swapping to the mono family (see `<em>` in command menus). Treating italic as emphasis inside paragraphs dilutes the display voice.
+**The Weight-Inversion Rule.** Section h2s read heavier (600) than the hero h1 (300). This is deliberate: the hero is elegant and thin so the page can breathe; section anchors carry more weight to ground each block. Do not normalize the two weights.
 
-**The 1.6 Leading Rule.** Body line-height is 1.6 everywhere. Not 1.5, not 1.7, not "relaxed". This is the load-bearing readability decision — when the site reads as calm and editorial, it's 1.6 doing the work.
+**The Two-Face Rule.** Display sizes use Alumni Sans Pinstripe. Anything sized below `1.2rem` uses Albert Sans. Pinstripe at small sizes loses its identity and reads as a bad rendering.
 
-**The Fluid-Headlines-Only Rule.** Headings use `clamp()` fluid sizing. Body copy uses fixed `rem` values. Fluid body sizes look clever and feel wrong — they make line-lengths wander off spec.
+**Tracked Labels Are Short Rule.** Tracked uppercase labels are for short system markers. Do not write full sentences in tracked caps.
 
-## 4. Elevation
+**Dark Type Needs Air Rule.** Body text on lacquer uses line-height 1.65 to 1.8 and a max width of 65 to 75ch.
 
-Flat by default. Depth is conveyed through **state response**, not structural shadow. Surfaces rest on a single tonal layer (Warm Ash Cream); shadows appear only when an element is hovered, deliberately lifted, or requires ambient separation from a busy area.
+## 5. Elevation and Material
+
+The system is mostly flat. Depth comes from material contrast, hairline borders, texture, and subtle inset light.
 
 ### Shadow Vocabulary
 
-- **Soft Hover Lift** (`0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06)`): The default hover response on cards and interactive surfaces. Diffuse, offset downward.
-- **Lifted Card** (`0 20px 40px rgba(0,0,0,0.08)`): Deliberately elevated content (featured cards, install blocks). Low alpha — never reads as dark.
-- **Accent Glow** (`0 20px 60px var(--color-accent-dim)`): Magenta-tinted ambient shadow under the one or two moments that should feel magnetic. Used sparingly — this is the "rare ingredient" of the shadow vocabulary.
-- **Tooltip / Popover** (`0 0 20px rgba(0,0,0,0.15)` or `0 2px 8px rgba(0,0,0,0.1)`): Tight shadow for small floating UI.
+- **Panel Setback:** `0 24px 70px oklch(2% 0.004 95 / 0.42)` for large framed modules only.
+- **CTA Lift:** `0 18px 48px oklch(2% 0.004 95 / 0.4)` plus a small inset highlight.
+- **Patina Glow:** `0 0 22px oklch(70% 0.105 190 / 0.24)` for tiny live indicators only.
+- **No Default Card Shadow:** Cards rest on borders and background shifts.
 
-### Named Rules
+### Material Rules
 
-**The Flat-By-Default Rule.** Surfaces are flat at rest. If you find yourself adding a shadow to a non-interactive, non-elevated element, stop — you're reaching for Material Design muscle memory. Use a hairline Paper Mist border instead, or no articulation at all.
+**Hairline First Rule.** Use 1px gold hairlines before adding shadow.
 
-**The Low-Alpha Rule.** Every shadow in the system uses ≤0.15 alpha on its strongest blur. Higher alphas read as 2014 Material Design drop shadows — an immediate tell that the design wasn't considered.
+**No Glass Rule.** Translucency can exist in overlays, but decorative blur/glass panels are not part of this system.
 
-**The Tinted-Shadow-Only-For-Accent Rule.** Neutral shadows (black alpha) for structure. Colored (magenta-dim) shadows only for the deliberate accent-glow moments. Never tint shadows for decorative effect.
+**Texture Needs Contrast Rule.** Text never sits directly on high-contrast leaf texture. Add a lacquer veil or move the texture to an edge.
 
-## 5. Components
+**Asset-Led Material Rule.** Brand-bearing material accents use raster assets or generated images, not hand-drawn SVG approximations of leaf, dust, oxidation, or clockwork. Code-native geometry is reserved for simple hairlines, layout grids, and functional UI structure.
+
+## 6. Components
 
 ### Buttons
 
-- **Shape:** Flat and squared by default (`border-radius: 0`). Sharp corners are an explicit editorial choice — the site rejects the rounded-rectangle-with-drop-shadow default that marks most AI-adjacent marketing pages.
-- **Primary (hero-cta-combined):** Deep Graphite background, Crisp Paper White text. Padding 16px / 48px (`--spacing-sm` / `--spacing-xl`). Uppercase, `letter-spacing: 0.05em`, weight 500. No border, no shadow at rest.
-- **Hover:** `transform: translateY(-2px)` and background shifts to Editorial Magenta. Transition 200ms linear ease. A small confident step up, never a bounce.
-- **Focus:** Browser-default focus ring combined with the hover treatment. Visible keyboard focus is required.
-- **Secondary:** Inline text link in body copy, weight 500, hover shifts to Editorial Magenta. **No boxed secondary button exists in the system** — the site avoids the "stack of equal-weight CTAs" pattern entirely.
-- **Chip (picker overlay):** Radius 3–5px, small padding, mono-family label. Used in the live-mode action selector.
+- **Primary:** Kinpaku texture or gold fill, dark text, 1px border, 2px radius, min-height 58px.
+- **Secondary:** Transparent lacquer, gold border, gold text. Use for secondary commands only.
+- **Hover:** Slight upward transform, brighter gold position, or patina border. No bounce.
+- **Focus:** Patina outline with a 4px offset.
 
-### Cards & Containers
+### Hero Compare
 
-- **Corner Style:** Controlled vocabulary — 4px (chips / inline callouts), 8px (standard cards and card-CTAs), 12px (feature cards, install blocks), 16px (large content frames). No single "rounded-lg" default. Radius is picked per component weight.
-- **Background:** Warm Ash Cream or Crisp Paper White depending on layering. Deeper nested surfaces may lift to Paper Mist as a near-imperceptible tone shift.
-- **Shadow:** Flat at rest — see Elevation for the shadow vocabulary that applies on hover/lift.
-- **Border:** Hairline 1px in Paper Mist when a surface needs articulation without shadow.
-- **Internal Padding:** 16–32px for typical cards; large editorial frames 48px+. Padding matches visual weight, not applied uniformly.
+The before/after comparison is a proof object. It uses a dark grid field, a straight kinpaku seam, a gold handle, and readable labels. The "before" side can show AI slop colors, but the frame itself stays in the neo-kinpaku system.
 
-### Inputs / Fields
+### Command Rail
 
-The site is primarily editorial, so inputs are minimal:
+The first-viewport rail should map to workflow or high-value commands, not abstract design categories. Items use full-width dark bands, gold icons, and patina hover state.
 
-- **Email / text field:** Radius 4–6px, hairline Paper Mist border, transparent background. Focus state shifts border to Editorial Magenta with a Magenta Whisper backdrop glow.
-- **Combobox / select (filter controls):** Same stroke vocabulary, smaller padding, chevron glyph in Mid Ash.
-- **No custom checkbox/radio styling** beyond what the live-mode command picker needs.
+### Periodic Table
 
-### Navigation
+The command table uses dark category cells. Kinpaku covers Create, Refine, and Simplify variants; patina covers Evaluate and Harden; System is muted graphite. No light pastel category tints remain on the homepage.
 
-- **Site Header:** 62px compact bar, left-aligned brand lockup (monochrome mark + wordmark), right-aligned link cluster.
-- **Typography:** Body family, weight 500, 0.9–1rem. Normal case — the header is readable prose, not a set of signals.
-- **Default State:** Deep Graphite on Warm Ash Cream.
-- **Hover / Active:** Smooth color transition to Editorial Magenta, 200ms. No underline bar at rest; if an active indicator is needed, a thin accent-colored underline appears.
-- **Mobile:** Collapses to an icon-triggered drawer when horizontal space is insufficient.
+### DESIGN.md Panel
 
-### Periodic Table of Commands (signature component)
+The DESIGN.md visualization must show kinpaku as the primary color, patina as the secondary color, Alumni Sans Pinstripe and Albert Sans as the display and body families, and dark component samples. Magenta is not representative of the current system.
 
-A distinctive custom element worth documenting: the 23 commands are laid out as a periodic-table grid of 56×64px tiles, each with a category tint background, category-colored border, atomic number in the top-left (mono family, 7px), a symbol in the center (display family, weight 500, 20px), and a command label in mono below. Hover lifts the tile 2px with a category-colored shadow. Tiles are the one place where the Category Tint vocabulary (see Colors) is used on a colored surface rather than as a text accent.
+### Dividers and Material Accents
 
-### Layout & Spacing (fold from spec-absent Layout section)
+Dividers use real kinpaku, dust, or verdigris texture assets when they need to carry the brand. Simple CSS dividers are limited to straight hairlines. Avoid synthetic dot rails, fake dust strokes, or pseudo-circuit motifs that create rendering artifacts.
 
-- **Max width:** Content blocks cap at 900px (`--width-content`); page-level containers at 1400px (`--width-max`). Prose further constrained to 65–75ch.
-- **Spacing scale:** 8 / 16 / 24 / 32 / 48 / 80 / 120px (`--spacing-xs` through `--spacing-3xl`). The 4px step is deliberately omitted — this is an editorial scale, not an app-UI scale.
-- **Rhythm:** 80–120px between top-level sections, 24–48px between content groups within a section, 6–16px inside tight clusters.
-- **Grid:** No traditional column grid. Hero layouts are asymmetric two-column splits. Feature sections use `repeat(auto-fit, minmax(280px, 1fr))` rather than breakpoint-driven columns.
-- **Motion:** 150ms for color/opacity, 300–400ms for transforms, 600–1200ms for orchestrated entrances. All use `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) or `--ease-out-quint`. `prefers-reduced-motion` collapses every non-essential transition.
+### Footer
 
-## 6. Do's and Don'ts
+The footer can carry the strongest oxidation accent. Use the gold seam plus patina edge as a final brand signature.
 
-### Do:
+### Live Mode Picker
 
-- **Do** treat Warm Ash Cream (not Crisp Paper White) as the default page background. Warmth is load-bearing — see The Paper-Not-White Rule.
-- **Do** use Editorial Magenta on ≤10% of any given screen. Scarcity is what makes it read as decisive rather than noisy — see The One Voice Rule.
-- **Do** set all new colors in OKLCH. Hex is for the fenced Command Category Tints only.
-- **Do** use italic display type as a voice, not as emphasis inside paragraphs. Body emphasis is carried by weight.
-- **Do** use `clamp()` fluid sizing for headings; use fixed `rem` for body — see The Fluid-Headlines-Only Rule.
-- **Do** keep the primary CTA sharp and squared. `border-radius: 0`, uppercase, letter-tracked. This is the editorial signature.
-- **Do** use `--ease-out` (`cubic-bezier(0.16, 1, 0.3, 1)`) or `--ease-out-quint` on transitions. Expo-out only.
-- **Do** leave surfaces flat at rest. Reach for shadows only on hover or for deliberate elevation — see The Flat-By-Default Rule.
-- **Do** respect `prefers-reduced-motion` on every animation.
-- **Do** cap body line length at 65–75ch via `max-width`.
+The global bottom bar and the contextual bar (configure / cycling / accept) share one chrome treatment. Source of truth: `skill/scripts/live-browser.js` (`barPaletteForTheme`, `initGlobalBar`, `initBar`). Homepage and `/live-mode` demos mirror it via `.live-demo-gbar` and `.live-demo-ctx` in `site/styles/kinpaku-kit.css`.
 
-### Don't:
+- **Surface:** Lacquer Deep (`oklch(4% 0.004 95)`), always. Picker chrome does not adapt to the host page's light/dark theme.
+- **Border:** 1px solid neutral hairline (`oklch(92% 0 0 / 0.13)`), radius 8px. The bar reads as a quiet precise tool; gold is reserved for the brand mark and the active control, not the container outline.
+- **Shadow:** `0 16px 36px -12px oklch(0% 0 0 / 0.6)` (tight neutral drop, no gold halo ring).
+- **Brand mark:** Impeccable carved-tile icon (same SVG paths as `site/components/Header.astro` / `favicon.svg`), kinpaku fill on transparent ground. Not a "/" slash or rounded-square placeholder.
+- **Default controls:** Champagne labels at rest (`oklch(84% 0.035 82)`), muted icons (`oklch(63% 0.024 82)`).
+- **Active toggle:** Crisp graphite pill (`oklch(27% 0 0)`) with kinpaku text/icon. The gold carries the "selected" signal; the pill itself is neutral, not a kinpaku-dim wash.
+- **Exit hover:** Vermilion (`oklch(58% 0.15 35)`), not a neutral gray lift.
+- **Context bar internals:** Graphite-2 pills, gold hairline dividers, kinpaku Go/Accept CTAs with lacquer-deep text.
+- **DESIGN.md toggle icon:** Four-quadrant swatch; bottom-right uses warm charcoal (`oklch(34% 0.014 82)`) so the tile reads against lacquer-deep, not void-black.
 
-- **Don't** use pure black (#000) or pure white (#fff). Always the tinted neutrals (Deep Graphite / Warm Ash Cream / Crisp Paper White).
-- **Don't** use `border-left` or `border-right` greater than 1px as a colored stripe on cards, list items, callouts, or alerts. Ever. This is the single most recognizable AI-dashboard tell.
-- **Don't** use `background-clip: text` with a gradient. Gradient text is banned across the site. If you want emphasis, use weight or size, never gradient fill.
-- **Don't** default to dark mode. The site is light mode because editorial reading is a light-mode activity. Dark mode with glowing accents is the AI-tool aesthetic Impeccable exists to replace.
-- **Don't** use glassmorphism (blurred translucent cards, glass borders, glow backgrounds as decoration). It is on PRODUCT.md's explicit anti-reference list.
-- **Don't** add a second accent color. If a layout "needs" a second emphasis point, use scale or weight, not hue.
-- **Don't** use rounded rectangles with generic drop shadows. That's the "could be any AI output" fingerprint.
-- **Don't** use bounce or elastic easing. Real objects decelerate smoothly — expo-out is the signature.
-- **Don't** animate layout properties (`width`, `height`, `padding`, `margin`). Use `transform` and `opacity` only.
-- **Don't** nest cards inside cards. Flatten the hierarchy.
-- **Don't** use identical card grids (same-sized cards with icon + heading + text, repeated endlessly).
-- **Don't** use the hero-metric layout template (big number + small label + supporting stats + gradient accent). SaaS cliché.
-- **Don't** extend the Command Category Tints vocabulary. Those hex tints are scoped to the periodic-table viz.
-- **Don't** hedge in UI copy. "Maybe consider" and "could be helpful" are banned in-product — match PRODUCT.md's expert-decisive voice.
-- **Don't** introduce a new spacing token outside the 8/16/24/32/48/80/120 scale. If you need a specific pixel gap, use a literal value rather than polluting the token scale.
+**The Picker Is Brand Rule.** Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the lacquer-deep fill, the carved-tile mark, and gold on the mark + active control. Brand reads through the mark and the gold accent rather than a gold border ringing the bar; the container itself stays a quiet neutral-edged tool.
+
+## 7. Do and Do Not
+
+### Do
+
+- Do use kinpaku gold as the primary brand color.
+- Do use verdigris patina for secondary state and contrast.
+- Do keep surfaces dark, warm, and mineral.
+- Do use real texture assets for gold leaf and oxidation when the element is brand-bearing.
+- Do use circuit/calibration geometry as structure, especially around product proof.
+- Do keep cards compact, flat, and sharply bounded.
+- Do preserve utility: demos, sliders, audit tables, command examples, docs, and pricing must remain understandable.
+- Do keep live mode picker bars on lacquer-deep with kinpaku gold borders, regardless of host page theme.
+
+### Do Not
+
+- Do not use editorial magenta as a brand accent.
+- Do not use italic serif display typography.
+- Do not use purple gradients, neon cyan fields, glassmorphism, or generic AI-tool glow.
+- Do not put gold texture under long text.
+- Do not use beige, paper, or cream as the page ground.
+- Do not add decorative calibration marks that do not align with real content.
+- Do not use wide rounded cards or nested cards.
+- Do not use pure black or pure white.
+- Do not let the visual system hide the product proof.
+- Do not theme-adapt live mode picker chrome to match arbitrary host pages. The picker is always neo-kinpaku.

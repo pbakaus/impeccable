@@ -1,0 +1,62 @@
+# Impeccable
+
+> Impeccable is an open-source design skill, CLI, browser extension, and website for improving AI-generated frontend design with 23 commands, live browser iteration, and deterministic anti-pattern detection.
+
+Use the website pages below as the current public documentation. Use the GitHub repository when you need source code, implementation details, tests, or release history. The fastest install path is `npx impeccable skills install` from a project root.
+
+## Start Here
+
+- [Home](https://impeccable.style/): Product overview, install options, supported AI coding harnesses, and download entry points.
+- [Designing with Impeccable](https://impeccable.style/designing): The end-to-end workflow from setup and brief to iteration, polish, and maintenance.
+- [Documentation](https://impeccable.style/docs): Command reference index for `/impeccable` and its commands.
+- [Getting started](https://impeccable.style/tutorials/getting-started): Install Impeccable, run `/impeccable init`, create project context, and start with a polish pass.
+- [Live Mode](https://impeccable.style/live-mode): Browser-based UI iteration with element picking, annotations, generated variants, and source writeback.
+- [Slop](https://impeccable.style/slop): Catalog of AI-generated UI anti-patterns and the detection overlay behind the CLI, extension, and critique workflow.
+
+## Tutorials
+
+- [Tutorials index](https://impeccable.style/tutorials): Step-by-step guides for installation, live iteration, and visual critique.
+- [Iterate on UI with Live Mode](https://impeccable.style/tutorials/iterate-live): Use `/impeccable live` against a running dev server to generate and accept UI variants.
+- [Brand vs product](https://impeccable.style/tutorials/brand-vs-product): Explain the setup choice between marketing surfaces and app surfaces.
+- [Critique with the visual overlay](https://impeccable.style/tutorials/critique-with-overlay): Combine `/impeccable critique`, deterministic detection, and the browser overlay.
+
+## Command Reference
+
+- [impeccable](https://impeccable.style/docs/impeccable): Main command for recommendations, freeform design work, and loading the full design guide.
+- [init](https://impeccable.style/docs/init): Set up project context with `PRODUCT.md`, optional `DESIGN.md`, Live Mode configuration, and next-command recommendations.
+- [craft](https://impeccable.style/docs/craft): Shape, build, and visually iterate a new feature end to end.
+- [shape](https://impeccable.style/docs/shape): Run a discovery interview and produce a design brief before code.
+- [live](https://impeccable.style/docs/live): Select browser elements, generate UI variants, and write accepted changes back to source.
+- [document](https://impeccable.style/docs/document): Generate a `DESIGN.md` file from the current visual system.
+- [extract](https://impeccable.style/docs/extract): Consolidate repeated patterns, components, and design tokens.
+- [critique](https://impeccable.style/docs/critique): Evaluate UX, hierarchy, cognitive load, brand fit, and anti-patterns.
+- [audit](https://impeccable.style/docs/audit): Run technical checks for accessibility, performance, theming, responsiveness, and anti-patterns.
+- [polish](https://impeccable.style/docs/polish): Perform a final quality pass for alignment, spacing, consistency, and micro-details.
+- [harden](https://impeccable.style/docs/harden): Add production resilience for errors, edge cases, i18n, and text overflow.
+- [optimize](https://impeccable.style/docs/optimize): Improve UI performance, rendering, images, animations, and bundle cost.
+- [adapt](https://impeccable.style/docs/adapt): Adapt designs across screens, devices, contexts, and platforms.
+- [clarify](https://impeccable.style/docs/clarify): Improve UX copy, labels, errors, empty states, and instructions.
+- [onboard](https://impeccable.style/docs/onboard): Design onboarding, first-run experiences, empty states, and activation paths.
+- [typeset](https://impeccable.style/docs/typeset): Improve typography, font choices, hierarchy, sizing, weight, and readability.
+- [layout](https://impeccable.style/docs/layout): Improve composition, spacing, rhythm, alignment, and visual hierarchy.
+- [colorize](https://impeccable.style/docs/colorize): Add strategic color without falling into generic AI palettes.
+- [animate](https://impeccable.style/docs/animate): Add purposeful motion, transitions, feedback, and reduced-motion support.
+- [delight](https://impeccable.style/docs/delight): Add memorable details and moments of joy without compromising usability.
+- [bolder](https://impeccable.style/docs/bolder): Push safe designs toward stronger impact.
+- [quieter](https://impeccable.style/docs/quieter): Reduce visual intensity while preserving quality.
+- [distill](https://impeccable.style/docs/distill): Strip unnecessary complexity and focus the interface.
+- [overdrive](https://impeccable.style/docs/overdrive): Build ambitious effects such as shaders, spring physics, and scroll-driven reveals.
+
+## Developer Resources
+
+- [GitHub repository](https://github.com/pbakaus/impeccable): Source code, tests, issues, pull requests, and release workflow.
+- [Repository README](https://github.com/pbakaus/impeccable#readme): Package overview, command list, install methods, and supported harnesses.
+- [Changelog](https://impeccable.style/changelog): Release notes for the skill, CLI, extension, and detector.
+- [FAQ](https://impeccable.style/faq): Installation paths, update commands, pinning, troubleshooting, and harness-specific setup.
+
+## Optional
+
+- [Neo Mirai case study](https://impeccable.style/cases/neo-mirai): Example of Impeccable turning generated references into a shipped website.
+- [Design system](https://impeccable.style/design-system): Public style system reference for the Impeccable website itself.
+- [Detector lab](https://impeccable.style/detector): Fixture-backed detector examples for anti-pattern rules and visual checks.
+- [Privacy](https://impeccable.style/privacy): Website analytics, download logging, and browser extension privacy notes.

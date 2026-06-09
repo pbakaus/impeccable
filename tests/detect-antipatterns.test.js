@@ -10,6 +10,10 @@ import {
   buildImportGraph, resolveImport,
   detectFrameworkConfig, isPortListening, FRAMEWORK_CONFIGS,
 } from '../cli/engine/detect-antipatterns.mjs';
+import {
+  checkElementTextOverflowDOM,
+  isScreenReaderOnlyTextStyle,
+} from '../cli/engine/rules/checks.mjs';
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
@@ -252,20 +256,151 @@ describe('detectHtml — layout', () => {
     expect(f.some(r => r.antipattern === 'monotonous-spacing')).toBe(true);
   });
 
-  test('detects everything centered via regex', () => {
-    const html = `<!DOCTYPE html><html><body>
-<h1 style="text-align: center;">Title</h1>
-<p style="text-align: center;">Paragraph one more text here</p>
-<p style="text-align: center;">Paragraph two more text here</p>
-<p style="text-align: center;">Paragraph three more text here</p>
-<p style="text-align: center;">Paragraph four more text here</p>
-<p style="text-align: center;">Paragraph five more text here</p>
-<p style="text-align: center;">Paragraph six more text here</p>
-</body></html>`;
-    const f = detectText(html, 'test.html');
-    expect(f.some(r => r.antipattern === 'everything-centered')).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// Text overflow screen-reader-only handling
+// ---------------------------------------------------------------------------
+
+describe('checkElementTextOverflowDOM', () => {
+  function baseTextStyle(overrides = {}) {
+    return {
+      position: 'static',
+      width: '160px',
+      height: '20px',
+      overflow: 'visible',
+      overflowX: 'visible',
+      overflowY: 'visible',
+      clipPath: 'none',
+      clip: 'auto',
+      ...overrides,
+    };
+  }
+
+  function mockTextElement({
+    className = 'flag-overflow',
+    style = baseTextStyle(),
+    clientWidth = 24,
+    clientHeight = 20,
+    scrollWidth = 80,
+    rectWidth = clientWidth,
+    rectHeight = clientHeight,
+  } = {}) {
+    return {
+      tagName: 'DIV',
+      className,
+      childNodes: [{ nodeType: 3, textContent: 'A long accessible label that overflows its box' }],
+      parentElement: null,
+      clientWidth,
+      clientHeight,
+      scrollWidth,
+      __style: style,
+      getAttribute(name) {
+        return name === 'class' ? className : null;
+      },
+      getBoundingClientRect() {
+        return { width: rectWidth, height: rectHeight };
+      },
+    };
+  }
+
+  function withMockComputedStyle(callback) {
+    const original = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = (el) => el.__style;
+    try {
+      return callback();
+    } finally {
+      if (original === undefined) delete globalThis.getComputedStyle;
+      else globalThis.getComputedStyle = original;
+    }
+  }
+
+  test('classifies clip-path sr-only text as visually hidden', () => {
+    expect(isScreenReaderOnlyTextStyle(baseTextStyle({
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      overflow: 'hidden',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
+      clipPath: 'inset(50%)',
+    }), { width: 1, height: 1 })).toBe(true);
   });
 
+  test('classifies legacy clip rect sr-only text as visually hidden', () => {
+    expect(isScreenReaderOnlyTextStyle(baseTextStyle({
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      overflow: 'hidden',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
+      clip: 'rect(0, 0, 0, 0)',
+    }), { width: 1, height: 1 })).toBe(true);
+  });
+
+  test('classifies tiny absolute overflow-hidden text as visually hidden without clip', () => {
+    expect(isScreenReaderOnlyTextStyle(baseTextStyle({
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      overflow: 'hidden',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
+    }), { width: 1, height: 1 })).toBe(true);
+  });
+
+  test('classifies fully clipped text as visually hidden without tiny sizing', () => {
+    expect(isScreenReaderOnlyTextStyle(baseTextStyle({
+      position: 'absolute',
+      width: '160px',
+      height: '20px',
+      overflow: 'visible',
+      clipPath: 'inset(50%)',
+    }), { width: 160, height: 20 })).toBe(true);
+  });
+
+  test('flags visible overflowing text', () => {
+    const findings = withMockComputedStyle(() => checkElementTextOverflowDOM(mockTextElement()));
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].id).toBe('text-overflow');
+    expect(findings[0].snippet).toContain('.flag-overflow');
+  });
+
+  test('skips overflowing sr-only text', () => {
+    const srOnly = mockTextElement({
+      className: 'pass-sr-only-clip-path',
+      style: baseTextStyle({
+        position: 'absolute',
+        width: '1px',
+        height: '1px',
+        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'hidden',
+        clipPath: 'inset(50%)',
+      }),
+      clientWidth: 1,
+      clientHeight: 1,
+      scrollWidth: 240,
+      rectWidth: 1,
+      rectHeight: 1,
+    });
+
+    const findings = withMockComputedStyle(() => checkElementTextOverflowDOM(srOnly));
+
+    expect(findings).toHaveLength(0);
+  });
+
+  test('does not classify tiny visible text as sr-only', () => {
+    const style = baseTextStyle({
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+    });
+
+    expect(isScreenReaderOnlyTextStyle(style, { width: 1, height: 1 })).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -734,9 +869,10 @@ describe('CLI', () => {
     expect(JSON.parse(stdout.trim())).toEqual([]);
   });
 
-  test('--fast mode works', () => {
-    const { code } = run('--fast', path.join(FIXTURES, 'should-flag.html'));
-    expect(code).toBe(2);
+  test('--fast is accepted but deprecated (no-op, full scan still runs)', () => {
+    const { code, stderr } = run('--fast', path.join(FIXTURES, 'should-flag.html'));
+    expect(code).toBe(2); // still flags the planted anti-patterns via the full scan
+    expect(stderr).toContain('--fast is deprecated');
   });
 
   test('linked stylesheet detected (static HTML/CSS default)', () => {
@@ -979,12 +1115,6 @@ describe('detectText -- CSS-in-JS', () => {
     expect(f.some(r => r.antipattern === 'gradient-text')).toBe(true);
   });
 
-  test('detects pure-black-white in styled-components', () => {
-    const tsx = "const Dark = styled.section`\n  background-color: #000000;\n`;";
-    const f = detectText(tsx, 'Dark.tsx');
-    expect(f.some(r => r.antipattern === 'pure-black-white')).toBe(true);
-  });
-
   test('does not false-positive on clean CSS-in-JS', () => {
     const tsx = "const Card = styled.div`\n  border-radius: 12px;\n  padding: 24px;\n`;";
     const f = detectText(tsx, 'Card.tsx');
@@ -1064,7 +1194,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
     const result = run(dir);
     stderr = result.stderr;
     expect(result.code).toBe(2);
-    for (const ap of ['side-tab', 'gradient-text', 'ai-color-palette', 'overused-font', 'bounce-easing', 'pure-black-white']) {
+    for (const ap of ['side-tab', 'gradient-text', 'ai-color-palette', 'overused-font', 'bounce-easing']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1079,10 +1209,8 @@ describe('CLI -- Next.js + Tailwind project', () => {
     expect(stderr).toContain('animate-bounce');
   });
 
-  test('PricingCard: pure-black-white + gradient-text + ai-color-palette', () => {
+  test('PricingCard: gradient-text + ai-color-palette', () => {
     const { stderr } = run(path.join(dir, 'components', 'PricingCard.tsx'));
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('bg-black');
     expect(stderr).toContain('gradient-text');
     expect(stderr).toContain('bg-clip-text');
     expect(stderr).toContain('ai-color-palette');
@@ -1125,7 +1253,7 @@ describe('CLI -- Next.js + CSS Modules project', () => {
   test('finds all expected anti-pattern types', () => {
     const { code, stderr } = run(dir);
     expect(code).toBe(2);
-    for (const ap of ['side-tab', 'overused-font', 'pure-black-white', 'layout-transition', 'gradient-text']) {
+    for (const ap of ['side-tab', 'overused-font', 'layout-transition', 'gradient-text']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1146,12 +1274,10 @@ describe('CLI -- Next.js + CSS Modules project', () => {
     expect(stderr).toContain('border-right: 3px solid');
   });
 
-  test('globals.css: overused Roboto + pure-black-white', () => {
+  test('globals.css: overused Roboto', () => {
     const { stderr } = run(path.join(dir, 'app', 'globals.css'));
     expect(stderr).toContain('overused-font');
     expect(stderr).toContain('Roboto');
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('#000000');
   });
 
   test('page.module.css: gradient-text across lines', () => {
@@ -1179,7 +1305,7 @@ describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
   test('finds all expected anti-pattern types', () => {
     const { code, stderr } = run(dir);
     expect(code).toBe(2);
-    for (const ap of ['side-tab', 'gradient-text', 'overused-font', 'bounce-easing', 'pure-black-white', 'layout-transition']) {
+    for (const ap of ['side-tab', 'gradient-text', 'overused-font', 'bounce-easing', 'layout-transition']) {
       expect(stderr).toContain(ap);
     }
   });
@@ -1202,12 +1328,10 @@ describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
     expect(stderr).toContain('Montserrat');
   });
 
-  test('GlobalStyle.tsx: overused Inter + pure-black-white', () => {
+  test('GlobalStyle.tsx: overused Inter', () => {
     const { stderr } = run(path.join(dir, 'components', 'GlobalStyle.tsx'));
     expect(stderr).toContain('overused-font');
     expect(stderr).toContain('Inter');
-    expect(stderr).toContain('pure-black-white');
-    expect(stderr).toContain('#000000');
   });
 
   test('Testimonials.tsx: side-tab + gradient-text in styled blockquote', () => {

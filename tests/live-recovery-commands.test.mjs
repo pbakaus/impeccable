@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { createLiveSessionStore } from '../skill/scripts/live-session-store.mjs';
+import { createLiveSessionStore } from '../skill/scripts/live/session-store.mjs';
 
 const REPO_ROOT = process.cwd();
 const STATUS_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-status.mjs');
@@ -46,6 +46,43 @@ describe('live recovery CLI commands', () => {
       /live-poll\.mjs/,
       'event=live_resume.next_action actor=agent operation=recover_session risk=agent_has_state_but_no_next_step expected=live-poll.mjs actual=' + resume.nextAction,
     );
+  }));
+
+  it('resumes manual Apply with the structured reply action, not a plain ack', () => withTempProject((cwd) => {
+    const store = createLiveSessionStore({ cwd });
+    store.appendEvent({
+      type: 'manual_edit_apply',
+      id: 'manual-recover-1',
+      pageUrl: '/',
+      chunk: { index: 3, total: 3, opCount: 2, totalOpCount: 8 },
+      batch: {
+        entries: [{
+          id: 'entry-a',
+          ops: [{
+            ref: 'body>p:nth-of-type(1)',
+            originalText: 'Old',
+            newText: 'New',
+            sourceHint: { file: 'src/App.jsx', line: 12 },
+          }],
+        }],
+        candidates: [],
+      },
+    });
+
+    const resume = runJson(RESUME_SCRIPT, ['--id', 'manual-recover-1'], cwd);
+    assert.equal(resume.active, true);
+    assert.equal(resume.pendingEvent.type, 'manual_edit_apply');
+    assert.equal(resume.snapshot.phase, 'manual_edit_apply_requested');
+    assert.match(resume.nextAction, /--reply manual-recover-1 done --data '<json>'/);
+    assert.match(resume.nextAction, /Polling only leases this work item; it does not commit source edits/);
+    assert.match(resume.nextAction, /Do not run live-commit-manual-edits\.mjs/);
+    assert.match(resume.nextAction, /chunk 3\/3/);
+    assert.match(resume.nextAction, /likely files: src\/App\.jsx/);
+    assert.doesNotMatch(resume.nextAction, /acknowledge with live-poll\.mjs --reply manual-recover-1 done\./);
+
+    const status = runJson(STATUS_SCRIPT, [], cwd);
+    assert.match(status.recoveryHint, /--reply manual-recover-1 done --data '<json>'/);
+    assert.match(status.recoveryHint, /Do not poll again before replying/);
   }));
 
   it('resumes carbonize-required sessions with a cleanup-specific next action', () => withTempProject((cwd) => {

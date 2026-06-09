@@ -20,20 +20,33 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { parseDesignMd } from './design-parser.mjs';
-import { resolveContextDir } from './load-context.mjs';
-import { createLiveSessionStore } from './live-session-store.mjs';
+import { parseDesignMd } from './lib/design-parser.mjs';
+import { resolveContextDir } from './context.mjs';
+import { createLiveSessionStore } from './live/session-store.mjs';
+import { validateEvent } from './live/event-validation.mjs';
+import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
+import { LIVE_COMMANDS } from './live/vocabulary.mjs';
 import {
   getDesignSidecarPath,
+  getLiveDir,
   getLiveAnnotationsDir,
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
   writeLiveServerInfo,
-} from './impeccable-paths.mjs';
+} from './lib/impeccable-paths.mjs';
+import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
+import {
+  createManualApplyController,
+  summarizeManualApplyFailures,
+} from './live/manual-apply.mjs';
+import {
+  applyDeferredSvelteComponentAccepts,
+  removeAllSvelteComponentSessions,
+} from './live/svelte-component.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// PRODUCT.md / DESIGN.md live wherever load-context.mjs resolves. The generated
+// PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
 const CONTEXT_DIR = resolveContextDir(process.cwd());
@@ -65,11 +78,55 @@ const state = {
   sseClients: new Set(),   // SSE response objects (server→browser push)
   pendingEvents: [],        // browser events waiting for agent ack ({ event, leaseUntil })
   pendingPolls: [],         // agent poll callbacks waiting for browser events
+  nextEventSeq: 1,
+  lastAgentPollingBroadcast: null,
   exitTimer: null,
   sessionDir: null,         // per-session tmp dir for annotation screenshots
   sessionStore: null,
   leaseTimer: null,
+  manualEditActivity: null,
+  nextManualEditSeq: 1,
+  // Deferreds for in-flight chat-routed Apply events. Keyed by event id; each
+  // entry is resolved when the chat agent POSTs an ack carrying the batch
+  // result, or rejected when the hard timeout fires.
+  pendingApplyDeferreds: new Map(),
+  // Updated whenever a /poll long-poll request arrives or is resolved with an
+  // event. Used to detect "a chat agent is likely attached" without requiring
+  // a poll to be parked at the exact moment we dispatch.
+  lastPollAt: 0,
+  timedOutApplyIds: new Map(),
 };
+
+const CHAT_POLL_FRESHNESS_MS = 60_000;
+const POLL_LEASE_EXPIRY_TIMER_GRACE_MS = 2;
+const DEBUG_MANUAL_EDIT_EVENTS = /^(1|true|yes)$/i.test(process.env.IMPECCABLE_LIVE_DEBUG_EVENTS || '');
+
+const manualApply = createManualApplyController({
+  pendingEvents: state.pendingEvents,
+  pendingApplyDeferreds: state.pendingApplyDeferreds,
+  timedOutApplyIds: state.timedOutApplyIds,
+  enqueueEvent,
+  acknowledgePendingEvent,
+  flushPendingPolls,
+  recordManualEditActivity,
+  cwd: () => process.cwd(),
+});
+
+const manualEditRoutes = createManualEditRoutes({
+  getToken: () => state.token,
+  manualApply,
+  recordManualEditActivity,
+  getManualEditStatus,
+  chatAgentLikelyActive,
+  cwd: () => process.cwd(),
+  env: () => process.env,
+});
+
+function chatAgentLikelyActive() {
+  if (state.pendingPolls.length > 0) return true;
+  if (!state.lastPollAt) return false;
+  return Date.now() - state.lastPollAt < CHAT_POLL_FRESHNESS_MS;
+}
 
 // Cap per-annotation upload size. A full 1920×1080 PNG is typically <1 MB;
 // cap at 10 MB to guard against runaway writes from a misbehaving client.
@@ -77,7 +134,7 @@ const MAX_ANNOTATION_BYTES = 10 * 1024 * 1024;
 
 function enqueueEvent(event) {
   if (!event || (event.id && state.pendingEvents.some((entry) => entry.event?.id === event.id && entry.event?.type === event.type))) return;
-  state.pendingEvents.push({ event, leaseUntil: 0 });
+  state.pendingEvents.push({ event, leaseUntil: 0, seq: state.nextEventSeq++ });
   flushPendingPolls();
 }
 
@@ -89,7 +146,11 @@ function restorePendingEventsFromStore() {
 }
 
 function findAvailablePendingEvent(now = Date.now()) {
-  return state.pendingEvents.find((entry) => !entry.leaseUntil || entry.leaseUntil <= now);
+  for (const entry of state.pendingEvents) {
+    if (entry.leaseUntil && entry.leaseUntil > now) continue;
+    return entry;
+  }
+  return null;
 }
 
 function leaseEvent(entry, leaseMs) {
@@ -99,6 +160,8 @@ function leaseEvent(entry, leaseMs) {
     return entry.event;
   }
   entry.leaseUntil = Date.now() + leaseMs;
+  scheduleLeaseFlush();
+  broadcastAgentPollingIfChanged();
   return entry.event;
 }
 
@@ -106,9 +169,72 @@ function acknowledgePendingEvent(id) {
   if (!id) return false;
   const idx = state.pendingEvents.findIndex((entry) => entry.event?.id === id);
   if (idx === -1) return false;
+  const acknowledged = state.pendingEvents[idx].event;
   state.pendingEvents.splice(idx, 1);
   scheduleLeaseFlush();
-  return true;
+  broadcastAgentPollingIfChanged();
+  return acknowledged;
+}
+
+function findPendingEventById(id) {
+  if (!id) return null;
+  const entry = state.pendingEvents.find((item) => item.event?.id === id);
+  return entry?.event || null;
+}
+
+function summarizePendingEventForStatus(entry) {
+  const event = entry.event || {};
+  const summary = {
+    id: event.id,
+    type: event.type,
+    leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
+    leaseUntil: entry.leaseUntil || null,
+  };
+  if (event.type === 'manual_edit_apply') {
+    summary.pageUrl = event.pageUrl || null;
+    summary.chunk = event.chunk || null;
+    summary.repair = event.repair || null;
+    summary.evidencePath = event.evidencePath || null;
+    summary.agentAction = event.agentAction || manualApply.buildAgentAction(event);
+    summary.manualApplySummary = manualApply.summarizeEvent(event, manualApply.getDeferred(event.id)?.batch || event.batch);
+  }
+  return summary;
+}
+
+function summarizeActiveSessionForClient(snapshot = {}) {
+  return {
+    id: snapshot.id,
+    phase: snapshot.phase,
+    pageUrl: snapshot.pageUrl ?? null,
+    sourceFile: snapshot.sourceFile ?? null,
+    previewFile: snapshot.previewFile ?? null,
+    previewMode: snapshot.previewMode ?? null,
+    expectedVariants: snapshot.expectedVariants ?? 0,
+    arrivedVariants: snapshot.arrivedVariants ?? 0,
+    visibleVariant: snapshot.visibleVariant ?? null,
+    checkpointRevision: snapshot.checkpointRevision ?? 0,
+    paramValues: snapshot.paramValues || {},
+  };
+}
+
+function activeSessionSummaries() {
+  if (!state.sessionStore) return [];
+  return state.sessionStore.listActiveSessions().map((snapshot) => summarizeActiveSessionForClient(snapshot));
+}
+
+function cancelQueuedAnonymousExitEvents() {
+  let removed = 0;
+  for (let i = state.pendingEvents.length - 1; i >= 0; i -= 1) {
+    const event = state.pendingEvents[i]?.event;
+    if (event?.type !== 'exit' || event.id) continue;
+    state.pendingEvents.splice(i, 1);
+    removed += 1;
+  }
+  if (removed > 0) {
+    scheduleLeaseFlush();
+    broadcastAgentPollingIfChanged();
+  }
+  return removed;
 }
 
 function scheduleLeaseFlush() {
@@ -116,7 +242,6 @@ function scheduleLeaseFlush() {
     clearTimeout(state.leaseTimer);
     state.leaseTimer = null;
   }
-  if (state.pendingPolls.length === 0) return;
   const now = Date.now();
   const nextLeaseUntil = state.pendingEvents
     .map((entry) => entry.leaseUntil || 0)
@@ -126,20 +251,38 @@ function scheduleLeaseFlush() {
   state.leaseTimer = setTimeout(() => {
     state.leaseTimer = null;
     flushPendingPolls();
-  }, Math.max(0, nextLeaseUntil - now));
+    broadcastAgentPollingIfChanged();
+  }, Math.max(0, nextLeaseUntil - now + POLL_LEASE_EXPIRY_TIMER_GRACE_MS));
 }
 
 function flushPendingPolls() {
+  let changed = false;
   while (state.pendingPolls.length > 0) {
     const entry = findAvailablePendingEvent();
     if (!entry) {
       scheduleLeaseFlush();
+      broadcastAgentPollingIfChanged();
       return;
     }
     const poll = state.pendingPolls.shift();
     poll.resolve(leaseEvent(entry, poll.leaseMs));
+    changed = true;
   }
   scheduleLeaseFlush();
+  if (changed) broadcastAgentPollingIfChanged();
+}
+
+function agentPollingConnected() {
+  const now = Date.now();
+  return state.pendingPolls.length > 0
+    || state.pendingEvents.some((entry) => entry.leaseUntil && entry.leaseUntil > now);
+}
+
+function broadcastAgentPollingIfChanged() {
+  const connected = agentPollingConnected();
+  if (state.lastAgentPollingBroadcast === connected) return;
+  state.lastAgentPollingBroadcast = connected;
+  broadcast({ type: 'agent_polling', connected });
 }
 
 /** Push a message to all connected SSE clients. */
@@ -150,15 +293,52 @@ function broadcast(msg) {
   }
 }
 
+function recordManualEditActivity(type, details = {}) {
+  const entry = {
+    seq: state.nextManualEditSeq++,
+    type,
+    ts: new Date().toISOString(),
+    ...details,
+  };
+  state.manualEditActivity = entry;
+  if (DEBUG_MANUAL_EDIT_EVENTS) {
+    try {
+      const filePath = path.join(getLiveDir(process.cwd()), 'manual-edit-events.jsonl');
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.appendFileSync(filePath, JSON.stringify(entry) + '\n');
+    } catch {
+      /* diagnostics are best-effort; never block live mode on observability */
+    }
+  }
+  broadcast(entry);
+  return entry;
+}
+
+function getManualEditStatus() {
+  try {
+    const { totalCount, perPage } = countPendingByPage(process.cwd());
+    return { totalCount, perPage, lastActivity: state.manualEditActivity };
+  } catch (err) {
+    return {
+      totalCount: null,
+      perPage: {},
+      lastActivity: state.manualEditActivity,
+      error: err.message,
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Load scripts
 // ---------------------------------------------------------------------------
 
 function loadBrowserScripts() {
-  // Detection script: look relative to the skill scripts dir, then fall back
-  // to the npm package location (cli/engine/detect-antipatterns-browser.js).
+  // Detection script: prefer the skill-bundled detector, then fall back to
+  // source/npm package locations for local development and older installs.
   // This one IS cached — detect.js rarely changes during a session.
   const detectPaths = [
+    path.join(__dirname, 'detector', 'detect-antipatterns-browser.js'),
+    path.join(__dirname, '..', '..', 'cli', 'engine', 'detect-antipatterns-browser.js'),
     path.join(__dirname, '..', '..', '..', '..', 'cli', 'engine', 'detect-antipatterns-browser.js'),
     path.join(process.cwd(), 'node_modules', 'impeccable', 'cli', 'engine', 'detect-antipatterns-browser.js'),
   ];
@@ -185,8 +365,7 @@ function loadBrowserScripts() {
 function hasProjectContext() {
   // PRODUCT.md carries brand voice / anti-references — that's what determines
   // whether variants are brand-aware. DESIGN.md (visual tokens) is a separate
-  // concern, surfaced by the design panel's own empty state. Legacy
-  // .impeccable.md is auto-migrated to PRODUCT.md by load-context.mjs.
+  // concern, surfaced by the design panel's own empty state.
   try {
     fs.accessSync(path.join(CONTEXT_DIR, 'PRODUCT.md'), fs.constants.R_OK);
     return true;
@@ -197,67 +376,6 @@ function statOrNull(filePath) {
   try { return fs.statSync(filePath); } catch { return null; }
 }
 
-// ---------------------------------------------------------------------------
-// Validation (inline — no external import needed for self-contained script)
-// ---------------------------------------------------------------------------
-
-const VISUAL_ACTIONS = [
-  'impeccable', 'bolder', 'quieter', 'distill', 'polish', 'typeset',
-  'colorize', 'layout', 'adapt', 'animate', 'delight', 'overdrive',
-];
-
-// Browser generates ids via crypto.randomUUID().slice(0, 8) (8 hex chars)
-// and variantIds via String(small integer). Restrict to those shapes so
-// any value that reaches a downstream child_process or DOM selector is
-// inert by construction.
-const ID_PATTERN = /^[0-9a-f]{8}$/;
-const VARIANT_ID_PATTERN = /^[0-9]{1,3}$/;
-
-function isValidId(v) { return typeof v === 'string' && ID_PATTERN.test(v); }
-function isValidVariantId(v) { return typeof v === 'string' && VARIANT_ID_PATTERN.test(v); }
-
-function validateEvent(msg) {
-  if (!msg || typeof msg !== 'object' || !msg.type) return 'Missing or invalid message';
-  switch (msg.type) {
-    case 'generate':
-      if (!isValidId(msg.id)) return 'generate: missing or malformed id';
-      if (!msg.action || !VISUAL_ACTIONS.includes(msg.action)) return 'generate: invalid action';
-      if (!Number.isInteger(msg.count) || msg.count < 1 || msg.count > 8) return 'generate: count must be 1-8';
-      if (!msg.element || !msg.element.outerHTML) return 'generate: missing element context';
-      // Optional annotation fields (all-or-nothing: if any present, all must be well-formed).
-      if (msg.screenshotPath !== undefined && typeof msg.screenshotPath !== 'string') return 'generate: screenshotPath must be string';
-      if (msg.comments !== undefined && !Array.isArray(msg.comments)) return 'generate: comments must be array';
-      if (msg.strokes !== undefined && !Array.isArray(msg.strokes)) return 'generate: strokes must be array';
-      return null;
-    case 'accept':
-      if (!isValidId(msg.id)) return 'accept: missing or malformed id';
-      if (!isValidVariantId(msg.variantId)) return 'accept: missing or malformed variantId';
-      if (msg.paramValues !== undefined) {
-        if (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues)) {
-          return 'accept: paramValues must be an object';
-        }
-      }
-      return null;
-    case 'discard':
-      return isValidId(msg.id) ? null : 'discard: missing or malformed id';
-    case 'checkpoint':
-      if (!isValidId(msg.id)) return 'checkpoint: missing or malformed id';
-      if (!Number.isInteger(msg.revision) || msg.revision < 0) return 'checkpoint: revision must be a non-negative integer';
-      if (msg.paramValues !== undefined && (typeof msg.paramValues !== 'object' || msg.paramValues === null || Array.isArray(msg.paramValues))) {
-        return 'checkpoint: paramValues must be an object';
-      }
-      return null;
-    case 'exit':
-      return null;
-    case 'prefetch':
-      if (!msg.pageUrl || typeof msg.pageUrl !== 'string') return 'prefetch: missing pageUrl';
-      return null;
-    default:
-      return 'Unknown event type: ' + msg.type;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // HTTP request handler
 // ---------------------------------------------------------------------------
 
@@ -290,6 +408,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       const body =
         `window.__IMPECCABLE_TOKEN__ = '${state.token}';\n` +
         `window.__IMPECCABLE_PORT__ = ${state.port};\n` +
+        // Canonical command vocabulary (values + labels + icons). live-browser.js
+        // builds its action picker from this instead of an inline copy.
+        `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(LIVE_COMMANDS)};\n` +
         sessionScript + '\n' +
         liveScript;
       res.writeHead(200, {
@@ -388,19 +509,16 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/status') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
-      const sessions = state.sessionStore ? state.sessionStore.listActiveSessions() : [];
+      const sessions = activeSessionSummaries();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'ok',
         port: state.port,
         connectedClients: state.sseClients.size,
-        pendingEvents: state.pendingEvents.map((entry) => ({
-          id: entry.event?.id,
-          type: entry.event?.type,
-          leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
-          leaseUntil: entry.leaseUntil || null,
-        })),
+        pendingEvents: state.pendingEvents.map((entry) => summarizePendingEventForStatus(entry)),
+        agentPolling: agentPollingConnected(),
         activeSessions: sessions,
+        manualEdits: getManualEditStatus(),
       }));
       return;
     }
@@ -496,6 +614,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
     if (p === '/events' && req.method === 'GET') {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
+      clearTimeout(state.exitTimer);
+      state.exitTimer = null;
+      cancelQueuedAnonymousExitEvents();
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -504,10 +625,11 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       res.write('data: ' + JSON.stringify({
         type: 'connected',
         hasProjectContext: hasProjectContext(),
+        agentPolling: agentPollingConnected(),
+        activeSessions: activeSessionSummaries(),
       }) + '\n\n');
 
       state.sseClients.add(res);
-      clearTimeout(state.exitTimer);
 
       // Keepalive: SSE comment every 30s prevents silent connection drops.
       const heartbeat = setInterval(() => {
@@ -527,6 +649,8 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       return;
     }
 
+    if (manualEditRoutes(req, res, url)) return;
+
     // --- Browser→server events (replaces WebSocket messages) ---
     if (p === '/events' && req.method === 'POST') {
       let body = '';
@@ -541,6 +665,18 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
         if (msg.token !== state.token) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        // Defense in depth: manual copy edits must use the staged stash/apply
+        // endpoints. The direct Save event path is disabled in the browser.
+        if (msg.type === 'manual_edits') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'manual_edits must POST to /manual-edit-stash, not /events' }));
+          return;
+        }
+        if (msg.type === 'manual_edit_apply') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'manual_edit_apply is disabled; use /manual-edit-stash then /manual-edit-commit' }));
           return;
         }
         const error = validateEvent(msg);
@@ -558,7 +694,12 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
             return;
           }
         }
-        if (msg.type !== 'checkpoint') enqueueEvent(msg);
+        if (msg.type === 'exit') {
+          cleanupSvelteComponentSessionsBeforeExit();
+        }
+        if (msg.type !== 'checkpoint') {
+          enqueueEvent(msg);
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       });
@@ -600,6 +741,7 @@ function handlePollGet(req, res, url) {
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return;
   }
+  state.lastPollAt = Date.now();
   const timeout = parseInt(url.searchParams.get('timeout') || DEFAULT_POLL_TIMEOUT, 10);
   const leaseMs = parseInt(url.searchParams.get('leaseMs') || '30000', 10);
   const available = findAvailablePendingEvent();
@@ -612,21 +754,55 @@ function handlePollGet(req, res, url) {
   const timer = setTimeout(() => {
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ type: 'timeout' }));
   }, timeout);
   function resolve(event) {
     clearTimeout(timer);
+    state.lastPollAt = Date.now();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(event));
   }
   state.pendingPolls.push(poll);
+  broadcastAgentPollingIfChanged();
   scheduleLeaseFlush();
   req.on('close', () => {
     clearTimeout(timer);
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
+    broadcastAgentPollingIfChanged();
   });
+}
+
+function sessionFileMetadataFromPollReply(file) {
+  if (!file || typeof file !== 'string') return { file };
+  const normalized = file.split(path.sep).join('/');
+  const base = { file: normalized };
+  if (!normalized.endsWith('/manifest.json') && normalized !== 'manifest.json') return base;
+  if (!normalized.includes('node_modules/.impeccable-live/') && !normalized.includes('src/lib/impeccable/')) return base;
+
+  let full;
+  try {
+    full = path.resolve(process.cwd(), normalized);
+    const rel = path.relative(process.cwd(), full);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return base;
+  } catch {
+    return base;
+  }
+
+  try {
+    const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
+    if (manifest?.previewMode !== 'svelte-component' || !manifest.sourceFile) return base;
+    return {
+      file: String(manifest.sourceFile).split(path.sep).join('/'),
+      sourceFile: String(manifest.sourceFile).split(path.sep).join('/'),
+      previewFile: normalized,
+      previewMode: 'svelte-component',
+    };
+  } catch {
+    return base;
+  }
 }
 
 function handlePollPost(req, res) {
@@ -644,28 +820,120 @@ function handlePollPost(req, res) {
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return;
     }
-    acknowledgePendingEvent(msg.id);
-    if (state.sessionStore && msg.id) {
+    const pendingApplyDeferred = manualApply.getDeferred(msg.id);
+    if (pendingApplyDeferred) {
+      const validation = manualApply.validateResultMessage(msg, pendingApplyDeferred);
+      if (!validation.ok) {
+        recordManualEditActivity('manual_edit_apply_reply_invalid', {
+          id: msg.id,
+          pageUrl: pendingApplyDeferred.pageUrl,
+          chunk: pendingApplyDeferred.event?.chunk || null,
+          repair: pendingApplyDeferred.event?.repair || null,
+          reason: validation.body?.reason || validation.body?.error || 'invalid_manual_apply_result',
+          status: msg.data?.status || null,
+        });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(validation.body));
+        return;
+      }
+      recordManualEditActivity('manual_edit_apply_reply_received', {
+        id: msg.id,
+        pageUrl: pendingApplyDeferred.pageUrl,
+        chunk: pendingApplyDeferred.event?.chunk || null,
+        repair: pendingApplyDeferred.event?.repair || null,
+        status: validation.result.status,
+        appliedCount: validation.result.appliedEntryIds.length,
+        failed: summarizeManualApplyFailures(validation.result.failed),
+        fileCount: validation.result.files.length,
+        noteCount: validation.result.notes.length,
+      });
+      manualApply.resolveDeferred(msg.id, validation.result);
+      acknowledgePendingEvent(msg.id);
+      flushPendingPolls();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (manualApply.hasTimedOutId(msg.id)) {
+      const rollback = manualApply.rollbackTimedOutReply(msg);
+      recordManualEditActivity('manual_edit_apply_stale_reply_rejected', {
+        id: msg.id,
+        rolledBackFileCount: rollback.rolledBackFiles?.length || 0,
+        rollbackFailureCount: rollback.rollbackFailures?.length || 0,
+      });
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'stale_manual_edit_apply_reply', ...rollback }));
+      return;
+    }
+    const pendingEventBeforeAck = findPendingEventById(msg.id);
+    if (pendingEventBeforeAck?.type === 'steer' && msg.type === 'steer_done'
+        && !msg.file && !(typeof msg.message === 'string' && msg.message.trim())) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'steer_done_requires_file_or_message',
+        hint: 'Reply with --file after writing source, or include a message explaining an intentional no-op.',
+      }));
+      return;
+    }
+    const acknowledgedEvent = acknowledgePendingEvent(msg.id);
+    let skipJournalReply = false;
+    let existingSession = null;
+    if (!acknowledgedEvent && state.sessionStore && msg.id) {
       try {
-        const eventType = msg.type === 'discard' || msg.type === 'discarded'
-          ? 'discarded'
-          : msg.type === 'complete'
-            ? 'complete'
-            : msg.type === 'error'
-              ? 'agent_error'
-              : 'agent_done';
+        existingSession = state.sessionStore.getSnapshot(msg.id, { includeCompleted: true });
+        if (!existingSession?.updatedAt) existingSession = null;
+        skipJournalReply = existingSession?.phase === 'completed' || existingSession?.phase === 'discarded';
+      } catch { /* fall through and record the reply normally */ }
+    }
+    if (!acknowledgedEvent && !existingSession) {
+      recordManualEditActivity('manual_edit_poll_reply_unknown', {
+        id: msg.id || null,
+        type: msg.type || null,
+      });
+      res.writeHead(msg.id ? 404 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: msg.id ? 'unknown_poll_reply_id' : 'missing_poll_reply_id',
+        id: msg.id,
+      }));
+      return;
+    }
+    const replyFileMeta = sessionFileMetadataFromPollReply(msg.file);
+    if (state.sessionStore && msg.id && !skipJournalReply) {
+      try {
+        const eventType = msg.type === 'steer_done'
+          ? 'steer_done'
+          : msg.type === 'discard' || msg.type === 'discarded'
+            ? 'discarded'
+            : msg.type === 'complete'
+              ? 'complete'
+              : msg.type === 'error'
+                ? 'agent_error'
+                : 'agent_done';
         state.sessionStore.appendEvent({
           type: eventType,
           id: msg.id,
-          file: msg.file,
+          file: replyFileMeta.file,
+          sourceFile: replyFileMeta.sourceFile,
+          previewFile: replyFileMeta.previewFile,
+          previewMode: replyFileMeta.previewMode,
           message: msg.message,
+          sourceEventType: acknowledgedEvent?.type,
           carbonize: msg.data?.carbonize === true,
         });
       } catch { /* keep reply path best-effort; browser still needs SSE */ }
     }
     flushPendingPolls();
     // Forward the reply to the browser via SSE
-    broadcast({ type: msg.type || 'done', id: msg.id, message: msg.message, file: msg.file, data: msg.data });
+    broadcast({
+      type: msg.type || 'done',
+      id: msg.id,
+      message: msg.message,
+      file: msg.file,
+      sourceFile: replyFileMeta.sourceFile,
+      previewFile: replyFileMeta.previewFile,
+      previewMode: replyFileMeta.previewMode,
+      data: msg.data,
+    });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -678,6 +946,7 @@ function handlePollPost(req, res) {
 let httpServer = null;
 
 function shutdown() {
+  cleanupSvelteComponentSessionsBeforeExit();
   removeLiveServerInfo(process.cwd());
   if (state.leaseTimer) clearTimeout(state.leaseTimer);
   state.leaseTimer = null;
@@ -690,6 +959,25 @@ function shutdown() {
   state.pendingPolls.length = 0;
   if (httpServer) httpServer.close();
   process.exit(0);
+}
+
+function cleanupSvelteComponentSessionsBeforeExit() {
+  try {
+    removeAllSvelteComponentSessions(process.cwd());
+  } catch (err) {
+    console.warn('[impeccable] Svelte component session cleanup failed:', err.message);
+  }
+}
+
+function applyLegacyDeferredAcceptsOnStartup() {
+  try {
+    const result = applyDeferredSvelteComponentAccepts(process.cwd());
+    if (result.applied > 0 || result.failed > 0) {
+      console.log('[impeccable] applied legacy deferred Svelte component accepts:', JSON.stringify(result));
+    }
+  } catch (err) {
+    console.warn('[impeccable] legacy deferred Svelte component accept apply failed:', err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -721,6 +1009,9 @@ Endpoints:
   /annotation          POST raw image/png to stage a variant screenshot
   /events              SSE stream (server→browser) + POST (browser→server)
   /poll                Long-poll for agent CLI
+  /manual-edit-stash   Stage browser copy edits
+  /manual-edit-commit  Apply staged browser copy edits
+  /manual-edit-discard Discard staged browser copy edits
   /source              Raw source file reader (no-HMR fallback)
   /status              Durable recovery status (token-protected)
   /health              Health check`);
@@ -810,7 +1101,12 @@ if (existingRecord?.info) {
 
 state.token = randomUUID();
 state.sessionStore = createLiveSessionStore({ cwd: process.cwd() });
+manualApply.rollbackTransaction({
+  reason: 'manual_edit_server_start_recovered_abandoned_transaction',
+});
+applyLegacyDeferredAcceptsOnStartup();
 restorePendingEventsFromStore();
+manualApply.pruneStaleEvidence();
 const portArg = args.find(a => a.startsWith('--port='));
 state.port = portArg ? parseInt(portArg.split('=')[1], 10) : await findOpenPort();
 // Annotation screenshots live in the project root so the agent's Read tool
@@ -828,7 +1124,8 @@ httpServer.listen(state.port, '127.0.0.1', () => {
   const url = `http://localhost:${state.port}`;
   console.log(`\nImpeccable live server running on ${url}`);
   console.log(`Token: ${state.token}\n`);
-  console.log(`Inject: <script src="${url}/live.js"><\/script>`);
+  console.log(`Script: ${url}/live.js`);
+  console.log('Inject: managed by live-inject.mjs; Astro source tags use is:inline automatically.');
   console.log(`Stop:   node ${path.basename(fileURLToPath(import.meta.url))} stop`);
 });
 

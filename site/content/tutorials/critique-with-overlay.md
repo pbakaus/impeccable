@@ -35,7 +35,7 @@ It labels the tab it opens with `[LLM]` in the title so you can tell which one i
 
 ### What the automated detector does
 
-The second assessment runs `npx impeccable detect` against the page. This is deterministic: around thirty specific pattern checks that fire or do not fire. Gradient text, purple palettes, side-tab borders, nested cards, line length problems, low contrast, tiny body text, and the rest. The [full catalog](/anti-patterns) lists every rule and which layer (CLI, browser, or LLM-only) catches it.
+The second assessment runs `npx impeccable detect` against the page. This is deterministic: specific pattern checks that fire or do not fire. Gradient text, purple palettes, side-tab borders, nested cards, line length problems, low contrast, tiny body text, and the rest. The [full catalog](/slop#catalog) lists every rule and which layer (CLI, browser, or LLM-only) catches it.
 
 You get back a JSON list of every finding with its element selector, the rule that fired, and a short description.
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "impeccable:manual-edit-validate": "node --input-type=module -e \"import fs from 'node:fs';const body=fs.readFileSync('src/App.jsx','utf8');if(!/seats:\\\\s*7\\\\b/.test(body))throw new Error('workshopStats.seats must stay integer')\"",
     "preview": "vite preview"
   },
   "dependencies": {

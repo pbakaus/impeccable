@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Clipped overflow container fixture</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #fff; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px; }
+    .col { padding: 16px; }
+    .box { position: relative; width: 200px; height: 120px; margin: 0 0 24px; padding: 16px; border: 1px solid #ddd; }
+    .pop { position: absolute; top: 100%; left: 0; width: 220px; background: #222; color: #fff; padding: 8px; }
+  </style>
+</head>
+<body>
+  <div class="cols">
+    <!-- FLAG column: clipping container with a positioned child that needs to escape -->
+    <section class="col flag">
+      <div class="box flag-overflow-hidden" style="overflow: hidden">
+        <button>Menu</button>
+        <ul class="pop">Dropdown that gets clipped by the hidden ancestor</ul>
+      </div>
+      <div class="box flag-overflow-clip" style="overflow: clip">
+        <button>Tooltip host</button>
+        <span class="pop">Tooltip clipped by overflow clip</span>
+      </div>
+    </section>
+
+    <!-- PASS column: no clipping, no positioned child, or a real scroll region -->
+    <section class="col pass">
+      <div class="box pass-hidden-no-abs" style="overflow: hidden">
+        <p style="position: static">Hidden container with only static content.</p>
+      </div>
+      <div class="box pass-visible-abs" style="overflow: visible">
+        <button>Visible host</button>
+        <span class="pop">Positioned child can escape because overflow is visible.</span>
+      </div>
+      <div class="box pass-scroll-abs" style="overflow: auto">
+        <button>Scroll host</button>
+        <span class="pop">A genuine scroll region is allowed to contain positioned children.</span>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

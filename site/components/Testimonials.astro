@@ -1,0 +1,73 @@
+---
+// Testimonials section: single marquee variant (m2 Plinth).
+// Two rows of testimonial cards scrolling in opposite directions on a
+// tinted graphite plinth. Data lives in site/data/testimonials.js and is
+// ordered for impact: both rows lead with the punchiest quotes.
+//
+// The Ben Davis card (tier: 'spotlight') gets a kinpaku gold gradient so
+// it commands attention even mid-row.
+import { testimonials, spotlight } from '../data/testimonials.js';
+
+const initial = (handle) => (handle || '@?').replace('@', '').charAt(0).toUpperCase();
+
+// All testimonials in curated order (spotlight first, then ordered by
+// impact). Splits roughly in half for the two marquee rows.
+const all = testimonials;
+const half = Math.ceil(all.length / 2);
+const rowA = all.slice(0, half);
+const rowB = all.slice(half);
+---
+
+<section class="testimonials-section" id="testimonials" aria-label="What people say about Impeccable">
+    <div class="t-marquee" aria-hidden="false">
+
+      <div class="t-marquee-row">
+        <div class="t-marquee-track">
+          {[...rowA, ...rowA].map(t => (
+            <a
+              class="t-card t-card--plinth"
+              href={t.url || '#'}
+              target={t.url ? '_blank' : undefined}
+              rel={t.url ? 'noopener' : undefined}
+            >
+              <p class="t-card-quote">{t.quote}</p>
+              <div class="t-card-meta">
+                {t.avatar
+                  ? <img class="t-avatar" src={t.avatar} alt="" loading="lazy" width="28" height="28" />
+                  : <span class="t-coin" aria-hidden="true">{initial(t.handle)}</span>}
+                <span class="t-name-block">
+                  <span class="t-name">{t.name || t.handle}</span>
+                  <span class="t-handle">{t.handle}</span>
+                </span>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <div class="t-marquee-row">
+        <div class="t-marquee-track t-marquee-track--reverse">
+          {[...rowB, ...rowB].map(t => (
+            <a
+              class="t-card t-card--plinth"
+              href={t.url || '#'}
+              target={t.url ? '_blank' : undefined}
+              rel={t.url ? 'noopener' : undefined}
+            >
+              <p class="t-card-quote">{t.quote}</p>
+              <div class="t-card-meta">
+                {t.avatar
+                  ? <img class="t-avatar" src={t.avatar} alt="" loading="lazy" width="28" height="28" />
+                  : <span class="t-coin" aria-hidden="true">{initial(t.handle)}</span>}
+                <span class="t-name-block">
+                  <span class="t-name">{t.name || t.handle}</span>
+                  <span class="t-handle">{t.handle}</span>
+                </span>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
+    </div>
+</section>

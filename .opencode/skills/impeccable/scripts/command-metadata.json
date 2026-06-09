@@ -3,8 +3,8 @@
     "description": "Full confirmed-brief-then-build flow. Runs multi-round shape discovery first, resolves visual probe and north-star mock gates when available, then builds and visually iterates. Use when building a new feature end-to-end.",
     "argumentHint": "[feature description]"
   },
-  "teach": {
-    "description": "Gathers design context for a project. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles) and, when code exists to analyze, DESIGN.md (visual: colors, typography, components). Every other command reads these files before doing work. Use once per project.",
+  "init": {
+    "description": "Sets up a project for impeccable. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles); offers DESIGN.md (visual: colors, typography, components) when code exists; pre-configures live mode; then recommends the best commands to run next. Every other command reads these files before doing work. Use once per project.",
     "argumentHint": ""
   },
   "document": {

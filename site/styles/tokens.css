@@ -31,10 +31,13 @@ button, input, textarea, select {
    ============================================ */
 
 :root {
-  /* Typography */
-  --font-display: 'Cormorant Garamond', Georgia, serif;
-  --font-body: 'Instrument Sans', system-ui, sans-serif;
-  --font-mono: 'Space Grotesk', monospace;
+  /* Typography — kinpaku is the default. The legacy token names now point at
+     the --ks-* faces (defined in kinpaku-tokens.css, loaded globally via
+     Base.astro) so any rule still reading --font-* renders in the brand
+     faces. The old Cormorant/Instrument/Space Grotesk trio is retired. */
+  --font-display: var(--ks-font-display);
+  --font-body: var(--ks-font);
+  --font-mono: var(--ks-mono);
 
   /* Spacing Scale */
   --spacing-xs: 8px;
@@ -59,21 +62,24 @@ button, input, textarea, select {
   --duration-slower: 0.8s;
   --duration-slowest: 1.2s;
 
-  /* Core Colors - Light Mode */
-  --color-ink: oklch(10% 0 0);
-  --color-text: oklch(10% 0 0);
-  --color-paper: oklch(98% 0 0);
-  --color-cream: oklch(96% 0.005 350);
-  --color-charcoal: oklch(25% 0 0);
-  --color-ash: oklch(55% 0 0);
-  --color-mist: oklch(92% 0 0);
-  --color-bg: oklch(96% 0.005 350);
+  /* Core colors — kinpaku is the default surface. The legacy token names now
+     carry dark-lacquer values (mirroring the per-page kinpaku remaps), so any
+     rule still reading --color-* renders on the kinpaku surface. Surfaces are
+     literal oklch; ink/text/accent point at the --ks-* brand tokens. */
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-paper: oklch(7% 0.006 95);
+  --color-cream: oklch(9% 0.006 95);
+  --color-charcoal: oklch(72% 0.025 82);
+  --color-ash: oklch(60% 0.018 82);
+  --color-mist: oklch(58% 0.065 82 / 0.22);
+  --color-bg: oklch(11% 0.006 95);
 
-  /* Accent - Vibrant Magenta/Rose (original) */
-  --color-accent: oklch(60% 0.25 350);
-  --color-accent-hover: oklch(52% 0.25 350);
-  --color-accent-dim: oklch(60% 0.25 350 / 0.15);
-  --color-accent-soft: oklch(60% 0.25 350 / 0.25);
+  /* Accent — kinpaku gold (was magenta). */
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-dim: oklch(78% 0.12 82 / 0.18);
+  --color-accent-soft: oklch(78% 0.12 82 / 0.32);
 
   /* Framework category colors - Light mode */
   --cat-create-bg: #fdf2f8;
@@ -99,4 +105,20 @@ button, input, textarea, select {
   --cat-system-bg: #f5f5f4;
   --cat-system-border: #78716c;
   --cat-system-text: #44403c;
+}
+
+/* Light mode legacy aliases — mirror html.light --ks-* tokens. */
+html.light {
+  --color-ink: var(--ks-champagne);
+  --color-text: var(--ks-text);
+  --color-paper: var(--ks-lacquer);
+  --color-cream: var(--ks-lacquer-raised);
+  --color-charcoal: var(--ks-text);
+  --color-ash: var(--ks-text-muted);
+  --color-mist: var(--ks-rule);
+  --color-bg: var(--ks-lacquer-raised);
+  --color-accent: var(--ks-kinpaku);
+  --color-accent-hover: var(--ks-kinpaku-pale);
+  --color-accent-dim: oklch(77% 0.13 82 / 0.14);
+  --color-accent-soft: oklch(77% 0.13 82 / 0.24);
 }

@@ -1,0 +1,344 @@
+/* ============================================================================
+   /changelog and /faq — Neo Kinpaku redesign
+
+   Two self-contained support pages on a kinpaku surface. Both share the same
+   container + header treatment; only the content differs.
+   ============================================================================ */
+
+@import "./kinpaku-tokens.css";
+
+/* Page scope — kinpaku-surface (set on body via Base) provides the dark bg;
+   this class wraps the article content for the centered measure. */
+.cf-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: clamp(48px, 6vw, 96px) clamp(20px, 4vw, 48px) clamp(80px, 10vw, 140px);
+}
+
+.cf-eyebrow {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-eyebrow-size);
+  letter-spacing: var(--ks-type-eyebrow-track);
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  margin: 0 0 18px;
+}
+
+.cf-title {
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-display-weight);
+  font-size: var(--ks-type-display-size);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  color: var(--ks-champagne);
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+.cf-lede {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--ks-text);
+  margin: 0 0 clamp(28px, 4vw, 40px);
+  max-width: 60ch;
+}
+
+/* Component filter (Skill / CLI / Extension / All) */
+.cf-filter {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 clamp(40px, 5vw, 64px);
+  background: var(--ks-lacquer-raised);
+  border: 1px solid color-mix(in oklab, var(--ks-champagne) 12%, transparent);
+  border-radius: 999px;
+}
+.cf-filter-btn {
+  font-family: var(--ks-font-body, inherit);
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ks-text-muted);
+  background: transparent;
+  border: 0;
+  padding: 7px 18px;
+  min-height: 36px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
+}
+.cf-filter-btn:hover { color: var(--ks-text); }
+.cf-filter-btn.is-active {
+  color: var(--ks-lacquer);
+  background: var(--ks-kinpaku);
+  font-weight: 600;
+}
+.cf-filter-btn:focus-visible {
+  outline: 2px solid var(--ks-kinpaku);
+  outline-offset: 2px;
+}
+
+.cf-entry--hidden { display: none; }
+
+/* ============================================================================
+   Changelog
+   ============================================================================ */
+
+.cf-items {
+  padding-left: 1.1rem;
+  margin: 0;
+}
+.cf-items li {
+  color: var(--ks-text);
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+.cf-items li:last-child { margin-bottom: 0; }
+.cf-items strong { color: var(--ks-champagne); font-weight: 600; }
+.cf-items code {
+  font-family: var(--ks-mono);
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  padding: var(--ks-code-pad);
+  border-radius: var(--ks-code-radius);
+}
+.cf-items a {
+  color: var(--ks-patina);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cf-items a:hover { color: var(--ks-patina-pale); }
+
+.cf-entry {
+  margin: 0 0 22px;
+  padding: 20px 24px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.04), transparent 44%),
+    oklch(8% 0.006 95 / 0.84);
+}
+.cf-entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0 0 12px;
+  font-family: var(--ks-mono);
+  font-size: 0.86rem;
+}
+.cf-version { color: var(--ks-kinpaku); }
+.cf-date    { color: var(--ks-text-muted); }
+
+/* Current release — brighter kinpaku border, a gold wash, and a glow so the
+   newest version reads as the one you're on at a glance. */
+.cf-entry--current {
+  border-color: oklch(78% 0.12 82 / 0.5);
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.10), transparent 52%),
+    oklch(11% 0.01 82 / 0.92);
+  box-shadow: 0 0 30px oklch(78% 0.12 82 / 0.14);
+}
+.cf-current-badge {
+  margin-left: auto;
+  align-self: center;
+  padding: 3px 11px;
+  border: 1px solid oklch(78% 0.12 82 / 0.5);
+  border-radius: 999px;
+  background: oklch(78% 0.12 82 / 0.12);
+  color: var(--ks-kinpaku);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* One-line summary that sits above the bullets on a big release, so the
+   gist reads before the detail. */
+.cf-entry-lead {
+  margin: 0 0 20px;
+  color: var(--ks-champagne);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+/* Before/after proof pair — two real eval screenshots side by side. */
+.cf-ba {
+  margin: 0 0 22px;
+}
+.cf-ba-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 560px) {
+  .cf-ba-pair { grid-template-columns: 1fr; }
+}
+.cf-ba-shot {
+  position: relative;
+  border: 1px solid var(--ks-rule);
+  border-radius: 5px;
+  overflow: hidden;
+  background: oklch(8% 0.006 95);
+}
+.cf-ba-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.cf-ba-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--ks-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.cf-ba-tag--before {
+  color: var(--ks-text-muted);
+  background: oklch(8% 0.006 95 / 0.7);
+  border: 1px solid var(--ks-rule);
+}
+.cf-ba-tag--after {
+  color: var(--ks-kinpaku);
+  background: oklch(78% 0.12 82 / 0.14);
+  border: 1px solid oklch(78% 0.12 82 / 0.4);
+}
+.cf-ba figcaption {
+  margin-top: 12px;
+  color: var(--ks-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+/* Stat row — three big numbers from the bias-mining sweep. */
+.cf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 0 0 30px;
+  padding: 22px 24px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.04), transparent 50%),
+    oklch(8% 0.006 95 / 0.84);
+}
+@media (max-width: 560px) {
+  .cf-stats { grid-template-columns: 1fr; gap: 18px; }
+}
+.cf-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-stat-num {
+  font-family: var(--ks-font-display);
+  font-weight: var(--ks-type-display-weight);
+  font-size: clamp(2.2rem, 5vw, 3rem);
+  line-height: 1;
+  color: var(--ks-kinpaku);
+}
+.cf-stat-label {
+  color: var(--ks-text);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.cf-stats-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--ks-rule);
+  color: var(--ks-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   FAQ
+   ============================================================================ */
+
+.cf-faq-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cf-faq-item {
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.045), transparent 44%),
+    oklch(8% 0.006 95 / 0.84);
+}
+
+.cf-faq-question {
+  position: relative;
+  padding: 22px 64px 22px 26px;
+  font-family: var(--ks-font);
+  font-size: 1.02rem;
+  font-weight: 500;
+  color: var(--ks-kinpaku);
+  cursor: pointer;
+  list-style: none;
+}
+.cf-faq-question::-webkit-details-marker { display: none; }
+.cf-faq-question::after {
+  content: "+";
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ks-patina);
+  font-size: 1.4rem;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+.cf-faq-item[open] > .cf-faq-question::after {
+  transform: translateY(-50%) rotate(45deg);
+}
+.cf-faq-question:hover {
+  color: var(--ks-patina);
+}
+.cf-faq-question code {
+  font-family: var(--ks-mono);
+  font-size: 0.92em;
+  color: inherit;
+}
+
+.cf-faq-answer {
+  padding: 0 26px 24px;
+  color: var(--ks-text);
+}
+.cf-faq-answer p {
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+.cf-faq-answer p:last-child { margin-bottom: 0; }
+.cf-faq-answer ul {
+  margin: 8px 0 12px;
+  padding-left: 1.1rem;
+}
+.cf-faq-answer li {
+  margin: 0 0 6px;
+  line-height: 1.6;
+}
+.cf-faq-answer strong { color: var(--ks-champagne); font-weight: 600; }
+.cf-faq-answer code {
+  font-family: var(--ks-mono);
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  padding: var(--ks-code-pad);
+  border-radius: var(--ks-code-radius);
+}
+.cf-faq-answer a {
+  color: var(--ks-patina);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cf-faq-answer a:hover { color: var(--ks-patina-pale); }

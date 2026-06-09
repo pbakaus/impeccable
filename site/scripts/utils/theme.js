@@ -1,56 +1,82 @@
-// Theme toggle - supports light, dark, and system preference
+// Theme switcher — three-way: auto / light / dark with localStorage persistence.
+// "auto" (the default) inherits from the OS via prefers-color-scheme and is only
+// overridden once the user clicks the toggle. Clicking cycles auto → light → dark → auto.
 
 const STORAGE_KEY = 'impeccable-theme';
 
-function getStoredTheme() {
-  return localStorage.getItem(STORAGE_KEY);
+export function getStoredPref() {
+  const v = localStorage.getItem(STORAGE_KEY);
+  return v === 'light' || v === 'dark' ? v : 'auto';
 }
 
-function setStoredTheme(theme) {
-  localStorage.setItem(STORAGE_KEY, theme);
+export function setStoredPref(pref) {
+  if (pref === 'auto') localStorage.removeItem(STORAGE_KEY);
+  else localStorage.setItem(STORAGE_KEY, pref);
 }
 
-function applyTheme(theme) {
+function systemTheme() {
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark';
+}
+
+export function resolveTheme(pref) {
+  return pref === 'auto' ? systemTheme() : pref;
+}
+
+const LABELS = {
+  auto: 'Theme: auto, matching your system. Click to switch to light mode.',
+  light: 'Theme: light. Click to switch to dark mode.',
+  dark: 'Theme: dark. Click to switch back to auto.',
+};
+
+const TITLES = {
+  auto: 'Theme: auto (matches system)',
+  light: 'Theme: light',
+  dark: 'Theme: dark',
+};
+
+export function applyTheme(pref) {
   const html = document.documentElement;
+  const resolved = resolveTheme(pref);
 
-  // Remove both classes first
   html.classList.remove('light', 'dark');
+  html.classList.add(resolved);
+  html.setAttribute('data-theme-pref', pref);
 
-  if (theme === 'light') {
-    html.classList.add('light');
-  } else if (theme === 'dark') {
-    html.classList.add('dark');
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', resolved === 'light' ? '#f7f4ef' : '#010101');
   }
-  // 'system' = no class, falls back to media query
 
-  // Update active state on buttons
-  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.theme === theme);
+  document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+    btn.setAttribute('aria-label', LABELS[pref]);
+    btn.setAttribute('title', TITLES[pref]);
   });
+}
+
+function nextPref(pref) {
+  return pref === 'auto' ? 'light' : pref === 'light' ? 'dark' : 'auto';
 }
 
 export function initThemeToggle() {
-  const toggle = document.querySelector('.theme-toggle');
-  if (!toggle) return;
+  applyTheme(getStoredPref());
 
-  // Get stored theme or default to system
-  const storedTheme = getStoredTheme() || 'system';
-  applyTheme(storedTheme);
+  // While in auto, follow the OS as it flips.
+  if (window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => {
+      if (getStoredPref() === 'auto') applyTheme('auto');
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
 
-  // Handle button clicks
-  toggle.addEventListener('click', (e) => {
-    const btn = e.target.closest('.theme-toggle-btn');
-    if (!btn) return;
-
-    const theme = btn.dataset.theme;
-    setStoredTheme(theme);
-    applyTheme(theme);
-  });
-
-  // Listen for system preference changes (only matters when in 'system' mode)
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (getStoredTheme() === 'system' || !getStoredTheme()) {
-      applyTheme('system');
-    }
+  document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = nextPref(getStoredPref());
+      setStoredPref(next);
+      applyTheme(next);
+    });
   });
 }

@@ -1,6 +1,12 @@
 ---
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+// Site-global CSS: tokens first (defines --ks-*), kit second (consumes them),
+// footer styling third. Every page using Base.astro picks these up; no need
+// to re-import from page-level stylesheets.
+import '../styles/kinpaku-tokens.css';
+import '../styles/kinpaku-kit.css';
+import '../styles/light-mode.css';
 import '../styles/footer.css';
 
 interface Props {
@@ -42,6 +48,12 @@ const {
 const canonical = canonicalPath
   ? `https://impeccable.style${canonicalPath}`
   : undefined;
+
+// Social card defaults. Every page gets the brand card unless it passes its own.
+const SITE_OG_IMAGE = 'https://impeccable.style/og-image-v2.jpg';
+const ogImageUrl = ogImage || SITE_OG_IMAGE;
+const resolvedOgTitle = ogTitle || title;
+const resolvedOgDescription = ogDescription || description;
 ---
 
 <!DOCTYPE html>
@@ -51,35 +63,47 @@ const canonical = canonicalPath
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
   <meta name="description" content={description}>
-  <meta name="theme-color" content="#fafafa">
+  <meta name="theme-color" content="#010101">
+  <script is:inline>
+    (function () {
+      try {
+        var t = localStorage.getItem('impeccable-theme');
+        var root = document.documentElement;
+        var pref = (t === 'light' || t === 'dark') ? t : 'auto';
+        var resolved = pref === 'auto'
+          ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : pref;
+        root.classList.add(resolved);
+        root.setAttribute('data-theme-pref', pref);
+        if (resolved === 'light') {
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', '#f7f4ef');
+        }
+      } catch (e) {}
+    })();
+  </script>
   {noIndex && <meta name="robots" content="noindex">}
   {canonical && <link rel="canonical" href={canonical}>}
 
-  {ogTitle && (
-    <>
-      <meta property="og:type" content="website">
-      <meta property="og:url" content={canonical || 'https://impeccable.style'}>
-      <meta property="og:title" content={ogTitle}>
-      <meta property="og:description" content={ogDescription || description}>
-      {ogImage && <meta property="og:image" content={ogImage}>}
-    </>
-  )}
+  <meta property="og:type" content="website">
+  <meta property="og:url" content={canonical || 'https://impeccable.style'}>
+  <meta property="og:title" content={resolvedOgTitle}>
+  <meta property="og:description" content={resolvedOgDescription}>
+  <meta property="og:image" content={ogImageUrl}>
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
 
-  {twitterSite && (
-    <>
-      <meta name="twitter:card" content="summary_large_image">
-      <meta name="twitter:site" content={twitterSite}>
-      {twitterCreator && <meta name="twitter:creator" content={twitterCreator}>}
-      <meta name="twitter:title" content={ogTitle || title}>
-      <meta name="twitter:description" content={ogDescription || description}>
-      {ogImage && <meta name="twitter:image" content={ogImage}>}
-    </>
-  )}
+  <meta name="twitter:card" content="summary_large_image">
+  {twitterSite && <meta name="twitter:site" content={twitterSite}>}
+  {twitterCreator && <meta name="twitter:creator" content={twitterCreator}>}
+  <meta name="twitter:title" content={resolvedOgTitle}>
+  <meta name="twitter:description" content={resolvedOgDescription}>
+  <meta name="twitter:image" content={ogImageUrl}>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@300;400;500;600;700&family=Alumni+Sans:wght@400;500;600;700&family=Alumni+Sans+Pinstripe&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Instrument+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <slot name="head" />
 </head>
 <body class={bodyClass}>
@@ -92,5 +116,9 @@ const canonical = canonicalPath
   </main>
   {!hideFooter && <Footer />}
   <slot name="scripts" />
+  <script>
+    import { initThemeToggle } from '../scripts/utils/theme.js';
+    initThemeToggle();
+  </script>
 </body>
 </html>

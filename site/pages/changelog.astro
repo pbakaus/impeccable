@@ -1,0 +1,273 @@
+---
+import Base from '../layouts/Base.astro';
+import '../styles/sub-pages.css';
+import '../styles/changelog-faq-kinpaku.css';
+---
+
+<Base
+  title="Changelog | Impeccable"
+  description="What changed across Impeccable releases: skill, CLI, Chrome extension, and detector. Per-version notes plus recent highlights."
+  activeNav="docs"
+  canonicalPath="/changelog"
+  bodyClass="sub-page kinpaku-chrome kinpaku-surface"
+>
+  <div class="cf-page">
+    <p class="cf-eyebrow">Release notes</p>
+    <h1 class="cf-title">Changelog</h1>
+    <p class="cf-lede">What shipped, when, and why. Newest at the top, back through the v3.0 launch.</p>
+
+    <div class="cf-filter" role="group" aria-label="Filter changelog by component">
+      <button type="button" class="cf-filter-btn is-active" data-cf-filter="skill" aria-pressed="true">Skill</button>
+      <button type="button" class="cf-filter-btn" data-cf-filter="cli" aria-pressed="false">CLI</button>
+      <button type="button" class="cf-filter-btn" data-cf-filter="ext" aria-pressed="false">Extension</button>
+      <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
+    </div>
+
+    <article id="v3.5.0" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.5.0</span><span class="cf-date">May 28, 2026</span><span class="cf-current-badge">Current</span></header>
+      <p class="cf-entry-lead">The biggest release yet. Per-provider rules that lift GPT-5.5 and Codex most, a skill that adapts to new versus existing projects, and Live Mode in Beta.</p>
+
+      <figure class="cf-ba">
+        <div class="cf-ba-pair">
+          <div class="cf-ba-shot">
+            <span class="cf-ba-tag cf-ba-tag--before">Before</span>
+            <img src="/assets/changelog/luxury-hotel-gpt55-before.jpg" alt="GPT-5.5 without Impeccable: a cream background, an abstract vector hero, and an oversized serif headline overflowing its column." loading="lazy" width="1200" height="900" />
+          </div>
+          <div class="cf-ba-shot">
+            <span class="cf-ba-tag cf-ba-tag--after">After</span>
+            <img src="/assets/changelog/luxury-hotel-gpt55-after.jpg" alt="GPT-5.5 with Impeccable: a full-bleed photograph of a cliffside village, an editorial headline, and warm first-person copy." loading="lazy" width="1200" height="900" />
+          </div>
+        </div>
+        <figcaption>GPT-5.5, same luxury-hotel brief. Without Impeccable: the cream AI background, an abstract vector hero, and a headline that overflows its column. With Impeccable: real photography, an editorial layout, and copy with a human voice.</figcaption>
+      </figure>
+
+      <div class="cf-stats" aria-label="Defect rates on GPT-5.5 before Impeccable">
+        <div class="cf-stat">
+          <span class="cf-stat-num">74%</span>
+          <span class="cf-stat-label">of GPT-5.5 pages used the cream / beige AI-default background</span>
+        </div>
+        <div class="cf-stat">
+          <span class="cf-stat-num">76%</span>
+          <span class="cf-stat-label">reached for extreme negative letter-spacing on tech briefs</span>
+        </div>
+        <div class="cf-stat">
+          <span class="cf-stat-num">90%+</span>
+          <span class="cf-stat-label">shipped body text below the WCAG contrast floor</span>
+        </div>
+        <p class="cf-stats-note">Measured across ~190 samples, skill off. Each rate traced to a line in the skill, then fixed.</p>
+      </div>
+
+      <ul class="cf-items">
+        <li><strong>Dramatically better in GPT and Codex.</strong> Impeccable now compiles harness-specific rules into the skill at build time. Codex and GPT-5.5 get rules written for the exact defects they produce, that no other harness ever sees. No other design skill does this; everyone else ships one generic file to every model.</li>
+        <li><strong>Far less AI-default slop.</strong> Bias mining against ~190 samples found the skill's own lines were causing defects, and cut them. The cream / beige background tell (74% on GPT) is banned across the warm-neutral band. Category-to-aesthetic recipes that drove extreme letter-spacing and italic-serif heroes are gone: the shape depends on the brand, not its category. New bans cover all-caps eyebrows, numbered section markers, more than three fonts, and a hard contrast floor.</li>
+        <li><strong>It treats a new project differently from an existing one.</strong> On an existing codebase the skill reads your tokens, theme, and components first and works within them: preserving your identity wins over imposing a fresh look. On a blank slate it draws a single seed color from 129 hand-curated anchors, each carrying a mood and a composition strategy, then builds the full palette around it by hand. One seed becomes a dark jazz club or a light hospitality brand depending on the brief. Either way it ends the cold-start drift toward the same safe palette every time.</li>
+        <li><strong>Live Mode is Beta.</strong> Out of alpha, and it now works at two scales. Type a direction into the new Steer bar, or speak it, and the agent reads the whole page and edits it in place, no element selected and no variant cycling. Or pick a single element, steer it in plain language, and accept the variant straight back to source. You can also edit copy in place: change an element's text right in the browser, and on Apply a subagent rewrites the real source it renders from and repairs anything wired to it, like card labels that double as image keys. Insert mode scaffolds brand-new elements between the ones already there. Recovery survives HMR, hidden heroes, and dev-tool overlays, and an experimental streaming poll mode cuts pickup from seconds to sub-second.</li>
+        <li><strong><code>/impeccable teach</code> is now <code>/impeccable init</code>.</strong> Renamed to match what it does: one command to set up a project. From a single codebase scan it writes PRODUCT.md, offers a DESIGN.md, configures Live Mode so it just works the first time you run it, then points you at the best command to start with. The old name still works as an alias.</li>
+        <li><strong>A bare <code>/impeccable</code> recommends your next move.</strong> Run it with no command and, instead of a static menu, it reads the project, your dirty git tree, and your latest critique, then leads with the two or three highest-value commands and why (no DESIGN.md yet, run document; unresolved findings in the files you're editing, run polish). It always asks before running anything, and the full menu is still right below.</li>
+        <li><strong>A faster detector with no jsdom.</strong> The HTML/CSS engine was rebuilt from the ground up on <code>htmlparser2</code> and a real CSS cascade resolver, replacing jsdom. On the same 160-file HTML corpus it runs about 20x faster under Node: 0.34s where the old jsdom engine took 6.8s, roughly 2 ms per file instead of 43 ms. Dependency-free and small enough to bundle straight into the skill and run inline, not just in the CLI and the extension.</li>
+        <li><strong>Detector: 14 new rules.</strong> <code>cream-palette</code>, <code>em-dash-overuse</code>, <code>marketing-buzzword</code>, <code>numbered-section-markers</code>, <code>aphoristic-cadence</code>, <code>theater-slop-phrase</code>, <code>oversized-h1</code>, <code>extreme-negative-tracking</code>, <code>gpt-thin-border-wide-shadow</code>, <code>repeating-stripes-gradient</code>, <code>image-hover-transform</code>, <code>broken-image</code>, <code>text-overflow</code>, and <code>clipped-overflow-container</code>. 41 deterministic rules total, one canonical registry feeding the CLI, the browser extension, critique, and the evals.</li>
+        <li><strong>The skill keeps itself current.</strong> On the first session of the day, Impeccable quietly checks whether a newer version shipped. If one has, it offers to run <code>npx impeccable skills update</code> for you. It always asks first, never nags about a version you declined, and never interrupts the task you're on. Set <code>IMPECCABLE_NO_UPDATE_CHECK=1</code> to turn it off.</li>
+        <li><strong>Sharper craft under the hood.</strong> Beyond the bans, the craft itself got tighter. Small defaults landed where they pay off, like <code>text-wrap: balance</code> on headings, which cleaned up ragged hero type across the ablation runs. And the instructions themselves got leaner: orphan reference files folded into their commands, context loading simplified, and a new LLM-backed test suite that catches instruction-following regressions across three providers on every change. Plus dedicated <a href="/changelog">/changelog</a> and <a href="/faq">/faq</a> pages.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v2.3.2" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v2.3.2</span><span class="cf-date">May 29, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>The <code>i-</code> command prefix is gone.</strong> Opting into a prefix at install time was a holdover from when every command was its own skill. With a single <code>impeccable</code> skill it only ever renamed that one skill to <code>i-impeccable</code>, while the install message wrongly promised <code>/i-audit</code> style commands that never existed, and the rename could clobber unrelated third-party skills in the same harness folder. The flag and the prompt are removed.</li>
+        <li><strong>Existing prefixed installs heal themselves.</strong> <code>skills install</code> and <code>skills update</code> now rename any old <code>i-impeccable</code> (or custom-prefixed) skill back to the canonical <code>impeccable</code>, scoped by name so a third-party skill that happens to start with <code>i-</code> is left untouched. Want a short top-level command? <code>/impeccable pin audit</code> still makes <code>/audit</code> a standalone shortcut.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v2.3.1" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v2.3.1</span><span class="cf-date">May 28, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Codex agent delivery simplified.</strong> Codex auto-discovers subagents bundled inside an installed skill's own <code>agents/</code> folder, so <code>skills install</code> and <code>skills update</code> no longer write a separate <code>.codex/agents/*.toml</code> sidecar. The nested in-skill agent is the whole delivery now: one fewer file to install and heal, and nothing left behind in non-Codex projects.</li>
+        <li><strong><code>--fast</code> deprecated.</strong> Since the jsdom removal the full static scan runs at about 4 ms per file and covers every rule, so the regex-only <code>--fast</code> path only lost coverage (about 10 of 41 rules) for no real speed gain, and a <code>--fast</code> run could read "clean" because most rules silently never ran. The flag is still accepted so existing CI scripts keep working, but it is ignored with a one-line notice and the full scan always runs.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v2.3.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v2.3.0</span><span class="cf-date">May 28, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Codex subagent delivery.</strong> <code>skills install</code> and <code>skills update</code> now write <code>.codex/agents/impeccable_asset_producer.toml</code> alongside the skill for Codex projects, detected from a <code>.agents</code> target or a global <code>~/.codex</code> install. Update heals the file when an older install left it out, and non-Codex projects stay untouched.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v2.2.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v2.2.0</span><span class="cf-date">May 28, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Static engine, no jsdom.</strong> Detection was rebuilt on <code>htmlparser2</code> and a real CSS cascade resolver, replacing jsdom. About 20x faster on large HTML scans (a 160-file corpus drops from 6.8s to 0.34s under Node), dependency-free, and small enough to bundle, with no change to the rules themselves.</li>
+        <li><strong>14 new detection rules.</strong> <code>cream-palette</code> (warm off-white "claude beige" backgrounds, including Tailwind warm-light utilities), <code>em-dash-overuse</code>, <code>marketing-buzzword</code>, <code>numbered-section-markers</code>, <code>aphoristic-cadence</code>, <code>theater-slop-phrase</code>, <code>oversized-h1</code>, <code>extreme-negative-tracking</code>, <code>gpt-thin-border-wide-shadow</code>, <code>repeating-stripes-gradient</code>, <code>image-hover-transform</code>, <code>broken-image</code>, <code>text-overflow</code>, and <code>clipped-overflow-container</code>. 41 deterministic rules total.</li>
+        <li><strong>everything-centered removed.</strong> Dropped from the registry, the regex analyzer, and the layout checks: the rule caught too many legitimately centered layouts to earn its place.</li>
+        <li><strong>One canonical registry.</strong> Eval-side detection logic folded back into the shared engine, so the CLI, the browser extension, the critique skill, and the evals all run the exact same checks.</li>
+      </ul>
+    </article>
+
+    <article id="ext-v1.2.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">Extension v1.2.0</span><span class="cf-date">June 1, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Firefox build.</strong> The same detector, popup, DevTools panel, and per-rule toggles now ship as a Firefox add-on. <code>bun run build:extension</code> emits a Gecko-compatible package next to the Chrome one, with the background worker declared as an event page and a data-collection declaration that states what the extension already does: the scan runs in the page, and nothing leaves your machine.</li>
+      </ul>
+    </article>
+
+    <article id="ext-v1.1.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">Extension v1.1.0</span><span class="cf-date">May 28, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>The new detection rules flag in the overlay.</strong> cream-palette, em-dash-overuse, marketing-buzzword, numbered-section-markers, aphoristic-cadence, theater-slop-phrase, oversized-h1, broken-image, text-overflow, and the rest now light up on any page you scan, same engine as the CLI.</li>
+        <li><strong>Per-rule toggles in settings.</strong> Every rule, including the new ones, has an on/off switch grouped by AI tells and Quality. Toggle state syncs across your browsers and the scan honors it immediately.</li>
+      </ul>
+    </article>
+
+    <article id="v3.1.1" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.1.1</span><span class="cf-date">May 14, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong><code>/impeccable critique</code> works on Windows.</strong> The CLI entry-point check in <code>critique-storage.mjs</code> compared <code>import.meta.url</code> against a hand-built <code>file://</code> string, which silently failed on Windows because Node returns forward slashes in <code>import.meta.url</code> but backslashes in <code>process.argv[1]</code>. The script exited 0 with no output and the snapshot save was skipped. Switched to <code>pathToFileURL</code>, the standard cross-platform pattern. Reported by <a href="https://github.com/Genmutant" target="_blank" rel="noopener">@Genmutant</a> in <a href="https://github.com/pbakaus/impeccable/issues/155" target="_blank" rel="noopener">#155</a>.</li>
+      </ul>
+    </article>
+
+    <article id="v3.1.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.1.0</span><span class="cf-date">May 13, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Codex asset producer agent.</strong> A native Codex subagent that produces clean, reusable raster assets from approved Impeccable mock references without redesigning the direction. Preserves silhouette, palette, lighting, and material; strips baked-in UI text and presentation chrome that CSS should own. Codex-only because Codex is the harness with native image generation today.</li>
+        <li><strong>Critique persistence.</strong> Each <code>/impeccable critique</code> run now writes a per-target snapshot to <code>.impeccable/critique/&lt;timestamp&gt;__&lt;slug&gt;.md</code> with score, P0/P1 counts, and full report. <code>/impeccable polish</code> reads the latest matching snapshot as additional signal when invoked on the same target. <code>ignore.md</code> at the same path is user-curated; lines there are designer-intended deviations that critique won't re-raise.</li>
+        <li><strong>Codex-specific image flow extracted.</strong> The mock-and-palette workflow lives in <code>reference/codex.md</code> with a palette-first gate (lock the palette before any mocks, so generated comps stop drifting). Craft.md is shorter and cleaner for every non-Codex harness.</li>
+        <li><strong>Detector: new rule + false-positive fixes.</strong> <code>body-text-viewport-edge</code> catches body text running to the absolute viewport edge. OKLCH and CSS-var resolution improvements remove a class of false positives in modern token-based codebases.</li>
+        <li><strong>Brand register sharpened.</strong> An "inverse test" question now sits up front: describe your page the way a competitor would describe theirs; if that sentence fits the modal landing page in the category, restart. A cultural-symbol palette guardrail catches the lazy pull.</li>
+        <li><strong>Shape and craft gates strengthened.</strong> Image-gen skips are announced in one line. Brief confirmation is explicit, not assumed. When the harness has native image generation, craft now names the four user gates between shape and code (direction questions, palette generation, mock generation, mock approval) with explicit STOP markers at each.</li>
+        <li><strong>Skill prose, image discipline, and detector counts kept honest.</strong> A skill-side prose validator catches em dashes and AI tells in reference instructions. Craft step 3 reads the screenshot back into context after capture. Build validator now ignores changelog history when checking detector counts.</li>
+      </ul>
+    </article>
+
+    <article id="v3.0.7" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.0.7</span><span class="cf-date">May 4, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Detector flags italic-serif display heroes.</strong> Oversized italic serif (Fraunces, Recoleta, Newsreader, Playfair, Cormorant, Tiempos) running as the primary hero h1 is now caught as a structural fingerprint of late-2025 and early-2026 AI-generated marketing pages. Editorial surfaces that legitimately want the pattern can ignore the rule. Contributed by <a href="https://github.com/vinaypokharkar" target="_blank" rel="noopener">@vinaypokharkar</a> in <a href="https://github.com/pbakaus/impeccable/pull/129" target="_blank" rel="noopener">#129</a>.</li>
+        <li><strong>Detector flags hero eyebrow chips.</strong> The uppercase letter-spaced label sitting directly above a hero h1 now fires, including the pill-chip variant (background plus 999px border-radius). Bounded to short labels at small sizes so editorial captions don't false-positive. Also in <a href="https://github.com/pbakaus/impeccable/pull/129" target="_blank" rel="noopener">#129</a>.</li>
+        <li><strong>Detector flags the new font monoculture.</strong> The overused-font rule now catches Fraunces, Geist, Mona Sans, Plus Jakarta Sans, Space Grotesk, Recoleta, and Instrument Sans alongside Inter and the older defaults. Contrast checks also run on styled <code>&lt;a&gt;</code> and <code>&lt;button&gt;</code> elements (a "Get started" pill with charcoal text on near-black no longer reads as fine). Brand exceptions for Vercel, Next.js, and GitHub on their own domains.</li>
+        <li><strong>Live mode survives disconnects.</strong> A durable session journal records every event, so an agent crash, a network blip, or a browser refresh no longer loses the session. Three new sub-commands: <code>live status</code>, <code>live resume</code>, and <code>live complete</code>. Contributed by <a href="https://github.com/nqh-packages" target="_blank" rel="noopener">@nqh-packages</a> in <a href="https://github.com/pbakaus/impeccable/pull/125" target="_blank" rel="noopener">#125</a>.</li>
+        <li><strong>Reference files stripped of repetitive scaffolding.</strong> SKILL.md and 33 sub-command files lost the "Remember:" closer chants, the brochure-style openers on 12 older commands, and 419 em-dashes that obscured the choice between colon, semicolon, period, or parens.</li>
+      </ul>
+    </article>
+
+    <article id="v3.0.6" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.0.6</span><span class="cf-date">April 30, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Live mode preserves identity by default.</strong> Variants now stay on-brand for the existing surface (same palette, type pairing, visual rhetoric) and explore different expression axes within that identity. Departure from the existing aesthetic only triggers when PRODUCT.md anti-references explicitly call out the current surface, or the user asks for it.</li>
+        <li><strong>Departure mode derives from brand voice, not a fixed catalog.</strong> The old lane list (Swiss-grid, Terminal, Industrial-signage) caused the model to converge on the same three directions every time. Replaced with a brand-voice derivation: read personality words, imagine physical experiences, derive visual directions.</li>
+        <li><strong>Parameters ship consistently on large surfaces.</strong> Planning params is part of variant planning. The freeform bias aligns with the budget table: 2-3 knobs per variant for heroes and sections, with 0-param heroes flagged as mistakes rather than judgment calls.</li>
+        <li><strong>Reflex-reject aesthetic lanes.</strong> Parallel to the font reflex-reject list. Editorial-typographic is the first entry, catching the second-order training reflex where every departure from SaaS-cream defaults to magazine-cover aesthetics.</li>
+      </ul>
+    </article>
+
+    <article id="v3.0.5" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v3.0.5</span><span class="cf-date">April 28, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Live mode lands valid TSX through the wrap → preview → accept → carbonize loop on Vite/Next React/TSX projects.</strong> The wrapper now keeps a single JSX-slot child instead of three adjacent siblings, so it round-trips cleanly inside <code>return (...)</code>, array <code>.map(...)</code>, and <code>asChild</code> parents. Closes <a href="https://github.com/pbakaus/impeccable/issues/114" target="_blank" rel="noopener">#114</a>, with thanks to <a href="https://github.com/dergachoff" target="_blank" rel="noopener">@dergachoff</a>.</li>
+            <li><strong>Wrap correctly disambiguates repeated identical-class siblings.</strong> A list of <code>&lt;Card className="card"&gt;</code> rendered three times used to land on the first one regardless of which the user picked. <code>live-wrap.mjs</code> now accepts <code>--text TEXT</code> (the picked element's <code>textContent</code>) and narrows candidates accordingly.</li>
+            <li><strong><code>live-inject</code> CSP-meta unwrap now byte-for-byte preserves self-closing tag whitespace.</strong> Common Vite shapes that ship a CSP meta now round-trip cleanly.</li>
+          </ul>
+        </article>
+
+        <article id="v3.0.4" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v3.0.4</span><span class="cf-date">April 28, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong><code>/impeccable craft</code> now treats approved mocks as visual contracts.</strong> The craft flow requires a mock fidelity inventory before build, maps major visible ingredients to code or assets, and flags missing hero objects, imagery, section structure, nav/CTA treatment, and distinctive motifs as blocking defects unless the user accepted the deviation.</li>
+            <li><strong>Image-led brand surfaces can no longer degrade into abstract panels.</strong> Travel, editorial, portfolio, venue, product showcase, entertainment, and education work now requires credible imagery when the approved mock or subject matter calls for them.</li>
+            <li><strong>Live picker plays nice with modal hosts.</strong> Inside Radix Dialog, Headless UI, vaul, and other portals that lock <code>body &#123; pointer-events: none &#125;</code>, the picker chrome had become unclickable. Now defangs outside-handlers at the chrome boundary and forces <code>pointer-events: auto</code> on itself. Closes <a href="https://github.com/pbakaus/impeccable/issues/113" target="_blank" rel="noopener">#113</a>.</li>
+          </ul>
+        </article>
+
+        <article id="v3.0.2" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v3.0.2</span><span class="cf-date">April 27, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Claude Code plugin install shrunk by 380×.</strong> The marketplace now ships only the runtime payload (~770 KB) instead of the entire monorepo (291 MB). Plugin source moved from <code>./</code> to <code>./plugin</code>. Reported in <a href="https://github.com/pbakaus/impeccable/issues/107" target="_blank" rel="noopener">#107</a>.</li>
+            <li><strong>Slash commands now register reliably on Claude Code.</strong> The <code>skills</code> field in <code>plugin.json</code> was missing the trailing slash that the documented schema expects. Reported by three users in <a href="https://github.com/pbakaus/impeccable/issues/86" target="_blank" rel="noopener">#86</a>.</li>
+          </ul>
+        </article>
+
+        <article id="v3.0.1" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v3.0.1</span><span class="cf-date">April 24, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Live mode runs in strict-CSP apps.</strong> When your HTML carries a Content-Security-Policy meta tag, <code>/impeccable live</code> now silently appends the live-server origin to <code>script-src</code> and <code>connect-src</code> on session start, and reverts the patch verbatim on stop.</li>
+            <li><strong>Live mode survives conditional-render content.</strong> Picking an element inside a closed modal, an inactive tab, or a collapsible panel used to wedge live mode when Vite Fast Refresh remounted the parent. Now: a brief upfront heads-up at pick time, plus a contextual toast after Go so variants land the moment the element is back in the DOM.</li>
+            <li><strong><code>/impeccable polish</code> now a true superset of the retired <code>/normalize</code>.</strong> Aligning to the design system is non-optional, drift is named by root cause (missing token, one-off implementation, or conceptual misalignment), and a new Information Architecture &amp; Flow dimension covers progressive disclosure.</li>
+          </ul>
+        </article>
+
+        <article id="v3.0" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v3.0</span><span class="cf-date">April 10, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Live Mode (Alpha).</strong> Run <code>/impeccable live</code> and iterate on your UI in the browser: pick any element, drop a comment or stroke, hit Go, get three production-quality variants swapped in via your framework's HMR, accept the one you want and it writes back to source. Works on Vite, Next.js (including monorepos), SvelteKit, Astro, Nuxt.</li>
+            <li><strong>Visualize, then build.</strong> Image gen crossed the reference-quality threshold with GPT Image 2, Nano Banana Pro, and Imagen 4 Ultra. <code>/impeccable shape</code> drafts a brand toolkit (color, typography, mood board) as real images; <code>/impeccable craft</code> pre-renders the hi-fi mock to code toward. Strongest in Codex with GPT 5.5.</li>
+            <li><strong>PRODUCT.md, shared design memory for your AI.</strong> A single file at your project root that names the audience, brand personality, anti-references, and register (brand vs product). Every command reads it before generating.</li>
+            <li><strong>DESIGN.md generation, spec-compliant and interoperable.</strong> <code>/impeccable document</code> scans your tokens, components, and rendered output and writes a DESIGN.md that follows the <a href="https://stitch.withgoogle.com/docs/design-md/format/" target="_blank" rel="noopener">Google Stitch DESIGN.md format</a>.</li>
+            <li><strong>18 skills became 1 skill with 23 commands.</strong> Every command now lives under <code>/impeccable</code>. One entry in your <code>/</code> menu instead of 18, a shared design vocabulary, and far less namespace pollution.</li>
+            <li><strong>Pin your favorites back as shortcuts.</strong> Run <code>/impeccable pin audit</code> and <code>/audit</code> becomes a standalone command again, without reversing the consolidation.</li>
+          </ul>
+        </article>
+
+        <article id="v2.1" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v2.1</span><span class="cf-date">April 9, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Streamlined from 21 to 18 commands.</strong> <code>/arrange</code> renamed to <code>/layout</code>, <code>/normalize</code> merged into <code>/polish</code>, <code>/onboard</code> merged into <code>/harden</code>, and <code>/extract</code> became <code>/impeccable extract</code>.</li>
+            <li><strong>Automatic cleanup of deprecated skills.</strong> On first load after updating, the skill detects and removes leftover files from renamed or merged commands.</li>
+          </ul>
+        </article>
+
+        <article id="v2.0" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v2.0</span><span class="cf-date">April 8, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>Renamed <code>frontend-design</code> to <code>impeccable</code>.</strong> The core skill now shares its name with the project.</li>
+            <li><strong>Skill rewritten against evals.</strong> Fifteen briefs ran through gpt-5.4 and Qwen 3.6 Plus, with and without the skill loaded, then graded side by side. More font and color variety, fewer purple gradients, much better Codex output.</li>
+            <li><strong>Anti-pattern detection engine.</strong> 28 deterministic rules across typography, color, layout, motion, and quality.</li>
+            <li><strong>CLI: <code>npx impeccable detect</code>.</strong> Scans HTML, CSS, JSX/TSX, Vue, Svelte, and CSS-in-JS. Framework detection, multi-file import tracking, CI-ready JSON output.</li>
+            <li><strong>Chrome DevTools extension.</strong> One-click detection on any page. Reads live computed styles, surfaces findings in an interactive panel, and highlights elements on the page.</li>
+            <li><strong><code>/critique</code> got teeth.</strong> Persona sub-agents review in parallel, score against Nielsen's heuristics, run the detector automatically, and open a live browser overlay so you can walk each finding in place.</li>
+          </ul>
+        </article>
+
+        <article id="v1.x" class="cf-entry">
+          <header class="cf-entry-head"><span class="cf-version">v1.x</span><span class="cf-date">February 28 – March 18, 2026</span></header>
+          <ul class="cf-items">
+            <li><strong>v1.6.0</strong> Trae (China + International) support. <code>/critique</code> scores against Nielsen's 10 heuristics and persona archetypes. <code>/audit</code> scores 5 dimensions with P0-P3 severity ratings.</li>
+            <li><strong>v1.5.0</strong> <code>/typeset</code> (fix typography), <code>/arrange</code> (fix layout), <code>/overdrive</code> (technically extraordinary effects). Auto design-context gathering via <code>.impeccable.md</code>.</li>
+            <li><strong>v1.3.0</strong> OpenCode and Pi provider support.</li>
+            <li><strong>v1.2.0</strong> Kiro support. Prefix toggle restored. Audit and critique only suggest installed commands.</li>
+            <li><strong>v1.1.0</strong> Unified skills architecture. VS Code Copilot and Google Antigravity support. Universal ZIP installer. <code>/simplify</code> renamed to <code>/distill</code>.</li>
+            <li><strong>v1.0.0</strong> Initial release. 17 design commands. Cursor, Claude Code, Gemini CLI, and Codex CLI.</li>
+          </ul>
+        </article>
+  </div>
+
+  <script is:inline>
+    (function () {
+      const buttons = Array.from(document.querySelectorAll('.cf-filter-btn'));
+      const entries = Array.from(document.querySelectorAll('.cf-entry'));
+      if (!buttons.length || !entries.length) return;
+
+      // Component is derived from the entry id prefix: cli-*, ext-*, else skill.
+      const kindOf = (entry) => {
+        const id = entry.id || '';
+        if (id.startsWith('cli-')) return 'cli';
+        if (id.startsWith('ext-')) return 'ext';
+        return 'skill';
+      };
+
+      const apply = (filter) => {
+        entries.forEach((entry) => {
+          const show = filter === 'all' || kindOf(entry) === filter;
+          entry.classList.toggle('cf-entry--hidden', !show);
+        });
+        buttons.forEach((btn) => {
+          const active = btn.dataset.cfFilter === filter;
+          btn.classList.toggle('is-active', active);
+          btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      };
+
+      buttons.forEach((btn) => btn.addEventListener('click', () => apply(btn.dataset.cfFilter)));
+      apply('skill'); // default view: skill only
+    })();
+  </script>
+</Base>

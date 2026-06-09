@@ -137,7 +137,7 @@ This is a test skill body.`;
 
     const skillDir = path.join(TEST_DIR, 'skill');
     fs.mkdirSync(skillDir, { recursive: true });
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     // Run the build process
     const DIST_DIR = path.join(TEST_DIR, 'dist');
@@ -186,7 +186,7 @@ Do not redesign the approved crop.`;
 
     const skillDir = path.join(TEST_DIR, 'skill');
     fs.mkdirSync(path.join(skillDir, 'agents'), { recursive: true });
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
     fs.writeFileSync(path.join(skillDir, 'agents/asset-producer.md'), agentContent);
 
     const DIST_DIR = path.join(TEST_DIR, 'dist');
@@ -197,7 +197,9 @@ Do not redesign the approved crop.`;
     transformers.transformCodex(skills, DIST_DIR, patterns);
 
     const claudeAgentPath = path.join(DIST_DIR, 'claude-code/.claude/agents/asset-producer.md');
-    const codexAgentPath = path.join(DIST_DIR, 'codex/.codex/agents/asset_producer.toml');
+    // Codex auto-discovers agents nested inside an installed skill, so the .toml
+    // ships in the skill's own agents/ folder rather than a top-level .codex/agents/.
+    const codexAgentPath = path.join(DIST_DIR, 'codex/.codex/skills/test-skill/agents/asset_producer.toml');
 
     expect(fs.existsSync(claudeAgentPath)).toBe(true);
     expect(fs.existsSync(codexAgentPath)).toBe(true);
@@ -226,7 +228,7 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
 
     const skillDir = path.join(TEST_DIR, 'skill');
     fs.mkdirSync(skillDir, { recursive: true });
-    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), skillContent);
 
     const DIST_DIR = path.join(TEST_DIR, 'dist');
     const { skills } = utils.readSourceFiles(TEST_DIR);

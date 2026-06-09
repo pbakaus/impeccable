@@ -43,16 +43,9 @@ The reflex-reject lists apply to **new design choices**. When the existing brand
 
 ### Pairing and voice
 
-Distinctive + refined is the goal. The specific shape depends on the brand:
-
-- **Editorial / long-form / luxury**: display serif + sans body (a magazine shape).
-- **Tech / dev tools / fintech**: one committed sans, usually; custom-tight tracking, strong weight contrast inside a single family.
-- **Consumer / food / travel**: warmer pairings, often a humanist sans plus a script or display serif.
-- **Creative studios / agencies**: rule-breaking welcome. Mono-only, or display-only, or custom-drawn type as voice.
+Distinctive + refined is the goal. The specific shape depends on the brand, not on the brand's category. A category ("restaurant", "dev tool", "magazine", "fintech") is not a recipe; treating it as one is the first-order reflex SKILL.md warns against.
 
 Two families minimum is the rule *only* when the voice needs it. A single well-chosen family with committed weight/size contrast is stronger than a timid display+body pair.
-
-Vary across projects. If the last brief was a serif-display landing page, this one isn't.
 
 ### Scale
 
@@ -67,22 +60,21 @@ Brand surfaces have permission for Committed, Full palette, and Drenched strateg
 - Name a real reference before picking a strategy. "Klim Type Foundry #ff4500 orange drench", "Stripe purple-on-white restraint", "Liquid Death acid-green full palette", "Mailchimp yellow full palette", "Condé Nast Traveler muted navy restraint", "Vercel pure black monochrome". Unnamed ambition becomes beige.
 - Palette IS voice. A calm brand and a restless brand should not share palette mechanics.
 - When the strategy is Committed or Drenched, color carries the brand. Don't hedge with neutrals around the edges. Commit.
-- Don't converge across projects. If the last brand surface was restrained-on-cream, this one is not.
+- Don't converge across projects. Each brand surface differentiates from the last.
 - When a cultural-symbol palette is the obvious pull, reach past it. Let the cultural reading come from typography, imagery, and copy, not the palette.
 
 ## Layout
 
 - Asymmetric compositions are one option. Break the grid intentionally for emphasis.
 - Fluid spacing with `clamp()` that breathes on larger viewports. Vary for rhythm: generous separations, tight groupings.
-- Alternative: a strict, visible grid as the voice (brutalist / Swiss / tech-spec aesthetics). Either asymmetric or rigorously-gridded can be "designed"; the failure mode is splitting the difference into a generic centered stack.
-- Don't default to centering everything. Left-aligned with asymmetric layouts feels more designed; a strict grid reads as confident structure. A centered-stack hero with icon-title-subtitle cards reads as template.
+- For image-led briefs (hotels, restaurants, magazines, photography), full-bleed hero imagery with overlaid menu and centered headline is a canonical move; let the photograph be the design.
 - When cards ARE the right affordance, use `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` for breakpoint-free responsiveness.
 
 ## Imagery
 
 Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landing page without any imagery reads as incomplete, not as restrained. A solid-color rectangle where a hero image should go is worse than a representative stock photo.
 
-**When the brief implies imagery (restaurants, hotels, magazines, photography, hobbyist communities, food, travel, fashion, product), you must ship imagery.** Zero images is a bug, not a design choice. "Restraint" is not an excuse. If the approved comp or brief is image-led, ship real project assets, generated raster assets, or a credible canvas/SVG/WebGL scene. Do not replace photographic, architectural, product, or place imagery with generic CSS panels, decorative diagrams, cards, bullets, or copy.
+**When the brief implies imagery, you must ship imagery.** Zero images is a bug, not a design choice. "Restraint" is not an excuse. If the approved comp or brief is image-led, ship real project assets, generated raster assets, or a credible canvas/SVG/WebGL scene. Do not replace photographic, architectural, product, or place imagery with generic CSS panels, decorative diagrams, cards, bullets, or copy.
 
 - **For greenfield work without local assets, use stock imagery.** Unsplash is the default. The URL shape is `https://images.unsplash.com/photo-{id}?auto=format&fit=crop&w=1600&q=80`. **Verify the URLs before referencing them.** If you have an image-search MCP, web-fetch tool, or browser access, use it to find real photo IDs and confirm they resolve. Guessed IDs (even ones that look real) often 404 and ship as broken-image placeholders. Without a verification path, pick fewer photos you're confident exist over more that you guessed; never substitute colored `<div>` placeholders.
 - **Search for the brand's physical object**, not the generic category: "handmade pasta on a scratched wooden table" beats "Italian food"; "cypress trees above a limestone hotel facade at dusk" beats "luxury hotel".
@@ -93,8 +85,7 @@ Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landin
 
 ## Motion
 
-- One well-orchestrated page-load with staggered reveals beats scattered micro-interactions, when the brand invites it. Tech-minimal brands often skip entrance motion entirely; the restraint is the voice.
-- For collapsing/expanding sections, transition `grid-template-rows` rather than `height`.
+- One well-orchestrated page-load beats scattered micro-interactions, when the brand invites it. Some brands skip entrance motion entirely; the restraint is the voice.
 
 ## Brand bans (on top of the shared absolute bans)
 
@@ -111,8 +102,7 @@ Brand surfaces lean on imagery. A restaurant, hotel, magazine, or product landin
 
 Brand can afford things product can't. Take them.
 
-- Ambitious first-load motion. Reveals, scroll-triggered transitions, typographic choreography.
+- Ambitious first-load motion. Reveals and typographic choreography that earn their place; not fade-on-scroll for every section.
 - Single-purpose viewports. One dominant idea per fold, long scroll, deliberate pacing.
-- Typographic risk. Enormous display type, unexpected italic cuts, mixed cases, hand-drawn headlines, a single oversize word as a hero.
 - Unexpected color strategies. Palette IS voice; a calm brand and a restless brand should not share palette mechanics.
 - Art direction per section. Different sections can have different visual worlds if the narrative demands it. Consistency of voice beats consistency of treatment.

@@ -1,0 +1,35 @@
+{
+  "name": "Vite 8 + React + insert mode E2E",
+  "config": {
+    "files": ["index.html"],
+    "insertBefore": "</body>",
+    "commentSyntax": "html"
+  },
+  "sourceFiles": ["index.html", "src/App.jsx", "src/main.jsx", "src/styles.css", "vite.config.js"],
+  "generatedFiles": [],
+  "wrapCases": [],
+  "runtime": {
+    "mode": "insert",
+    "styling": "plain-css",
+    "install": ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],
+    "devCommand": ["npx", "vite", "--host", "127.0.0.1"],
+    "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
+    "readyTimeoutMs": 120000,
+    "steer": false,
+    "insert": {
+      "anchorSelector": "section#features",
+      "position": "after",
+      "prompt": "Add a testimonial strip below features",
+      "expectSelector": ".inserted-strip",
+      "assertAnchorContains": "feature-grid"
+    },
+    "probe": {
+      "expectLiveInit": true,
+      "expectConsoleClean": true
+    },
+    "assertSourceContains": [
+      "Vite 8 Fixture",
+      "feature-grid"
+    ]
+  }
+}

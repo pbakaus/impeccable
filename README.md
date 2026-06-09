@@ -1,8 +1,8 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 23 commands, and curated anti-patterns for impeccable frontend design.
+Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 41 deterministic detector rules for AI-generated frontend design.
 
-> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
+> **Quick start:** From your project root, run `npx impeccable skills install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
 
 ## Why Impeccable?
 
@@ -11,25 +11,27 @@ Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/ski
 Every model trained on the same SaaS templates. Skip the guidance and you get the same handful of tells on every project: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
 
 Impeccable adds:
-- **7 domain reference files** ([view source](skill/)). Typography, color, motion, spatial, interaction, responsive, UX writing. Load on every command, alongside a brand-vs-product register that adjusts the defaults.
+- **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
 - **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
-- **27 deterministic anti-pattern rules** plus a 12-rule LLM critique pass. CLI and browser extension run the deterministic ones with no LLM and no API key. Each is tied to specific design guidance the skill teaches against.
+- **41 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
 ## What's Included
 
 ### The Skill: impeccable
 
-A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.md)):
+The skill installs as one command:
 
-| Reference | Covers |
-|-----------|--------|
-| [typography](skill/reference/typography.md) | Type systems, font pairing, modular scales, OpenType |
-| [color-and-contrast](skill/reference/color-and-contrast.md) | OKLCH, tinted neutrals, dark mode, accessibility |
-| [spatial-design](skill/reference/spatial-design.md) | Spacing systems, grids, visual hierarchy |
-| [motion-design](skill/reference/motion-design.md) | Easing curves, staggering, reduced motion |
-| [interaction-design](skill/reference/interaction-design.md) | Forms, focus states, loading patterns |
-| [responsive-design](skill/reference/responsive-design.md) | Mobile-first, fluid design, container queries |
-| [ux-writing](skill/reference/ux-writing.md) | Button labels, error messages, empty states |
+```bash
+/impeccable <command> <target>
+```
+
+Start every new project with:
+
+```bash
+/impeccable init
+```
+
+`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes project context that every later command reads.
 
 ### 23 Commands
 
@@ -38,7 +40,7 @@ All commands are accessed through `/impeccable`:
 | Command | What it does |
 |---------|--------------|
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
-| `/impeccable teach` | One-time setup: gather design context, write root PRODUCT.md and DESIGN.md |
+| `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
 | `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
 | `/impeccable shape` | Plan UX/UI before writing code |
@@ -93,11 +95,43 @@ Visit [impeccable.style](https://impeccable.style#casestudies) to see before/aft
 
 ## Installation
 
-### Option 1: Download from Website (Recommended)
+### Option 1: CLI installer (Recommended)
+
+From the root of your project, run:
+
+```bash
+npx impeccable skills install
+```
+
+This auto-detects your harness and writes the build compiled for it to the right location (`.claude/skills/`, `.cursor/skills/`, etc.). Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+
+Claude Code users can alternatively install the plugin with `/plugin marketplace add pbakaus/impeccable`. The general-purpose `npx skills add pbakaus/impeccable` also works, though it installs one shared build for all harnesses rather than the one compiled for yours.
+
+### Option 2: Git Submodule
+
+For teams that want to keep Impeccable vendored and updated through Git, add this repo as a submodule and link the compiled provider build into your harness folders:
+
+```bash
+git submodule add https://github.com/pbakaus/impeccable .impeccable
+npx impeccable skills link --source=.impeccable --providers=claude,cursor
+git add .gitmodules .impeccable .claude .cursor
+git commit -m "Add Impeccable skills"
+```
+
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, or `rovo-dev`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+
+To update later:
+
+```bash
+git submodule update --remote .impeccable
+npx impeccable skills link --source=.impeccable --providers=claude,cursor
+```
+
+### Option 3: Download from Website
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 2: Copy from Repository
+### Option 4: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -145,15 +179,13 @@ cp -r dist/gemini/.gemini your-project/
 ```bash
 # Project-local
 cp -r dist/agents/.agents your-project/
-mkdir -p your-project/.codex
-cp -r dist/codex/.codex/agents your-project/.codex/
 
 # Or user-wide
 mkdir -p ~/.agents/skills
 cp -r dist/agents/.agents/skills/* ~/.agents/skills/
-mkdir -p ~/.codex
-cp -r dist/codex/.codex/agents ~/.codex/
 ```
+
+> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed.
 
 **GitHub Copilot:**
 ```bash
@@ -195,21 +227,25 @@ cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 
 ## Usage
 
-Once installed, use commands in your AI harness:
+Once installed, every command runs through the single `/impeccable` skill:
 
 ```
-/audit           # Find issues
-/normalize       # Fix inconsistencies
-/polish          # Final cleanup
-/distill         # Remove complexity
+/impeccable audit        # Find issues
+/impeccable polish       # Final cleanup
+/impeccable distill      # Remove complexity
+/impeccable critique     # Full design review
 ```
+
+Type `/impeccable` alone to see the full command list.
 
 Most commands accept an optional argument to focus on a specific area:
 
 ```
-/audit header
-/polish checkout-form
+/impeccable audit the header
+/impeccable polish the checkout form
 ```
+
+If you reach for one command often, pin it with `/impeccable pin audit` to get `/audit` as a standalone shortcut.
 
 **Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
 
@@ -224,7 +260,7 @@ npx impeccable detect https://example.com    # scan a URL (Puppeteer)
 npx impeccable detect --fast --json .        # regex-only, JSON output
 ```
 
-The detector catches 24 issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
+The detector catches 41 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
 ## Supported Tools
 

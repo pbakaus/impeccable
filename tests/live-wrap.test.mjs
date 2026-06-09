@@ -64,9 +64,16 @@ describe('buildSearchQueries', () => {
     assert.ok(queries.some(q => q === 'class="hero-section dark-theme"'));
   });
 
-  it('includes the most distinctive single class (longest)', () => {
+  it('accepts browser className whitespace when building class queries', () => {
+    const queries = buildSearchQueries(null, 'hero-title _heroTitle_1lpqp_2', 'h1', null);
+    assert.ok(queries.includes('<h1 className="hero-title'));
+    assert.ok(queries.includes('hero-title'));
+  });
+
+  it('includes each single class fallback for multi-class elements', () => {
     const queries = buildSearchQueries(null, 'btn,hero-combined-left', null, null);
     assert.ok(queries.some(q => q === 'hero-combined-left'));
+    assert.ok(queries.some(q => q === 'btn'));
   });
 
   it('includes tag+class combo', () => {
@@ -204,10 +211,12 @@ describe('wrapCli integration', () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-test-'));
+    clearManualEditsBuffer();
   });
 
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
+    clearManualEditsBuffer();
   });
 
   it('wraps an HTML element by class name', () => {
@@ -377,6 +386,18 @@ const title = 'Astro title';
       result.cssAuthoring.forbidden.some((item) => item.includes('@scope')),
       'Astro-prefixed mode should explicitly reject @scope',
     );
+    assert.ok(
+      result.cssAuthoring.requirements.some((item) => item.includes('raw CSS')),
+      'Astro-prefixed mode should require raw CSS between style tags',
+    );
+    assert.ok(
+      result.cssAuthoring.forbidden.some((item) => item.includes('template literal')),
+      'Astro-prefixed mode should reject JSX template-literal style wrappers',
+    );
+    assert.ok(
+      result.cssAuthoring.forbidden.some((item) => item.includes('immediately after the style opening tag')),
+      'Astro-prefixed mode should reject Astro expression syntax after <style>',
+    );
   });
 });
 
@@ -384,10 +405,20 @@ const title = 'Astro title';
 // Regression tests from real-world failures (EAC report, 2026-04)
 // ---------------------------------------------------------------------------
 
+// Integration tests share cwd=process.cwd() with the repo, so a leftover
+// .impeccable/live/pending-manual-edits.json from local dev tripped the
+// fail-loud check in live-wrap. Clear the buffer around each test.
+function clearManualEditsBuffer() {
+  try {
+    const p = join(process.cwd(), '.impeccable/live/pending-manual-edits.json');
+    rmSync(p, { force: true });
+  } catch {}
+}
+
 describe('live-wrap — JSX / TSX correctness', () => {
   let tmp;
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-jsx-')); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-wrap-jsx-')); clearManualEditsBuffer(); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); clearManualEditsBuffer(); });
 
   it('wraps the correct <section> when a class collides with a multi-line tag elsewhere', () => {
     // Decoy section: multi-line JSX with `organic-sand-surface` inside className
@@ -495,6 +526,29 @@ describe('live-wrap — JSX / TSX correctness', () => {
     const inside = originalMatch[1];
     assert.ok(inside.includes('shared-class target-marker'), 'correct target wrapped');
     assert.ok(!inside.includes('extra-class'), 'decoy not wrapped');
+  });
+
+  it('falls back to source-visible classes when runtime CSS Modules hashes are present', () => {
+    const jsx = `import styles from './App.module.css';
+
+export default function App() {
+  return (
+    <main>
+      <h1 className={\`hero-title \${styles.heroTitle}\`}>CSS Modules Fixture</h1>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.jsx'), jsx);
+
+    execSync(
+      `node skill/scripts/live-wrap.mjs --id cssModuleA --count 3 --classes "hero-title _heroTitle_1lpqp_2" --tag "h1" --text "CSS Modules Fixture" --file "${join(tmp, 'App.jsx')}"`,
+      { cwd: process.cwd(), encoding: 'utf-8' }
+    );
+
+    const modified = readFileSync(join(tmp, 'App.jsx'), 'utf-8');
+    const originalMatch = modified.match(/data-impeccable-variant="original"[^>]*>([\s\S]*?)\s*<\/div>/);
+    assert.ok(originalMatch, 'original variant wrapper exists');
+    assert.ok(originalMatch[1].includes('CSS Modules Fixture'), 'target content is wrapped');
   });
 
   it('keeps the JSX wrapper single-rooted by tucking marker comments INSIDE the outer <div>', () => {

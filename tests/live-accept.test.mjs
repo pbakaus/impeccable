@@ -9,10 +9,11 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
+const WRAP = resolve(__dirname, '..', 'skill/scripts/live-wrap.mjs');
 
 function runAccept(cwd, args) {
   try {
@@ -168,6 +169,11 @@ describe('live-accept — style-element edge cases', () => {
     assert.equal(closeCount, 1, `expected exactly one \`} closer, got ${closeCount}`);
     // CSS content survived intact.
     assert.ok(inner.includes('@scope ([data-impeccable-variant="1"])'), 'variant-1 scope kept');
+    assert.match(
+      after,
+      /\n          <div data-impeccable-variant="1" style=\{\{ display: 'contents' \}\}>\n            <p className="hook">variant one<\/p>\n          <\/div>/,
+      'accepted JSX content is indented inside the temporary carbonize variant wrapper',
+    );
   });
 
   // Same shape, but the agent put `{`` and ``\`}` attached to first/last CSS
@@ -206,6 +212,41 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(inner.includes('@scope ([data-impeccable-variant="1"])'), 'variant-1 scope kept');
   });
 
+  it('carbonize preserves nested JSX indentation when the wrapper starts at column 0', () => {
+    const tsx = `<div data-impeccable-variants="ROOTIND" data-impeccable-variant-count="2" style={{ display: 'contents' }}>
+  {/* impeccable-variants-start ROOTIND */}
+  <div data-impeccable-variant="original">
+    <section className="hook">
+      <span>original</span>
+    </section>
+  </div>
+  <style data-impeccable-css="ROOTIND">{\`@scope ([data-impeccable-variant="1"]) { .hook { color: red; } }\`}</style>
+  <div data-impeccable-variant="1">
+    <section className="hook">
+      <span>nested text</span>
+    </section>
+  </div>
+  <div data-impeccable-variant="2" style={{ display: 'none' }}>
+    <section className="hook">
+      <span>variant two</span>
+    </section>
+  </div>
+  {/* impeccable-variants-end ROOTIND */}
+</div>
+`;
+    writeFileSync(join(tmp, 'Root.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'ROOTIND', '--variant', '1']);
+    assert.equal(result.handled, true, `accept should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'Root.tsx'), 'utf-8');
+    assert.match(
+      after,
+      /<div data-impeccable-variant="1" style=\{\{ display: 'contents' \}\}>\n    <section className="hook">\n      <span>nested text<\/span>\n    <\/section>\n  <\/div>/,
+      'column-0 JSX accept preserves relative indentation inside the carbonize variant wrapper',
+    );
+  });
+
   // Cursor Bugbot regression (PR #118 review): the JSX wrapper places
   // marker comments INSIDE the outer <div>, so block.start sits 2 spaces
   // deeper than the original element. Using block.start as the deindent
@@ -227,10 +268,10 @@ describe('live-accept — style-element edge cases', () => {
 }`;
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
-    execSync(
-      `node skill/scripts/live-wrap.mjs --id INDENTDISC --count 3 --classes "card" --tag "aside" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
-    );
+    execFileSync('node', [WRAP, '--id', 'INDENTDISC', '--count', '3', '--classes', 'card', '--tag', 'aside', '--file', join(tmp, 'App.tsx')], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
 
     runAccept(tmp, ['--id', 'INDENTDISC', '--discard']);
     const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
@@ -274,10 +315,10 @@ describe('live-accept — style-element edge cases', () => {
 }`;
     writeFileSync(join(tmp, 'App.tsx'), tsx);
 
-    execSync(
-      `node skill/scripts/live-wrap.mjs --id MULTILINESC --count 3 --classes "card" --tag "aside" --file "${join(tmp, 'App.tsx')}"`,
-      { cwd: process.cwd(), encoding: 'utf-8' }
-    );
+    execFileSync('node', [WRAP, '--id', 'MULTILINESC', '--count', '3', '--classes', 'card', '--tag', 'aside', '--file', join(tmp, 'App.tsx')], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
 
     const result = runAccept(tmp, ['--id', 'MULTILINESC', '--discard']);
     assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
@@ -300,6 +341,81 @@ describe('live-accept — style-element edge cases', () => {
     // survive too.
     assert.match(after, /<div\s*\n\s*className="spacer"\s*\n\s*\/>/m,
       `multi-line self-closing <div /> inside original must survive; got:\n${after}`);
+  });
+
+  it('expandReplaceRange finds JSX wrapper openers with long multi-line attributes', () => {
+    const extraAttrs = Array.from({ length: 18 }, (_, i) => `        data-extra-${i}="x"`).join('\n');
+    const tsx = `export default function App() {
+  return (
+    <main>
+      <div
+        className="impeccable-preview-shell"
+${extraAttrs}
+        data-impeccable-variants="LONGOPEN"
+        data-impeccable-variant-count="2"
+        style={{ display: 'contents' }}
+      >
+        {/* impeccable-variants-start LONGOPEN */}
+        {/* Original */}
+        <div data-impeccable-variant="original">
+          <aside className="card">
+            <h1>Original</h1>
+          </aside>
+        </div>
+        {/* Variants: insert below this line */}
+        <div data-impeccable-variant="1"><aside className="card"><h1>Variant</h1></aside></div>
+        {/* impeccable-variants-end LONGOPEN */}
+      </div>
+      <div className="next-card">After</div>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'LONGOPEN', '--discard']);
+    assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
+    assert.doesNotMatch(after, /data-impeccable-variants/);
+    assert.doesNotMatch(after, /impeccable-variants-start/);
+    assert.match(after, /<aside className="card">\s*<h1>Original<\/h1>\s*<\/aside>/m);
+    assert.ok(after.includes('<div className="next-card">After</div>'));
+  });
+
+  it('expandReplaceRange ignores unrelated prior end markers while finding the current JSX wrapper', () => {
+    const tsx = `export default function App() {
+  return (
+    <main>
+      <div data-impeccable-variants="ACTIVE" data-impeccable-variant-count="2" style={{ display: 'contents' }}>
+        <div className="historical-marker-note">
+          {/* impeccable-variants-end OLD */}
+        </div>
+        {/* impeccable-variants-start ACTIVE */}
+        {/* Original */}
+        <div data-impeccable-variant="original">
+          <aside className="card">
+            <h1>Original</h1>
+          </aside>
+        </div>
+        {/* Variants: insert below this line */}
+        <div data-impeccable-variant="1"><aside className="card"><h1>Variant</h1></aside></div>
+        {/* impeccable-variants-end ACTIVE */}
+      </div>
+      <div className="next-card">After</div>
+    </main>
+  );
+}`;
+    writeFileSync(join(tmp, 'App.tsx'), tsx);
+
+    const result = runAccept(tmp, ['--id', 'ACTIVE', '--discard']);
+    assert.equal(result.handled, true, `discard should succeed: ${JSON.stringify(result)}`);
+
+    const after = readFileSync(join(tmp, 'App.tsx'), 'utf-8');
+    assert.doesNotMatch(after, /data-impeccable-variants/);
+    assert.doesNotMatch(after, /impeccable-variants-start ACTIVE/);
+    assert.doesNotMatch(after, /impeccable-variants-end OLD/);
+    assert.match(after, /<aside className="card">\s*<h1>Original<\/h1>\s*<\/aside>/m);
+    assert.ok(after.includes('<div className="next-card">After</div>'));
   });
 
   it('accept (no carbonize, raw HTML) restores at the original indent on JSX', () => {
@@ -356,5 +472,47 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(after.includes('ORIGINAL CONTENT'), 'original restored');
     assert.ok(!after.includes('impeccable-variants-start'), 'wrapper markers gone');
     assert.ok(!after.includes('variant one'), 'variants dropped');
+  });
+});
+
+describe('live-accept — insert sessions', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-insert-')); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  const insertHtml = (id) => `<main>
+  <section class="hero">Hero block</section>
+  <!-- impeccable-variants-start ${id} -->
+  <div data-impeccable-variants="${id}" data-impeccable-mode="insert" data-impeccable-variant-count="2" style="display: contents">
+    <!-- Variants: insert below this line -->
+    <style data-impeccable-css="${id}">@scope ([data-impeccable-variant="1"]) { .cta { color: red; } }</style>
+    <div data-impeccable-variant="1"><p class="cta">Variant one</p></div>
+    <div data-impeccable-variant="2" style="display: none"><p class="cta">Variant two</p></div>
+  </div>
+  <!-- impeccable-variants-end ${id} -->
+  <section class="footer">Footer</section>
+</main>`;
+
+  it('discard removes an insert wrapper without touching anchor sections', () => {
+    writeFileSync(join(tmp, 'page.html'), insertHtml('insaaa01'));
+    const result = runAccept(tmp, ['--id', 'insaaa01', '--discard']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    const after = readFileSync(join(tmp, 'page.html'), 'utf-8');
+    assert.ok(after.includes('Hero block'));
+    assert.ok(after.includes('Footer'));
+    assert.ok(!after.includes('impeccable-variants-start'));
+    assert.ok(!after.includes('Variant one'));
+  });
+
+  it('accept keeps the chosen insert variant and drops the wrapper', () => {
+    writeFileSync(join(tmp, 'page.html'), insertHtml('insbbb02'));
+    const result = runAccept(tmp, ['--id', 'insbbb02', '--variant', '2']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    const after = readFileSync(join(tmp, 'page.html'), 'utf-8');
+    assert.ok(after.includes('Variant two'));
+    assert.ok(!after.includes('Variant one'));
+    assert.ok(!after.includes('impeccable-variants-start'));
+    assert.ok(after.includes('Hero block'));
+    assert.ok(after.includes('Footer'));
   });
 });

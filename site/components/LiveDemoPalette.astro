@@ -1,0 +1,26 @@
+---
+// Command-palette switcher for the marketing live-demo loop. Renders the design
+// vocabulary as a 4-column icon grid; the demo loop in live-demo.js opens it and
+// lands on the `pick` verb.
+//
+// Values/labels/icons come from the same canonical source the real picker uses
+// (skill/scripts/live/vocabulary.mjs), imported at build time, so the demo and
+// the product never drift.
+import { LIVE_COMMANDS } from '../../skill/scripts/live/vocabulary.mjs';
+
+interface Props {
+  pick: string;
+}
+const { pick } = Astro.props;
+---
+
+<div class="live-demo-ctx-palette" data-demo-palette data-demo-pick={pick} aria-hidden="true">
+  <div class="live-demo-ctx-palette-grid">
+    {LIVE_COMMANDS.map((c) => (
+      <button type="button" class="live-demo-ctx-palette-chip" data-cmd={c.value}>
+        <span class="live-demo-ctx-palette-ico" set:html={c.icon}></span>
+        <span class="live-demo-ctx-palette-name">{c.label}</span>
+      </button>
+    ))}
+  </div>
+</div>

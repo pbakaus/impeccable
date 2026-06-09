@@ -1,130 +1,73 @@
 ---
-title: Brand vs product, pick a register
-tagline: "Two worlds, two sets of defaults. Pick the right one and every command downstream benefits."
+title: Brand vs product
+tagline: "The setup choice that keeps Impeccable from applying the wrong design defaults."
 order: 3
-description: "Impeccable treats brand work (landing pages, campaigns, portfolios) and product work (app UI, dashboards, tools) as different worlds with different defaults. Learn how to pick a register and how it shapes every command that reads it."
+description: "Understand the brand/product choice in /impeccable init: marketing surfaces where the impression is the product, and app surfaces where design helps users finish a task."
 ---
 
-## See the divergence
+## The short version
 
-Same element, one register each. A newsletter signup, twice.
+During `/impeccable init`, the first important choice is this:
 
-<div class="docs-viz-hero docs-viz-hero--plain">
-  <div class="docs-viz-register">
-    <div class="docs-viz-register-side">
-      <div class="docs-viz-register-label">
-        <span class="docs-viz-register-name">Brand</span>
-        <span class="docs-viz-register-lane">Editorial-magazine</span>
-      </div>
-      <div class="docs-viz-register-frame docs-viz-register-frame--brand">
-        <span class="docs-viz-reg-kicker">No. 04 &nbsp;·&nbsp; Dispatch</span>
-        <h3 class="docs-viz-reg-title">Letters, occasionally.</h3>
-        <p class="docs-viz-reg-body">A postcard from the editor, once a month. No tracking pixels, no "just checking in."</p>
-        <span class="docs-viz-reg-btn">Send me one</span>
-      </div>
-      <div class="docs-viz-register-notes">
-        <span>Serif display, italic display weight</span>
-        <span>Drenched in the primary hue</span>
-        <span>Monospaced kicker, editorial voice</span>
-      </div>
-    </div>
-    <div class="docs-viz-register-side">
-      <div class="docs-viz-register-label">
-        <span class="docs-viz-register-name">Product</span>
-        <span class="docs-viz-register-lane">Utility / app shell</span>
-      </div>
-      <div class="docs-viz-register-frame docs-viz-register-frame--product">
-        <span class="docs-viz-reg-kicker">Newsletter</span>
-        <h3 class="docs-viz-reg-title">Subscribe to updates</h3>
-        <p class="docs-viz-reg-body">Product changes and release notes, once a month. Unsubscribe at any time.</p>
-        <span class="docs-viz-reg-btn">Subscribe</span>
-      </div>
-      <div class="docs-viz-register-notes">
-        <span>Neutral sans, semibold for hierarchy</span>
-        <span>Restrained palette, accent only on state</span>
-        <span>Short, scannable, mobile-readable copy</span>
-      </div>
-    </div>
-  </div>
-  <p class="docs-viz-caption">The table below lists what's different. This is what it looks like at the pixel.</p>
-</div>
+- **Brand surface:** marketing site, landing page, campaign, portfolio, editorial page. The visitor's impression is the product.
+- **Product surface:** app UI, dashboard, admin screen, workflow tool, settings page. The user is trying to finish a task.
 
-## Why register matters
+The docs call this choice **register**. You do not need to use that word. You only need to answer which kind of surface you are working on.
 
-Every design task belongs to one of two worlds:
+## Why it matters
 
-- **Brand** is where design IS the product. Marketing sites, landing pages, portfolios, long-form content, campaign surfaces. Distinctiveness is the bar. Fonts, motion, density, and color all push toward "this looks like nothing else in the category."
-- **Product** is where design SERVES the product. App UI, admin, dashboards, tools. Earned familiarity is the bar. Fluent users of Linear, Figma, Notion, Raycast, or Stripe should trust the output on sight.
+The same visual move can be right in one surface and wrong in another.
 
-If you ask the same AI to design a dashboard and a campaign page without naming which world, you'll get the average of the two. Brand surfaces will feel too careful. Product surfaces will feel too precious. Register is how Impeccable avoids that.
+A campaign page can afford a huge image, a strange type choice, one dominant idea per screen, and more expressive motion. It needs to create an impression.
 
-Impeccable tracks register as a single field in `PRODUCT.md`:
+A dashboard usually needs density, predictable components, readable states, stable navigation, and quieter motion. It needs to help someone act quickly.
 
-```markdown
-## Register
+When `PRODUCT.md` stores the right choice, every command adjusts. `/impeccable typeset` will not push editorial display type into a dense admin screen. `/impeccable colorize` will not make a campaign page timid because product UIs usually need restraint.
 
-product
-```
+## How to choose
 
-That is it: a bare value, `brand` or `product`. Every command that does register-sensitive work (`typeset`, `animate`, `colorize`, `layout`, `bolder`, `quieter`, `delight`) loads a different reference file based on what it finds here.
+Ask what the person came to do.
 
-## How the two worlds diverge
+If they came to evaluate, trust, remember, compare, or feel a brand: choose **brand**.
 
-This is not an exhaustive list, the full divergence lives in the `brand.md` and `product.md` reference files, but the shape of the difference:
+Examples:
 
-| Dimension | Brand | Product |
-|---|---|---|
-| **Type lanes** | Editorial-magazine, luxury, brutalist, consumer-warm, tech-minimal, all available. Swing. | Tighter set: neutral sans + optional mono, sized for dense reading, fluid type reserved for marketing surfaces. |
-| **Motion** | Choreographed entrances, scroll-driven sequences, decorative moments earn their place. | Restrained. State changes only. Animation serves feedback, not atmosphere. |
-| **Color** | Full palette, Committed, or Drenched are all on the table. | Restrained by default. Accents carry meaning; color is not decoration. |
-| **Density** | Whatever the narrative wants. Generous whitespace or packed rule-divided columns both valid. | Comfortable to dense. Every pixel earns its place. |
-| **References** | Real-world, from the right lane. *Klim specimen pages* or *Broadsheet masthead*, not "modern SaaS". | Category best-tool. *Linear*, *Figma*, *Notion*, *Raycast*, *Stripe*. |
+- SaaS landing page
+- Product launch page
+- Agency portfolio
+- Restaurant homepage
+- Conference site
+- Case study page
 
-The same command, `/impeccable typeset`, pulls from different fonts in the two worlds. The same command, `/impeccable animate`, picks different motion vocabularies. The same command, `/impeccable layout`, assumes different density defaults. You do not re-learn the command: you answer the register question once, and the command adapts.
+If they came to configure, monitor, submit, search, compare data, or complete a workflow: choose **product**.
 
-## Step 1. Decide or inherit
+Examples:
 
-If you haven't run `/impeccable teach` yet, run it now. The first question is about register:
+- Analytics dashboard
+- Checkout flow
+- Settings screen
+- Admin table
+- Onboarding flow inside an app
+- Internal operations tool
+
+## Mixed projects
+
+Many codebases have both. A SaaS project can have a brand landing page and a product dashboard.
+
+Set the project default to the surface you work on most, then be specific in the command:
 
 ```
-/impeccable teach
+/impeccable polish the marketing homepage as a brand surface
 ```
 
-Teach scans your codebase first and forms a hypothesis: routes like `/`, `/pricing`, `/blog`, hero sections, scroll-driven content point toward brand. Routes like `/app`, `/dashboard`, `/settings`, forms and tables point toward product. It leads with the hypothesis rather than starting cold:
-
-> From the codebase, this looks like a product surface, does that match your intent, or should we treat it differently?
-
-If the project genuinely spans both (a product with a big marketing landing), teach asks which register describes the **primary** surface. Register is per-project, not per-page, but you can override it per task when needed.
-
-## Step 2. Verify the register landed
-
-Open `PRODUCT.md` and look for the `## Register` section. It should carry a bare value, not prose:
-
-```markdown
-## Register
-
-brand
+```
+/impeccable audit the billing settings as a product surface
 ```
 
-If the section is missing (you're on an older `PRODUCT.md` from pre-v3.0), re-run `/impeccable teach`. It will detect the gap and add the field without re-interviewing you on everything else.
+You can also edit `PRODUCT.md` directly if the default is wrong.
 
-## Step 3. Override per task when you need to
+## Common mistakes
 
-Most of the time, register is set once and forgotten. But a product project might occasionally need a single brand surface (a launch landing, an investor one-pager) without flipping the whole project.
-
-You have two options:
-
-- **Name it in the brief.** "`/impeccable craft a launch landing for v2, brand register for this one page.`" The skill honors the override for that task only.
-- **Set a per-surface register.** If the override is lasting, add a short note in `PRODUCT.md` under an explicit section: `## Register overrides: /launch is brand.` Commands that read PRODUCT.md will respect it.
-
-## What to try next
-
-- Run a command that is register-sensitive and watch the divergence: `/impeccable typeset the pricing page` on a product project vs. a brand project will pick different type families, different scale ratios, and different pairings.
-- Pair with [getting started](/tutorials/getting-started) if you haven't installed Impeccable yet.
-- Reach for `/impeccable document` after teach to capture the visual side (colors, components) into DESIGN.md.
-
-## Common issues
-
-- **Register keeps slipping the wrong way.** If you set `product` but commands keep producing brand-feeling output, check that `PRODUCT.md` is at the project root and the `## Register` section has a bare value (no prose, no explanation, just the word). Commands can only read what is there.
-- **The hypothesis teach formed is wrong.** Disagree in the answer. Teach is asking, not telling.
-- **A project is genuinely 50/50.** Pick the primary surface, then use per-task overrides for the minority one. Trying to average the two in PRODUCT.md produces worse output than committing to one.
+- **Calling everything product because it is a software company.** A landing page is still a brand surface.
+- **Calling everything brand because the visual identity matters.** A dashboard can be on-brand and still be a product surface.
+- **Skipping the choice.** Impeccable can still work, but it will ask more questions and lean on safer defaults.

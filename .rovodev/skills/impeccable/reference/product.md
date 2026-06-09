@@ -10,7 +10,6 @@ Product UI's failure mode isn't flatness, it's strangeness without purpose: over
 
 ## Typography
 
-- **System fonts are legitimate.** `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` gives you native feel on every platform. Inter is the common cross-platform default for a reason.
 - **One family is often right.** Product UIs don't need display/body pairing. A well-tuned sans carries headings, buttons, labels, body, data.
 - **Fixed rem scale, not fluid.** Clamp-sized headings don't serve product UI. Users view at consistent DPI, and a fluid h1 that shrinks in a sidebar looks worse, not better.
 - **Tighter scale ratio.** 1.125–1.2 between steps is typical. More type elements here than on brand surfaces; exaggerated contrast creates noise.
@@ -26,8 +25,6 @@ Product defaults to Restrained. A single surface can earn Committed (a dashboard
 
 ## Layout
 
-- Predictable grids. Consistency IS an affordance; users navigate faster when the structure is expected.
-- Familiar patterns are features. Standard navigation (top bar, side nav), breadcrumbs, tabs, and form layouts have established user expectations. Don't reinvent for flavor.
 - Responsive behavior is structural (collapse sidebar, responsive table, breakpoint-driven columns), not fluid typography.
 
 ## Components
@@ -51,6 +48,7 @@ Every interactive component has: default, hover, focus, active, disabled, loadin
 - Display fonts in UI labels, buttons, data.
 - Reinventing standard affordances for flavor (custom scrollbars, weird form controls, non-standard modals).
 - Heavy color or full-saturation accents on inactive states.
+- Modal as first thought. Modals are usually laziness. Exhaust inline / progressive alternatives first.
 
 ## Product permissions
 

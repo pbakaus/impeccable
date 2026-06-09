@@ -1,7 +1,10 @@
 ---
 import Base from '../../layouts/Base.astro';
+import LiveDemoGbar from '../../components/LiveDemoGbar.astro';
+import LiveDemoPalette from '../../components/LiveDemoPalette.astro';
 import '../../styles/sub-pages.css';
 import '../../styles/live-mode.css';
+import '../../styles/live-mode-kinpaku.css';
 ---
 
 <Base
@@ -9,25 +12,28 @@ import '../../styles/live-mode.css';
   description="Iterate on UI in the browser. Pick an element, drop a comment, get three production-quality variants, accept one, and it writes back to source. /impeccable live."
   activeNav="live"
   canonicalPath="/live-mode"
-  bodyClass="sub-page live-mode-page-body"
+  bodyClass="sub-page live-mode-page-body live-mode-kinpaku kinpaku-chrome"
 >
 
 <div class="live-mode-page">
   <header class="live-mode-page-header">
-    <p class="live-mode-page-eyebrow">New in v3.0 <span class="live-mode-page-eyebrow-badge">Alpha</span></p>
+    <p class="live-mode-page-eyebrow">New in v3.0 <span class="live-mode-page-eyebrow-badge">Beta</span></p>
     <h1 class="live-mode-page-title">Live Mode</h1>
     <p class="live-mode-page-lede">Pick any element in the browser. Drop a comment or a stroke. Three production-quality variants swap in via your framework's HMR. Accept the one you want and it writes back to source.</p>
-    <p class="live-mode-page-alpha-note"><strong>Why alpha:</strong> Live Mode works end-to-end and is ready to try, but it still needs more testing against real-world repos and framework configs. Expect rough edges on uncommon setups, and please report what breaks.</p>
     <div class="live-mode-start" aria-label="Start live mode command">
       <span class="live-mode-start-prompt">$</span>
       <code class="live-mode-start-cmd">/impeccable live</code>
       <button class="live-mode-start-copy" type="button" aria-label="Copy command" data-copy="/impeccable live">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="live-mode-start-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
         </svg>
+        <svg class="live-mode-start-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5"></path>
+        </svg>
       </button>
     </div>
+    <p class="live-mode-page-alpha-note"><strong>Why beta:</strong> works end-to-end across the common frameworks and is ready for daily use. Uncommon setups may still hit rough edges. Please report what breaks.</p>
   </header>
 
   <section class="live-mode-demo-wrap" aria-label="Live Mode interactive demo">
@@ -101,7 +107,7 @@ import '../../styles/live-mode.css';
           <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
             <div class="live-demo-ctx-row live-demo-ctx-row--configure">
               <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
-                <span data-demo-cmd-name>delight</span>
+                <span data-demo-cmd-name>adapt</span>
                 <span class="live-demo-ctx-pill-caret" aria-hidden="true">&#x25BE;</span>
               </button>
               <span class="live-demo-ctx-input" data-demo-input>
@@ -110,6 +116,7 @@ import '../../styles/live-mode.css';
               <button type="button" class="live-demo-ctx-count">&times;3</button>
               <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">&rarr;</span></button>
             </div>
+            <LiveDemoPalette pick="delight" />
             <div class="live-demo-ctx-row live-demo-ctx-row--generating">
               <span class="live-demo-ctx-spinner" aria-hidden="true"></span>
               <span>Generating variants&hellip;</span>
@@ -135,23 +142,8 @@ import '../../styles/live-mode.css';
           </div>
         </div>
 
-        <div class="live-demo-gbar" data-demo-gbar>
-          <span class="live-demo-gbar-brand">/</span>
-          <button type="button" class="live-demo-gbar-btn is-active" data-demo-gbar-pick>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
-            <span>Pick</span>
-          </button>
-          <button type="button" class="live-demo-gbar-btn">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button type="button" class="live-demo-gbar-btn">
-            <span class="live-demo-gbar-dmd" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-          </button>
-          <span class="live-demo-gbar-divider"></span>
-          <button type="button" class="live-demo-gbar-x" aria-label="Exit live mode">&times;</button>
-        </div>
+        <LiveDemoGbar />
       </div></div>
-    </div>
     <p class="live-mode-demo-caption">Click the frame or scroll it into view to start the loop. Respects <code>prefers-reduced-motion</code>.</p>
   </section>
 
@@ -212,7 +204,7 @@ import '../../styles/live-mode.css';
       <a class="live-mode-pathway" href="/#downloads">
         <span class="live-mode-pathway-kind">Install</span>
         <h3 class="live-mode-pathway-title">Get Impeccable set up</h3>
-        <p class="live-mode-pathway-desc">Install the skill and CLI once, then run <code>/impeccable live</code> from your AI harness. Works with Claude Code, Cursor, Codex, Gemini, and more.</p>
+        <p class="live-mode-pathway-desc">Install the skill and CLI once, then run <code>/impeccable live</code> from your AI harness. Works with Claude Code, Cursor, GitHub Copilot, Codex, Gemini, and more.</p>
         <span class="live-mode-pathway-cta">See the install steps &rarr;</span>
       </a>
     </div>
@@ -233,22 +225,17 @@ import '../../styles/live-mode.css';
 </div>
 
 <script>
-  import { initLiveDemo } from "../../scripts/components/live-demo.js";
-  document.addEventListener("DOMContentLoaded", initLiveDemo);
+  import { initLiveDemo, initGbarPageChat } from "../../scripts/components/live-demo.js";
+  import { initCopyFeedback } from "../../scripts/utils/copy-feedback.js";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    initLiveDemo();
+    initGbarPageChat();
+    initCopyFeedback();
+  });
 </script>
 
 <script is:inline>
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-copy]');
-    if (!btn) return;
-    const text = btn.getAttribute('data-copy');
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      btn.classList.add('is-copied');
-      setTimeout(() => btn.classList.remove('is-copied'), 1500);
-    }).catch(() => {});
-  });
-
   document.addEventListener('click', (e) => {
     const toggle = e.target.closest('.skills-sidebar-toggle');
     if (!toggle) return;

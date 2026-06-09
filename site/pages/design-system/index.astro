@@ -1,0 +1,1114 @@
+---
+import Base from '../../layouts/Base.astro';
+import '../../styles/design-system.css';
+// Hero candidate sets and the wider icon-mark survivor set live on the
+// /design-system/explorations sub-page: that page owns the filesystem-scan
+// frontmatter. This canonical page only documents what ships.
+---
+
+<Base
+  title="Impeccable Design System"
+  description="Neo kinpaku design system for Impeccable: tokens, components, states, and patterns."
+  canonicalPath="/design-system"
+  bodyClass="kinpaku-system-page"
+  mainId="design-system-main"
+  mainClass="kinpaku-system"
+  hideHeader={true}
+  hideFooter={true}
+  noIndex={true}
+>
+  <!-- ============================================================
+       Hero
+       ============================================================ -->
+  <section class="ks-hero" aria-labelledby="system-title">
+    <div class="ks-hero-art" aria-hidden="true"></div>
+
+    <header class="ks-topbar" aria-label="Design system navigation">
+      <a class="ks-brand" href="/" aria-label="Impeccable home">
+        <span class="ks-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+            <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+          </svg>
+        </span>
+        <span class="ks-wordmark">IMPECCABLE</span>
+      </a>
+      <nav class="ks-nav" aria-label="Design system sections">
+        <a href="#mark">Mark</a>
+        <a href="#foundations" aria-current="page">Foundations</a>
+        <a href="#containers">Patterns</a>
+        <a href="#actions">Actions</a>
+        <a href="#components">Components</a>
+        <a href="#proof">Proof</a>
+      </nav>
+      <button
+        type="button"
+        class="theme-toggle"
+        data-theme-toggle
+        aria-label="Theme: auto, matching your system. Click to switch to light mode."
+        title="Theme: auto (matches system)"
+      >
+        <svg class="theme-toggle-icon--auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/>
+        </svg>
+        <svg class="theme-toggle-icon--light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.5"/>
+          <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+        <svg class="theme-toggle-icon--dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5z"/>
+        </svg>
+      </button>
+      <a class="ks-button ks-button-primary" href="#actions">
+        Start audit
+        <span class="ks-button-arrow" aria-hidden="true">
+          <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+            <path d="M0 4h14M10 0l4 4-4 4"/>
+          </svg>
+        </span>
+      </a>
+    </header>
+
+    <div class="ks-hero-body">
+      <p class="ks-hero-eyebrow">Neo kinpaku system</p>
+      <h1 id="system-title" class="ks-hero-wordmark">IMPECCABLE</h1>
+      <p class="ks-hero-line">Detect visual debt before it ships. Kinpaku gold carries the brand. Verdigris patina carries signal, status, and precision.</p>
+      <div class="ks-hero-actions">
+        <a class="ks-button ks-button-primary" href="#actions">
+          Start audit
+          <span class="ks-button-arrow" aria-hidden="true">
+            <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+              <path d="M0 4h14M10 0l4 4-4 4"/>
+            </svg>
+          </span>
+        </a>
+        <a class="ks-button ks-button-secondary" href="#components">See rules</a>
+      </div>
+      <aside class="ks-hero-note" aria-label="System principle">
+        <span class="ks-hero-note-pin" aria-hidden="true"></span>
+        <p>AI builds fast. Impeccable keeps it intentional.</p>
+      </aside>
+    </div>
+
+    <nav class="ks-category-rail" aria-label="Audit categories">
+      <a href="#foundations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <rect x="3" y="3" width="8" height="8"/>
+          <rect x="13" y="3" width="8" height="8"/>
+          <rect x="3" y="13" width="8" height="8"/>
+          <rect x="13" y="13" width="8" height="8"/>
+        </svg>
+        Layout
+      </a>
+      <a href="#foundations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <path d="M4 6V4h16v2M12 4v16M9 20h6"/>
+        </svg>
+        Type
+      </a>
+      <a href="#foundations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 3v18M3 12h18"/>
+        </svg>
+        Color
+      </a>
+      <a href="#actions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <path d="M3 9c4 0 4-3 8-3s4 3 8 3M3 15c4 0 4-3 8-3s4 3 8 3"/>
+        </svg>
+        Motion
+      </a>
+      <a href="#components">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="8" r="2"/>
+          <path d="M8 21l4-5 4 5M9 13l3 3 3-3"/>
+        </svg>
+        Access
+      </a>
+    </nav>
+  </section>
+
+  <!-- ============================================================
+       Mark: current placeholder icon + downloadable lockups in one
+       brand identity section. The wider icon-mark survivor set and the
+       hero candidate gallery live on /design-system/explorations.
+       ============================================================ -->
+  <section class="ks-section" id="mark" aria-labelledby="mark-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Mark</p>
+      <h2 id="mark-title">The carved tile. A solid square split by the slash.</h2>
+      <p class="ks-section-sub">A filled tile cut clean through by a diagonal slash, so the slash reads as negative space rather than a thin line. It carries the slash-command DNA, holds its own as solid mass in a partner roster, and the two offset halves nod to before / after. The slash echoes the kintsugi seam in the hero. Earlier slash-and-flake iterations live on <a href="/design-system/explorations" style="color: var(--ks-kinpaku); border-bottom: 1px solid currentColor;">/design-system/explorations</a>.</p>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">The mark · single fill, scales from favicon to billboard</span>
+      <div class="ks-mark-scale" aria-hidden="true">
+        {[64, 38, 24, 16].map((size) => (
+          <figure class="ks-mark-scale-item">
+            <span class="ks-mark-glyph" style={`width:${size}px;height:${size}px;`} set:html={'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>'}></span>
+            <figcaption>{size}px</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Logo · download for press, decks, and slides</span>
+      <div class="ks-logo-grid">
+        <figure class="ks-logo-tile is-dark">
+          <img src="/assets/brand/impeccable-logo-on-dark.svg" alt="Impeccable logo, gold on dark" width="510" height="120">
+          <figcaption>
+            <span class="ks-logo-tile-label">On dark</span>
+            <span class="ks-logo-tile-links">
+              <a href="/assets/brand/impeccable-logo-on-dark.svg" download>SVG</a>
+              <a href="/assets/brand/impeccable-logo-on-dark.png" download>PNG</a>
+            </span>
+          </figcaption>
+        </figure>
+        <figure class="ks-logo-tile is-light">
+          <img src="/assets/brand/impeccable-logo-on-light.svg" alt="Impeccable logo, ink on light" width="510" height="120">
+          <figcaption>
+            <span class="ks-logo-tile-label">On light</span>
+            <span class="ks-logo-tile-links">
+              <a href="/assets/brand/impeccable-logo-on-light.svg" download>SVG</a>
+              <a href="/assets/brand/impeccable-logo-on-light.png" download>PNG</a>
+            </span>
+          </figcaption>
+        </figure>
+      </div>
+      <p class="ks-logo-note">Wordmark is outlined to paths in the SVG, so it renders identically on any machine. PNGs are transparent at 4× retina.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Foundations: color (paired material/solid for the two brand
+       anchors), typography, motion
+       ============================================================ -->
+  <section class="ks-section" id="foundations" aria-labelledby="foundations-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Foundations</p>
+      <h2 id="foundations-title">Two anchor colors carry the brand. Material plus solid for each.</h2>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Color · brand anchors with their material counterparts</span>
+      <div class="ks-pair-grid" aria-label="Brand anchors">
+        <div class="ks-pair" aria-label="Kinpaku material + solid">
+          <span class="ks-pair-chip is-kinpaku-leaf" aria-hidden="true"></span>
+          <span class="ks-pair-chip is-kinpaku-solid" aria-hidden="true"></span>
+          <span class="ks-pair-name">Kinpaku</span>
+          <span class="ks-pair-role">Primary accent · gold-leaf texture for brand-bearing surfaces, solid for actions and rules</span>
+          <span class="ks-pair-value" data-token-value="--ks-kinpaku"></span>
+        </div>
+        <div class="ks-pair" aria-label="Verdigris material + solid">
+          <span class="ks-pair-chip is-patina-leaf" aria-hidden="true"></span>
+          <span class="ks-pair-chip is-patina-solid" aria-hidden="true"></span>
+          <span class="ks-pair-name">Verdigris</span>
+          <span class="ks-pair-role">Secondary accent · patina texture for material moments, solid for state and contrast</span>
+          <span class="ks-pair-value" data-token-value="--ks-patina"></span>
+        </div>
+      </div>
+
+      <div class="ks-swatch-grid" aria-label="Supporting color tokens" style="margin-top: 32px;">
+        <div class="ks-swatch">
+          <span class="ks-swatch-chip is-ink"></span>
+          <span class="ks-swatch-name">Lacquer</span>
+          <span class="ks-swatch-role">Page ground</span>
+          <span class="ks-swatch-value" data-token-value="--ks-lacquer"></span>
+        </div>
+        <div class="ks-swatch">
+          <span class="ks-swatch-chip is-surface"></span>
+          <span class="ks-swatch-name">Surface</span>
+          <span class="ks-swatch-role">Raised areas</span>
+          <span class="ks-swatch-value" data-token-value="--ks-lacquer-raised"></span>
+        </div>
+        <div class="ks-swatch">
+          <span class="ks-swatch-chip is-champagne"></span>
+          <span class="ks-swatch-name">Champagne</span>
+          <span class="ks-swatch-role">Headlines</span>
+          <span class="ks-swatch-value" data-token-value="--ks-champagne"></span>
+        </div>
+        <div class="ks-swatch">
+          <span class="ks-swatch-chip is-vermilion"></span>
+          <span class="ks-swatch-name">Vermilion</span>
+          <span class="ks-swatch-role">Warning only</span>
+          <span class="ks-swatch-value" data-token-value="--ks-vermilion"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Typography · production scale, read from --ks-type-* tokens</span>
+      <div class="ks-type-stack">
+        <div class="ks-type-row">
+          <span class="ks-type-label">Wordmark</span>
+          <div>
+            <span class="ks-type-sample" data-scale="wordmark">IMPECCABLE</span>
+            <p class="ks-type-spec-line" data-type-scale="wordmark"></p>
+          </div>
+        </div>
+        <div class="ks-type-row">
+          <span class="ks-type-label">Display · h1</span>
+          <div>
+            <span class="ks-type-sample" data-scale="display">Tune interfaces while they run.</span>
+            <p class="ks-type-spec-line" data-type-scale="display"></p>
+          </div>
+        </div>
+        <div class="ks-type-row">
+          <span class="ks-type-label">Headline · h2</span>
+          <div>
+            <span class="ks-type-sample" data-scale="headline">Ready to drop in.</span>
+            <p class="ks-type-spec-line" data-type-scale="headline"></p>
+          </div>
+        </div>
+        <div class="ks-type-row">
+          <span class="ks-type-label">Body</span>
+          <div>
+            <span class="ks-type-sample" data-scale="body">Specific audit evidence, clear command language, no decorative hedging. Long copy on dark surfaces breathes at line-height 1.8 with a 65ch measure.</span>
+            <p class="ks-type-spec-line" data-type-scale="body"></p>
+          </div>
+        </div>
+        <div class="ks-type-row">
+          <span class="ks-type-label">Mono · label</span>
+          <div>
+            <span class="ks-type-sample" data-scale="mono">LAYOUT · TYPE · COLOR · MOTION · ACCESS</span>
+            <p class="ks-type-spec-line" data-type-scale="mono"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Motion · one ease for everything</span>
+      <p class="ks-section-sub" style="margin-top: 0;">All transitions on the site use a single easing curve, exposed as <code data-token-value="--ks-ease" class="ks-mono-inline">cubic-bezier(0.2, 0.8, 0.2, 1)</code>. Defaults to 180ms unless a slower motion is justified by the surface (modals, page transitions). Reach for <code>var(--ks-ease)</code>, not bespoke cubic-beziers.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Container patterns: the answer to "how do I group content
+       without nesting cards?" Canonical kit primitive first, then
+       three studies kept as alternative shapes.
+       ============================================================ -->
+  <section class="ks-section" id="containers" aria-labelledby="containers-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Container patterns</p>
+      <h2 id="containers-title">Group content without cards in cards.</h2>
+      <p class="ks-section-sub">When you need to organize a row of related items, reach for a kit primitive before reinventing a card. The canonical answer is the bento (below). The three studies underneath are alternative framings kept for cases where a bento doesn't fit (single item, marginalia, kinpaku-anchored).</p>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Canonical · .ks-bento-tile</span>
+      <article class="ks-canonical">
+        <div class="ks-canonical-frame">
+          <div class="ks-bento ks-canonical-bento" aria-hidden="true">
+            <div class="ks-bento-tile ks-bento-tile--span-8">
+              <span class="ks-bento-num">01</span>
+              <p class="ksp-eyebrow" style="margin: 0;">Respects your design system</p>
+              <h3 class="ksp-title" style="margin: 6px 0 0;">Inherits tokens, components, conventions.</h3>
+            </div>
+            <div class="ks-bento-tile ks-bento-tile--span-4">
+              <span class="ks-bento-num" data-color="patina">02</span>
+              <p class="ksp-eyebrow" style="margin: 0;">Real product context</p>
+              <h3 class="ksp-title" style="margin: 6px 0 0;">PRODUCT.md, loaded.</h3>
+            </div>
+          </div>
+        </div>
+        <footer class="ks-canonical-foot">
+          <p><strong>Reach for this when:</strong> grouping 2-6 related items in a section. Mix span-4, span-6, span-8 across a 12-column grid. Tiles sit on a dark plinth that shows through as inset gutters.</p>
+          <p class="ks-canonical-meta"><span class="ks-canonical-used">Used in production:</span> <a href="/#why">home /#why</a> · 6-tile bento</p>
+        </footer>
+      </article>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Studies · alternative framings</span>
+      <div class="ks-container-prototypes">
+
+        <!-- B: Numbered marginalia: large outlined number in gutter -->
+        <article class="ksp-tile">
+          <header class="ksp-tile-head">
+            <span class="ksp-tile-id">B</span>
+            <span class="ksp-tile-name">Numbered marginalia</span>
+            <span class="ksp-tile-desc">Large outlined ordinal in the left gutter. Content flows beside.</span>
+          </header>
+          <div class="ksp-stage ksp-stage--dark">
+            <div class="ksp-style-b">
+              <span class="ksp-marginal-num">01</span>
+              <div>
+                <p class="ksp-eyebrow">Typography</p>
+                <h3 class="ksp-title">Hierarchy through scale + weight</h3>
+                <p class="ksp-body">Cap line length at 65ch. Vary spacing for rhythm. Avoid flat scales.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- F: Kinpaku slab anchor: full-vibrancy gold-leaf strip behind eyebrow only -->
+        <article class="ksp-tile">
+          <header class="ksp-tile-head">
+            <span class="ksp-tile-id">F</span>
+            <span class="ksp-tile-name">Kinpaku slab anchor</span>
+            <span class="ksp-tile-desc">Tiny full-vibrancy gold-leaf chip behind the eyebrow. Brand-bearing.</span>
+          </header>
+          <div class="ksp-stage ksp-stage--dark">
+            <div class="ksp-style-f">
+              <p class="ksp-eyebrow ksp-eyebrow--chip">Typography</p>
+              <h3 class="ksp-title">Hierarchy through scale + weight</h3>
+              <p class="ksp-body">Cap line length at 65ch. Vary spacing for rhythm. Avoid flat scales.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- G: Tinted plinth: flat neutral panel, no border, no shadow.
+             Pure 17% gray with zero chroma so the grouping reads as a tonal
+             lift, not a hue shift. Used in production by .downloads-rebuild-card. -->
+        <article class="ksp-tile">
+          <header class="ksp-tile-head">
+            <span class="ksp-tile-id">G</span>
+            <span class="ksp-tile-name">Tinted plinth</span>
+            <span class="ksp-tile-desc">Flat neutral lift (oklch(0.17 0 0)). No border, no shadow. <em>Used by</em> <a href="/#downloads" style="color: var(--ks-kinpaku); border-bottom: 1px solid currentColor;">home /#downloads</a> install card.</span>
+          </header>
+          <div class="ksp-stage ksp-stage--dark">
+            <div class="ksp-style-g">
+              <p class="ksp-eyebrow">Typography</p>
+              <h3 class="ksp-title">Hierarchy through scale + weight</h3>
+              <p class="ksp-body">Cap line length at 65ch. Vary spacing for rhythm. Avoid flat scales.</p>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Accents and dividers: brand-bearing rules between sections,
+       and the texture bands that carry material weight on hero bands
+       and editorial layouts.
+       ============================================================ -->
+  <section class="ks-section" id="accents" aria-labelledby="accents-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Accents and dividers</p>
+      <h2 id="accents-title">Brand-bearing rules. Texture for weight, geometry for rhythm.</h2>
+      <p class="ks-section-sub">Texture bands carry full-vibrancy material (gold leaf, patina, dust). Dividers are CSS-only geometry that inherit currentColor and scale freely. Reach for one of these between sections when a one-pixel rule would feel too quiet.</p>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Texture bands · full-vibrancy, image-backed</span>
+      <div class="ks-accent-stack">
+        <div class="ks-accent-row">
+          <span class="ks-accent-row-label">Gold leaf <small>full bleed</small></span>
+          <div class="ks-accent-band is-leaf" aria-hidden="true"></div>
+        </div>
+        <div class="ks-accent-row">
+          <span class="ks-accent-row-label">Verdigris patina <small>state and contrast</small></span>
+          <div class="ks-accent-band is-patina" aria-hidden="true"></div>
+        </div>
+        <div class="ks-accent-row">
+          <span class="ks-accent-row-label">Dust seam <small>section dividers</small></span>
+          <div class="ks-accent-band is-dust" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">CSS-only dividers · scale freely, inherit currentColor</span>
+      <div class="ks-divider-stack">
+      <figure class="ksd-row">
+        <figcaption>D1 · Double rail with notch</figcaption>
+        <div class="ksd-tones">
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Kinpaku</span>
+            <div class="ksd-divider ksd-divider--double-notch" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Patina</span>
+            <div class="ksd-divider ksd-divider--double-notch ksd-divider--patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Plinth</span>
+            <div class="ksd-divider ksd-divider--double-notch ksd-divider--plinth" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold leaf</span>
+            <div class="ksd-divider ksd-divider--double-notch ksd-divider--tex-leaf" aria-hidden="true"></div>
+          </div>
+        </div>
+      </figure>
+
+      <figure class="ksd-row">
+        <figcaption>D2 · Diagonal tick repeat</figcaption>
+        <div class="ksd-tones">
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Kinpaku</span>
+            <div class="ksd-divider ksd-divider--ticks" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Patina</span>
+            <div class="ksd-divider ksd-divider--ticks ksd-divider--patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Plinth</span>
+            <div class="ksd-divider ksd-divider--ticks ksd-divider--plinth" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold leaf</span>
+            <div class="ksd-divider ksd-divider--ticks ksd-divider--tex-leaf" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Verdigris</span>
+            <div class="ksd-divider ksd-divider--ticks ksd-divider--tex-patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold dust</span>
+            <div class="ksd-divider ksd-divider--ticks ksd-divider--tex-dust" aria-hidden="true"></div>
+          </div>
+        </div>
+      </figure>
+
+      <figure class="ksd-row">
+        <figcaption>D3 · Dot grid (registration field)</figcaption>
+        <div class="ksd-tones">
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Kinpaku</span>
+            <div class="ksd-divider ksd-divider--dots" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Patina</span>
+            <div class="ksd-divider ksd-divider--dots ksd-divider--patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Plinth</span>
+            <div class="ksd-divider ksd-divider--dots ksd-divider--plinth" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold leaf</span>
+            <div class="ksd-divider ksd-divider--dots ksd-divider--tex-leaf" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Verdigris</span>
+            <div class="ksd-divider ksd-divider--dots ksd-divider--tex-patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold dust</span>
+            <div class="ksd-divider ksd-divider--dots ksd-divider--tex-dust" aria-hidden="true"></div>
+          </div>
+        </div>
+      </figure>
+
+      <figure class="ksd-row">
+        <figcaption>D5 · Circle anchor + line</figcaption>
+        <div class="ksd-tones">
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Kinpaku</span>
+            <div class="ksd-divider ksd-divider--anchor" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Patina</span>
+            <div class="ksd-divider ksd-divider--anchor ksd-divider--patina" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Plinth</span>
+            <div class="ksd-divider ksd-divider--anchor ksd-divider--plinth" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Gold leaf</span>
+            <div class="ksd-divider ksd-divider--anchor ksd-divider--tex-leaf" aria-hidden="true"></div>
+          </div>
+          <div class="ksd-tone">
+            <span class="ksd-tone-label">Verdigris</span>
+            <div class="ksd-divider ksd-divider--anchor ksd-divider--tex-patina" aria-hidden="true"></div>
+          </div>
+        </div>
+      </figure>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Navigation
+       ============================================================ -->
+  <section class="ks-section" id="navigation" aria-labelledby="navigation-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Navigation</p>
+      <h2 id="navigation-title">A quiet header with one active cut.</h2>
+    </div>
+
+    <div class="ks-nav-sample">
+      <a class="ks-brand" href="#navigation" aria-label="Impeccable home sample">
+        <span class="ks-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+            <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+          </svg>
+        </span>
+        <span class="ks-wordmark">IMPECCABLE</span>
+      </a>
+      <nav class="ks-nav" aria-label="Sample navigation">
+        <a href="#navigation" aria-current="page">Product</a>
+        <a href="#components">How it works</a>
+        <a href="#components">Examples</a>
+        <a href="#components">Docs</a>
+        <a href="#components">Pricing</a>
+      </nav>
+      <a class="ks-button ks-button-primary" href="#actions">Start audit</a>
+    </div>
+
+    <div class="ks-nav-sample-mobile">
+      <a class="ks-brand" href="#navigation" aria-label="Mobile brand sample">
+        <span class="ks-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+            <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+          </svg>
+        </span>
+        <span class="ks-wordmark">IMPECCABLE</span>
+      </a>
+      <button class="ks-menu-button" type="button" aria-label="Open menu">
+        <span></span><span></span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Actions
+       ============================================================ -->
+  <section class="ks-section" id="actions" aria-labelledby="actions-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Actions</p>
+      <h2 id="actions-title">Gold is commitment. Patina is state.</h2>
+    </div>
+
+    <div class="ks-component-grid">
+      <div class="ks-component">
+        <span class="ks-component-label">Buttons</span>
+        <div class="ks-button-row">
+          <a class="ks-button ks-button-primary" href="#actions">
+            Start audit
+            <span class="ks-button-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                <path d="M0 4h14M10 0l4 4-4 4"/>
+              </svg>
+            </span>
+          </a>
+          <a class="ks-button ks-button-secondary" href="#actions">See rules</a>
+          <button class="ks-button ks-button-ghost" type="button">Docs</button>
+          <button class="ks-button ks-button-disabled" type="button" disabled>Loading</button>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Primary states</span>
+        <div class="ks-state-grid">
+          <span class="ks-state-label">Default</span>
+          <a class="ks-button ks-button-primary" href="#actions">
+            Start audit
+            <span class="ks-button-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                <path d="M0 4h14M10 0l4 4-4 4"/>
+              </svg>
+            </span>
+          </a>
+          <span class="ks-state-label">Hover</span>
+          <a class="ks-button ks-button-primary" href="#actions" data-state="hover">
+            Start audit
+            <span class="ks-button-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                <path d="M0 4h14M10 0l4 4-4 4"/>
+              </svg>
+            </span>
+          </a>
+          <span class="ks-state-label">Pressed</span>
+          <a class="ks-button ks-button-primary" href="#actions" data-state="pressed">
+            Start audit
+            <span class="ks-button-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                <path d="M0 4h14M10 0l4 4-4 4"/>
+              </svg>
+            </span>
+          </a>
+          <span class="ks-state-label">Disabled</span>
+          <button class="ks-button ks-button-disabled" type="button" disabled>
+            Start audit
+            <span class="ks-button-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                <path d="M0 4h14M10 0l4 4-4 4"/>
+              </svg>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Form controls</span>
+        <form class="ks-form-sample" onsubmit="return false">
+          <label>
+            <span>Rule search</span>
+            <input type="search" value="gradient" aria-label="Search rules">
+          </label>
+          <label class="ks-toggle">
+            <input type="checkbox" checked>
+            <span>Auto apply fixes</span>
+          </label>
+          <label class="ks-checkbox">
+            <input type="checkbox" checked>
+            <span>Include subpages</span>
+          </label>
+          <label>
+            <span>Last 7 days</span>
+            <select class="ks-select" aria-label="Range">
+              <option>Last 7 days</option>
+              <option>Last 30 days</option>
+              <option>Last 90 days</option>
+            </select>
+          </label>
+        </form>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Tabs</span>
+        <div class="ks-tabs" data-ks-tabs>
+          <div class="ks-tab-list" role="tablist" aria-label="Command filters">
+            <button type="button" role="tab" aria-selected="true" aria-controls="tab-overview" id="tab-overview-control">Overview</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-issues" id="tab-issues-control">Issues</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-evidence" id="tab-evidence-control">Evidence</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-fixes" id="tab-fixes-control">Fixes</button>
+          </div>
+          <div class="ks-tab-panel" id="tab-overview" role="tabpanel" aria-labelledby="tab-overview-control">128 issues. 86 percent coverage. Ready to ship.</div>
+          <div class="ks-tab-panel" id="tab-issues" role="tabpanel" aria-labelledby="tab-issues-control" hidden>Browse anti-patterns by category.</div>
+          <div class="ks-tab-panel" id="tab-evidence" role="tabpanel" aria-labelledby="tab-evidence-control" hidden>Inspect captured DOM and screenshots per finding.</div>
+          <div class="ks-tab-panel" id="tab-fixes" role="tabpanel" aria-labelledby="tab-fixes-control" hidden>Apply commands with design direction.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Components
+       ============================================================ -->
+  <section class="ks-section" id="components" aria-labelledby="components-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Components</p>
+      <h2 id="components-title">Status, evidence, feedback. Quiet until it matters.</h2>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Audit result</span>
+      <div class="ks-audit-result">
+        <div class="ks-audit-stat">
+          <span class="ks-audit-stat-label">Issues</span>
+          <span class="ks-audit-stat-value is-warning">128</span>
+          <span class="ks-audit-stat-meta">Detected</span>
+        </div>
+        <div class="ks-audit-stat">
+          <span class="ks-audit-stat-label">Coverage</span>
+          <span class="ks-audit-stat-value is-improved">86%</span>
+          <span class="ks-audit-stat-meta">Improved</span>
+        </div>
+        <div class="ks-audit-stat">
+          <span class="ks-audit-stat-label">Status</span>
+          <span class="ks-audit-stat-value is-ready">Ready</span>
+          <span class="ks-audit-stat-meta">Ready to ship</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-component-grid">
+      <div class="ks-component">
+        <span class="ks-component-label">Status badges</span>
+        <div class="ks-badge-row">
+          <span class="ks-badge is-detected">Detected</span>
+          <span class="ks-badge is-improved">Improved</span>
+          <span class="ks-badge is-ready">Ready</span>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Issue tags</span>
+        <div class="ks-tag-row">
+          <span class="ks-tag is-detected">Gradient</span>
+          <span class="ks-tag is-detected">Hierarchy</span>
+          <span class="ks-tag is-detected">Spacing</span>
+          <span class="ks-tag is-improved">Improved</span>
+          <span class="ks-tag is-ready">Consistent</span>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Integrations</span>
+        <div class="ks-integration-row" aria-label="Integration partners">
+          <span class="ks-integration-badge" aria-label="Figma">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 2h4v6H8a3 3 0 1 1 0-6Zm0 8h4v6a3 3 0 1 1-3-3V10Zm5 6V10h3a3 3 0 1 1-3 3Zm0-8V2h3a3 3 0 1 1 0 6h-3Zm-1-6v6H8a3 3 0 1 1 0-6h4Z" opacity="0"/>
+              <circle cx="9" cy="5" r="2.6"/>
+              <circle cx="9" cy="12" r="2.6"/>
+              <circle cx="9" cy="19" r="2.6"/>
+              <circle cx="15" cy="5" r="2.6"/>
+              <circle cx="15" cy="12" r="2.6"/>
+            </svg>
+          </span>
+          <span class="ks-integration-badge" aria-label="GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2Z"/>
+            </svg>
+          </span>
+          <span class="ks-integration-badge" aria-label="VS Code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17 3 7 12l10 9V3Z"/>
+              <path d="M17 3 3 9v6l14 6"/>
+            </svg>
+          </span>
+          <span class="ks-integration-badge" aria-label="Slack">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="3" y="10" width="6" height="3" rx="1.4"/>
+              <rect x="3" y="15" width="3" height="3" rx="1.4"/>
+              <rect x="10" y="15" width="6" height="3" rx="1.4"/>
+              <rect x="15" y="10" width="3" height="3" rx="1.4"/>
+              <rect x="10" y="3" width="6" height="3" rx="1.4"/>
+              <rect x="15" y="6" width="3" height="3" rx="1.4"/>
+              <rect x="3" y="3" width="3" height="3" rx="1.4"/>
+              <rect x="6" y="6" width="3" height="3" rx="1.4"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Pagination</span>
+        <div class="ks-pagination" role="navigation" aria-label="Page navigation">
+          <button type="button" aria-label="Previous">‹</button>
+          <button type="button">1</button>
+          <button type="button" aria-current="page">2</button>
+          <button type="button">3</button>
+          <button type="button">4</button>
+          <button type="button">5</button>
+          <button type="button" aria-label="Next">›</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-component-grid-3" style="margin-top: 64px;">
+      <div class="ks-component">
+        <span class="ks-component-label">Toast · success</span>
+        <div class="ks-toast is-success" role="status">
+          <span class="ks-toast-icon" aria-hidden="true">
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="9" r="7.5"/>
+              <path d="m5.5 9 2.5 2.5L12.5 7"/>
+            </svg>
+          </span>
+          <div>
+            <strong>Audit complete</strong>
+            <span>12 issues detected, 8 ready to fix.</span>
+          </div>
+          <button class="ks-toast-close" type="button" aria-label="Dismiss">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"><path d="m1.5 1.5 9 9M10.5 1.5l-9 9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Toast · warning</span>
+        <div class="ks-toast is-warning" role="status">
+          <span class="ks-toast-icon" aria-hidden="true">
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="9" r="7.5"/>
+              <path d="M9 5v4M9 12.5h.01"/>
+            </svg>
+          </span>
+          <div>
+            <strong>Audit failed</strong>
+            <span>Reconnect the live page and run again.</span>
+          </div>
+          <button class="ks-toast-close" type="button" aria-label="Dismiss">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"><path d="m1.5 1.5 9 9M10.5 1.5l-9 9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Tooltip</span>
+        <div class="ks-tooltip-sample">
+          <button class="ks-icon-button" type="button" aria-describedby="tooltip-evidence">
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <circle cx="9" cy="9" r="7"/>
+              <path d="M9 6.5v2.8M9 12h.01"/>
+            </svg>
+          </button>
+          <span class="ks-tooltip" role="tooltip" id="tooltip-evidence">Evidence stays attached to the exact component.</span>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Modal</span>
+        <div class="ks-modal" role="dialog" aria-labelledby="modal-title">
+          <button class="ks-modal-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"><path d="m2 2 10 10M12 2 2 12"/></svg>
+          </button>
+          <h3 id="modal-title">Run audit on this project?</h3>
+          <p>This will analyze 45 files and produce a report in the next few minutes.</p>
+          <div class="ks-modal-actions">
+            <button class="ks-button ks-button-secondary" type="button">Cancel</button>
+            <button class="ks-button ks-button-primary" type="button">Run audit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Empty state</span>
+        <div class="ks-empty">
+          <span class="ks-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 12h24v18H6z"/>
+              <path d="M6 12 18 4l12 8"/>
+            </svg>
+          </span>
+          <strong>No issues found</strong>
+          <p>Great work. Keep it up.</p>
+        </div>
+      </div>
+
+      <div class="ks-component">
+        <span class="ks-component-label">Loading skeleton</span>
+        <div class="ks-skeleton" aria-label="Loading">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ks-subsection">
+      <span class="ks-subsection-label">Changelog</span>
+      <div class="ks-changelog">
+        <article class="ks-changelog-entry">
+          <span class="ks-changelog-date">May 12, 2026</span>
+          <div class="ks-changelog-body">
+            <strong>New hierarchy detector <em>New</em></strong>
+            <p>Spacing-consistency checks across rules and detectors.</p>
+          </div>
+        </article>
+        <article class="ks-changelog-entry">
+          <span class="ks-changelog-date">Apr 23, 2026</span>
+          <div class="ks-changelog-body">
+            <strong>Live audit performance</strong>
+            <p>Variant generation now 4x faster on average.</p>
+          </div>
+        </article>
+        <article class="ks-changelog-entry">
+          <span class="ks-changelog-date">Apr 9, 2026</span>
+          <div class="ks-changelog-body">
+            <strong>Motion accessibility checks</strong>
+            <p>Prefers-reduced-motion respected for every animation.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Proof
+       ============================================================ -->
+  <section class="ks-section" id="proof" aria-labelledby="proof-title">
+    <div class="ks-section-head">
+      <p class="ks-section-eyebrow">Product proof</p>
+      <h2 id="proof-title">Before and after. The seam is the audit.</h2>
+    </div>
+
+    <div class="ks-proof-grid">
+      <article class="ks-comparison" aria-labelledby="comparison-title">
+        <div class="ks-comparison-head">
+          <h3 id="comparison-title">Design audit comparison</h3>
+          <span>Drag</span>
+        </div>
+        <div class="ks-comparison-stage" data-ks-comparison>
+          <div class="ks-comparison-side ks-comparison-before">
+            <div class="ks-mini-ui ks-mini-ui-before">
+              <div class="ks-mini-orb" aria-hidden="true"></div>
+              <strong>Welcome to Dashboard</strong>
+              <p>The best solution for your needs.</p>
+              <button class="ks-mini-cta" type="button">Get Started</button>
+            </div>
+          </div>
+          <div class="ks-comparison-side ks-comparison-after">
+            <div class="ks-mini-ui ks-mini-ui-after">
+              <div class="ks-mini-rule" aria-hidden="true"></div>
+              <strong>Operational overview</strong>
+              <p>Hierarchy, spacing, contrast, and motion are intentional.</p>
+            </div>
+          </div>
+          <div class="ks-comparison-divider" aria-hidden="true"></div>
+          <input class="ks-comparison-range" type="range" min="18" max="82" value="50" aria-label="Before and after split">
+        </div>
+      </article>
+
+      <div class="ks-audit-rows">
+        <article class="ks-audit-row">
+          <span class="ks-severity is-high">High</span>
+          <div>
+            <span class="ks-audit-row-title">Purple gradient</span>
+            <span class="ks-audit-row-meta">Decorative color carries no product meaning.</span>
+          </div>
+          <span class="ks-audit-status">Detected</span>
+        </article>
+        <article class="ks-audit-row">
+          <span class="ks-severity is-medium">Medium</span>
+          <div>
+            <span class="ks-audit-row-title">Flat hierarchy</span>
+            <span class="ks-audit-row-meta">Actions, titles, and data share one visual weight.</span>
+          </div>
+          <span class="ks-audit-status is-improved">Improved</span>
+        </article>
+        <article class="ks-audit-row">
+          <span class="ks-severity is-low">Low</span>
+          <div>
+            <span class="ks-audit-row-title">Spacing drift</span>
+            <span class="ks-audit-row-meta">Repeated gaps read as template rhythm.</span>
+          </div>
+          <span class="ks-audit-status is-ready">Ready</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       Footer
+       ============================================================ -->
+  <footer class="ks-footer" id="footer" aria-label="Site footer">
+    <div class="ks-footer-inner">
+      <div class="ks-footer-brand">
+        <a class="ks-brand" href="/">
+          <span class="ks-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+              <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+            </svg>
+          </span>
+          <span class="ks-wordmark">IMPECCABLE</span>
+        </a>
+        <p class="ks-footer-tagline">Detect visual debt before it ships. AI builds fast. Impeccable keeps it intentional.</p>
+      </div>
+      <div class="ks-footer-links">
+        <div class="ks-footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="/designing">Designing</a></li>
+            <li><a href="/docs">Docs</a></li>
+            <li><a href="/slop">Slop</a></li>
+            <li><a href="/live-mode">Live</a></li>
+          </ul>
+        </div>
+        <div class="ks-footer-col">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="/design-system">Design system</a></li>
+            <li><a href="https://github.com/pbakaus/impeccable">GitHub</a></li>
+            <li><a href="/privacy">Privacy</a></li>
+          </ul>
+        </div>
+        <div class="ks-footer-col">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="https://x.com/pbakaus">X</a></li>
+            <li><a href="https://linkedin.com/in/paulbakaus">LinkedIn</a></li>
+            <li><a href="mailto:paul@renaissance-geek.ai">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="ks-footer-meta">
+      <small>Built by Paul Bakaus. Open source.</small>
+      <div class="ks-footer-social">
+        <a href="https://x.com/pbakaus" aria-label="X" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a href="https://github.com/pbakaus/impeccable" aria-label="GitHub" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <Fragment slot="scripts">
+    <script>
+      // Token display: read live values from kinpaku-tokens.css and write them
+      // into the swatch + type spec elements. Single source of truth: if a token
+      // changes in tokens.css, the design-system page reflects the new value on
+      // next reload without anyone having to update prose. data-token-value on a
+      // swatch field reads one token; data-type-scale on a spec line composes a
+      // "family · weight · size · line · tracking" line from the matching token
+      // family. Mono and body scales don't have a tracking token; the helper
+      // silently omits empty parts.
+      (() => {
+        const root = getComputedStyle(document.documentElement);
+        const read = (name) => root.getPropertyValue(name).trim();
+        const familyName = (cssValue) =>
+          cssValue.replace(/["']/g, '').split(',')[0].trim();
+
+        document.querySelectorAll('[data-token-value]').forEach((el) => {
+          const value = read(el.getAttribute('data-token-value'));
+          if (value) el.textContent = value;
+        });
+
+        const scaleFamily = {
+          wordmark: 'font-display',
+          display: 'font-display',
+          headline: 'font-display',
+          body: 'font',
+          mono: 'mono',
+        };
+
+        document.querySelectorAll('[data-type-scale]').forEach((el) => {
+          const scale = el.getAttribute('data-type-scale');
+          const family = familyName(read('--ks-' + (scaleFamily[scale] || 'font')));
+          const size = read(`--ks-type-${scale}-size`);
+          const weight = read(`--ks-type-${scale}-weight`)
+            || (scale === 'wordmark' ? read('--ks-type-display-weight') : '');
+          const line = read(`--ks-type-${scale}-line`);
+          const track = read(`--ks-type-${scale}-track`);
+          const parts = [family];
+          if (weight) parts.push(`weight ${weight}`);
+          if (size) parts.push(`size ${size}`);
+          if (line) parts.push(`line ${line}`);
+          if (track) parts.push(`tracking ${track}`);
+          el.textContent = parts.join(' · ');
+        });
+      })();
+
+      const comparison = document.querySelector('[data-ks-comparison]');
+      if (comparison) {
+        const range = comparison.querySelector('.ks-comparison-range');
+        const divider = comparison.querySelector('.ks-comparison-divider');
+        const after = comparison.querySelector('.ks-comparison-after');
+        const update = () => {
+          const value = `${range.value}%`;
+          divider.style.left = value;
+          after.style.clipPath = `inset(0 0 0 ${value})`;
+        };
+        range.addEventListener('input', update);
+        update();
+      }
+
+      document.querySelectorAll('[data-ks-tabs]').forEach((tabs) => {
+        const controls = Array.from(tabs.querySelectorAll('[role="tab"]'));
+        const panels = Array.from(tabs.querySelectorAll('[role="tabpanel"]'));
+        controls.forEach((control) => {
+          control.addEventListener('click', () => {
+            controls.forEach((item) => item.setAttribute('aria-selected', String(item === control)));
+            panels.forEach((panel) => {
+              panel.hidden = panel.id !== control.getAttribute('aria-controls');
+            });
+          });
+        });
+      });
+    </script>
+  </Fragment>
+</Base>

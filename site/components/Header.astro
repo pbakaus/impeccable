@@ -5,12 +5,28 @@ interface Props {
 const { activeNav } = Astro.props;
 ---
 
-<header class="site-header" data-site-header>
+<header class="site-header" data-site-header data-nav-open="false">
   <a href="/" class="site-header-brand" aria-label="Impeccable home">
-    <svg class="site-header-brand-logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#1a1a1a"/><text x="16" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="#f5f3ef" text-anchor="middle">/</text></svg>
+    <span class="site-header-brand-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/>
+        <path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/>
+      </svg>
+    </span>
     <span class="site-header-brand-name">Impeccable</span>
   </a>
-  <div class="site-header-right">
+  <button
+    type="button"
+    class="site-header-menu"
+    aria-label="Toggle navigation"
+    aria-expanded="false"
+    aria-controls="site-header-nav-panel"
+    data-site-header-menu
+  >
+    <span class="site-header-menu-line" aria-hidden="true"></span>
+    <span class="site-header-menu-line" aria-hidden="true"></span>
+  </button>
+  <div class="site-header-right" id="site-header-nav-panel">
     <nav class="site-header-nav" aria-label="Primary">
       <a href="/" data-nav="home" aria-current={activeNav === 'home' ? 'page' : undefined}>Home</a>
       <a href="/designing" data-nav="designing" aria-current={activeNav === 'designing' ? 'page' : undefined}>Designing</a>
@@ -18,10 +34,49 @@ const { activeNav } = Astro.props;
       <a href="/slop" data-nav="slop" aria-current={activeNav === 'slop' ? 'page' : undefined}>Slop</a>
       <a href="/live-mode" data-nav="live" aria-current={activeNav === 'live' ? 'page' : undefined}>Live</a>
     </nav>
-    <a href="https://github.com/pbakaus/impeccable" class="site-header-github" target="_blank" rel="noopener" aria-label="Impeccable on GitHub, 27k stars">
+    <button
+      type="button"
+      class="theme-toggle"
+      data-theme-toggle
+      aria-label="Theme: auto, matching your system. Click to switch to light mode."
+      title="Theme: auto (matches system)"
+    >
+      <svg class="theme-toggle-icon--auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/>
+      </svg>
+      <svg class="theme-toggle-icon--light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.5"/>
+        <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+      <svg class="theme-toggle-icon--dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5z"/>
+      </svg>
+    </button>
+    <a href="https://github.com/pbakaus/impeccable" class="site-header-github" target="_blank" rel="noopener" aria-label="Impeccable on GitHub, 34k stars">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-      <span class="site-header-github-label">27k</span>
+      <span class="site-header-github-label">34k</span>
       <svg class="site-header-github-star" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.76 6.36L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l7.24-.91L12 2z"/></svg>
     </a>
   </div>
 </header>
+
+<script is:inline>
+  (function () {
+    var header = document.querySelector('[data-site-header]');
+    var btn = document.querySelector('[data-site-header-menu]');
+    if (!header || !btn) return;
+    btn.addEventListener('click', function () {
+      var open = header.getAttribute('data-nav-open') === 'true';
+      header.setAttribute('data-nav-open', String(!open));
+      btn.setAttribute('aria-expanded', String(!open));
+    });
+    // Close on link tap (navigates within site).
+    header.querySelectorAll('.site-header-nav a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        header.setAttribute('data-nav-open', 'false');
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+  })();
+</script>

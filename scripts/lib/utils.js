@@ -9,6 +9,8 @@ import path from 'path';
 //   New installs write project config at .impeccable/live/config.json instead.
 export const PER_PROJECT_SCRIPT_ARTIFACTS = new Set(['config.json']);
 
+const DETECTOR_BUNDLE_DIR = 'cli/engine';
+
 // Walk the harness-dir skill tree and return any per-project script
 // artifacts found, ready for restoration after a full sync rm+recopy.
 // Returns [{ relPath, content: Buffer }], where relPath is relative to
@@ -37,6 +39,61 @@ export function restorePerProjectArtifacts(rootDir, stashed) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, content);
   }
+}
+
+function readDetectorBundleScripts(rootDir) {
+  const detectorDir = path.join(rootDir, DETECTOR_BUNDLE_DIR);
+  if (!fs.existsSync(detectorDir)) return [];
+
+  const scripts = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const relPath = path.relative(detectorDir, entryPath).split(path.sep).join('/');
+      scripts.push({
+        name: `detector/${relPath}`,
+        content: fs.readFileSync(entryPath, 'utf-8'),
+        filePath: entryPath,
+        generated: true,
+      });
+    }
+  };
+  walk(detectorDir);
+  return scripts;
+}
+
+function readSkillScripts(scriptsDir) {
+  const scripts = [];
+
+  const walk = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (PER_PROJECT_SCRIPT_ARTIFACTS.has(entry.name)) continue;
+
+      const relPath = path.relative(scriptsDir, entryPath).split(path.sep).join('/');
+      scripts.push({
+        name: relPath,
+        content: fs.readFileSync(entryPath, 'utf-8'),
+        filePath: entryPath,
+      });
+    }
+  };
+
+  walk(scriptsDir);
+  return scripts;
 }
 
 /**
@@ -156,12 +213,19 @@ export function readFilesRecursive(dir, fileList = []) {
  * Read and parse the impeccable skill source.
  * After v3.0 the repo holds exactly one user-invocable skill, flat at skill/.
  * Returns { skills: [oneEntry] } so downstream array-shaped consumers stay happy.
+ *
+ * The source manifest is `SKILL.src.md`, NOT `SKILL.md`, on purpose: the
+ * `vercel-labs/skills` CLI discovers a skill by finding a literal `SKILL.md`
+ * and copies that directory verbatim. If `skill/SKILL.md` existed, `npx skills`
+ * would install the UNCOMPILED source (unresolved `{{placeholders}}`, no vendored
+ * detector). Naming it `SKILL.src.md` hides it from discovery so the CLI falls
+ * through to a compiled harness dir (`.agents/skills/impeccable`) instead.
  */
 export function readSourceFiles(rootDir) {
   const skillDir = path.join(rootDir, 'skill');
   const skills = [];
 
-  const skillMdPath = path.join(skillDir, 'SKILL.md');
+  const skillMdPath = path.join(skillDir, 'SKILL.src.md');
   if (!fs.existsSync(skillMdPath)) {
     return { skills };
   }
@@ -189,19 +253,9 @@ export function readSourceFiles(rootDir) {
   const scripts = [];
   const scriptsDir = path.join(skillDir, 'scripts');
   if (fs.existsSync(scriptsDir)) {
-    const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
-      if (PER_PROJECT_SCRIPT_ARTIFACTS.has(f)) return false;
-      return fs.statSync(path.join(scriptsDir, f)).isFile();
-    });
-    for (const scriptFile of scriptFiles) {
-      const scriptPath = path.join(scriptsDir, scriptFile);
-      scripts.push({
-        name: scriptFile,
-        content: fs.readFileSync(scriptPath, 'utf-8'),
-        filePath: scriptPath
-      });
-    }
+    scripts.push(...readSkillScripts(scriptsDir));
   }
+  scripts.push(...readDetectorBundleScripts(rootDir));
 
   const agents = [];
   const agentsDir = path.join(skillDir, 'agents');
@@ -390,7 +444,7 @@ export function readPatterns(_rootDir, _relativePath) {
 
 // Previous SKILL.md parser retained below but disabled; kept as a
 // reference for how prefix-style extraction used to work.
-function _legacyReadPatterns(rootDir, relativePath = 'skill/SKILL.md') {
+function _legacyReadPatterns(rootDir, relativePath = 'skill/SKILL.src.md') {
   const skillPath = path.join(rootDir, relativePath);
 
   if (!fs.existsSync(skillPath)) {
@@ -550,6 +604,67 @@ export const PROVIDER_PLACEHOLDERS = {
     command_prefix: '/'
   }
 };
+
+export const PROVIDER_BLOCK_TAGS = new Set([
+  'agents',
+  'claude',
+  'claude-code',
+  'codex',
+  'cursor',
+  'gemini',
+  'github',
+  'kiro',
+  'opencode',
+  'pi',
+  'qoder',
+  'rovo-dev',
+  'trae',
+  'trae-cn',
+]);
+
+/**
+ * Compile harness-conditional markdown blocks.
+ *
+ * Known provider blocks must be written as standalone tags:
+ *
+ * <codex>
+ * Codex-only instructions.
+ * </codex>
+ *
+ * Matching blocks keep their body and drop the tags. Non-matching blocks are
+ * removed. Unknown tags are preserved so ordinary markdown/HTML is untouched.
+ */
+export function compileProviderBlocks(content, activeTags = []) {
+  const activeTagSet = new Set(activeTags);
+  const providerBlockPattern = /(^|\r?\n)[ \t]*<([a-z][a-z0-9-]*)>[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*<\/\2>[ \t]*(?=\r?\n|$)/g;
+  let didCompileBlock = false;
+
+  const compiled = content.replace(providerBlockPattern, (match, prefix, tag, body) => {
+    if (!PROVIDER_BLOCK_TAGS.has(tag)) return match;
+    didCompileBlock = true;
+    return activeTagSet.has(tag) ? `${prefix}${body}` : prefix;
+  });
+
+  return didCompileBlock ? compiled.replace(/(?:\r?\n){3,}/g, '\n\n') : compiled;
+}
+
+/**
+ * Strip `<!-- rule:id -->` markers from skill markdown.
+ *
+ * The impeccable-evals registry at `tools/instruction-rules.ts` pins
+ * each instruction line to a stable ID. Markers in the source keep
+ * that mapping verifiable in lock-step with the file. The model that
+ * loads the staged SKILL.md should not see them, so this strip runs
+ * during the per-provider staging in factory.js.
+ *
+ * Removes the marker plus any leading whitespace on the same line, so
+ * `something. <!-- rule:foo -->` becomes `something.` and a standalone
+ * marker line collapses to an empty line that the existing
+ * blank-line normalization in compileProviderBlocks reaps.
+ */
+export function stripRuleMarkers(content) {
+  return content.replace(/[ \t]*<!--\s*rule:[a-z0-9-]+\s*-->/g, '');
+}
 
 /**
  * Replace all {{placeholder}} tokens with provider-specific values

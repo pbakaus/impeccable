@@ -1,0 +1,1926 @@
+/* ============================================================================
+   Homepage rebuild: hero + slop teaser
+   Built to match the /design-system aesthetic (neo kinpaku).
+   Loaded after home-kinpaku.css so these rules win on the rebuilt sections.
+
+   All brand tokens (--ks-kinpaku, --ks-kinpaku-pale, --ks-patina, etc.) come
+   from kinpaku-tokens.css via home-kinpaku.css's import — no duplicate
+   declarations here.
+   ============================================================================ */
+
+
+/* ============================================================================
+   HERO REBUILD
+   ============================================================================ */
+
+/* The header overlays the hero (see .home-kinpaku .site-header below), so the
+   hero fills the full viewport and its art runs to the very top, behind the
+   transparent nav — the /design-system topbar treatment. */
+.hero-rebuild {
+  position: relative;
+  /* Leave ~115px of the testimonials section visible above the fold
+     (dotted divider + first row's top edge). Without this the hero
+     fills the entire viewport and the testimonials read as out of sight. */
+  min-height: calc(100svh - 115px);
+  display: grid;
+  align-items: center;
+  /* Top padding clears the fixed (overlay) header (97px). On short viewports the
+     hero grows to fit its content and pins it at this padding-top, so the demo
+     never tucks under the nav; on tall viewports the content still centers. */
+  padding: 113px 0 96px;
+  overflow: hidden;
+  /* Hairline divider into the testimonials below, matching the testimonial
+     card border color. */
+  border-bottom: 1px solid oklch(0.64 0 0 / 0.22);
+}
+
+/* Header sits on top of the hero image like the /design-system topbar:
+   transparent over the hero, then glassing in as you scroll. Pinned (fixed) so
+   it overlays the hero without taking flow space. Overrides the sticky light
+   bar from sub-pages.css.
+
+   --hp is the scroll progress (0 at the top → 1 once past the hero top), set
+   px-by-px from app.js, so the glass interpolates continuously rather than
+   snapping. */
+.home-kinpaku .site-header {
+  --hp: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: oklch(8% 0.006 95 / calc(0.72 * var(--hp)));
+  border-bottom: 1px solid oklch(78% 0.12 82 / calc(0.18 * var(--hp)));
+  -webkit-backdrop-filter: saturate(calc(1 + 0.3 * var(--hp))) blur(calc(16px * var(--hp)));
+  backdrop-filter: saturate(calc(1 + 0.3 * var(--hp))) blur(calc(16px * var(--hp)));
+}
+
+/* The wide-viewport seam treatment is light-only and lives in light-mode.css.
+   Dark mode needs none: the cream nav text reads fine over the darker seam. */
+
+.hero-rebuild-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    url("/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png") center / cover no-repeat;
+  filter: saturate(1.2) contrast(1.08);
+}
+
+/* Mirror .site-content's container math so the hero text aligns horizontally
+   with every other section's content edge. */
+.hero-rebuild-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 56px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+  gap: 72px;
+  align-items: center;
+}
+
+.hero-rebuild-left {
+  display: grid;
+  gap: 28px;
+  align-content: center;
+  max-width: 620px;
+}
+
+.home-kinpaku .hero-rebuild-title {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-weight: 300;
+  font-size: clamp(3.4rem, 6.5vw, 5.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.hero-rebuild-body {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  font-weight: 300;
+  max-width: 56ch;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.hero-rebuild-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+/* Hero CTAs migrated to .ks-button.ks-button-primary / .ks-button-secondary
+   (see kinpaku-kit.css). The .hero-rebuild-arrow class is gone too — the
+   arrow now lives in .ks-button-arrow inside the button.
+   "How it works" is the kit ghost variant: plain champagne (white) text, no
+   border or fill, hovering to gold. */
+
+.hero-rebuild-meta {
+  margin: 24px 0 0;
+  color: var(--ks-muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  max-width: 52ch;
+}
+
+.hero-rebuild-logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.home-kinpaku .hero-rebuild-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0.72;
+  transition: opacity 180ms var(--ks-ease), transform 180ms var(--ks-ease);
+}
+
+.home-kinpaku .hero-rebuild-logo img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  opacity: 0.78;
+  filter: grayscale(1) saturate(0) invert(1) brightness(1.18) contrast(0.72);
+  transition: opacity 180ms var(--ks-ease), filter 180ms var(--ks-ease);
+}
+
+/* Pi's source SVG is already white-on-transparent, so the row's default
+   invert(1) filter would turn it black (invisible against the lacquer
+   hero). Skip the filter entirely; the asset is already on-brand. */
+.home-kinpaku .hero-rebuild-logo[data-tooltip="Pi"] img {
+  filter: none;
+}
+
+.home-kinpaku .hero-rebuild-logo:hover,
+.home-kinpaku .hero-rebuild-logo:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.home-kinpaku .hero-rebuild-logo:hover img,
+.home-kinpaku .hero-rebuild-logo:focus-visible img {
+  opacity: 1;
+  filter: none;
+}
+
+/* GitHub Copilot and Codex CLI logos are dark monochrome glyphs. The row's
+   default invert filter makes them readable; removing it on hover would put
+   them back to dark-on-dark, which is invisible. Keep them inverted on
+   hover — they don't have a brand color to restore. */
+.home-kinpaku .hero-rebuild-logo[data-tooltip="GitHub Copilot"]:hover img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="GitHub Copilot"]:focus-visible img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:hover img,
+.home-kinpaku .hero-rebuild-logo[data-tooltip="Codex CLI"]:focus-visible img {
+  filter: grayscale(1) saturate(0) invert(1) brightness(1.18);
+}
+
+/* Right column hosts the existing split comparison */
+.hero-rebuild-right {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  justify-self: end;
+}
+
+/* The .home-kinpaku .split-container rule caps width/height for the magazine
+   spread. Inside the hero rebuild we want the demo to fill the right column,
+   so override both caps here. Higher specificity wins. */
+.home-kinpaku .hero-rebuild-right .split-comparison {
+  max-width: 100%;
+}
+.home-kinpaku .hero-rebuild-right .split-container {
+  max-width: 100%;
+  height: 440px;
+}
+
+/* problem-section.css applies @keyframes splitEntry to every .split-divider
+   with a baked-in skewX(-10deg) in the from/to transforms. That keyframe
+   transform overrides our flat translateX(-50%) for the 0.9s animation
+   window, producing a visible "skewed-then-corrects" effect on first paint.
+   Disable the animation here — the home kinpaku divider doesn't need an
+   entry effect. */
+.home-kinpaku .hero-rebuild-right .split-divider {
+  animation: none;
+}
+
+/* The category labels under the demo ("Generic AI output" / "With Impeccable")
+   need to stay readable on the vibrant kinpaku-leaf hero. Localized frosted
+   pills behind each label only — backdrop stays full-color elsewhere. */
+.home-kinpaku .hero-rebuild-right .split-labels {
+  margin-top: 18px;
+}
+
+.home-kinpaku .hero-rebuild-right .split-label-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  background: oklch(4% 0.004 95 / 0.72);
+  backdrop-filter: blur(8px) saturate(1.4);
+  -webkit-backdrop-filter: blur(8px) saturate(1.4);
+  border: 1px solid oklch(58% 0.065 82 / 0.32);
+  border-radius: 2px;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  color: var(--ks-champagne);
+}
+
+.home-kinpaku .hero-rebuild-right .split-label-item[data-point="after"] {
+  color: var(--ks-kinpaku);
+  border-color: oklch(78% 0.10 82 / 0.45);
+}
+
+@media (max-width: 1080px) {
+  .hero-rebuild { padding: 108px 36px 80px; }   /* keep top clear of the fixed header */
+  /* minmax(0, 1fr), not 1fr: a plain 1fr track has an `auto` (min-content)
+     floor, so the demo's 460px-wide browser frame held the column wider than a
+     phone viewport and the hero clipped. minmax(0,…) lets it shrink and the
+     frame clips its own content (overflow:hidden) instead. */
+  .hero-rebuild-container { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .hero-rebuild-right { justify-self: stretch; max-width: 100%; }
+  .home-kinpaku .hero-rebuild-right .split-container { height: 380px; }
+}
+
+@media (max-width: 720px) {
+  .hero-rebuild { padding: 92px 24px 64px; }   /* clear the compact mobile header */
+  /* The hero's 24px gutter is the mobile margin now; the container's desktop
+     56px padding stacked on top of it (160px of chrome) starved the content and
+     forced the grid track wider than the viewport. Drop it on mobile. */
+  .hero-rebuild-container { padding-left: 0; padding-right: 0; }
+  /* Title keeps its design-system clamp (floors at 3.4rem ≈ 54px here): the
+     Pinstripe display face is condensed, so "interfaces" stays well within a
+     320px+ viewport. No mobile shrink — at 54px against 16.8px body it holds a
+     ~3.2× hero hierarchy; shrinking it made the heading read smaller than body. */
+  .hero-rebuild-actions { flex-direction: column; align-items: stretch; }
+  .home-kinpaku .hero-rebuild-right .split-container { height: 320px; }
+  /* The hotel mock is authored ~460px wide; in the narrow mobile frame its full
+     nav (logo + 4 links + Book) overran the right edge and clipped mid-word.
+     Collapse to logo + Book — the realistic narrow-viewport nav, and it keeps
+     the hero (the picked element) as the demo's clear subject. */
+  .hero-live-demo .hotel-nav-links { display: none; }
+}
+
+/* ============================================================================
+   CATCH THE SLOP TEASER
+   ============================================================================ */
+
+.slop-teaser-section {
+  padding: 120px 0;
+}
+
+.slop-teaser-head {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  margin-bottom: 64px;
+}
+
+.slop-teaser-eyebrow {
+  margin: 0;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.home-kinpaku .slop-teaser-title {
+  margin: 0;
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 4vw, 3.4rem);
+  line-height: 1.04;
+  letter-spacing: -0.005em;
+}
+
+.slop-teaser-body {
+  margin: 0;
+  color: var(--ks-text);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  /* Weight 400 + explicit smoothing for the same reason .hero-rebuild-body
+     uses them: Avenir Next Light (weight 300) isn't installed on every system,
+     so the browser synthesizes it from the regular face and the anti-aliasing
+     goes splotchy. Weight 400 with explicit smoothing renders cleanly. */
+  font-weight: 400;
+  max-width: 60ch;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.slop-teaser-numerics {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--ks-muted);
+  font-family: var(--ks-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+/* Gallery: horizontal scroller of antipattern thumbnails */
+.slop-teaser-gallery {
+  position: relative;
+  margin: 0 0 56px;
+}
+
+.slop-teaser-track {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding: 4px 4px 18px;
+  margin: 0 -4px;
+}
+
+.slop-teaser-track::-webkit-scrollbar { display: none; }
+
+.home-kinpaku .slop-teaser-card {
+  flex: 0 0 320px;
+  scroll-snap-align: start;
+  display: grid;
+  grid-template-rows: auto auto;
+  text-decoration: none;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  overflow: hidden;
+  transition: border-color 180ms var(--ks-ease), transform 220ms var(--ks-ease);
+  position: relative;
+}
+
+.home-kinpaku .slop-teaser-card:hover {
+  border-color: var(--ks-kinpaku);
+  transform: translateY(-2px);
+}
+
+.slop-teaser-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: oklch(13% 0.008 290);
+}
+
+.slop-teaser-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  display: block;
+  transition: transform 360ms var(--ks-ease);
+}
+
+.home-kinpaku .slop-teaser-card:hover .slop-teaser-thumb img {
+  transform: scale(1.03);
+}
+
+/* Marker scribble across the thumbnail, evoking "caught" */
+.slop-teaser-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 22px, oklch(58% 0.15 35 / 0.04) 22px 23px),
+    linear-gradient(180deg, transparent 60%, oklch(4% 0.004 95 / 0.55));
+  pointer-events: none;
+}
+
+.slop-teaser-meta {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.slop-teaser-cat {
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.home-kinpaku .slop-teaser-card strong {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font);
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.slop-teaser-flag {
+  color: oklch(58% 0.15 35);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  border: 1px solid oklch(58% 0.15 35);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+/* Gallery nav buttons */
+.slop-teaser-arrow {
+  position: absolute;
+  top: 38%;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ks-rule);
+  background: oklch(8% 0.006 95 / 0.92);
+  color: var(--ks-kinpaku);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 180ms var(--ks-ease), color 180ms var(--ks-ease);
+}
+
+.slop-teaser-arrow:hover { border-color: var(--ks-kinpaku); }
+.slop-teaser-arrow svg { width: 12px; height: 20px; }
+.slop-teaser-arrow--prev { left: -20px; }
+.slop-teaser-arrow--next { right: -20px; }
+
+@media (max-width: 720px) {
+  .slop-teaser-card { flex: 0 0 80%; }
+  .slop-teaser-arrow { display: none; }
+}
+
+.slop-teaser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  margin-top: 14px;
+}
+
+.home-kinpaku .slop-teaser-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ks-kinpaku);
+  font-size: 1rem;
+  font-weight: 400;
+  text-decoration: none;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ks-kinpaku);
+  transition: gap 180ms var(--ks-ease);
+}
+
+.home-kinpaku .slop-teaser-cta-primary:hover {
+  gap: 18px;
+  color: var(--ks-kinpaku);
+}
+
+.slop-teaser-cta-primary svg {
+  width: 16px;
+  height: 8px;
+  flex: none;
+}
+
+/* Scoped against the global .home-kinpaku code color override using the
+   chained selector (.home-kinpaku code.slop-teaser-cli has higher specificity
+   than .home-kinpaku code alone). Keeps the CLI block in the softer code-gold
+   so the line reads as a terminal command, not a pumpkin headline. */
+.home-kinpaku code.slop-teaser-cli {
+  color: var(--ks-code-block-fg);
+  font-family: var(--ks-mono);
+  font-size: 0.86rem;
+  background: var(--ks-code-block-bg);
+  padding: 10px 16px;
+  border: 1px solid var(--ks-code-block-border);
+  border-radius: var(--ks-code-block-radius);
+  user-select: all;
+}
+
+@media (max-width: 1080px) {
+  .slop-teaser-section { padding: 80px 0; }
+  .slop-teaser-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .slop-teaser-section { padding: 64px 0; }
+  .slop-teaser-grid { grid-template-columns: 1fr; }
+  .slop-teaser-actions { flex-direction: column; align-items: stretch; }
+  .slop-teaser-cli { text-align: center; }
+}
+
+/* ============================================================================
+   LIVE SECTION — right-aligned intro
+   The section header and lead paragraph sit flush right so the heavy demo
+   block below reads as left-anchored to the page, with the intro language
+   right-anchored above it. (Language section keeps its default left-align;
+   Get Started below is centered.)
+   ============================================================================ */
+
+.home-kinpaku .live-section .section-header {
+  text-align: right;
+  justify-items: end;
+}
+.home-kinpaku .live-section .section-lead {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* ============================================================================
+   GET STARTED REBUILD
+   ============================================================================ */
+
+.downloads-rebuild {
+  padding: 120px 0;
+}
+
+/* The card wrapper holds everything: header, install command, examples,
+   extras. Plinth surface. The --card-* tokens are kept so inner rules
+   reference them once and we can re-theme the whole card in one place if
+   needed later. */
+.downloads-rebuild-card {
+  --card-fg: var(--ks-text);
+  --card-fg-strong: var(--ks-champagne);
+  --card-fg-muted: var(--ks-muted);
+  --card-accent: var(--ks-kinpaku);
+  --card-cmd-bg: var(--ks-code-block-bg);
+  --card-cmd-fg: var(--ks-code-block-fg);
+  --card-copy-border: var(--ks-rule);
+  --card-copy-fg: var(--ks-kinpaku);
+  --card-copy-hover-bg: oklch(77% 0.14 82 / 0.08);
+  --card-link-color: var(--ks-kinpaku);
+  --card-link-underline: var(--ks-kinpaku);
+  --card-link-secondary: var(--ks-muted);
+
+  /* Command-frame accents. The install box is the primary CTA and carries
+     kinpaku; the update box carries patina, which in this system reads as the
+     "improved / updated" state. Both re-theme in light-mode.css. */
+  --card-cmd-border: var(--ks-kinpaku);
+  --card-prompt: var(--ks-kinpaku);
+  --card-cmd-border-update: oklch(70% 0.12 188 / 0.5);
+  --card-prompt-update: var(--ks-patina);
+
+  /* Width of the accent's reserved right column. Content padding-right
+     matches this so the accent never overlaps text. */
+  --card-accent-w: 280px;
+
+  position: relative;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 80px var(--card-accent-w) 80px 56px;
+  border-radius: 2px;
+  background: oklch(0.17 0 0);
+  color: var(--card-fg);
+  text-align: left;
+  overflow: hidden;
+}
+
+/* Oxidation edge accent — moved here from the footer. Full-bleed on the
+   right, full opacity (much more glorious than the 0.6 it carried in the
+   footer). Content gets dedicated padding-right via --card-accent-w above,
+   so the accent and the content never overlap. */
+.downloads-rebuild-card::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: var(--card-accent-w);
+  height: 100%;
+  /* `cover` instead of `contain` so the image fills the card's full height —
+     the source PNG is 1:2 but the card aspect is more like 1:5, so `contain`
+     bottom-anchored a half-height render. Right-anchored, vertically centered
+     overflow goes off the left edge (the gold streak lives on the right side
+     of the image, so cropping there is fine). */
+  background: url("/assets/neo-kinpaku/oxidation-edge-accent.png") right center / cover no-repeat;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Make sure the inner content stacks above the accent. */
+.downloads-rebuild-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Narrow viewports — the accent's reserved column would crush content.
+   Drop the accent below the lg breakpoint and restore symmetric padding. */
+@media (max-width: 980px) {
+  .downloads-rebuild-card {
+    padding: 64px 40px;
+  }
+  .downloads-rebuild-card::before { display: none; }
+}
+
+.downloads-rebuild-head {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  margin: 0 0 40px;
+  text-align: left;
+  justify-items: start;
+}
+
+.downloads-rebuild-eyebrow {
+  margin: 0;
+  color: var(--ks-kinpaku);
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.home-kinpaku .downloads-rebuild-title {
+  margin: 0;
+  color: var(--card-fg-strong);
+  font-family: var(--ks-font-display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 4vw, 3.4rem);
+  line-height: 1.04;
+}
+
+.downloads-rebuild-install {
+  display: grid;
+  gap: 22px;
+  margin: 0 0 48px;
+  width: 100%;
+  max-width: 600px;
+  min-width: 0;
+  text-align: left;
+}
+
+/* Each command is a labeled group: a small mono cap above its box. */
+.downloads-rebuild-cmd-group {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.downloads-rebuild-cmd-label {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--card-prompt);
+}
+.downloads-rebuild-cmd-label--update {
+  color: var(--card-prompt-update);
+}
+
+/* Install command is THE primary CTA of the Get Started section. A full
+   kinpaku hairline frame + gold prompt glyph + left-aligned mono make it read
+   as a runnable terminal line, not a decorative chip. Copy button nests on the
+   right. Full border, not a side-stripe (brand-ban). */
+.home-kinpaku .downloads-rebuild-cmd {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 15px 14px 15px 22px;
+  background: var(--card-cmd-bg);
+  border: 1px solid var(--card-cmd-border);
+  border-radius: 2px;
+}
+
+/* The shell prompt that signals "this is a command you run." Carries the
+   row's accent (gold for install, patina for update). */
+.home-kinpaku .downloads-rebuild-prompt {
+  flex: none;
+  font-family: var(--ks-mono);
+  font-size: 1.18rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--card-prompt);
+  user-select: none;
+}
+
+.home-kinpaku .downloads-rebuild-cmd > code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--card-cmd-fg);
+  font-family: var(--ks-mono);
+  font-size: 1.22rem;
+  letter-spacing: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  user-select: all;
+}
+
+/* Update box: same frame, quieter patina accent (the "improved" signal). */
+.home-kinpaku .downloads-rebuild-cmd--update {
+  border-color: var(--card-cmd-border-update);
+}
+.home-kinpaku .downloads-rebuild-cmd--update .downloads-rebuild-prompt {
+  color: var(--card-prompt-update);
+}
+
+/* Compact icon-only copy button nested inside the cmd box, on the right. */
+.home-kinpaku .downloads-rebuild-copy {
+  flex: none;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--card-copy-border);
+  background: transparent;
+  color: var(--card-copy-fg);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
+    transform 120ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy:active {
+  transform: scale(0.96);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon,
+.home-kinpaku .downloads-rebuild-check-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 140ms var(--ks-ease),
+    transform 180ms var(--ks-ease);
+}
+
+.home-kinpaku .downloads-rebuild-copy-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon {
+  opacity: 0;
+  transform: scale(0.86);
+}
+
+.home-kinpaku .downloads-rebuild-check-icon path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied {
+  background: var(--card-copy-hover-bg);
+  border-color: currentColor;
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-copy-icon {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+  animation: downloads-check-draw 260ms var(--ks-ease) forwards;
+}
+
+@keyframes downloads-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .downloads-rebuild-copy,
+  .home-kinpaku .downloads-rebuild-copy-icon,
+  .home-kinpaku .downloads-rebuild-check-icon {
+    transition: none;
+  }
+
+  .home-kinpaku .downloads-rebuild-copy.copied .downloads-rebuild-check-icon path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+.home-kinpaku .downloads-rebuild-copy span {
+  /* Hide the "Copy" label — icon carries the meaning. Kept in markup for a11y. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.home-kinpaku .downloads-rebuild-copy:hover {
+  background: var(--card-copy-hover-bg);
+  border-color: var(--card-copy-fg);
+}
+
+/* Update copy button tracks the patina accent rather than gold. */
+.home-kinpaku .downloads-rebuild-cmd--update .downloads-rebuild-copy {
+  color: var(--card-prompt-update);
+}
+.home-kinpaku .downloads-rebuild-cmd--update .downloads-rebuild-copy:hover {
+  background: oklch(70% 0.12 188 / 0.08);
+  border-color: var(--card-prompt-update);
+}
+
+/* "Other install methods" — a quiet disclosure under the primary command.
+   Native <details> so it works without JS and stays accessible. */
+.downloads-rebuild-alts {
+  margin: 2px 0 0;
+  text-align: left;
+}
+.downloads-rebuild-alts-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.84rem;
+  color: var(--ks-text-muted);
+  transition: color 160ms var(--ks-ease);
+}
+.downloads-rebuild-alts-summary::-webkit-details-marker { display: none; }
+.downloads-rebuild-alts-summary:hover { color: var(--ks-patina); }
+.downloads-rebuild-alts[open] > .downloads-rebuild-alts-summary {
+  color: var(--card-fg-strong);
+  margin-bottom: 18px;
+}
+.downloads-rebuild-alts-arrow {
+  flex: none;
+  transition: transform 180ms var(--ks-ease);
+}
+.downloads-rebuild-alts[open] > .downloads-rebuild-alts-summary .downloads-rebuild-alts-arrow {
+  transform: rotate(90deg);
+}
+
+.downloads-rebuild-alt + .downloads-rebuild-alt { margin-top: 18px; }
+.downloads-rebuild-alt-label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--card-fg-strong);
+}
+
+/* Smaller, quieter command box for the alternatives. */
+.home-kinpaku .downloads-rebuild-cmd--alt {
+  padding: 9px 9px 9px 18px;
+  gap: 12px;
+}
+.home-kinpaku .downloads-rebuild-cmd--alt > code { font-size: 0.98rem; }
+.home-kinpaku .downloads-rebuild-cmd--alt .downloads-rebuild-copy {
+  width: 34px;
+  height: 34px;
+}
+
+.downloads-rebuild-alt-note {
+  display: block;
+  margin-top: 7px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-alt-note code {
+  font-family: var(--ks-mono);
+  font-size: 0.9em;
+  color: var(--card-fg-muted);
+}
+
+.downloads-rebuild-note {
+  margin: 0;
+  max-width: 60ch;
+  text-align: left;
+  color: var(--card-fg-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.home-kinpaku .downloads-rebuild-note code {
+  font-family: var(--ks-mono);
+  font-size: 0.86em;
+  color: var(--card-fg-strong);
+}
+
+/* Quieter than the note — the changelog + FAQ hints sit just under the
+   primary "works with" line. Patina links so they read as related but
+   distinct from the kinpaku primary CTA above. */
+.downloads-rebuild-secondary {
+  margin: 6px 0 0;
+  text-align: left;
+  font-size: 0.84rem;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-secondary a {
+  color: var(--ks-patina);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(70% 0.12 188 / 0.35);
+}
+.downloads-rebuild-secondary a:hover {
+  color: var(--ks-patina-pale);
+  border-bottom-color: var(--ks-patina-pale);
+}
+
+/* Closing links under the setup extras — workflow + command docs. */
+.downloads-rebuild-more {
+  margin: 28px 0 0;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-more a {
+  color: var(--ks-patina);
+  text-decoration: none;
+  border-bottom: 1px solid oklch(70% 0.12 188 / 0.35);
+}
+.downloads-rebuild-more a:hover {
+  color: var(--ks-patina-pale);
+  border-bottom-color: var(--ks-patina-pale);
+}
+
+.downloads-rebuild-extras {
+  list-style: none;
+  margin: 0;
+  padding: 40px 0 0;
+  border-top: 1px solid var(--ks-rule);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+  max-width: 820px;
+}
+
+/* Each cell is a flex column so primary links can be bottom-anchored.
+   Text is left-aligned within the cell — wrapping paragraphs read better
+   that way than centered. The grid as a whole stays centered on the page. */
+.downloads-rebuild-extras li {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  align-items: stretch;
+}
+
+.downloads-rebuild-extras strong {
+  color: var(--card-fg-strong);
+  font-family: var(--ks-font);
+  font-weight: 400;
+  font-size: 1.05rem;
+}
+
+.downloads-rebuild-extras span {
+  color: var(--card-fg-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.home-kinpaku .downloads-rebuild-extras span code {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font-family: var(--ks-mono);
+  font-size: 0.84rem;
+  color: var(--card-fg-strong);
+}
+
+.home-kinpaku .downloads-rebuild-extras a {
+  color: var(--card-link-color);
+  font-size: 0.88rem;
+  text-decoration: underline;
+  text-decoration-color: var(--card-link-underline);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  width: fit-content;
+  transition: color 180ms var(--ks-ease);
+}
+
+/* Push the primary link to the bottom of each cell so all three primary
+   links sit at the same Y. The secondary link follows naturally below. */
+.home-kinpaku .downloads-rebuild-extras a:not(.downloads-rebuild-link-secondary) {
+  margin-top: auto;
+}
+
+.home-kinpaku .downloads-rebuild-extras a.downloads-rebuild-link-secondary {
+  color: var(--card-link-secondary);
+  text-decoration-color: var(--card-link-secondary);
+  margin-top: 4px;
+}
+
+.home-kinpaku .downloads-rebuild-extras a.downloads-rebuild-link-secondary:hover {
+  color: var(--card-fg);
+  text-decoration-color: var(--card-fg);
+}
+
+@media (max-width: 1080px) {
+  .downloads-rebuild { padding: 80px 0; }
+  .downloads-rebuild-extras { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .downloads-rebuild { padding: 64px 0; }
+  .downloads-rebuild-install { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .home-kinpaku .downloads-rebuild-cmd {
+    gap: 10px;
+    padding: 13px 12px 13px 16px;
+  }
+
+  .home-kinpaku .downloads-rebuild-cmd > code {
+    overflow-x: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.96rem;
+    line-height: 1.35;
+  }
+
+  .home-kinpaku .downloads-rebuild-prompt {
+    font-size: 1.05rem;
+  }
+
+  .home-kinpaku .downloads-rebuild-copy {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+/* ============================================================================
+   FOUNDATION CARD VISUALIZATIONS (varied per discipline)
+   Foundation cards use the original animated SVG icons (foundation-animations.js
+   restored). No extra chrome here.
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .slop-teaser-cta-primary {
+    transition: none;
+  }
+}
+
+/* ============================================================================
+   Section dividers — varied patterns from /design-system#dividers, so each
+   transition has its own personality without being noisy. All drawn as a
+   ::before pseudo on the section so no markup change required.
+   ============================================================================ */
+
+.home-kinpaku .slop-teaser-section,
+.home-kinpaku .live-section,
+.home-kinpaku .language-section,
+.home-kinpaku .downloads-rebuild {
+  position: relative;
+  /* Override stray border-tops applied by main.css → live-mode.css and any
+     other transitive imports — section dividers are drawn via ::before. */
+  border-top: 0;
+}
+
+/* The Hero → Slop dot-grid divider previously lived here as a ::before on
+   .slop-teaser-section. After the testimonials section was inserted between
+   hero and slop, that divider moved onto .testimonials-section in
+   testimonials.css. The slop section no longer needs a top divider — its
+   own padding and the testimonials section above carry the transition. */
+
+/* Slop → Live, Live → Language, Language → Get Started: intentionally no
+   dividers. The plinth dot grid at the top of Testimonials and the verdigris
+   dot grid at the top of the footer bracket the section stack — interior
+   transitions read on layout alone. */
+
+
+/* ============================================================================
+   HERO LIVE-MODE DEMO
+   The Live Mode loop (live-demo.js, #live-demo) now lives in the hero. Override
+   the section-03 frame proportions — the base frame is 16:9, too short for the
+   portrait card in the narrow hero column — and give all variants a single
+   card footprint so the pick-outline hugs them.
+   ============================================================================ */
+
+.hero-live-demo {
+  display: block;          /* override the .live-demo 2-col grid */
+  width: 100%;
+}
+
+.hero-live-demo .live-demo-frame {
+  aspect-ratio: auto;
+  /* Height follows content — fixed min was leaving ivory gap under clipped suites. */
+  height: auto;
+  max-height: min(540px, calc(100svh - 140px));
+  max-width: 100%;
+}
+
+/* The hero-scoped demo-chrome refinements (crisp outline, neutral chrome dots /
+   URL, quiet gbar border, crisp active-Pick pill, tighter radii, refined frame
+   elevation) were promoted into the shared picker chrome in kinpaku-kit.css /
+   live-mode-kinpaku.css / home-kinpaku.css so /live-mode and the injected
+   picker (skill/scripts/live-browser.js) match. Nothing hero-specific remains. */
+
+/* The stage holds a full (fake) website now, not a centered card. */
+.hero-live-demo .live-demo-stage {
+  display: block;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Default .hotel-site is position:absolute; inset:0, which stretches to the tall
+   stage and paints ivory in the gap below clipped suites. */
+.hero-live-demo .hotel-site {
+  position: relative;
+  inset: auto;
+  height: auto;
+}
+
+/* The picked element is the hero — a single, full-width, one-of-a-kind block.
+   Contained with side margins so the pick-outline hugs it inside the frame. */
+.hero-live-demo .live-demo-target.hotel-hero-pick {
+  align-self: stretch;
+  width: auto;
+  height: 214px;
+  min-height: 0;
+  margin: 16px 18px 0;
+}
+.hero-live-demo .live-demo-variant {
+  display: grid;
+  place-items: stretch;
+}
+.hero-live-demo .live-demo-variant > .hotel-hero {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+/* Suite cards run to the frame bottom; the gbar overlaps their lower edge. */
+.hero-live-demo .hotel-suites {
+  flex: none;
+  max-height: 132px;
+  padding: 10px 0 0 22px;
+  overflow: hidden;
+}
+.hero-live-demo .hotel-suites-row > .hotel-card {
+  width: 198px;
+  height: 226px;
+  box-sizing: border-box;
+  flex: none;
+}
+
+/* The contextual bar's optional free-text input reads as a placeholder (in the
+   real picker you type here OR annotate; here the annotation is the input). */
+.hero-live-demo [data-demo-input-text]:empty::before {
+  content: "refine further…";
+  opacity: 0.5;
+}
+
+@media (max-width: 1080px) {
+  .hero-live-demo { max-width: 460px; margin-inline: auto; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   The page under the picker: AURELIA, a warm serif boutique-hotel site.
+   Deliberately the opposite of Impeccable's dark kinpaku aesthetic.
+   ---------------------------------------------------------------------------- */
+.hotel-site {
+  --h-ivory: oklch(96.5% 0.012 84);
+  --h-sand: oklch(92% 0.02 80);
+  --h-ink: oklch(31% 0.025 55);
+  --h-muted: oklch(50% 0.025 55);
+  --h-green: oklch(43% 0.055 150);
+  --h-line: oklch(82% 0.02 80);
+  --h-serif: "Cormorant Garamond", Georgia, serif;
+  --h-sans: var(--ks-font, system-ui, sans-serif);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--h-ivory);
+  color: var(--h-ink);
+  overflow: hidden;
+}
+
+.hotel-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  height: 44px;
+  flex: none;
+  border-bottom: 1px solid var(--h-line);
+}
+.hotel-logo {
+  font-family: var(--h-serif);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  color: var(--h-ink);
+}
+.hotel-nav-links {
+  display: flex;
+  gap: 18px;
+  font-family: var(--h-sans);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--h-muted);
+}
+.hotel-nav-book {
+  font-family: var(--h-sans);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--h-green);
+  border: 1px solid var(--h-green);
+  border-radius: 999px;
+  padding: 5px 13px;
+}
+
+/* ----------------------------------------------------------------------------
+   The hero = the picked element. One shared structure; the slop original is
+   generic + sans, the three elegant variants are the on-brand fixes.
+   ---------------------------------------------------------------------------- */
+.hotel-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.hotel-hero-photo {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, oklch(24% 0.03 40 / 0.82), oklch(38% 0.04 40 / 0.12) 58%, transparent),
+    linear-gradient(150deg, oklch(66% 0.08 60), oklch(48% 0.08 34) 52%, oklch(36% 0.05 255));
+}
+.hotel-hero-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 22px 24px;
+}
+/* The hotel hero text sits on dark teal/gold photos, so it stays light in both
+   themes. These carry an extra .hotel-hero class purely for specificity: the
+   global `.home-kinpaku h2`/`p` color rules (0,1,1) otherwise win and, in light
+   mode, drag the headline to the dark --ks-champagne ink — illegible on the
+   photo. The slop variant's own dark overrides still win on source order. */
+.hotel-hero .hotel-hero-eyebrow {
+  margin: 0;
+  font-family: var(--h-sans);
+  font-size: 10px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: oklch(91% 0.05 85);
+}
+.hotel-hero .hotel-hero-title {
+  margin: 0;
+  font-family: var(--h-serif);
+  font-weight: 500;
+  font-size: 31px;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: oklch(98% 0.01 85);
+}
+.hotel-hero .hotel-hero-sub {
+  margin: 0;
+  font-family: var(--h-sans);
+  font-size: 12px;
+  color: oklch(89% 0.02 85);
+}
+.hotel-hero-cta {
+  margin-top: 5px;
+  font-family: var(--h-sans);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--h-ivory);
+  color: var(--h-ink);
+  cursor: pointer;
+}
+
+/* original — AI slop: flat, generic, sans, purple CTA. Clashes with the brand. */
+.hotel-hero--slop {
+  align-items: center;
+  background: oklch(95% 0.004 270);
+}
+.hotel-hero--slop .hotel-hero-photo { display: none; }
+.hotel-hero--slop .hotel-hero-title {
+  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 27px;
+  letter-spacing: -0.02em;
+  color: oklch(32% 0.02 285);
+}
+.hotel-hero--slop .hotel-hero-sub { color: oklch(56% 0.015 285); }
+.hotel-hero--slop .hotel-hero-cta {
+  background: linear-gradient(135deg, oklch(62% 0.2 300), oklch(56% 0.21 268));
+  color: oklch(98% 0.01 300);
+  border-radius: 8px;
+}
+
+/* v1 — warm dusk, text bottom-left (uses base photo) */
+.hotel-hero--1 .hotel-hero-cta { background: oklch(98% 0.01 85); color: oklch(30% 0.03 40); }
+
+/* v2 — sea-toned, centered, outline CTA. justify-content centers the inner
+   block horizontally (the base hero is a flex row defaulting to flex-start). */
+.hotel-hero--2 { align-items: center; justify-content: center; text-align: center; }
+.hotel-hero--2 .hotel-hero-photo {
+  background:
+    linear-gradient(to top, oklch(24% 0.03 220 / 0.82), oklch(38% 0.04 220 / 0.12) 58%, transparent),
+    linear-gradient(150deg, oklch(64% 0.08 205), oklch(46% 0.07 230) 55%, oklch(34% 0.05 255));
+}
+.hotel-hero--2 .hotel-hero-inner { align-items: center; }
+.hotel-hero--2 .hotel-hero-title { font-style: italic; }
+.hotel-hero--2 .hotel-hero-cta {
+  background: transparent;
+  color: oklch(97% 0.01 85);
+  border: 1px solid oklch(97% 0.01 85 / 0.7);
+}
+
+/* v3 — golden hour, gold CTA */
+.hotel-hero--3 .hotel-hero-photo {
+  background:
+    linear-gradient(to top, oklch(26% 0.04 50 / 0.78), oklch(42% 0.05 55 / 0.12) 58%, transparent),
+    linear-gradient(150deg, oklch(78% 0.1 75), oklch(60% 0.1 50) 52%, oklch(44% 0.07 38));
+}
+.hotel-hero--3 .hotel-hero-cta {
+  background: var(--ks-kinpaku, oklch(84% 0.19 80));
+  color: oklch(24% 0.03 60);
+}
+
+.hotel-suites {
+  flex: 1;
+  padding: 16px 0 0 22px;   /* no right padding so the row runs off the edge */
+  overflow: hidden;
+}
+.hotel-suites-label {
+  margin: 0 0 11px;
+  font-family: var(--h-sans);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--h-muted);
+}
+/* Left-aligned row; the later suites run off the right edge (clipped by the
+   site), so the page reads as scrollable rather than a centered modal. */
+.hotel-suites-row {
+  display: flex;
+  gap: 16px;
+}
+
+/* ----------------------------------------------------------------------------
+   The room/rate card — one shared structure, four distinct treatments.
+   ---------------------------------------------------------------------------- */
+.hotel-card {
+  --c-surface: oklch(99% 0.008 84);
+  --c-ink: var(--h-ink);
+  --c-accent: var(--h-green);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--c-surface);
+  border: 1px solid var(--h-line);
+  box-shadow: 0 3px 10px oklch(40% 0.04 60 / 0.08);   /* flat in layout, not a modal */
+  font-family: var(--h-sans);
+  text-align: left;
+}
+.hotel-card-photo--b {
+  background:
+    radial-gradient(120% 90% at 30% 10%, oklch(88% 0.05 250 / 0.6), transparent 60%),
+    linear-gradient(150deg, oklch(70% 0.06 235), oklch(85% 0.05 90));
+}
+.hotel-card-photo--c {
+  background:
+    radial-gradient(120% 90% at 60% 0%, oklch(90% 0.06 70 / 0.7), transparent 60%),
+    linear-gradient(150deg, oklch(76% 0.07 50), oklch(86% 0.05 110));
+}
+.hotel-card-photo {
+  flex: none;
+  height: 104px;
+  background:
+    radial-gradient(120% 90% at 70% 10%, oklch(88% 0.06 95 / 0.7), transparent 60%),
+    linear-gradient(150deg, oklch(74% 0.05 160), oklch(86% 0.05 78));
+}
+.hotel-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  padding: 13px 15px 14px;
+}
+.hotel-card-kicker {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+.hotel-card-name {
+  margin: 0;
+  font-family: var(--h-serif);
+  font-weight: 600;
+  font-size: 23px;
+  line-height: 1.05;
+  color: var(--c-ink);
+}
+.hotel-card-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--h-muted);
+}
+.hotel-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.hotel-card-price {
+  font-family: var(--h-serif);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--c-ink);
+}
+.hotel-card-price i {
+  font-style: normal;
+  font-family: var(--h-sans);
+  font-size: 10px;
+  color: var(--h-muted);
+}
+.hotel-card-btn {
+  flex: none;
+  font-family: var(--h-sans);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--c-ink);
+  color: var(--h-ivory);
+  cursor: pointer;
+}
+
+/* original — the AI-slop card: generic sans, purple gradient, overdone radius +
+   shadow, weak copy. Clashes on purpose with the serif siblings. */
+.hotel-card--slop {
+  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
+  border-radius: 16px;
+  border-color: transparent;
+  box-shadow: 0 12px 30px oklch(52% 0.2 295 / 0.4);
+}
+.hotel-card--slop .hotel-card-photo {
+  background: linear-gradient(135deg, oklch(68% 0.2 300), oklch(60% 0.21 268));
+}
+.hotel-card--slop .hotel-card-kicker {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: oklch(58% 0.2 290);
+}
+.hotel-card--slop .hotel-card-name {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: oklch(32% 0.02 290);
+}
+.hotel-card--slop .hotel-card-meta { color: oklch(62% 0.01 290); }
+.hotel-card--slop .hotel-card-price {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  color: oklch(32% 0.02 290);
+}
+.hotel-card--slop .hotel-card-price i { font-family: inherit; }
+.hotel-card--slop .hotel-card-btn {
+  background: linear-gradient(135deg, oklch(62% 0.2 300), oklch(56% 0.21 268));
+  border-radius: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* v1 — full-bleed dusk photo, body overlaid on a scrim */
+.hotel-card--1 {
+  position: relative;
+  border-color: transparent;
+}
+.hotel-card--1 .hotel-card-photo {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  background:
+    linear-gradient(to top, oklch(22% 0.03 40 / 0.92), oklch(30% 0.04 40 / 0.15) 55%, transparent),
+    linear-gradient(155deg, oklch(64% 0.08 55), oklch(40% 0.06 28) 55%, oklch(32% 0.05 320));
+}
+.hotel-card--1 .hotel-card-body { position: relative; justify-content: flex-end; }
+.hotel-card--1 .hotel-card-kicker { color: oklch(88% 0.06 85); }
+.hotel-card--1 .hotel-card-name,
+.hotel-card--1 .hotel-card-price { color: oklch(97% 0.01 85); }
+.hotel-card--1 .hotel-card-meta { color: oklch(86% 0.02 85); }
+.hotel-card--1 .hotel-card-price i { color: oklch(86% 0.02 85); }
+.hotel-card--1 .hotel-card-btn {
+  background: oklch(97% 0.01 85);
+  color: oklch(28% 0.03 40);
+}
+
+/* v2 — editorial, no photo, type-forward */
+.hotel-card--2 {
+  background: var(--h-sand);
+  justify-content: center;
+  text-align: center;
+}
+.hotel-card--2 .hotel-card-photo { display: none; }
+.hotel-card--2 .hotel-card-body { gap: 7px; padding: 22px 18px; align-items: center; }
+.hotel-card--2 .hotel-card-name { font-size: 30px; font-style: italic; }
+.hotel-card--2 .hotel-card-foot {
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--h-line);
+  margin-top: 12px;
+}
+.hotel-card--2 .hotel-card-price { font-size: 26px; }
+.hotel-card--2 .hotel-card-btn {
+  background: transparent;
+  color: var(--c-accent);
+  border-bottom: 1px solid currentColor;
+  border-radius: 0;
+  padding: 2px 0;
+}
+
+/* v3 — framed, terracotta accent */
+.hotel-card--3 {
+  --c-accent: oklch(56% 0.13 42);
+  background: oklch(98% 0.012 70);
+  padding: 7px;
+  border-color: oklch(56% 0.13 42 / 0.4);
+}
+.hotel-card--3 .hotel-card-photo {
+  height: 88px;
+  border-radius: 5px;
+  background:
+    linear-gradient(150deg, oklch(72% 0.09 45), oklch(84% 0.06 70));
+}
+.hotel-card--3 .hotel-card-name { color: oklch(34% 0.04 42); }
+.hotel-card--3 .hotel-card-price { color: var(--c-accent); }
+.hotel-card--3 .hotel-card-btn { background: var(--c-accent); }
+
+
+/* ----------------------------------------------------------------------------
+   Annotation layer: freehand circle + comment pin, drawn on the picked card.
+   The layer is sized/positioned onto the card by live-demo.js (positionAnnotations);
+   marks sit in element-local space, mirroring the real picker.
+   ---------------------------------------------------------------------------- */
+.hero-live-demo .live-demo-annotations {
+  position: absolute;
+  z-index: 4;                 /* above the card + outline, below the cursor (5) */
+  pointer-events: none;
+  color: var(--ks-kinpaku);
+  transform: none;            /* JS sets exact left/top/width/height onto the card */
+  opacity: 0;
+  transition: opacity 200ms var(--ks-ease, ease);
+}
+.hero-live-demo .live-demo-annotations.is-visible { opacity: 1; }
+
+/* Circle stroke fills the card-sized layer (viewBox 0 0 100 100). The base rule
+   centers + offsets the stroke for the old layout — null that out here. */
+.hero-live-demo .live-demo-stroke {
+  position: absolute;
+  inset: 0;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  overflow: visible;
+  color: var(--ks-kinpaku);
+}
+.hero-live-demo .live-demo-stroke path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.35));
+}
+/* Single circle around the off-brand button, drawn when the layer reveals. */
+.hero-live-demo .live-demo-annotations.is-visible .live-demo-stroke path {
+  animation: liveDemoStroke 620ms var(--ks-ease, ease) forwards;
+}
+
+/* Comment pin: gold dot + note bubble, dropped near the button / suites edge. */
+.live-demo-pin {
+  position: absolute;
+  left: 46%;
+  top: 78%;
+  opacity: 0;
+  transform: scale(0.5);
+  transform-origin: center;
+  transition: opacity 160ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hero-live-demo .live-demo-annotations.is-pin-visible .live-demo-pin {
+  opacity: 1;
+  transform: scale(1);
+}
+.live-demo-pin-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  border: 2px solid oklch(98% 0.005 95);
+  box-shadow: 0 2px 7px oklch(0% 0 0 / 0.45);
+}
+.live-demo-pin-note {
+  position: absolute;
+  left: -3px;
+  bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: oklch(19% 0.008 95);
+  border: 1px solid var(--ks-gold-hairline-strong, oklch(74% 0.09 82 / 0.6));
+  color: oklch(94% 0.02 85);
+  font-family: var(--ks-font, system-ui, sans-serif);
+  font-size: 11.5px;
+  line-height: 1;
+  box-shadow: 0 8px 22px oklch(0% 0 0 / 0.4);
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.hero-live-demo .live-demo-annotations.is-note-visible .live-demo-pin-note {
+  opacity: 1;
+  transform: none;
+}
+.live-demo-pin-caret {
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin-left: 1px;
+  background: var(--ks-kinpaku);
+  animation: liveDemoCaret 1s steps(1) infinite;
+}
+@keyframes liveDemoCaret { 50% { opacity: 0; } }
+
+/* CLEAR chip, top-right of the annotation overlay (authentic to the picker). */
+.live-demo-annot-clear {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-family: var(--ks-mono, monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ks-kinpaku);
+  background: oklch(8% 0.006 95 / 0.72);
+  border: 1px solid var(--ks-gold-hairline, oklch(58% 0.065 82 / 0.32));
+  border-radius: 4px;
+  padding: 3px 7px;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.hero-live-demo .live-demo-annotations.is-visible .live-demo-annot-clear { opacity: 0.85; }
+
+
+/* ============================================================================
+   SECTION 03 (Live Mode) — how-it-works flow + audience tiles
+   The animated demo lives in the hero; this section explains how Live Mode wires
+   itself into your codebase, then sells it to each evaluator. Left-aligned blocks
+   below the (right-aligned) section header.
+   ============================================================================ */
+
+/* --- How it works: 3 steps, each with a minimal glyph -------------------- */
+.live-how {
+  list-style: none;
+  margin: 48px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  text-align: left;
+}
+/* No outer card — the mini-screen below is the only framed element, so the
+   step reads as one clean unit instead of a box-in-a-box. */
+.live-how-step {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  padding: 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 6px;
+  background: oklch(10% 0.006 95 / 0.45);
+}
+.live-how-step .live-how-n { margin-top: 4px; }
+.live-how-n {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: var(--ks-kinpaku);
+}
+.live-how-title {
+  margin: 0;
+  font-family: var(--ks-font-display);
+  font-weight: 600;
+  font-size: 1.18rem;
+  color: var(--ks-champagne);
+}
+.live-how-copy {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-muted);
+}
+.live-how-copy code {
+  font-family: var(--ks-mono);
+  font-size: 0.85em;
+  color: var(--ks-kinpaku);
+}
+
+/* Each step's visual is a clean mini browser screen (chrome bar + screen),
+   echoing the picker still — not an abstract panel. */
+.live-how-glyph {
+  border-radius: 5px;
+  overflow: hidden;
+  background: oklch(6% 0.005 95);
+}
+.live-how-screen {
+  position: relative;
+  min-height: 104px;
+  padding: 16px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 9px;
+}
+/* Step 1: terminal line + framework chips */
+.live-how-term {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  color: var(--ks-champagne);
+}
+.live-how-term-prompt { color: var(--ks-kinpaku); }
+.live-how-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.live-how-chips span {
+  font-family: var(--ks-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  color: var(--ks-muted);
+  padding: 2px 7px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+}
+.live-how-chips span:first-child {
+  color: var(--ks-kinpaku);
+  border-color: oklch(74% 0.09 82 / 0.55);
+}
+/* Step 2: an element with a pick outline + an attached comment, echoing the
+   on-canvas picker from the hero loop. */
+.live-how-screen--pick { justify-items: center; align-content: start; }
+.live-how-pick {
+  position: relative;
+  width: 122px;
+  height: 40px;
+  border-radius: 4px;
+  background: oklch(14% 0.006 95);
+  border: 2px solid var(--ks-kinpaku);
+  box-shadow: 0 0 0 4px oklch(78% 0.12 82 / 0.12);
+  display: grid;
+  place-items: center;
+}
+.live-how-pick-tag {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  color: var(--ks-muted);
+}
+.live-how-pick-dot {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  border: 2px solid oklch(98% 0.005 95);
+}
+.live-how-note {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: -14px;
+  white-space: nowrap;
+  font-family: var(--ks-mono);
+  font-size: 0.6rem;
+  color: var(--ks-champagne);
+  background: oklch(13% 0.006 95);
+  border: 1px solid var(--ks-rule);
+  border-left: 2px solid var(--ks-kinpaku);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+.live-how-note-caret {
+  position: absolute;
+  top: -4px;
+  left: 13px;
+  width: 7px;
+  height: 7px;
+  background: oklch(13% 0.006 95);
+  border-left: 1px solid var(--ks-rule);
+  border-top: 1px solid var(--ks-rule);
+  transform: rotate(45deg);
+}
+/* Step 3: the floating contextual bar at accept, plus the source write. */
+.live-how-screen--accept { justify-items: center; gap: 12px; }
+.live-how-ctxbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--ks-rule);
+  border-radius: 999px;
+  background: oklch(12% 0.006 95);
+  box-shadow: 0 6px 18px oklch(2% 0.004 95 / 0.45);
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+}
+.live-how-ctx-nav { color: var(--ks-muted); }
+.live-how-ctx-count { color: var(--ks-champagne); }
+.live-how-ctx-div { width: 1px; height: 13px; background: var(--ks-rule); }
+.live-how-ctx-accept {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ks-kinpaku);
+  color: oklch(16% 0.02 90);
+  font-weight: 600;
+}
+.live-how-wrote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  color: var(--ks-patina);
+}
+.live-how-wrote-check { font-size: 0.7rem; }
+
+/* --- Who it's for: three role tiles -------------------------------------- */
+.live-audience-eyebrow {
+  margin: 52px 0 22px;
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--ks-patina);
+}
+.live-audience {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+  text-align: left;
+}
+.live-audience-tile {
+  padding: 16px 0 0;
+  border-top: 2px solid var(--ks-patina);
+}
+.live-audience-role {
+  display: block;
+  margin-bottom: 11px;
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ks-patina);
+}
+.live-audience-tile p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ks-muted);
+}
+
+@media (max-width: 920px) {
+  .live-how { grid-template-columns: 1fr; }
+  .live-audience { grid-template-columns: 1fr; }
+}

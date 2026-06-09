@@ -30,6 +30,20 @@ export const skillFocusAreas = {
   ]
 };
 
+// Slop tells we prevent in each discipline. Same seven categories, but the
+// detail line communicates what bad-default we catch — not what we teach.
+export const slopFocusAreas = {
+  'impeccable': [
+    { area: 'Typography', detail: 'A type scale with real contrast, set in a face chosen on purpose, not Inter by reflex.' },
+    { area: 'Color & Contrast', detail: 'Palettes that clear WCAG and commit to a hue. The purple-gradient default never ships.' },
+    { area: 'Spatial Design', detail: 'Structure from spacing and rhythm, not a grid of identical cards nested in more cards.' },
+    { area: 'Responsive', detail: 'Built for the small screen first, with breakpoints that follow the content.' },
+    { area: 'Interaction', detail: 'Honest states and clear affordances, without defaulting to a modal or gradient text.' },
+    { area: 'Motion', detail: 'Motion that eases like physics and settles. Nothing bounces or springs past its mark.' },
+    { area: 'UX Writing', detail: 'Specific copy that names what the thing does, not "Welcome to our platform."' }
+  ]
+};
+
 // Guideline counts per dimension (verified from reference files)
 export const dimensionGuidelineCounts = {
   'Typography': 33,
@@ -73,7 +87,7 @@ export const commandProcessSteps = {
   'optimize': ['Profile', 'Identify', 'Improve', 'Measure'],
   'harden': ['Assess', 'Implement', 'Test', 'Verify'],
   'onboard': ['Identify', 'Design', 'Guide', 'Measure'],
-  'teach': ['Explore', 'Interview', 'Synthesize', 'Save'],
+  'init': ['Explore', 'Interview', 'Configure', 'Recommend'],
   'document': ['Scan', 'Extract', 'Describe', 'Write'],
   'extract': ['Identify', 'Abstract', 'Migrate', 'Document'],
   'live': ['Start', 'Select', 'Generate', 'Accept']
@@ -106,7 +120,7 @@ export const commandCategories = {
   'harden': 'harden',
   'onboard': 'harden',
   // SYSTEM - setup and tooling
-  'teach': 'system',
+  'init': 'system',
   'document': 'system',
   'extract': 'system',
   'live': 'system'
@@ -142,7 +156,7 @@ export const commandRelationships = {
   'optimize': { flow: 'Harden: Performance improvements' },
   'harden': { combinesWith: ['optimize'], flow: 'Harden: Edge cases, error handling, and i18n' },
   'onboard': { combinesWith: ['clarify', 'delight'], flow: 'Harden: First-run experiences and empty states' },
-  'teach': { flow: 'System: One-time project design context setup' },
+  'init': { flow: 'System: One-time project setup. Context, live config, next steps' },
   'extract': { flow: 'System: Extract design system components and tokens' },
   'live': { flow: 'System: Visual variant mode in the browser' }
 };

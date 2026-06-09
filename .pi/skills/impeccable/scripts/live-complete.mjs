@@ -3,8 +3,8 @@
  * Canonical durable completion acknowledgement for Impeccable live sessions.
  */
 
-import { createLiveSessionStore } from './live-session-store.mjs';
-import { readLiveServerInfo } from './impeccable-paths.mjs';
+import { createLiveSessionStore } from './live/session-store.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 
 function parseArgs(argv) {
   const out = { status: 'complete' };

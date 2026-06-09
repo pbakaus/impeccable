@@ -1,6 +1,6 @@
 # Impeccable CLI
 
-Detect UI anti-patterns and design quality issues from the command line. Scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 27 specific patterns including AI-generated UI tells, accessibility violations, and general design quality problems.
+Detect UI anti-patterns and design quality issues from the command line. Scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 41 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
 
 ## Quick Start
 
@@ -8,8 +8,14 @@ Detect UI anti-patterns and design quality issues from the command line. Scans H
 # Install skills into your AI harness (Claude, Cursor, Gemini, etc.)
 npx impeccable skills install
 
+# First command to run inside your AI harness
+/impeccable init
+
 # Update skills to the latest version
 npx impeccable skills update
+
+# Link skills from a Git submodule checkout
+npx impeccable skills link --source=.impeccable --providers=claude,cursor
 
 # List all available commands
 npx impeccable skills help
@@ -23,7 +29,7 @@ npx impeccable detect https://example.com
 # JSON output for CI/tooling
 npx impeccable detect --json src/
 
-# Regex-only mode (faster, no jsdom)
+# Deprecated compatibility flag; full scan still runs
 npx impeccable detect --fast src/
 ```
 
@@ -44,7 +50,7 @@ npx impeccable detect --fast src/
 
 **Quality**: tiny body text, cramped padding, long line lengths, small touch targets
 
-25 detections in total. See the full list at [impeccable.style](https://impeccable.style).
+41 deterministic detector rules in total. See the full catalog at [impeccable.style/slop](https://impeccable.style/slop).
 
 ## Exit Codes
 
@@ -63,13 +69,13 @@ impeccable detect [options] [file-or-dir-or-url...]
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 24+
 - `jsdom` (included as dependency, used for HTML scanning)
 - `puppeteer` (optional, only needed for URL scanning)
 
 ## Part of Impeccable
 
-This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 22 steering commands for Claude, Cursor, Gemini, Codex, and more.
+This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 23 commands for Claude, Cursor, Gemini, Codex, and more.
 
 ## License
 

@@ -63,16 +63,16 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
 
   it('color: flag column triggers all color rules, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'color.html'));
-    // All five color rules must fire from the flag column
-    assert.ok(f.some(r => r.antipattern === 'pure-black-white'), 'expected pure-black-white');
+    // pure-black-white was removed from the skill in v3.2; only the remaining rules
+    // are expected to fire from the flag column.
     assert.ok(f.some(r => r.antipattern === 'gray-on-color'), 'expected gray-on-color');
     assert.ok(f.some(r => r.antipattern === 'low-contrast'), 'expected low-contrast');
     assert.ok(f.some(r => r.antipattern === 'gradient-text'), 'expected gradient-text');
     assert.ok(f.some(r => r.antipattern === 'ai-color-palette'), 'expected ai-color-palette');
     assert.equal(
-      f.some(r => r.antipattern === 'pure-black-white' && /#ffffff|#fff/i.test(r.snippet || '')),
+      f.some(r => r.antipattern === 'pure-black-white'),
       false,
-      'pure white surfaces with dark text should remain allowed',
+      'pure-black-white detector was removed in v3.2',
     );
     // Gradient-bg + gray text case (added with the gradient-fix patch)
     assert.ok(
@@ -97,26 +97,6 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(
       falsePositive.length, 0,
       `expected no low-contrast from bg-image ancestor, got: ${falsePositive.map(r => r.snippet).join('; ')}`
-    );
-  });
-
-  it('color: Tailwind bg-black/N opacity modifiers are not flagged as pure-black-white', async () => {
-    const f = await detectHtml(path.join(FIXTURES, 'color.html'));
-    // The pass column has bg-black/3, hover:bg-black/5, bg-black/50 — none are pure black.
-    // Only the flag column's literal bg-black class should trigger pure-black-white.
-    const pureBlackFindings = f.filter(r => r.antipattern === 'pure-black-white');
-    const opacityFalsePositives = pureBlackFindings.filter(r =>
-      (r.snippet || '').includes('bg-black') &&
-      f.some(() => true) // check that bg-black/N class triggers are absent
-    );
-    // There should be exactly the flag-column hits (bg-black class + #000000 inline)
-    // and zero from the pass-column opacity variants.
-    // The pass-column elements have data-test attributes starting with "bg-black-"
-    // The Tailwind class check produces snippet "bg-black" — count those.
-    const twSnippets = pureBlackFindings.filter(r => (r.snippet || '') === 'bg-black');
-    assert.equal(
-      twSnippets.length, 1,
-      `expected exactly 1 Tailwind bg-black finding (flag column only), got ${twSnippets.length}: ${twSnippets.map(r => r.snippet).join('; ')}`
     );
   });
 
@@ -463,5 +443,183 @@ describe('detectHtml — dark glow', () => {
   it('glow: flag column triggers dark-glow, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'glow.html'));
     assert.equal(f.filter(r => r.antipattern === 'dark-glow').length, 1);
+  });
+});
+
+describe('detectHtml — cramped-padding (wrapper variant)', () => {
+  // The cramped-padding rule has two shapes (merged under one id):
+  //   1. Self-text: element has its own text and padding-vs-font-size is wrong
+  //   2. Wrapper:   element wraps text-bearing children and has near-zero
+  //                 padding against a visible boundary (border/outline/bg)
+  // This suite covers the wrapper variant via flush-against-border.html.
+  // The self-text variant lives in tests/detect-antipatterns-browser.test.mjs
+  // because it needs real layout rects.
+  //
+  // Snippet for the wrapper variant embeds the element's class in quotes
+  // so the test can grep for which cases fired.
+  const SHOULD_FLAG_CLASSES = [
+    'flag-frameworks',
+    'flag-card-borders',
+    'flag-bg-only',
+    'flag-outline-only',
+    'flag-asym-leftflush',
+  ];
+  const SHOULD_PASS_CLASSES = [
+    'pass-no-boundary',
+    'pass-top-rule',
+    'pass-bordered-padded',
+    'pass-bg-padded',
+    'pass-outline-padded',
+    'pass-image-only',
+  ];
+
+  it('cramped-padding (wrapper): flags only the should-flag column', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'flush-against-border.html'));
+    const flagged = new Set();
+    for (const r of f) {
+      if (r.antipattern !== 'cramped-padding') continue;
+      const m = (r.snippet || '').match(/"([^"]+)"/);
+      if (m) flagged.add(m[1]);
+    }
+
+    for (const cls of SHOULD_FLAG_CLASSES) {
+      assert.ok(
+        flagged.has(cls),
+        `expected ".${cls}" to be flagged as cramped-padding (got: ${[...flagged].join(', ')})`
+      );
+    }
+    for (const cls of SHOULD_PASS_CLASSES) {
+      assert.ok(
+        !flagged.has(cls),
+        `".${cls}" should NOT be flagged as cramped-padding`
+      );
+    }
+  });
+});
+
+describe('detectHtml — oversized-h1', () => {
+  // Fires when a LONG headline is set at display size (dominating the
+  // viewport). A punchy one/two-word headline at the same size is a valid
+  // stylistic choice and must pass; so must a long headline at a sane size.
+  it('oversized-h1: flags only long headlines set at display size', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'oversized-h1.html'));
+    const hits = f.filter(r => r.antipattern === 'oversized-h1');
+    assert.equal(
+      hits.length, 2,
+      `expected 2 oversized-h1 findings, got ${hits.length}: ${hits.map(r => r.snippet).join('; ')}`,
+    );
+    // None of the pass cases (short-but-huge, or long-but-sane-size) may flag.
+    assert.equal(
+      hits.some(r => /Bold\.|Ship faster|ordinary headline/i.test(r.snippet || '')),
+      false,
+      'short display headlines and sanely-sized long headlines must not flag',
+    );
+  });
+});
+
+describe('detectHtml — extreme-negative-tracking', () => {
+  // Mirror image of wide-tracking: catches letter-spacing crushed past the
+  // point of legibility. Optical tightening that display type legitimately
+  // wants (around -0.02em) must pass.
+  it('extreme-negative-tracking: flags the 3 crushed cases, pass column adds none', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'extreme-negative-tracking.html'));
+    const hits = f.filter(r => r.antipattern === 'extreme-negative-tracking');
+    assert.equal(
+      hits.length, 3,
+      `expected 3 extreme-negative-tracking findings, got ${hits.length}: ${hits.map(r => r.snippet).join('; ')}`
+    );
+    assert.equal(
+      hits.some(r => /Optical tighten/i.test(r.snippet || '')),
+      false,
+      'the -0.02em display heading must not be flagged',
+    );
+  });
+});
+
+describe('detectHtml — clipped-overflow-container', () => {
+  // Snippet embeds the container class in quotes. A clipping ancestor
+  // (overflow hidden/clip) with an absolutely-positioned descendant clips
+  // tooltips/menus that need to escape. Real scroll regions (auto/scroll),
+  // visible overflow, and clipping containers without positioned children pass.
+  const SHOULD_FLAG = ['flag-overflow-hidden', 'flag-overflow-clip'];
+  const SHOULD_PASS = ['pass-hidden-no-abs', 'pass-visible-abs', 'pass-scroll-abs'];
+
+  it('clipped-overflow-container: flags only clipping ancestors with positioned children', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'clipped-overflow-container.html'));
+    const flagged = new Set();
+    for (const r of f) {
+      if (r.antipattern !== 'clipped-overflow-container') continue;
+      const m = (r.snippet || '').match(/(flag-[\w-]+|pass-[\w-]+)/);
+      if (m) flagged.add(m[1]);
+    }
+    for (const cls of SHOULD_FLAG) {
+      assert.ok(flagged.has(cls), `expected ".${cls}" to be flagged as clipped-overflow-container`);
+    }
+    for (const cls of SHOULD_PASS) {
+      assert.ok(!flagged.has(cls), `".${cls}" should NOT be flagged as clipped-overflow-container`);
+    }
+  });
+});
+
+describe('detectHtml — cream-palette', () => {
+  it('cream-palette: flags a warm cream/beige page background', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'cream-palette.html'));
+    assert.equal(
+      f.filter(r => r.antipattern === 'cream-palette').length, 1,
+      `expected one cream-palette finding, got: ${f.filter(r => r.antipattern === 'cream-palette').map(r => r.snippet).join('; ')}`,
+    );
+  });
+
+  it('cream-palette: does not fire on a neutral (non-cream) page', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
+    assert.equal(f.some(r => r.antipattern === 'cream-palette'), false, 'neutral page must not flag cream-palette');
+  });
+
+  it('cream-palette: catches a Tailwind warm-light bg utility on body', async () => {
+    // No inline/<style> background — only a `bg-amber-50` class, which the
+    // static engine can't resolve to computed CSS. The class-list fallback
+    // must still flag it.
+    const f = await detectHtml(path.join(FIXTURES, 'cream-palette-tailwind.html'));
+    const hits = f.filter(r => r.antipattern === 'cream-palette');
+    assert.equal(hits.length, 1, `expected one cream-palette finding, got: ${hits.map(r => r.snippet).join('; ')}`);
+    assert.match(hits[0].snippet, /amber-50/, 'snippet should name the Tailwind utility');
+  });
+});
+
+describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
+  const GPT_IDS = ['gpt-thin-border-wide-shadow', 'repeating-stripes-gradient', 'theater-slop-phrase'];
+
+  it('gpt-tells: gated OFF by default — none of the GPT idioms surface', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'gpt-tells.html'));
+    for (const id of GPT_IDS) {
+      assert.equal(
+        f.some(r => r.antipattern === id), false,
+        `${id} must not surface without --gpt`,
+      );
+    }
+  });
+
+  it('gpt-tells: with providers:[gpt], flag column triggers all three, pass column adds none', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'gpt-tells.html'), { providers: ['gpt'] });
+    for (const id of GPT_IDS) {
+      assert.equal(
+        f.filter(r => r.antipattern === id).length, 1,
+        `expected exactly one ${id} finding under --gpt, got ${f.filter(r => r.antipattern === id).length}`,
+      );
+    }
+  });
+
+  it('gemini-tells: gated OFF by default, ON under providers:[gemini]', async () => {
+    const off = await detectHtml(path.join(FIXTURES, 'gemini-tells.html'));
+    assert.equal(
+      off.some(r => r.antipattern === 'image-hover-transform'), false,
+      'image-hover-transform must not surface without --gemini',
+    );
+    const on = await detectHtml(path.join(FIXTURES, 'gemini-tells.html'), { providers: ['gemini'] });
+    // Two flag cases: a CSS img:hover{transform} rule and a Tailwind hover:scale on <img>.
+    assert.equal(
+      on.filter(r => r.antipattern === 'image-hover-transform').length, 2,
+      `expected 2 image-hover-transform findings under --gemini, got ${on.filter(r => r.antipattern === 'image-hover-transform').length}`,
+    );
   });
 });

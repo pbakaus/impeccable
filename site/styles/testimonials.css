@@ -1,0 +1,177 @@
+/* ============================================================================
+   Testimonials — two-row marquee on a tinted graphite plinth.
+   Single variant, no switcher. Spotlight card (Ben Davis) gets a kinpaku
+   gold gradient so it commands attention even mid-row.
+   ============================================================================ */
+
+.home-kinpaku .testimonials-section {
+  position: relative;
+  /* Escape main.site-content's max-width + side padding so the section
+     spans the full viewport. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  /* No background of its own: the body's lacquer gradient is the page ground,
+     so the section sits on it directly and an opaque fill here would only
+     duplicate (and, when overlapped, mask) it. */
+  padding: 0 0 1em;
+  color: var(--ks-text);
+  border-top: 0;
+  overflow: hidden;
+}
+
+/* Dotted accent at the bottom edge — a deliberate separator between the
+   testimonials and the section below. Neutral dots, matching the de-warmed
+   borders. (This is the dot rail that used to sit above the section.) */
+.home-kinpaku .testimonials-section::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  height: 18px;
+  transform: translateX(-50%);
+  background-image: radial-gradient(circle, oklch(0.45 0 0) 0.9px, transparent 1.4px);
+  background-size: 7px 6px;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Marquee engine. The cards are outlined and ride directly on the section
+   ground — the old graphite plinth wrapper was removed once it stopped being
+   a visible shelf, so the marquee carries its own vertical inset here.
+   --------------------------------------------------------------------------- */
+
+.home-kinpaku .t-marquee {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 22px 0;
+}
+.home-kinpaku .t-marquee-row { overflow: hidden; }
+
+.home-kinpaku .t-marquee-track {
+  display: flex;
+  gap: 14px;
+  width: max-content;
+  /* Both rows share the same duration so on-screen speeds match. */
+  animation: t-marquee-fwd 110s linear infinite;
+}
+.home-kinpaku .t-marquee-track--reverse {
+  animation: t-marquee-rev 110s linear infinite;
+}
+.home-kinpaku .t-marquee:hover .t-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes t-marquee-fwd {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes t-marquee-rev {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-kinpaku .t-marquee-track { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Card
+   --------------------------------------------------------------------------- */
+
+.home-kinpaku .testimonials-section .t-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  width: 320px;
+  height: 168px;
+  flex: none;
+  padding: 18px 18px 14px;
+  border-radius: 10px;
+  color: var(--ks-text);
+  text-decoration: none;
+  transition: transform 200ms ease, background 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+/* Outlined card: no fill, just a solid neutral border on the page ground.
+   On dark, a clean outline separates more honestly than a near-invisible
+   fill or a dead drop-shadow ever did. */
+.home-kinpaku .t-card--plinth {
+  background: none;
+  border: 1px solid oklch(0.64 0 0 / 0.22);
+  box-shadow: none;
+}
+.home-kinpaku .t-card--plinth:hover {
+  border-color: oklch(0.64 0 0 / 0.42);
+  transform: translateY(-1px);
+}
+
+/* Quote text */
+.home-kinpaku .testimonials-section .t-card-quote {
+  font-family: var(--ks-font);
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: var(--ks-text);
+  margin: 0;
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Meta row (avatar + name + handle) */
+.home-kinpaku .testimonials-section .t-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ks-mono);
+}
+.home-kinpaku .testimonials-section .t-name-block {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.home-kinpaku .testimonials-section .t-name {
+  color: var(--ks-text);
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  font-family: var(--ks-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.home-kinpaku .testimonials-section .t-handle {
+  color: var(--ks-text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+}
+
+/* Avatar + coin fallback */
+.home-kinpaku .testimonials-section .t-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+  background: var(--ks-graphite-2);
+  box-shadow: inset 0 0 0 1px oklch(78% 0.12 82 / 0.22);
+}
+.home-kinpaku .testimonials-section .t-coin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ks-graphite-2);
+  border: 1px solid oklch(78% 0.12 82 / 0.32);
+  font-family: var(--ks-font-display);
+  font-weight: 400;
+  font-size: 0.95rem;
+  color: var(--ks-kinpaku);
+  flex: none;
+}

@@ -1,6 +1,18 @@
 body { margin: 0; font-family: system-ui, sans-serif; }
 .page { padding: 2rem; }
+.hero-copy { padding: 0.75rem; margin: -0.75rem -0.75rem 1rem; }
 .hero-title { font-size: 2rem; }
 .hero-hook { color: #555; }
+.capacity-panel { margin: 0 0 1rem; }
+.capacity-count { display: inline-block; min-width: 2rem; min-height: 1.5rem; }
 .feature-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, 1fr); }
 .feature-card { padding: 1rem; border: 1px solid #ddd; border-radius: 0.5rem; }
+.large-manual-grid { display: grid; gap: 0.25rem; grid-template-columns: repeat(4, max-content); margin-top: 1rem; }
+.large-manual-item { min-height: 1.25rem; }
+.hard-manual-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; }
+.hard-manual-card { padding: 0.75rem; border: 1px dashed #bbb; }
+.hard-manual-heading { display: flex; gap: 0.5rem; align-items: baseline; margin: 0 0 0.5rem; font-size: 1rem; }
+.hard-manual-code { font-style: normal; color: #666; }
+.hard-manual-count { display: inline-block; margin-top: 0.5rem; font-weight: 700; }
+.action-row { display: flex; gap: 0.75rem; margin-top: 1rem; }
+.action-row [role="button"] { font: inherit; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 0.375rem; }

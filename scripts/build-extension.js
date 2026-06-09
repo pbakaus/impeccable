@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Builds the Chrome DevTools extension.
+ * Builds the browser DevTools extension (Chrome + Firefox).
  *
  * 1. Generates the extension variant of the browser detector
  * 2. Extracts antipatterns.json for the panel UI
- * 3. Packages as extension.zip for Chrome Web Store upload
+ * 3. Packages extension.zip (Chrome Web Store) and extension-firefox.zip (AMO)
+ *
+ * The source `extension/manifest.json` is the Chrome manifest. The Firefox
+ * variant is derived at build time: the MV3 background service worker is
+ * declared as an event-page `scripts` entry (the universally-supported path on
+ * Gecko), and `browser_specific_settings.gecko` is added for AMO signing.
  *
  * Run: node scripts/build-extension.js
  */
@@ -80,12 +85,75 @@ console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${ANTIPATTERNS.length}
 
 import { execSync } from 'child_process';
 
-const zipPath = path.join(ROOT, 'dist/extension.zip');
-fs.mkdirSync(path.join(ROOT, 'dist'), { recursive: true });
-try { fs.unlinkSync(zipPath); } catch {}
-execSync(
-  `zip -r ${JSON.stringify(zipPath)} . -x "STORE_LISTING.md" ".DS_Store"`,
-  { cwd: EXT_DIR, stdio: 'pipe' },
+const DIST = path.join(ROOT, 'dist');
+fs.mkdirSync(DIST, { recursive: true });
+
+// `excludes` are passed to `zip -x`; patterns match the full archive path with
+// `*` spanning `/`, so `*.DS_Store` strips the file at every depth, not just root.
+function packZip(zipPath, cwd, excludes = []) {
+  try { fs.unlinkSync(zipPath); } catch {}
+  const exArgs = excludes.map((e) => `-x ${JSON.stringify(e)}`).join(' ');
+  execSync(
+    `zip -r ${JSON.stringify(zipPath)} .${exArgs ? ' ' + exArgs : ''}`,
+    { cwd, stdio: 'pipe' },
+  );
+  const size = fs.statSync(zipPath).size;
+  console.log(`Packaged ${path.relative(ROOT, zipPath)} (${(size / 1024).toFixed(1)} KB)`);
+}
+
+// --- 3a. Chrome zip (manifest unchanged) ---
+
+packZip(path.join(DIST, 'extension.zip'), EXT_DIR, ['STORE_LISTING.md', '*.DS_Store']);
+
+// --- 3b. Firefox: derive a Gecko-compatible manifest and stage an unpacked
+// build (consumed by `web-ext lint` in CI), then zip it for AMO. ---
+
+const chromeManifest = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf-8'));
+
+const serviceWorker = chromeManifest.background?.service_worker;
+if (!serviceWorker) {
+  throw new Error(
+    'extension/manifest.json: expected background.service_worker to derive the Firefox manifest',
+  );
+}
+
+const firefoxManifest = {
+  ...chromeManifest,
+  // Gecko supports MV3 via non-persistent event pages. Declaring `scripts`
+  // (rather than `service_worker`) is the path supported across all MV3 Firefox
+  // releases; service-worker.js uses only top-level listeners + an in-memory
+  // Map, so it runs unchanged as an event page.
+  background: { scripts: [serviceWorker] },
+  // Required by AMO for signing/distribution. Ignored by Chrome.
+  browser_specific_settings: {
+    gecko: {
+      id: 'impeccable@bakaus.com',
+      // `data_collection_permissions` (below) is required by AMO for new
+      // submissions and is only honored on Firefox 140+. We set the floor to
+      // 140 so the declared min version actually supports every key we ship;
+      // everything else this extension uses (MV3 action, scripting, devtools,
+      // object-form web_accessible_resources, storage.sync) landed long before.
+      strict_min_version: '140.0',
+      // The detector runs entirely in-page; nothing is transmitted off-device.
+      data_collection_permissions: { required: ['none'] },
+    },
+  },
+};
+
+const ffStageDir = path.join(DIST, 'extension-firefox');
+fs.rmSync(ffStageDir, { recursive: true, force: true });
+fs.cpSync(EXT_DIR, ffStageDir, {
+  recursive: true,
+  filter: (src) => {
+    const base = path.basename(src);
+    return base !== 'STORE_LISTING.md' && base !== '.DS_Store';
+  },
+});
+fs.writeFileSync(
+  path.join(ffStageDir, 'manifest.json'),
+  JSON.stringify(firefoxManifest, null, 2) + '\n',
 );
-const size = fs.statSync(zipPath).size;
-console.log(`Packaged ${path.relative(ROOT, zipPath)} (${(size / 1024).toFixed(1)} KB)`);
+console.log(`Staged ${path.relative(ROOT, ffStageDir)}/ (Firefox manifest)`);
+
+// STORE_LISTING.md is already filtered out of the stage dir above.
+packZip(path.join(DIST, 'extension-firefox.zip'), ffStageDir, ['*.DS_Store']);

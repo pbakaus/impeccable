@@ -1,0 +1,894 @@
+---
+// Shader Lab: a standalone harness for the live-mode generation shader.
+//
+// Live mode (skill/scripts/live-browser.js) captures the selected element to a
+// PNG via modern-screenshot, then runs an "ink-wash" WebGL shader over that
+// texture while the model generates. The capture path is brittle: transparent
+// elements can come back with a solid white background. This page reproduces
+// the exact pipeline against a matrix of element/background shapes so we can
+// see which ones break BEFORE touching the production code.
+//
+// Left column: the raw element on its page background.
+// Right column: a byte-identical copy with the real capture + shader on top,
+//               plus a readout of what resolveCanvasBackground() decided.
+//
+// The capture/shader code below is copied verbatim from live-browser.js. If you
+// change it there, mirror it here (and vice-versa). This lab is only honest
+// while the two stay in sync.
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Shader Lab · live-mode capture + overlay</title>
+    <!-- CSS is parked in an inert text/css block and injected as a real
+         stylesheet at runtime (see the inline script). This sidesteps Astro's
+         style scoping, which would otherwise tag only build-time elements and
+         leave the runtime-built .row/.pair/.cell nodes unstyled. -->
+    <script type="text/css" id="lab-css-src" is:inline>
+      :root {
+        color-scheme: light;
+        --ink: oklch(20% 0.02 60);
+        --ash: oklch(55% 0.02 60);
+        --hairline: oklch(85% 0.01 60);
+        --page: oklch(96% 0.012 75);
+        --accent: oklch(84% 0.19 80.46);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        color: var(--ink);
+        background: var(--page);
+        padding: 48px 32px 120px;
+      }
+      header { max-width: 1100px; margin: 0 auto 8px; }
+      h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+      header p { margin: 0; color: var(--ash); max-width: 70ch; }
+      .toolbar {
+        max-width: 1100px; margin: 20px auto 36px;
+        display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      }
+      .toolbar button {
+        font: inherit; font-weight: 600; cursor: pointer;
+        padding: 8px 16px; border-radius: 8px;
+        border: 1px solid var(--ink); background: var(--ink); color: var(--page);
+      }
+      .toolbar button.secondary { background: transparent; color: var(--ink); }
+      .toolbar .status { color: var(--ash); font-size: 13px; }
+
+      .grid { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+      .row {
+        border: 1px solid var(--hairline);
+        border-radius: 14px;
+        background: oklch(99% 0.004 75);
+        overflow: hidden;
+      }
+      .row-head {
+        display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+        padding: 12px 16px; border-bottom: 1px solid var(--hairline);
+      }
+      .row-head .title { font-weight: 600; }
+      .row-head .desc { color: var(--ash); font-size: 13px; }
+      .row-head .readout {
+        margin-left: auto; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+        color: var(--ash); display: flex; align-items: center; gap: 8px;
+      }
+      .readout .swatch {
+        width: 14px; height: 14px; border-radius: 3px;
+        border: 1px solid var(--hairline);
+        background-image:
+          linear-gradient(45deg, #ccc 25%, transparent 25%),
+          linear-gradient(-45deg, #ccc 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #ccc 75%),
+          linear-gradient(-45deg, transparent 75%, #ccc 75%);
+        background-size: 8px 8px;
+        background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+        position: relative;
+      }
+      .readout .swatch i { position: absolute; inset: 0; border-radius: 2px; }
+      .readout .val.is-white { color: oklch(58% 0.18 25); font-weight: 600; }
+
+      .pair { display: grid; grid-template-columns: 1fr 1fr; }
+      .cell { position: relative; min-height: 200px; padding: 28px; display: grid; place-items: center; }
+      .cell + .cell { border-left: 1px solid var(--hairline); }
+      .cell-tag {
+        position: absolute; top: 8px; left: 10px; z-index: 5;
+        font: 11px/1 ui-monospace, monospace; letter-spacing: 0.04em;
+        text-transform: uppercase; color: var(--ash);
+        background: oklch(100% 0 0 / 0.65); padding: 3px 6px; border-radius: 5px;
+      }
+      /* Each cell hosts an isolated mini-page so resolveCanvasBackground walks a
+         realistic ancestor chain (including a transparent root, where it must
+         fall back). */
+      .stage { width: 100%; max-width: 360px; height: auto; border: 0; display: block; }
+      iframe.stage { width: 100%; max-width: 360px; height: 200px; }
+
+      footer { max-width: 1100px; margin: 48px auto 0; color: var(--ash); font-size: 13px; }
+      code { font: 12px/1.4 ui-monospace, monospace; background: oklch(92% 0.01 75); padding: 1px 5px; border-radius: 4px; }
+    </script>
+  </head>
+  <body>
+    <header>
+      <h1>Shader Lab</h1>
+      <p>
+        Reproduces live mode's capture + ink-wash shader pipeline against varied
+        backgrounds. Left is the raw element; right runs the real
+        <code>modern-screenshot</code> capture and WebGL overlay on top. The
+        <code>bg:</code> readout is exactly what <code>resolveCanvasBackground()</code>
+        handed to the capture. Watch for <code>#ffffff</code> appearing on
+        elements that should stay transparent or dark.
+      </p>
+    </header>
+
+    <div class="toolbar">
+      <button id="run">Re-run capture</button>
+      <button id="toggle" class="secondary">Pause animation</button>
+      <span class="status" id="status">booting…</span>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <footer>
+      Capture + shader code is copied from
+      <code>skill/scripts/live-browser.js</code>. Keep them in sync.
+    </footer>
+
+    <script src="/shader-lab/modern-screenshot.js" is:inline></script>
+    <script is:inline>
+// Promote the parked CSS to a real stylesheet so it applies to everything,
+// including the rows we build at runtime.
+(function injectLabCss() {
+  const src = document.getElementById('lab-css-src');
+  if (!src) return;
+  const style = document.createElement('style');
+  style.textContent = src.textContent;
+  document.head.appendChild(style);
+})();
+
+// ===========================================================================
+//  Fixtures: each is an isolated mini-page (rendered into an iframe) so the
+//  ancestor-background walk is realistic. `bodyBg` is the simulated page
+//  background; '' means the page set nothing (transparent root): the case
+//  that makes resolveCanvasBackground fall through to white.
+// ===========================================================================
+const FIXTURE_CSS = `
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{font:15px/1.45 ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;padding:24px}
+  .card{width:280px;padding:24px;border-radius:16px}
+  h3{font-size:18px;margin-bottom:6px;letter-spacing:-0.01em}
+  p{font-size:13px;opacity:0.8}
+  .btn{display:inline-block;margin-top:14px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600}
+`;
+
+const FIXTURES = [
+  {
+    id: 'own-solid-light',
+    title: 'Own solid bg (light)',
+    desc: 'Element paints its own light background. Should resolve to null (no override).',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background:oklch(93% 0.02 80);color:#222">
+      <h3>Champagne card</h3><p>Owns an opaque light background.</p>
+      <span class="btn" style="background:#222;color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'own-solid-dark',
+    title: 'Own solid bg (dark)',
+    desc: 'Dark own background, light text. The halftone should ride dark cells.',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background:oklch(22% 0.02 60);color:#f4efe6">
+      <h3>Lacquer card</h3><p>Owns an opaque dark background.</p>
+      <span class="btn" style="background:oklch(84% 0.19 80);color:#1a1a1a">Action</span></div>`,
+  },
+  {
+    id: 'framework-proxy-card',
+    title: 'Framework proxy card',
+    desc: 'Svelte uses the ancestor-crop proxy here because stateful component-framework previews can be semi-transparent or backdrop-composited; element-only capture loses that real painted context and turns the shader ground wrong. React/Vue can opt in once tested, without changing the working Astro path.',
+    bodyBg: '#102923',
+    ancestorCropProxy: true,
+    h: 260,
+    html: `<div style="padding:24px;border-radius:20px;background:#9bbfad">
+      <div class="card" data-target style="background:rgba(255,255,255,0.62);border:1px solid #16332b;color:#1b3329">
+        <h3>Proxy card</h3><p>Framework previews can depend on a painted parent surface.</p>
+        <span class="btn" style="background:#142720;color:#f4f7f3">Proxy path</span></div></div>`,
+  },
+  {
+    id: 'transparent-root-white',
+    title: 'Transparent, page bg unset',
+    desc: 'Element + every ancestor transparent. This is the reported bug: capture falls back to white.',
+    bodyBg: '',
+    html: `<div class="card" data-target style="color:#222">
+      <h3>No background</h3><p>Element and root are transparent.</p>
+      <span class="btn" style="background:#222;color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'transparent-dark-page',
+    title: 'Transparent on dark page',
+    desc: 'Element transparent, but the page is dark. Should resolve to the dark page color, not white.',
+    bodyBg: 'oklch(20% 0.02 60)',
+    html: `<div class="card" data-target style="color:#f4efe6">
+      <h3>On dark page</h3><p>Inherits the dark page background.</p>
+      <span class="btn" style="background:oklch(84% 0.19 80);color:#1a1a1a">Action</span></div>`,
+  },
+  {
+    id: 'nested-inherit',
+    title: 'Nested, inherits parent bg',
+    desc: 'Transparent element inside an opaque colored wrapper. Should resolve to the wrapper color.',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div style="padding:22px;border-radius:18px;background:oklch(30% 0.06 250)">
+      <div class="card" data-target style="color:#eef2ff">
+        <h3>Nested panel</h3><p>No own bg; sits on a blue wrapper.</p>
+        <span class="btn" style="background:#fff;color:#1f2a55">Action</span></div></div>`,
+  },
+  {
+    id: 'linear-gradient',
+    title: 'Linear gradient bg',
+    desc: 'Own gradient background-image. Should resolve to null (element owns its paint).',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background:linear-gradient(135deg,oklch(70% 0.16 30),oklch(60% 0.18 320));color:#fff">
+      <h3>Gradient card</h3><p>Linear gradient background-image.</p>
+      <span class="btn" style="background:rgba(0,0,0,0.3);color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'radial-gradient',
+    title: 'Radial gradient bg',
+    desc: 'Own radial gradient. Should resolve to null.',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background:radial-gradient(circle at 30% 30%,oklch(85% 0.14 200),oklch(45% 0.12 260));color:#fff">
+      <h3>Radial card</h3><p>Radial gradient background-image.</p>
+      <span class="btn" style="background:rgba(0,0,0,0.3);color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'bg-image',
+    title: 'Background image',
+    desc: 'Own background-image (data URI). Should resolve to null.',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23264653%22/><circle cx=%2210%22 cy=%2210%22 r=%226%22 fill=%22%23e9c46a%22/></svg>');background-size:40px;color:#fff">
+      <h3>Image card</h3><p>Tiled SVG background image.</p>
+      <span class="btn" style="background:rgba(0,0,0,0.4);color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'rgba-semi',
+    title: 'Semi-transparent bg',
+    desc: 'rgba() background with alpha 0.5 over a dark page. Own color is not fully transparent, so resolves to null.',
+    bodyBg: 'oklch(25% 0.05 270)',
+    html: `<div class="card" data-target style="background:rgba(255,255,255,0.5);color:#1a1a1a">
+      <h3>Frosted half</h3><p>50% white over a dark page.</p>
+      <span class="btn" style="background:#1a1a1a;color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'glass-blur',
+    title: 'Glass / backdrop-blur',
+    desc: 'backdrop-filter over a gradient page. Capture cannot replay the live blur, so the fallback shows instead.',
+    bodyBg: 'linear-gradient(135deg,oklch(70% 0.16 30),oklch(55% 0.18 280))',
+    html: `<div class="card" data-target style="background:rgba(255,255,255,0.18);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.4);color:#fff">
+      <h3>Glass panel</h3><p>backdrop-filter blur over a gradient.</p>
+      <span class="btn" style="background:rgba(255,255,255,0.25);color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'rounded-shadow',
+    title: 'Rounded + drop shadow',
+    desc: 'Opaque card with a large box-shadow. Shadow spills outside the rect; watch the clipping.',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div class="card" data-target style="background:#fff;color:#222;box-shadow:0 24px 60px -20px rgba(0,0,0,0.45)">
+      <h3>Floating card</h3><p>Soft drop shadow beyond the box.</p>
+      <span class="btn" style="background:#222;color:#fff">Action</span></div>`,
+  },
+  {
+    id: 'css-var-bg',
+    title: 'Bg via CSS variable',
+    desc: 'Background driven by a custom property. Should resolve to null (computed color is opaque).',
+    bodyBg: 'oklch(96% 0.012 75)',
+    html: `<div style="--surface:oklch(40% 0.1 150)">
+      <div class="card" data-target style="background:var(--surface);color:#eafff3">
+        <h3>Token surface</h3><p>Background comes from a CSS variable.</p>
+        <span class="btn" style="background:#eafff3;color:#13361f">Action</span></div></div>`,
+  },
+  {
+    // Replica of the homepage "Tune interfaces while they run" hero. The dark
+    // ground comes ONLY from the kintsugi art layer (absolute, a child of the
+    // hero); the hero itself and the page have no opaque background-color,
+    // exactly like the real site. The shader targets the HEADING, so the
+    // bubble-up in resolvePaperRgb/resolveCanvasBackground walks heading →
+    // inner → hero → body and finds nothing opaque, falling back to white. That
+    // reproduces the homepage bug: a white halftone patch flashes over the dark
+    // hero. (The readout shows bg: #ffffff.)
+    id: 'hero-replica',
+    title: 'Homepage hero (shader on heading)',
+    desc: 'Heading over a hero whose dark look is only the art layer. Bubble-up finds no opaque bg, so it falls back to white (the homepage bug).',
+    bodyBg: '',
+    wide: true,
+    h: 400,
+    html: `<style>
+      body{padding:0 !important}
+      .hero{position:relative;width:100%;height:100%;min-height:340px;overflow:hidden;display:grid;align-items:center}
+      .hero-art{position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,oklch(7% 0.006 95/0.9) 0%,oklch(7% 0.006 95/0.5) 8%,transparent 18%),url('/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png') center/cover no-repeat;filter:saturate(1.2) contrast(1.08)}
+      .hero-inner{position:relative;z-index:1;padding:34px;display:grid;gap:18px;max-width:520px}
+      .hero-title{margin:0;color:oklch(84% 0.035 82);font-family:"Alumni Sans Pinstripe","Albert Sans",Arial,sans-serif;font-weight:300;font-size:2.9rem;line-height:1.02;letter-spacing:-0.01em}
+      .hero-copy{margin:0;color:oklch(81% 0.03 82);font-size:0.92rem;line-height:1.55;font-weight:300;max-width:40ch}
+      .hero-cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:2px}
+      .hero-cta a{min-height:46px;display:inline-flex;align-items:center;gap:10px;padding:0 22px;border-radius:2px;font-size:0.9rem;font-weight:500;border:1px solid transparent;text-decoration:none}
+      .btn-primary{color:oklch(4% 0.004 95);background:oklch(84% 0.19 80.46);border-color:oklch(84% 0.19 80.46)}
+      .btn-secondary{color:oklch(84% 0.19 80.46);background:transparent;border-color:oklch(84% 0.19 80.46)}
+    </style>
+    <div class="hero">
+      <div class="hero-art"></div>
+      <div class="hero-inner">
+        <h1 class="hero-title" data-target>Tune interfaces<br>while they run.</h1>
+        <p class="hero-copy">Your AI ships generic frontend by default. Impeccable teaches it to design in your production codebase.</p>
+        <div class="hero-cta"><a class="btn-primary">Get started &rarr;</a><a class="btn-secondary">How it works</a></div>
+      </div>
+    </div>`,
+  },
+];
+
+// ===========================================================================
+//  COPIED FROM skill/scripts/live-browser.js. Keep in sync.
+// ===========================================================================
+
+// Use the element's own document view so the lab works on iframe-hosted
+// fixtures the same way it would on the live page.
+function cs(el) {
+  return (el.ownerDocument.defaultView || window).getComputedStyle(el);
+}
+
+function isTransparentColor(s) {
+  if (!s) return true;
+  if (s === 'transparent') return true;
+  const m = /rgba?\(([^)]+)\)/.exec(s);
+  if (!m) return false;
+  const parts = m[1].split(',').map((p) => p.trim());
+  if (parts.length === 4) return parseFloat(parts[3]) === 0;
+  return false;
+}
+
+function resolveCanvasBackground(el) {
+  const own = cs(el);
+  if (!isTransparentColor(own.backgroundColor)) return null;
+  if (own.backgroundImage && own.backgroundImage !== 'none') return null;
+  let node = el.parentElement;
+  while (node) {
+    const style = cs(node);
+    if (!isTransparentColor(style.backgroundColor)) return style.backgroundColor;
+    node = node.parentElement;
+  }
+  // Walked through <body> and <html> without finding an opaque background.
+  // The browser canvas defaults to white, so we do too.
+  return '#ffffff';
+}
+
+// Effective background tone used as the uniform halftone ground (always returns
+// a usable color, unlike resolveCanvasBackground which returns null when the
+// element owns its bg). Matches resolvePaperRgb in live-browser.js.
+const SHADER_PAPER_FALLBACK = [0.975, 0.965, 0.955];
+// Rasterize any CSS color (oklch, color(), named, hex, rgb) through a 1x1
+// canvas and read back the sRGB pixel. Chrome returns oklch backgroundColors as
+// oklch()/color(), which a hex/rgb regex misses; every site token would fall
+// back to white otherwise.
+let colorParseCtx = null;
+function cssColorToRgb01(str) {
+  if (!colorParseCtx) {
+    colorParseCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  }
+  // Clear first: the ctx is cached, so a semi-transparent color would blend
+  // with the previous call's pixel and make the result history-dependent.
+  colorParseCtx.clearRect(0, 0, 1, 1);
+  colorParseCtx.fillStyle = '#000';
+  colorParseCtx.fillStyle = str;
+  colorParseCtx.fillRect(0, 0, 1, 1);
+  const d = colorParseCtx.getImageData(0, 0, 1, 1).data;
+  return [d[0] / 255, d[1] / 255, d[2] / 255];
+}
+function resolvePaperRgb(el) {
+  let node = el;
+  while (node) {
+    const bg = cs(node).backgroundColor;
+    if (!isTransparentColor(bg)) return cssColorToRgb01(bg);
+    node = node.parentElement;
+  }
+  return SHADER_PAPER_FALLBACK;
+}
+
+// Nearest ancestor that actually paints a backdrop behind a transparent-to-root
+// element, via its own background-image, or a covering positioned child layer
+// (e.g. a hero's absolute art div). Mirrors findBackdropAncestor in
+// live-browser.js. Returns null when nothing is painted (white is correct).
+function paintsBackdrop(node) {
+  const s = cs(node);
+  if (s.backgroundImage && s.backgroundImage !== 'none') return true;
+  const nr = node.getBoundingClientRect();
+  for (const child of node.children) {
+    const ccs = cs(child);
+    if (ccs.position !== 'absolute' && ccs.position !== 'fixed') continue;
+    const paints = !isTransparentColor(ccs.backgroundColor)
+      || (ccs.backgroundImage && ccs.backgroundImage !== 'none');
+    if (!paints) continue;
+    const cr = child.getBoundingClientRect();
+    if (cr.width >= nr.width * 0.9 && cr.height >= nr.height * 0.9) return true;
+  }
+  return false;
+}
+function findBackdropAncestor(el) {
+  let node = el.parentElement;
+  while (node && node !== node.ownerDocument.documentElement) {
+    if (paintsBackdrop(node)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+function paintsShaderProxySurface(node) {
+  const s = cs(node);
+  return !isTransparentColor(s.backgroundColor)
+    || (s.backgroundImage && s.backgroundImage !== 'none')
+    || paintsBackdrop(node);
+}
+function findShaderProxyCaptureRoot(el) {
+  const doc = el.ownerDocument;
+  const er = el.getBoundingClientRect();
+  let node = el.parentElement;
+  while (node && node !== doc.documentElement) {
+    const nr = node.getBoundingClientRect();
+    const containsElement =
+      nr.width > 0 && nr.height > 0 &&
+      nr.left <= er.left + 0.5 &&
+      nr.top <= er.top + 0.5 &&
+      nr.right >= er.right - 0.5 &&
+      nr.bottom >= er.bottom - 0.5;
+    if (containsElement && paintsShaderProxySurface(node)) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+function averageRgb01(ctx, w, h) {
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < data.length; i += 16) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+  return n ? [r / n / 255, g / n / 255, b / n / 255] : SHADER_PAPER_FALLBACK;
+}
+function dominantRgb01(ctx, w, h) {
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const stride = Math.max(1, Math.floor((w * h) / 6000));
+  const buckets = new Map();
+  for (let p = 0; p < w * h; p += stride) {
+    const i = p * 4;
+    if (data[i + 3] < 16) continue;
+    const key = (data[i] >> 4) + ',' + (data[i + 1] >> 4) + ',' + (data[i + 2] >> 4);
+    const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 };
+    bucket.count += 1;
+    bucket.r += data[i];
+    bucket.g += data[i + 1];
+    bucket.b += data[i + 2];
+    buckets.set(key, bucket);
+  }
+  let best = null;
+  for (const bucket of buckets.values()) {
+    if (!best || bucket.count > best.count) best = bucket;
+  }
+  return best ? [best.r / best.count / 255, best.g / best.count / 255, best.b / best.count / 255] : null;
+}
+// Backdrop sampled just outside an element's rect (the true ground tone),
+// excluding the element's own content. Matches sampleSurroundingRgb in
+// live-browser.js.
+function sampleSurroundingRgb(ctx, sx, sy, sw, sh, W, H) {
+  const pad = Math.max(2, Math.round(Math.min(sw, sh) * 0.12));
+  const fx = [0.2, 0.5, 0.8].map((f) => sx + sw * f);
+  const fy = [0.2, 0.5, 0.8].map((f) => sy + sh * f);
+  const pts = [];
+  for (const x of fx) { pts.push([x, sy - pad], [x, sy + sh + pad]); }
+  for (const y of fy) { pts.push([sx - pad, y], [sx + sw + pad, y]); }
+  let r = 0, g = 0, b = 0, n = 0;
+  for (const [px, py] of pts) {
+    const cx = Math.max(0, Math.min(W - 1, Math.round(px)));
+    const cy = Math.max(0, Math.min(H - 1, Math.round(py)));
+    const d = ctx.getImageData(cx, cy, 1, 1).data;
+    if (d[3] === 0) continue;
+    r += d[0]; g += d[1]; b += d[2]; n++;
+  }
+  return n ? [r / n / 255, g / n / 255, b / n / 255] : null;
+}
+
+const SHADER_VS = `attribute vec2 a_position;
+attribute vec2 a_uv;
+varying vec2 v_uv;
+void main() {
+  v_uv = a_uv;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+
+const SHADER_FS = `precision highp float;
+uniform sampler2D u_texture;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec3 u_accent;
+uniform vec3 u_paper;
+varying vec2 v_uv;
+
+float bandAt(float d, float leadW, float trailW) {
+  float above = smoothstep(-leadW, 0.0, d);
+  float below = 1.0 - smoothstep(0.0, trailW, d);
+  return above * below;
+}
+
+void main() {
+  vec2 uv = v_uv;
+  float phase = fract(u_time / 3.4);
+  float y = phase * 1.25 - 0.12;
+  float band = bandAt(uv.y - y, 0.05, 0.32);
+
+  float cellPx = 10.0;
+  vec2 gridUv = uv * u_resolution / cellPx;
+  vec2 cellId = floor(gridUv);
+  vec2 cellUv = fract(gridUv) - 0.5;
+  vec2 sampleCenter = (cellId + 0.5) * cellPx / u_resolution;
+  vec3 cellImg = texture2D(u_texture, sampleCenter).rgb;
+  // Dot size tracks how much the cell DIFFERS from the element's ground
+  // (u_paper), not absolute darkness, so content becomes the dots on light and
+  // dark alike (a darkness curve inverts on dark elements). Capped so dense
+  // content stays separated dots.
+  float contrast = clamp(length(cellImg - u_paper) / 1.732, 0.0, 1.0);
+  float radius = min(sqrt(contrast) * 0.6, 0.38);
+  float dotMask = smoothstep(radius + 0.06, radius, length(cellUv));
+  // Two-stage dissolve so content is rebuilt from dot size and never bleeds
+  // through as raw pixels: (1) cover flattens the element to the uniform paper
+  // ground first, (2) dotAmt then ramps the kinpaku dots in. u_paper is the
+  // element's own bg tone, so it reads the same on light and dark.
+  vec4 tex = texture2D(u_texture, uv);
+  vec3 base = tex.rgb;
+  float cover = smoothstep(0.0, 0.35, band);
+  float dotAmt = dotMask * smoothstep(0.15, 0.6, band);
+  vec3 ground = mix(base, u_paper, cover);
+  // Carry the capture's alpha so rounded corners / transparent regions show the
+  // live backdrop through the canvas instead of rendering black.
+  gl_FragColor = vec4(mix(ground, u_accent, dotAmt), tex.a);
+}`;
+
+const SHADER_ACCENT = [1.0, 0.78, 0.31];
+
+function compileShader(gl, type, source) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(sh);
+    gl.deleteShader(sh);
+    throw new Error('shader compile failed: ' + info);
+  }
+  return sh;
+}
+
+// ===========================================================================
+//  Lab harness (adapted from live mode for iframe-hosted, scroll-tracked
+//  overlays). The capture/shader internals above are unchanged.
+// ===========================================================================
+
+const statusEl = document.getElementById('status');
+const gridEl = document.getElementById('grid');
+let paused = false;
+const overlays = []; // { gl?, program?, texture?, canvas, startTime, target, iframe } | { reduced }
+
+function loadModernScreenshot() {
+  return Promise.resolve(window.modernScreenshot);
+}
+
+async function captureElementToBlob(el, useAncestorCropProxy = false) {
+  try { if (el.ownerDocument.fonts?.ready) await el.ownerDocument.fonts.ready; } catch {}
+  const ms = await loadModernScreenshot();
+  const opts = { scale: Math.min(window.devicePixelRatio || 1, 2) };
+  if (useAncestorCropProxy) {
+    try {
+      const { blob, paper, root } = await captureElementFromRenderedAncestor(ms, el, opts);
+      return { blob, paper, note: 'ancestor crop <' + root.tagName.toLowerCase() + '>' };
+    } catch (err) {
+      console.warn('[shader-lab] ancestor crop capture failed, falling back to element capture:', err);
+    }
+  }
+  const bg = resolveCanvasBackground(el);
+  // Fast path: element owns its bg, or an opaque ancestor color was found.
+  if (bg !== '#ffffff') {
+    const blob = await ms.domToBlob(el, { ...opts, ...(bg ? { backgroundColor: bg } : {}) });
+    return { blob, paper: bg ? cssColorToRgb01(bg) : resolvePaperRgb(el), note: bg || "(null, owns bg)" };
+  }
+  // Transparent to the root: capture the ancestor that paints the real backdrop
+  // (image / covering layer) and crop to the element, so the actual backdrop is
+  // embedded instead of white. Fall back to white only when nothing is painted.
+  const backdrop = findBackdropAncestor(el);
+  if (!backdrop) {
+    const blob = await ms.domToBlob(el, { ...opts, backgroundColor: '#ffffff' });
+    return { blob, paper: SHADER_PAPER_FALLBACK, note: '#ffffff (nothing behind)' };
+  }
+  const ancestorCanvas = await ms.domToCanvas(backdrop, opts);
+  const S = opts.scale;
+  const er = el.getBoundingClientRect();
+  const ar = backdrop.getBoundingClientRect();
+  const sx = (er.left - ar.left) * S, sy = (er.top - ar.top) * S;
+  const sw = er.width * S, sh = er.height * S;
+  const crop = document.createElement('canvas');
+  crop.width = Math.max(1, Math.round(sw));
+  crop.height = Math.max(1, Math.round(sh));
+  const cctx = crop.getContext('2d', { willReadFrequently: true });
+  cctx.drawImage(ancestorCanvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+  // Ground = backdrop sampled around the element (not the crop mean, which
+  // would fold in the heading text and turn the ground gray).
+  const actx = ancestorCanvas.getContext('2d', { willReadFrequently: true });
+  const paper = sampleSurroundingRgb(actx, sx, sy, sw, sh, ancestorCanvas.width, ancestorCanvas.height)
+    || averageRgb01(cctx, crop.width, crop.height);
+  const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
+  return { blob, paper, note: 'backdrop captured <' + backdrop.className + '>' };
+}
+
+async function captureElementFromRenderedAncestor(ms, el, opts) {
+  const doc = el.ownerDocument;
+  const captureRoot = findShaderProxyCaptureRoot(el);
+  if (!captureRoot) throw new Error('No painted ancestor for shader proxy');
+  const rootCanvas = await ms.domToCanvas(captureRoot, opts);
+  const S = opts.scale;
+  const er = el.getBoundingClientRect();
+  const rr = captureRoot.getBoundingClientRect();
+  const sx = (er.left - rr.left) * S;
+  const sy = (er.top - rr.top) * S;
+  const sw = er.width * S;
+  const sh = er.height * S;
+  if (sw <= 0 || sh <= 0) throw new Error('Selected element has no visible capture rect');
+  const crop = doc.createElement('canvas');
+  crop.width = Math.max(1, Math.round(sw));
+  crop.height = Math.max(1, Math.round(sh));
+  const cctx = crop.getContext('2d', { willReadFrequently: true });
+  cctx.drawImage(rootCanvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+  const paper = dominantRgb01(cctx, crop.width, crop.height) || averageRgb01(cctx, crop.width, crop.height);
+  const blob = await new Promise((res) => crop.toBlob(res, 'image/png'));
+  if (!blob) throw new Error('Ancestor crop failed to produce a PNG blob');
+  return { blob, paper, root: captureRoot };
+}
+
+// Position a fixed-position canvas over an element living inside an iframe.
+function rectForTarget(iframe, target) {
+  const ir = iframe.getBoundingClientRect();
+  const tr = target.getBoundingClientRect();
+  return { top: ir.top + tr.top, left: ir.left + tr.left, width: tr.width, height: tr.height };
+}
+
+async function mountShaderOverlay(cell, iframe, target, blob, paper) {
+  const rect = rectForTarget(iframe, target);
+  const canvas = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const radius = cs(target).borderRadius;
+  Object.assign(canvas.style, {
+    position: 'fixed', pointerEvents: 'none', zIndex: '50',
+    top: rect.top + 'px', left: rect.left + 'px',
+    width: rect.width + 'px', height: rect.height + 'px',
+    borderRadius: radius, overflow: 'hidden',
+  });
+  document.body.appendChild(canvas);
+
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: false })
+          || canvas.getContext('experimental-webgl');
+  if (!gl) {
+    canvas.remove();
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(blob);
+    img.style.cssText = 'position:fixed;pointer-events:none;z-index:50;outline:2px dashed #b8860b;outline-offset:-2px;' +
+      `top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;`;
+    document.body.appendChild(img);
+    overlays.push({ canvas: img, target, iframe, plain: true });
+    return;
+  }
+
+  let program, texture;
+  try {
+    const vs = compileShader(gl, gl.VERTEX_SHADER, SHADER_VS);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, SHADER_FS);
+    program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error('program link failed: ' + gl.getProgramInfoLog(program));
+    }
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1, 0, 1,  1, -1, 1, 1,  -1, 1, 0, 0,
+      -1, 1, 0, 0,   1, -1, 1, 1,   1, 1, 1, 0,
+    ]), gl.STATIC_DRAW);
+    const posLoc = gl.getAttribLocation(program, 'a_position');
+    const uvLoc = gl.getAttribLocation(program, 'a_uv');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(uvLoc);
+    gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 16, 8);
+  } catch (err) {
+    console.warn('[shader-lab] shader setup failed:', err);
+    canvas.remove();
+    return;
+  }
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    const imgUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = imgUrl;
+    await new Promise((r, rej) => { img.onload = r; img.onerror = rej; });
+    bitmap = img;
+    URL.revokeObjectURL(imgUrl);
+  }
+  texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+  if (bitmap.close) bitmap.close();
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  overlays.push({
+    gl, program, texture, canvas, target, iframe, reduced,
+    paper: paper || resolvePaperRgb(target),
+    uTime: gl.getUniformLocation(program, 'u_time'),
+    uRes: gl.getUniformLocation(program, 'u_resolution'),
+    uAccent: gl.getUniformLocation(program, 'u_accent'),
+    uPaper: gl.getUniformLocation(program, 'u_paper'),
+    uTex: gl.getUniformLocation(program, 'u_texture'),
+  });
+}
+
+// The roller sweeps far slower here than in live mode (TIME_SCALE) so the dot
+// matrix is easy to read, and a shared clock keeps every overlay in phase.
+// Pause freezes the clock in place rather than snapping back to the top.
+const TIME_SCALE = 0.18;
+let labClock = 0;
+let lastTs = null;
+
+function tick(ts) {
+  if (lastTs === null) lastTs = ts;
+  const dt = (ts - lastTs) / 1000;
+  lastTs = ts;
+  if (!paused) labClock += dt * TIME_SCALE;
+  for (const o of overlays) {
+    // Keep every overlay glued to its (possibly scrolled) target.
+    const rect = rectForTarget(o.iframe, o.target);
+    Object.assign(o.canvas.style, {
+      top: rect.top + 'px', left: rect.left + 'px',
+      width: rect.width + 'px', height: rect.height + 'px',
+    });
+    if (o.plain || !o.gl) continue;
+    const gl = o.gl;
+    const t = o.reduced ? 0.0 : labClock;
+    gl.viewport(0, 0, o.canvas.width, o.canvas.height);
+    gl.useProgram(o.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, o.texture);
+    gl.uniform1i(o.uTex, 0);
+    gl.uniform1f(o.uTime, t);
+    gl.uniform2f(o.uRes, o.canvas.width, o.canvas.height);
+    gl.uniform3f(o.uAccent, SHADER_ACCENT[0], SHADER_ACCENT[1], SHADER_ACCENT[2]);
+    gl.uniform3f(o.uPaper, o.paper[0], o.paper[1], o.paper[2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+  requestAnimationFrame(tick);
+}
+
+function clearOverlays() {
+  for (const o of overlays) {
+    if (o.gl) { try { o.gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch {} }
+    o.canvas.remove();
+  }
+  overlays.length = 0;
+}
+
+function writeFixtureDoc(iframe, fx) {
+  const doc = iframe.contentDocument;
+  doc.open();
+  doc.write(
+    '<!doctype html><html><head><meta charset="utf-8"><style>' + FIXTURE_CSS +
+    '</style></head><body' + (fx.bodyBg ? ' style="background:' + fx.bodyBg + '"' : '') +
+    '>' + fx.html + '</body></html>',
+  );
+  doc.close();
+}
+
+function iframeReady(iframe) {
+  return new Promise((resolve) => {
+    if (iframe.contentDocument?.readyState === 'complete') resolve();
+    else iframe.addEventListener('load', () => resolve(), { once: true });
+  });
+}
+
+function buildRows() {
+  gridEl.innerHTML = '';
+  const rows = [];
+  for (const fx of FIXTURES) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="row-head">
+        <span class="title">${fx.title}</span>
+        <span class="desc">${fx.desc}</span>
+        <span class="readout">bg:
+          <span class="swatch"><i></i></span>
+          <span class="val">…</span>
+        </span>
+      </div>
+      <div class="pair">
+        <div class="cell" data-role="raw"><span class="cell-tag">raw</span></div>
+        <div class="cell" data-role="shader"><span class="cell-tag">capture + shader</span></div>
+      </div>`;
+    gridEl.appendChild(row);
+    rows.push({ fx, row });
+  }
+  return rows;
+}
+
+async function run() {
+  clearOverlays();
+  statusEl.textContent = 'capturing…';
+  const rows = buildRows();
+
+  for (const { fx, row } of rows) {
+    const rawCell = row.querySelector('[data-role="raw"]');
+    const shaderCell = row.querySelector('[data-role="shader"]');
+    const valEl = row.querySelector('.readout .val');
+    const swatchEl = row.querySelector('.readout .swatch i');
+
+    // Build both stages as identical iframes so the raw side and the captured
+    // side render in byte-identical contexts.
+    for (const cell of [rawCell, shaderCell]) {
+      const iframe = document.createElement('iframe');
+      iframe.className = 'stage';
+      iframe.setAttribute('scrolling', 'no');
+      if (fx.h) iframe.style.height = fx.h + 'px';
+      if (fx.wide) iframe.style.maxWidth = 'none';
+      cell.appendChild(iframe);
+      cell._iframe = iframe;
+    }
+    await Promise.all([iframeReady(rawCell._iframe), iframeReady(shaderCell._iframe)]);
+    writeFixtureDoc(rawCell._iframe, fx);
+    writeFixtureDoc(shaderCell._iframe, fx);
+    // Let the freshly written docs lay out before measuring/capturing.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const target = shaderCell._iframe.contentDocument.querySelector('[data-target]');
+    if (!target) { valEl.textContent = '(no target)'; continue; }
+
+    try {
+      const { blob, paper, note } = await captureElementToBlob(target, fx.ancestorCropProxy === true);
+      valEl.textContent = note;
+      // Only the genuine "nothing painted behind it" case is the bug now; an
+      // embedded backdrop (ancestor-captured) is the fix, so don't flag it red.
+      valEl.classList.toggle('is-white', /nothing behind/.test(note));
+      const [pr, pg, pb] = paper.map((c) => Math.round(c * 255));
+      swatchEl.style.background = `rgb(${pr}, ${pg}, ${pb})`;
+      await mountShaderOverlay(shaderCell, shaderCell._iframe, target, blob, paper);
+    } catch (err) {
+      console.error('[shader-lab] capture failed for', fx.id, err);
+      valEl.textContent = 'capture error: ' + err.message;
+    }
+  }
+  statusEl.textContent = `${overlays.length} overlay(s) live · ${FIXTURES.length} fixtures`;
+}
+
+document.getElementById('run').addEventListener('click', run);
+document.getElementById('toggle').addEventListener('click', (e) => {
+  paused = !paused;
+  e.target.textContent = paused ? 'Resume animation' : 'Pause animation';
+});
+
+if (!window.modernScreenshot) {
+  statusEl.textContent = 'modern-screenshot failed to load';
+} else {
+  requestAnimationFrame(tick);
+  run();
+}
+    </script>
+  </body>
+</html>

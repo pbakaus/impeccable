@@ -4,23 +4,28 @@ Interactive live variant mode: select elements in the browser, pick a design act
 
 A running dev server with hot module replacement (Vite, Next.js, Bun, etc.), OR a static HTML file open in the browser.
 
+Codex: run live helper commands, the app dev server, and any dependency-installing setup with `sandbox_permissions: "require_escalated"` from the start; live mode depends on localhost and package-manager network access that the sandbox blocks.
+
 ## The contract (read once)
 
 Execute in order. No step skipped, no step reordered.
 
 1. `live.mjs`: boot.
-2. Navigate to the URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). If you can't infer it confidently, tell the user once to open their dev/preview URL. Never use `serverPort` as that URL; it's the helper, not the app.
+2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
+
+The global bar **Impeccable mark** dims and shows a pulsing amber dot when no agent is long-polling `/poll`. Hover the mark for the hint; restart `live-poll.mjs` to reconnect.
 4. On `generate`: read screenshot if present; load the action's reference; plan three distinct directions; write all variants in one edit; `--reply done`; poll again.
-5. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
-6. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
-7. On `exit`: run the cleanup at the bottom.
+5. On `steer`: read the message and `pageUrl`; do the work (page edits, navigation help, or a short reply in the `--reply` message); `--reply steer_done`; poll again. No pickup ack. The Steer bar unlocks when `steer_done` arrives over SSE.
+6. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately; carbonize accepts remain recoverable until you finish cleanup, run `live-complete.mjs --id EVENT_ID`, and only then poll again.
+7. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
+8. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
-- **Cursor**: run the poll in the **foreground** (blocking shell; not a background terminal, not a subagent). Cursor background terminals and subagents do not reliably resume the chat with poll stdout.
+- **Cursor**: run **one-shot** poll in a **background terminal** with notify on `"type":"(steer|generate|accept|discard|exit)"`. After each event the poll exits; handle it, `--reply`, then start `live-poll.mjs` again. Do **not** use `--stream` on Cursor: incremental stdout notify is slower in practice than exit-based notify (~5s vs sub-second in testing).
 - **Codex**: run the poll in the **foreground** (blocking shell; not a background task, not a subagent). Codex background exec sessions do not reliably surface poll stdout back into the conversation at the moment events arrive, so a "fire-and-forget" background poll will stall live mode.
-- **Other harnesses**: foreground unless you know stdout reliably returns to this session.
+- **Other harnesses**: one-shot foreground unless you know stdout reliably returns to this session when a shell exits.
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
@@ -30,7 +35,7 @@ Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodi
 node .agents/skills/impeccable/scripts/live.mjs
 ```
 
-Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath, migrated }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt. If `migrated: true`, the loader auto-renamed legacy `.impeccable.md` to `PRODUCT.md`; mention this once and suggest `$impeccable document` for the matching DESIGN.md.
+Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt.
 
 `serverPort` and `serverToken` belong to the small **Impeccable live helper** HTTP server (serves `/live.js`, SSE, and `/poll`). That port is **not** your dev server and is usually not the URL you open to view the app. The browser page is whatever origin serves one of the `pageFiles` entries (Vite / Next / Bun / tunnel / LAN hostname).
 
@@ -38,18 +43,32 @@ If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, 
 
 ## Poll loop
 
+**Default (portable, all harnesses):**
+
 ```
 LOOP:
   node .agents/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
   "generate"  → Handle Generate; reply done; LOOP
+  "steer"     → Handle Steer; reply steer_done; LOOP
   "accept"    → Handle Accept; complete carbonize cleanup if required; LOOP
   "discard"   → Handle Discard; LOOP
   "prefetch"  → Handle Prefetch; LOOP
+  "manual_edit_apply" → Handle Manual Edit Apply; reply done|partial|error; LOOP
   "timeout"   → LOOP
   "exit"      → break → Cleanup
 ```
+
+**Stream mode (experimental, not for Cursor):**
+
+```
+node .agents/skills/impeccable/scripts/live-poll.mjs --stream   # stays running; one JSON line per event
+  Handle event; run --reply in a separate command
+  Repeat until "exit" line → Cleanup
+```
+
+Stream keeps one process alive and waits for `--reply` ack before polling again. Useful only when the harness reads incremental stdout reliably and quickly. **Cursor is not one of those:** background pattern notify on a long-running shell was ~5s to pick up events vs sub-second for one-shot exit notify. Default to one-shot everywhere unless you have measured otherwise.
 
 ## Recovery commands
 
@@ -71,9 +90,34 @@ Server restart rule: start `live-server.mjs` again, then poll. Startup requeues 
 
 ## Handle `generate`
 
-Event: `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
+**Replace mode** (default): `{id, action, freeformPrompt?, count, pageUrl, element, screenshotPath?, comments?, strokes?}`.
 
-Speed matters; the user is watching a spinner. Minimize tool calls by using the `wrap` helper and writing all variants in a single edit.
+**Insert mode** (`event.mode === "insert"`): `{id, mode: "insert", count, pageUrl, insert: { position, anchor }, placeholder: { width, height }, freeformPrompt?, screenshotPath?, comments?, strokes?}`. No `action`. Requires a non-empty `freeformPrompt` **or** annotations. Screenshot is sent only when annotations exist (same rule as replace). Use `placeholder` dimensions as a soft size hint for net-new content.
+
+Speed matters; the user is watching a spinner. Minimize tool calls by using the wrap/insert helper and writing all variants in a single edit.
+
+### Insert mode branch
+
+When `event.mode === "insert"`:
+
+1. Read the screenshot if `event.screenshotPath` is present (annotations only).
+2. Run the insert helper instead of wrap:
+
+```bash
+node .agents/skills/impeccable/scripts/live-insert.mjs --id EVENT_ID --count EVENT_COUNT --position after \
+  --element-id "ANCHOR_ID" --classes "class1,class2" --tag "section" --text "ANCHOR_TEXT"
+```
+
+- `--position` ← `event.insert.position` (`before` | `after`)
+- Anchor flags ← `event.insert.anchor` (same mapping as wrap: id, classes, tag, text)
+
+The scaffold has **no** `data-impeccable-variant="original"`. Variants are net-new HTML+CSS inserted at `insertLine`. Load `brand.md` or `product.md` (freeform only, no action sub-command). Write all variants in one edit, then `--reply done`.
+
+For Svelte/SvelteKit targets, `live-insert.mjs` returns `previewMode: "svelte-component"` with `mode: "insert"`, `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each inserted variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`. Insert variants must be non-empty net-new content with a single top-level root, no `data-impeccable-*` attributes, and CSS in each component's `<style>` block. Do **not** edit the route source during generation; the browser mounts the temporary component before/after the live anchor while the user cycles variants. On Accept, `live-accept.mjs` inserts the selected component markup into `sourceFile` immediately and deletes the temp session after the source write succeeds.
+
+For non-Svelte targets, on accept/discard, `live-accept.mjs` removes the wrapper block; the anchor element is untouched.
+
+### Replace mode (default)
 
 ### 1. Read the screenshot (if present)
 
@@ -108,6 +152,25 @@ The helper searches ID first, then classes, then tag + class combo. If `event.pa
 If `--text` matches multiple candidates equally well, wrap exits with `{ error: "element_ambiguous", candidates: [...] }` and `fallback: "agent-driven"`: read the candidate line ranges, decide which one matches the picked element from page context, and write the wrapper manually per the fallback flow.
 
 Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }`.
+
+For Svelte/SvelteKit targets, `live-wrap.mjs` returns `previewMode: "svelte-component"` with `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`; use the `propContract` prop names for dynamic text (`{propName}`), not literal snapshot strings. Put variant CSS in each component's `<style>` block with semantic class selectors (no `@scope`, no `data-impeccable-*`). Reply with `--file` set to the manifest path; the browser dynamically imports and mounts the compiled components so Svelte HMR does not reset page state while the user cycles variants. On Accept, `live-accept.mjs` inlines the accepted component back into `sourceFile` immediately after source promotion succeeds.
+
+**Params on the Svelte component path go in a sidecar, never as an attribute.** Svelte parses `{` inside an attribute value as the start of an expression, so a `data-impeccable-params='[{…}]'` attribute on a component element fails to compile (`Expected token }`). Declare params for this path in `componentDir/params.json`, keyed by variant number, using the exact param schema from section 7:
+
+```json
+{
+  "1": [
+    {"id":"density","kind":"steps","default":"snug","label":"Density","options":[
+      {"value":"airy","label":"Airy"},{"value":"snug","label":"Snug"},{"value":"packed","label":"Packed"}
+    ]}
+  ],
+  "2": [
+    {"id":"accent","kind":"range","min":0,"max":1,"step":0.05,"default":0.5,"label":"Accent"}
+  ]
+}
+```
+
+Author the component `<style>` against `var(--p-<id>, default)` for `range`/`toggle` and `[data-p-<id>="…"]` for `steps`; wrap those selectors in `:global(...)` so the knob values the runtime sets on the mounted root reach your rules. The browser reads `params.json`, docks the panel, and drives `--p-*` / `data-p-*` on the mounted component exactly as it does for the HTML/JSX path.
 
 `styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess:
 
@@ -300,7 +363,7 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Hard cap per variant**: at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
 
-**How to declare.** Put a JSON manifest on the variant wrapper:
+**How to declare.** Put a JSON manifest on the variant wrapper (HTML/JSX path). **On the Svelte `svelte-component` path, do not use this attribute** (Svelte can't compile `{` inside an attribute value). Declare params in `componentDir/params.json` keyed by variant number instead (see the Svelte component paragraph in the wrap section). The param schema below is identical for both paths.
 
 ```html
 <div data-impeccable-variant="1" data-impeccable-params='[
@@ -398,6 +461,7 @@ Remove the wrapper you inserted in Step 2. Nothing else to do.
 
 Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already ran `live-accept.mjs` to handle the file operation deterministically, then acknowledged event delivery to the helper. The browser DOM is already updated.
 
+- The accept event includes `pageUrl`; the poll script must forward it to `live-accept.mjs --page-url PAGE_URL` so accept-time cleanup only scrubs staged copy edits for the current page.
 - `_completionAck.ok !== true`: do not poll yet. Run `live-status.mjs` / `live-resume.mjs`, complete the cleanup manually if needed, then run `live-complete.mjs --id EVENT_ID`.
 - `_acceptResult.handled: true` and `carbonize: false`: nothing to do. Poll again.
 - `_acceptResult.handled: true` and `carbonize: true`: **post-accept cleanup is required before the next poll.** See the "Required after accept (carbonize)" section below. The `event._acceptResult.todo` field, `_completionAck.requiresComplete`, and a stderr banner all point at this required follow-up; none are decorative. After cleanup, run `live-complete.mjs --id EVENT_ID`, then poll again.
@@ -413,7 +477,7 @@ Do these five steps in the current thread, synchronously, before the next poll. 
 1. **Locate the carbonize block** in the source file (`_acceptResult.file`). It's bracketed by `<!-- impeccable-carbonize-start SESSION_ID -->` and `<!-- impeccable-carbonize-end SESSION_ID -->` and contains a `<style data-impeccable-css="SESSION_ID">` element. If the variant declared parameters, an `<!-- impeccable-param-values SESSION_ID: {...} -->` comment sits alongside the style tag with the user's chosen values; read it first; it drives steps 3 and 4 below.
 2. **Move the CSS rules** into the project's real stylesheet. Which stylesheet depends on the project (e.g. `site/styles/workflow.css` for an Astro project, or the component's co-located CSS file for a Vite/Next project; pick whichever already owns styling for the surrounding element).
 3. **Bake in parameter values while rewriting selectors.** For `@scope ([data-impeccable-variant="N"])` wrappers: retarget to real, semantic classes on the accepted HTML (`.why-visual--v2 .v2-label { … }`). For `:scope[data-p-<id>="VALUE"]` selectors: keep only the branch matching the chosen value from the param-values comment; drop the others (they're dead after accept). For `var(--p-<id>, DEFAULT)` in the CSS: either substitute the literal value, or if the param is still useful as a knob going forward, leave the var and update its initial declaration to the chosen value.
-4. **Unwrap the accepted content.** Delete the `<div data-impeccable-variant="N" style="display: contents">` that wraps it. Drop `data-impeccable-params` and any `data-p-*` attributes from it; those are live-mode plumbing, not source.
+4. **Unwrap the accepted content.** Delete the inner `<div data-impeccable-variant="N" style="display: contents">` that wraps it. On JSX/TSX, also delete the outer `<div data-impeccable-carbonize="SESSION_ID" style={{ display: 'contents' }}>` wrapper if present (accept adds it so ternary/`return` slots keep a single root). Drop `data-impeccable-params` and any `data-p-*` attributes; those are live-mode plumbing, not source.
 5. **Delete the inline `<style>` block, the `<!-- impeccable-param-values -->` comment if present, and both `<!-- impeccable-carbonize-start/end -->` markers.** Also drop any `@scope` rules for variants other than the accepted one; those are dead code now.
 
 After the file is clean, run `live-complete.mjs --id SESSION_ID`, verify it reports `phase: "completed"`, then poll again.
@@ -423,6 +487,28 @@ A background agent may be used for the rewrite, but the current thread is respon
 ## Handle `discard`
 
 Event: `{id, _acceptResult, _completionAck}`. The poll script already restored the original, removed all variant markers, and acknowledged `discarded` durable completion. Nothing to do unless `_completionAck.ok !== true`; in that case run `live-complete.mjs --id EVENT_ID --discarded`, then poll again.
+
+## Handle `steer`
+
+Event: `{id, message, pageUrl}`. The user typed or spoke into the global bar **Steer** control: page-level direction without picking an element or launching variant generation.
+
+The mic button uses the browser **Web Speech API** (MVP): click to start, speak, stop automatically when the utterance ends, then the transcript submits as a steer event. Click again while listening to cancel without submitting.
+
+This is lighter than `generate`: no screenshot, no element context, no variant cycling. Read `message` and inspect the live page or project files as needed, then either make edits or answer in prose.
+
+When finished:
+
+```bash
+node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID steer_done ["Optional short note for a browser toast"]
+```
+
+On failure:
+
+```bash
+node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID error "Short reason"
+```
+
+Then poll again immediately. Do not send a separate "picked up" reply. The Steer bar stays locked until `steer_done` or `error` arrives over SSE.
 
 ## Handle `prefetch`
 
@@ -436,6 +522,18 @@ Resolve `pageUrl` to the underlying file:
 Read the file into context, then poll again. No `--reply`: this is speculative pre-work; Go will come later. If you can't confidently resolve the route to a file, skip and poll again.
 
 Dedupe is the browser's job (one prefetch per unique pathname per session); trust it. If the same file shows up twice from different routes mapping to the same file, the second Read is cached anyway.
+
+## Handle `manual_edit_apply`
+
+Event: `{id, pageUrl, batch: {entries}, evidencePath?, chunk?, repair?, deadlineMs}`.
+
+The user already clicked Apply. Do not ask what to do, discard, or redirect to Go. The parent live thread keeps the foreground poll loop and sends the final `/poll --reply --data`.
+
+When native subagents are available, delegate source edits to `impeccable_manual_edit_applier` / `impeccable-manual-edit-applier`. Pass cwd, scripts path, event id, page URL, chunk/deadline, `batch`, `evidencePath`, and the canonical JSON result schema. The subagent must not poll or reply. If unavailable, apply inline with the same contract.
+
+If `repair` is present, the previous Apply changed source but final validation failed. Fix the current source and return the same canonical JSON result; do not roll files back yourself. The browser will ask the user before any rollback.
+
+After source edits finish, reply exactly once with `node .agents/skills/impeccable/scripts/live-poll.mjs --reply EVENT_ID done --data '{"status":"done","appliedEntryIds":["8hexid"],"failed":[],"files":["src/page.html"],"notes":[]}'`. Use `status:"partial"` or `status:"error"` with `failed[]` when not every entry applied. Then poll again. Never reply without the event id; `--reply done --file ...` is invalid for manual Apply.
 
 ## Exit
 

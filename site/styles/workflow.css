@@ -365,6 +365,13 @@
   min-height: auto;
 }
 
+.demo-placeholder {
+  padding: var(--spacing-lg);
+  color: var(--color-ash);
+  font-style: italic;
+  text-align: center;
+}
+
 /* (nav moved to fisheye list) */
 
 /* ============================================
@@ -1983,7 +1990,13 @@
   font-size: 12px;
   line-height: 1.7;
   color: oklch(80% 0 0);
+  /* Lines stay `pre` (a terminal keeps its alignment); when they outrun the
+     frame on narrow viewports, scroll like a real terminal instead of clipping
+     mid-word. No scrollbar chrome — it reads as terminal output, not a widget. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.why-terminal-body::-webkit-scrollbar { display: none; }
 .why-terminal-line { white-space: pre; }
 .why-terminal-line--prompt { color: oklch(90% 0 0); }
 .why-terminal-prompt { color: var(--color-accent); margin-right: 4px; }

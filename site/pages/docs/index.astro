@@ -1,91 +1,277 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
 import '../../styles/sub-pages.css';
+import '../../styles/docs-kinpaku.css';
 import {
   SKILL_CATEGORIES,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
-  CATEGORY_DESCRIPTIONS,
 } from '../../data/sub-pages-data';
 
 const entries = await getCollection('skills');
 
-const grouped: Record<string, typeof entries> = {};
+const tutorials = (await getCollection('tutorials'))
+  .sort((a, b) => a.data.order - b.data.order);
+
+const taglineFor = (slug: string) =>
+  entries.find(e => e.id === slug)?.data.tagline ?? '';
+
+const grouped: Record<string, { slug: string; tagline: string }[]> = {};
 for (const cat of CATEGORY_ORDER) {
   grouped[cat] = entries
     .filter(e => SKILL_CATEGORIES[e.id] === cat)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map(e => ({ slug: e.id, tagline: e.data.tagline }));
 }
 
-const allCommands = entries.map(e => ({
-  slug: e.id,
-  category: SKILL_CATEGORIES[e.id] || 'system',
-}));
+const session = [
+  { slug: 'shape', verb: 'Plan' },
+  { slug: 'craft', verb: 'Build' },
+  { slug: 'critique', verb: 'Review' },
+  { slug: 'polish', verb: 'Refine' },
+];
 
-const sidebarGroups: Record<string, { slug: string }[]> = {};
-for (const cat of CATEGORY_ORDER) {
-  sidebarGroups[cat] = allCommands
-    .filter(c => c.category === cat)
-    .sort((a, b) => a.slug.localeCompare(b.slug));
-}
+const startSteps = [
+  {
+    label: 'Install',
+    command: 'npx impeccable skills install',
+    line: 'Run this from the project root, then reload your AI coding tool.',
+  },
+  {
+    label: 'Set context',
+    command: '/impeccable init',
+    line: 'Answer the short setup interview. Say yes when it offers DESIGN.md.',
+  },
+  {
+    label: 'Try it',
+    command: '/impeccable polish the pricing page',
+    line: 'Pick any page or component that already exists.',
+  },
+];
+
+const choices = [
+  {
+    need: 'Set up a project',
+    command: '/impeccable init',
+    href: '/docs/init',
+    line: 'Create PRODUCT.md and DESIGN.md.',
+  },
+  {
+    need: 'Improve an existing page',
+    command: '/impeccable polish',
+    href: '/docs/polish',
+    line: 'Fix spacing, type, states, copy, and consistency.',
+  },
+  {
+    need: 'Find design issues',
+    command: '/impeccable critique',
+    href: '/docs/critique',
+    line: 'Get the highest-priority design problems.',
+  },
+  {
+    need: 'Check implementation quality',
+    command: '/impeccable audit',
+    href: '/docs/audit',
+    line: 'Check accessibility, responsiveness, performance, and detector findings.',
+  },
+  {
+    need: 'Point at UI in the browser',
+    command: '/impeccable live',
+    href: '/docs/live',
+    line: 'Pick an element, generate variants, accept one into source.',
+  },
+  {
+    need: 'Build a new feature',
+    command: '/impeccable craft',
+    href: '/docs/craft',
+    line: 'Plan, build, and visually check the feature.',
+  },
+];
+
+const chains: { id: string; a: string; b: string; arrow: string; line: string }[] = [
+  { id: 'bolder-quieter', a: 'bolder', b: 'quieter', arrow: '↔', line: 'Two halves of voice. Loud or restrained, never neutral.' },
+  { id: 'audit-harden', a: 'audit', b: 'harden', arrow: '→', line: 'Find the technical issues. Then fix them.' },
+  { id: 'critique-polish', a: 'critique', b: 'polish', arrow: '→', line: 'Review the work. Then refine it.' },
+  { id: 'shape-craft', a: 'shape', b: 'craft', arrow: '→', line: 'Plan the feature. Then build the plan.' },
+];
 ---
 
 <Base
   title="Docs | Impeccable"
-  description="23 commands for design fluency. Browse the full reference for every /impeccable sub-command."
+  description="Start using /impeccable: install, run init, create project context, then choose the right command for the job."
   activeNav="docs"
   canonicalPath="/docs"
-  bodyClass="sub-page skills-layout-page"
+  bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
 >
   <div class="skills-layout">
-    <aside class="skills-sidebar" aria-label="Commands">
-      <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
-        <span class="skills-sidebar-toggle-label">Commands</span>
-        <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <div class="skills-sidebar-inner" id="skills-sidebar-inner">
-        <p class="skills-sidebar-label">Commands</p>
-        {CATEGORY_ORDER.map(cat => (
-          <div class="skills-sidebar-group">
-            <span class="skills-sidebar-category">{CATEGORY_LABELS[cat]}</span>
-            <ul class="skills-sidebar-list">
-              {sidebarGroups[cat].map(cmd => (
-                <li>
-                  <a href={`/docs/${cmd.slug}`}>
-                    <span>{cmd.slug}</span>
-                  </a>
+    <DocsSidebar />
+
+    <div class="skills-main skills-main--docs-index">
+      <div class="docs-index">
+
+        <section class="docs-start-rail" aria-labelledby="docs-start-h">
+          <header class="docs-start-rail-head">
+            <h1 class="docs-start-rail-title" id="docs-start-h">Start with <span>/impeccable</span>.</h1>
+            <p class="docs-start-rail-lede">Install, run setup, then try one command on an existing page.</p>
+          </header>
+
+          <div class="docs-start-rail-sequence">
+            <div class="docs-start-rail-divider docs-start-rail-divider--top" aria-hidden="true">
+              <div class="ksd-divider ksd-divider--double-notch"></div>
+            </div>
+
+            <ol class="docs-start-rail-steps docs-start-rail-steps--number-gutter docs-start-rail-steps--inner-inset" aria-label="Quick start steps">
+              {startSteps.map((step, i) => (
+                <li class="docs-start-rail-step">
+                  <span class="docs-start-rail-num">{String(i + 1).padStart(2, "0")}</span>
+                  <span class="docs-start-rail-label">{step.label}</span>
+                  <code class="docs-start-rail-command">{step.command}</code>
+                  <span class="docs-start-rail-line">{step.line}</span>
                 </li>
               ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </aside>
+            </ol>
 
-    <div class="skills-main">
-      <div class="docs-index">
-        <header class="docs-index-header">
-          <h1 class="sub-page-title">Commands</h1>
-          <p class="sub-page-lede">23 commands for design fluency. One skill, six categories, from shaping a new feature to hardening it for production.</p>
-        </header>
-
-        {CATEGORY_ORDER.map(cat => (
-          <section class="docs-category-section" id={`category-${cat}`}>
-            <header class="docs-category-header">
-              <h2 class="docs-category-title">{CATEGORY_LABELS[cat]}</h2>
-              <p class="docs-category-desc">{CATEGORY_DESCRIPTIONS[cat]}</p>
-            </header>
-            <div class="docs-card-grid">
-              {grouped[cat].map(entry => (
-                <a href={`/docs/${entry.id}`} class="docs-command-card">
-                  <h3 class="docs-command-name">/impeccable {entry.id}</h3>
-                  <p class="docs-command-tagline">{entry.data.tagline}</p>
-                </a>
-              ))}
+            <div class="docs-start-rail-divider docs-start-rail-divider--bottom" aria-hidden="true">
+              <div class="ksd-divider ksd-divider--double-notch"></div>
             </div>
-          </section>
-        ))}
+          </div>
+
+          <p class="docs-start-rail-note">Full walkthrough: <a href="/tutorials/getting-started">Getting started</a>.</p>
+        </section>
+
+        <section class="docs-chooser-section" aria-labelledby="docs-chooser-h">
+          <header class="docs-chooser-head">
+            <h2 class="docs-chooser-title" id="docs-chooser-h">Choose a command.</h2>
+          </header>
+
+          <div class="docs-chooser-list">
+            {choices.map(choice => (
+              <a class="docs-chooser-list-row" href={choice.href}>
+                <span class="docs-chooser-list-need">{choice.need}</span>
+                <span class="docs-chooser-list-command">{choice.command}</span>
+                <span class="docs-chooser-list-line">{choice.line}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+
+        <!-- Live mode: visual iteration -->
+        <section class="docs-live" aria-labelledby="docs-live-h">
+          <div class="docs-live-copy">
+            <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it.</h2>
+            <p class="docs-live-lede">Use Live Mode when an issue is easier to point at than describe. Pick an element, generate variants, accept one into source.</p>
+            <p class="docs-live-cta">
+              <a class="ks-button ks-button-primary" href="/docs/live">
+                Read the live docs
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M0 4h14M10 0l4 4-4 4"/></svg>
+                </span>
+              </a>
+            </p>
+          </div>
+
+          <figure class="docs-live-figure" aria-hidden="true">
+            <div class="docs-live-frame">
+              <div class="docs-live-chrome">
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-dot"></span>
+                <span class="docs-live-url">localhost:4321</span>
+              </div>
+              <div class="docs-live-stage">
+                <div class="docs-live-target">
+                  <div class="docs-live-target-title">Hero headline</div>
+                  <div class="docs-live-target-sub">Variant 2 of 3</div>
+                </div>
+                <div class="docs-live-bar">
+                  <span class="docs-live-bar-prev">Prev</span>
+                  <span class="docs-live-bar-counter">2 / 3</span>
+                  <span class="docs-live-bar-next">Next</span>
+                  <span class="docs-live-bar-divider"></span>
+                  <span class="docs-live-bar-accept">Accept</span>
+                </div>
+              </div>
+            </div>
+          </figure>
+        </section>
+
+        <!-- A typical session: linear workflow -->
+        <section class="docs-flow-section">
+          <header class="docs-flow-head">
+            <h2 class="docs-flow-title">Full session path.</h2>
+            <p class="docs-flow-sub">Plan, build, review, refine.</p>
+          </header>
+
+          <ol class="docs-flow" aria-label="Typical session">
+            {session.map((step, i) => (
+              <li class="docs-flow-step">
+                <a class="docs-flow-link" href={`/docs/${step.slug}`}>
+                  <span class="docs-flow-verb">{step.verb}</span>
+                  <span class="docs-flow-cmd">/impeccable {step.slug}</span>
+                  <span class="docs-flow-tag">{taglineFor(step.slug)}</span>
+                </a>
+                {i < session.length - 1 && (
+                  <span class="docs-flow-arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 8" fill="none" stroke="currentColor" stroke-width="1"><path d="M0 4h22M18 0l4 4-4 4"/></svg>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+
+          <p class="docs-flow-alt">
+            Already shipped? Use <a href="/docs/polish">/impeccable polish</a> on the page that needs work, or <a href="/docs/audit">/impeccable audit</a> for checks.
+          </p>
+        </section>
+
+        <!-- Pairs and chains: the schema -->
+        <section class="docs-chains-section">
+          <header class="docs-chains-head">
+            <h2 class="docs-chains-title">Useful command pairs.</h2>
+            <p class="docs-chains-sub">Use these when one pass is not enough.</p>
+          </header>
+
+          <div class="docs-chains-grid">
+            {chains.map(chain => (
+              <article class="docs-chain">
+                <p class="docs-chain-formula">
+                  <a class="docs-chain-cmd" href={`/docs/${chain.a}`}>{chain.a}</a>
+                  <span class="docs-chain-arrow" aria-hidden="true">{chain.arrow}</span>
+                  <a class="docs-chain-cmd" href={`/docs/${chain.b}`}>{chain.b}</a>
+                </p>
+                <p class="docs-chain-line">{chain.line}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <!-- Full reference: the cheatsheet -->
+        <section class="docs-reference-section" aria-labelledby="docs-reference-h">
+          <header class="docs-reference-head">
+            <h2 class="docs-reference-title" id="docs-reference-h">Full command reference.</h2>
+          </header>
+
+          <div class="docs-reference">
+            {CATEGORY_ORDER.map(cat => (
+              <div class="docs-reference-group" id={`category-${cat}`}>
+                <p class="docs-reference-cat">{CATEGORY_LABELS[cat]} <span class="docs-reference-count">{grouped[cat].length}</span></p>
+                <ul class="docs-reference-list">
+                  {grouped[cat].map(entry => (
+                    <li>
+                      <a class="docs-reference-row" href={`/docs/${entry.slug}`}>
+                        <span class="docs-reference-name">{entry.slug}</span>
+                        <span class="docs-reference-line">{entry.tagline}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+
       </div>
     </div>
   </div>
@@ -98,22 +284,4 @@ for (const cat of CATEGORY_ORDER) {
       toggle.setAttribute('aria-expanded', String(!expanded));
     });
   </script>
-
-  <style>
-    .docs-index { padding: 2rem 0 4rem; }
-    .docs-index-header { margin-bottom: 3rem; }
-    .docs-category-section { margin-bottom: 2.5rem; }
-    .docs-category-header { margin-bottom: 1rem; }
-    .docs-category-title { font-family: var(--font-display); font-size: 1.5rem; margin: 0 0 0.25rem; }
-    .docs-category-desc { color: var(--color-ash); font-size: 0.9375rem; margin: 0; }
-    .docs-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
-    .docs-command-card {
-      display: block; padding: 1.25rem; border-radius: 8px;
-      border: 1px solid var(--color-mist); text-decoration: none; color: inherit;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .docs-command-card:hover { border-color: var(--color-accent); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-    .docs-command-name { font-family: var(--font-mono); font-size: 0.9375rem; font-weight: 600; margin: 0 0 0.375rem; }
-    .docs-command-tagline { font-size: 0.8125rem; color: var(--color-ash); margin: 0; line-height: 1.5; }
-  </style>
 </Base>

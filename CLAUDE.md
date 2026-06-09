@@ -2,7 +2,7 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.md` on every `bun run build`, so any deletion churns back on the next build. Skip the step silently and proceed.
+The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.src.md` whenever `bun run build:release` syncs tracked harness output, so any deletion churns back on the next sync. Skip the step silently and proceed.
 
 Same rule for AGENTS.md and every other harness-specific instruction file: treat post-update-cleanup as a no-op in this repo.
 
@@ -10,7 +10,7 @@ Same rule for AGENTS.md and every other harness-specific instruction file: treat
 
 There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `skill/`:
 
-- `SKILL.md` — frontmatter (with the auto-trigger-optimized description and the `allowed-tools` list), shared design laws, and the **Commands** router table.
+- `SKILL.src.md` — frontmatter (with the auto-trigger-optimized description and the `allowed-tools` list), shared design laws, and the **Commands** router table. Provider `SKILL.md` files are generated from this source.
 - `reference/` — one `<command>.md` per command (`audit.md`, `polish.md`, `critique.md`, etc.) plus the domain reference files (`typography.md`, `color-and-contrast.md`, etc.). When a sub-command is matched, the router loads its reference file.
 - `reference/brand.md` and `reference/product.md` — the two register references. SKILL.md's Setup section selects one based on the task cue, the surface in focus, or the `register` field in PRODUCT.md (first match wins).
 - `scripts/command-metadata.json` — single source of truth for each command's description, argument hint, and (eventually) category. Both the build and `pin.mjs` read from this.
@@ -26,7 +26,7 @@ Every design task belongs to one of two registers:
 - **Brand** — design IS the product: marketing, landing pages, brand sites, campaign surfaces, portfolios, long-form content. Distinctiveness is the bar. Spans every visual lane (tech-minimal, luxury, editorial-magazine, consumer-warm, brutalist, etc.) — do not default to only one.
 - **Product** — design SERVES the product: app UI, admin, dashboards, tools. Earned familiarity is the bar — fluent users of Linear / Figma / Notion / Raycast / Stripe should trust it.
 
-PRODUCT.md at the project root carries a `## Register` section with a bare value (`brand` or `product`). `/impeccable teach` asks about register first because it shapes every downstream answer.
+PRODUCT.md at the project root carries a `## Register` section with a bare value (`brand` or `product`). `/impeccable init` asks about register first because it shapes every downstream answer.
 
 Sub-command reference files add a short `## Register` section near the top *only where the answer diverges between the two*. Don't restate the register files' content in sub-commands — link instead. Sub-commands where register meaningfully diverges today: `typeset`, `animate`, `bolder`, `delight`, `colorize`, `layout`, `quieter`.
 
@@ -72,7 +72,7 @@ Skill editorials and tutorials are read by `scripts/build.js` (for taglines and 
 ## Development Server
 
 ```bash
-bun run dev        # Bun dev server at http://localhost:3000
+bun run dev        # Bun dev server at http://localhost:4321
 bun run preview    # Build + Cloudflare Pages local preview
 ```
 
@@ -88,13 +88,29 @@ Hosted on Cloudflare Pages. Static assets served from `build/`, API routes handl
 bun run deploy     # Build + deploy to Cloudflare Pages
 ```
 
-## Build System
+## Social sharing image (OG card)
 
-The build system compiles the impeccable skill from `skill/` to provider-specific formats in `dist/`:
+The OG / Twitter card is generated, not hand-drawn. To regenerate after a brand or copy change:
 
 ```bash
-bun run build      # Build all providers
-bun run rebuild    # Clean and rebuild
+bun run og-image   # → site/public/og-image-v2.jpg
+```
+
+`scripts/generate-og-image.js` renders an inline HTML card with Playwright (Neo Kinpaku brand: lacquer ground, champagne Alumni Sans headline, kinpaku-gold accent, the kintsugi-seam art from `site/public/assets/neo-kinpaku/candidates/finalists/m-01-v2-01.png`). It renders at 2× and downscales to 1200×630 with `sharp` for crisp text. The "N commands" figure is read live from `command-metadata.json`, so it never goes stale; don't hardcode it.
+
+The card is referenced as a **sitewide default** in `site/layouts/Base.astro` (every page emits `og:image` + a `summary_large_image` Twitter card; pages may override via the `ogImage` prop). The homepage sets its own `ogImage` in `site/pages/index.astro`.
+
+**Cache-busting:** social scrapers cache by URL, so the filename carries a `-v2` suffix. When you ship a visibly different card, bump the suffix in three places together (`scripts/generate-og-image.js` `OUTPUT_PATH`, `Base.astro` `SITE_OG_IMAGE`, `index.astro` `ogImage`) so X/LinkedIn/Slack re-fetch instead of serving the stale image. After deploy, prime the caches by running the URL through X's Post Inspector and LinkedIn's Post Inspector once.
+
+## Build System
+
+The build system compiles the impeccable skill from `skill/` to provider-specific formats in `dist/`. The default build is source-first and does not sync tracked root harness folders; the release build performs the tracked distribution sync:
+
+```bash
+bun run build            # Build dist/site output without syncing root harness dirs
+bun run build:release    # Build dist/site output and sync root harness dirs + plugin/
+bun run rebuild          # Clean and rebuild without root harness sync
+bun run rebuild:release  # Clean and rebuild with root harness sync
 ```
 
 Source files use placeholders that get replaced per-provider:
@@ -105,9 +121,13 @@ Source files use placeholders that get replaced per-provider:
 - `{{available_commands}}` — auto-populated list of commands (from `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`)
 - `{{scripts_path}}` — provider-aware path to the skill's scripts directory
 
-### Harness output directories are tracked
+### Generated provider output policy
 
-`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other 8 harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them. Run `bun run build` to refresh them after editing `skill/`.
+`.claude/skills/`, `.cursor/skills/`, `.agents/skills/`, and the other harness directories are **intentionally committed to the repo**. `npx skills` reads them directly from this repo at install time, and they enable clean submodule use. Do not gitignore them.
+
+They are generated distribution artifacts, not authoring surfaces. Normal development PRs should be source-first: edit and stage `skill/`, `scripts/`, `cli/`, `site/`, `extension/`, `functions/`, and `tests/`; do not stage regenerated provider permutations unless the task is explicitly a release/generated-output sync or a build-system change. Run `bun run build` for validation after editing `skill/`, transformer code, generated site counts, or provider behavior. Use `bun run build:release` only when intentionally refreshing tracked harness outputs.
+
+After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR.
 
 Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`) ARE gitignored.
 
@@ -118,8 +138,9 @@ Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock
 ## Testing
 
 ```bash
-bun run test            # Default suite: unit + static framework fixtures
-bun run test:live-e2e   # Opt-in: full-cycle live-mode E2E across framework fixtures
+bun run test                  # Default suite: unit + static framework fixtures
+bun run test:live-e2e         # Opt-in: full-cycle live-mode E2E across framework fixtures
+bun run test:skill-behavior   # Opt-in: LLM-backed checks that the skill text actually drives the agent's setup flow
 ```
 
 Unit tests (build orchestration, detector logic) run via `bun test`. Fixture tests (jsdom-based HTML detection) run via `node --test` because bun is too slow with jsdom. The `test` script handles this split automatically.
@@ -138,13 +159,46 @@ IMPECCABLE_E2E_DEBUG=1 bun run test:live-e2e                # dump page DOM + de
 
 **One-time setup**: `npx playwright install chromium` (the suite uses a specific Chromium build keyed to the bundled Playwright version).
 
-**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `skill/scripts/live-*.{mjs,js}`.
+**Kept out of the default `bun run test`** because (a) it does real `npm install` per fixture, (b) it boots framework dev servers, (c) wall time is ~2 minutes, and (d) it requires Playwright's browser cache. Run it locally before shipping changes to anything in `skill/scripts/live-*.{mjs,js}` or `skill/scripts/live/**`.
 
 The agent is pluggable via a one-method interface in `tests/live-e2e/agent.mjs`: `generateVariants(event, context) → { scopedCss, variants[] }`. The default fake agent emits canned variants that exercise all three param kinds (`range`, `steps`, `toggle`). The orchestrator (wrap, write, accept, carbonize) is agent-agnostic.
 
 **LLM agent (opt-in)**: set `IMPECCABLE_E2E_AGENT=llm` to swap the fake agent for `tests/live-e2e/agents/llm-agent.mjs`, which calls Claude (default Haiku 4.5) via `@anthropic-ai/sdk`. Requires `ANTHROPIC_API_KEY` in env; the test runner skips with a clear message when it's unset. Override the model with `IMPECCABLE_E2E_LLM_MODEL=claude-sonnet-4-6` if Haiku produces unreliable JSON. Caching is on — live.md is the cacheable prefix, and after the first call subsequent fixtures pay only the cache-read rate. Pass rate on a typical sweep is 18/19; the modal fixture's intrinsic state-loss flake is amplified by LLM latency and may need a re-run. **This path hits the API and costs money** — keep it out of CI unless you really want it there.
 
 Adding a new fixture is a matter of cloning a directory under `tests/framework-fixtures/`, swapping the source files, and writing a `fixture.json`. See `tests/framework-fixtures/README.md` for the full schema.
+
+### Skill-behavior tests
+
+`tests/skill-behavior/scenarios.test.mjs` is the LLM-backed safety net for edits to `skill/SKILL.src.md` and the Setup-adjacent reference files (`init.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). It inlines the source `skill/SKILL.src.md` into the system prompt of a real LLM, gives the agent `bash` / `read` / `write` / `list` tools scoped to a temp workspace, and asserts on the tool-call trace — not on the model's free-form output. The trace is the source of truth.
+
+```bash
+bun run test:skill-behavior                                              # full suite (27 tests, ~5 min, ~$0.50-1.50 across providers)
+IMPECCABLE_SKILL_BEHAVIOR_MODELS=gemini-3.1-flash-lite bun run test:skill-behavior   # scope to one provider
+IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump per-scenario trace JSON to stderr (use when iterating)
+```
+
+**Three providers per run, every run.** The suite always exercises `claude-sonnet-4-6`, `gpt-5.5`, and `gemini-3.1-flash-lite`. Sonnet and GPT-5.5 are production-tier, matching what users actually run, so the pass/fail signal reflects real agent behavior rather than a cheap proxy; gemini stays on the flash-lite tier. **Don't substitute Claude alone**: many of the most useful findings come from divergence between providers.
+
+**Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
+
+**Nine scenarios:**
+1. empty workspace → agent loads `reference/init.md`
+2. PRODUCT.md only → loads `brand.md`
+3. PRODUCT.md + DESIGN.md → loads `brand.md` + consults the design system
+4. context already loaded in turn 1 → turn 2 does **not** re-run `context.mjs`
+5. PRODUCT.md without `## Register` field → agent infers `brand` from task cue
+6. `/impeccable polish` → loads `reference/polish.md`
+7. `/impeccable audit` → loads `reference/audit.md`
+8. existing SvelteKit project → agent reads at least one project code file
+9. `context.mjs` emits `UPDATE_AVAILABLE` (seeded newer version) → agent surfaces it but does **not** auto-run `npx impeccable skills update`
+
+**Baseline.** The 21-22 / 24 baseline (with stable gpt scenario 6/7 failures) was measured on the old cheap tier (`claude-haiku-4-5` / `gpt-5.4-mini`). It needs re-measuring on the current `claude-sonnet-4-6` / `gpt-5.5` lineup; the production-tier models are expected to do better on the sub-command routing scenarios the old gpt tier failed. See `tests/skill-behavior/README.md`.
+
+**Cost.** Each run is real LLM calls, billed to the keys in `.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
+
+**Adding a scenario.** Write the fixture in `tests/skill-behavior/fixtures.mjs`, add the `it()` block in `scenarios.test.mjs` (the harness uses the source `skill/` dir via a symlink, so no rebuild needed), and update the baseline table in the suite's README. The harness's `fileLoaded(trace, filename)` helper checks both `read` and bash `cat` — different models prefer different tools.
+
+**The harness symlinks source, not built output.** This is deliberate so SKILL.md / reference / `scripts/context.mjs` edits show up immediately without `bun run build:skills`. The trade-off: reference files surface their raw `{{placeholders}}`, but the assertions key on tool calls rather than content, so it doesn't matter for correctness.
 
 ## CLI
 
@@ -201,7 +255,7 @@ Workflow for any component:
 3. Commit and push to `main`.
 4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`.
 
-The script refuses to run if: the working tree is dirty, HEAD is ahead of origin, the tag already exists, the matching changelog entry is missing, or (for skill/extension) `bun run build` / `bun run build:extension` produces uncommitted changes — meaning the harness output dirs or `extension/detector/` files weren't refreshed before the bump was committed.
+The script refuses to run if: the working tree is dirty, HEAD is ahead of origin, the tag already exists, the matching changelog entry is missing, or (for skill/extension) `bun run build:release` / `bun run build:extension` produces uncommitted changes — meaning the harness output dirs or `extension/detector/` files weren't refreshed before the bump was committed.
 
 Skill releases attach `dist/universal.zip`. Extension releases run `bun run build:extension` first and attach `dist/extension.zip`. CLI releases print a reminder to run `npm publish` separately; extension releases print a reminder to upload the zip to the Chrome Web Store dashboard.
 
@@ -212,7 +266,7 @@ If you need to fix release notes after the fact (typo, missing thank-you, format
 All commands live under `/impeccable`. To add a new one:
 
 1. Create `skill/reference/<command>.md` with the command's instructions (this is what the LLM loads when the command is invoked)
-2. Add a row to the **Sub-command reference table** in `skill/SKILL.md`
+2. Add a row to the **Sub-command reference table** in `skill/SKILL.src.md`
 3. Add an entry to the **Command menu** section in the same file
 4. Add the command name to `IMPECCABLE_SUB_COMMANDS` in `scripts/lib/utils.js`
 5. Add it to `VALID_COMMANDS` in `skill/scripts/pin.mjs`
@@ -258,7 +312,7 @@ Every command should have an editorial file eventually, but the build does not r
 | `cli/engine/detect-antipatterns-browser.js` | `bun run build:browser` |
 | `extension/detector/detect.js` + `extension/detector/antipatterns.json` | `bun run build:extension` |
 | `site/public/js/generated/counts.js` (`DETECTION_COUNT`) | `bun run build` |
-| `skill/SKILL.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
+| `skill/SKILL.src.md` and `reference/*.md` | Hand-edited if the rule introduces new design guidance |
 
 Always run all three builds and the test suite after a rule change:
 
@@ -273,7 +327,7 @@ bun run build && bun run build:browser && bun run build:extension && bun run tes
 3. **Rule entry** in the `ANTIPATTERNS` array: `id`, `category` (`slop` for AI tells, `quality` for real design or a11y issues), `name`, `description`, optional `skillSection` and `skillGuideline`.
 4. **Pure check function** `checkXxx(opts)` returning `[{ id, snippet }]`. No DOM access in the pure function.
 5. **Two adapters**: `checkElementXxxDOM(el)` for the browser (`getComputedStyle` + `getBoundingClientRect`) and `checkElementXxx(el, tag, window)` for jsdom (`parseFloat(style.width)` instead of layout). Wire **both** into **both** element loops in `cli/engine/detect-antipatterns.mjs` — the browser loop (~line 1837) and the jsdom loop in `detectHtml` (~line 2058). Forgetting one is the most common mistake; symptom is "test passes, live page silent" or vice versa.
-6. **Verify on a live page**: `http://localhost:3000/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
+6. **Verify on a live page**: `http://localhost:4321/fixtures/antipatterns/{rule-id}.html` and the homepage (no false positives). The two adapter paths can disagree, so manual browser checks catch what the fixture test can't.
 
 ### Conventions and jsdom gotchas
 
