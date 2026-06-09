@@ -27,7 +27,7 @@ export const SUITES = {
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
       /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|impeccable-paths|is-generated))/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -41,6 +41,7 @@ export const SUITES = {
           'tests/lib/utils.test.js',
           'tests/lib/transformers/factory.test.js',
           'tests/lib/transformers/providers.test.js',
+          'tests/docs-integrity.test.js',
           'tests/skills-cli.test.js',
         ],
       },
