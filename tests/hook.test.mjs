@@ -904,13 +904,26 @@ describe('parseApplyPatchPaths()', () => {
 });
 
 describe('resolveTargetFiles()', () => {
-  it('prefers file_path when present and falls back to apply_patch command', () => {
+  it('uses file_path when present and falls back to apply_patch command', () => {
     assert.deepEqual(resolveTargetFiles({ tool_input: { file_path: '/a/b.tsx' } }, '/proj'), ['/a/b.tsx']);
     assert.deepEqual(
       resolveTargetFiles({ tool_name: 'apply_patch', tool_input: { command: '*** Update File: src/x.css\n' } }, '/proj'),
       ['/proj/src/x.css'],
     );
     assert.deepEqual(resolveTargetFiles({ tool_name: 'Bash', tool_input: { command: 'echo hi' } }, '/proj'), []);
+  });
+
+  it('includes every apply_patch file even when file_path is also present', () => {
+    assert.deepEqual(
+      resolveTargetFiles({
+        tool_name: 'apply_patch',
+        tool_input: {
+          file_path: '/proj/src/App.jsx',
+          command: '*** Update File: src/App.jsx\n*** Update File: src/styles.css\n',
+        },
+      }, '/proj'),
+      ['/proj/src/App.jsx', '/proj/src/styles.css'],
+    );
   });
 
   it('accepts Cursor Write/StrReplace path field and top-level file_path', () => {
@@ -1071,6 +1084,73 @@ describe('runHook() — co-located stylesheet scan', () => {
     });
     assert.match(r.stdout, /Required design corrections/);
     assert.match(r.stdout, /styles\.sass/);
+  });
+
+  it('continues scanning co-located styles after the primary file has fresh findings', async () => {
+    const app = write('src/App.jsx', 'export default function App() { return <main className="border-l-4 border-blue-500" />; }');
+    const styles = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    const seen = [];
+    const det = {
+      detectText: (content, filePath) => {
+        seen.push(filePath);
+        if (filePath.endsWith('App.jsx')) return [finding('side-tab', 1)];
+        if (filePath.endsWith('styles.css')) return [finding('overused-font', 1)];
+        return [];
+      },
+      detectHtml: () => [],
+    };
+
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'co-scan-fresh-primary',
+        cwd,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'apply_patch',
+        tool_input: { command: `*** Update File: ${app}\n` },
+      }),
+      env: {},
+      cwd,
+      detector: det,
+    });
+
+    assert.match(r.stdout, /Required design corrections/);
+    assert.match(r.stdout, /App\.jsx/);
+    assert.ok(seen.includes(app), 'primary file should be scanned');
+    assert.ok(seen.includes(styles), 'co-located stylesheet should still be scanned');
+    const cache = readCache(cwd);
+    const files = cache.sessions['co-scan-fresh-primary'].files;
+    assert.deepEqual(files[app].findings, ['side-tab:1']);
+    assert.deepEqual(files[styles].findings, ['overused-font:1']);
+  });
+
+  it('does not bump edit count for passively co-scanned stylesheets', async () => {
+    const app = write('src/App.jsx', 'export default function App() { return <main className="x" />; }');
+    const styles = write('src/styles.css', "body { font-family: 'Inter', sans-serif; }");
+    const det = {
+      detectText: (content, filePath) => (
+        filePath.endsWith('styles.css') ? [finding('overused-font', 1)] : []
+      ),
+      detectHtml: () => [],
+    };
+
+    const r = await runHook({
+      stdinJson: JSON.stringify({
+        session_id: 'co-scan-edit-count',
+        cwd,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'apply_patch',
+        tool_input: { command: `*** Update File: ${app}\n` },
+      }),
+      env: {},
+      cwd,
+      detector: det,
+    });
+
+    assert.match(r.stdout, /styles\.css/);
+    const cache = readCache(cwd);
+    const files = cache.sessions['co-scan-edit-count'].files;
+    assert.equal(files[app].editCount, 1);
+    assert.equal(files[styles].editCount || 0, 0);
   });
 
   it('does not scan imported styles from a traversal-looking primary path', async () => {

@@ -8,7 +8,9 @@
 
 import path from 'path';
 import { createWriteStream, existsSync, statSync } from 'fs';
-import archiver from 'archiver';
+import * as archiverModule from 'archiver';
+
+const createArchiver = archiverModule.default || archiverModule.create || archiverModule;
 
 /**
  * Create ZIP file for a provider directory
@@ -28,7 +30,7 @@ export async function createProviderZip(providerDir, distDir, providerName) {
   try {
     await new Promise((resolve, reject) => {
       const output = createWriteStream(zipPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const archive = createArchiver('zip', { zlib: { level: 9 } });
 
       output.on('close', resolve);
       archive.on('error', reject);

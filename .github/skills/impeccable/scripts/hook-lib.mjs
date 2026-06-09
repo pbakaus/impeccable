@@ -20,6 +20,7 @@
  *   writeAuditLog(env, entry)
  *   loadDetector() -> Promise<{ detectText, detectHtml }>
  *   matchesAnyGlob(filePath, globs)
+ *   normalizeScanTargets(primaryTargets, projectCwd)
  *   runHook(deps) -> { exitCode, stdout, audit, reason? }
  *
  * Design notes:
@@ -617,20 +618,26 @@ export function parseApplyPatchPaths(command, projectCwd) {
 
 export function resolveTargetFiles(event, projectCwd) {
   const ti = event?.tool_input;
+  const out = [];
+  const add = (filePath) => {
+    if (typeof filePath !== 'string' || !filePath) return;
+    if (!out.includes(filePath)) out.push(filePath);
+  };
+
+  if (event?.tool_name === 'apply_patch' && ti && typeof ti.command === 'string') {
+    for (const filePath of parseApplyPatchPaths(ti.command, projectCwd)) add(filePath);
+  }
   if (ti && typeof ti.file_path === 'string' && ti.file_path) {
-    return [ti.file_path];
+    add(ti.file_path);
   }
   // Cursor Write / StrReplace use `path`, not `file_path`.
   if (ti && typeof ti.path === 'string' && ti.path) {
-    return [ti.path];
+    add(ti.path);
   }
   if (typeof event?.file_path === 'string' && event.file_path) {
-    return [event.file_path];
+    add(event.file_path);
   }
-  if (event?.tool_name === 'apply_patch' && ti && typeof ti.command === 'string') {
-    return parseApplyPatchPaths(ti.command, projectCwd);
-  }
-  return [];
+  return out;
 }
 
 export function resolveHarness(env = {}, event = null) {
@@ -734,7 +741,7 @@ export function coLocatedStylesheets(filePath) {
   return [...candidates].filter((p) => fs.existsSync(p));
 }
 
-export function expandScanTargets(primaryTargets, projectCwd) {
+export function normalizeScanTargets(primaryTargets, projectCwd) {
   if (!Array.isArray(primaryTargets) || primaryTargets.length === 0) return [];
   const ordered = [];
   const seen = new Set();
@@ -754,11 +761,26 @@ export function expandScanTargets(primaryTargets, projectCwd) {
     return abs;
   };
 
+  for (const p of primaryTargets) add(p);
+  return ordered;
+}
+
+export function expandScanTargets(primaryTargets, projectCwd) {
+  const ordered = normalizeScanTargets(primaryTargets, projectCwd);
+  if (ordered.length === 0) return [];
+  const seen = new Set(ordered);
+  const baseCwd = projectCwd || process.cwd();
+  const add = (p) => {
+    if (ordered.length >= MAX_SCAN_TARGETS) return;
+    const abs = hasPathTraversal(p) ? p : (path.isAbsolute(p) ? p : path.resolve(baseCwd, p));
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    ordered.push(abs);
+    return abs;
+  };
+
   const normalizedPrimaries = [];
-  for (const p of primaryTargets) {
-    const normalized = add(p);
-    if (normalized) normalizedPrimaries.push(normalized);
-  }
+  for (const p of ordered) normalizedPrimaries.push(p);
 
   for (const p of normalizedPrimaries) {
     if (ordered.length >= MAX_SCAN_TARGETS) break;
@@ -924,7 +946,9 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     audit.harness = harness;
 
     const projectCwd = event.cwd || cwd;
-    const targetFiles = expandScanTargets(resolveTargetFiles(event, projectCwd), projectCwd);
+    const primaryFiles = normalizeScanTargets(resolveTargetFiles(event, projectCwd), projectCwd);
+    const primaryFileSet = new Set(primaryFiles);
+    const targetFiles = expandScanTargets(primaryFiles, projectCwd);
     audit.session = event.session_id || null;
     if (event.tool_name) audit.tool = event.tool_name;
 
@@ -947,6 +971,8 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
     let pendingWinner = null;
     let cleanWinner = null;
+    let freshWinner = null;
+    let suppressionWinner = null;
     let detectorThrewAny = false;
     let lastSkip = 'no-scannable-file';
     let suppressedHit = false;
@@ -980,24 +1006,19 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
         continue;
       }
 
-      const editCount = bumpEditCount(cache, sessionId, filePath);
-      audit.editCount = editCount;
+      if (primaryFileSet.has(filePath)) {
+        const editCount = bumpEditCount(cache, sessionId, filePath);
+        audit.editCount = editCount;
 
-      if (editCount > EDIT_COUNT_THRESHOLD) {
-        const wasJustCrossed = editCount === EDIT_COUNT_THRESHOLD + 1;
-        persistCache(projectCwd, cache);
-        if (wasJustCrossed) {
-          const text = suppressionNotice(relativize(filePath, projectCwd));
-          return {
-            exitCode: 0,
-            stdout: payload(text, 'PostToolUse', harness),
-            emission: { kind: 'suppression', file: filePath },
-            audit: { ...audit, suppressed: true, emitted: true, durationMs: Date.now() - started },
-          };
+        if (editCount > EDIT_COUNT_THRESHOLD) {
+          const wasJustCrossed = editCount === EDIT_COUNT_THRESHOLD + 1;
+          if (wasJustCrossed && !suppressionWinner) {
+            suppressionWinner = { filePath };
+          }
+          lastSkip = 'suppressed';
+          suppressedHit = true;
+          continue;
         }
-        lastSkip = 'suppressed';
-        suppressedHit = true;
-        continue;
       }
 
       const content = fs.readFileSync(filePath, 'utf-8');
@@ -1016,14 +1037,10 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
       if (fresh.length > 0) {
         rememberFindings(cache, sessionId, filePath, fresh);
-        persistCache(projectCwd, cache);
-        const text = renderTemplate(fresh, filePath, config, { cwd: projectCwd });
-        return {
-          exitCode: 0,
-          stdout: payload(text, 'PostToolUse', harness),
-          emission: { kind: 'fresh', file: filePath, findings: fresh },
-          audit: { ...audit, emitted: true, chars: text.length, durationMs: Date.now() - started },
-        };
+        if (!freshWinner) {
+          freshWinner = { filePath, findings: fresh };
+        }
+        continue;
       }
 
       if (detectorThrew) {
@@ -1040,6 +1057,22 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     }
 
     persistCache(projectCwd, cache);
+
+    if (freshWinner) {
+      const text = renderTemplate(freshWinner.findings, freshWinner.filePath, config, { cwd: projectCwd });
+      return {
+        exitCode: 0,
+        stdout: payload(text, 'PostToolUse', harness),
+        emission: { kind: 'fresh', file: freshWinner.filePath, findings: freshWinner.findings },
+        audit: {
+          ...audit,
+          file: freshWinner.filePath,
+          emitted: true,
+          chars: text.length,
+          durationMs: Date.now() - started,
+        },
+      };
+    }
 
     if (detectorThrewAny && !pendingWinner && !cleanWinner) {
       return result({ emitted: false, error: 'detector-threw', durationMs: Date.now() - started });
@@ -1062,6 +1095,22 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
           kind: 'pending',
           pending: pendingWinner.known.length,
           chars: text.length,
+          durationMs: Date.now() - started,
+        },
+      };
+    }
+
+    if (suppressionWinner) {
+      const text = suppressionNotice(relativize(suppressionWinner.filePath, projectCwd));
+      return {
+        exitCode: 0,
+        stdout: payload(text, 'PostToolUse', harness),
+        emission: { kind: 'suppression', file: suppressionWinner.filePath },
+        audit: {
+          ...audit,
+          file: suppressionWinner.filePath,
+          suppressed: true,
+          emitted: true,
           durationMs: Date.now() - started,
         },
       };
