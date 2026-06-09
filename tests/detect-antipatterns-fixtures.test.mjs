@@ -407,6 +407,18 @@ describe('detectHtml — repeated-section-kickers', () => {
     'Figure Caption Label',
     'Normal Case Kicker',
     'Intentional Brand Label',
+    'Garden Suite',
+    'Sea Loft',
+    'Cliff Suite',
+    '/impeccabletypeset',
+    '/impeccablelayout',
+    '/impeccablecolorize',
+    '/impeccablecraft',
+    '/impeccableaudit',
+    '/impeccablepolish',
+    'Mockup Hero Variant One',
+    'Mockup Hero Variant Two',
+    'Mockup Hero Variant Three',
   ];
 
   it('repeated-section-kickers: flags only repeated section scaffolding', async () => {
@@ -471,6 +483,10 @@ describe('detectHtml — cramped-padding (wrapper variant)', () => {
     'pass-bg-padded',
     'pass-outline-padded',
     'pass-image-only',
+    'pass-margin-inset',
+    'pass-inner-shell',
+    'pass-same-bg-child',
+    'pass-inner-text-surface',
   ];
 
   it('cramped-padding (wrapper): flags only the should-flag column', async () => {
@@ -541,8 +557,26 @@ describe('detectHtml — clipped-overflow-container', () => {
   // (overflow hidden/clip) with an absolutely-positioned descendant clips
   // tooltips/menus that need to escape. Real scroll regions (auto/scroll),
   // visible overflow, and clipping containers without positioned children pass.
-  const SHOULD_FLAG = ['flag-overflow-hidden', 'flag-overflow-clip'];
-  const SHOULD_PASS = ['pass-hidden-no-abs', 'pass-visible-abs', 'pass-scroll-abs'];
+  const SHOULD_FLAG = [
+    'flag-overflow-hidden',
+    'flag-overflow-clip',
+    'flag-overflow-negative',
+    'flag-overflow-right',
+    'flag-shadow-utility',
+    'flag-overlay-surface',
+  ];
+  const SHOULD_PASS = [
+    'pass-hidden-no-abs',
+    'pass-visible-abs',
+    'pass-scroll-abs',
+    'pass-contained-abs',
+    'pass-button-shine',
+    'pass-crop-photo',
+    'pass-contained-overlay',
+    'pass-carousel-viewport',
+    'pass-fisheye-list',
+    'pass-split-container',
+  ];
 
   it('clipped-overflow-container: flags only clipping ancestors with positioned children', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'clipped-overflow-container.html'));

@@ -69,6 +69,54 @@
     .brand-system {
       min-height: 120px;
     }
+    .card-grid,
+    .command-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 24px;
+    }
+    .suite-card,
+    .command-card {
+      display: block;
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid #d8cec0;
+      background: #fff;
+      text-align: left;
+    }
+    .taxonomy-label {
+      display: block;
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 16px;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      color: #5b5046;
+    }
+    .suite-card h3,
+    .command-card h3 {
+      font-size: 24px;
+      line-height: 30px;
+    }
+    .command-carousel,
+    .hidden-mockup {
+      display: grid;
+      gap: 12px;
+      margin: 0 0 24px;
+    }
+    .command-spread,
+    .mockup-hero {
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid #d8cec0;
+      background: #fff;
+    }
+    .command-spread h3,
+    .mockup-hero h2 {
+      font-size: 24px;
+      line-height: 30px;
+    }
   </style>
 </head>
 <body>
@@ -140,6 +188,75 @@
         <h2>"Intentional Brand Label"</h2>
         <p>Deliberate brand systems can opt out with an explicit marker.</p>
       </section>
+
+      <div class="card-grid" aria-label="Room cards">
+        <article class="suite-card">
+          <span class="taxonomy-label">Suite</span>
+          <h3>"Garden Suite"</h3>
+          <p>Repeated category labels inside cards are structured metadata, not page-section scaffolding.</p>
+        </article>
+        <article class="suite-card">
+          <span class="taxonomy-label">Suite</span>
+          <h3>"Sea Loft"</h3>
+          <p>The label is useful because the user is scanning sibling cards.</p>
+        </article>
+        <article class="suite-card">
+          <span class="taxonomy-label">Suite</span>
+          <h3>"Cliff Suite"</h3>
+          <p>Repeating it here does not create the generic section-kicker smell.</p>
+        </article>
+      </div>
+
+      <div class="command-grid" aria-label="Command cards">
+        <button type="button" class="command-card">
+          <span class="taxonomy-label">Refine</span>
+          <h3>"/impeccabletypeset"</h3>
+          <p>Command category labels can repeat across many action cards.</p>
+        </button>
+        <button type="button" class="command-card">
+          <span class="taxonomy-label">Refine</span>
+          <h3>"/impeccablelayout"</h3>
+          <p>The repeated taxonomy helps compare tools inside the same group.</p>
+        </button>
+        <button type="button" class="command-card">
+          <span class="taxonomy-label">Refine</span>
+          <h3>"/impeccablecolorize"</h3>
+          <p>This is a card-grid label, not a page-level eyebrow before a section.</p>
+        </button>
+      </div>
+
+      <div class="command-carousel" aria-label="Command carousel">
+        <div class="command-spread" data-category="create">
+          <span class="taxonomy-label">Create</span>
+          <h3>"/impeccablecraft"</h3>
+          <p>Carousel slides can repeat category labels as navigational taxonomy.</p>
+        </div>
+        <div class="command-spread" data-category="evaluate">
+          <span class="taxonomy-label">Evaluate</span>
+          <h3>"/impeccableaudit"</h3>
+          <p>The slash command heading identifies an item, not a page section.</p>
+        </div>
+        <div class="command-spread" data-category="harden">
+          <span class="taxonomy-label">Harden</span>
+          <h3>"/impeccablepolish"</h3>
+          <p>The label is a category chip for a selectable command slide.</p>
+        </div>
+      </div>
+
+      <div class="hidden-mockup" aria-hidden="true">
+        <div class="mockup-hero">
+          <span class="taxonomy-label">Amalfi Coast</span>
+          <h2>"Mockup Hero Variant One"</h2>
+        </div>
+        <div class="mockup-hero">
+          <span class="taxonomy-label">Amalfi Coast</span>
+          <h2>"Mockup Hero Variant Two"</h2>
+        </div>
+        <div class="mockup-hero">
+          <span class="taxonomy-label">Amalfi Coast</span>
+          <h2>"Mockup Hero Variant Three"</h2>
+        </div>
+      </div>
     </section>
   </main>
 </body>

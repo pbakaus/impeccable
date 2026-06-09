@@ -974,11 +974,16 @@ function parseAnyColor(s) {
   // OKLCH parser. Tailwind v4's CSS minifier squishes the space after
   // `%` ("21.5%.02 50"), so the separator between L and C may be absent.
   // Match L (with optional %), then C and H separated permissively.
-  m = str.match(/oklch\(\s*([\d.]+)(%?)\s*[\s,]*\s*([\d.]+)\s*[\s,]+\s*([-\d.]+)(?:deg)?\s*\)/i);
+  m = str.match(/oklch\(\s*([\d.]+)(%?)\s*[\s,]*\s*([\d.]+)\s*[\s,]+\s*([-\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)/i);
   if (m) {
     const Lnum = parseFloat(m[1]);
     const L = m[2] === '%' ? Lnum / 100 : Lnum;
-    return oklchToRgb(L, parseFloat(m[3]), parseFloat(m[4]));
+    const rgb = oklchToRgb(L, parseFloat(m[3]), parseFloat(m[4]));
+    if (m[5] !== undefined) {
+      const alpha = parseFloat(m[5]);
+      rgb.a = m[6] === '%' ? alpha / 100 : alpha;
+    }
+    return rgb;
   }
   return null;
 }
@@ -1007,7 +1012,17 @@ const REPEATED_KICKER_SKIP_SELECTOR = [
   '[role="navigation"]',
   '[aria-label*="breadcrumb" i]',
   '[class*="breadcrumb" i]',
+  '[aria-hidden="true"]',
   '[data-impeccable-allow-kickers]',
+].join(',');
+
+const REPEATED_KICKER_CARD_CONTEXT_SELECTOR = [
+  'article',
+  'button',
+  'a',
+  'li',
+  '[role="listitem"]',
+  '[role="option"]',
 ].join(',');
 
 function cleanInlineText(el) {
@@ -1017,6 +1032,11 @@ function cleanInlineText(el) {
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isRepeatedKickerCardContext(heading, kicker) {
+  const item = heading.closest?.(REPEATED_KICKER_CARD_CONTEXT_SELECTOR);
+  return Boolean(item && (!item.contains || item.contains(kicker)));
 }
 
 function isRepeatedKickerCandidate(opts) {
@@ -1032,6 +1052,7 @@ function isRepeatedKickerCandidate(opts) {
   } = opts;
   if (!['h2', 'h3', 'h4'].includes(headingTag)) return false;
   if (!headingText || headingText.length < 3) return false;
+  if (/^\/[\w-]+/i.test(headingText.replace(/^"|"$/g, '').trim())) return false;
   if (!(headingFontSize >= 20)) return false;
   if (!kickerTag || HEADING_TAGS.has(kickerTag)) return false;
   if (!['p', 'span', 'div', 'small'].includes(kickerTag)) return false;
@@ -1053,6 +1074,7 @@ function collectRepeatedSectionKickerCandidates(doc, getStyle, resolveLetterSpac
     if (heading.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
     const kicker = heading.previousElementSibling;
     if (!kicker || kicker.closest?.(REPEATED_KICKER_SKIP_SELECTOR)) continue;
+    if (isRepeatedKickerCardContext(heading, kicker)) continue;
 
     const headingStyle = getStyle(heading);
     const kickerStyle = getStyle(kicker);
@@ -1235,6 +1257,84 @@ function resolveLengthPx(value, fontSizePx) {
   return num * fontSizePx;
 }
 
+function cssColorIsTransparent(value) {
+  if (!value) return true;
+  const str = String(value).trim().toLowerCase();
+  if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return true;
+  const parsed = parseAnyColor(str);
+  if (parsed) return (parsed.a ?? 1) <= 0.05;
+  return /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(str);
+}
+
+function colorsNearlyMatch(a, b) {
+  const ca = parseAnyColor(a);
+  const cb = parseAnyColor(b);
+  if (!ca || !cb) return false;
+  const alphaDelta = Math.abs((ca.a ?? 1) - (cb.a ?? 1));
+  const channelDelta = Math.max(
+    Math.abs(ca.r - cb.r),
+    Math.abs(ca.g - cb.g),
+    Math.abs(ca.b - cb.b),
+  );
+  return alphaDelta <= 0.03 && channelDelta <= 3;
+}
+
+function getComputedStyleFor(win, el) {
+  if (win && typeof win.getComputedStyle === 'function') {
+    try { return win.getComputedStyle(el); } catch {}
+  }
+  if (typeof getComputedStyle === 'function') {
+    try { return getComputedStyle(el); } catch {}
+  }
+  return null;
+}
+
+function hasVisibleBackgroundBoundary(style, el, win) {
+  const bg = style?.backgroundColor || '';
+  if (cssColorIsTransparent(bg)) return false;
+
+  let parent = el?.parentElement || null;
+  while (parent) {
+    const parentStyle = getComputedStyleFor(win, parent);
+    const parentBg = parentStyle?.backgroundColor || '';
+    if (!cssColorIsTransparent(parentBg)) {
+      return !colorsNearlyMatch(bg, parentBg);
+    }
+    parent = parent.parentElement;
+  }
+
+  return true;
+}
+
+const TEXT_EDGE_TAGS = new Set(['A', 'BUTTON', 'CODE', 'DD', 'DT', 'FIGCAPTION', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'P', 'PRE', 'SPAN', 'TD', 'TH']);
+
+function hasMeaningfulDirectText(node) {
+  if (!node?.childNodes) return false;
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3 && child.textContent.trim().length > 4) return true;
+  }
+  return false;
+}
+
+function textDescendantsFlushSides(el, rect) {
+  const flush = { top: false, right: false, bottom: false, left: false };
+  if (!rect || !el?.querySelectorAll) return flush;
+  const TEXT_EDGE_THRESHOLD = 4;
+  const candidates = el.querySelectorAll('a, button, code, dd, dt, figcaption, h1, h2, h3, h4, h5, h6, li, p, pre, span, td, th');
+  for (const node of candidates) {
+    if (!TEXT_EDGE_TAGS.has(node.tagName) || !hasMeaningfulDirectText(node)) continue;
+    let nodeRect = null;
+    try { nodeRect = node.getBoundingClientRect(); } catch {}
+    if (!nodeRect || nodeRect.width <= 0 || nodeRect.height <= 0) continue;
+    if (nodeRect.bottom < rect.top || nodeRect.top > rect.bottom || nodeRect.right < rect.left || nodeRect.left > rect.right) continue;
+    if (nodeRect.top - rect.top <= TEXT_EDGE_THRESHOLD) flush.top = true;
+    if (rect.right - nodeRect.right <= TEXT_EDGE_THRESHOLD) flush.right = true;
+    if (rect.bottom - nodeRect.bottom <= TEXT_EDGE_THRESHOLD) flush.bottom = true;
+    if (nodeRect.left - rect.left <= TEXT_EDGE_THRESHOLD) flush.left = true;
+  }
+  return flush;
+}
+
 // Pure quality checks. Most run on computed CSS and DOM-only inputs (work in
 // jsdom and the browser). Two checks (line-length, cramped-padding) gate on
 // element rect dimensions, which jsdom can't compute — pass `rect: null` from
@@ -1264,7 +1364,8 @@ function checkQuality(opts) {
   // font-size — bigger text demands proportionally more padding.
   //   vertical:   max(4px, fontSize × 0.3)
   //   horizontal: max(8px, fontSize × 0.5)
-  if (rect && hasDirectText && textLen > 20 && rect.width > 100 && rect.height > 30) {
+  const isInlineCode = tag === 'code' && !(el.closest && el.closest('pre'));
+  if (!isInlineCode && rect && hasDirectText && textLen > 20 && rect.width > 100 && rect.height > 30) {
     const borders = {
       top: parseFloat(style.borderTopWidth) || 0,
       right: parseFloat(style.borderRightWidth) || 0,
@@ -1272,7 +1373,7 @@ function checkQuality(opts) {
       left: parseFloat(style.borderLeftWidth) || 0,
     };
     const borderCount = Object.values(borders).filter(w => w > 0).length;
-    const hasBg = style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)';
+    const hasBg = hasVisibleBackgroundBoundary(style, el, win);
     if (borderCount >= 2 || hasBg) {
       const vPads = [], hPads = [];
       if (hasBg || borders.top > 0) vPads.push(parseFloat(style.paddingTop) || 0);
@@ -1320,10 +1421,6 @@ function checkQuality(opts) {
       !['fixed', 'absolute'].includes(elPosition) &&
       el.children && el.children.length > 0
     ) {
-      const isTransparent = (c) =>
-        !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)' ||
-        /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(c);
-
       const borderW = {
         top:    parseFloat(style.borderTopWidth)    || 0,
         right:  parseFloat(style.borderRightWidth)  || 0,
@@ -1331,10 +1428,10 @@ function checkQuality(opts) {
         left:   parseFloat(style.borderLeftWidth)   || 0,
       };
       const borderVisible = {
-        top:    borderW.top    > 0 && !isTransparent(style.borderTopColor),
-        right:  borderW.right  > 0 && !isTransparent(style.borderRightColor),
-        bottom: borderW.bottom > 0 && !isTransparent(style.borderBottomColor),
-        left:   borderW.left   > 0 && !isTransparent(style.borderLeftColor),
+        top:    borderW.top    > 0 && !cssColorIsTransparent(style.borderTopColor),
+        right:  borderW.right  > 0 && !cssColorIsTransparent(style.borderRightColor),
+        bottom: borderW.bottom > 0 && !cssColorIsTransparent(style.borderBottomColor),
+        left:   borderW.left   > 0 && !cssColorIsTransparent(style.borderLeftColor),
       };
       // Outline detection. jsdom decomposes `border` shorthand into
       // border{Top,…}Width/Color but does NOT decompose `outline` —
@@ -1354,8 +1451,8 @@ function checkQuality(opts) {
           if (cMatch) outlineColorVal = cMatch[1];
         }
       }
-      const outlineVisible = outlineW > 0 && !isTransparent(outlineColorVal) && outlineStyleVal && outlineStyleVal !== 'none';
-      const bgVisible = !isTransparent(style.backgroundColor);
+      const outlineVisible = outlineW > 0 && !cssColorIsTransparent(outlineColorVal) && outlineStyleVal && outlineStyleVal !== 'none';
+      const bgVisible = hasVisibleBackgroundBoundary(style, el, win);
 
       const anyVisible = borderVisible.top || borderVisible.right || borderVisible.bottom || borderVisible.left || outlineVisible || bgVisible;
       if (anyVisible) {
@@ -1383,13 +1480,7 @@ function checkQuality(opts) {
         const CHILD_INSULATE_THRESHOLD = 4;
         const childrenInsulate = { top: false, right: false, bottom: false, left: false };
         for (const child of el.children) {
-          let childStyle = null;
-          if (win && typeof win.getComputedStyle === 'function') {
-            try { childStyle = win.getComputedStyle(child); } catch {}
-          }
-          if (!childStyle && typeof getComputedStyle === 'function') {
-            try { childStyle = getComputedStyle(child); } catch {}
-          }
+          let childStyle = getComputedStyleFor(win, child);
           if (!childStyle) continue;
           const childPad = {
             top:    resolveLengthPx(childStyle.paddingTop,    fontSize) ?? 0,
@@ -1397,15 +1488,37 @@ function checkQuality(opts) {
             bottom: resolveLengthPx(childStyle.paddingBottom, fontSize) ?? 0,
             left:   resolveLengthPx(childStyle.paddingLeft,   fontSize) ?? 0,
           };
+          const childMargin = {
+            top:    resolveLengthPx(childStyle.marginTop,    fontSize) ?? 0,
+            right:  resolveLengthPx(childStyle.marginRight,  fontSize) ?? 0,
+            bottom: resolveLengthPx(childStyle.marginBottom, fontSize) ?? 0,
+            left:   resolveLengthPx(childStyle.marginLeft,   fontSize) ?? 0,
+          };
+          if (rect && typeof child.getBoundingClientRect === 'function') {
+            try {
+              const childRect = child.getBoundingClientRect();
+              if (childRect && childRect.width > 0 && childRect.height > 0) {
+                if (childRect.top - rect.top >= CHILD_INSULATE_THRESHOLD) childrenInsulate.top = true;
+                if (rect.right - childRect.right >= CHILD_INSULATE_THRESHOLD) childrenInsulate.right = true;
+                if (rect.bottom - childRect.bottom >= CHILD_INSULATE_THRESHOLD) childrenInsulate.bottom = true;
+                if (childRect.left - rect.left >= CHILD_INSULATE_THRESHOLD) childrenInsulate.left = true;
+              }
+            } catch {}
+          }
           for (const s of ['top', 'right', 'bottom', 'left']) {
-            if (childPad[s] >= CHILD_INSULATE_THRESHOLD) childrenInsulate[s] = true;
+            if (childPad[s] >= CHILD_INSULATE_THRESHOLD || childMargin[s] >= CHILD_INSULATE_THRESHOLD) {
+              childrenInsulate[s] = true;
+            }
           }
         }
 
+        const textFlush = rect ? textDescendantsFlushSides(el, rect) : null;
+        const fullBleedBgBand = rect && viewportWidth > 0 && rect.width >= viewportWidth * 0.94 && bgVisible && !outlineVisible;
         const flushSides = [];
         for (const side of ['top', 'right', 'bottom', 'left']) {
-          const sideBounded = borderVisible[side] || outlineVisible || bgVisible;
-          if (sideBounded && pad[side] <= PAD_THRESHOLD && !childrenInsulate[side]) {
+          const bgBoundsSide = bgVisible && !(fullBleedBgBand && (side === 'left' || side === 'right'));
+          const sideBounded = borderVisible[side] || outlineVisible || bgBoundsSide;
+          if (sideBounded && pad[side] <= PAD_THRESHOLD && !childrenInsulate[side] && (!textFlush || textFlush[side])) {
             flushSides.push(side);
           }
         }
@@ -1499,7 +1612,7 @@ function checkQuality(opts) {
   // Only flag actual body content, not UI labels (buttons, tabs, badges, captions, footer text, etc.)
   if (hasDirectText && textLen > 20 && fontSize < 12) {
     const skipTags = ['sub', 'sup', 'code', 'kbd', 'samp', 'var', 'caption', 'figcaption'];
-    const inUIContext = el.closest && el.closest('button, a, label, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], nav, footer, [class*="badge" i], [class*="chip" i], [class*="pill" i], [class*="tag" i], [class*="label" i], [class*="caption" i]');
+    const inUIContext = el.closest && el.closest('button, a, label, summary, pre, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], nav, footer, [aria-hidden="true"], [class*="badge" i], [class*="caption" i], [class*="chip" i], [class*="code" i], [class*="console" i], [class*="diff" i], [class*="label" i], [class*="meta" i], [class*="mock" i], [class*="pill" i], [class*="preview" i], [class*="tag" i], [class*="terminal" i], [class*="writes" i]');
     const isUppercase = style.textTransform === 'uppercase';
     if (!skipTags.includes(tag) && !inUIContext && !isUppercase) {
       findings.push({ id: 'tiny-text', snippet: `${fontSize}px body text` });
@@ -2107,17 +2220,28 @@ function checkCreamPalette(doc, win) {
 }
 
 // ─── Oversized hero headline ────────────────────────────────────────────────
-// Fires when a *long* headline is set at display size, so a full sentence ends
-// up dominating the viewport. A punchy one- or two-word headline at the same
-// size is a legitimate stylistic choice and must pass — length, not size
-// alone, is the tell.
+// Fires when a *long* headline is set at display size and actually dominates
+// the viewport. A punchy one- or two-word headline at the same size is a
+// legitimate stylistic choice, and a large-but-contained two-line hero should
+// pass too — length and viewport share together are the tell.
 const OVERSIZED_H1_FONT_PX = 72;
 const OVERSIZED_H1_MIN_CHARS = 40;
-function checkOversizedH1({ tag, fontSize, headingText }) {
+const OVERSIZED_H1_MIN_VIEWPORT_HEIGHT_RATIO = 0.28;
+const OVERSIZED_H1_MIN_VIEWPORT_AREA_RATIO = 0.25;
+function checkOversizedH1({ tag, fontSize, headingText, rect = null, viewportWidth = 0, viewportHeight = 0 }) {
   if (tag !== 'h1') return [];
   const textLen = headingText.length;
   if (fontSize >= OVERSIZED_H1_FONT_PX && textLen >= OVERSIZED_H1_MIN_CHARS) {
-    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars "${headingText.slice(0, 60)}"` }];
+    let viewportDetail = '';
+    if (rect && viewportWidth > 0 && viewportHeight > 0) {
+      const heightRatio = rect.height / viewportHeight;
+      const areaRatio = (rect.width * rect.height) / (viewportWidth * viewportHeight);
+      const dominatesViewport = heightRatio >= OVERSIZED_H1_MIN_VIEWPORT_HEIGHT_RATIO
+        || areaRatio >= OVERSIZED_H1_MIN_VIEWPORT_AREA_RATIO;
+      if (!dominatesViewport) return [];
+      viewportDetail = `, ${Math.round(heightRatio * 100)}vh`;
+    }
+    return [{ id: 'oversized-h1', snippet: `${Math.round(fontSize)}px h1, ${textLen} chars${viewportDetail} "${headingText.slice(0, 60)}"` }];
   }
   return [];
 }
@@ -2135,31 +2259,54 @@ function checkElementOversizedH1DOM(el) {
   const style = getComputedStyle(el);
   const fontSize = parseFloat(style.fontSize) || 0;
   const headingText = (el.textContent || '').trim().replace(/\s+/g, ' ');
-  return checkOversizedH1({ tag, fontSize, headingText });
+  const rect = el.getBoundingClientRect();
+  const viewportWidth = (typeof window !== 'undefined' ? window.innerWidth : 0) || 0;
+  const viewportHeight = (typeof window !== 'undefined' ? window.innerHeight : 0) || 0;
+  return checkOversizedH1({ tag, fontSize, headingText, rect, viewportWidth, viewportHeight });
 }
 
 // ─── GPT tell: hairline border + wide diffuse shadow (gated --gpt) ────────────
-function shadowMaxBlurPx(boxShadow) {
+const CSS_COLOR_TOKEN_RE = /(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\b(?:black|white|transparent|currentcolor)\b/gi;
+
+function shadowLayerAlpha(layer) {
+  CSS_COLOR_TOKEN_RE.lastIndex = 0;
+  const match = CSS_COLOR_TOKEN_RE.exec(layer);
+  if (!match) return 1;
+  if (match[0].toLowerCase() === 'transparent') return 0;
+  const parsed = parseAnyColor(match[0]);
+  return parsed ? (parsed.a ?? 1) : 1;
+}
+
+function shadowMaxBlurPx(boxShadow, { minAlpha = 0 } = {}) {
   if (!boxShadow || boxShadow === 'none') return 0;
   let maxBlur = 0;
   // Split into layers on commas not inside parentheses (rgba(...) etc.).
   for (const layer of boxShadow.split(/,(?![^()]*\))/)) {
+    if (shadowLayerAlpha(layer) < minAlpha) continue;
     // Strip colors and keywords (rgba()/hsl()/hex/named/inset/px), leaving the
     // ordered length tokens: offsetX offsetY blur [spread]. Static jsdom keeps
     // unitless zeros ("0 0 24px"); browsers normalize to px ("0px 0px 24px") —
     // both reduce to the same numbers here.
-    const cleaned = layer.replace(/rgba?\([^)]*\)|hsla?\([^)]*\)|#[0-9a-f]+|\b[a-z]+\b/gi, ' ');
+    const cleaned = layer.replace(CSS_COLOR_TOKEN_RE, ' ').replace(/\b[a-z]+\b/gi, ' ');
     const nums = [...cleaned.matchAll(/-?\d*\.?\d+/g)].map(m => parseFloat(m[0]));
     if (nums.length >= 3) maxBlur = Math.max(maxBlur, nums[2]);
   }
   return maxBlur;
 }
 
-function checkGptThinBorderWideShadow({ borderWidths, boxShadow }) {
-  const maxBorder = Math.max(0, ...borderWidths);
-  const hasThinBorder = maxBorder > 0 && maxBorder <= 1.5;
-  const blur = shadowMaxBlurPx(boxShadow);
-  if (hasThinBorder && blur >= 16) {
+function cssColorAlpha(value) {
+  if (cssColorIsTransparent(value)) return 0;
+  const parsed = parseAnyColor(value);
+  return parsed ? (parsed.a ?? 1) : 1;
+}
+
+function checkGptThinBorderWideShadow({ borderWidths, borderColors, boxShadow }) {
+  const visibleThinBorders = borderWidths
+    .map((width, index) => ({ width, alpha: cssColorAlpha(borderColors?.[index] || '') }))
+    .filter(({ width, alpha }) => width > 0 && width <= 1.5 && alpha >= 0.28);
+  const maxBorder = Math.max(0, ...visibleThinBorders.map(({ width }) => width));
+  const blur = shadowMaxBlurPx(boxShadow, { minAlpha: 0.12 });
+  if (visibleThinBorders.length >= 2 && blur >= 16) {
     return [{ id: 'gpt-thin-border-wide-shadow', snippet: `${maxBorder}px border + ${Math.round(blur)}px shadow blur` }];
   }
   return [];
@@ -2174,13 +2321,22 @@ function borderWidthsFromStyle(style) {
   ];
 }
 
+function borderColorsFromStyle(style) {
+  return [
+    style.borderTopColor || '',
+    style.borderRightColor || '',
+    style.borderBottomColor || '',
+    style.borderLeftColor || '',
+  ];
+}
+
 function checkElementGptBorderShadow(el, style) {
-  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), borderColors: borderColorsFromStyle(style), boxShadow: style.boxShadow || '' });
 }
 
 function checkElementGptBorderShadowDOM(el) {
   const style = getComputedStyle(el);
-  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), boxShadow: style.boxShadow || '' });
+  return checkGptThinBorderWideShadow({ borderWidths: borderWidthsFromStyle(style), borderColors: borderColorsFromStyle(style), boxShadow: style.boxShadow || '' });
 }
 
 // ─── Clipped overflow container ───────────────────────────────────────────────
@@ -2193,17 +2349,131 @@ function classSelector(el) {
   return tokens.length ? `${tag}.${tokens.join('.')}` : tag;
 }
 
+function positionedChildIsDecorative(child) {
+  if (!child || typeof child.getAttribute !== 'function') return false;
+  if (child.closest?.('[aria-hidden="true"]')) return true;
+  const role = (child.getAttribute('role') || '').toLowerCase();
+  if (role === 'none' || role === 'presentation') return true;
+  const tag = child.tagName ? child.tagName.toLowerCase() : '';
+  if (['img', 'svg', 'canvas', 'video'].includes(tag)) return true;
+  const ident = `${child.getAttribute('class') || ''} ${child.getAttribute('id') || ''}`;
+  if (
+    /\b(art|bg|background|badge|blob|crop|decor|dot|glow|grain|image|mask|ornament|overlay|photo|scrim|shadow|shine|texture)\b/i.test(ident) &&
+    !positionedChildHasSubstantiveContent(child)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const POSITIONED_CHILD_INTERACTIVE_SELECTOR = [
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'summary',
+  'textarea',
+  '[tabindex]:not([tabindex="-1"])',
+  '[role="button"]',
+  '[role="dialog"]',
+  '[role="link"]',
+  '[role="listbox"]',
+  '[role="menu"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="tooltip"]',
+].join(',');
+
+function positionedChildHasSubstantiveContent(child) {
+  const text = (child.textContent || '').replace(/\s+/g, ' ').trim();
+  if (text.length > 0) return true;
+  if (typeof child.matches === 'function') {
+    try {
+      if (child.matches(POSITIONED_CHILD_INTERACTIVE_SELECTOR)) return true;
+    } catch {}
+  }
+  if (typeof child.querySelector === 'function') {
+    try {
+      if (child.querySelector(POSITIONED_CHILD_INTERACTIVE_SELECTOR)) return true;
+    } catch {}
+  }
+  return false;
+}
+
+function clippingContainerIsIntentionalViewport(el) {
+  if (!el || typeof el.getAttribute !== 'function') return false;
+  const roleDescription = (el.getAttribute('aria-roledescription') || '').toLowerCase();
+  if (/\b(carousel|slider)\b/.test(roleDescription)) return true;
+  const ident = `${el.getAttribute('class') || ''} ${el.getAttribute('id') || ''}`.toLowerCase();
+  return /\b(carousel|comparison|compare|fisheye|marquee|preview|scroller|slider|slideshow|split|viewport)\b/.test(ident) ||
+    /\b(demo-area|demo-stage|demo-viewport)\b/.test(ident);
+}
+
+function elementRect(el) {
+  if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+  try {
+    const rect = el.getBoundingClientRect();
+    if (!rect) return null;
+    const values = [rect.top, rect.right, rect.bottom, rect.left, rect.width, rect.height];
+    if (!values.every(Number.isFinite)) return null;
+    if (rect.width <= 0 && rect.height <= 0) return null;
+    return rect;
+  } catch {
+    return null;
+  }
+}
+
+function positionedStyleImpliesEscape(style) {
+  const values = [
+    style.top,
+    style.right,
+    style.bottom,
+    style.left,
+    style.inset,
+    style.insetBlock,
+    style.insetInline,
+    style.insetBlockStart,
+    style.insetBlockEnd,
+    style.insetInlineStart,
+    style.insetInlineEnd,
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase());
+  for (const value of values) {
+    if (/(^|[\s(])-+(?:\d|\.)/.test(value)) return true;
+    if (/(^|[\s(])100(?:\.0+)?%/.test(value)) return true;
+  }
+  return false;
+}
+
+function positionedChildEscapesClip(el, child, clipX, clipY) {
+  const parentRect = elementRect(el);
+  const childRect = elementRect(child);
+  if (!parentRect || !childRect) return null;
+  const threshold = 2;
+  return Boolean(
+    (clipX && (childRect.left < parentRect.left - threshold || childRect.right > parentRect.right + threshold)) ||
+    (clipY && (childRect.top < parentRect.top - threshold || childRect.bottom > parentRect.bottom + threshold))
+  );
+}
+
 function checkClippedOverflow(el, style, getStyle) {
   const clips = (v) => v === 'hidden' || v === 'clip';
   const scrolls = (v) => v === 'auto' || v === 'scroll';
   const ox = style.overflowX || '', oy = style.overflowY || '', ov = style.overflow || '';
-  const anyClip = clips(ox) || clips(oy) || clips(ov);
+  const clipX = clips(ox) || clips(ov);
+  const clipY = clips(oy) || clips(ov);
+  const anyClip = clipX || clipY;
   const anyScroll = scrolls(ox) || scrolls(oy) || scrolls(ov);
   if (!anyClip || anyScroll) return [];
+  if (clippingContainerIsIntentionalViewport(el)) return [];
   if (!el.querySelectorAll) return [];
   for (const child of el.querySelectorAll('*')) {
-    const pos = (getStyle(child).position) || '';
+    const childStyle = getStyle(child);
+    const pos = childStyle.position || '';
     if (pos === 'absolute' || pos === 'fixed') {
+      if (positionedChildIsDecorative(child)) continue;
+      const escapes = positionedChildEscapesClip(el, child, clipX, clipY);
+      if (escapes === false) continue;
+      if (escapes === null && !positionedStyleImpliesEscape(childStyle)) continue;
       return [{ id: 'clipped-overflow-container', snippet: `${classSelector(el)} clips a positioned child` }];
     }
   }
@@ -2282,9 +2552,22 @@ function isScreenReaderOnlyTextStyle(style, metrics = {}) {
   return isAbsolutelyHidden || clippedByInset(clipPath) || clippedByRect(clip);
 }
 
+function isRenderedForBrowserRule(el) {
+  for (let cur = el; cur && cur.nodeType === 1; cur = cur.parentElement) {
+    if (cur.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = getComputedStyle(cur);
+    const visibility = String(style.visibility || '').toLowerCase();
+    if (style.display === 'none' || visibility === 'hidden' || visibility === 'collapse') return false;
+    if ((parseFloat(style.opacity) || 0) <= 0.01) return false;
+    if (String(style.contentVisibility || '').toLowerCase() === 'hidden') return false;
+  }
+  return true;
+}
+
 function checkElementTextOverflowDOM(el) {
   const tag = el.tagName.toLowerCase();
   if (TEXT_OVERFLOW_SKIP_TAGS.has(tag)) return [];
+  if (!isRenderedForBrowserRule(el)) return [];
   // Only the element that actually owns overflowing text — not its ancestors,
   // which inherit a wider scrollWidth from the spilling descendant.
   const hasDirectText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim().length > 0);

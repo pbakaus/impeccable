@@ -29,6 +29,15 @@
       white-space: nowrap;
       clip-path: inset(50%);
     }
+    .hidden-slide {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .hidden-slide .pass-hidden-slide-overflow {
+      display: block;
+      width: 120px;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -49,6 +58,9 @@
       <span class="pass-sr-only-legacy sr-only sr-only-legacy-clip">A legacy clipped screen-reader-only label with long text that should not be flagged.</span>
       <span class="pass-sr-only-tiny-hidden sr-only sr-only-tiny-hidden">A tiny overflow-hidden screen-reader-only label without a clip declaration should not be flagged.</span>
       <span class="pass-sr-only-clipped-wide sr-only-clipped-wide">A fully clipped label with a normal-sized box and overflowing text should not be flagged.</span>
+      <div class="hidden-slide">
+        <span class="pass-hidden-slide-overflow">An inactive carousel slide can contain long text that overflows while hidden.</span>
+      </div>
     </section>
   </div>
 </body>

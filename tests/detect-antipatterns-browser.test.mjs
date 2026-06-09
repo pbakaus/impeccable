@@ -93,14 +93,55 @@ describe('detectUrl — browser-only fixtures', () => {
     //   6. 24px heading / 8px all sides        — H fail (improvement over old 8px floor)
     //   7. 32px hero / 6px V / 16px H          — V fail
     //   8. 14px <pre> / 2px all sides          — both fail
-    // Pass column has 12 cases (small pills, standard cards, code blocks,
+    // Pass column has 13 cases (small pills, inline code, standard cards, code blocks,
     // buttons, inputs, big text with proportional padding) — none should fire.
     assert.equal(cramped.length, 8, `expected 8 cramped-padding findings, got ${cramped.length}`);
+  });
+
+  it('cramped-padding wrapper: skips same-surface wrappers, full-bleed marquees, and inset inner text surfaces', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/flush-against-border.html`);
+    const cramped = f.filter(r => r.antipattern === 'cramped-padding');
+    const snippets = cramped.map(r => r.snippet || '').join('\n');
+
+    for (const cls of ['flag-frameworks', 'flag-card-borders', 'flag-bg-only', 'flag-outline-only', 'flag-asym-leftflush']) {
+      assert.match(snippets, new RegExp(`"${cls}"`), `expected ".${cls}" to be flagged`);
+    }
+    for (const cls of ['pass-same-bg-child', 'pass-marquee-shell', 'pass-inner-text-surface']) {
+      assert.doesNotMatch(snippets, new RegExp(`"${cls}"`), `".${cls}" should not be flagged`);
+    }
   });
 
   it('line-length: flag column triggers, pass column adds none', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/quality.html`);
     assert.equal(f.filter(r => r.antipattern === 'line-length').length, 1);
+  });
+
+  it('clipped-overflow-container: utility-named popovers still flag when clipped', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/clipped-overflow-container.html`);
+    const snippets = f
+      .filter(r => r.antipattern === 'clipped-overflow-container')
+      .map(r => r.snippet || '')
+      .join('\n');
+
+    assert.match(snippets, /flag-shadow-utility/, 'shadow-lg utility surfaces must not be skipped as decorative');
+    assert.match(snippets, /flag-overlay-surface/, 'overlay-named content surfaces must not be skipped as decorative');
+    assert.doesNotMatch(snippets, /pass-contained-overlay/, 'aria-hidden decorative overlays should remain skipped');
+  });
+
+  it('oversized-h1: requires the headline to dominate the viewport, not just be large', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/oversized-h1-browser.html`);
+    const hits = f.filter(r => r.antipattern === 'oversized-h1');
+    assert.equal(
+      hits.length,
+      1,
+      `expected exactly one oversized-h1 finding, got ${hits.length}: ${hits.map(r => r.snippet).join('; ')}`,
+    );
+    assert.match(hits[0].snippet, /sprawls across the whole/i);
+    assert.equal(
+      hits.some(r => /missing design vocabulary/i.test(r.snippet || '')),
+      false,
+      'a large two-line homepage-style h1 must not flag unless it dominates the viewport',
+    );
   });
 
   it('typography side-by-side: element-level flag cases get regular overlays', async () => {
@@ -174,6 +215,7 @@ describe('detectUrl — browser-only fixtures', () => {
       'pass-sr-only-legacy',
       'pass-sr-only-tiny-hidden',
       'pass-sr-only-clipped-wide',
+      'pass-hidden-slide-overflow',
     ]) {
       assert.ok(!flagged.has(cls), `".${cls}" should NOT be flagged as text-overflow`);
     }
@@ -236,6 +278,11 @@ describe('detectUrl — browser-only fixtures', () => {
       'light image with dark text should keep enough contrast',
     );
     assert.equal(
+      f.some(r => r.antipattern === 'low-contrast' && /Hidden mockup text/i.test(r.snippet || '')),
+      false,
+      'aria-hidden decorative mockups should not produce visual contrast findings',
+    );
+    assert.equal(
       f.some(r => r.antipattern === 'low-contrast' && /Should (?:flag|pass) after pixel sampling/i.test(r.snippet || '')),
       false,
       'fixture column headings should not be low-contrast findings',
@@ -288,7 +335,9 @@ describe('detectUrl — browser-only fixtures', () => {
     });
     try {
       const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 800 });
+      // Keep three failing visual-contrast cards in the no-scroll viewport;
+      // the offscreen cases are covered by the scrollOffscreen test above.
+      await page.setViewport({ width: 1280, height: 1000 });
       await page.goto(`${baseUrl}/fixtures/antipatterns/visual-contrast.html`, { waitUntil: 'load' });
       const browserScript = fs.readFileSync(path.join(ROOT, 'cli/engine/detect-antipatterns-browser.js'), 'utf-8');
       await page.evaluate(() => { window.__IMPECCABLE_CONFIG__ = { autoScan: false }; });

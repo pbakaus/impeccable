@@ -267,7 +267,16 @@ const STATIC_DEFAULT_STYLE = {
   paddingRight: '0px',
   paddingBottom: '0px',
   paddingLeft: '0px',
+  marginTop: '0px',
+  marginRight: '0px',
+  marginBottom: '0px',
+  marginLeft: '0px',
   position: 'static',
+  top: 'auto',
+  right: 'auto',
+  bottom: 'auto',
+  left: 'auto',
+  inset: '',
   display: '',
   overflow: 'visible',
   overflowX: 'visible',
@@ -312,7 +321,16 @@ const STATIC_PROP_MAP = {
   'padding-right': 'paddingRight',
   'padding-bottom': 'paddingBottom',
   'padding-left': 'paddingLeft',
+  'margin-top': 'marginTop',
+  'margin-right': 'marginRight',
+  'margin-bottom': 'marginBottom',
+  'margin-left': 'marginLeft',
   'position': 'position',
+  'top': 'top',
+  'right': 'right',
+  'bottom': 'bottom',
+  'left': 'left',
+  'inset': 'inset',
   'display': 'display',
   'overflow': 'overflow',
   'overflow-x': 'overflowX',
@@ -577,6 +595,15 @@ function expandStaticDeclaration(prop, value) {
       ['paddingRight', vals[1]],
       ['paddingBottom', vals[2]],
       ['paddingLeft', vals[3]],
+    ];
+  }
+  if (p === 'margin') {
+    const vals = expandStaticBoxValues(splitCssTokens(v));
+    return [
+      ['marginTop', vals[0]],
+      ['marginRight', vals[1]],
+      ['marginBottom', vals[2]],
+      ['marginLeft', vals[3]],
     ];
   }
   if (p === 'font') return parseStaticFont(v);

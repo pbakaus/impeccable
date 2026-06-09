@@ -9,6 +9,26 @@
     .col { padding: 16px; }
     .box { position: relative; width: 200px; height: 120px; margin: 0 0 24px; padding: 16px; border: 1px solid #ddd; }
     .pop { position: absolute; top: 100%; left: 0; width: 220px; background: #222; color: #fff; padding: 8px; }
+    .tip-negative { position: absolute; top: -34px; left: 16px; width: 160px; background: #222; color: #fff; padding: 8px; }
+    .flyout { position: absolute; top: 28px; left: 100%; width: 180px; background: #222; color: #fff; padding: 8px; }
+    .contained-badge { position: absolute; top: 10px; right: 10px; width: 36px; height: 24px; background: #e5f0ff; }
+    .button-shine { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent); }
+    .crop-photo { position: absolute; inset: -18px; background: linear-gradient(135deg, #b7d7ff, #486aa3); }
+    .inside-overlay { position: absolute; left: 12px; right: 12px; bottom: 12px; min-height: 28px; background: rgba(255,255,255,.86); }
+    .pass-hidden-button { position: relative; overflow: hidden; width: 160px; height: 52px; border: 1px solid #ddd; background: #111; color: #fff; }
+    .pass-carousel-viewport,
+    .pass-fisheye-list,
+    .pass-split-container {
+      position: relative;
+      overflow: hidden;
+      width: 200px;
+      height: 120px;
+      margin: 0 0 24px;
+      border: 1px solid #ddd;
+    }
+    .carousel-slide-next { position: absolute; top: 100%; left: 0; width: 100%; height: 100%; padding: 16px; background: #f5f5f5; }
+    .fisheye-next-item { position: absolute; top: 100%; left: 0; width: 100%; padding: 8px; background: none; border: 0; text-align: left; }
+    .split-after-panel { position: absolute; top: 0; left: 50%; width: 100%; height: 100%; background: #f5f5f5; }
   </style>
 </head>
 <body>
@@ -23,9 +43,25 @@
         <button>Tooltip host</button>
         <span class="pop">Tooltip clipped by overflow clip</span>
       </div>
+      <div class="box flag-overflow-negative" style="overflow: hidden">
+        <button>Help</button>
+        <span class="tip-negative">Tooltip clipped above the host</span>
+      </div>
+      <div class="box flag-overflow-right" style="overflow: hidden">
+        <button>Actions</button>
+        <div class="flyout">Flyout menu clipped to the right of the host</div>
+      </div>
+      <div class="box flag-shadow-utility" style="overflow: hidden">
+        <button>More</button>
+        <div class="pop bg-white shadow-lg">Dropdown with utility classes still gets clipped.</div>
+      </div>
+      <div class="box flag-overlay-surface" style="overflow: clip">
+        <button>Dialog</button>
+        <div class="pop modal-overlay">Overlay-style dialog content still needs to escape.</div>
+      </div>
     </section>
 
-    <!-- PASS column: no clipping, no positioned child, or a real scroll region -->
+    <!-- PASS column: no clipping, no positioned child, real scroll region, or contained decorative positioning -->
     <section class="col pass">
       <div class="box pass-hidden-no-abs" style="overflow: hidden">
         <p style="position: static">Hidden container with only static content.</p>
@@ -37,6 +73,30 @@
       <div class="box pass-scroll-abs" style="overflow: auto">
         <button>Scroll host</button>
         <span class="pop">A genuine scroll region is allowed to contain positioned children.</span>
+      </div>
+      <div class="box pass-contained-abs" style="overflow: hidden">
+        <p>Positioned decoration remains inside the clipping box.</p>
+        <span class="contained-badge" aria-hidden="true"></span>
+      </div>
+      <button type="button" class="pass-hidden-button pass-button-shine">
+        Save
+        <span class="button-shine" aria-hidden="true"></span>
+      </button>
+      <div class="box pass-crop-photo" style="overflow: hidden">
+        <span class="crop-photo" aria-hidden="true"></span>
+      </div>
+      <div class="box pass-contained-overlay" style="overflow: clip">
+        <p>Mockup frame with a contained absolute overlay.</p>
+        <span class="inside-overlay" aria-hidden="true"></span>
+      </div>
+      <div class="pass-carousel-viewport" aria-roledescription="carousel">
+        <div class="carousel-slide-next">A hidden next slide is clipped intentionally by the viewport.</div>
+      </div>
+      <div class="pass-fisheye-list">
+        <button type="button" class="fisheye-next-item">Next command</button>
+      </div>
+      <div class="pass-split-container">
+        <div class="split-after-panel">Before/after comparison panel clipped by the split frame.</div>
       </div>
     </section>
   </div>
