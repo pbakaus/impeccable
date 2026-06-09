@@ -50,7 +50,12 @@ export async function completeCli() {
 }
 
 function readServerInfo() {
-  return readLiveServerInfo(process.cwd())?.info || null;
+  const record = readLiveServerInfo(process.cwd());
+  if (record?.ambiguous) {
+    console.error('Multiple child live servers found. Re-run with --target <path> so Impeccable knows which app to complete.');
+    process.exit(1);
+  }
+  return record?.info || null;
 }
 
 async function completeThroughServer(info, args) {

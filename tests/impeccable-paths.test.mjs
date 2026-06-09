@@ -132,6 +132,82 @@ describe('impeccable project paths', () => {
     assert.equal(record.info.token, 'legacy');
   });
 
+  it('discovers a single child live server from the monorepo root', () => {
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    const childRoot = join(tmp, 'apps', 'dashboard');
+    mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(join(childRoot, '.impeccable', 'live', 'server.json'), JSON.stringify({
+      pid: process.pid,
+      port: 8401,
+      token: 'child',
+      targetPath: 'apps/dashboard/src/App.jsx',
+      projectRoot: childRoot,
+      repoRoot: tmp,
+    }));
+
+    const record = readLiveServerInfo(tmp);
+    assert.equal(record.path, join(childRoot, '.impeccable', 'live', 'server.json'));
+    assert.equal(record.info.token, 'child');
+  });
+
+  it('does not guess when multiple child live servers are reachable from the monorepo root', () => {
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    for (const app of ['dashboard', 'marketing']) {
+      const childRoot = join(tmp, 'apps', app);
+      mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+      writeFileSync(join(childRoot, '.impeccable', 'live', 'server.json'), JSON.stringify({
+        pid: process.pid,
+        port: app === 'dashboard' ? 8401 : 8402,
+        token: app,
+        targetPath: `apps/${app}/src/App.jsx`,
+        projectRoot: childRoot,
+        repoRoot: tmp,
+      }));
+    }
+
+    const record = readLiveServerInfo(tmp);
+    assert.equal(record.ambiguous, true);
+    assert.equal(record.candidates.length, 2);
+  });
+
+  it('removes stale child live server state discovered from the monorepo root', () => {
+    writeFileSync(join(tmp, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    const childRoot = join(tmp, 'apps', 'dashboard');
+    const childServer = join(childRoot, '.impeccable', 'live', 'server.json');
+    mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(childServer, JSON.stringify({
+      pid: 12345,
+      port: 8401,
+      token: 'child',
+      targetPath: 'apps/dashboard/src/App.jsx',
+      projectRoot: childRoot,
+      repoRoot: tmp,
+    }));
+    const originalKill = process.kill;
+    process.kill = () => {
+      const err = new Error('no such process');
+      err.code = 'ESRCH';
+      throw err;
+    };
+
+    try {
+      const record = readLiveServerInfo(tmp);
+      assert.equal(record, null);
+      assert.equal(existsSync(childServer), false);
+    } finally {
+      process.kill = originalKill;
+    }
+  });
+
   it('keeps live server state when pid probing returns EPERM', () => {
     mkdirSync(join(tmp, '.impeccable', 'live'), { recursive: true });
     writeFileSync(getLiveServerPath(tmp), JSON.stringify({ port: 8401, token: 'new', pid: 12345 }));

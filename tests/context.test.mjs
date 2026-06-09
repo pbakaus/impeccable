@@ -230,6 +230,63 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(ctx.design, /Root design/);
   });
 
+  it('does not escape a nested git repo to an ancestor workspace', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['repos/*'],
+    }, null, 2));
+    write('PRODUCT.md', '# Outer product\n');
+    write('DESIGN.md', '# Outer design\n');
+    write('repos/standalone/.git/HEAD', 'ref: refs/heads/main\n');
+    write('repos/standalone/PRODUCT.md', '# Standalone product\n');
+    write('repos/standalone/src/App.jsx', 'export default null;\n');
+
+    const project = path.join(scratch, 'repos', 'standalone');
+    const ctx = loadContext(project, { targetPath: 'src/App.jsx' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, project);
+    assert.equal(ctx.repoRoot, project);
+    assert.match(ctx.product, /Standalone product/);
+    assert.equal(ctx.productPath, 'PRODUCT.md');
+    assert.equal(ctx.designPath, null);
+  });
+
+  it('supports double-star workspace patterns by resolving the shallow child project', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['libs/**'],
+    }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('libs/ui/PRODUCT.md', '# UI product\n');
+    write('libs/ui/src/index.ts', 'export const ui = true;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'libs/ui/src/index.ts' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'libs', 'ui'));
+    assert.match(ctx.product, /UI product/);
+    assert.match(ctx.design, /Root design/);
+    assert.equal(ctx.productPath, path.join('libs', 'ui', 'PRODUCT.md'));
+    assert.equal(ctx.designPath, 'DESIGN.md');
+  });
+
+  it('supports packages/**/* workspace patterns without promoting src folders to projects', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['packages/**/*'],
+    }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('packages/dashboard/PRODUCT.md', '# Dashboard package product\n');
+    write('packages/dashboard/src/index.ts', 'export const dashboard = true;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'packages/dashboard/src/index.ts' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'packages', 'dashboard'));
+    assert.match(ctx.product, /Dashboard package product/);
+    assert.match(ctx.design, /Root design/);
+    assert.equal(ctx.productPath, path.join('packages', 'dashboard', 'PRODUCT.md'));
+    assert.equal(ctx.designPath, 'DESIGN.md');
+  });
+
   it('uses apps and packages folders as a fallback when a monorepo marker exists', () => {
     write('nx.json', '{}\n');
     write('PRODUCT.md', '# Root product\n');
@@ -240,6 +297,23 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.projectRoot, path.join(scratch, 'packages', 'ui'));
     assert.match(ctx.product, /Root product/);
     assert.match(ctx.design, /Root design/);
+  });
+
+  it('does not treat turbo.json alone as a monorepo marker', () => {
+    write('turbo.json', JSON.stringify({ tasks: {} }));
+    write('PRODUCT.md', '# Root product\n');
+    write('src/App.jsx', 'export default null;\n');
+
+    const ctx = loadContext(scratch);
+    assert.equal(ctx.isMonorepo, false);
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.doesNotMatch(res.stdout, /MONOREPO_TARGET_REQUIRED/);
   });
 
   it('supports --target in the CLI', async () => {
@@ -273,6 +347,20 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /"targetPath": null/);
     assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
     assert.match(res.stdout, /--target <path>/);
+  });
+
+  it('does not parse --help as a --target value', () => {
+    writeMonorepo();
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', '--help'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
+    assert.match(res.stdout, /"targetPath": null/);
+    assert.doesNotMatch(res.stdout, /"targetPath": "--help"/);
+    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
   });
 });
 
@@ -382,6 +470,10 @@ describe('context.mjs update check', () => {
     const skillScript = path.join(scratch, 'skill', 'scripts', 'context.mjs');
     fs.mkdirSync(path.dirname(skillScript), { recursive: true });
     fs.copyFileSync(SCRIPT_PATH, skillScript);
+    const targetArgsSrc = path.join(path.dirname(SCRIPT_PATH), 'lib', 'target-args.mjs');
+    const targetArgsDest = path.join(path.dirname(skillScript), 'lib', 'target-args.mjs');
+    fs.mkdirSync(path.dirname(targetArgsDest), { recursive: true });
+    fs.copyFileSync(targetArgsSrc, targetArgsDest);
     fs.writeFileSync(
       path.join(scratch, 'skill', 'SKILL.md'),
       `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,

@@ -39,6 +39,16 @@ describe('live-poll accept handling', () => {
       ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
     );
   });
+
+  it('forwards targetPath to live-accept for root-discovered child servers', () => {
+    assert.deepEqual(
+      buildAcceptScriptArgs({
+        type: 'discard',
+        id: 'abc12345',
+      }, { targetPath: '/repo/apps/dashboard/src/App.jsx' }),
+      ['--id', 'abc12345', '--discard', '--target', '/repo/apps/dashboard/src/App.jsx'],
+    );
+  });
 });
 
 describe('live-poll manual Apply guidance', () => {

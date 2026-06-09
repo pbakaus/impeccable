@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveProjectRoot } from '../context.mjs';
+import { resolveProject, resolveProjectRoot } from '../context.mjs';
 
 export const IMPECCABLE_DIR = '.impeccable';
 export const LIVE_DIR = 'live';
@@ -65,18 +65,102 @@ export function getLegacyLiveServerPath(cwd = process.cwd(), options = {}) {
 
 export function readLiveServerInfo(cwd = process.cwd(), options = {}) {
   for (const filePath of [getLiveServerPath(cwd, options), getLegacyLiveServerPath(cwd, options)]) {
-    try {
-      const info = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      if (info && typeof info.pid === 'number' && !isLiveServerPidReachable(info.pid)) {
-        try { fs.unlinkSync(filePath); } catch {}
-        continue;
-      }
-      return { info, path: filePath };
-    } catch {
-      /* try next */
-    }
+    const record = readLiveServerInfoFile(filePath);
+    if (record) return record;
+  }
+  const childRecords = findChildLiveServerInfo(cwd, options);
+  if (childRecords.length === 1) return childRecords[0];
+  if (childRecords.length > 1) {
+    return {
+      ambiguous: true,
+      candidates: childRecords.map(({ info, path: filePath }) => ({
+        path: filePath,
+        port: info.port,
+        targetPath: info.targetPath || null,
+        projectRoot: info.projectRoot || null,
+      })),
+    };
   }
   return null;
+}
+
+function readLiveServerInfoFile(filePath) {
+  try {
+    const info = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (info && typeof info.pid === 'number' && !isLiveServerPidReachable(info.pid)) {
+      try { fs.unlinkSync(filePath); } catch {}
+      return null;
+    }
+    return { info, path: filePath };
+  } catch {
+    return null;
+  }
+}
+
+function findChildLiveServerInfo(cwd = process.cwd(), options = {}) {
+  if (options?.targetPath) return [];
+  const project = resolveProject(cwd, options);
+  if (
+    !project.isMonorepo
+    || path.resolve(project.projectRoot) !== path.resolve(project.repoRoot)
+  ) {
+    return [];
+  }
+
+  const records = [];
+  walkForLiveServerFiles(project.repoRoot, (filePath) => {
+    const record = readLiveServerInfoFile(filePath);
+    if (!record) return;
+    if (
+      record.info?.repoRoot
+      && path.resolve(record.info.repoRoot) !== path.resolve(project.repoRoot)
+    ) {
+      return;
+    }
+    records.push(record);
+  });
+  return records;
+}
+
+function walkForLiveServerFiles(root, onFile) {
+  const ignoreDirs = new Set([
+    '.git',
+    'node_modules',
+    'dist',
+    'build',
+    '.next',
+    '.nuxt',
+    '.svelte-kit',
+    '.turbo',
+    '.cache',
+    'coverage',
+  ]);
+  const maxDepth = 5;
+
+  function walk(dir, depth) {
+    if (depth > maxDepth) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (ignoreDirs.has(entry.name)) continue;
+      const abs = path.join(dir, entry.name);
+      if (entry.name === IMPECCABLE_DIR) {
+        const serverPath = path.join(abs, LIVE_DIR, 'server.json');
+        if (path.dirname(abs) !== root && fs.existsSync(serverPath)) {
+          onFile(serverPath);
+        }
+        continue;
+      }
+      walk(abs, depth + 1);
+    }
+  }
+
+  walk(root, 0);
 }
 
 export function isLiveServerPidReachable(pid) {

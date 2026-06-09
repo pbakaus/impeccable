@@ -1,44 +1,23 @@
 import path from 'node:path';
 import { resolveProjectRoot } from './context.mjs';
-
-export function parseTargetPath(args = []) {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--target' || arg === '-t') {
-      return args[i + 1] && !String(args[i + 1]).startsWith('-')
-        ? String(args[i + 1])
-        : null;
-    }
-    if (arg.startsWith('--target=')) return arg.slice('--target='.length);
-  }
-  return null;
-}
-
-export function stripTargetArgs(args = []) {
-  const out = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--target' || arg === '-t') {
-      i++;
-      continue;
-    }
-    if (arg.startsWith('--target=')) continue;
-    out.push(arg);
-  }
-  return out;
-}
+export { parseTargetPath, stripTargetArgs } from './lib/target-args.mjs';
+import { parseTargetPath } from './lib/target-args.mjs';
 
 export function resolveLiveTarget(cwd = process.cwd(), args = []) {
   const originalCwd = path.resolve(cwd);
   const targetPath = parseTargetPath(args);
+  const absoluteTargetPath = targetPath
+    ? path.isAbsolute(targetPath) ? targetPath : path.resolve(originalCwd, targetPath)
+    : null;
   const projectRoot = targetPath
-    ? resolveProjectRoot(originalCwd, { targetPath })
+    ? resolveProjectRoot(originalCwd, { targetPath: absoluteTargetPath })
     : originalCwd;
   return {
     originalCwd,
     projectRoot,
     targetPath,
-    targetOptions: targetPath ? { targetPath } : {},
+    absoluteTargetPath,
+    targetOptions: absoluteTargetPath ? { targetPath: absoluteTargetPath } : {},
   };
 }
 

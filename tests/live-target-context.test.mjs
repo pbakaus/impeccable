@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
 const LIVE_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live.mjs');
 const LIVE_INJECT_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-inject.mjs');
+const LIVE_POLL_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-poll.mjs');
 const LIVE_SERVER_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-server.mjs');
+const LIVE_STATUS_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-status.mjs');
 const TARGET = 'apps/dashboard/src/App.jsx';
 
 describe('live target-aware monorepo context', () => {
@@ -57,6 +59,10 @@ describe('live target-aware monorepo context', () => {
 
       assert.equal(existsSync(join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'server.json')), true);
       assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
+      const serverInfo = JSON.parse(readFileSync(join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'server.json'), 'utf-8'));
+      assert.equal(serverInfo.projectRoot, join(tmp, 'apps', 'dashboard'));
+      assert.equal(serverInfo.repoRoot, tmp);
+      assert.ok(String(serverInfo.targetPath || '').endsWith(TARGET));
 
       const raw = await fetchDesignRaw(payload);
       assert.match(raw, /ROOT DESIGN LIVE INHERIT/);
@@ -80,6 +86,25 @@ describe('live target-aware monorepo context', () => {
       const raw = await fetchDesignRaw(payload);
       assert.match(raw, /ROOT DESIGN LIVE INHERIT/);
       assert.doesNotMatch(raw, /DASHBOARD PRODUCT LIVE OVERRIDE/);
+    } finally {
+      stopLive(tmp);
+    }
+  });
+
+  it('lets root live-status and live-poll discover the child server when only one is running', () => {
+    writeChildLiveConfig(tmp);
+
+    const payload = bootLive(tmp);
+    try {
+      const status = runNode(LIVE_STATUS_SCRIPT, [], tmp);
+      assert.equal(status.status, 0, status.stderr);
+      const statusPayload = JSON.parse(status.stdout);
+      assert.equal(statusPayload.liveServer.status, 'ok');
+      assert.equal(statusPayload.liveServer.port, payload.serverPort);
+
+      const poll = runNode(LIVE_POLL_SCRIPT, ['--timeout=50'], tmp);
+      assert.equal(poll.status, 0, poll.stderr);
+      assert.deepEqual(JSON.parse(poll.stdout), { type: 'timeout' });
     } finally {
       stopLive(tmp);
     }
@@ -137,6 +162,7 @@ function runNode(script, args, cwd) {
     timeout: 30_000,
   });
 }
+
 
 function run(command, args, cwd) {
   const res = spawnSync(command, args, { cwd, encoding: 'utf-8' });

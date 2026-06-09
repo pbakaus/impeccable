@@ -47,19 +47,32 @@ import {
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RAW_ARGS = process.argv.slice(2);
-const LIVE_TARGET = chdirToLiveTarget(RAW_ARGS);
-const args = stripTargetArgs(RAW_ARGS);
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
-const PROJECT_CONTEXT = loadContext(process.cwd());
-const CONTEXT_DIR = PROJECT_CONTEXT.contextDir;
-const DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
-  ? path.resolve(process.cwd(), PROJECT_CONTEXT.designPath)
-  : null;
+let LIVE_TARGET = null;
+let args = [];
+let PROJECT_CONTEXT = null;
+let CONTEXT_DIR = null;
+let DESIGN_MD_PATH = null;
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+
+function initRuntime(rawArgs = process.argv.slice(2)) {
+  LIVE_TARGET = chdirToLiveTarget(rawArgs);
+  args = stripTargetArgs(rawArgs);
+  PROJECT_CONTEXT = loadContext(process.cwd());
+  CONTEXT_DIR = PROJECT_CONTEXT.contextDir;
+  DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
+    ? path.resolve(process.cwd(), PROJECT_CONTEXT.designPath)
+    : null;
+}
+
+function targetForwardArgs() {
+  return LIVE_TARGET?.absoluteTargetPath
+    ? ['--target', LIVE_TARGET.absoluteTargetPath]
+    : [];
+}
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -374,7 +387,7 @@ function hasProjectContext() {
   // PRODUCT.md carries brand voice / anti-references — that's what determines
   // whether variants are brand-aware. DESIGN.md (visual tokens) is a separate
   // concern, surfaced by the design panel's own empty state.
-  return PROJECT_CONTEXT.hasProduct;
+  return !!PROJECT_CONTEXT?.hasProduct;
 }
 
 function statOrNull(filePath) {
@@ -992,6 +1005,9 @@ function applyLegacyDeferredAcceptsOnStartup() {
 // Main
 // ---------------------------------------------------------------------------
 
+export async function serverCli(rawArgs = process.argv.slice(2)) {
+initRuntime(rawArgs);
+
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`Usage: node live-server.mjs [options]
 
@@ -1027,8 +1043,9 @@ Endpoints:
 
 if (args.includes('stop')) {
   const keepInject = args.includes('--keep-inject');
+  let info = null;
   try {
-    const { info } = readLiveServerInfo(process.cwd()) || {};
+    info = readLiveServerInfo(process.cwd())?.info || null;
     const res = await fetch(`http://localhost:${info.port}/stop?token=${info.token}`);
     if (res.ok) console.log(`Stopped live server on port ${info.port}.`);
   } catch {
@@ -1036,8 +1053,12 @@ if (args.includes('stop')) {
   }
   if (!keepInject) {
     const injectPath = path.join(__dirname, 'live-inject.mjs');
+    const removeTargetArgs = targetForwardArgs();
+    if (removeTargetArgs.length === 0 && info?.targetPath) {
+      removeTargetArgs.push('--target', info.targetPath);
+    }
     try {
-      const out = execFileSync(process.execPath, [injectPath, '--remove'], {
+      const out = execFileSync(process.execPath, [injectPath, '--remove', ...removeTargetArgs], {
         encoding: 'utf-8',
         cwd: process.cwd(),
       });
@@ -1067,7 +1088,10 @@ if (args.includes('stop')) {
 // print the connection JSON, then exit.  This keeps the startup command
 // simple (no shell backgrounding or chained commands).
 if (args.includes('--background')) {
-  const childArgs = args.filter(a => a !== '--background');
+  const childArgs = [
+    ...args.filter(a => a !== '--background'),
+    ...targetForwardArgs(),
+  ];
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...childArgs], {
     detached: true,
     stdio: 'ignore',
@@ -1145,3 +1169,18 @@ httpServer.listen(state.port, '127.0.0.1', () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+}
+
+function invokedAsScript() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  try {
+    return fs.realpathSync(arg) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedAsScript()) {
+  await serverCli();
+}

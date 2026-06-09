@@ -129,6 +129,7 @@ export const SUITES = {
           'tests/live-reference.test.mjs',
           'tests/live-server.test.mjs',
           'tests/live-session-store.test.mjs',
+          'tests/live-server-import.test.mjs',
           'tests/live-target-context.test.mjs',
           'tests/live-wrap.test.mjs',
           'tests/live-wrap-buffer-aware.test.mjs',

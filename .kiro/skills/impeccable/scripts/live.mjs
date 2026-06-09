@@ -33,6 +33,9 @@ async function liveCli() {
   const liveTarget = resolveLiveTarget(process.cwd(), args);
   const ctx = loadContext(liveTarget.originalCwd, liveTarget.targetOptions);
   const activeCwd = ctx.projectRoot || liveTarget.projectRoot;
+  const forwardedTargetArgs = liveTarget.absoluteTargetPath
+    ? ['--target', liveTarget.absoluteTargetPath]
+    : [];
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live.mjs
@@ -58,7 +61,7 @@ The agent should then:
   }
 
   // 1. Check config (fail fast if missing — no point starting anything else)
-  const checkOut = runScript('live-inject.mjs', ['--check'], { cwd: activeCwd });
+  const checkOut = runScript('live-inject.mjs', ['--check', ...forwardedTargetArgs], { cwd: activeCwd });
   const checkResult = safeParse(checkOut);
   if (!checkResult || !checkResult.ok) {
     console.log(JSON.stringify({
@@ -71,14 +74,14 @@ The agent should then:
   }
 
   // 2. Start server (or reuse existing)
-  const serverInfo = ensureServerRunning(activeCwd);
+  const serverInfo = ensureServerRunning(activeCwd, forwardedTargetArgs);
   if (!serverInfo) {
     console.log(JSON.stringify({ ok: false, error: 'server_start_failed' }));
     process.exit(1);
   }
 
   // 3. Inject the script tag at the current port
-  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port)], { cwd: activeCwd });
+  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port), ...forwardedTargetArgs], { cwd: activeCwd });
   const injectResult = safeParse(injectOut);
   if (!injectResult || !injectResult.ok) {
     console.log(JSON.stringify({
@@ -230,7 +233,7 @@ function safeParse(out) {
 /**
  * Return { pid, port, token } for the running live server, starting one if needed.
  */
-function ensureServerRunning(cwd = process.cwd()) {
+function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
   // Try to reuse an existing server
   try {
     const existing = readLiveServerInfo(cwd)?.info;
@@ -243,7 +246,7 @@ function ensureServerRunning(cwd = process.cwd()) {
   } catch { /* no PID file */ }
 
   // Start a new server
-  const out = runScript('live-server.mjs', ['--background'], { cwd });
+  const out = runScript('live-server.mjs', ['--background', ...forwardedTargetArgs], { cwd });
   return safeParse(out);
 }
 

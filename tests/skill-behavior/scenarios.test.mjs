@@ -394,5 +394,55 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    it('scenario 10: monorepo context diagnostic uses --target evidence', async () => {
+      const workspace = prepareWorkspace({
+        files: {
+          'package.json': `${JSON.stringify({
+            private: true,
+            workspaces: ['apps/*'],
+          }, null, 2)}\n`,
+          'PRODUCT.md': PRODUCT_MD_SAMPLE,
+          'DESIGN.md': DESIGN_MD_SAMPLE,
+          'apps/dashboard/PRODUCT.md': PRODUCT_MD_SAMPLE.replace('# Acme Notes', '# Dashboard Product'),
+          'apps/dashboard/src/App.jsx': 'export default function Dashboard() { return <main>Dashboard</main>; }\n',
+        },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: 'Using Impeccable, check the context for apps/dashboard/src/App.jsx. Tell me which PRODUCT.md and DESIGN.md were loaded. Do not edit files.',
+          maxSteps: 5,
+        });
+        logTrace('S10', 'monorepo-diagnostic-target', modelId, trace, { textSample: text.slice(0, 400) });
+
+        const targetRuns = bashCommandsMatching(trace, 'context.mjs')
+          .filter((command) =>
+            command.includes('--target')
+            && command.includes('apps/dashboard/src/App.jsx')
+          );
+        assert.ok(
+          targetRuns.length >= 1,
+          `agent should run context.mjs with --target apps/dashboard/src/App.jsx.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        assert.ok(
+          trace.bashOutputs.some((out) =>
+            out.includes('"productPath": "apps/dashboard/PRODUCT.md"')
+            && out.includes('"designPath": "DESIGN.md"')
+          ),
+          `targeted context output should prove child PRODUCT.md override + root DESIGN.md inheritance.\n` +
+            `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
+        );
+        assert.equal(
+          trace.writePaths.length,
+          0,
+          `context diagnostic prompt said not to edit files; wrote: ${trace.writePaths.join(', ')}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
   });
 }
