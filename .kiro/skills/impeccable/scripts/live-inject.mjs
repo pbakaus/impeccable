@@ -368,8 +368,26 @@ function buildTagBlock(syntax, port, filePath) {
   );
 }
 
+function detectLineEnding(content) {
+  if (content.includes('\r\n')) return '\r\n';
+  if (content.includes('\r')) return '\r';
+  return '\n';
+}
+
+function normalizeLineEndings(content, lineEnding) {
+  return lineEnding === '\n' ? content : content.replace(/\n/g, lineEnding);
+}
+
+function readLineEndingAt(content, index) {
+  if (content[index] === '\r' && content[index + 1] === '\n') return '\r\n';
+  if (content[index] === '\n') return '\n';
+  if (content[index] === '\r') return '\r';
+  return '';
+}
+
 function insertTag(content, config, port, filePath) {
-  const block = buildTagBlock(config.commentSyntax, port, filePath);
+  const lineEnding = detectLineEnding(content);
+  const block = normalizeLineEndings(buildTagBlock(config.commentSyntax, port, filePath), lineEnding);
   // insertBefore: match the LAST occurrence. Anchors like `</body>` naturally
   // belong at the end, and the same literal can appear earlier in code blocks
   // within rendered documentation pages.
@@ -383,14 +401,14 @@ function insertTag(content, config, port, filePath) {
   const idx = content.indexOf(config.insertAfter);
   if (idx === -1) return content;
   const after = idx + config.insertAfter.length;
-  // Preserve a single trailing newline if the anchor didn't end with one.
+  // Preserve an existing trailing newline if the anchor already has one.
   // Slice the remainder from the original anchor offset, not prefix.length:
   // in the no-newline case prefix is one char longer than the anchor (the
   // appended '\n'), so slicing by prefix.length would drop the first real
   // character after the anchor (#227).
-  const hadNewline = content[after] === '\n';
-  const prefix = hadNewline ? content.slice(0, after + 1) : content.slice(0, after) + '\n';
-  const rest = content.slice(hadNewline ? after + 1 : after);
+  const existingNewline = readLineEndingAt(content, after);
+  const prefix = content.slice(0, after) + (existingNewline || lineEnding);
+  const rest = content.slice(after + existingNewline.length);
   return prefix + block + rest;
 }
 
@@ -407,8 +425,8 @@ function insertTag(content, config, port, filePath) {
  */
 function removeTag(content, _syntax) {
   const patterns = [
-    /([ \t]*)<!--\s*impeccable-live-start\s*-->[\s\S]*?<!--\s*impeccable-live-end\s*-->([ \t]*(?:\n|$)?)/,
-    /([ \t]*)\{\/\*\s*impeccable-live-start\s*\*\/\}[\s\S]*?\{\/\*\s*impeccable-live-end\s*\*\/\}([ \t]*(?:\n|$)?)/,
+    /([ \t]*)<!--\s*impeccable-live-start\s*-->[\s\S]*?<!--\s*impeccable-live-end\s*-->([ \t]*(?:\r\n|\n|\r|$)?)/,
+    /([ \t]*)\{\/\*\s*impeccable-live-start\s*\*\/\}[\s\S]*?\{\/\*\s*impeccable-live-end\s*\*\/\}([ \t]*(?:\r\n|\n|\r|$)?)/,
   ];
   for (const pat of patterns) {
     let changed = false;
@@ -416,7 +434,7 @@ function removeTag(content, _syntax) {
     do {
       content = next;
       next = content.replace(pat, (_match, leadingIndent, trailing = '') => {
-        if (trailing.includes('\n')) return leadingIndent;
+        if (/[\r\n]/.test(trailing)) return leadingIndent;
         return leadingIndent || trailing || '';
       });
       if (next !== content) changed = true;
