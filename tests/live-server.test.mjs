@@ -230,25 +230,37 @@ describe('live-server integration', () => {
     assert.ok(text.includes('__IMPECCABLE_PORT__'));
     const preludeIndex = text.indexOf('window.__IMPECCABLE_VOCAB__');
     const sessionPartIndex = text.indexOf('impeccable live script part: session-state (live-browser-session.js)');
+    const domPartIndex = text.indexOf('impeccable live script part: dom-helpers (live-browser-dom.js)');
     const browserPartIndex = text.indexOf('impeccable live script part: browser-ui (live-browser.js)');
     const sessionHelperIndex = text.indexOf('__IMPECCABLE_LIVE_SESSION__');
+    const domHelperIndex = text.indexOf('__IMPECCABLE_LIVE_DOM__');
     const browserInitIndex = text.indexOf('__IMPECCABLE_LIVE_INIT__');
     assert.ok(preludeIndex !== -1);
     assert.ok(sessionPartIndex !== -1);
+    assert.ok(domPartIndex !== -1);
     assert.ok(browserPartIndex !== -1);
     assert.ok(sessionHelperIndex !== -1);
+    assert.ok(domHelperIndex !== -1);
     assert.ok(browserInitIndex !== -1);
     assert.ok(
       preludeIndex < sessionPartIndex,
       'event=live_server.browser_script_order actor=browser operation=load_live_js risk=prelude_after_script_part expected=prelude before parts actual=' + preludeIndex + ':' + sessionPartIndex,
     );
     assert.ok(
-      sessionPartIndex < browserPartIndex,
-      'event=live_server.browser_script_order actor=browser operation=load_live_js risk=browser_part_before_session_helper expected=session part before browser part actual=' + sessionPartIndex + ':' + browserPartIndex,
+      sessionPartIndex < domPartIndex,
+      'event=live_server.browser_script_order actor=browser operation=load_live_js risk=dom_part_before_session_helper expected=session part before dom part actual=' + sessionPartIndex + ':' + domPartIndex,
+    );
+    assert.ok(
+      domPartIndex < browserPartIndex,
+      'event=live_server.browser_script_order actor=browser operation=load_live_js risk=browser_part_before_dom_helpers expected=dom part before browser part actual=' + domPartIndex + ':' + browserPartIndex,
     );
     assert.ok(
       sessionHelperIndex < browserInitIndex,
       'event=live_server.browser_helper_order actor=browser operation=load_live_js risk=session_helper_missing_before_browser_init expected=session helper before live init actual=' + sessionHelperIndex + ':' + browserInitIndex,
+    );
+    assert.ok(
+      domHelperIndex < browserInitIndex,
+      'event=live_server.browser_helper_order actor=browser operation=load_live_js risk=dom_helper_missing_before_browser_init expected=dom helper before live init actual=' + domHelperIndex + ':' + browserInitIndex,
     );
   });
 
