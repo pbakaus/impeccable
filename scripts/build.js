@@ -658,24 +658,6 @@ async function build() {
       }
     }
 
-    // Remove deprecated skill stubs from local harness dirs. They exist
-    // in dist/ so the cleanup script can redirect users, but they should
-    // not clutter the repo's own skill directories.
-    const deprecatedLocalSkills = [
-      'frontend-design', 'teach-impeccable',
-      'arrange', 'normalize', 'onboard', 'extract',
-      // v3.0 consolidation: standalone skills -> /impeccable sub-commands
-      'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
-      'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
-      'overdrive', 'polish', 'quieter', 'shape', 'typeset',
-    ];
-    for (const { configDir } of syncConfigs) {
-      for (const name of deprecatedLocalSkills) {
-        const p = path.join(ROOT_DIR, configDir, 'skills', name);
-        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
-      }
-    }
-
     console.log(`📋 Synced skills to: ${syncConfigs.map(p => p.configDir).join(', ')}`);
 
     // Build the Claude Code plugin subtree at ./plugin/.

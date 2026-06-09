@@ -25,11 +25,11 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|impeccable-paths|is-generated))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(context|context-signals|critique-storage|design-parser|impeccable-paths|is-generated))/,
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
+      /^tests\/(build|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -51,7 +51,6 @@ export const SUITES = {
         runner: 'node',
         files: [
           'tests/ci-test-plan.test.mjs',
-          'tests/cleanup-deprecated.test.mjs',
           'tests/context.test.mjs',
           'tests/context-signals.test.mjs',
           'tests/critique-storage.test.mjs',
