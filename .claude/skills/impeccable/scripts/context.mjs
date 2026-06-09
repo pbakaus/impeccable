@@ -426,6 +426,7 @@ async function computeUpdateDirective(now = Date.now()) {
 
 async function cli() {
   const cliOptions = parseCliOptions(process.argv.slice(2));
+  const targetProvided = hasTargetOption(cliOptions);
   const ctx = loadContext(process.cwd(), cliOptions);
   const updateDirective = await computeUpdateDirective();
 
@@ -444,6 +445,10 @@ async function cli() {
   const parts = [`# PRODUCT.md\n\n${ctx.product.trim()}`];
   if (ctx.hasDesign) {
     parts.push(`# DESIGN.md\n\n${ctx.design.trim()}`);
+  }
+  parts.push(buildResolvedContextDirective(ctx, cliOptions));
+  if (shouldWarnMissingTarget(ctx, targetProvided)) {
+    parts.push(buildMissingTargetDirective());
   }
   const register = extractRegister(ctx.product);
   const next = register
@@ -465,6 +470,39 @@ function parseCliOptions(args) {
     }
   }
   return options;
+}
+
+function hasTargetOption(options) {
+  return !!(options && typeof options.targetPath === 'string' && options.targetPath.trim());
+}
+
+function buildResolvedContextDirective(ctx, options) {
+  return `RESOLVED_CONTEXT:\n${JSON.stringify({
+    targetPath: hasTargetOption(options) ? options.targetPath : null,
+    projectRoot: ctx.projectRoot,
+    repoRoot: ctx.repoRoot,
+    productPath: ctx.productPath,
+    designPath: ctx.designPath,
+  }, null, 2)}`;
+}
+
+function shouldWarnMissingTarget(ctx, targetProvided) {
+  return !!(
+    ctx.isMonorepo
+    && !targetProvided
+    && ctx.projectRoot
+    && ctx.repoRoot
+    && path.resolve(ctx.projectRoot) === path.resolve(ctx.repoRoot)
+  );
+}
+
+function buildMissingTargetDirective() {
+  const script = process.argv[1] || 'context.mjs';
+  return (
+    'MONOREPO_TARGET_REQUIRED: This is a monorepo and context.mjs ran without --target. ' +
+    'If the user named a file, route, or child app, do not answer from this output. ' +
+    `Rerun \`node ${script} --target <path>\` and answer from that run's RESOLVED_CONTEXT fields.`
+  );
 }
 
 // Run cli() only when this module is the entry point. Compare realpaths

@@ -6,6 +6,7 @@
 import { createLiveSessionStore } from './live-session-store.mjs';
 import { readLiveServerInfo } from './impeccable-paths.mjs';
 import { manualApplyResumeHint } from './live-resume.mjs';
+import { chdirToLiveTarget } from './live-target.mjs';
 
 function readServerInfo() {
   return readLiveServerInfo(process.cwd())?.info || null;
@@ -23,6 +24,7 @@ async function fetchServerStatus(info) {
 }
 
 export async function statusCli() {
+  chdirToLiveTarget(process.argv.slice(2));
   const info = readServerInfo();
   const server = await fetchServerStatus(info);
   const store = createLiveSessionStore({ cwd: process.cwd() });

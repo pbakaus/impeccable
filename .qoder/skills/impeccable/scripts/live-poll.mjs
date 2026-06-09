@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { completionAckForAcceptResult, completionTypeForAcceptResult } from './live-completion.mjs';
 import { readLiveServerInfo } from './impeccable-paths.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -299,7 +300,9 @@ function handlePollError(err) {
 }
 
 export async function pollCli() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = stripTargetArgs(rawArgs);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: impeccable poll [options]
@@ -320,6 +323,7 @@ Options:
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
   --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
+  --target PATH       Scope live server state to a monorepo child project
   --help              Show this help message
 
 Harness note:

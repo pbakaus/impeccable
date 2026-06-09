@@ -5,6 +5,7 @@
 
 import { createLiveSessionStore } from './live-session-store.mjs';
 import { readLiveServerInfo } from './impeccable-paths.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function parseArgs(argv) {
   const out = { status: 'complete' };
@@ -21,7 +22,9 @@ function parseArgs(argv) {
 }
 
 export async function completeCli() {
-  const args = parseArgs(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = parseArgs(stripTargetArgs(rawArgs));
   if (args.help || !args.id) {
     console.log(`Usage: node live-complete.mjs --id SESSION_ID [--discarded|--error MESSAGE]\n\nAppend the final durable session acknowledgement. Use after accept/discard cleanup is verified.`);
     process.exit(args.help ? 0 : 1);

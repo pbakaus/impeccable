@@ -47,8 +47,12 @@ import {
   applyDeferredSvelteComponentAccepts,
   removeAllSvelteComponentSessions,
 } from './live-svelte-component.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RAW_ARGS = process.argv.slice(2);
+const LIVE_TARGET = chdirToLiveTarget(RAW_ARGS);
+const args = stripTargetArgs(RAW_ARGS);
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
@@ -1394,6 +1398,9 @@ function createRequestHandler({ detectScript, sessionPath, livePath }) {
       res.end(JSON.stringify({
         status: 'ok', port: state.port, mode: 'variant',
         hasProjectContext: hasProjectContext(),
+        targetPath: LIVE_TARGET.targetPath,
+        projectRoot: process.cwd(),
+        repoRoot: PROJECT_CONTEXT.repoRoot,
         connectedClients: state.sseClients.size,
       }));
       return;
@@ -2177,8 +2184,6 @@ function applyLegacyDeferredAcceptsOnStartup() {
 // Main
 // ---------------------------------------------------------------------------
 
-const args = process.argv.slice(2);
-
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`Usage: node live-server.mjs [options]
 
@@ -2192,6 +2197,7 @@ Commands:
 Options:
   --background  Start detached, print connection JSON to stdout, then exit
   --port=PORT   Use a specific port (default: auto-detect starting at 8400)
+  --target PATH  Scope live state/context to a monorepo child project
   --keep-inject Only with stop: skip live-inject.mjs --remove
   --help        Show this help
 
@@ -2314,7 +2320,14 @@ const { detectScript, sessionPath, livePath } = loadBrowserScripts();
 httpServer = http.createServer(createRequestHandler({ detectScript, sessionPath, livePath }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
-  writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });
+  writeLiveServerInfo(process.cwd(), {
+    pid: process.pid,
+    port: state.port,
+    token: state.token,
+    targetPath: LIVE_TARGET.targetPath,
+    projectRoot: process.cwd(),
+    repoRoot: PROJECT_CONTEXT.repoRoot,
+  });
   const url = `http://localhost:${state.port}`;
   console.log(`\nImpeccable live server running on ${url}`);
   console.log(`Token: ${state.token}\n`);

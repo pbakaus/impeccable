@@ -254,7 +254,25 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(res.status, 0);
     assert.match(res.stdout, /# Dashboard product/);
     assert.match(res.stdout, /# DESIGN\.md\n\n# Root design/);
+    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
+    assert.match(res.stdout, /"targetPath": "apps\/dashboard\/src\/App\.jsx"/);
+    assert.match(res.stdout, /"productPath": "apps\/dashboard\/PRODUCT\.md"/);
+    assert.match(res.stdout, /"designPath": "DESIGN\.md"/);
     assert.match(res.stdout, /NEXT STEP: This project's register is `product`\./);
+  });
+
+  it('warns when the CLI runs from a monorepo root without --target', () => {
+    writeMonorepo();
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
+    assert.match(res.stdout, /"targetPath": null/);
+    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+    assert.match(res.stdout, /--target <path>/);
   });
 });
 

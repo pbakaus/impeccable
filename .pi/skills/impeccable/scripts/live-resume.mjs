@@ -4,6 +4,7 @@
  */
 
 import { createLiveSessionStore } from './live-session-store.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
   const id = typeof eventOrId === 'string' ? eventOrId : eventOrId?.id || 'EVENT_ID';
@@ -61,7 +62,9 @@ function parseArgs(argv) {
 }
 
 export async function resumeCli() {
-  const args = parseArgs(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = parseArgs(stripTargetArgs(rawArgs));
   if (args.help) {
     console.log(`Usage: node live-resume.mjs [--id SESSION_ID]\n\nPrint the active durable session checkpoint and the next safe agent action.`);
     return;
