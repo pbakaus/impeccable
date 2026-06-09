@@ -19,7 +19,7 @@ The first argument is the action. Defaults to `status`.
 | `status` | Print current state, shared/local config paths, ignored rules / files / values, env override. |
 | `on` | Set `enabled: true` in `.impeccable/hook.json`. |
 | `off` | Set `enabled: false` in `.impeccable/hook.json`. |
-| `ignore-rule <id>` | Append `<id>` to `ignoreRules`. |
+| `ignore-rule <id>` | Append `<id>` to `ignoreRules`; for `overused-font`, requires `--all-values`. |
 | `ignore-file <glob>` | Append `<glob>` to `ignoreFiles`. |
 | `ignore-value <id> <value> [--shared] [--reason "..."]` | Append a rule/value suppression to shared `.impeccable/hook.json`. |
 | `ignore-value <id> <value> --local [--reason "..."]` | Append a private rule/value suppression to `.impeccable/hook.local.json`. |
@@ -46,14 +46,21 @@ The hook itself never writes ignore config. Persist an exception only after the 
 Prefer the narrowest exception:
 
 - If the finding line shows an exact `ignore-value` command, run that command. This writes shared `.impeccable/hook.json` by default.
+- For `overused-font`, use `ignore-value` when the user confirms a specific font. Do not use `ignore-rule overused-font` for a specific font.
 - If the finding has no value-specific command, such as `side-tab`, prefer `ignore-file <path>` for the current file.
-- Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project.
+- Use `ignore-rule <id>` only when the user asks to suppress that whole rule across the project. For broad overused-font suppression, use `ignore-rule overused-font --all-values` only when the user asks to ignore overused fonts generally.
 - Do not add source comments such as `impeccable: ignore`; inline comments pollute code and are not a supported suppression mechanism.
 
 Example value-specific exception:
 
 ```bash
 node .kiro/skills/impeccable/scripts/hook-admin.mjs ignore-value overused-font Inter --shared --reason "User confirmed Inter is intentional"
+```
+
+Example whole-rule font exception:
+
+```bash
+node .kiro/skills/impeccable/scripts/hook-admin.mjs ignore-rule overused-font --all-values --reason "User asked to ignore overused fonts generally"
 ```
 
 Example file-scoped exception:

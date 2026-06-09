@@ -883,7 +883,7 @@ function directiveFooter(display) {
     '',
     'Skip the fix only if the user explicitly asked for an intentionally bad UI, an anti-pattern example, a test fixture, or documentation of bad design. In that case, say so and continue.',
     '',
-    `Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding; for file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole rule. Run /impeccable audit for the full pass.`,
+    `Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Do not add hook ignores unless the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, run \`${ignoreFileCommand}\`; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
   ].join('\n');
 }
 

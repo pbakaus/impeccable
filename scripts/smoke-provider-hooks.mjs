@@ -35,6 +35,9 @@ const smokeFiles = {
   confirmedClaude: 'src/__impeccable_provider_smoke_confirmed_claude.html',
   confirmedCodex: 'src/__impeccable_provider_smoke_confirmed_codex.html',
   confirmedCursor: 'src/__impeccable_provider_smoke_confirmed_cursor.html',
+  agentChoiceClaude: 'src/__impeccable_provider_smoke_font_choice_claude.html',
+  agentChoiceCodex: 'src/__impeccable_provider_smoke_font_choice_codex.html',
+  agentChoiceCursor: 'src/__impeccable_provider_smoke_font_choice_cursor.html',
 };
 
 const results = [];
@@ -61,6 +64,7 @@ async function main() {
   if (selectedProviders.includes('direct')) checked('direct script contracts', 'direct script failed', runDirectContractChecks);
   if (selectedProviders.some((provider) => ['claude', 'codex', 'cursor'].includes(provider))) {
     checked('confirmed exception persistence', 'confirmed exception persistence failed', runConfirmedExceptionPersistenceChecks);
+    checked('agent-chosen font exception', 'agent-chosen font exception failed', runAgentChosenFontExceptionChecks);
   }
   if (selectedProviders.includes('claude')) checked('claude provider', 'provider did not fire or did not surface output', runClaudeProviderSmoke);
   if (selectedProviders.includes('codex')) checked('codex provider', 'provider did not fire or did not surface output', runCodexProviderSmoke);
@@ -482,11 +486,7 @@ function runConfirmedExceptionForProvider(provider) {
   });
 
   const config = readJson(configPath);
-  const ignoredValue = Array.isArray(config.ignoreValues)
-    && config.ignoreValues.some((entry) => entry.rule === 'overused-font' && entry.value === 'roboto');
-  if (!ignoredValue) {
-    throw new Error(`${provider} confirmed ignore-value was not persisted to .impeccable/hook.json`);
-  }
+  assertSpecificFontIgnoreConfig(provider, config);
 
   clearTransientHookState();
   const second = runInstalledProviderHook(provider, file, afterLog);
@@ -512,6 +512,127 @@ function runConfirmedExceptionForProvider(provider) {
   }
 
   clearRuntimeState();
+}
+
+function runAgentChosenFontExceptionChecks() {
+  const providers = selectedProviders.filter((provider) => ['claude', 'codex', 'cursor'].includes(provider));
+  for (const provider of providers) {
+    runAgentChosenFontExceptionForProvider(provider);
+  }
+  record('agent-chosen font exception', true, `${providers.join(', ')} persisted Roboto as ignoreValues and did not write ignoreRules`);
+}
+
+function runAgentChosenFontExceptionForProvider(provider) {
+  clearRuntimeState();
+  const rel = agentChoiceSmokeFile(provider);
+  const file = writeConfirmedFixture(rel);
+  const configPath = join(targetRepo, '.impeccable', 'hook.json');
+  const beforeLog = `${provider}-agent-choice-before.ndjson`;
+  const afterLog = `${provider}-agent-choice-after.ndjson`;
+
+  rmSync(join(smokeDir, beforeLog), { force: true });
+  rmSync(join(smokeDir, afterLog), { force: true });
+
+  const first = runInstalledProviderHook(provider, file, beforeLog);
+  requireRuleFinding(`${provider} agent-choice first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`, 'overused-font');
+  if (existsSync(configPath)) {
+    throw new Error(`${provider} hook wrote .impeccable/hook.json before explicit confirmation`);
+  }
+
+  runProviderAgentFontException(provider, rel);
+
+  const config = readJson(configPath);
+  assertSpecificFontIgnoreConfig(provider, config);
+
+  clearTransientHookState();
+  const second = runInstalledProviderHook(provider, file, afterLog);
+  if (provider === 'cursor') {
+    const payload = JSON.parse(second.stdout || '{}');
+    if (payload.permission !== 'allow') {
+      throw new Error('Cursor agent-chosen ignore-value did not allow the proposed write');
+    }
+  } else if (/overused-font|Required design corrections/.test(second.stdout || '')) {
+    throw new Error(`${provider} agent-chosen ignore-value emitted a correction after persistence`);
+  }
+
+  clearRuntimeState();
+}
+
+function runProviderAgentFontException(provider, rel) {
+  const prompt = fontExceptionPrompt(provider, rel);
+  if (provider === 'claude') {
+    run('claude', [
+      '-p',
+      '--setting-sources', 'project',
+      '--permission-mode', 'acceptEdits',
+      '--tools', 'Read,Bash',
+      '--allowedTools', 'Read Bash',
+      '--debug', 'hooks',
+      '--debug-file', join(smokeDir, 'claude-agent-choice-debug.log'),
+      prompt,
+    ], {
+      cwd: targetRepo,
+      logName: 'claude-agent-choice.log',
+      timeoutMs: 10 * 60 * 1000,
+    });
+    return;
+  }
+
+  if (provider === 'codex') {
+    run('codex', [
+      'exec',
+      '-C', targetRepo,
+      '--dangerously-bypass-hook-trust',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--json',
+      prompt,
+    ], {
+      cwd: targetRepo,
+      logName: 'codex-agent-choice.log',
+      timeoutMs: 10 * 60 * 1000,
+    });
+    return;
+  }
+
+  if (provider === 'cursor') {
+    ensureCursorAgent();
+    const res = run('agent', [
+      '-p',
+      '--force',
+      '--trust',
+      '--workspace', targetRepo,
+      '--output-format', 'stream-json',
+      prompt,
+    ], {
+      cwd: targetRepo,
+      logName: 'cursor-agent-choice.log',
+      timeoutMs: 10 * 60 * 1000,
+      allowFailure: true,
+    });
+    if (res.error || res.status !== 0) {
+      const output = `${res.stdout}\n${res.stderr}\n${res.error?.message || ''}`;
+      if (/Authentication required|agent login|CURSOR_API_KEY/i.test(output)) {
+        const err = new Error('Cursor CLI authentication required. Run `agent login` or set CURSOR_API_KEY, then rerun `bun run smoke:hooks -- --providers=cursor`.');
+        err.classification = 'cursor auth required';
+        throw err;
+      }
+      throw new Error(res.error ? `agent failed: ${res.error.message}` : `agent exited ${res.status}`);
+    }
+    return;
+  }
+
+  throw new Error(`Unsupported agent-choice provider: ${provider}`);
+}
+
+function assertSpecificFontIgnoreConfig(provider, config) {
+  if (Array.isArray(config.ignoreRules) && config.ignoreRules.includes('overused-font')) {
+    throw new Error(`${provider} wrote ignoreRules["overused-font"]; specific fonts must use ignoreValues`);
+  }
+  const ignoredValue = Array.isArray(config.ignoreValues)
+    && config.ignoreValues.some((entry) => entry.rule === 'overused-font' && entry.value === 'roboto');
+  if (!ignoredValue) {
+    throw new Error(`${provider} did not persist overused-font=roboto in ignoreValues`);
+  }
 }
 
 function runInstalledProviderHook(provider, file, logName) {
@@ -556,6 +677,13 @@ function confirmedSmokeFile(provider) {
   if (provider === 'codex') return smokeFiles.confirmedCodex;
   if (provider === 'cursor') return smokeFiles.confirmedCursor;
   throw new Error(`Unsupported confirmed exception provider: ${provider}`);
+}
+
+function agentChoiceSmokeFile(provider) {
+  if (provider === 'claude') return smokeFiles.agentChoiceClaude;
+  if (provider === 'codex') return smokeFiles.agentChoiceCodex;
+  if (provider === 'cursor') return smokeFiles.agentChoiceCursor;
+  throw new Error(`Unsupported agent-choice provider: ${provider}`);
 }
 
 function providerAdminScript(provider) {
@@ -743,6 +871,16 @@ function providerPrompt(rel) {
     'The file must be HTML and include a rounded card with exactly this CSS pattern: border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px.',
     'This is intentionally bad UI for hook verification, so do not fix or remove the side border if a hook warns about it.',
     'After creating the file, stop.',
+  ].join(' ');
+}
+
+function fontExceptionPrompt(provider, rel) {
+  return [
+    `Read the installed Impeccable hooks reference for ${provider}, then persist a confirmed hook exception for Roboto specifically in ${rel}.`,
+    'The user confirms Roboto is intentional for this fixture, but did not ask to ignore overused fonts generally.',
+    'Use the /impeccable hooks / hook-admin flow; do not edit .impeccable/hook.json by hand and do not edit the source fixture.',
+    'The final config must use ignoreValues for overused-font=roboto and must not add overused-font to ignoreRules.',
+    'After updating the config, stop.',
   ].join(' ');
 }
 

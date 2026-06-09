@@ -9,6 +9,7 @@
  *   node hook-admin.mjs on                             # set enabled: true
  *   node hook-admin.mjs off                            # set enabled: false
  *   node hook-admin.mjs ignore-rule <rule-id>          # append to ignoreRules
+ *   node hook-admin.mjs ignore-rule overused-font --all-values
  *   node hook-admin.mjs ignore-file <glob>             # append to ignoreFiles
  *   node hook-admin.mjs ignore-value <rule> <value>    # append to shared ignoreValues
  *   node hook-admin.mjs ignore-value <rule> <value> --local
@@ -139,8 +140,42 @@ function setEnabled(cwd, value) {
   return `Design hook ${value ? 'enabled' : 'disabled'} for this project (wrote ${path.relative(cwd, target) || target}).`;
 }
 
-function addIgnoreRule(cwd, rule) {
+function normalizeRuleId(rule) {
+  return String(rule || '').trim().toLowerCase();
+}
+
+function parseIgnoreRuleArgs(args) {
+  const positionals = [];
+  let allValues = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = String(args[i] || '');
+    if (arg === '--all-values') {
+      allValues = true;
+    } else if (arg === '--reason') {
+      while (i + 1 < args.length && !String(args[i + 1]).startsWith('--')) i++;
+    } else if (arg.startsWith('--reason=')) {
+      // Accepted for command symmetry; ignoreRules stores rule ids only.
+    } else if (arg.startsWith('--')) {
+      throw new Error(`Unknown ignore-rule flag: ${arg}`);
+    } else {
+      positionals.push(arg);
+    }
+  }
+
+  return {
+    rule: normalizeRuleId(positionals[0]),
+    allValues,
+  };
+}
+
+function addIgnoreRule(cwd, args) {
+  const parsed = parseIgnoreRuleArgs(args);
+  const rule = parsed.rule;
   if (!rule) throw new Error('Pass a rule id, e.g. /impeccable hooks ignore-rule side-tab');
+  if (rule === 'overused-font' && !parsed.allValues) {
+    throw new Error('overused-font is value-specific by default. Use /impeccable hooks ignore-value overused-font <font> for a confirmed font, or /impeccable hooks ignore-rule overused-font --all-values only when the user asked to ignore overused fonts generally.');
+  }
   const config = mergeConfig(readRawConfig(cwd));
   if (!config.ignoreRules.includes(rule)) config.ignoreRules.push(rule);
   writeConfig(cwd, config);
@@ -255,7 +290,7 @@ function main() {
       case 'status': out = statusReport(cwd); break;
       case 'on':     out = setEnabled(cwd, true); break;
       case 'off':    out = setEnabled(cwd, false); break;
-      case 'ignore-rule': out = addIgnoreRule(cwd, rest[0]); break;
+      case 'ignore-rule': out = addIgnoreRule(cwd, rest); break;
       case 'ignore-file': out = addIgnoreFile(cwd, rest[0]); break;
       case 'ignore-value': out = addIgnoreValue(cwd, rest); break;
       case 'reset':  out = reset(cwd); break;

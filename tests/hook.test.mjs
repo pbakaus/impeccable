@@ -367,6 +367,7 @@ describe('hook-admin.mjs', () => {
     assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
     const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
     assert.equal(shared.enabled, true);
+    assert.deepEqual(shared.ignoreRules, []);
     assert.deepEqual(shared.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
       { rule: 'overused-font', value: 'inter', reason: 'User confirmed Inter' },
     ]);
@@ -394,6 +395,28 @@ describe('hook-admin.mjs', () => {
     const status = runAdmin(['status']);
     assert.match(status, /local file:\s+\.impeccable\/hook\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
+  });
+
+  it('ignore-rule overused-font requires explicit broad suppression', () => {
+    assert.throws(
+      () => runAdmin(['ignore-rule', 'overused-font']),
+      /ignore-value overused-font <font>|--all-values/,
+    );
+    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
+  });
+
+  it('ignore-rule overused-font --all-values writes a whole-rule suppression', () => {
+    const out = runAdmin(['ignore-rule', 'overused-font', '--all-values', '--reason', 'User asked to ignore overused fonts generally']);
+    assert.match(out, /Added "overused-font" to ignoreRules/);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.deepEqual(shared.ignoreRules, ['overused-font']);
+    assert.deepEqual(shared.ignoreValues, []);
+  });
+
+  it('ignore-rule still allows non-value rules without --all-values', () => {
+    runAdmin(['ignore-rule', 'side-tab']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.deepEqual(shared.ignoreRules, ['side-tab']);
   });
 
   it('ignore-value rejects conflicting scope flags', () => {
@@ -458,9 +481,19 @@ describe('renderTemplate()', () => {
     assert.match(text, /Do not add hook ignores unless the user explicitly confirms/);
     assert.match(text, /Do not add source comments such as `impeccable: ignore`/);
     assert.match(text, /ignore-value \.\.\. --shared/);
+    assert.match(text, /ignore-rule overused-font --all-values/);
     assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
     assert.match(text, /ignore-rule <id>/);
     assert.match(text, /\/impeccable audit/);
+  });
+
+  it('shows the exact value-specific command for overused-font findings', () => {
+    const text = renderTemplate(
+      [finding('overused-font', 1, { name: 'Overused font', snippet: 'body { font-family: "Roboto", sans-serif; }' })],
+      '/x/fonts.css', DEFAULT_CONFIG, { cwd: '/x' }
+    );
+    assert.match(text, /\/impeccable hooks ignore-value overused-font Roboto --shared/);
+    assert.match(text, /ignore-rule overused-font --all-values/);
   });
 
   it('drops the L<line> prefix when line is 0', () => {
