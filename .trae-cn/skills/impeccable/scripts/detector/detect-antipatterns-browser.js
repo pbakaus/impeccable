@@ -410,6 +410,7 @@ const ANTIPATTERNS = [
   {
     id: 'non-token-font-size',
     category: 'quality',
+    conditional: 'personalized-typography-scale',
     name: 'Font size outside design system',
     description:
       'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
@@ -419,6 +420,7 @@ const ANTIPATTERNS = [
   {
     id: 'non-token-line-height',
     category: 'quality',
+    conditional: 'personalized-typography-scale',
     name: 'Line height outside design system',
     description:
       'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
@@ -428,6 +430,7 @@ const ANTIPATTERNS = [
   {
     id: 'non-token-letter-spacing',
     category: 'quality',
+    conditional: 'personalized-typography-scale',
     name: 'Letter spacing outside design system',
     description:
       'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
@@ -437,6 +440,7 @@ const ANTIPATTERNS = [
   {
     id: 'non-token-font-family',
     category: 'quality',
+    conditional: 'personalized-typography-scale',
     name: 'Font family outside design system',
     description:
       'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token or update the design system.',

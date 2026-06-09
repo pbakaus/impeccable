@@ -114,7 +114,11 @@ describe('docs integrity', () => {
       fs.readFileSync(path.join(ROOT, 'skill/scripts/command-metadata.json'), 'utf8')
     );
     const commandCount = Object.keys(commandMetadata).length;
-    const detectorCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
+    const detectorCount = new Set(
+      ANTIPATTERNS
+        .filter(rule => !rule.conditional)
+        .map(rule => rule.id)
+    ).size;
 
     const files = [
       'README.md',
