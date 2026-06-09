@@ -116,6 +116,18 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(f.filter(r => r.antipattern === 'line-length').length, 1);
   });
 
+  it('clipped-overflow-container: utility-named popovers still flag when clipped', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/clipped-overflow-container.html`);
+    const snippets = f
+      .filter(r => r.antipattern === 'clipped-overflow-container')
+      .map(r => r.snippet || '')
+      .join('\n');
+
+    assert.match(snippets, /flag-shadow-utility/, 'shadow-lg utility surfaces must not be skipped as decorative');
+    assert.match(snippets, /flag-overlay-surface/, 'overlay-named content surfaces must not be skipped as decorative');
+    assert.doesNotMatch(snippets, /pass-contained-overlay/, 'aria-hidden decorative overlays should remain skipped');
+  });
+
   it('oversized-h1: requires the headline to dominate the viewport, not just be large', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/oversized-h1-browser.html`);
     const hits = f.filter(r => r.antipattern === 'oversized-h1');

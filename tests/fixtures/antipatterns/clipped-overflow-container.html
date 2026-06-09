@@ -51,6 +51,14 @@
         <button>Actions</button>
         <div class="flyout">Flyout menu clipped to the right of the host</div>
       </div>
+      <div class="box flag-shadow-utility" style="overflow: hidden">
+        <button>More</button>
+        <div class="pop bg-white shadow-lg">Dropdown with utility classes still gets clipped.</div>
+      </div>
+      <div class="box flag-overlay-surface" style="overflow: clip">
+        <button>Dialog</button>
+        <div class="pop modal-overlay">Overlay-style dialog content still needs to escape.</div>
+      </div>
     </section>
 
     <!-- PASS column: no clipping, no positioned child, real scroll region, or contained decorative positioning -->

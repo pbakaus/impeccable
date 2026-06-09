@@ -2357,8 +2357,45 @@ function positionedChildIsDecorative(child) {
   const tag = child.tagName ? child.tagName.toLowerCase() : '';
   if (['img', 'svg', 'canvas', 'video'].includes(tag)) return true;
   const ident = `${child.getAttribute('class') || ''} ${child.getAttribute('id') || ''}`;
-  if (/\b(art|bg|background|badge|blob|crop|decor|dot|glow|grain|image|mask|ornament|overlay|photo|scrim|shadow|shine|texture)\b/i.test(ident)) {
+  if (
+    /\b(art|bg|background|badge|blob|crop|decor|dot|glow|grain|image|mask|ornament|overlay|photo|scrim|shadow|shine|texture)\b/i.test(ident) &&
+    !positionedChildHasSubstantiveContent(child)
+  ) {
     return true;
+  }
+  return false;
+}
+
+const POSITIONED_CHILD_INTERACTIVE_SELECTOR = [
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'summary',
+  'textarea',
+  '[tabindex]:not([tabindex="-1"])',
+  '[role="button"]',
+  '[role="dialog"]',
+  '[role="link"]',
+  '[role="listbox"]',
+  '[role="menu"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="tooltip"]',
+].join(',');
+
+function positionedChildHasSubstantiveContent(child) {
+  const text = (child.textContent || '').replace(/\s+/g, ' ').trim();
+  if (text.length > 0) return true;
+  if (typeof child.matches === 'function') {
+    try {
+      if (child.matches(POSITIONED_CHILD_INTERACTIVE_SELECTOR)) return true;
+    } catch {}
+  }
+  if (typeof child.querySelector === 'function') {
+    try {
+      if (child.querySelector(POSITIONED_CHILD_INTERACTIVE_SELECTOR)) return true;
+    } catch {}
   }
   return false;
 }

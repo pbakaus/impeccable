@@ -562,6 +562,8 @@ describe('detectHtml — clipped-overflow-container', () => {
     'flag-overflow-clip',
     'flag-overflow-negative',
     'flag-overflow-right',
+    'flag-shadow-utility',
+    'flag-overlay-surface',
   ];
   const SHOULD_PASS = [
     'pass-hidden-no-abs',
