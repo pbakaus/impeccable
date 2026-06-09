@@ -30,7 +30,7 @@ import {
   resolveInsertSessionAnchor,
   buildInsertPlaceholderSnapshot,
   findInsertAnchorInDom,
-} from '../skill/scripts/live-insert-ui.mjs';
+} from '../skill/scripts/live/insert-ui.mjs';
 
 describe('detectInsertAxisFromStyle', () => {
   it('maps flex row and grid multi-column to row axis', () => {

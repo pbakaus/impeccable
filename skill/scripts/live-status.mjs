@@ -3,8 +3,8 @@
  * Print durable recovery status for Impeccable live sessions.
  */
 
-import { createLiveSessionStore } from './live-session-store.mjs';
-import { readLiveServerInfo } from './impeccable-paths.mjs';
+import { createLiveSessionStore } from './live/session-store.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 import { manualApplyResumeHint } from './live-resume.mjs';
 import { chdirToLiveTarget } from './live-target.mjs';
 

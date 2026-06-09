@@ -14,7 +14,7 @@ import {
   getLiveDir,
   getLiveServerPath,
   getLiveSessionsDir,
-} from '../skill/scripts/impeccable-paths.mjs';
+} from '../skill/scripts/lib/impeccable-paths.mjs';
 
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
@@ -162,7 +162,7 @@ describe('live-server integration', () => {
     // live-browser.js builds its action picker from window.__IMPECCABLE_VOCAB__
     // rather than an inline copy, so the server must serialize the canonical
     // vocabulary into /live.js (next to the token/port).
-    const { LIVE_COMMANDS } = await import('../skill/scripts/live-vocabulary.mjs');
+    const { LIVE_COMMANDS } = await import('../skill/scripts/live/vocabulary.mjs');
     const body = await (await fetch(`http://localhost:${server.port}/live.js`)).text();
     assert.match(body, /window\.__IMPECCABLE_VOCAB__\s*=/);
     const injected = JSON.parse(body.match(/window\.__IMPECCABLE_VOCAB__\s*=\s*(\[.*?\]);/s)[1]);

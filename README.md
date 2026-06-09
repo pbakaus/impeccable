@@ -1,8 +1,8 @@
 # Impeccable
 
-The vocabulary you didn't know you needed. 1 skill, 23 commands, and curated anti-patterns for impeccable frontend design.
+Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 41 deterministic detector rules for AI-generated frontend design.
 
-> **Quick start:** Visit [impeccable.style](https://impeccable.style) to download ready-to-use bundles.
+> **Quick start:** From your project root, run `npx impeccable skills install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
 
 ## Why Impeccable?
 
@@ -11,25 +11,27 @@ Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/ski
 Every model trained on the same SaaS templates. Skip the guidance and you get the same handful of tells on every project: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
 
 Impeccable adds:
-- **7 domain reference files** ([view source](skill/)). Typography, color, motion, spatial, interaction, responsive, UX writing. Load on every command, alongside a brand-vs-product register that adjusts the defaults.
+- **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
 - **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
-- **27 deterministic anti-pattern rules** plus a 12-rule LLM critique pass. CLI and browser extension run the deterministic ones with no LLM and no API key. Each is tied to specific design guidance the skill teaches against.
+- **41 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
 ## What's Included
 
 ### The Skill: impeccable
 
-A comprehensive design skill with 7 domain-specific references ([view skill](skill/SKILL.src.md)):
+The skill installs as one command:
 
-| Reference | Covers |
-|-----------|--------|
-| [typography](skill/reference/typography.md) | Type systems, font pairing, modular scales, OpenType |
-| [color-and-contrast](skill/reference/color-and-contrast.md) | OKLCH, tinted neutrals, dark mode, accessibility |
-| [spatial-design](skill/reference/spatial-design.md) | Spacing systems, grids, visual hierarchy |
-| [motion-design](skill/reference/motion-design.md) | Easing curves, staggering, reduced motion |
-| [interaction-design](skill/reference/interaction-design.md) | Forms, focus states, loading patterns |
-| [responsive-design](skill/reference/responsive-design.md) | Mobile-first, fluid design, container queries |
-| [ux-writing](skill/reference/ux-writing.md) | Button labels, error messages, empty states |
+```bash
+/impeccable <command> <target>
+```
+
+Start every new project with:
+
+```bash
+/impeccable init
+```
+
+`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes project context that every later command reads.
 
 ### 23 Commands
 
@@ -292,7 +294,7 @@ npx impeccable detect https://example.com    # scan a URL (Puppeteer)
 npx impeccable detect --fast --json .        # regex-only, JSON output
 ```
 
-The detector catches 24 issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
+The detector catches 41 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
 ## Supported Tools
 

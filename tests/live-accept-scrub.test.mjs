@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
+import { writeBuffer, readBuffer } from '../skill/scripts/live/manual-edits-buffer.mjs';
 import { scrubManualEditsAgainstOriginalBlock } from '../skill/scripts/live-accept.mjs';
 
 let tmpDir;

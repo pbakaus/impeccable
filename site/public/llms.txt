@@ -8,7 +8,7 @@ Use the website pages below as the current public documentation. Use the GitHub 
 
 - [Home](https://impeccable.style/): Product overview, install options, supported AI coding harnesses, and download entry points.
 - [Designing with Impeccable](https://impeccable.style/designing): The end-to-end workflow from setup and brief to iteration, polish, and maintenance.
-- [Documentation](https://impeccable.style/docs): Command reference index for `/impeccable` and its sub-commands.
+- [Documentation](https://impeccable.style/docs): Command reference index for `/impeccable` and its commands.
 - [Getting started](https://impeccable.style/tutorials/getting-started): Install Impeccable, run `/impeccable init`, create project context, and start with a polish pass.
 - [Live Mode](https://impeccable.style/live-mode): Browser-based UI iteration with element picking, annotations, generated variants, and source writeback.
 - [Slop](https://impeccable.style/slop): Catalog of AI-generated UI anti-patterns and the detection overlay behind the CLI, extension, and critique workflow.
@@ -17,6 +17,7 @@ Use the website pages below as the current public documentation. Use the GitHub 
 
 - [Tutorials index](https://impeccable.style/tutorials): Step-by-step guides for installation, live iteration, and visual critique.
 - [Iterate on UI with Live Mode](https://impeccable.style/tutorials/iterate-live): Use `/impeccable live` against a running dev server to generate and accept UI variants.
+- [Brand vs product](https://impeccable.style/tutorials/brand-vs-product): Explain the setup choice between marketing surfaces and app surfaces.
 - [Critique with the visual overlay](https://impeccable.style/tutorials/critique-with-overlay): Combine `/impeccable critique`, deterministic detection, and the browser overlay.
 
 ## Command Reference

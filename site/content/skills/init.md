@@ -33,7 +33,7 @@ tagline: "Set up a project for Impeccable, once. Context, live mode, and where t
 
 ## When to use it
 
-Run `/impeccable init` once at the start of a project. It is the onramp. Without it, every other command will produce design that is technically competent but generically toned: stock SaaS voice, safe-default fonts, the AI color palette. With it, every command reads your answers before it generates.
+Run `/impeccable init` once at the start of a project. Without it, every other command has to guess: generic SaaS voice, safe-default fonts, the AI color palette. With it, every command reads your answers before it generates.
 
 Reach for it when:
 
@@ -43,13 +43,18 @@ Reach for it when:
 
 ## How it works
 
-One codebase crawl feeds everything init writes:
+One codebase scan feeds everything init writes:
 
-- **`PRODUCT.md`** is the strategic file. Register (brand or product), target users, product purpose, brand personality, anti-references, design principles, accessibility needs. Answers "who, what, why".
+- **`PRODUCT.md`** is the strategic file. It stores the audience, product purpose, voice, anti-references, design principles, accessibility needs, and the brand/product choice. Answers "who, what, why".
 - **`DESIGN.md`** is the visual file. Colors, typography, elevation, components, do's and don'ts. Answers "how it looks". Written by the delegated `/impeccable document` command, which init invokes at the end.
 - **Live mode config.** Since the same crawl already knows your framework and entry files, init pre-configures `/impeccable live` so it opens straight into variant mode with no first-time setup.
 
-The flow scans the codebase first (README, package.json, components, tokens, brand assets) and forms a **register hypothesis**: brand (landing, marketing, portfolio, where design IS the product) or product (app UI, dashboards, tools, where design SERVES the product). Register is the first question, because it shapes every downstream answer: typography defaults, motion energy, color strategy, the reference set commands like `/impeccable typeset` pull from. After register, init asks only what it could not infer: users, personality in three real words, references and anti-references, accessibility requirements.
+The flow scans the codebase first (README, package.json, components, tokens, brand assets) and asks you to confirm one core choice: is this a brand surface or a product surface?
+
+- **Brand:** landing pages, marketing pages, portfolios, campaigns. The impression is the product.
+- **Product:** app UI, dashboards, admin screens, tools. The design helps someone finish a task.
+
+The docs call that choice **register**. It shapes typography, motion, color, and density. After that, init asks only what it could not infer: users, personality in three real words, references and anti-references, accessibility requirements.
 
 PRODUCT.md is strategic only. No colors, no fonts, no pixel values. Those live in DESIGN.md. Keeping the two files separate is deliberate: strategy can stay stable while the visual system evolves.
 
@@ -61,7 +66,7 @@ It closes by pointing you at the best commands to run next, picked from what the
 /impeccable init
 ```
 
-Expect a 5 to 8 minute interview. The first question is usually about register; the rest are short. Init will quote back what it inferred from your code ("from the routes, this looks like a product surface, match?") so you are confirming, not starting from scratch.
+Expect a 5 to 8 minute interview. The first question is usually the brand/product choice; the rest are short. Init will quote back what it inferred from your code ("from the routes, this looks like a product surface, match?") so you are confirming, not starting from scratch.
 
 Along the way it offers to run `/impeccable document` for you. Say yes unless you have a specific reason to hold off. A real DESIGN.md is what keeps variants, polishes, and audits on-brand.
 

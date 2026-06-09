@@ -139,9 +139,21 @@ function installLiveQueryHelpersInPage() {
   };
 }
 
-export async function installLiveQueryHelpers(page) {
+export async function installLiveQueryHelpers(page, { timeout = 5_000 } = {}) {
   await page.addInitScript(installLiveQueryHelpersInPage).catch(() => {});
-  await page.evaluate(installLiveQueryHelpersInPage);
+  await withTimeout(
+    page.evaluate(installLiveQueryHelpersInPage),
+    timeout,
+    'install live query helpers',
+  );
+}
+
+function withTimeout(promise, timeout, label) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
 }
 
 async function clickLiveControl(page, selector) {
@@ -605,14 +617,14 @@ export async function clickPrev(page) {
 }
 
 async function clickBarButton(page, label) {
-  await installLiveQueryHelpers(page);
-  const button = page.locator(`${BAR_ID} button`, { hasText: label });
   const textMatch = label instanceof RegExp
     ? { kind: 'regex', source: label.source, flags: label.flags }
     : { kind: 'text', value: String(label) };
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      await installLiveQueryHelpers(page);
+      const button = page.locator(`${BAR_ID} button`, { hasText: label });
       await button.click({ timeout: 5_000 });
       return;
     } catch (err) {
@@ -637,11 +649,19 @@ async function clickBarButton(page, label) {
 }
 
 async function dispatchBarButton(page, label) {
-  await installLiveQueryHelpers(page);
-  const textMatch = label instanceof RegExp
-    ? { kind: 'regex', source: label.source, flags: label.flags }
-    : { kind: 'text', value: String(label) };
-  return page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch });
+  try {
+    await installLiveQueryHelpers(page);
+    const textMatch = label instanceof RegExp
+      ? { kind: 'regex', source: label.source, flags: label.flags }
+      : { kind: 'text', value: String(label) };
+    return await withTimeout(
+      page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch }),
+      5_000,
+      'dispatch bar button',
+    );
+  } catch {
+    return false;
+  }
 }
 
 function findAndClickBarButton({ barSel, textMatch }) {
@@ -662,20 +682,28 @@ function findAndClickBarButton({ barSel, textMatch }) {
  * Read the currently visible variant index (the "i" in "i/N").
  */
 export async function getVisibleVariant(page) {
-  await installLiveQueryHelpers(page);
-  return page.evaluate((barSel) => {
-    const wrapper = window.__impeccableLiveQuery('[data-impeccable-variants]');
-    if (wrapper) {
-      const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
-      const visible = variants.find((variant) => variant.style.display !== 'none');
-      const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
-      if (idx > 0) return idx;
-    }
-    const bar = window.__impeccableLiveQuery(barSel);
-    if (!bar) return null;
-    const m = (bar.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
-    return m ? parseInt(m[1], 10) : null;
-  }, BAR_ID);
+  try {
+    await installLiveQueryHelpers(page);
+    return await withTimeout(
+      page.evaluate((barSel) => {
+        const wrapper = window.__impeccableLiveQuery('[data-impeccable-variants]');
+        if (wrapper) {
+          const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
+          const visible = variants.find((variant) => variant.style.display !== 'none');
+          const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
+          if (idx > 0) return idx;
+        }
+        const bar = window.__impeccableLiveQuery(barSel);
+        if (!bar) return null;
+        const m = (bar.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+        return m ? parseInt(m[1], 10) : null;
+      }, BAR_ID),
+      5_000,
+      'read visible variant',
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**

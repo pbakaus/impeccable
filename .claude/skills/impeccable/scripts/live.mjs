@@ -23,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadContext } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
-import { readLiveServerInfo } from './impeccable-paths.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 import { resolveLiveTarget } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

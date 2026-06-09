@@ -610,6 +610,24 @@ import '../styles/testimonials.css';
         </div>
 
         <div class="downloads-rebuild-cmd-group">
+          <span class="downloads-rebuild-cmd-label">First run</span>
+          <div class="downloads-rebuild-cmd">
+            <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
+            <code>/impeccable init</code>
+            <button class="downloads-rebuild-copy" type="button" aria-label="Copy first run command" data-copy="/impeccable init">
+              <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+              <svg class="downloads-rebuild-check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="downloads-rebuild-cmd-group">
           <span class="downloads-rebuild-cmd-label downloads-rebuild-cmd-label--update">Update</span>
           <div class="downloads-rebuild-cmd downloads-rebuild-cmd--update">
             <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
@@ -627,7 +645,7 @@ import '../styles/testimonials.css';
           </div>
         </div>
 
-        <p class="downloads-rebuild-note">Works with Cursor, Claude Code, GitHub Copilot, Gemini CLI, Codex CLI, and every other major AI coding harness. <code>install</code> sets up the build for your harness; <code>update</code> pulls the latest. Run <code>npx impeccable skills check</code> to see if you're behind. Installed the Claude Code plugin? Update it from the <code>/plugin</code> menu instead.</p>
+        <p class="downloads-rebuild-note">Works with Cursor, Claude Code, GitHub Copilot, Gemini CLI, Codex CLI, and every other major AI coding harness. <code>install</code> sets up the build for your harness. Then run <code>/impeccable init</code> inside your AI tool so the skill can save your project context. <code>update</code> pulls the latest version. Run <code>npx impeccable skills check</code> to see if you're behind. Installed the Claude Code plugin? Update it from the <code>/plugin</code> menu instead.</p>
 
         <details class="downloads-rebuild-alts">
           <summary class="downloads-rebuild-alts-summary">
@@ -672,7 +690,7 @@ import '../styles/testimonials.css';
           </div>
         </details>
 
-        <p class="downloads-rebuild-secondary"><a href="/changelog">See what's new</a> &middot; <a href="/faq">Got questions?</a></p>
+        <p class="downloads-rebuild-secondary"><a href="/tutorials/getting-started">Read the setup guide</a> &middot; <a href="/changelog">See what's new</a> &middot; <a href="/faq">Got questions?</a></p>
       </div>
 
 
@@ -695,7 +713,7 @@ import '../styles/testimonials.css';
         </li>
       </ul>
 
-      <p class="downloads-rebuild-more">Learn more: <a href="/designing">Designing with Impeccable</a> &middot; <a href="/docs">the command docs</a></p>
+      <p class="downloads-rebuild-more">Learn more: <a href="/tutorials/getting-started">Getting started</a> &middot; <a href="/designing">Designing with Impeccable</a> &middot; <a href="/docs">command docs</a></p>
       </div>
     </section>
 

@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isGeneratedFile } from '../skill/scripts/is-generated.mjs';
+import { isGeneratedFile } from '../skill/scripts/lib/is-generated.mjs';
 import { detectCsp } from '../skill/scripts/detect-csp.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

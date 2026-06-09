@@ -33,6 +33,63 @@ const session = [
   { slug: 'polish', verb: 'Refine' },
 ];
 
+const startSteps = [
+  {
+    label: 'Install',
+    command: 'npx impeccable skills install',
+    line: 'Run this from the project root, then reload your AI coding tool.',
+  },
+  {
+    label: 'Set context',
+    command: '/impeccable init',
+    line: 'Answer the short setup interview. Say yes when it offers DESIGN.md.',
+  },
+  {
+    label: 'Try it',
+    command: '/impeccable polish the pricing page',
+    line: 'Pick any page or component that already exists.',
+  },
+];
+
+const choices = [
+  {
+    need: 'Set up a project',
+    command: '/impeccable init',
+    href: '/docs/init',
+    line: 'Create PRODUCT.md and DESIGN.md.',
+  },
+  {
+    need: 'Improve an existing page',
+    command: '/impeccable polish',
+    href: '/docs/polish',
+    line: 'Fix spacing, type, states, copy, and consistency.',
+  },
+  {
+    need: 'Find design issues',
+    command: '/impeccable critique',
+    href: '/docs/critique',
+    line: 'Get the highest-priority design problems.',
+  },
+  {
+    need: 'Check implementation quality',
+    command: '/impeccable audit',
+    href: '/docs/audit',
+    line: 'Check accessibility, responsiveness, performance, and detector findings.',
+  },
+  {
+    need: 'Point at UI in the browser',
+    command: '/impeccable live',
+    href: '/docs/live',
+    line: 'Pick an element, generate variants, accept one into source.',
+  },
+  {
+    need: 'Build a new feature',
+    command: '/impeccable craft',
+    href: '/docs/craft',
+    line: 'Plan, build, and visually check the feature.',
+  },
+];
+
 const chains: { id: string; a: string; b: string; arrow: string; line: string }[] = [
   { id: 'bolder-quieter', a: 'bolder', b: 'quieter', arrow: '↔', line: 'Two halves of voice. Loud or restrained, never neutral.' },
   { id: 'audit-harden', a: 'audit', b: 'harden', arrow: '→', line: 'Find the technical issues. Then fix them.' },
@@ -43,7 +100,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
 
 <Base
   title="Docs | Impeccable"
-  description="How to invoke /impeccable. Live picker, workflow chains, and the full command reference."
+  description="Start using /impeccable: install, run init, create project context, then choose the right command for the job."
   activeNav="docs"
   canonicalPath="/docs"
   bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
@@ -51,22 +108,63 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
   <div class="skills-layout">
     <DocsSidebar />
 
-    <div class="skills-main">
+    <div class="skills-main skills-main--docs-index">
       <div class="docs-index">
 
-        <header class="docs-index-header">
-          <h1 class="docs-index-title">How you invoke <span class="docs-index-mark">/impeccable</span>.</h1>
-          <p class="docs-index-lede">A loop, not a list. Run one sub-command in a chat, chain a few in a session, or open the live picker and iterate on the surface in your browser.</p>
-        </header>
+        <section class="docs-start-rail" aria-labelledby="docs-start-h">
+          <header class="docs-start-rail-head">
+            <h1 class="docs-start-rail-title" id="docs-start-h">Start with <span>/impeccable</span>.</h1>
+            <p class="docs-start-rail-lede">Install, run setup, then try one command on an existing page.</p>
+          </header>
 
-        <!-- Live mode: the headliner -->
+          <div class="docs-start-rail-sequence">
+            <div class="docs-start-rail-divider docs-start-rail-divider--top" aria-hidden="true">
+              <div class="ksd-divider ksd-divider--double-notch"></div>
+            </div>
+
+            <ol class="docs-start-rail-steps docs-start-rail-steps--number-gutter docs-start-rail-steps--inner-inset" aria-label="Quick start steps">
+              {startSteps.map((step, i) => (
+                <li class="docs-start-rail-step">
+                  <span class="docs-start-rail-num">{String(i + 1).padStart(2, "0")}</span>
+                  <span class="docs-start-rail-label">{step.label}</span>
+                  <code class="docs-start-rail-command">{step.command}</code>
+                  <span class="docs-start-rail-line">{step.line}</span>
+                </li>
+              ))}
+            </ol>
+
+            <div class="docs-start-rail-divider docs-start-rail-divider--bottom" aria-hidden="true">
+              <div class="ksd-divider ksd-divider--double-notch"></div>
+            </div>
+          </div>
+
+          <p class="docs-start-rail-note">Full walkthrough: <a href="/tutorials/getting-started">Getting started</a>.</p>
+        </section>
+
+        <section class="docs-chooser-section" aria-labelledby="docs-chooser-h">
+          <header class="docs-chooser-head">
+            <h2 class="docs-chooser-title" id="docs-chooser-h">Choose a command.</h2>
+          </header>
+
+          <div class="docs-chooser-list">
+            {choices.map(choice => (
+              <a class="docs-chooser-list-row" href={choice.href}>
+                <span class="docs-chooser-list-need">{choice.need}</span>
+                <span class="docs-chooser-list-command">{choice.command}</span>
+                <span class="docs-chooser-list-line">{choice.line}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+
+        <!-- Live mode: visual iteration -->
         <section class="docs-live" aria-labelledby="docs-live-h">
           <div class="docs-live-copy">
             <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it.</h2>
-            <p class="docs-live-lede">Click an element in the running app. Pick a sub-command, optionally annotate, hit Go. Impeccable wraps the element, writes two or three variants into the source, and HMR cycles them in front of you. Accept the one you want. The rest are removed.</p>
+            <p class="docs-live-lede">Use Live Mode when an issue is easier to point at than describe. Pick an element, generate variants, accept one into source.</p>
             <p class="docs-live-cta">
               <a class="ks-button ks-button-primary" href="/docs/live">
-                Read the live spec
+                Read the live docs
                 <span class="ks-button-arrow" aria-hidden="true">
                   <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M0 4h14M10 0l4 4-4 4"/></svg>
                 </span>
@@ -102,8 +200,8 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- A typical session: linear workflow -->
         <section class="docs-flow-section">
           <header class="docs-flow-head">
-            <h2 class="docs-flow-title">Plan, build, review, refine.</h2>
-            <p class="docs-flow-sub">One canonical shape. Each step is a sub-command you invoke in chat.</p>
+            <h2 class="docs-flow-title">Full session path.</h2>
+            <p class="docs-flow-sub">Plan, build, review, refine.</p>
           </header>
 
           <ol class="docs-flow" aria-label="Typical session">
@@ -124,15 +222,15 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
           </ol>
 
           <p class="docs-flow-alt">
-            Already shipped? Skip ahead with <a href="/docs/live">/impeccable live</a> on the page that needs work, or <a href="/docs/audit">/impeccable audit</a> for a technical pass.
+            Already shipped? Use <a href="/docs/polish">/impeccable polish</a> on the page that needs work, or <a href="/docs/audit">/impeccable audit</a> for checks.
           </p>
         </section>
 
         <!-- Pairs and chains: the schema -->
         <section class="docs-chains-section">
           <header class="docs-chains-head">
-            <h2 class="docs-chains-title">How commands imply each other.</h2>
-            <p class="docs-chains-sub">Four shapes that show up across most sessions. Learn these and the rest is filling in detail.</p>
+            <h2 class="docs-chains-title">Useful command pairs.</h2>
+            <p class="docs-chains-sub">Use these when one pass is not enough.</p>
           </header>
 
           <div class="docs-chains-grid">
@@ -152,7 +250,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- Full reference: the cheatsheet -->
         <section class="docs-reference-section" aria-labelledby="docs-reference-h">
           <header class="docs-reference-head">
-            <h2 class="docs-reference-title" id="docs-reference-h">Every sub-command, by lifecycle phase.</h2>
+            <h2 class="docs-reference-title" id="docs-reference-h">Full command reference.</h2>
           </header>
 
           <div class="docs-reference">

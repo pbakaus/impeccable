@@ -20,7 +20,7 @@ import {
   readLiveServerInfo,
   resolveDesignSidecarPath,
   resolveLiveConfigPath,
-} from '../skill/scripts/impeccable-paths.mjs';
+} from '../skill/scripts/lib/impeccable-paths.mjs';
 
 describe('impeccable project paths', () => {
   let tmp;

@@ -9,7 +9,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
 import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -134,12 +134,33 @@ function hashSkillsDir(skillsDir) {
  * Caller is responsible for cleanup.
  */
 async function downloadAndExtractBundle() {
+  const localBundle = process.env.IMPECCABLE_BUNDLE_PATH;
+  if (localBundle) return copyOrExtractLocalBundle(localBundle);
+
   const tmpZip = join(tmpdir(), `impeccable-update-${Date.now()}.zip`);
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
   await extract(tmpZip, { dir: tmpDir });
   rmSync(tmpZip, { force: true });
+  return tmpDir;
+}
+
+async function copyOrExtractLocalBundle(sourceValue) {
+  const source = resolve(sourceValue);
+  if (!existsSync(source)) {
+    throw new Error(`Local bundle not found: ${source}`);
+  }
+
+  const tmpDir = join(tmpdir(), `impeccable-local-bundle-${process.pid}-${Date.now()}`);
+  mkdirSync(tmpDir, { recursive: true });
+
+  if (statSync(source).isDirectory()) {
+    cpSync(source, tmpDir, { recursive: true });
+    return tmpDir;
+  }
+
+  await extract(source, { dir: tmpDir });
   return tmpDir;
 }
 

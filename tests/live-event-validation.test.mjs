@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateEvent } from '../skill/scripts/live-event-validation.mjs';
+import { validateEvent } from '../skill/scripts/live/event-validation.mjs';
 
 const VALID_ID = 'a1b2c3d4';
 

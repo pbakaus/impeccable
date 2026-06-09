@@ -16,7 +16,7 @@
  * Output JSON: { discarded: N, entries: [...discardedEntries], totalCount: N }
  */
 
-import { readBuffer, removeEntries, truncateBuffer } from './live-manual-edits-buffer.mjs';
+import { readBuffer, removeEntries, truncateBuffer } from './live/manual-edits-buffer.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function argVal(args, name) {

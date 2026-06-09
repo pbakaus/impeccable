@@ -267,7 +267,7 @@ describe('live-browser source contracts', () => {
   it('keeps sendEvent fire-and-forget by default while accept/discard opt into rejection', () => {
     assert.match(
       SOURCE,
-      /function sendEvent\(msg, opts\)[\s\S]*if \(opts && opts\.throwOnError\) throw err;[\s\S]*return null;/,
+      /function sendEvent\(msg, opts\)[\s\S]*if \(opts && opts\.throwOnError\) \{[\s\S]*console\.error\('\[impeccable\] Failed to send event:', err\);[\s\S]*throw err;[\s\S]*\}[\s\S]*console\.debug\('\[impeccable\] Dropped optional live event:', err\);[\s\S]*return null;/,
       'event=live_browser.send_event_contract actor=browser operation=send_event_failure risk=fire_and_forget_callers_get_unhandled_rejections expected=default swallow with opt-in throw actual=missing',
     );
     assert.match(SOURCE, /if \(res\.ok\) return res;[\s\S]*const body = await res\.json\(\)\.catch\(\(\) => \(\{\}\)\);[\s\S]*handleFailure\(new Error\(body\.error \|\| \('HTTP ' \+ res\.status \+ ' ' \+ res\.statusText\)\)\)/);
@@ -321,12 +321,27 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);/,
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?acceptedDomAlreadyClean\(accepted\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?\}, 1800\);/,
+      'post-cleanup fallback should give HMR a second chance before mutating React-owned DOM',
+    );
+    assert.match(
+      SOURCE,
+      /function ensureAcceptedDomClean\(pending\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
       'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
     );
     assert.match(
       SOURCE,
-      /if \(!accepted\) \{[\s\S]{0,120}?wrapper\.remove\(\);[\s\S]{0,120}?restoreAcceptedDomFromSnapshot\(pending\);[\s\S]{0,80}?return;/,
+      /function acceptedDomAlreadyClean\(pending\)[\s\S]*?matches\.length > 0[\s\S]*?matches\.every[\s\S]*?data-impeccable-carbonize/,
+      'accepted DOM should not be considered clean while any matching root is still inside a carbonize wrapper',
+    );
+    assert.match(
+      SOURCE,
+      /function findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?querySelectorAll\('\[data-impeccable-variants=[\s\S]*?querySelectorAll\('\[data-impeccable-carbonize=/,
+      'post-cleanup fallback should remove every stale variants/carbonize wrapper left by React HMR after accept',
+    );
+    assert.match(
+      SOURCE,
+      /if \(!accepted\) \{[\s\S]{0,80}?wrapper\.remove\(\);[\s\S]{0,80}?continue;/,
       'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
     );
     assert.match(
@@ -338,6 +353,39 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function reloadAfterMissingAcceptedDom\(pending\)[\s\S]*?location\.reload\(\);/,
       'missing accepted DOM after clean source should recover by reloading the clean page',
+    );
+  });
+
+  it('normalizes generated JSX source before source-fallback DOM parsing', () => {
+    assert.match(
+      SOURCE,
+      /parser\.parseFromString\(normalizeSourceFallbackBlock\(block, filePath\), 'text\/html'\)/,
+      'source fallback should normalize JSX wrapper syntax before DOMParser sees it',
+    );
+    assert.match(
+      SOURCE,
+      /function normalizeSourceFallbackBlock\(block, filePath\)[\s\S]*?<style\\b\(\[\^>\]\*\)>\\s\*\\\{\\s\*`\(\[\\s\\S\]\*\?\)`\\s\*\\\}\\s\*<\\\/style>/,
+      'source fallback should unwrap JSX style template literals',
+    );
+    assert.match(
+      SOURCE,
+      /replace\(\/\\bclassName\\s\*=\/g, 'class='\)/,
+      'source fallback should translate className back to HTML class attributes',
+    );
+    assert.match(
+      SOURCE,
+      /value\.replace\(\/\\\$\\\{\[\^}\]\*\\\}\/g, ' '\)/,
+      'source fallback should reduce JSX template className values to literal class tokens',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /querySelectorAll\(tag \+ '\\.' \+ cls\.split/,
+      'source fallback should not construct unsafe selectors from JSX-ish class strings',
+    );
+    assert.match(
+      SOURCE,
+      /function jsxStyleObjectToCss\(body\)/,
+      'source fallback should translate simple JSX style objects such as display:none',
     );
   });
 });

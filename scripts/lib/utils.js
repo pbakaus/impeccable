@@ -67,6 +67,35 @@ function readDetectorBundleScripts(rootDir) {
   return scripts;
 }
 
+function readSkillScripts(scriptsDir) {
+  const scripts = [];
+
+  const walk = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (PER_PROJECT_SCRIPT_ARTIFACTS.has(entry.name)) continue;
+
+      const relPath = path.relative(scriptsDir, entryPath).split(path.sep).join('/');
+      scripts.push({
+        name: relPath,
+        content: fs.readFileSync(entryPath, 'utf-8'),
+        filePath: entryPath,
+      });
+    }
+  };
+
+  walk(scriptsDir);
+  return scripts;
+}
+
 /**
  * Parse frontmatter from markdown content
  * Returns { frontmatter: object, body: string }
@@ -224,18 +253,7 @@ export function readSourceFiles(rootDir) {
   const scripts = [];
   const scriptsDir = path.join(skillDir, 'scripts');
   if (fs.existsSync(scriptsDir)) {
-    const scriptFiles = fs.readdirSync(scriptsDir).filter(f => {
-      if (PER_PROJECT_SCRIPT_ARTIFACTS.has(f)) return false;
-      return fs.statSync(path.join(scriptsDir, f)).isFile();
-    });
-    for (const scriptFile of scriptFiles) {
-      const scriptPath = path.join(scriptsDir, scriptFile);
-      scripts.push({
-        name: scriptFile,
-        content: fs.readFileSync(scriptPath, 'utf-8'),
-        filePath: scriptPath
-      });
-    }
+    scripts.push(...readSkillScripts(scriptsDir));
   }
   scripts.push(...readDetectorBundleScripts(rootDir));
 

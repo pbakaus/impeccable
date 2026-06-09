@@ -12,7 +12,7 @@ import {
   countByPage,
   truncateBuffer,
   getBufferPath,
-} from '../skill/scripts/live-manual-edits-buffer.mjs';
+} from '../skill/scripts/live/manual-edits-buffer.mjs';
 
 let tmpDir;
 

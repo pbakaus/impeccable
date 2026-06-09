@@ -489,6 +489,25 @@ Impeccable design instructions.`;
     expect(skills[0].references[0].name).toBe('typography');
   });
 
+  test('should read nested skill script files with portable relative names', () => {
+    const skillDir = path.join(testRootDir, 'skill');
+    ensureDir(skillDir);
+    fs.writeFileSync(path.join(skillDir, 'SKILL.src.md'), '---\nname: test-skill\n---\nBody');
+
+    const scriptsDir = path.join(skillDir, 'scripts');
+    ensureDir(path.join(scriptsDir, 'live'));
+    fs.writeFileSync(path.join(scriptsDir, 'context.mjs'), 'export const context = true;\n');
+    fs.writeFileSync(path.join(scriptsDir, 'live/session-store.mjs'), 'export const nested = true;\n');
+    fs.writeFileSync(path.join(scriptsDir, 'config.json'), '{"local":true}\n');
+
+    const { skills } = readSourceFiles(testRootDir);
+    const scripts = skills[0].scripts;
+    const scriptNames = scripts.map(script => script.name).sort();
+
+    expect(scriptNames).toEqual(['context.mjs', 'live/session-store.mjs']);
+    expect(scripts.find(script => script.name === 'live/session-store.mjs').content).toContain('nested = true');
+  });
+
   test('should handle missing skill directory', () => {
     const { skills } = readSourceFiles(testRootDir);
     expect(skills).toEqual([]);
@@ -636,4 +655,3 @@ describe('replacePlaceholders', () => {
     expect(result).toBe('the model .cursorrules');
   });
 });
-

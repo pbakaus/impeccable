@@ -15,14 +15,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isGeneratedFile } from './is-generated.mjs';
-import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live-manual-edits-buffer.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
+import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live/manual-edits-buffer.mjs';
 import {
   applyDeferredSvelteComponentAccepts,
   findSvelteComponentManifest,
   inlineSvelteComponentAccept,
   removeSvelteComponentSession,
-} from './live-svelte-component.mjs';
+} from './live/svelte-component.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];

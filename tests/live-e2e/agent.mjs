@@ -26,7 +26,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { completionTypeForAcceptResult } from '../../skill/scripts/live-completion.mjs';
+import { completionTypeForAcceptResult } from '../../skill/scripts/live/completion.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -1747,6 +1747,10 @@ export async function runAgentLoop({
           }),
           signal,
         });
+        if (completionType === 'agent_done' && acceptResult.handled === true && acceptResult.carbonize === true) {
+          await runLiveComplete({ tmp, scriptsDir, id: event.id });
+          log(`completed carbonize session ${event.id}`);
+        }
       } catch (err) {
         if (signal.aborted) return;
         log('accept failed: ' + err.message);
@@ -1876,20 +1880,32 @@ export async function applySteerEdits(tmp, { file, edits }) {
 async function handleSteerDeterministic(context) {
   const { targetFileAbs, target } = context;
   let body = await fs.readFile(targetFileAbs, 'utf-8');
+  const next = addSteerMarkerToSource(body, target);
+  if (next === body) return;
+  if (!next) {
+    const { classes = 'hero-title', tag = 'h1' } = target;
+    const classToken = classes.split(/\s+/)[0];
+    throw new Error(`steer target <${tag}.${classToken}> not found in ${targetFileAbs}`);
+  }
+  body = next;
+  await fs.writeFile(targetFileAbs, body, 'utf-8');
+}
+
+export function addSteerMarkerToSource(body, target = { classes: 'hero-title', tag: 'h1' }) {
   const attr = `${STEER_MARKER_ATTR}="${STEER_MARKER_VALUE}"`;
-  if (body.includes(attr)) return;
+  if (body.includes(attr)) return body;
 
   const { classes = 'hero-title', tag = 'h1' } = target;
   const classToken = classes.split(/\s+/)[0];
+  const escapedTag = escapeRegExp(tag);
+  const escapedClass = escapeRegExp(classToken);
+  const classValue = `(?:["'][^"']*\\b${escapedClass}\\b[^"']*["']|\\{[^}]*\\b${escapedClass}\\b[^}]*\\})`;
   const openTagRe = new RegExp(
-    `(<${tag}\\b(?=[^>]*\\b(?:className|class)=["'][^"']*\\b${classToken}\\b)[^>]*)(>)`,
+    `(<${escapedTag}\\b(?=[^>]*\\b(?:className|class)\\s*=\\s*${classValue})[^>]*)(>)`,
     'i',
   );
-  if (!openTagRe.test(body)) {
-    throw new Error(`steer target <${tag}.${classToken}> not found in ${targetFileAbs}`);
-  }
-  body = body.replace(openTagRe, `$1 ${attr}$2`);
-  await fs.writeFile(targetFileAbs, body, 'utf-8');
+  if (!openTagRe.test(body)) return null;
+  return body.replace(openTagRe, `$1 ${attr}$2`);
 }
 
 function findSteerTargetFileSync(tmp, target) {
@@ -1976,26 +1992,12 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   }
 
   // 2. Unwrap the temporary `<div data-impeccable-variant="N" ...>` placed
-  // around the accepted content. live-accept emits this wrapper with
-  // `style="display: contents"` so it doesn't affect layout. We strip the
-  // wrapper open/close lines and keep what's between.
-  // Match the opening div (any single line) followed by inner content
-  // followed by `</div>`, where the open carries data-impeccable-variant
-  // and is NOT inside a data-impeccable-variants wrapper (the variants
-  // wrapper has the trailing `s`).
-  body = body.replace(
-    /^([ \t]*)<div\b[^>]*\bdata-impeccable-variant="[^"]+"[^>]*>\n([\s\S]*?)\n[ \t]*<\/div>\n/m,
-    (match, indent, inner) => {
-      // Re-indent inner content to the wrapper's indent level.
-      const innerLines = inner.split('\n');
-      const innerIndent = (innerLines[0].match(/^\s*/) || [''])[0];
-      const dedented = innerLines.map((l) => {
-        if (l.startsWith(innerIndent)) return indent + l.slice(innerIndent.length);
-        return l;
-      }).join('\n');
-      return expandAcceptedVariantMarkup(dedented, indent) + '\n';
-    },
-  );
+  // around the accepted content. For JSX targets, live-accept also adds an
+  // outer `<div data-impeccable-carbonize>` so the carbonize block and accepted
+  // node occupy one child slot; strip that shell after the accepted node is
+  // clean.
+  body = unwrapDivAttributeWrapper(body, 'data-impeccable-variant', { expandSingleLineContainer: true });
+  body = unwrapDivAttributeWrapper(body, 'data-impeccable-carbonize');
 
   // 3. Strip any `data-impeccable-hoist-id` attributes the normalize step
   // may have injected when the model emitted inline styles. The hoisted
@@ -2005,6 +2007,49 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   body = body.replace(/\s+data-impeccable-hoist-id="[^"]*"/g, '');
 
   await fs.writeFile(filePath, body, 'utf-8');
+}
+
+function unwrapDivAttributeWrapper(body, attrName, { expandSingleLineContainer = false } = {}) {
+  const lines = String(body).split('\n');
+  const attrRe = new RegExp(`\\b${escapeRegExp(attrName)}=`);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/<div\b/.test(lines[i]) || !attrRe.test(lines[i])) continue;
+
+    const indent = (lines[i].match(/^(\s*)/) || [''])[1];
+    let depth = countDivDepthDelta(lines[i]);
+    for (let j = i + 1; j < lines.length; j++) {
+      depth += countDivDepthDelta(lines[j]);
+      if (depth !== 0) continue;
+
+      let replacement = reindentWrapperBody(lines.slice(i + 1, j), indent).join('\n');
+      if (expandSingleLineContainer) {
+        replacement = expandAcceptedVariantMarkup(replacement, indent);
+      }
+      lines.splice(i, j - i + 1, ...replacement.split('\n'));
+      return lines.join('\n');
+    }
+  }
+
+  return body;
+}
+
+function countDivDepthDelta(line) {
+  return countMatches(line, /<div\b/g) - countMatches(line, /<\/div>/g);
+}
+
+function countMatches(value, re) {
+  return [...String(value || '').matchAll(re)].length;
+}
+
+function reindentWrapperBody(lines, indent) {
+  const firstContentLine = lines.find((line) => line.trim() !== '');
+  const innerIndent = (firstContentLine?.match(/^(\s*)/) || [''])[1] || '';
+  return lines.map((line) => {
+    if (line.trim() === '') return '';
+    if (innerIndent && line.startsWith(innerIndent)) return indent + line.slice(innerIndent.length);
+    return indent + line.trimStart();
+  });
 }
 
 function expandAcceptedVariantMarkup(source, indent) {
@@ -2082,4 +2127,8 @@ async function runAccept({ tmp, scriptsDir, id, variant, discard, paramValues, p
   const { stdout } = await execFileP(process.execPath, args, { cwd: tmp });
   const last = stdout.trim().split('\n').filter(Boolean).pop();
   return JSON.parse(last);
+}
+
+async function runLiveComplete({ tmp, scriptsDir, id }) {
+  await execFileP(process.execPath, [path.join(scriptsDir, 'live-complete.mjs'), '--id', id], { cwd: tmp });
 }

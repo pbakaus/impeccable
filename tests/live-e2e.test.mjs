@@ -22,8 +22,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createFakeAgent } from './live-e2e/agent.mjs';
@@ -76,17 +76,24 @@ function listRuntimeFixtures() {
 
 const allFixtures = listRuntimeFixtures();
 
-// During development of the full-cycle test, a single fixture is much faster
-// to iterate on. Set IMPECCABLE_E2E_ONLY=<name> to scope the run.
-const onlyName = process.env.IMPECCABLE_E2E_ONLY;
-const fixtures = onlyName
-  ? allFixtures.filter((f) => f.name === onlyName)
+// During development of the full-cycle test, a fixture subset is much faster
+// to iterate on. Set IMPECCABLE_E2E_ONLY=<name>[,<name>...] to scope the run.
+const onlyNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_ONLY);
+const fixtures = onlyNames.size > 0
+  ? allFixtures.filter((f) => onlyNames.has(f.name))
   : allFixtures;
+const missingOnlyNames = [...onlyNames].filter((name) => !allFixtures.some((f) => f.name === name));
+if (missingOnlyNames.length > 0) {
+  throw new Error(`Unknown IMPECCABLE_E2E_ONLY fixture(s): ${missingOnlyNames.join(', ')}`);
+}
 
 const manualOnly = process.env.IMPECCABLE_E2E_MANUAL_ONLY === '1'
   || process.env.IMPECCABLE_E2E_MANUAL_ONLY === 'true';
 const reloadVariants = process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === '1'
   || process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === 'true';
+const scenarioNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_SCENARIOS);
+const liveE2eTestTimeoutMs = readPositiveIntEnv('IMPECCABLE_E2E_TEST_TIMEOUT_MS');
+const liveE2eTestOptions = liveE2eTestTimeoutMs ? { timeout: liveE2eTestTimeoutMs } : {};
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -96,6 +103,26 @@ if (fixtures.length === 0) {
 
 let playwright;
 let browser;
+
+function parseFixtureFilter(value) {
+  return new Set(
+    String(value || '')
+      .split(/[,\s]+/)
+      .map((name) => name.trim())
+      .filter(Boolean),
+  );
+}
+
+function readPositiveIntEnv(name) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function shouldRunScenario(name) {
+  return scenarioNames.size === 0 || scenarioNames.has('all') || scenarioNames.has(name);
+}
 
 before(async () => {
   if (fixtures.length === 0) return;
@@ -107,7 +134,7 @@ before(async () => {
     );
   }
   try {
-    browser = await playwright.chromium.launch({ headless: true });
+    browser = await launchLiveE2eBrowser();
   } catch (err) {
     throw new Error(`Failed to launch Chromium (${err.message}). Run: npx playwright install chromium`);
   }
@@ -117,9 +144,26 @@ after(async () => {
   if (browser) await browser.close();
 });
 
+async function launchLiveE2eBrowser() {
+  return playwright.chromium.launch({ headless: true });
+}
+
+async function teardownAndResetBrowser(teardown) {
+  try {
+    await teardown();
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    browser = await launchLiveE2eBrowser();
+  }
+}
+
 for (const { name, fixture } of fixtures) {
   describe(`live-e2e · ${name} (${fixture.runtime.styling || 'unknown-styling'})`, () => {
-    it('drives the full click → Go → cycle → accept cycle', async (t) => {
+    it('drives the full click → Go → cycle → accept cycle', liveE2eTestOptions, async (t) => {
+      if (!shouldRunScenario('core')) {
+        t.skip('scenario filter excludes core');
+        return;
+      }
       if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
         t.skip('manual scenario filter is active');
         return;
@@ -183,6 +227,7 @@ for (const { name, fixture } of fixtures) {
         ? pickSelector
         : '[data-impeccable-variant="2"] > :first-child';
       let stateProbeBaseline = null;
+      let sourceFile = null;
 
       try {
         // 1. Handshake
@@ -265,7 +310,7 @@ for (const { name, fixture } of fixtures) {
         }
 
         // 5. Source-side check: wrapper + style + variants are present
-        const sourceFile = await locateSessionFile(tmp);
+        sourceFile = await locateSessionFile(tmp);
         const after = readFileSync(sourceFile, 'utf-8');
         const svelteComponentSession = svelteComponentTargetFor(sourceFile);
         if (svelteComponentSession) {
@@ -338,17 +383,18 @@ for (const { name, fixture } of fixtures) {
         const cycleSequence = Array.isArray(fixture.runtime.variantSequence) && fixture.runtime.variantSequence.length > 0
           ? fixture.runtime.variantSequence
           : [2];
-        let visible = await getVisibleVariant(page);
+        let visible = await readVisibleVariantForCycle(page);
         let checkedVariantTwoStyle = false;
         for (const targetVariant of cycleSequence) {
           t.diagnostic(`Cycling to variant ${targetVariant}`);
-          while (visible < targetVariant) {
-            await clickNext(page);
-            visible = await getVisibleVariant(page);
-          }
-          while (visible > targetVariant) {
-            await clickPrev(page);
-            visible = await getVisibleVariant(page);
+          let cycleAttempts = 0;
+          while (visible !== targetVariant) {
+            if (cycleAttempts++ > expectedCount + 6) {
+              throw new Error(`variant ${targetVariant} did not become visible; last visible=${visible}`);
+            }
+            if (visible == null || visible < targetVariant) await clickNext(page);
+            else await clickPrev(page);
+            visible = await readVisibleVariantForCycle(page);
           }
           assert.equal(visible, targetVariant, `variant ${targetVariant} visible`);
           if (agentMode === 'fake' && targetVariant === 2 && !checkedVariantTwoStyle) {
@@ -357,11 +403,49 @@ for (const { name, fixture } of fixtures) {
               const el = query(sel) || document.querySelector(sel);
               return el && getComputedStyle(el).fontWeight === '900';
             }, variantContentSelector, { timeout: 5_000 }).catch(() => {});
-            const variantWeight = await page.evaluate((sel) => {
-              const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
-              const el = query(sel) || document.querySelector(sel);
-              return el ? getComputedStyle(el).fontWeight : null;
-            }, variantContentSelector);
+            const variantWeight = await evaluatePageWithTimeout(
+              page,
+              (sel) => {
+                const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+                const el = query(sel) || document.querySelector(sel);
+                return el ? getComputedStyle(el).fontWeight : null;
+              },
+              variantContentSelector,
+              5_000,
+              'variant font-weight read',
+            );
+            if (variantWeight !== '900') {
+              const styleSnapshot = await evaluatePageWithTimeout(
+                page,
+                (sel) => {
+                  const query = window.__impeccableLiveQuery || ((s) => document.querySelector(s));
+                  const el = query(sel) || document.querySelector(sel);
+                  const styleEl = document.querySelector('style[data-impeccable-css]');
+                  const rules = [];
+                  for (const sheet of [...document.styleSheets]) {
+                    if (sheet.ownerNode !== styleEl) continue;
+                    try {
+                      rules.push(...[...sheet.cssRules].map((rule) => rule.cssText));
+                    } catch (err) {
+                      rules.push(`cssRules error: ${err.message}`);
+                    }
+                  }
+                  return {
+                    selector: sel,
+                    element: el?.outerHTML || null,
+                    parent: el?.parentElement?.outerHTML?.slice(0, 800) || null,
+                    computedWeight: el ? getComputedStyle(el).fontWeight : null,
+                    styleText: styleEl?.textContent || null,
+                    rules,
+                  };
+                },
+                variantContentSelector,
+                5_000,
+                'variant style snapshot',
+              ).catch((err) => ({ error: err.message }));
+              t.diagnostic('--- variant style snapshot ---');
+              t.diagnostic(JSON.stringify(styleSnapshot, null, 2));
+            }
             assert.equal(
               variantWeight,
               '900',
@@ -464,6 +548,7 @@ for (const { name, fixture } of fixtures) {
         assert.doesNotMatch(final, /impeccable-variants-start/,      'variants-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-start/,     'carbonize-start marker removed');
         assert.doesNotMatch(final, /impeccable-carbonize-end/,       'carbonize-end marker removed');
+        assert.doesNotMatch(final, /data-impeccable-carbonize=/,     'carbonize wrapper removed');
         assert.doesNotMatch(final, /data-impeccable-variant="/,      'no leftover variant scaffolding');
         if (isInsert) {
           if (agentMode === 'fake') {
@@ -544,6 +629,14 @@ for (const { name, fixture } of fixtures) {
           );
         }
       } catch (err) {
+        await captureLiveE2eFailure({
+          name,
+          fixture,
+          session,
+          sourceFile,
+          error: err,
+          log: (m) => t.diagnostic(m),
+        });
         if (knownLimitation) {
           t.diagnostic(`KNOWN LIMITATION: ${knownLimitation}`);
           t.diagnostic(`Failure: ${err.message?.split('\n')[0] || err}`);
@@ -552,15 +645,15 @@ for (const { name, fixture } of fixtures) {
         }
         throw err;
       } finally {
-        await teardown();
+        await teardownAndResetBrowser(teardown);
       }
     });
 
-    if (Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
+    if (shouldRunScenario('manual') && Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
       const manualScenarioFilter = process.env.IMPECCABLE_E2E_MANUAL_SCENARIO || '';
       for (const scenario of fixture.runtime.manualEditScenarios) {
         if (manualScenarioFilter && !scenario.name.includes(manualScenarioFilter)) continue;
-        it(`Edit copy → Save → Apply/commit: ${scenario.name}`, async (t) => {
+        it(`Edit copy → Save → Apply/commit: ${scenario.name}`, liveE2eTestOptions, async (t) => {
           const manualAgent = await createManualScenarioAgent(t, scenario);
           if (!manualAgent) return;
           const { agent, agentMode, probeState } = manualAgent;
@@ -591,14 +684,14 @@ for (const { name, fixture } of fixtures) {
               assert.equal(probeState?.applyCalls, 1, 'manual_edit_apply event should not be redelivered after the correct ack');
             }
           } finally {
-            await teardown();
+            await teardownAndResetBrowser(teardown);
           }
         });
       }
     }
 
-    if (fixture.runtime.liveChrome?.annotations) {
-      it('uploads annotations with generate and still accepts the variant', async (t) => {
+    if (shouldRunScenario('annotations') && fixture.runtime.liveChrome?.annotations) {
+      it('uploads annotations with generate and still accepts the variant', liveE2eTestOptions, async (t) => {
         if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
           t.skip('manual scenario filter is active');
           return;
@@ -661,13 +754,13 @@ for (const { name, fixture } of fixtures) {
           await waitForBarHidden(page);
           await waitForSourceClean(sourceFile, 20_000, { svelteComponentTarget });
         } finally {
-          await teardown();
+          await teardownAndResetBrowser(teardown);
         }
       });
     }
 
-    if (fixture.runtime.liveChrome?.bottomBar) {
-      it('Exit removes live chrome cleanly', async (t) => {
+    if (shouldRunScenario('exit') && fixture.runtime.liveChrome?.bottomBar) {
+      it('Exit removes live chrome cleanly', liveE2eTestOptions, async (t) => {
         if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
           t.skip('manual scenario filter is active');
           return;
@@ -703,6 +796,89 @@ function recordGenerateEvents(agent, events) {
       return agent.generateVariants(event, context);
     },
   };
+}
+
+async function captureLiveE2eFailure({ name, fixture, session, sourceFile, error, log = () => {} }) {
+  const root = process.env.IMPECCABLE_E2E_ARTIFACT_DIR;
+  if (!root || !session?.tmp) return;
+
+  try {
+    const tmp = session.tmp;
+    const dir = join(root, `${safeArtifactName(name)}-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+
+    writeFileSync(join(dir, 'error.txt'), String(error?.stack || error?.message || error || ''), 'utf-8');
+    writeFileSync(join(dir, 'fixture.json'), JSON.stringify(fixture, null, 2), 'utf-8');
+    writeFileSync(join(dir, 'console-errors.log'), (session.consoleErrors || []).join('\n'), 'utf-8');
+    writeFileSync(join(dir, 'dev-server.log'), session.dev?.log?.() || '', 'utf-8');
+    writeCommandOutput(dir, 'git-status.txt', tmp, ['status', '--short']);
+    writeCommandOutput(dir, 'git-diff.patch', tmp, ['diff', '--', '.']);
+
+    const locatedSource = sourceFile || await locateSessionFile(tmp).catch(() => null);
+    if (locatedSource && existsSync(locatedSource)) {
+      writeFileSync(join(dir, 'source-file.txt'), relative(tmp, locatedSource), 'utf-8');
+      copyFileFromTmp(tmp, locatedSource, join(dir, 'sources'));
+      const sourceShadow = sourceShadowTargetFor(locatedSource);
+      if (sourceShadow && existsSync(sourceShadow)) copyFileFromTmp(tmp, sourceShadow, join(dir, 'sources'));
+      const svelteTarget = svelteComponentTargetFor(locatedSource);
+      if (svelteTarget?.sourceFile && existsSync(svelteTarget.sourceFile)) {
+        copyFileFromTmp(tmp, svelteTarget.sourceFile, join(dir, 'sources'));
+      }
+    }
+
+    for (const file of walkSources(tmp)) copyFileFromTmp(tmp, file, join(dir, 'sources'));
+    copyDirIfExists(join(tmp, '.impeccable', 'live'), join(dir, 'impeccable-live'));
+    copyDirIfExists(join(tmp, 'node_modules', '.impeccable-live'), join(dir, 'impeccable-live-preview'));
+
+    if (session.page) {
+      const html = await withCaptureTimeout(session.page.content(), 5_000, 'page content').catch((err) => `capture failed: ${err.message}`);
+      writeFileSync(join(dir, 'page.html'), html, 'utf-8');
+      await withCaptureTimeout(
+        session.page.screenshot({ path: join(dir, 'page.png'), fullPage: true }),
+        5_000,
+        'page screenshot',
+      ).catch((err) => writeFileSync(join(dir, 'screenshot-error.txt'), err.message, 'utf-8'));
+    }
+
+    log(`Failure artifacts written to ${dir}`);
+  } catch (captureErr) {
+    log(`Failure artifact capture failed: ${captureErr.message}`);
+  }
+}
+
+function writeCommandOutput(dir, fileName, cwd, args) {
+  try {
+    const output = execFileSync('git', args, { cwd, encoding: 'utf-8' });
+    writeFileSync(join(dir, fileName), output, 'utf-8');
+  } catch (err) {
+    writeFileSync(join(dir, fileName), [err.stdout, err.stderr, err.message].filter(Boolean).join('\n'), 'utf-8');
+  }
+}
+
+function copyFileFromTmp(tmp, file, destRoot) {
+  const rel = relative(tmp, file);
+  if (!rel || rel.startsWith('..')) return;
+  const dest = join(destRoot, rel);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(file, dest);
+}
+
+function copyDirIfExists(from, to) {
+  if (!existsSync(from)) return;
+  mkdirSync(dirname(to), { recursive: true });
+  cpSync(from, to, { recursive: true });
+}
+
+function safeArtifactName(name) {
+  return String(name || 'fixture').replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'fixture';
+}
+
+function withCaptureTimeout(promise, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function createManualScenarioAgent(t, scenario = {}) {
@@ -1084,6 +1260,7 @@ async function waitForAcceptedDom(page, selector, { allowVariantRoot = false, ti
       if (all.length < 1) return false;
       for (const el of all) {
         if (el.closest('[data-impeccable-variants]')) return false;
+        if (el.closest('[data-impeccable-carbonize]')) return false;
         if (!allowVariantRoot && el.closest('[data-impeccable-variant]')) return false;
       }
       return true;
@@ -1138,6 +1315,25 @@ async function assertVisibleText(page, selector, text, { timeout = 20_000 } = {}
     const actual = await page.evaluate((sel) => document.querySelector(sel)?.textContent || null, selector).catch(() => null);
     throw new Error(`visible text ${selector} did not include ${JSON.stringify(text)}; actual=${JSON.stringify(actual)}; ${err.message}`);
   }
+}
+
+async function readVisibleVariantForCycle(page, { timeout = 5_000 } = {}) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeout) {
+    last = await getVisibleVariant(page);
+    if (Number.isInteger(last) && last > 0) return last;
+    await page.waitForTimeout(250);
+  }
+  return last;
+}
+
+async function evaluatePageWithTimeout(page, fn, arg, timeoutMs, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([page.evaluate(fn, arg), timeout]).finally(() => clearTimeout(timer));
 }
 
 async function getServerManualEditStashCount(live, pageUrl = '/') {
@@ -1233,6 +1429,7 @@ async function waitForSourceClean(filePath, timeoutMs, { svelteComponentTarget: 
       last.includes('data-impeccable-variants=') ||
       last.includes('impeccable-variants-start') ||
       last.includes('impeccable-carbonize-start') ||
+      last.includes('data-impeccable-carbonize=') ||
       last.includes('data-impeccable-variant=');
     if (!dirty) return last;
     await new Promise((r) => setTimeout(r, 100));

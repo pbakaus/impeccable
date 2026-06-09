@@ -2,31 +2,39 @@
 
 ## Skill bootstrap: skip the post-update-cleanup step
 
-If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.src.md` on every `bun run build`, so any deletion churns back. Skip it silently and proceed with the task.
+If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.src.md` whenever `bun run build:release` syncs tracked harness output, so any deletion churns back. Skip it silently and proceed with the task.
 
 ## Project Structure & Module Organization
 
-`source/` is the source of truth. Author skills in `skill/` and keep provider output in `dist/` generated, not hand-edited. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. Runtime detection code ships from `src/`. The website lives in `public/`, local API/dev serving lives in `server/`, and regression coverage lives in `tests/` with fixtures under `tests/fixtures/`.
+`skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. The CLI and anti-pattern detector live in `cli/`, the browser extension in `extension/`, the Astro website in `site/`, Cloudflare Pages Functions in `functions/`, and regression coverage in `tests/` with fixtures under `tests/fixtures/`. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.
 
 ## Build, Test, and Development Commands
 
 - `bun run dev` - start the local Bun server.
-- `bun run build` - regenerate `dist/`, derived site assets, and validation output.
-- `bun run rebuild` - clean and rebuild everything from scratch.
+- `bun run build` - source-first build: regenerate `dist/`, derived site assets, and validation output without syncing tracked harness folders.
+- `bun run build:release` - release/distribution build: run the full build and sync tracked root harness folders plus `plugin/`.
+- `bun run rebuild` - clean and rebuild everything from scratch without syncing tracked harness folders.
+- `bun run rebuild:release` - clean and rebuild everything, including tracked harness output sync.
 - `bun test tests/build.test.js` - run a focused Bun test.
 - `bun run test` - run the full Bun + Node test suite.
 - `bun run test:live-e2e` - opt-in live-mode E2E against framework fixtures (~2 min; needs `npx playwright install chromium` once).
 - `bun run test:skill-behavior` - opt-in LLM-backed checks that the SKILL.md Setup flow actually drives the agent (~5 min; runs claude-sonnet-4-6 / gpt-5.5 / gemini-3.1-flash-lite, roughly $0.50-1.50 per run on the production-tier models, needs `.env` with provider keys).
 - `bun run build:browser` / `bun run build:extension` - rebuild browser-specific bundles.
 
-Run `bun run build` after changing anything in `source/`, transformer code, or user-facing counts.
+Run `bun run build` after changing anything in `skill/`, transformer code, or user-facing counts. It validates the generated distribution under `dist/` without touching tracked root harness outputs. Use `bun run build:release` only when intentionally refreshing generated provider permutations for release/main-sync or build-system work.
+
+## Generated Provider Output Policy
+
+The root harness folders (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`, `.gemini/skills/`, `.github/skills/`, `.kiro/skills/`, `.opencode/skills/`, `.pi/skills/`, `.qoder/skills/`, `.rovodev/skills/`, `.trae*/skills/`) and `plugin/` stay tracked so `main` remains installable for direct GitHub, `npx skills`, and submodule users. They are still generated artifacts.
+
+Normal development should be source-first: stage changes in `skill/`, `scripts/`, `cli/`, `site/`, `extension/`, `functions/`, and `tests/`; leave generated harness churn unstaged unless the user asked for it. After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR.
 
 ## Sandbox gotchas for Codex agents
 
 Some repo workflows need to run outside the sandbox in the desktop app:
 
 - GitHub SSH operations that depend on the 1Password SSH agent, such as `gh pr checkout`, may fail in the sandbox with `sign_and_send_pubkey` or no 1Password approval prompt. Rerun them outside the sandbox instead of falling back to unrelated workarounds.
-- `bun run build` rewrites committed harness directories such as `.agents/skills/`. In the sandbox, Bun can hit filesystem errors while removing/recreating those trees (for example `EFAULT` on `.agents/skills`). Rerun the build outside the sandbox before treating it as a real build failure.
+- `bun run build:release` rewrites committed harness directories such as `.agents/skills/`. In the sandbox, Bun can hit filesystem errors while removing/recreating those trees (for example `EFAULT` on `.agents/skills`). Rerun the release build outside the sandbox before treating it as a real build failure.
 - Puppeteer/headless-Chrome tests, especially `node --test tests/detect-antipatterns-browser.test.mjs` and the browser portion of `bun run test`, can hang in the sandbox while launching Chrome. Run them outside the sandbox for authoritative results.
 - The jsdom fixture suite is intentionally run with Node, not Bun: use `node --test tests/detect-antipatterns-fixtures.test.mjs` or the `bun run test` script. A direct `bun test tests/detect-antipatterns-fixtures.test.mjs` can time out and is not the supported signal.
 
@@ -38,7 +46,7 @@ Use ESM, semicolons, and the existing two-space indentation style in JS, HTML, a
 
 Tests use Bun’s test runner plus Node’s built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
 
-For changes to `skill/scripts/live-*.{mjs,js}`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
+For changes to `skill/scripts/live-*.{mjs,js}` or `skill/scripts/live/**`, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
 Set `IMPECCABLE_E2E_AGENT=llm` to swap the deterministic fake agent for an API-backed one (`tests/live-e2e/agents/llm-agent.mjs`). Claude Haiku 4.5 is the primary path whenever `ANTHROPIC_API_KEY` is set. DeepSeek V4 Flash is the secondary cheap fallback when only `DEEPSEEK_API_KEY` is set, and can be forced with `IMPECCABLE_E2E_LLM_PROVIDER=deepseek` or `bun run test:live-e2e -- --llm-provider=deepseek`; override either model via `IMPECCABLE_E2E_LLM_MODEL` or `--llm-model=<model>`. Tests skip cleanly when the selected provider key is unset. This path hits the API — use it for verification, not CI.
 
@@ -61,12 +69,12 @@ Conventions: wrap the identifying heading text in straight double quotes inside 
 
 ## Commit & Pull Request Guidelines
 
-Recent history favors short, imperative subjects such as `Fix: ...`, `Add ...`, `Improve ...`, or `Bump ...`. Keep commits focused and explain the user-facing impact when it is not obvious. PRs should summarize what changed, list validation performed, and call out regenerated artifacts like `dist/` or `build/`. Include screenshots for visible `site/` changes and mention affected providers when transform behavior changes.
+Recent history favors short, imperative subjects such as `Fix: ...`, `Add ...`, `Improve ...`, or `Bump ...`. Keep commits focused and explain the user-facing impact when it is not obvious. PRs should summarize what changed, list validation performed, and call out whether generated provider output was intentionally omitted or intentionally refreshed. Include screenshots for visible `site/` changes and mention affected providers when transform behavior changes.
 
 ## Releases
 
-Tags are per-component because the three components ship independently: `skill-v` (`.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`), `cli-v` (`package.json`), `ext-v` (`extension/manifest.json`). Flow: bump the relevant manifest, add a changelog entry to `site/pages/index.astro` (skill = bare `vX.Y.Z`; CLI = `CLI vX.Y.Z`; extension = `Extension vX.Y.Z` — the prefix is how `scripts/release.mjs` finds the right block), commit, push, then `bun run release:<skill|cli|ext>` (or `--dry-run` first). The script refuses on a dirty tree, an unpushed HEAD, a missing changelog entry, or stale build outputs; skill and extension reruns of `bun run build` / `bun run build:extension` must produce zero diff. Skill releases attach `dist/universal.zip`; extension releases attach `dist/extension.zip`. CLI ships to npm via a separate `npm publish`, and the extension zip uploads to the Chrome Web Store manually — both reminded at the end of the script. Fix already-shipped notes with `gh release edit <tag> --notes-file <md>`.
+Tags are per-component because the three components ship independently: `skill-v` (`.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`), `cli-v` (`package.json`), `ext-v` (`extension/manifest.json`). Flow: bump the relevant manifest, add a changelog entry to `site/pages/index.astro` (skill = bare `vX.Y.Z`; CLI = `CLI vX.Y.Z`; extension = `Extension vX.Y.Z` — the prefix is how `scripts/release.mjs` finds the right block), commit, push, then `bun run release:<skill|cli|ext>` (or `--dry-run` first). The script refuses on a dirty tree, an unpushed HEAD, a missing changelog entry, or stale build outputs; skill and extension reruns of `bun run build:release` / `bun run build:extension` must produce zero diff. Skill releases attach `dist/universal.zip`; extension releases attach `dist/extension.zip`. CLI ships to npm via a separate `npm publish`, and the extension zip uploads to the Chrome Web Store manually — both reminded at the end of the script. Fix already-shipped notes with `gh release edit <tag> --notes-file <md>`.
 
 ## Contributor Notes
 
-Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/`, then regenerate artifacts.
+Do not edit generated provider files directly unless you are intentionally patching generated output as part of a build-system change. Prefer fixing the root source in `skill/`, `scripts/`, or `cli/`, then regenerate artifacts for validation. Stage generated harness artifacts only for release/main-sync or build-system work.

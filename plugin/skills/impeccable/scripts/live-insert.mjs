@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isGeneratedFile } from './is-generated.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
 import {
   buildSearchQueries,
   findElement,
@@ -25,7 +25,7 @@ import {
   buildSvelteComponentCssAuthoring,
   scaffoldSvelteComponentInsertSession,
   shouldUseSvelteComponentInjection,
-} from './live-svelte-component.mjs';
+} from './live/svelte-component.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const INSERT_POSITIONS = new Set(['before', 'after']);

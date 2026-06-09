@@ -22,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { loadContext, extractRegister } from './context.mjs';
-import { getCritiqueDir } from './impeccable-paths.mjs';
+import { getCritiqueDir } from './lib/impeccable-paths.mjs';
 
 /** Is there code here at all, or just context files / an empty repo? */
 function hasCode(cwd) {

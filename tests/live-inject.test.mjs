@@ -341,4 +341,52 @@ const title = 'Test';
     const after = readFileSync(file, 'utf-8');
     assert.equal(after, original, 'column-0 anchor should round-trip cleanly too');
   });
+
+  it('preserves the character after an insertAfter anchor with no trailing newline (#227)', () => {
+    const original = '<head>X</head>';
+    const file = join(tmp, 'compact.html');
+    writeFileSync(file, original);
+
+    const cfgPath = join(tmp, 'config.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      files: ['compact.html'],
+      insertAfter: '<head>',
+      commentSyntax: 'html',
+    }));
+
+    runInject(tmp, cfgPath, ['--port', '8400']);
+    const afterInject = readFileSync(file, 'utf-8');
+
+    assert.ok(
+      afterInject.includes('<!-- impeccable-live-end -->\nX</head>'),
+      `the character immediately after <head> must survive injection, got:\n${afterInject}`
+    );
+  });
+
+  it('round-trips insertAfter files with CRLF newlines', () => {
+    const original = '<html>\r\n<head>\r\n  <title>X</title>\r\n</head>\r\n<body>Content</body>\r\n</html>\r\n';
+    const file = join(tmp, 'crlf.html');
+    writeFileSync(file, original);
+
+    const cfgPath = join(tmp, 'config.json');
+    writeFileSync(cfgPath, JSON.stringify({
+      files: ['crlf.html'],
+      insertAfter: '<head>',
+      commentSyntax: 'html',
+    }));
+
+    runInject(tmp, cfgPath, ['--port', '8400']);
+    const afterInject = readFileSync(file, 'utf-8');
+
+    assert.ok(
+      afterInject.includes(
+        '<head>\r\n<!-- impeccable-live-start -->\r\n<script src="http://localhost:8400/live.js"></script>\r\n<!-- impeccable-live-end -->\r\n  <title>X</title>'
+      ),
+      `CRLF insertAfter should keep CRLF boundaries around the injected block, got:\n${JSON.stringify(afterInject)}`
+    );
+
+    runInject(tmp, cfgPath, ['--remove']);
+    const afterRemove = readFileSync(file, 'utf-8');
+    assert.equal(afterRemove, original, 'CRLF file should round-trip cleanly after remove');
+  });
 });

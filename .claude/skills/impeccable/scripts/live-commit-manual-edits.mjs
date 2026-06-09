@@ -16,8 +16,8 @@
  */
 
 import { buildManualEditEvidence } from './live-manual-edit-evidence.mjs';
-import { readBuffer, readBufferStrict, writeBuffer, countByPage } from './live-manual-edits-buffer.mjs';
-import { isGeneratedFile } from './is-generated.mjs';
+import { readBuffer, readBufferStrict, writeBuffer, countByPage } from './live/manual-edits-buffer.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
 import {
   runCopyEditBatchAgent,
   runCopyEditPostApplyChecks,

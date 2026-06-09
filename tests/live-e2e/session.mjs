@@ -51,9 +51,27 @@ export function stageFixture(name, fixture) {
   return tmp;
 }
 
-export function runInstall(tmp, command) {
+export function runInstall(tmp, command, { timeoutMs = readTimeoutEnv('IMPECCABLE_E2E_INSTALL_TIMEOUT_MS', 180_000) } = {}) {
   const [cmd, ...args] = command;
-  execFileSync(cmd, args, { cwd: tmp, stdio: 'inherit' });
+  const installArgs = addNpmInstallDefaults(cmd, args);
+  try {
+    execFileSync(cmd, installArgs, { cwd: tmp, stdio: 'inherit', timeout: timeoutMs });
+  } catch (err) {
+    if (err.signal === 'SIGTERM' || err.signal === 'SIGKILL' || err.killed) {
+      err.message = `fixture dependency install timed out after ${timeoutMs}ms: ${cmd} ${installArgs.join(' ')}`;
+    }
+    throw err;
+  }
+}
+
+function addNpmInstallDefaults(cmd, args) {
+  if (cmd !== 'npm') return args;
+  if (!['install', 'ci'].includes(args[0])) return args;
+  const out = [...args];
+  for (const flag of ['--prefer-offline', '--no-progress']) {
+    if (!out.some((arg) => arg === flag || arg.startsWith(flag + '='))) out.push(flag);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,11 +139,15 @@ export function startDevServer(tmp, runtime) {
   child.stderr.on('data', capture);
 
   const ready = new Promise((resolve, reject) => {
+    const readyTimeoutMs = readTimeoutEnv(
+      'IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS',
+      runtime.readyTimeoutMs ?? 120_000,
+    );
     const timeout = setTimeout(() => {
       reject(new Error(
-        `dev server ready timeout (${runtime.readyTimeoutMs}ms). Tail:\n${bufLog.join('')}`,
+        `dev server ready timeout (${readyTimeoutMs}ms). Tail:\n${bufLog.join('')}`,
       ));
-    }, runtime.readyTimeoutMs ?? 120_000);
+    }, readyTimeoutMs);
 
     const checkMatch = (buf) => {
       const m = buf.toString().match(readyRe);
@@ -145,13 +167,27 @@ export function startDevServer(tmp, runtime) {
   return { child, ready, log: () => bufLog.join('') };
 }
 
+function readTimeoutEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export async function stopDevServer(child) {
-  if (!child || child.killed) return;
-  const exited = new Promise((resolve) => child.once('exit', resolve));
+  if (!child || child.exitCode != null || child.signalCode != null) return;
+  let didExit = false;
+  const exited = new Promise((resolve) => child.once('exit', () => {
+    didExit = true;
+    resolve();
+  }));
   child.kill('SIGTERM');
   const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 5_000));
   await Promise.race([exited, timeoutPromise]);
-  if (!child.killed) child.kill('SIGKILL');
+  if (!didExit && child.exitCode == null && child.signalCode == null) {
+    child.kill('SIGKILL');
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -196,20 +232,27 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
   };
 
   try {
+    const startedAt = Date.now();
     log(`installing deps`);
     runInstall(tmp, runtime.install);
+    log(`deps installed in ${formatDuration(Date.now() - startedAt)}`);
 
+    const liveStartedAt = Date.now();
     log(`starting live-server`);
     live = startLiveServer(tmp);
+    log(`live-server ready in ${formatDuration(Date.now() - liveStartedAt)}`);
 
+    const injectStartedAt = Date.now();
     log(`live-inject --port ${live.port}`);
     const injectResult = runInject(tmp, live.port);
     if (!injectResult.ok) throw new Error('live-inject failed: ' + JSON.stringify(injectResult));
+    log(`live-inject complete in ${formatDuration(Date.now() - injectStartedAt)}`);
 
+    const devStartedAt = Date.now();
     log(`spawning dev server: ${runtime.devCommand.join(' ')}`);
     dev = startDevServer(tmp, runtime);
     const { port: devPort } = await dev.ready;
-    log(`dev server ready on ${devPort}`);
+    log(`dev server ready on ${devPort} in ${formatDuration(Date.now() - devStartedAt)}`);
 
     // Agent loop runs concurrently — abort on teardown.
     agentAbort = new AbortController();
@@ -239,10 +282,12 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
       if (msg.type() === 'error') consoleErrors.push(`console.error: ${msg.text()}`);
     });
 
+    const pageStartedAt = Date.now();
     await page.goto(`${scheme}://127.0.0.1:${devPort}`, {
       waitUntil: 'domcontentloaded',
       timeout: 30_000,
     });
+    log(`page loaded in ${formatDuration(Date.now() - pageStartedAt)}`);
 
     return {
       tmp,
@@ -259,4 +304,9 @@ export async function bootFixtureSession({ name, fixture, browser, agent, wrapTa
     await teardown();
     throw err;
   }
+}
+
+function formatDuration(ms) {
+  if (ms < 1_000) return `${ms}ms`;
+  return `${(ms / 1_000).toFixed(1)}s`;
 }

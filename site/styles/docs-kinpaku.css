@@ -17,6 +17,7 @@
    ============================================================================ */
 
 @import "./kinpaku-tokens.css";
+@import "./divider-patterns.css";
 
 
 /* ============================================================================
@@ -29,12 +30,40 @@
      surfaces without a per-page remap. Only the --ks-muted alias (read by
      name in this file) and the page shell remain. */
   --ks-muted: var(--ks-text-muted);
+  --docs-accent: var(--ks-kinpaku);
+  --docs-accent-hover: var(--ks-kinpaku-pale);
+  --docs-accent-line: oklch(78% 0.12 82 / 0.42);
+  --docs-accent-wash: oklch(77% 0.13 82 / 0.10);
+  --docs-brand-accent: var(--ks-kinpaku);
+  --docs-panel-bg: var(--ks-lacquer-raised);
+  --docs-panel-hover-bg: oklch(11% 0.012 82);
 
   background:
     linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
   color: var(--ks-text);
   font-family: var(--ks-font);
   min-height: 100vh;
+}
+
+html.light .docs-kinpaku {
+  --ks-lacquer: oklch(100% 0 0);
+  --ks-lacquer-deep: oklch(100% 0 0);
+  --ks-lacquer-raised: oklch(99% 0 0);
+  --ks-graphite: oklch(94% 0 0);
+  --ks-graphite-2: oklch(90% 0 0);
+  --ks-champagne: oklch(16% 0 0);
+  --ks-text: oklch(24% 0 0);
+  --ks-text-muted: oklch(42% 0 0);
+  --ks-text-faint: oklch(55% 0 0);
+  --ks-rule: oklch(20% 0 0 / 0.12);
+  --docs-accent: var(--ks-patina);
+  --docs-accent-hover: var(--ks-patina-deep);
+  --docs-accent-line: oklch(70% 0.12 188 / 0.36);
+  --docs-accent-wash: oklch(70% 0.12 188 / 0.08);
+  --docs-brand-accent: var(--ks-kinpaku);
+  --docs-panel-bg: oklch(100% 0 0 / 0.76);
+  --docs-panel-hover-bg: oklch(70% 0.12 188 / 0.07);
+  background: oklch(100% 0 0);
 }
 
 .docs-kinpaku a {
@@ -62,7 +91,7 @@
 @media (max-width: 960px) {
   .docs-kinpaku .skills-layout {
     grid-template-columns: 1fr;
-    gap: 18px;
+    gap: 10px;
   }
 }
 
@@ -70,9 +99,8 @@
 /* ============================================================================
    2. SIDEBAR — commands rail
 
-   Sticky dark rail. Mono command names in champagne; the active command
-   gets a kinpaku 2px border-left accent. Category labels are mono caps in
-   kinpaku, mirroring the .ks-section-eyebrow voice.
+   Sticky rail. Command names use the main UI family; monospace is reserved
+   for literal commands and code, not navigation.
    ============================================================================ */
 
 .docs-kinpaku .skills-sidebar {
@@ -131,11 +159,12 @@
 
 .docs-kinpaku .skills-sidebar-category {
   display: block;
-  font-family: var(--ks-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.24em;
+  font-family: var(--ks-font);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
   margin-bottom: 10px;
   padding: 0 0 0 14px;
 }
@@ -154,8 +183,8 @@
   display: block;
   padding: 5px 0 5px 12px;
   border-left: 2px solid transparent;
-  font-family: var(--ks-mono);
-  font-size: 0.86rem;
+  font-family: var(--ks-font);
+  font-size: 0.94rem;
   font-weight: 400;
   line-height: 1.5;
   color: var(--ks-text);
@@ -165,13 +194,13 @@
 }
 
 .docs-kinpaku .skills-sidebar-list a:hover {
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
 }
 
 .docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
-  color: var(--ks-kinpaku);
-  font-weight: 500;
-  border-left-color: var(--ks-kinpaku);
+  color: var(--docs-accent);
+  font-weight: 600;
+  border-left-color: var(--docs-accent);
 }
 
 
@@ -196,16 +225,17 @@
     background: transparent;
     border: 0;
     color: var(--ks-champagne);
-    font-family: var(--ks-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.22em;
+    font-family: var(--ks-font);
+    font-size: 0.76rem;
+    font-weight: 650;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     cursor: pointer;
   }
 
   .docs-kinpaku .skills-sidebar-toggle-chevron {
     transition: transform 220ms var(--ks-ease);
-    color: var(--ks-kinpaku);
+    color: var(--docs-accent);
     flex-shrink: 0;
   }
 
@@ -228,66 +258,69 @@
    3. /docs INDEX
 
    Sections, in render order:
-     a. Hero
-     b. Live mode callout (the headliner capability)
-     c. A typical session (linear workflow of 4 commands)
-     d. Pairs and chains (relational schema)
-     e. Full reference (cheatsheet by lifecycle phase)
+     a. Starter hero
+     b. Intent chooser
+     c. Live mode callout
+     d. A typical session (linear workflow of 4 commands)
+     e. Pairs and chains (relational schema)
+     f. Full reference (cheatsheet by lifecycle phase)
    ============================================================================ */
 
 .docs-kinpaku .docs-index {
-  padding: clamp(64px, 8vw, 110px) 0 clamp(80px, 10vw, 140px);
+  padding: clamp(34px, 5vw, 70px) 0 clamp(80px, 10vw, 140px);
 }
 
 
-/* a. Hero -------------------------------------------------------------- */
+/* a. Starter rail ------------------------------------------------------ */
 
-.docs-kinpaku .docs-index-header {
-  margin-bottom: clamp(72px, 9vw, 110px);
-  max-width: 760px;
+.docs-kinpaku .docs-start-rail {
+  display: grid;
+  gap: clamp(26px, 4vw, 44px);
+  margin-bottom: clamp(48px, 7vw, 88px);
 }
 
-.docs-kinpaku .docs-index-eyebrow {
-  color: var(--ks-kinpaku);
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-eyebrow-size);
-  letter-spacing: var(--ks-type-eyebrow-track);
-  text-transform: uppercase;
-  margin: 0 0 18px;
+@media (max-width: 520px) {
+  .docs-kinpaku .docs-index {
+    padding-top: 22px;
+  }
 }
 
-.docs-kinpaku .docs-index-title {
+.docs-kinpaku .docs-start-rail-head {
+  display: grid;
+  gap: 18px;
+  max-width: 1040px;
+}
+
+.docs-kinpaku .docs-start-rail-title {
   font-family: var(--ks-font-display);
   font-style: normal;
   font-weight: var(--ks-type-display-weight);
-  font-size: var(--ks-type-display-size);
+  font-size: clamp(3.2rem, calc(3.1rem + 2vw), 5.6rem);
   line-height: var(--ks-type-display-line);
   letter-spacing: var(--ks-type-display-track);
   color: var(--ks-champagne);
-  margin: 0 0 22px;
+  margin: 0;
   text-wrap: balance;
 }
 
-.docs-kinpaku .docs-index-mark {
-  color: var(--ks-kinpaku);
-  font-family: var(--ks-mono);
-  font-weight: 400;
-  letter-spacing: 0;
-  font-size: 0.82em;
-  vertical-align: 0.04em;
+.docs-kinpaku .docs-start-rail-title span {
+  color: var(--docs-brand-accent);
+  font-family: var(--ks-font-wordmark);
+  font-weight: 500;
+  font-size: 0.96em;
 }
 
-.docs-kinpaku .docs-index-lede {
-  font-size: 1.1rem;
-  line-height: 1.65;
+.docs-kinpaku .docs-start-rail-lede {
+  font-size: 1.04rem;
+  line-height: 1.62;
   color: var(--ks-text);
   margin: 0;
-  max-width: 58ch;
 }
 
 
-/* Shared section scaffolding for the four index sections ---------------- */
+/* Shared section scaffolding for the index sections ---------------- */
 
+.docs-kinpaku .docs-chooser-section,
 .docs-kinpaku .docs-live,
 .docs-kinpaku .docs-flow-section,
 .docs-kinpaku .docs-chains-section,
@@ -311,6 +344,7 @@
   margin: 0 0 14px;
 }
 
+.docs-kinpaku .docs-chooser-title,
 .docs-kinpaku .docs-live-title,
 .docs-kinpaku .docs-flow-title,
 .docs-kinpaku .docs-chains-title,
@@ -320,7 +354,7 @@
   font-weight: var(--ks-type-headline-weight);
   font-size: var(--ks-type-headline-size);
   line-height: var(--ks-type-headline-line);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--ks-champagne);
   margin: 0 0 14px;
   text-wrap: balance;
@@ -337,15 +371,232 @@
 }
 
 
-/* b. Live mode callout ------------------------------------------------- */
+/* Quick start rail ----------------------------------------------------- */
+
+.docs-kinpaku .docs-start-rail-sequence {
+  display: grid;
+  gap: clamp(12px, 1.8vw, 18px);
+}
+
+.docs-kinpaku .docs-start-rail-divider {
+  color: var(--docs-accent);
+  opacity: 0.86;
+}
+
+html.light .docs-kinpaku .docs-start-rail-divider {
+  opacity: 0.58;
+}
+
+.docs-kinpaku .docs-start-rail-divider .ksd-divider {
+  color: currentColor;
+}
+
+.docs-kinpaku .docs-start-rail-divider--top .ksd-divider {
+  transform: scaleY(-1);
+}
+
+.docs-kinpaku .docs-start-rail-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 0;
+  border-bottom: 0;
+}
+
+@media (max-width: 940px) {
+  .docs-kinpaku .docs-start-rail-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.docs-kinpaku .docs-start-rail-step {
+  display: grid;
+  grid-template-rows: auto auto minmax(3.2em, auto) auto;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px clamp(18px, 2.8vw, 30px) 24px;
+  border-right: 1px solid var(--ks-rule);
+}
+
+.docs-kinpaku .docs-start-rail-step:last-child {
+  border-right: 0;
+}
+
+.docs-kinpaku .docs-start-rail-num {
+  font-family: var(--ks-mono);
+  font-size: 0.72rem;
+  line-height: 1.1;
+  letter-spacing: 0.18em;
+  color: var(--docs-accent);
+}
+
+.docs-kinpaku .docs-start-rail-label {
+  font-family: var(--ks-mono);
+  font-size: 0.66rem;
+  line-height: 1.1;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+}
+
+.docs-kinpaku .docs-start-rail-command {
+  display: block;
+  font-family: var(--ks-mono);
+  font-size: 0.94rem;
+  line-height: 1.45;
+  color: var(--docs-accent-hover);
+  min-height: 2.8em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-step {
+  grid-template-columns: minmax(34px, auto) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  column-gap: clamp(16px, 2vw, 24px);
+  row-gap: 9px;
+  padding: 22px clamp(18px, 2.8vw, 30px) 24px 0;
+}
+
+.docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-num {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  padding-top: 1px;
+}
+
+.docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-label,
+.docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-command,
+.docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-line {
+  grid-column: 2;
+}
+
+.docs-kinpaku .docs-start-rail-steps--inner-inset .docs-start-rail-step:first-child {
+  padding-left: 0;
+}
+
+.docs-kinpaku .docs-start-rail-steps--inner-inset .docs-start-rail-step:not(:first-child) {
+  padding-left: clamp(16px, 2.2vw, 24px);
+}
+
+.docs-kinpaku .docs-start-rail-line {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+
+.docs-kinpaku .docs-start-rail-note {
+  margin: 20px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--ks-text-muted);
+}
+
+.docs-kinpaku .docs-start-rail-note a {
+  color: var(--docs-accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--docs-accent-line);
+}
+
+.docs-kinpaku .docs-start-rail-note a:hover {
+  color: var(--docs-accent-hover);
+  border-bottom-color: var(--docs-accent-hover);
+}
+
+@media (max-width: 940px) {
+  .docs-kinpaku .docs-start-rail-step,
+  .docs-kinpaku .docs-start-rail-step:last-child {
+    border-right: 0;
+    border-left: 0;
+    border-top: 0;
+    border-bottom: 1px solid var(--ks-rule);
+    padding-inline: 0;
+  }
+
+  .docs-kinpaku .docs-start-rail-step:last-child {
+    border-bottom: 0;
+  }
+
+  .docs-kinpaku .docs-start-rail-command {
+    min-height: 0;
+  }
+}
+
+
+/* b. Intent chooser ---------------------------------------------------- */
+
+.docs-kinpaku .docs-chooser-head {
+  margin-bottom: 26px;
+}
+
+.docs-kinpaku .docs-chooser-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.docs-kinpaku .docs-chooser-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 22px;
+  align-items: baseline;
+  padding: 18px 0 20px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ks-rule);
+  border-radius: 0;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 160ms var(--ks-ease),
+              color 160ms var(--ks-ease);
+}
+
+.docs-kinpaku .docs-chooser-list-row:hover {
+  border-bottom-color: var(--docs-accent-line);
+}
+
+.docs-kinpaku .docs-chooser-list-need {
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--ks-champagne);
+}
+
+.docs-kinpaku .docs-chooser-list-command {
+  font-family: var(--ks-mono);
+  font-size: 0.78rem;
+  color: var(--docs-accent);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.docs-kinpaku .docs-chooser-list-line {
+  grid-column: 1 / -1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+  max-width: 68ch;
+}
+
+@media (max-width: 520px) {
+  .docs-kinpaku .docs-chooser-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-kinpaku .docs-chooser-list-command {
+    white-space: normal;
+  }
+}
+
+
+/* c. Live mode callout ------------------------------------------------- */
 
 .docs-kinpaku .docs-live {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   gap: clamp(36px, 5vw, 64px);
   align-items: center;
-  padding: 36px 0 0;
-  border-top: 1px solid var(--ks-rule);
+  padding: 0;
 }
 
 @media (max-width: 880px) {
@@ -359,20 +610,20 @@
   margin: 26px 0 0;
 }
 
-/* Static browser frame mock. Lacquer-deep ground, kinpaku active outline
-   around the targeted element, mock action bar underneath. No animation;
-   this is a teaching diagram, not a demo. */
+/* Static browser frame mock. Light, low-shadow frame with a precise target
+   outline and mock action bar underneath. No animation; this is a teaching
+   diagram, not a demo. */
 .docs-kinpaku .docs-live-figure {
   margin: 0;
 }
 
 .docs-kinpaku .docs-live-frame {
   position: relative;
-  background: var(--ks-lacquer-deep);
+  background: var(--ks-lacquer-raised);
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 24px 60px oklch(2% 0.004 95 / 0.55);
+  box-shadow: 0 14px 30px oklch(0% 0 0 / 0.08);
 }
 
 .docs-kinpaku .docs-live-chrome {
@@ -380,7 +631,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  background: var(--ks-graphite);
+  background: transparent;
   border-bottom: 1px solid var(--ks-rule);
 }
 
@@ -388,7 +639,7 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: oklch(28% 0.01 95);
+  background: var(--ks-rule);
 }
 
 .docs-kinpaku .docs-live-url {
@@ -401,21 +652,18 @@
 
 .docs-kinpaku .docs-live-stage {
   position: relative;
-  padding: 42px 28px 28px;
+  padding: 38px 28px 28px;
   min-height: 220px;
+  background: transparent;
 }
 
 .docs-kinpaku .docs-live-target {
   position: relative;
   padding: 22px 24px;
-  border: 1px solid var(--ks-kinpaku);
+  border: 1px solid var(--docs-accent-line);
   border-radius: 2px;
-  background: oklch(11% 0.012 82);
-  /* Picker outline corner ticks (top-left & bottom-right) */
-  box-shadow:
-    inset 0 0 0 1px transparent,
-    -2px -2px 0 -1px var(--ks-kinpaku),
-     2px  2px 0 -1px var(--ks-kinpaku);
+  background: var(--ks-lacquer);
+  box-shadow: none;
 }
 
 .docs-kinpaku .docs-live-target-title {
@@ -433,7 +681,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
 }
 
 .docs-kinpaku .docs-live-bar {
@@ -442,7 +690,7 @@
   align-items: center;
   gap: 14px;
   padding: 10px 14px;
-  background: oklch(8% 0.006 95);
+  background: var(--ks-lacquer);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
   font-family: var(--ks-mono);
@@ -458,7 +706,7 @@
 
 .docs-kinpaku .docs-live-bar-accept {
   margin-left: auto;
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
 }
 
 .docs-kinpaku .docs-live-bar-divider {
@@ -469,7 +717,7 @@
 }
 
 
-/* c. A typical session (linear flow of commands) ----------------------- */
+/* d. A typical session (linear flow of commands) ----------------------- */
 
 .docs-kinpaku .docs-flow-head {
   margin-bottom: 32px;
@@ -501,7 +749,7 @@
   align-content: start;
   gap: 8px;
   padding: 22px 22px 24px;
-  background: var(--ks-lacquer-raised);
+  background: var(--docs-panel-bg);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
   text-decoration: none;
@@ -512,8 +760,8 @@
 }
 
 .docs-kinpaku .docs-flow-link:hover {
-  border-color: var(--ks-kinpaku);
-  background: oklch(11% 0.012 82);
+  border-color: var(--docs-accent-line);
+  background: var(--docs-panel-hover-bg);
 }
 
 .docs-kinpaku .docs-flow-verb {
@@ -521,7 +769,7 @@
   font-size: 0.66rem;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
 }
 
 .docs-kinpaku .docs-flow-cmd {
@@ -540,7 +788,7 @@
   display: grid;
   place-items: center;
   width: 36px;
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
 }
 
 .docs-kinpaku .docs-flow-arrow svg {
@@ -566,20 +814,21 @@
 }
 
 .docs-kinpaku .docs-flow-alt a {
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
   font-family: var(--ks-mono);
   font-size: 0.88em;
   text-decoration: none;
-  border-bottom: 1px solid oklch(78% 0.12 82 / 0.4);
+  border-bottom: 1px solid var(--docs-accent-line);
   transition: border-color 160ms var(--ks-ease);
 }
 
 .docs-kinpaku .docs-flow-alt a:hover {
-  border-bottom-color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
+  border-bottom-color: var(--docs-accent-hover);
 }
 
 
-/* d. Pairs and chains -------------------------------------------------- */
+/* e. Pairs and chains -------------------------------------------------- */
 
 .docs-kinpaku .docs-chains-head {
   margin-bottom: 32px;
@@ -601,7 +850,7 @@
   display: grid;
   gap: 10px;
   padding: 28px 28px 30px;
-  background: var(--ks-lacquer-raised);
+  background: var(--docs-panel-bg);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
 }
@@ -617,18 +866,19 @@
 }
 
 .docs-kinpaku .docs-chain-cmd {
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 160ms var(--ks-ease);
 }
 
 .docs-kinpaku .docs-chain-cmd:hover {
-  border-bottom-color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
+  border-bottom-color: var(--docs-accent-hover);
 }
 
 .docs-kinpaku .docs-chain-arrow {
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent);
   font-size: 1.1em;
 }
 
@@ -640,12 +890,10 @@
 }
 
 
-/* e. Full reference (cheatsheet) --------------------------------------- */
+/* f. Full reference (cheatsheet) --------------------------------------- */
 
 .docs-kinpaku .docs-reference-head {
   margin-bottom: 32px;
-  padding-top: 36px;
-  border-top: 1px solid var(--ks-rule);
 }
 
 .docs-kinpaku .docs-reference {
@@ -705,7 +953,7 @@
 }
 
 .docs-kinpaku .docs-reference-row:hover .docs-reference-name {
-  color: var(--ks-kinpaku);
+  color: var(--docs-accent-hover);
 }
 
 .docs-kinpaku .docs-reference-row:hover .docs-reference-line {
@@ -734,6 +982,10 @@
 .docs-kinpaku .skills-main {
   min-width: 0;
   padding: 48px 0 clamp(80px, 10vw, 140px);
+}
+
+.docs-kinpaku .skills-main--docs-index {
+  padding-top: 0;
 }
 
 .docs-kinpaku .skills-detail {

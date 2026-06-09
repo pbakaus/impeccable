@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
+import { writeBuffer, readBuffer } from '../skill/scripts/live/manual-edits-buffer.mjs';
 import { buildManualEditEvidence } from '../skill/scripts/live-manual-edit-evidence.mjs';
 import { commitManualEdits } from '../skill/scripts/live-commit-manual-edits.mjs';
 import {

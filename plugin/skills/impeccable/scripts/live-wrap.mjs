@@ -13,13 +13,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isGeneratedFile } from './is-generated.mjs';
-import { readBuffer as readManualEditsBuffer } from './live-manual-edits-buffer.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
+import { readBuffer as readManualEditsBuffer } from './live/manual-edits-buffer.mjs';
 import {
   buildSvelteComponentCssAuthoring,
   scaffoldSvelteComponentSession,
   shouldUseSvelteComponentInjection,
-} from './live-svelte-component.mjs';
+} from './live/svelte-component.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];

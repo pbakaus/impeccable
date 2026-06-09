@@ -28,7 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { getCritiqueDir } from './impeccable-paths.mjs';
+import { getCritiqueDir } from './lib/impeccable-paths.mjs';
 
 const SLUG_MAX = 50;
 

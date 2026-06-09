@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { createLiveSessionStore } from '../skill/scripts/live-session-store.mjs';
+import { createLiveSessionStore } from '../skill/scripts/live/session-store.mjs';
 
 const REPO_ROOT = process.cwd();
 const STATUS_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-status.mjs');

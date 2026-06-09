@@ -10,8 +10,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isGeneratedFile } from './is-generated.mjs';
-import { readBuffer, getBufferPath } from './live-manual-edits-buffer.mjs';
+import { isGeneratedFile } from './lib/is-generated.mjs';
+import { readBuffer, getBufferPath } from './live/manual-edits-buffer.mjs';
 
 const EVIDENCE_VERSION = 1;
 const TEXT_EXTENSIONS = new Set(['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.js', '.mjs', '.ts']);

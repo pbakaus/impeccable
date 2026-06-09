@@ -208,7 +208,8 @@ html.light .ks-button.ks-button-secondary:active {
   background: oklch(77% 0.13 82 / 0.16);
 }
 
-/* Small labels / eyebrows — readable gold, not bright fill gold */
+/* Small labels / eyebrows on paper use the light-mode compatibility accent,
+   now patina rather than the old low-contrast gold alias. */
 html.light :is(
   .ks-section-eyebrow,
   .ks-subsection-label,
@@ -220,28 +221,39 @@ html.light :is(
   .home-kinpaku .ks-bento-num,
   .home-kinpaku .fisheye-item.is-active,
   .home-kinpaku .spread-command-name,
-  .docs-kinpaku .docs-index-eyebrow,
-  .docs-kinpaku .docs-live-eyebrow,
-  .docs-kinpaku .docs-flow-eyebrow,
-  .docs-kinpaku .docs-chains-eyebrow,
-  .docs-kinpaku .docs-reference-eyebrow,
-  .docs-kinpaku .docs-flow-verb,
-  .docs-kinpaku .skills-sidebar-category,
-  .docs-kinpaku .docs-live-target-sub,
-  .docs-kinpaku .docs-live-bar-accept,
   .cf-eyebrow
 ) {
   color: var(--ks-kinpaku-ink);
 }
 
+/* Docs on paper: real kinpaku works for large display and fills, but small
+   links and labels should use patina instead of gold tuned for paper. */
+html.light body.docs-kinpaku :is(
+  .docs-index-eyebrow,
+  .docs-start-eyebrow,
+  .docs-chooser-eyebrow,
+  .docs-live-eyebrow,
+  .docs-flow-eyebrow,
+  .docs-chains-eyebrow,
+  .docs-reference-eyebrow,
+  .docs-start-num,
+  .docs-flow-verb,
+  .docs-flow-arrow,
+  .skills-sidebar-category,
+  .docs-live-target-sub,
+  .docs-live-bar-accept
+) {
+  color: var(--docs-accent);
+}
+
 /* Command palette (magazine spread). The kicker, skill name (big title + active
    list item) all read in the section accent (--spread-accent) — gold for
    create/refine/simplify, verdigris for evaluate/harden, neutral for system —
-   matching the divider. On the near-white card these read fine. This clears the
-   muddier kinpaku-ink the shared eyebrow :is() rule above assigns; scoped under
-   .magazine-container so its specificity ties/beats that rule (and only touches
-   the palette). Other eyebrows keep kinpaku-ink for paper. Dark mode gets the
-   same accent colors via home-kinpaku.css. */
+   matching the divider. On the near-white card these read fine. This keeps the
+   palette colors distinct from the shared light-mode small-text accent; scoped
+   under .magazine-container so its specificity ties/beats that rule (and only
+   touches the palette). Dark mode gets the same accent colors via
+   home-kinpaku.css. */
 html.light .home-kinpaku .magazine-container .spread-command-name,
 html.light .home-kinpaku .magazine-container .spread-category-label,
 html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
@@ -540,7 +552,7 @@ html.light .docs-kinpaku .skills-sidebar {
 }
 
 html.light .docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
-  background: oklch(77% 0.13 82 / 0.08);
+  background: var(--docs-accent-wash);
 }
 
 html.light .docs-kinpaku .docs-tile,
@@ -551,6 +563,11 @@ html.light .docs-kinpaku .docs-ref-card,
 html.light .docs-kinpaku .docs-live-frame {
   background: var(--ks-lacquer-raised);
   border-color: var(--ks-rule);
+}
+
+html.light .docs-kinpaku .docs-chain,
+html.light .docs-kinpaku .docs-flow-link {
+  background: var(--docs-panel-bg);
 }
 
 html.light .docs-kinpaku .docs-tile:hover,
@@ -798,8 +815,8 @@ html.light .live-mode-kinpaku .live-mode-terminal {
    override here was dead twice over: it targeted a .changelog-faq-kinpaku
    wrapper that is never on the body, and the wrong (.faq-item / .changelog-entry)
    element names — the real classes are cf-prefixed. Flip the actual surfaces to
-   the shared light card treatment, and drop the bright-kinpaku accents to
-   --ks-kinpaku-ink so they stay legible on paper (matching the .cf-eyebrow). */
+   the shared light card treatment, and drop the bright-kinpaku accents to the
+   light-mode small-text accent so they stay legible on paper. */
 html.light .cf-entry,
 html.light .cf-stats,
 html.light .cf-faq-item {
@@ -1147,6 +1164,14 @@ html.light .changelog-faq-kinpaku {
   background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
 }
 
+html.light body.docs-kinpaku {
+  background: oklch(100% 0 0);
+}
+
+html.light body.docs-kinpaku .site-header {
+  background: oklch(100% 0 0 / 0.96);
+}
+
 html.light .skills-layout-page .skills-sidebar,
 html.light .skills-layout-page .skills-content {
   background: transparent;
@@ -1167,10 +1192,16 @@ html.light .docs-kinpaku .docs-live-target {
 }
 
 html.light .docs-kinpaku .docs-flow-link {
-  background: var(--ks-lacquer-raised);
+  background: var(--docs-panel-bg);
 }
 
-/* Docs inline viz — bright fill gold on pale kinpaku wash or paper */
+html.light .docs-kinpaku .docs-flow-link:hover {
+  background: var(--docs-panel-hover-bg);
+  border-color: var(--docs-accent-line);
+}
+
+/* Docs inline viz — small text on paper uses patina; kinpaku stays for large
+   brand marks and fill surfaces. */
 html.light .docs-kinpaku .prose .docs-viz-flow-step--accent .docs-viz-flow-name,
 html.light .docs-kinpaku .prose .docs-viz-variant.is-active .docs-viz-variant-kicker,
 html.light .docs-kinpaku .prose .docs-viz-designmd-chip,
@@ -1178,15 +1209,15 @@ html.light .docs-kinpaku .prose .docs-viz-file-status,
 html.light .docs-kinpaku .prose .docs-viz-live-kicker,
 html.light .docs-kinpaku .prose .docs-viz-live-title em,
 html.light .docs-kinpaku .prose th {
-  color: var(--ks-kinpaku-ink);
+  color: var(--docs-accent);
 }
 
 html.light .docs-kinpaku .prose th {
-  border-bottom-color: var(--ks-kinpaku-deep);
+  border-bottom-color: var(--docs-accent-line);
 }
 
 html.light .docs-kinpaku .prose .docs-viz-flow-step + .docs-viz-flow-step::before {
-  color: var(--ks-kinpaku-deep);
+  color: var(--docs-accent);
 }
 
 html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active .docs-viz-variant-kicker,
@@ -1291,8 +1322,7 @@ html.light .live-mode-kinpaku .live-demo-ctx {
 }
 
 /* Standalone brand mark (no wordmark) reads as the header logo does in light
-   mode — crisp near-black ink, not the muddy mid-gold that --ks-kinpaku-ink
-   washes to on a pale bar. */
+   mode — crisp near-black ink, not the small-text accent used elsewhere. */
 html.light .home-kinpaku .live-demo-gbar-brand,
 html.light .live-mode-kinpaku .live-demo-gbar-brand {
   color: var(--ks-champagne);
@@ -1700,7 +1730,7 @@ html.light .downloads-rebuild-card {
   --card-link-secondary: var(--ks-text-muted);
 
   /* Command-frame accents on paper. Install keeps bright kinpaku; the prompt
-     glyph drops to the readable kinpaku-ink so it carries on near-white. */
+     glyph uses the light-mode small-text accent so it carries on near-white. */
   --card-cmd-border: var(--ks-kinpaku);
   --card-prompt: var(--ks-kinpaku-ink);
   --card-cmd-border-update: oklch(49% 0.08 188 / 0.6);

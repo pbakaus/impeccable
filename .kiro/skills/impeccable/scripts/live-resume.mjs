@@ -3,7 +3,7 @@
  * Recover the next agent action from the durable live-session journal.
  */
 
-import { createLiveSessionStore } from './live-session-store.mjs';
+import { createLiveSessionStore } from './live/session-store.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {

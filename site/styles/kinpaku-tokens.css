@@ -61,7 +61,7 @@
 	/* ============================================================
 	   Rules. The hairline is neutral so borders/dividers/labels don't
 	   carry warmth (warmth lives in the gold accents and surfaces). For a
-	   gold accent border, use --ks-kinpaku directly, not a muddy variant.
+	   gold accent border, use --ks-kinpaku directly, not a readability variant.
 	   ============================================================ */
 	--ks-rule:           oklch(78% 0 0 / 0.16);
 
@@ -150,21 +150,21 @@ html.dark {
 }
 
 /* ============================================================
-   Light mode — warm paper surfaces, dark ink type, kinpaku gold
-   accents deepened for contrast. Activated via html.light on
+   Light mode — pale surfaces, dark ink type, and kinpaku kept as the
+   real brand gold. Activated via html.light on
    <html> (set by theme.js + inline FOUC guard in Base.astro).
    ============================================================ */
 html.light {
 	color-scheme: light;
 
 	/* Brand gold — same fills as dark mode (logo, buttons, marks).
-	   Use --ks-kinpaku-ink for small text on paper where bright gold
-	   lacks contrast; never swap the core token to a muddy orange. */
+	   For decorative small text on paper, use patina. Use --ks-link-on-paper
+	   for body-sized links that need stronger contrast. */
 	--ks-kinpaku:        oklch(84% 0.19 80.46);
 	--ks-kinpaku-pale:   oklch(86% 0.07 84);
 	--ks-kinpaku-rich:   oklch(77% 0.13 82);
 	--ks-kinpaku-deep:   oklch(61% 0.085 78);
-	--ks-kinpaku-ink:    oklch(56% 0.11 82);
+	--ks-kinpaku-ink:    var(--ks-patina);
 
 	/* Text links + active nav on paper — patina, not fill gold. */
 	--ks-link-on-paper:       var(--ks-patina-deep);
@@ -202,5 +202,5 @@ html.light {
 	--ks-code-block-fg:   oklch(30% 0.02 95);
 	--ks-code-block-bg:   var(--ks-lacquer-raised);
 	--ks-code-block-border: var(--ks-rule);
-	--ks-code-cmd:        var(--ks-kinpaku-ink);
+	--ks-code-cmd:        var(--ks-link-on-paper);
 }

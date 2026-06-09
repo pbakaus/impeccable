@@ -409,6 +409,15 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
+function parseBuildOptions(argv = process.argv.slice(2)) {
+  const skipRootSync = argv.includes('--skip-root-sync') || argv.includes('--no-root-sync');
+  return {
+    syncRootOutputs: !skipRootSync,
+  };
+}
+
+const BUILD_OPTIONS = parseBuildOptions();
+
 // buildStaticSite (Bun HTML bundler) removed — now handled by Astro.
 
 /**
@@ -616,107 +625,111 @@ async function build() {
   generateApiData(publicDir, skills, patterns, ROOT_DIR);
   generateCFConfig(publicDir);
 
-  // Copy all provider outputs to project root for local testing.
-  // `.codex/` is intentionally excluded: Codex no longer consumes that layout; keep
-  // generated bundles under dist/ only.
-  const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex');
+  if (BUILD_OPTIONS.syncRootOutputs) {
+    // Copy all provider outputs to project root for direct GitHub installs and
+    // submodule users. `.codex/` is intentionally excluded: Codex no longer
+    // consumes that layout; keep generated Codex bundles under dist/ only.
+    const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex');
 
-  for (const { provider, configDir } of syncConfigs) {
-    const skillsSrc = path.join(DIST_DIR, provider, configDir, 'skills');
-    const skillsDest = path.join(ROOT_DIR, configDir, 'skills');
+    for (const { provider, configDir } of syncConfigs) {
+      const skillsSrc = path.join(DIST_DIR, provider, configDir, 'skills');
+      const skillsDest = path.join(ROOT_DIR, configDir, 'skills');
 
-    if (fs.existsSync(skillsSrc)) {
-      // Preserve legacy per-project script artifacts (e.g. live-mode config.json)
-      // across the rm + recopy. The build intentionally doesn't ship them,
-      // so without this the sync destroys local state on every rebuild.
-      const stashed = stashPerProjectArtifacts(skillsDest);
-      if (fs.existsSync(skillsDest)) fs.rmSync(skillsDest, { recursive: true });
-      copyDirSync(skillsSrc, skillsDest);
-      restorePerProjectArtifacts(skillsDest, stashed);
+      if (fs.existsSync(skillsSrc)) {
+        // Preserve legacy per-project script artifacts (e.g. live-mode config.json)
+        // across the rm + recopy. The build intentionally doesn't ship them,
+        // so without this the sync destroys local state on every rebuild.
+        const stashed = stashPerProjectArtifacts(skillsDest);
+        if (fs.existsSync(skillsDest)) fs.rmSync(skillsDest, { recursive: true });
+        copyDirSync(skillsSrc, skillsDest);
+        restorePerProjectArtifacts(skillsDest, stashed);
+      }
     }
-  }
 
-  for (const { provider, configDir, agentFormat } of Object.values(PROVIDERS)) {
-    if (!agentFormat) continue;
+    for (const { provider, configDir, agentFormat } of Object.values(PROVIDERS)) {
+      if (!agentFormat) continue;
 
-    const agentsSrc = path.join(DIST_DIR, provider, configDir, 'agents');
-    const agentsDest = path.join(ROOT_DIR, configDir, 'agents');
+      const agentsSrc = path.join(DIST_DIR, provider, configDir, 'agents');
+      const agentsDest = path.join(ROOT_DIR, configDir, 'agents');
 
-    if (fs.existsSync(agentsDest)) fs.rmSync(agentsDest, { recursive: true, force: true });
-    if (fs.existsSync(agentsSrc)) {
-      copyDirSync(agentsSrc, agentsDest);
+      if (fs.existsSync(agentsDest)) fs.rmSync(agentsDest, { recursive: true, force: true });
+      if (fs.existsSync(agentsSrc)) {
+        copyDirSync(agentsSrc, agentsDest);
+      }
     }
-  }
 
-  // Remove deprecated skill stubs from local harness dirs. They exist
-  // in dist/ so the cleanup script can redirect users, but they should
-  // not clutter the repo's own skill directories.
-  const deprecatedLocalSkills = [
-    'frontend-design', 'teach-impeccable',
-    'arrange', 'normalize', 'onboard', 'extract',
-    // v3.0 consolidation: standalone skills -> /impeccable sub-commands
-    'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
-    'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
-    'overdrive', 'polish', 'quieter', 'shape', 'typeset',
-  ];
-  for (const { configDir } of syncConfigs) {
-    for (const name of deprecatedLocalSkills) {
-      const p = path.join(ROOT_DIR, configDir, 'skills', name);
-      if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+    // Remove deprecated skill stubs from local harness dirs. They exist
+    // in dist/ so the cleanup script can redirect users, but they should
+    // not clutter the repo's own skill directories.
+    const deprecatedLocalSkills = [
+      'frontend-design', 'teach-impeccable',
+      'arrange', 'normalize', 'onboard', 'extract',
+      // v3.0 consolidation: standalone skills -> /impeccable sub-commands
+      'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
+      'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
+      'overdrive', 'polish', 'quieter', 'shape', 'typeset',
+    ];
+    for (const { configDir } of syncConfigs) {
+      for (const name of deprecatedLocalSkills) {
+        const p = path.join(ROOT_DIR, configDir, 'skills', name);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+      }
     }
-  }
 
-  console.log(`📋 Synced skills to: ${syncConfigs.map(p => p.configDir).join(', ')}`);
+    console.log(`📋 Synced skills to: ${syncConfigs.map(p => p.configDir).join(', ')}`);
 
-  // Build the Claude Code plugin subtree at ./plugin/.
-  // The Claude Code marketplace is configured with `source: "./plugin"`, so
-  // the plugin cache only copies this slim directory (~0.3 MB) instead of
-  // the entire monorepo (~291 MB on the previous "./" source). The harness
-  // dirs above stay where they are because `npx skills add pbakaus/impeccable`
-  // reads them directly from the GitHub repo at install time.
-  const pluginRoot = path.join(ROOT_DIR, 'plugin');
-  const pluginManifestDir = path.join(pluginRoot, '.claude-plugin');
-  const pluginSkillsDir = path.join(pluginRoot, 'skills');
-  const pluginAgentsDir = path.join(pluginRoot, 'agents');
-  if (fs.existsSync(pluginManifestDir)) fs.rmSync(pluginManifestDir, { recursive: true });
-  if (fs.existsSync(pluginSkillsDir)) fs.rmSync(pluginSkillsDir, { recursive: true });
-  if (fs.existsSync(pluginAgentsDir)) fs.rmSync(pluginAgentsDir, { recursive: true });
+    // Build the Claude Code plugin subtree at ./plugin/.
+    // The Claude Code marketplace is configured with `source: "./plugin"`, so
+    // the plugin cache only copies this slim directory (~0.3 MB) instead of
+    // the entire monorepo (~291 MB on the previous "./" source). The harness
+    // dirs above stay where they are because `npx skills add pbakaus/impeccable`
+    // reads them directly from the GitHub repo at install time.
+    const pluginRoot = path.join(ROOT_DIR, 'plugin');
+    const pluginManifestDir = path.join(pluginRoot, '.claude-plugin');
+    const pluginSkillsDir = path.join(pluginRoot, 'skills');
+    const pluginAgentsDir = path.join(pluginRoot, 'agents');
+    if (fs.existsSync(pluginManifestDir)) fs.rmSync(pluginManifestDir, { recursive: true });
+    if (fs.existsSync(pluginSkillsDir)) fs.rmSync(pluginSkillsDir, { recursive: true });
+    if (fs.existsSync(pluginAgentsDir)) fs.rmSync(pluginAgentsDir, { recursive: true });
 
-  const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
-  const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
-  const pluginAgentEntries = fs.existsSync(claudeAgentsSrc)
-    ? fs.readdirSync(claudeAgentsSrc)
-        .filter(file => file.endsWith('.md'))
-        .sort()
-        .map(file => `./agents/${file}`)
-    : [];
-  // Trailing slash on the skills path matches the documented schema in
-  // code.claude.com/docs/en/plugins-reference. Issue #86 has 3 reporters
-  // converging on "add trailing slash to fix slash commands not registering";
-  // the docs schema example consistently uses `"./custom/skills/"` form.
-  const pluginManifest = { ...rootManifest, skills: './skills/' };
-  if (pluginAgentEntries.length) {
-    pluginManifest.agents = pluginAgentEntries;
+    const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
+    const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
+    const pluginAgentEntries = fs.existsSync(claudeAgentsSrc)
+      ? fs.readdirSync(claudeAgentsSrc)
+          .filter(file => file.endsWith('.md'))
+          .sort()
+          .map(file => `./agents/${file}`)
+      : [];
+    // Trailing slash on the skills path matches the documented schema in
+    // code.claude.com/docs/en/plugins-reference. Issue #86 has 3 reporters
+    // converging on "add trailing slash to fix slash commands not registering";
+    // the docs schema example consistently uses `"./custom/skills/"` form.
+    const pluginManifest = { ...rootManifest, skills: './skills/' };
+    if (pluginAgentEntries.length) {
+      pluginManifest.agents = pluginAgentEntries;
+    } else {
+      delete pluginManifest.agents;
+    }
+    fs.mkdirSync(pluginManifestDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginManifestDir, 'plugin.json'),
+      JSON.stringify(pluginManifest, null, 2) + '\n',
+    );
+
+    const claudeSkillsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'skills', 'impeccable');
+    if (fs.existsSync(claudeSkillsSrc)) {
+      fs.mkdirSync(pluginSkillsDir, { recursive: true });
+      copyDirSync(claudeSkillsSrc, path.join(pluginSkillsDir, 'impeccable'));
+    }
+
+    if (fs.existsSync(claudeAgentsSrc)) {
+      copyDirSync(claudeAgentsSrc, pluginAgentsDir);
+    }
+
+    console.log('📦 Built Claude Code plugin subtree at ./plugin/');
   } else {
-    delete pluginManifest.agents;
+    console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }
-  fs.mkdirSync(pluginManifestDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(pluginManifestDir, 'plugin.json'),
-    JSON.stringify(pluginManifest, null, 2) + '\n',
-  );
-
-  const claudeSkillsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'skills', 'impeccable');
-  if (fs.existsSync(claudeSkillsSrc)) {
-    fs.mkdirSync(pluginSkillsDir, { recursive: true });
-    copyDirSync(claudeSkillsSrc, path.join(pluginSkillsDir, 'impeccable'));
-  }
-
-  if (fs.existsSync(claudeAgentsSrc)) {
-    copyDirSync(claudeAgentsSrc, pluginAgentsDir);
-  }
-
-  console.log('📦 Built Claude Code plugin subtree at ./plugin/');
 
   // Generate authoritative counts and validate references
   const countErrors = generateCounts(ROOT_DIR, skills, buildDir);

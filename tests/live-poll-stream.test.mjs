@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { getLiveServerPath } from '../skill/scripts/impeccable-paths.mjs';
+import { getLiveServerPath } from '../skill/scripts/lib/impeccable-paths.mjs';
 import { postReply } from '../skill/scripts/live-poll.mjs';
 
 const REPO_ROOT = process.cwd();

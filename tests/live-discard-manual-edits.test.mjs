@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { writeBuffer, readBuffer } from '../skill/scripts/live-manual-edits-buffer.mjs';
+import { writeBuffer, readBuffer } from '../skill/scripts/live/manual-edits-buffer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
