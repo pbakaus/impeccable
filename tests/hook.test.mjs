@@ -1341,6 +1341,28 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.user_message, /side-tab/);
   });
 
+  it('preToolUse denies Python heredoc file writes that bypass the Write tool', () => {
+    const filePath = path.join(cwd, 'src/PythonCard.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Shell',
+        tool_input: {
+          command: `python3 - <<'PY'\nfrom pathlib import Path\npath = Path('${filePath}')\npath.write_text('''<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>\n<div class="card">Hello</div>\n''', encoding='utf-8')\nPY\n`,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /PythonCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
   it('preToolUse denies shell append redirects that bypass the Write tool', () => {
     const filePath = path.join(cwd, 'src/AppendedCard.html');
     const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {

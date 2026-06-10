@@ -92,9 +92,12 @@ function proposedContent(event, cwd, filePath) {
     return { skipped: 'fragment-only-edit' };
   }
 
-  const shellContent = shellHereDocContent(shellCommand(input));
+  const command = shellCommand(input);
+  const pythonContent = shellPythonWriteContent(command);
+  if (pythonContent) return pythonContent;
+  const shellContent = shellHereDocContent(command);
   if (shellContent) return shellContent;
-  const copiedContent = shellCopiedFileContent(shellCommand(input), cwd);
+  const copiedContent = shellCopiedFileContent(command, cwd);
   if (copiedContent) return copiedContent;
   return '';
 }
@@ -175,7 +178,34 @@ function shellRedirectPath(command) {
 }
 
 function shellWriteDestination(command) {
-  return shellRedirectPath(command) || shellTeeDestination(command) || shellCopyPaths(command)?.dest || '';
+  return shellRedirectPath(command) || shellTeeDestination(command) || shellCopyPaths(command)?.dest || shellPythonWriteDestination(command) || '';
+}
+
+function shellPythonWriteDestination(command) {
+  if (!/\bpython(?:3)?\b/.test(command || '')) return '';
+  const directPath = firstMatch(command, /(?:^|[^\w.])(?:pathlib\.)?Path\(\s*(["'])(.*?)\1\s*\)\s*\.write_text\s*\(/);
+  if (directPath) return directPath;
+
+  const pathsByVar = new Map();
+  const assignmentRe = /\b([A-Za-z_]\w*)\s*=\s*(?:pathlib\.)?Path\(\s*(["'])(.*?)\2\s*\)/g;
+  let assignment;
+  while ((assignment = assignmentRe.exec(command))) {
+    pathsByVar.set(assignment[1], assignment[3]);
+  }
+
+  const writeVarRe = /\b([A-Za-z_]\w*)\.write_text\s*\(/g;
+  let writeVar;
+  while ((writeVar = writeVarRe.exec(command))) {
+    const candidate = pathsByVar.get(writeVar[1]);
+    if (candidate) return candidate;
+  }
+
+  return firstMatch(command, /\bopen\(\s*(["'])(.*?)\1\s*,\s*(["'])[wax](?:\+)?b?\3/);
+}
+
+function firstMatch(value, re) {
+  const match = String(value || '').match(re);
+  return (match?.[2] || '').trim();
 }
 
 function shellTeeDestination(command) {
@@ -241,6 +271,40 @@ function shellHereDocContent(command) {
   const endRe = new RegExp(`\\r?\\n${escapeRegExp(marker)}(?:\\r?\\n|$)`);
   const end = rest.search(endRe);
   return end >= 0 ? rest.slice(0, end) : '';
+}
+
+function shellPythonWriteContent(command) {
+  if (!/\bpython(?:3)?\b/.test(command || '')) return '';
+  const script = shellHereDocContent(command) || command;
+  return pythonStringArg(script, /\.write_text\s*\(\s*/g) || pythonStringArg(script, /\.write\s*\(\s*/g);
+}
+
+function pythonStringArg(script, prefixRe) {
+  let prefix;
+  while ((prefix = prefixRe.exec(script))) {
+    const start = prefixRe.lastIndex;
+    const triple = script.slice(start, start + 3);
+    if (triple === "'''" || triple === '"""') {
+      const end = script.indexOf(triple, start + 3);
+      if (end !== -1) return script.slice(start + 3, end);
+      continue;
+    }
+    const quote = script[start];
+    if (quote !== '"' && quote !== "'") continue;
+    let out = '';
+    for (let i = start + 1; i < script.length; i++) {
+      const ch = script[i];
+      if (ch === '\\') {
+        out += script[i + 1] || '';
+        i += 1;
+      } else if (ch === quote) {
+        return out;
+      } else {
+        out += ch;
+      }
+    }
+  }
+  return '';
 }
 
 function escapeRegExp(value) {
