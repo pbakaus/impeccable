@@ -5,7 +5,7 @@
 
 import { createLiveSessionStore } from './live/session-store.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
-import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
   const id = typeof eventOrId === 'string' ? eventOrId : eventOrId?.id || 'EVENT_ID';
@@ -82,7 +82,7 @@ export async function resumeCli() {
       }, null, 2));
       return;
     }
-    if (record?.info?.projectRoot && record.info.projectRoot !== process.cwd()) {
+    if (record?.info?.projectRoot && !samePath(record.info.projectRoot, process.cwd())) {
       process.chdir(record.info.projectRoot);
     }
   }

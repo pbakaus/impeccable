@@ -4,7 +4,7 @@
  */
 
 import { createLiveSessionStore } from './live/session-store.mjs';
-import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function parseArgs(argv) {
@@ -62,7 +62,7 @@ function readServerInfo() {
 function chdirToSingleDiscoveredProjectRoot() {
   const record = readLiveServerInfo(process.cwd());
   if (!record?.info?.projectRoot) return;
-  if (record.info.projectRoot !== process.cwd()) process.chdir(record.info.projectRoot);
+  if (!samePath(record.info.projectRoot, process.cwd())) process.chdir(record.info.projectRoot);
 }
 
 async function completeThroughServer(info, args) {

@@ -102,7 +102,7 @@ function findChildLiveServerInfo(cwd = process.cwd(), options = {}) {
   const project = resolveProject(cwd, options);
   if (
     !project.isMonorepo
-    || path.resolve(project.projectRoot) !== path.resolve(project.repoRoot)
+    || !samePath(project.projectRoot, project.repoRoot)
   ) {
     return [];
   }
@@ -113,7 +113,7 @@ function findChildLiveServerInfo(cwd = process.cwd(), options = {}) {
     if (!record) return;
     if (
       record.info?.repoRoot
-      && path.resolve(record.info.repoRoot) !== path.resolve(project.repoRoot)
+      && !samePath(record.info.repoRoot, project.repoRoot)
     ) {
       return;
     }
@@ -151,7 +151,7 @@ function walkForLiveServerFiles(root, onFile) {
       const abs = path.join(dir, entry.name);
       if (entry.name === IMPECCABLE_DIR) {
         const serverPath = path.join(abs, LIVE_DIR, 'server.json');
-        if (path.dirname(abs) !== root && fs.existsSync(serverPath)) {
+        if (!samePath(path.dirname(abs), root) && fs.existsSync(serverPath)) {
           onFile(serverPath);
         }
         continue;
@@ -184,6 +184,19 @@ export function writeLiveServerInfo(cwd = process.cwd(), info, options = {}) {
 export function removeLiveServerInfo(cwd = process.cwd(), options = {}) {
   for (const filePath of [getLiveServerPath(cwd, options), getLegacyLiveServerPath(cwd, options)]) {
     try { fs.unlinkSync(filePath); } catch {}
+  }
+}
+
+export function samePath(a, b) {
+  if (!a || !b) return false;
+  return realPathOrResolve(a) === realPathOrResolve(b);
+}
+
+function realPathOrResolve(filePath) {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return path.resolve(filePath);
   }
 }
 

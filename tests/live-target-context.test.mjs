@@ -178,6 +178,20 @@ describe('live target-aware monorepo context', () => {
     assert.equal(payload.candidates.length, 2);
     assert.match(payload.hint, /--target <path>/);
   });
+
+  it('marks live-server --background output when it discovers a child server from the root', () => {
+    writeChildServerInfo(tmp, 'dashboard', 8401, { targetPath: TARGET });
+
+    const res = runNode(LIVE_SERVER_SCRIPT, ['--background'], tmp);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+
+    assert.equal(payload.discovered, true);
+    assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+    assert.equal(payload.repoRoot, tmp);
+    assert.equal(payload.targetPath, TARGET);
+    assert.equal(payload.port, 8401);
+  });
 });
 
 function setupMonorepo(root) {

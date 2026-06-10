@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -150,6 +150,31 @@ describe('impeccable project paths', () => {
 
     const record = readLiveServerInfo(tmp);
     assert.equal(record.path, join(childRoot, '.impeccable', 'live', 'server.json'));
+    assert.equal(record.info.token, 'child');
+  });
+
+  it('discovers child live servers when the repo root is reached through a symlink', () => {
+    const realRoot = join(tmp, 'real-root');
+    const linkRoot = join(tmp, 'link-root');
+    mkdirSync(realRoot, { recursive: true });
+    symlinkSync(realRoot, linkRoot, 'dir');
+    writeFileSync(join(realRoot, 'package.json'), JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }));
+    const childRoot = join(realRoot, 'apps', 'dashboard');
+    mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+    writeFileSync(join(childRoot, '.impeccable', 'live', 'server.json'), JSON.stringify({
+      pid: process.pid,
+      port: 8401,
+      token: 'child',
+      targetPath: 'apps/dashboard/src/App.jsx',
+      projectRoot: childRoot,
+      repoRoot: realRoot,
+    }));
+
+    const record = readLiveServerInfo(linkRoot);
+    assert.equal(record.path, join(linkRoot, 'apps', 'dashboard', '.impeccable', 'live', 'server.json'));
     assert.equal(record.info.token, 'child');
   });
 

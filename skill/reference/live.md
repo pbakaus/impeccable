@@ -12,7 +12,7 @@ Codex: run live helper commands, the app dev server, and any dependency-installi
 
 Execute in order. No step skipped, no step reordered.
 
-1. `live.mjs`: boot. In a monorepo, if the user named a file, route, or child app, pass it as `--target <path>` and keep using that same target on live helper commands that read state or source. For path-specific live diagnostics, the first live command must be `node {{scripts_path}}/live.mjs --target <path>`; do not report live context, state, port, injection, or design endpoint details unless they came from that command or from follow-up live helpers using the same target.
+1. `live.mjs`: boot. In a monorepo, `--target <path>` must be a real file or directory path. If the user named a route or child app, map it to the matching source file or app directory first, then pass that path and keep using the same target on live helper commands that read state or source. For path-specific live diagnostics, the first live command must be `node {{scripts_path}}/live.mjs --target <path>`; do not report live context, state, port, injection, or design endpoint details unless they came from that command or from follow-up live helpers using the same target.
 2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
 

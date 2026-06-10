@@ -230,6 +230,65 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(ctx.design, /Root design/);
   });
 
+  it('supports pnpm workspace patterns with inline comments and flow arrays', () => {
+    write('pnpm-workspace.yaml', 'packages: ["services/*", "tools/*"] # workspace packages\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('tools/inspector/PRODUCT.md', '# Inspector product\n');
+    write('tools/inspector/src/App.jsx');
+
+    const ctx = loadContext(scratch, { targetPath: 'tools/inspector/src/App.jsx' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'tools', 'inspector'));
+    assert.match(ctx.product, /Inspector product/);
+    assert.match(ctx.design, /Root design/);
+  });
+
+  it('honors negated pnpm workspace patterns', () => {
+    write('pnpm-workspace.yaml', 'packages:\n  - "packages/**"\n  - "!packages/private/**"\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('packages/private/app/src/index.ts', 'export const hidden = true;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'packages/private/app/src/index.ts' });
+    assert.equal(ctx.projectRoot, scratch);
+    assert.match(ctx.product, /Root product/);
+    assert.match(ctx.design, /Root design/);
+  });
+
+  it('keeps unmatched child projects from being hijacked by an ancestor workspace', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }, null, 2));
+    write('PRODUCT.md', '# Ancestor product\n');
+    write('side-project/PRODUCT.md', '# Side project product\n');
+    write('side-project/src/App.jsx', 'export default null;\n');
+
+    const ctx = loadContext(path.join(scratch, 'side-project'), { targetPath: 'src/App.jsx' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'side-project'));
+    assert.match(ctx.product, /Side project product/);
+    assert.equal(ctx.productPath, 'PRODUCT.md');
+  });
+
+  it('does not reuse stale project resolution after workspace markers change', () => {
+    write('PRODUCT.md', '# Root product\n');
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+    write('apps/dashboard/src/App.jsx', 'export default null;\n');
+
+    const before = loadContext(scratch, { targetPath: 'apps/dashboard/src/App.jsx' });
+    assert.equal(before.projectRoot, scratch);
+    assert.match(before.product, /Root product/);
+
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }, null, 2));
+
+    const after = loadContext(scratch, { targetPath: 'apps/dashboard/src/App.jsx' });
+    assert.equal(after.projectRoot, path.join(scratch, 'apps', 'dashboard'));
+    assert.match(after.product, /Dashboard product/);
+  });
+
   it('does not escape a nested git repo to an ancestor workspace', () => {
     write('package.json', JSON.stringify({
       private: true,
@@ -309,6 +368,23 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.designPath, 'DESIGN.md');
   });
 
+  it('supports packages/** workspace patterns for nested package roots', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['packages/**'],
+    }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('packages/group/app/package.json', JSON.stringify({ name: '@acme/app' }, null, 2));
+    write('packages/group/app/PRODUCT.md', '# Group app product\n');
+    write('packages/group/app/src/index.ts', 'export const app = true;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'packages/group/app/src/index.ts' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'packages', 'group', 'app'));
+    assert.match(ctx.product, /Group app product/);
+    assert.match(ctx.design, /Root design/);
+  });
+
   it('uses apps and packages folders as a fallback when a monorepo marker exists', () => {
     write('nx.json', '{}\n');
     write('PRODUCT.md', '# Root product\n');
@@ -378,10 +454,61 @@ describe('loadContext (monorepo project context)', () => {
       encoding: 'utf8',
       env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
     });
-    assert.equal(res.status, 0);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /--target requires a path value/);
+    assert.equal(res.stdout, '');
+  });
+
+  it('uses the last --target value when duplicate target flags are provided', () => {
+    writeMonorepo();
+    write('apps/marketing/PRODUCT.md', '# Marketing product\n');
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+
+    const res = spawnSync(process.execPath, [
+      SCRIPT_PATH,
+      '--target', 'apps/marketing/src/App.jsx',
+      '--target', 'apps/dashboard/src/App.jsx',
+    ], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /# Dashboard product/);
+    assert.match(res.stdout, /"targetPath": "apps\/dashboard\/src\/App\.jsx"/);
+    assert.doesNotMatch(res.stdout, /# Marketing product/);
+  });
+
+  it('warns when --target names a missing path in a monorepo', () => {
+    writeMonorepo();
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'apps/dashboard/routes/pricing'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+
+    assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /RESOLVED_CONTEXT:/);
-    assert.match(res.stdout, /"targetPath": null/);
-    assert.doesNotMatch(res.stdout, /"targetPath": "--help"/);
+    assert.match(res.stdout, /"targetExists": false/);
+    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+  });
+
+  it('warns about missing target even when root PRODUCT.md is absent', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }, null, 2));
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+    write('apps/dashboard/src/App.jsx', 'export default null;\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^NO_PRODUCT_MD:/);
+    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
     assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
   });
 });

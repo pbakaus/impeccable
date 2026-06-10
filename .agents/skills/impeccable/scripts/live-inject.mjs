@@ -186,12 +186,14 @@ export function ensureLiveGitIgnores(cwd = process.cwd()) {
   const target = resolveIgnoreTarget(cwd);
   const existing = fs.existsSync(target.path) ? fs.readFileSync(target.path, 'utf-8') : '';
   const patterns = scopedLiveIgnorePatterns(cwd, target.baseDir);
+  const markerRe = new RegExp(`${escapeRegExp(IGNORE_MARKER_OPEN)}[\\s\\S]*?${escapeRegExp(IGNORE_MARKER_CLOSE)}`);
+  const existingPatterns = readExistingIgnoreBlockPatterns(existing, markerRe);
+  const mergedPatterns = [...new Set([...existingPatterns, ...patterns])];
   const block = [
     IGNORE_MARKER_OPEN,
-    ...patterns,
+    ...mergedPatterns,
     IGNORE_MARKER_CLOSE,
   ].join('\n');
-  const markerRe = new RegExp(`${escapeRegExp(IGNORE_MARKER_OPEN)}[\\s\\S]*?${escapeRegExp(IGNORE_MARKER_CLOSE)}`);
 
   let updated;
   if (markerRe.test(existing)) {
@@ -210,8 +212,17 @@ export function ensureLiveGitIgnores(cwd = process.cwd()) {
     file: path.relative(cwd, target.path).split(path.sep).join('/'),
     mode: target.mode,
     changed: updated !== existing,
-    patterns,
+    patterns: mergedPatterns,
   };
+}
+
+function readExistingIgnoreBlockPatterns(existing, markerRe) {
+  const match = existing.match(markerRe);
+  if (!match) return [];
+  return match[0]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && line !== IGNORE_MARKER_OPEN && line !== IGNORE_MARKER_CLOSE);
 }
 
 function resolveIgnoreTarget(cwd) {

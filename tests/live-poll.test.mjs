@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import {
   buildAcceptScriptArgs,
@@ -86,6 +89,28 @@ describe('live-poll accept handling', () => {
       }),
       '/repo/apps/dashboard/src/App.jsx',
     );
+  });
+
+  it('prefers the stored target candidate that exists on disk', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-stored-target-'));
+    try {
+      const repoRoot = join(tmp, 'repo');
+      const projectRoot = join(repoRoot, 'apps', 'dashboard');
+      mkdirSync(join(repoRoot, 'src'), { recursive: true });
+      mkdirSync(projectRoot, { recursive: true });
+      writeFileSync(join(repoRoot, 'src', 'App.jsx'), 'export default null;\n');
+
+      assert.equal(
+        resolveStoredTargetPath({
+          targetPath: 'src/App.jsx',
+          projectRoot,
+          repoRoot,
+        }),
+        join(repoRoot, 'src', 'App.jsx'),
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

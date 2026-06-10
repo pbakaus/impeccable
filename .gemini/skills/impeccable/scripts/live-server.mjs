@@ -39,6 +39,7 @@ import {
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
+  samePath,
   writeLiveServerInfo,
 } from './lib/impeccable-paths.mjs';
 import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
@@ -1117,7 +1118,15 @@ if (args.includes('--background')) {
       const { info } = readLiveServerInfo(process.cwd()) || {};
       if (info.pid !== process.pid) {
         // Output JSON so the agent can read port + token from stdout.
-        console.log(JSON.stringify(info));
+        const discoveredChild = info.projectRoot && !samePath(info.projectRoot, process.cwd());
+        console.log(JSON.stringify(discoveredChild ? {
+          ...info,
+          discovered: true,
+          projectRoot: info.projectRoot || null,
+          repoRoot: info.repoRoot || null,
+          targetPath: info.targetPath || null,
+          hint: 'Discovered an existing child live server from the monorepo root. Use --target <path> to address a specific child project.',
+        } : info));
         process.exit(0);
       }
     } catch { /* not ready yet */ }

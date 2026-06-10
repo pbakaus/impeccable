@@ -4,7 +4,7 @@
  */
 
 import { createLiveSessionStore } from './live/session-store.mjs';
-import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 import { manualApplyResumeHint } from './live-resume.mjs';
 import { chdirToLiveTarget } from './live-target.mjs';
 
@@ -66,7 +66,7 @@ function findPendingManualApply(server, activeSessions) {
 function chdirToSingleDiscoveredProjectRoot() {
   const record = readLiveServerInfo(process.cwd());
   if (!record?.info?.projectRoot) return;
-  if (record.info.projectRoot !== process.cwd()) process.chdir(record.info.projectRoot);
+  if (!samePath(record.info.projectRoot, process.cwd())) process.chdir(record.info.projectRoot);
 }
 
 const _running = process.argv[1];

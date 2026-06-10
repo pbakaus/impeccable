@@ -29,7 +29,7 @@ export const SUITES = {
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|target-args|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -57,6 +57,7 @@ export const SUITES = {
           'tests/critique-storage.test.mjs',
           'tests/design-parser.test.mjs',
           'tests/impeccable-paths.test.mjs',
+          'tests/target-args.test.mjs',
           'tests/test-suites.test.mjs',
         ],
       },
