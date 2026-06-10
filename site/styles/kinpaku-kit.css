@@ -1329,44 +1329,132 @@
 /* Context bar sub-elements (the inline action panel that appears
    next to a picked element during "configure" / "cycling" / "accepted"
    states). */
-.home-kinpaku .live-demo-ctx-pill,
-.live-mode-kinpaku .live-demo-ctx-pill {
+.home-kinpaku .live-demo-ctx[data-phase="configuring"],
+.live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] {
+  padding: 0;
   background: var(--ks-graphite-2);
-  border: 1px solid oklch(92% 0 0 / 0.12);
-  color: var(--ks-champagne);
+  overflow: hidden;
 }
 
-/* Even heights across the configure row: the pill, input, count, and Go button
-   share one 30px baseline instead of stepping up and down. */
-.home-kinpaku .live-demo-ctx-row--configure > *,
-.live-mode-kinpaku .live-demo-ctx-row--configure > * {
-  height: 30px;
-  box-sizing: border-box;
+.home-kinpaku .live-demo-ctx-command,
+.live-mode-kinpaku .live-demo-ctx-command {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 6px 0 5px;
+  background: transparent;
+  border: 0;
+  overflow: hidden;
+}
+
+.home-kinpaku .live-demo-ctx-modifiers,
+.live-mode-kinpaku .live-demo-ctx-modifiers {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.home-kinpaku .live-demo-ctx-pill,
+.home-kinpaku .live-demo-ctx-count,
+.live-mode-kinpaku .live-demo-ctx-pill,
+.live-mode-kinpaku .live-demo-ctx-count {
+  box-sizing: border-box;
+  min-height: 18px;
+  height: auto;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-kinpaku .live-demo-ctx-pill,
+.live-mode-kinpaku .live-demo-ctx-pill {
+  border-color: oklch(35% 0 0);
+}
+
+.home-kinpaku .live-demo-ctx-row--configure,
+.live-mode-kinpaku .live-demo-ctx-row--configure {
+  width: 100%;
+  min-height: 36px;
+}
+
+.home-kinpaku .live-demo-ctx-actions,
+.live-mode-kinpaku .live-demo-ctx-actions {
+  display: inline-flex;
+  align-items: stretch;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
+}
+
+.home-kinpaku .live-demo-ctx-voice,
+.live-mode-kinpaku .live-demo-ctx-voice {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid oklch(92% 0 0 / 0.12);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ks-text-muted);
+}
+
+.home-kinpaku .live-demo-ctx-actions .live-demo-ctx-go,
+.live-mode-kinpaku .live-demo-ctx-actions .live-demo-ctx-go {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 0;
+  border-left: 0;
 }
 
 .home-kinpaku .live-demo-ctx-pill-caret,
 .live-mode-kinpaku .live-demo-ctx-pill-caret {
-  color: var(--ks-text-muted);
+  font-size: 10px;
+  color: inherit;
+}
+
+.home-kinpaku .live-demo-ctx-pill:hover,
+.home-kinpaku .live-demo-ctx-count:hover,
+.live-mode-kinpaku .live-demo-ctx-pill:hover,
+.live-mode-kinpaku .live-demo-ctx-count:hover {
+  background: oklch(27% 0 0);
+  color: var(--ks-text);
 }
 
 .home-kinpaku .live-demo-ctx-input,
 .live-mode-kinpaku .live-demo-ctx-input {
-  background: var(--ks-graphite);
-  border: 1px solid oklch(92% 0 0 / 0.12);
-  color: var(--ks-champagne);
+  display: inline-flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: oklch(94% 0.02 82);
 }
 
 .home-kinpaku .live-demo-ctx-caret,
 .live-mode-kinpaku .live-demo-ctx-caret {
-  background: var(--ks-kinpaku);
+  background: oklch(94% 0.02 82);
 }
 
 .home-kinpaku .live-demo-ctx-count,
 .live-mode-kinpaku .live-demo-ctx-count {
-  background: var(--ks-graphite-2);
-  border: 1px solid oklch(92% 0 0 / 0.12);
+  background: transparent;
+  border-color: transparent;
   color: var(--ks-text-muted);
 }
 

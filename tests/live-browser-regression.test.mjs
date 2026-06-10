@@ -320,6 +320,11 @@ describe('live-browser.js regression guards', () => {
       /function syncPageChatChrome\(\)[\s\S]{0,400}?pageChatEl\.style\.borderColor = 'transparent'/,
       'steer pill must stay borderless; surface contrast carries the affordance',
     );
+    assert.match(
+      SOURCE,
+      /floating bar surface IS the input; modifier pills sit left of the field/,
+      'element configure bar must use the bar surface as the input, not a nested field',
+    );
   });
 
   it('configure input Escape tears down annotation overlay before returning to picking', () => {
@@ -418,8 +423,18 @@ describe('live-browser.js regression guards', () => {
     assert.match(SOURCE, /border: '2px dotted ' \+ BP\.accent/, 'placeholder border matches insert line (dotted)');
     assert.match(
       SOURCE,
-      /function syncPageInteractionCursor\(\)[\s\S]{0,280}?cursorForInsertAxis/,
+      /function syncPageInteractionCursor\(\)[\s\S]{0,420}?cursorForInsertAxis/,
       'insert picking cursor follows row/column axis',
+    );
+    assert.match(
+      SOURCE,
+      /function ensurePickCursorStyle\(\)[\s\S]{0,420}?cursor: crosshair !important/,
+      'pick mode injects a crosshair cursor that wins over page pointer styles',
+    );
+    assert.match(
+      SOURCE,
+      /document\.documentElement\.classList\.add\(PICK_CURSOR_CLASS\)/,
+      'pick mode toggles a document-level class for the crosshair cursor',
     );
     assert.match(SOURCE, /function hitSiblingInsertGap\(/, 'insert mode detects gaps between siblings');
     assert.match(SOURCE, /function resolveInsertHover\(/, 'insert hover resolves axis-aware boundaries');
@@ -438,12 +453,12 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /buildInsertConfigureRow[\s\S]*?const count = el\('button', \{[\s\S]{0,320}?height: '28px'/,
-      'insert count toggle must match input height',
+      /buildInsertConfigureRow[\s\S]*?const count = el\('button', configureModifierPillStyle\(/,
+      'insert count toggle uses the same compact modifier pill chrome',
     );
     assert.match(
       SOURCE,
-      /buildInsertConfigureRow[\s\S]*?const create = el\('button', \{[\s\S]{0,320}?height: '28px'/,
+      /buildInsertConfigureRow[\s\S]*?buildConfigureSubmitButton\(/,
       'insert Create button must match input height',
     );
     assert.match(SOURCE, /function resolveBarAnchor\(\)/, 'bar positions from a connected anchor');
@@ -492,6 +507,55 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function handleAccept\(\)[\s\S]{0,360}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
       'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
+    );
+  });
+
+  it('configure row groups modifier pills left of the input and voice with submit', () => {
+    assert.match(
+      SOURCE,
+      /function configureModifierPillStyle\(extra = \{\}\)[\s\S]{0,480}?background: 'transparent'[\s\S]{0,120}?color: P\.textDim/,
+      'configure modifier chips use muted global-bar idle chrome, not active gold',
+    );
+    assert.match(
+      SOURCE,
+      /const CONFIGURE_ROW_TRACK_H = '18px'/,
+      'configure row shares one text track height across pills and input',
+    );
+    assert.match(
+      SOURCE,
+      /function configureInputFieldStyle\(extra = \{\}\)[\s\S]{0,320}?height: CONFIGURE_ROW_TRACK_H/,
+      'configure input uses the same track height as modifier pills',
+    );
+    assert.match(
+      SOURCE,
+      /const CONFIGURE_PILL_PAD_Y = '3px'/,
+      'modifier pills share 3px vertical padding',
+    );
+    assert.match(
+      SOURCE,
+      /function configureInputShellStyle\(\)[\s\S]{0,200}?alignItems: 'center'[\s\S]{0,120}?padding: '0 6px 0 ' \+ CONFIGURE_BAR_INSET/,
+      'configure shell vertically centers the row; inset matches centered pill margin',
+    );
+    assert.match(SOURCE, /modifierPills\.appendChild\(pill\)/, 'action dropdown pill lives in the modifier group');
+    assert.match(SOURCE, /modifierPills\.appendChild\(count\)/, 'variant count pill lives beside the action dropdown');
+    assert.match(SOURCE, /buildConfigureActionCluster\(voiceBtn, go\)/, 'voice and submit share an action cluster');
+  });
+
+  it('variant injection resolves the picked anchor before entering recovery', () => {
+    assert.match(
+      SOURCE,
+      /function resolveLiveInjectionAnchor\(originalMarkup\)/,
+      'variant source fallback must try the live picked element before giving up on anchor resolution',
+    );
+    assert.match(
+      SOURCE,
+      /pickedAnchor: pickedAnchorSnapshot/,
+      'picked anchor snapshot must persist in session storage for resume and reinjection',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /showToast\('Variants ready\. Reveal the selected element to resume\.'/,
+      'recovery chrome already shows this message in the generating bar; a duplicate toast stacks two bars',
     );
   });
 

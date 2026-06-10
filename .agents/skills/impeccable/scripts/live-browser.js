@@ -57,6 +57,7 @@
   const Z = { highlight: 100001, bar: 100005, picker: 100007, toast: 100010 };
   const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'; // ease-out-quint
   const PREFIX = 'impeccable-live';
+  const PICK_CURSOR_CLASS = PREFIX + '-pick-cursor';
   const MANUAL_APPLY_STATE_TTL_MS = 15 * 60 * 1000;
   const sessionState = window.__IMPECCABLE_LIVE_SESSION__?.createLiveBrowserSessionState({
     prefix: PREFIX,
@@ -131,6 +132,8 @@
   let currentPreviewFile = null;
   let currentPreviewMode = null;
   let recoveryWaitingForAnchor = false;
+  let pickedAnchorSnapshot = null;
+  let pendingVariantAnchorRetryObserver = null;
   let pendingAcceptedSession = null;
   let variantObserver = null;
   let variantSelectionInFlight = false;
@@ -1010,8 +1013,8 @@
       boxShadow: BP.shadow,
       transition: 'box-shadow 0.2s ease, opacity 0.25s ' + EASE + ', transform 0.3s ' + EASE,
       fontFamily: FONT, fontSize: '13px', color: BP.text,
-      padding: '6px',
-      maxWidth: '520px', minWidth: '320px',
+      padding: '5px',
+      maxWidth: '560px', minWidth: '340px',
     });
     uiAppend(barEl);
     defangOutsideHandlers(barEl);
@@ -1019,13 +1022,28 @@
 
   function positionBar() {
     if (!barEl) return;
-    const anchor = resolveBarAnchor();
-    if (!anchor) return;
-    const r = anchor.getBoundingClientRect();
     const barH = barEl.offsetHeight || 44;
     const barW = barEl.offsetWidth || 380;
     const GLOBAL_BAR_RESERVE = 64; // global bar height + bottom margin + breathing room
     const GAP = 8;
+
+    // Recovery pins to document.body when the picked element is off-screen or
+    // missing. Center the generating bar above the global bar instead of
+    // stacking a duplicate toast in the same slot.
+    if (recoveryWaitingForAnchor) {
+      const barRect = globalBarEl?.getBoundingClientRect();
+      const reserve = barRect && barRect.height > 0
+        ? Math.max(GLOBAL_BAR_RESERVE, window.innerHeight - barRect.top + 12)
+        : GLOBAL_BAR_RESERVE;
+      const top = window.innerHeight - barH - reserve;
+      const left = Math.max(GAP, (window.innerWidth - barW) / 2);
+      Object.assign(barEl.style, { top: top + 'px', left: left + 'px' });
+      return;
+    }
+
+    const anchor = resolveBarAnchor();
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
 
     // Prefer below the element; fall back to above; if neither fits (element
     // taller than viewport), pin to a stable viewport anchor so the bar
@@ -1054,8 +1072,14 @@
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
-    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
-    else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
+      applyConfigureBarChrome();
+    } else {
+      restorePickerBarChrome();
+      if (mode === 'generating') {
+        if (recoveryWaitingForAnchor) dismissToast();
+        barEl.appendChild(buildGeneratingRow());
+      } else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
+    }
     barEl.style.display = 'block';
     positionBar();
     requestAnimationFrame(() => {
@@ -1083,36 +1107,239 @@
     if (!barEl || barEl.style.display === 'none') return;
     if (mode === 'cycling' && !ensureCyclingRenderable('update-bar')) return;
     barEl.innerHTML = '';
-    // Reset bar styling to the kinpaku picker palette
-    barEl.style.background = BP.surface;
-    barEl.style.border = '1px solid ' + BP.border;
-    barEl.style.boxShadow = BP.shadow;
     if (mode === 'configure') {
       barEl.appendChild(configureKind === 'insert' ? buildInsertConfigureRow() : buildConfigureRow());
       if (configureKind === 'insert') syncInsertCreateButton();
-    } else if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
-    else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
-    else if (mode === 'saving') barEl.appendChild(buildSavingRow());
-    else if (mode === 'confirmed') {
-      barEl.appendChild(buildConfirmedRow());
-      barEl.style.background = 'oklch(95% 0.05 145)';
-      barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
+      applyConfigureBarChrome();
+    } else {
+      restorePickerBarChrome();
+      if (mode === 'generating') barEl.appendChild(buildGeneratingRow());
+      else if (mode === 'cycling') barEl.appendChild(buildCyclingRow());
+      else if (mode === 'saving') barEl.appendChild(buildSavingRow());
+      else if (mode === 'confirmed') {
+        barEl.appendChild(buildConfirmedRow());
+        barEl.style.background = 'oklch(95% 0.05 145)';
+        barEl.style.border = '1px solid oklch(75% 0.12 145 / 0.4)';
+      }
     }
     syncPageChatFocus('update-bar-content');
   }
 
-  // Configure row
+  // Configure row — the floating bar surface IS the input; modifier pills sit left of the field.
+
+  const CONFIGURE_BAR_H = '36px';
+  // 26px pill (18px track + 6px pad + 2px border) centered in 36px bar → 5px inset.
+  const CONFIGURE_BAR_INSET = '5px';
+  const CONFIGURE_PILL_RADIUS = '7px';
+  const CONFIGURE_ACTION_PILL_BORDER = '1px solid oklch(35% 0 0)';
+  const CONFIGURE_ROW_FONT_SIZE = '12px';
+  const CONFIGURE_ROW_TRACK_H = '18px';
+  const CONFIGURE_PILL_PAD_Y = '3px';
+  const CONFIGURE_BAR_SURFACE = 'oklch(15% 0.008 95)';
+  const CONFIGURE_PILL_TEXT = 'oklch(94% 0.02 82)';
+  const ICON_CONFIGURE_SUBMIT =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+
+  function applyConfigureBarChrome() {
+    if (!barEl) return;
+    barEl.dataset.configureSurface = 'true';
+    barEl.style.padding = '0';
+    barEl.style.background = CONFIGURE_BAR_SURFACE;
+    barEl.style.overflow = 'hidden';
+    syncConfigureInputChrome();
+  }
+
+  function restorePickerBarChrome() {
+    if (!barEl) return;
+    barEl.dataset.configureSurface = 'false';
+    barEl.removeAttribute('data-input-focused');
+    barEl.removeAttribute('data-voice-listening');
+    barEl.style.padding = '6px';
+    barEl.style.background = BP.surface;
+    barEl.style.overflow = '';
+    barEl.style.border = '1px solid ' + BP.border;
+    barEl.style.borderColor = BP.border;
+    barEl.style.boxShadow = BP.shadow;
+  }
 
   function syncConfigureInputChrome() {
-    const wrap = uiGetById(PREFIX + '-configure-input-wrap');
-    const input = uiGetById(PREFIX + '-input');
-    if (!wrap || !input) return;
+    const input = uiGetById(PREFIX + '-input') || uiGetById(PREFIX + '-insert-input');
+    const surface = barEl?.dataset.configureSurface === 'true' ? barEl : null;
+    if (!surface || !input) return;
     const focused = activeElementDeep() === input;
-    wrap.dataset.inputFocused = focused ? 'true' : 'false';
-    wrap.dataset.voiceListening = (voiceListening && voiceCtx?.mode === 'configure') ? 'true' : 'false';
-    wrap.style.borderColor = (voiceListening && voiceCtx?.mode === 'configure')
+    const listening = voiceListening && voiceCtx?.mode === 'configure';
+    surface.dataset.inputFocused = focused ? 'true' : 'false';
+    surface.dataset.voiceListening = listening ? 'true' : 'false';
+    surface.style.borderColor = listening
       ? BP.patinaSoft
-      : (focused ? BP.accentSoft : BP.hairline);
+      : (focused ? BP.accentSoft : BP.border);
+    surface.style.boxShadow = BP.shadow;
+  }
+
+  function configureBarPalette() {
+    return BP || barPaletteForTheme(detectPageTheme());
+  }
+
+  function configureRowTextMetrics(extra = {}) {
+    return {
+      fontFamily: FONT,
+      fontSize: CONFIGURE_ROW_FONT_SIZE,
+      fontWeight: '500',
+      lineHeight: CONFIGURE_ROW_TRACK_H,
+      ...extra,
+    };
+  }
+
+  function configureInputFieldStyle(extra = {}) {
+    return {
+      flex: '1', minWidth: '0', width: '100%',
+      padding: '0', margin: '0',
+      border: 'none', background: 'transparent',
+      boxSizing: 'border-box',
+      height: CONFIGURE_ROW_TRACK_H,
+      color: CONFIGURE_PILL_TEXT,
+      caretColor: CONFIGURE_PILL_TEXT,
+      outline: 'none',
+      ...configureRowTextMetrics(),
+      ...extra,
+    };
+  }
+
+  function configureInputShellStyle() {
+    return {
+      display: 'flex', alignItems: 'center', gap: '6px',
+      flex: '1', minWidth: '0', height: '100%',
+      padding: '0 6px 0 ' + CONFIGURE_BAR_INSET,
+    };
+  }
+
+  function configureModifierPillStyle(extra = {}) {
+    const P = configureBarPalette();
+    return {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '2px', height: 'auto', minHeight: CONFIGURE_ROW_TRACK_H,
+      padding: CONFIGURE_PILL_PAD_Y + ' 8px', flexShrink: '0',
+      boxSizing: 'border-box',
+      border: '1px solid transparent',
+      borderRadius: CONFIGURE_PILL_RADIUS,
+      background: 'transparent',
+      color: P.textDim, cursor: 'pointer',
+      transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+      whiteSpace: 'nowrap',
+      ...configureRowTextMetrics(),
+      ...extra,
+    };
+  }
+
+  function bindConfigureModifierPillHover(btn, controlsLocked) {
+    btn.addEventListener('mouseenter', () => {
+      if (controlsLocked) return;
+      const P = configureBarPalette();
+      btn.style.color = P.text;
+      btn.style.background = P.toggleActive;
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (controlsLocked) return;
+      const P = configureBarPalette();
+      btn.style.color = P.textDim;
+      btn.style.background = 'transparent';
+    });
+  }
+
+  function buildConfigureActionPill({ controlsLocked, onClick }) {
+    const pill = el('button', configureModifierPillStyle({
+      border: CONFIGURE_ACTION_PILL_BORDER,
+    }));
+    const label = document.createElement('span');
+    label.textContent = actionLabel();
+    const caret = el('span', {
+      fontSize: '10px', lineHeight: '1',
+      marginLeft: '2px', pointerEvents: 'none',
+      color: 'inherit',
+    });
+    caret.textContent = '\u25BE';
+    caret.setAttribute('aria-hidden', 'true');
+    pill.appendChild(label);
+    pill.appendChild(caret);
+    pill.disabled = controlsLocked;
+    pill.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    pill.style.opacity = controlsLocked ? '0.58' : '1';
+    if (controlsLocked) pill.title = 'Apply is still running';
+    bindConfigureModifierPillHover(pill, controlsLocked);
+    pill.addEventListener('click', onClick);
+    return pill;
+  }
+
+  function buildConfigureCountPill({ controlsLocked, onClick }) {
+    const count = el('button', configureModifierPillStyle({
+      fontFamily: MONO, fontWeight: '600', letterSpacing: '-0.02em',
+    }));
+    count.textContent = '\u00D7' + selectedCount;
+    count.title = controlsLocked ? 'Apply is still running' : 'Variants: click to change';
+    count.disabled = controlsLocked;
+    count.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    count.style.opacity = controlsLocked ? '0.58' : '1';
+    bindConfigureModifierPillHover(count, controlsLocked);
+    count.addEventListener('click', onClick);
+    return count;
+  }
+
+  function buildConfigureVoiceButton({ id, controlsLocked, onClick }) {
+    const voiceBtn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box',
+      width: CONFIGURE_BAR_H, height: '100%', flexShrink: '0',
+      padding: '0', margin: '0',
+      border: 'none', borderRight: '1px solid ' + BP.hairline,
+      borderRadius: '0', background: 'transparent',
+      color: BP.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+    });
+    voiceBtn.id = id;
+    voiceBtn.type = 'button';
+    voiceBtn.setAttribute('aria-label', 'Voice input');
+    voiceBtn.innerHTML = ICON_PAGE_VOICE;
+    voiceBtn.disabled = controlsLocked;
+    voiceBtn.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    voiceBtn.style.opacity = controlsLocked ? '0.58' : '1';
+    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    voiceBtn.addEventListener('click', onClick);
+    return voiceBtn;
+  }
+
+  function buildConfigureActionCluster(voiceBtn, submitBtn) {
+    const cluster = el('div', {
+      display: 'inline-flex', alignItems: 'stretch', flexShrink: '0',
+      height: '100%', borderLeft: '1px solid ' + BP.hairline,
+    });
+    cluster.appendChild(voiceBtn);
+    cluster.appendChild(submitBtn);
+    return cluster;
+  }
+
+  function buildConfigureSubmitButton({ controlsLocked, onClick, ariaLabel }) {
+    const btn = el('button', {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      boxSizing: 'border-box', width: CONFIGURE_BAR_H, height: CONFIGURE_BAR_H,
+      padding: '0', flexShrink: '0',
+      border: 'none', borderLeft: '1px solid ' + BP.hairline,
+      borderRadius: '0',
+      background: BP.accent, color: C.ink,
+      cursor: controlsLocked ? 'not-allowed' : 'pointer',
+      transition: 'filter 0.12s ease, transform 0.1s ease',
+    });
+    btn.type = 'button';
+    btn.setAttribute('aria-label', ariaLabel);
+    btn.innerHTML = ICON_CONFIGURE_SUBMIT;
+    btn.disabled = controlsLocked;
+    btn.style.opacity = controlsLocked ? '0.58' : '1';
+    if (controlsLocked) btn.title = 'Apply is still running';
+    btn.addEventListener('mouseenter', () => { if (!controlsLocked) btn.style.filter = 'brightness(1.1)'; });
+    btn.addEventListener('mouseleave', () => btn.style.filter = 'none');
+    btn.addEventListener('mousedown', () => { if (!controlsLocked) btn.style.transform = 'scale(0.97)'; });
+    btn.addEventListener('mouseup', () => btn.style.transform = 'scale(1)');
+    btn.addEventListener('click', onClick);
+    return btn;
   }
 
   // Insert mode helpers (mirrors skill/scripts/live/insert-ui.mjs)
@@ -1433,15 +1660,39 @@
   }
 
   let pageInteractionCursorActive = false;
+  let pickCursorStyleMounted = false;
 
-  /** Page-level cursor while insert mode is choosing a before/after edge. */
+  function ensurePickCursorStyle() {
+    if (pickCursorStyleMounted) return;
+    pickCursorStyleMounted = true;
+    const style = document.createElement('style');
+    style.id = PREFIX + '-pick-cursor-style';
+    style.textContent =
+      'html.' + PICK_CURSOR_CLASS + ' * { cursor: crosshair !important; }\n'
+      + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"],\n'
+      + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"] * { cursor: revert !important; }';
+    uiAppendStyle(style);
+  }
+
+  /** Page-level cursor while pick or insert mode is targeting page elements. */
   function syncPageInteractionCursor() {
-    let next = '';
+    const pickCursor = state === 'PICKING' && pickActive && !insertActive;
+    let axisCursor = '';
     if (state === 'PICKING' && insertActive) {
-      next = insertHoverAnchor ? cursorForInsertAxis(insertHoverAxis || 'column') : '';
+      axisCursor = insertHoverAnchor ? cursorForInsertAxis(insertHoverAxis || 'column') : '';
     }
-    if (next) {
-      document.documentElement.style.cursor = next;
+
+    if (pickCursor) {
+      ensurePickCursorStyle();
+      document.documentElement.classList.add(PICK_CURSOR_CLASS);
+      document.documentElement.style.cursor = '';
+      pageInteractionCursorActive = true;
+      return;
+    }
+
+    document.documentElement.classList.remove(PICK_CURSOR_CLASS);
+    if (axisCursor) {
+      document.documentElement.style.cursor = axisCursor;
       pageInteractionCursorActive = true;
     } else if (pageInteractionCursorActive) {
       document.documentElement.style.cursor = '';
@@ -1770,66 +2021,17 @@
   function buildConfigureRow() {
     const controlsLocked = pendingApplyInFlight === true;
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '6px',
+      display: 'flex', alignItems: 'stretch', width: '100%', height: CONFIGURE_BAR_H,
     });
 
-    // Action pill - dark graphite chip (matches kinpaku-kit .live-demo-ctx-pill)
-    const pill = el('button', {
-      display: 'inline-flex', alignItems: 'center', gap: '4px',
-      padding: '5px 10px', borderRadius: '6px',
-      background: BP.chatSurface, color: BP.text,
-      fontFamily: FONT, fontSize: '12px', fontWeight: '500',
-      border: '1px solid ' + BP.hairline, cursor: 'pointer',
-      transition: 'background 0.12s ease, border-color 0.12s ease, transform 0.1s ease',
-      whiteSpace: 'nowrap', flexShrink: '0',
-    });
-    pill.textContent = actionLabel() + ' \u25BE';
-    pill.disabled = controlsLocked;
-    pill.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    pill.style.opacity = controlsLocked ? '0.58' : '1';
-    if (controlsLocked) pill.title = 'Apply is still running';
-    pill.addEventListener('mouseenter', () => {
-      if (controlsLocked) return;
-      pill.style.background = BP.accentSoft;
-      pill.style.borderColor = BP.accent;
-    });
-    pill.addEventListener('mouseleave', () => {
-      if (controlsLocked) return;
-      pill.style.background = BP.chatSurface;
-      pill.style.borderColor = BP.hairline;
-    });
-    pill.addEventListener('mousedown', () => { if (!controlsLocked) pill.style.transform = 'scale(0.97)'; });
-    pill.addEventListener('mouseup', () => pill.style.transform = 'scale(1)');
-    pill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      toggleActionPicker();
-    });
-    row.appendChild(pill);
-
-    // Prompt field - same chat-surface chrome as the bottom Steer bar
-    const inputWrap = el('div', {
-      display: 'inline-flex', alignItems: 'center',
-      flex: '1', minWidth: '0', height: '28px',
-      borderRadius: '7px',
-      background: BP.chatSurface,
-      border: '1px solid ' + BP.hairline,
-      overflow: 'hidden',
-      transition: 'border-color 0.15s ease',
-    });
-    inputWrap.id = PREFIX + '-configure-input-wrap';
+    const inputShell = el('div', configureInputShellStyle());
 
     const input = document.createElement('input');
     input.id = PREFIX + '-input';
     input.type = 'text';
-    input.placeholder = selectedAction === 'impeccable' ? 'describe what you want…' : 'refine further (optional)…';
+    input.placeholder = '';
     input.setAttribute('aria-label', 'Describe the change');
-    Object.assign(input.style, {
-      flex: '1', minWidth: '0', width: '100%',
-      padding: '0 6px', border: 'none', background: 'transparent',
-      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
-      outline: 'none',
-    });
+    Object.assign(input.style, configureInputFieldStyle());
     input.disabled = controlsLocked;
     if (controlsLocked) {
       input.placeholder = 'apply is running...';
@@ -1837,31 +2039,45 @@
       input.style.opacity = '0.58';
     }
 
-    const voiceBtn = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      padding: '0', boxSizing: 'border-box',
-      width: '28px', height: '28px', flexShrink: '0',
-      border: 'none', background: 'transparent',
-      color: BP.textDim, cursor: 'pointer',
-      transition: 'color 0.12s ease, background 0.12s ease',
+    const modifierPills = el('div', {
+      display: 'inline-flex', alignItems: 'center', gap: '3px',
+      flexShrink: '0',
     });
-    voiceBtn.id = PREFIX + '-configure-voice';
-    voiceBtn.type = 'button';
-    voiceBtn.setAttribute('aria-label', 'Voice input');
-    voiceBtn.innerHTML = ICON_PAGE_VOICE;
-    voiceBtn.disabled = controlsLocked;
-    voiceBtn.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    voiceBtn.style.opacity = controlsLocked ? '0.58' : '1';
+
+    const pill = buildConfigureActionPill({
+      controlsLocked,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        toggleActionPicker();
+      },
+    });
+
+    const count = buildConfigureCountPill({
+      controlsLocked,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
+        count.textContent = '\u00D7' + selectedCount;
+      },
+    });
+
+    modifierPills.appendChild(pill);
+    modifierPills.appendChild(count);
+    inputShell.appendChild(modifierPills);
+    inputShell.appendChild(input);
 
     if (!uiGetById(PREFIX + '-configure-input-style')) {
       const s = document.createElement('style');
       s.id = PREFIX + '-configure-input-style';
       s.textContent =
         '@keyframes impeccable-configure-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
-        '#' + PREFIX + '-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
-        '#' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
-        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
-        '#' + PREFIX + '-configure-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
+        '#' + PREFIX + '-input, #' + PREFIX + '-insert-input { box-sizing: border-box; height: ' + CONFIGURE_ROW_TRACK_H + '; line-height: ' + CONFIGURE_ROW_TRACK_H + '; padding: 0; margin: 0; caret-color: ' + CONFIGURE_PILL_TEXT + '; }' +
+        '#' + PREFIX + '-input::placeholder, #' + PREFIX + '-insert-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
+        '#' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
+        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
+        '#' + PREFIX + '-configure-voice:hover, #' + PREFIX + '-insert-voice:hover { background: oklch(27% 0 0); color: ' + BP.accent + '; }';
       uiAppendStyle(s);
     }
 
@@ -1873,81 +2089,33 @@
         e.stopPropagation();
         e.preventDefault();
         input.blur();
-        disableInlineEdit();
-        hideBar();
-        renderEditBadge('hidden');
-        state = 'PICKING';
-        syncPageChatFocus('configure-input-escape');
+        exitConfigureToPicking('configure-input-escape');
         return;
       }
-      // Let arrow keys pass through to the element picker when the input is empty
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !input.value) return;
       e.stopPropagation();
     });
 
-    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-    voiceBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      toggleConfigureVoice();
+    const voiceBtn = buildConfigureVoiceButton({
+      id: PREFIX + '-configure-voice',
+      controlsLocked,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        toggleConfigureVoice();
+      },
     });
 
-    inputWrap.appendChild(input);
-    inputWrap.appendChild(voiceBtn);
-    row.appendChild(inputWrap);
+    const go = buildConfigureSubmitButton({
+      controlsLocked,
+      ariaLabel: 'Generate variants',
+      onClick: (e) => { e.stopPropagation(); handleGo(); },
+    });
+
+    row.appendChild(inputShell);
+    row.appendChild(buildConfigureActionCluster(voiceBtn, go));
     syncConfigureInputChrome();
 
-    // Variant count toggle
-    const count = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxSizing: 'border-box', height: '28px', padding: '0 6px',
-      borderRadius: '5px',
-      border: '1px solid ' + BP.hairline, background: 'transparent',
-      fontFamily: MONO, fontSize: '11px', fontWeight: '600',
-      color: BP.textDim, cursor: 'pointer',
-      transition: 'color 0.12s ease, border-color 0.12s ease',
-      flexShrink: '0', whiteSpace: 'nowrap',
-    });
-    count.textContent = '\u00D7' + selectedCount;
-    count.title = 'Variants: click to change';
-    count.disabled = controlsLocked;
-    count.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    count.style.opacity = controlsLocked ? '0.58' : '1';
-    if (controlsLocked) count.title = 'Apply is still running';
-    count.addEventListener('mouseenter', () => { if (!controlsLocked) { count.style.color = BP.text; count.style.borderColor = BP.text; } });
-    count.addEventListener('mouseleave', () => { if (!controlsLocked) { count.style.color = BP.textDim; count.style.borderColor = BP.hairline; } });
-    count.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
-      count.textContent = '\u00D7' + selectedCount;
-    });
-    row.appendChild(count);
-
-    // Go button
-    const go = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxSizing: 'border-box', height: '28px', padding: '0 12px',
-      borderRadius: '6px',
-      border: 'none', background: BP.accent, color: C.ink,
-      fontFamily: FONT, fontSize: '12px', fontWeight: '600',
-      cursor: 'pointer',
-      transition: 'filter 0.12s ease, transform 0.1s ease',
-      flexShrink: '0', whiteSpace: 'nowrap',
-    });
-    go.textContent = 'Go \u2192';
-    go.disabled = controlsLocked;
-    go.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    go.style.opacity = controlsLocked ? '0.58' : '1';
-    if (controlsLocked) go.title = 'Apply is still running';
-    go.addEventListener('mouseenter', () => { if (!controlsLocked) go.style.filter = 'brightness(1.1)'; });
-    go.addEventListener('mouseleave', () => go.style.filter = 'none');
-    go.addEventListener('mousedown', () => { if (!controlsLocked) go.style.transform = 'scale(0.97)'; });
-    go.addEventListener('mouseup', () => go.style.transform = 'scale(1)');
-    go.addEventListener('click', (e) => { e.stopPropagation(); handleGo(); });
-    row.appendChild(go);
-
-    // Auto-focus input after a beat
     if (!controlsLocked) setTimeout(() => input.focus(), 60);
 
     return row;
@@ -1956,34 +2124,20 @@
   function buildInsertConfigureRow() {
     const controlsLocked = pendingApplyInFlight === true;
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '6px',
+      display: 'flex', alignItems: 'stretch', width: '100%', height: CONFIGURE_BAR_H,
     });
+    row.addEventListener('pointerdown', (e) => e.stopPropagation());
+    row.addEventListener('mousedown', (e) => e.stopPropagation());
+    row.addEventListener('click', (e) => e.stopPropagation());
 
-    const inputWrap = el('div', {
-      display: 'inline-flex', alignItems: 'center',
-      flex: '1', minWidth: '0', height: '28px',
-      borderRadius: '7px',
-      background: BP.chatSurface,
-      border: '1px solid ' + BP.hairline,
-      overflow: 'hidden',
-      transition: 'border-color 0.15s ease',
-    });
-    inputWrap.id = PREFIX + '-insert-input-wrap';
-    inputWrap.addEventListener('pointerdown', (e) => e.stopPropagation());
-    inputWrap.addEventListener('mousedown', (e) => e.stopPropagation());
-    inputWrap.addEventListener('click', (e) => e.stopPropagation());
+    const inputShell = el('div', configureInputShellStyle());
 
     const input = document.createElement('input');
     input.id = PREFIX + '-insert-input';
     input.type = 'text';
-    input.placeholder = 'describe what to insert…';
+    input.placeholder = '';
     input.setAttribute('aria-label', 'Describe the new element');
-    Object.assign(input.style, {
-      flex: '1', minWidth: '0', width: '100%',
-      padding: '0 6px', border: 'none', background: 'transparent',
-      fontFamily: FONT, fontSize: '11.5px', color: BP.text,
-      outline: 'none',
-    });
+    Object.assign(input.style, configureInputFieldStyle());
     input.disabled = controlsLocked;
     if (controlsLocked) {
       input.placeholder = 'apply is running...';
@@ -1991,20 +2145,24 @@
       input.style.opacity = '0.58';
     }
 
-    const voiceBtn = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      padding: '0', boxSizing: 'border-box',
-      width: '28px', height: '28px', flexShrink: '0',
-      border: 'none', background: 'transparent',
-      color: BP.textDim, cursor: 'pointer',
+    const modifierPills = el('div', {
+      display: 'inline-flex', alignItems: 'center', gap: '3px',
+      flexShrink: '0',
     });
-    voiceBtn.id = PREFIX + '-insert-voice';
-    voiceBtn.type = 'button';
-    voiceBtn.setAttribute('aria-label', 'Voice input');
-    voiceBtn.innerHTML = ICON_PAGE_VOICE;
-    voiceBtn.disabled = controlsLocked;
-    voiceBtn.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    voiceBtn.style.opacity = controlsLocked ? '0.58' : '1';
+
+    const count = buildConfigureCountPill({
+      controlsLocked,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
+        count.textContent = '\u00D7' + selectedCount;
+      },
+    });
+
+    modifierPills.appendChild(count);
+    inputShell.appendChild(modifierPills);
+    inputShell.appendChild(input);
 
     input.addEventListener('input', () => syncInsertCreateButton());
     input.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -2026,48 +2184,31 @@
       }
       e.stopPropagation();
     });
-    voiceBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-    voiceBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      toggleConfigureVoice();
+    input.addEventListener('focus', () => syncConfigureInputChrome());
+    input.addEventListener('blur', () => syncConfigureInputChrome());
+
+    const voiceBtn = buildConfigureVoiceButton({
+      id: PREFIX + '-insert-voice',
+      controlsLocked,
+      onClick: (e) => {
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        toggleConfigureVoice();
+      },
     });
 
-    inputWrap.appendChild(input);
-    inputWrap.appendChild(voiceBtn);
-    row.appendChild(inputWrap);
-
-    const count = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxSizing: 'border-box', height: '28px', padding: '0 6px',
-      borderRadius: '5px',
-      border: '1px solid ' + BP.hairline, background: 'transparent',
-      fontFamily: MONO, fontSize: '11px', fontWeight: '600',
-      color: BP.textDim, cursor: 'pointer', flexShrink: '0', whiteSpace: 'nowrap',
-    });
-    count.textContent = '\u00D7' + selectedCount;
-    count.disabled = controlsLocked;
-    count.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    count.style.opacity = controlsLocked ? '0.58' : '1';
-    count.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
-      count.textContent = '\u00D7' + selectedCount;
-    });
-    row.appendChild(count);
-
-    const create = el('button', {
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      boxSizing: 'border-box', height: '28px', padding: '0 12px',
-      borderRadius: '6px',
-      border: 'none', background: BP.accent, color: C.ink,
-      fontFamily: FONT, fontSize: '12px', fontWeight: '600',
-      flexShrink: '0', whiteSpace: 'nowrap',
+    const create = buildConfigureSubmitButton({
+      controlsLocked,
+      ariaLabel: 'Create variants',
+      onClick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (controlsLocked) { showManualApplyBusyToast(); return; }
+        if (!isInsertCreateEnabled(create)) return;
+        handleInsertCreate();
+      },
     });
     create.id = PREFIX + '-insert-create';
-    create.textContent = 'Create \u2192';
-    create.disabled = controlsLocked;
     create.addEventListener('mouseenter', () => {
       if (controlsLocked) return;
       if (isInsertCreateEnabled(create)) {
@@ -2077,15 +2218,10 @@
       showInsertCreateTooltip(create, insertCreateDisabledReason(insertCreateGateState(input)));
     });
     create.addEventListener('mouseleave', hideInsertCreateTooltip);
-    create.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (controlsLocked) { showManualApplyBusyToast(); return; }
-      if (!isInsertCreateEnabled(create)) return;
-      handleInsertCreate();
-    });
-    row.appendChild(create);
+    row.appendChild(inputShell);
+    row.appendChild(buildConfigureActionCluster(voiceBtn, create));
     syncInsertCreateButton(create, input);
+    syncConfigureInputChrome();
     if (!controlsLocked) setTimeout(() => input.focus(), 60);
     return row;
   }
@@ -2992,6 +3128,25 @@
     hoveredElement = null;
     hideHighlight();
     syncPageChatFocus('editing-outside-click');
+  }
+
+  function teardownConfigureChrome() {
+    disableInlineEdit();
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    renderEditBadge('hidden');
+  }
+
+  function exitConfigureToPicking(reason, opts = {}) {
+    teardownConfigureChrome();
+    state = 'PICKING';
+    if (opts.clearHover) {
+      hoveredElement = null;
+      hideHighlight();
+    }
+    syncPageChatFocus(reason);
   }
 
   // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
@@ -4392,31 +4547,144 @@
     return doc.getElementById('impeccable-anchor')?.firstElementChild || null;
   }
 
+  function normalizeElementClassName(el) {
+    if (!el) return '';
+    const raw = el.getAttribute?.('class');
+    if (typeof raw === 'string') return raw.trim();
+    if (el.className != null) {
+      const cls = el.className;
+      if (typeof cls === 'string') return cls.trim();
+      if (typeof cls.baseVal === 'string') return cls.baseVal.trim();
+    }
+    return '';
+  }
+
+  function buildPickedAnchorSnapshot(el) {
+    if (!el || el.nodeType !== 1) return null;
+    return {
+      tag: el.tagName,
+      id: el.id || '',
+      classes: [...el.classList],
+      text: (el.textContent || '').trim().slice(0, 120),
+    };
+  }
+
+  function isUsableInjectionAnchor(el) {
+    return !!el
+      && el.parentElement
+      && document.body.contains(el)
+      && !own(el)
+      && !el.closest?.('[data-impeccable-variants]');
+  }
+
+  function elementMatchesOriginalMarkup(liveEl, origContent) {
+    if (!isUsableInjectionAnchor(liveEl) || !origContent) return false;
+    if (liveEl.tagName !== origContent.tagName) return false;
+    if (origContent.id && liveEl.id !== origContent.id) return false;
+
+    const origClasses = normalizeElementClassName(origContent).split(/\s+/).filter(Boolean)
+      .filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
+    if (origClasses.length > 0 && !origClasses.every((name) => liveEl.classList.contains(name))) return false;
+
+    const origText = (origContent.textContent || '').trim();
+    if (!origContent.id && origClasses.length === 0 && origText.length >= 4) {
+      const liveText = (liveEl.textContent || '').trim();
+      const needle = origText.slice(0, Math.min(40, origText.length));
+      if (!liveText.includes(needle) && !origText.includes(liveText.slice(0, 40))) return false;
+    }
+    return true;
+  }
+
+  function findLiveElementFromAnchorSnapshot(snapshot) {
+    if (!snapshot) return null;
+    const tag = String(snapshot.tag || '').toLowerCase();
+    if (!tag) return null;
+    if (snapshot.id) {
+      const byId = document.getElementById(snapshot.id);
+      if (isUsableInjectionAnchor(byId)) return byId;
+    }
+    const classes = (snapshot.classes || []).filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
+    const needle = (snapshot.text || '').trim();
+    const candidates = [...document.getElementsByTagName(tag)];
+    for (const c of candidates) {
+      if (!isUsableInjectionAnchor(c)) continue;
+      if (classes.length > 0 && !classes.every((name) => c.classList.contains(name))) continue;
+      if (!snapshot.id && classes.length === 0 && needle.length >= 4) {
+        const text = (c.textContent || '').trim();
+        if (!text.includes(needle.slice(0, 40)) && !needle.includes(text.slice(0, 40))) continue;
+      }
+      return c;
+    }
+    return null;
+  }
+
   function findLiveElementForOriginalMarkup(originalMarkup) {
     const origContent = parseOriginalMarkupElement(originalMarkup);
     if (!origContent) return null;
 
     const tag = origContent.tagName.toLowerCase();
-    const cls = origContent.className;
-    let liveEl = null;
+    const cls = normalizeElementClassName(origContent);
+    const candidates = [...document.getElementsByTagName(tag)];
+
     if (origContent.id) {
-      liveEl = document.getElementById(origContent.id);
-    } else if (cls) {
-      const candidates = [...document.getElementsByTagName(tag)];
-      for (const c of candidates) {
-        if (c.className === cls && !own(c)) { liveEl = c; break; }
-      }
-      if (!liveEl) {
-        const expectedClasses = String(cls).split(/\s+/).filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
-        if (expectedClasses.length > 0) {
-          for (const c of candidates) {
-            if (own(c)) continue;
-            if (expectedClasses.every((name) => c.classList.contains(name))) { liveEl = c; break; }
-          }
+      const byId = document.getElementById(origContent.id);
+      if (elementMatchesOriginalMarkup(byId, origContent)) return byId;
+    }
+
+    if (cls) {
+      const expectedClasses = cls.split(/\s+/).filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
+      if (expectedClasses.length > 0) {
+        for (const c of candidates) {
+          if (!isUsableInjectionAnchor(c)) continue;
+          if (expectedClasses.every((name) => c.classList.contains(name))) return c;
+        }
+        const subset = expectedClasses.slice(0, Math.min(2, expectedClasses.length));
+        for (const c of candidates) {
+          if (!isUsableInjectionAnchor(c)) continue;
+          if (subset.every((name) => c.classList.contains(name))) return c;
         }
       }
     }
-    return liveEl;
+
+    const origText = (origContent.textContent || '').trim();
+    if (origText.length >= 4) {
+      const needle = origText.slice(0, 40);
+      let best = null;
+      let bestLen = Infinity;
+      for (const c of candidates) {
+        if (!isUsableInjectionAnchor(c)) continue;
+        const text = (c.textContent || '').trim();
+        if (!text.includes(needle) && !origText.includes(text.slice(0, 40))) continue;
+        if (text.length < bestLen) { best = c; bestLen = text.length; }
+      }
+      if (best) return best;
+    }
+
+    return null;
+  }
+
+  function resolveLiveInjectionAnchor(originalMarkup) {
+    const origContent = parseOriginalMarkupElement(originalMarkup);
+    if (!origContent) return null;
+
+    const attempts = [
+      selectedElement,
+      findLiveElementFromAnchorSnapshot(pickedAnchorSnapshot),
+      findLiveElementForOriginalMarkup(originalMarkup),
+    ];
+    for (const candidate of attempts) {
+      if (elementMatchesOriginalMarkup(candidate, origContent)) return candidate;
+    }
+
+    if (isUsableInjectionAnchor(selectedElement) && selectedElement.tagName === origContent.tagName) {
+      const origClasses = normalizeElementClassName(origContent).split(/\s+/).filter(Boolean);
+      if (origContent.id && selectedElement.id === origContent.id) return selectedElement;
+      if (origClasses.length === 0) return selectedElement;
+      const overlap = origClasses.filter((name) => selectedElement.classList.contains(name));
+      if (overlap.length >= Math.min(origClasses.length, 1)) return selectedElement;
+    }
+
+    return null;
   }
 
   function isSvelteInsertManifest(manifest) {
@@ -4428,7 +4696,44 @@
       const anchor = findInsertAnchorInDom();
       if (anchor?.parentElement) return anchor;
     }
-    return findLiveElementForOriginalMarkup(manifest?.originalMarkup || manifest?.anchorMarkup || '');
+    return resolveLiveInjectionAnchor(manifest?.originalMarkup || manifest?.anchorMarkup || '');
+  }
+
+  function waitForVariantAnchorAndRetry({ filePath, sessionId, srcWrapper, checkpointReason }) {
+    if (pendingVariantAnchorRetryObserver) pendingVariantAnchorRetryObserver.disconnect();
+    const origContent = srcWrapper?.querySelector('[data-impeccable-variant="original"] > :first-child');
+    if (!origContent) return;
+    const originalMarkup = origContent.outerHTML;
+
+    pendingVariantAnchorRetryObserver = new MutationObserver(() => {
+      if (document.querySelector('[data-impeccable-variants="' + sessionId + '"]')) {
+        pendingVariantAnchorRetryObserver.disconnect();
+        pendingVariantAnchorRetryObserver = null;
+        recoveryWaitingForAnchor = false;
+        return;
+      }
+      const liveEl = resolveLiveInjectionAnchor(originalMarkup);
+      if (!liveEl?.parentElement) return;
+      pendingVariantAnchorRetryObserver.disconnect();
+      pendingVariantAnchorRetryObserver = null;
+      injectVariantsFromSource(filePath, sessionId);
+    });
+    pendingVariantAnchorRetryObserver.observe(document.body, { childList: true, subtree: true });
+    if (checkpointReason) queueCheckpoint(checkpointReason);
+  }
+
+  function enterRecoveryWaitingForAnchor({ filePath, sessionId, srcWrapper, checkpointReason, trackScroll }) {
+    recoveryWaitingForAnchor = true;
+    selectedElement = document.body;
+    state = 'GENERATING';
+    showBar('generating');
+    if (trackScroll !== false) startScrollTracking();
+    saveSession();
+    if (srcWrapper && filePath && sessionId) {
+      waitForVariantAnchorAndRetry({ filePath, sessionId, srcWrapper, checkpointReason });
+    } else if (checkpointReason) {
+      queueCheckpoint(checkpointReason);
+    }
   }
 
   function loadSvelteRuntime(runtimeModule) {
@@ -4621,15 +4926,8 @@
         visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants
           ? visibleVariant
           : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
-        selectedElement = document.body;
-        state = 'GENERATING';
-        recoveryWaitingForAnchor = true;
-        showBar('generating');
-        startScrollTracking();
-        saveSession();
-        queueCheckpoint('svelte_component_anchor_missing');
+        enterRecoveryWaitingForAnchor({ checkpointReason: 'svelte_component_anchor_missing', trackScroll: true });
         waitForSvelteComponentTargetAndRetry({ manifestPath, sessionId, manifest });
-        showToast('Variants ready. Reveal the selected element to resume.', 15000);
         return;
       }
 
@@ -4741,6 +5039,7 @@
     hideShaderOverlay();
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     if (pendingSvelteComponentRetryObserver) { pendingSvelteComponentRetryObserver.disconnect(); pendingSvelteComponentRetryObserver = null; }
+    if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
     clearSession();
     clearHandled();
@@ -4799,21 +5098,26 @@
           const origContent = srcWrapper.querySelector('[data-impeccable-variant="original"] > :first-child');
           if (!origContent) return;
 
-          const liveEl = findLiveElementForOriginalMarkup(origContent.outerHTML);
+          const liveEl = resolveLiveInjectionAnchor(origContent.outerHTML);
           if (!liveEl) {
             console.warn('[impeccable] Could not find original element in live DOM.');
-            selectedElement = document.body;
-            recoveryWaitingForAnchor = true;
-            state = 'GENERATING';
-            showBar('generating');
-            saveSession();
-            showToast('Variants ready. Reveal the selected element to resume.', 15000);
+            enterRecoveryWaitingForAnchor({
+              filePath,
+              sessionId,
+              srcWrapper,
+              checkpointReason: 'variant_anchor_missing',
+              trackScroll: false,
+            });
             return;
           }
 
           liveEl.parentElement.replaceChild(wrapper, liveEl);
         }
         recoveryWaitingForAnchor = false;
+        if (pendingVariantAnchorRetryObserver) {
+          pendingVariantAnchorRetryObserver.disconnect();
+          pendingVariantAnchorRetryObserver = null;
+        }
 
         // Update state: count variants, preserving the user's current variant
         // when a late HMR/source reinjection lands after they have cycled.
@@ -5327,6 +5631,7 @@
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
           if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
+          syncPageInteractionCursor();
           syncPageChatFocus('sse-connected');
           break;
         case 'agent_polling':
@@ -5592,15 +5897,7 @@
       && !selectedElement.contains(e.target)
     ) {
       if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-      hideBar();
-      stopScrollTracking();
-      hideAnnotOverlay();
-      clearAnnotations();
-      renderEditBadge('hidden');
-      state = 'PICKING';
-      hoveredElement = null;
-      hideHighlight();
-      syncPageChatFocus('configure-outside-click');
+      exitConfigureToPicking('configure-outside-click', { clearHover: true });
       return;
     }
     if (state === 'PICKING' && insertActive) {
@@ -5767,7 +6064,8 @@
       if (state === 'EDITING') { cancelEditing(); return; }
       if (state === 'CONFIGURING') {
         if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-        disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); renderEditBadge('hidden'); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return;
+        exitConfigureToPicking('escape-from-configure');
+        return;
       }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
@@ -5859,6 +6157,7 @@
     // screenshot is uploaded (or capture fails - we still emit, just without
     // screenshotPath).
     const elForCapture = selectedElement;
+    pickedAnchorSnapshot = buildPickedAnchorSnapshot(elForCapture);
     const captureRect = elForCapture.getBoundingClientRect();
     const snapshot = {
       comments: annotState.comments.map(c => ({ x: c.x, y: c.y, text: c.text })),
@@ -6922,6 +7221,7 @@ void main() {
     currentPreviewFile = null;
     currentPreviewMode = null;
     recoveryWaitingForAnchor = false;
+    pickedAnchorSnapshot = null;
   }
 
   function rememberSessionFileMeta(meta = {}) {
@@ -6946,6 +7246,7 @@ void main() {
     if (!saved) return;
     rememberSessionFileMeta(saved);
     if (saved.insertPlaceholder) insertPlaceholderSnapshot = saved.insertPlaceholder;
+    if (saved.pickedAnchor) pickedAnchorSnapshot = saved.pickedAnchor;
     if (saved.action) selectedAction = saved.action;
     if (saved.count) selectedCount = saved.count;
     if (saved.previewMode) currentPreviewMode = saved.previewMode;
@@ -7012,9 +7313,10 @@ void main() {
       || clampVariantIndex(serverSession?.visibleVariant, arrivedVariants || expectedVariants)
       || (arrivedVariants > 0 ? 1 : 0);
 
-    selectedElement = document.body;
+    const restoredAnchor = findLiveElementFromAnchorSnapshot(pickedAnchorSnapshot);
+    selectedElement = restoredAnchor || document.body;
     state = 'GENERATING';
-    recoveryWaitingForAnchor = true;
+    recoveryWaitingForAnchor = !restoredAnchor;
     showBar('generating');
     startScrollTracking();
     if (variantObserver) variantObserver.disconnect();
@@ -7030,7 +7332,6 @@ void main() {
       return true;
     }
 
-    showToast('Variants ready. Reveal the selected element to resume.', 15000);
     return true;
   }
 
@@ -7059,6 +7360,7 @@ void main() {
       pageUrl: location.pathname,
       paramValues: { ...paramsCurrentValues },
       insertPlaceholder: insertPlaceholderSnapshot || undefined,
+      pickedAnchor: pickedAnchorSnapshot || undefined,
     });
   }
 
@@ -7118,6 +7420,7 @@ void main() {
     hideHighlight();
     stopScrollTracking();
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
+    if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
     clearScrollY();
     finalizeInsertSession();
@@ -7134,8 +7437,14 @@ void main() {
   // Toast
   //
 
+  function dismissToast() {
+    if (!toastEl) return;
+    toastEl.remove();
+    toastEl = null;
+  }
+
   function showToast(message, duration) {
-    if (toastEl) toastEl.remove();
+    dismissToast();
     // Stack the toast above the global bar (which sits at bottom:14px) so
     // the two never overlap. Read the bar's actual rect - its height varies
     // with hover-expanded labels - and fall back to a sensible default
@@ -7419,6 +7728,8 @@ void main() {
   let voiceCtx = null;
   const PAGE_CHAT_COLLAPSED_W = '88px';
   const PAGE_CHAT_PROCESSING_W = '76px';
+  const PAGE_CHAT_PLACEHOLDER_COLLAPSED = 'Steer…';
+  const PAGE_CHAT_PLACEHOLDER_EXPANDED = 'Steer the page…';
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
@@ -7509,13 +7820,16 @@ void main() {
   function syncPageChatChrome() {
     if (!pageChatEl) return;
     const P = pageChatPalette();
+    const inputFocused = pageChatInput && activeElementDeep() === pageChatInput;
     pageChatEl.style.background = P.chatSurface;
-    pageChatEl.style.borderColor = steerLocked
-      ? P.patinaSoft
-      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    pageChatEl.style.borderColor = 'transparent';
     if (pageChatHint) pageChatHint.style.color = steerLocked ? P.patinaPale : P.textDim;
     const chatIcon = pageChatEl?.firstElementChild;
-    if (chatIcon) chatIcon.style.color = steerLocked ? P.patinaPale : P.textDim;
+    if (chatIcon) {
+      chatIcon.style.color = steerLocked
+        ? P.patinaPale
+        : (inputFocused || pageChatExpanded ? P.text : P.textDim);
+    }
     if (pageChatInput) pageChatInput.style.color = P.text;
     if (pageChatVoiceBtn) {
       const listening = pageChatVoiceBtn.dataset.listening === 'true';
@@ -7686,24 +8000,44 @@ void main() {
   function syncPageChatFocusRing() {
     if (!pageChatEl || !pageChatInput) return;
     const focused = activeElementDeep() === pageChatInput;
+    const typingReady = focused && !steerLocked;
     pageChatEl.dataset.inputFocused = focused ? 'true' : 'false';
-    const P = pageChatPalette();
-    pageChatEl.style.borderColor = steerLocked
-      ? P.patinaSoft
-      : (pageChatExpanded ? P.accentSoft : P.hairline);
     pageChatEl.style.boxShadow = 'none';
+
+    if (pageChatExpanded) {
+      pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
+      pageChatInput.style.width = '';
+      pageChatInput.style.padding = '0 6px';
+      pageChatInput.style.opacity = steerLocked ? '0.72' : '1';
+      pageChatInput.style.pointerEvents = steerLocked ? 'none' : 'auto';
+      return;
+    }
+
+    if (typingReady) {
+      // Collapsed type-to-steer: show the real input + caret instead of a
+      // truncated patina "Steer" label with an invisible focused field.
+      pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
+      if (pageChatHint) {
+        pageChatHint.style.display = 'none';
+        pageChatHint.style.opacity = '0';
+      }
+      pageChatInput.style.width = '';
+      pageChatInput.style.padding = '0 4px';
+      pageChatInput.style.opacity = '1';
+      pageChatInput.style.pointerEvents = 'auto';
+      return;
+    }
+
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
     if (pageChatHint) {
-      pageChatHint.style.color = steerLocked
-        ? P.patinaPale
-        : ((!pageChatExpanded && focused) ? P.patinaPale : P.textDim);
+      pageChatHint.style.display = '';
+      pageChatHint.style.opacity = '1';
+      pageChatHint.style.visibility = '';
     }
-    if (!pageChatExpanded) {
-      pageChatInput.style.width = '0';
-      pageChatInput.style.padding = '0';
-      pageChatInput.style.opacity = '0';
-      pageChatInput.style.pointerEvents = focused ? 'auto' : 'none';
-      if (pageChatHint) pageChatHint.style.visibility = '';
-    }
+    pageChatInput.style.width = '0';
+    pageChatInput.style.padding = '0';
+    pageChatInput.style.opacity = '0';
+    pageChatInput.style.pointerEvents = 'none';
   }
 
   function focusSteerChat(reason) {
@@ -7723,6 +8057,7 @@ void main() {
     try { window.focus(); } catch { /* embed may block */ }
     try { pageChatInput.focus({ preventScroll: true }); } catch { pageChatInput.focus(); }
     syncPageChatFocusRing();
+    syncPageChatChrome();
     steerFocusLog('focusSteerChat result', {
       reason,
       before: steerFocusTargetLabel(before),
@@ -7769,6 +8104,7 @@ void main() {
     pageChatEl.dataset.expanded = 'true';
     pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
     pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
     if (pageChatHint) {
       pageChatHint.style.display = 'none';
       pageChatHint.style.opacity = '0';
@@ -7777,6 +8113,20 @@ void main() {
     pageChatInput.style.padding = '0 6px';
     pageChatInput.style.opacity = steerLocked ? '0.72' : '1';
     pageChatInput.style.pointerEvents = steerLocked ? 'none' : 'auto';
+    return true;
+  }
+
+  function armPageChatForTyping(opts = {}) {
+    if (!pageChatEl || !pageChatInput || steerLocked) return false;
+    const expand = opts.expand !== false;
+    const focus = opts.focus !== false;
+    if (expand && !pageChatExpanded) {
+      preparePageChatInputForTyping();
+      syncPageChatChrome();
+    }
+    if (focus) return focusPageChatInput('arm-page-chat');
+    syncPageChatFocusRing();
+    syncPageChatChrome();
     return true;
   }
 
@@ -8180,12 +8530,12 @@ void main() {
       height: '28px', margin: '0 4px 0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_GAP) + 'px',
       borderRadius: '7px',
       background: P.chatSurface,
-      border: '1px solid ' + P.hairline,
+      border: '1px solid transparent',
       overflow: 'hidden',
       cursor: 'pointer',
       flexShrink: '0',
       width: PAGE_CHAT_COLLAPSED_W,
-      transition: 'border-color 0.15s ease',
+      transition: 'width 0.18s ease, border-color 0.15s ease',
     });
     pageChatEl.id = PREFIX + '-page-chat';
     pageChatEl.dataset.expanded = 'false';
@@ -8211,13 +8561,14 @@ void main() {
     pageChatInput = document.createElement('input');
     pageChatInput.id = PREFIX + '-page-chat-input';
     pageChatInput.type = 'text';
-    pageChatInput.placeholder = 'Steer the page…';
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
     pageChatInput.setAttribute('aria-label', 'Steer the page');
     Object.assign(pageChatInput.style, {
       flex: '1', minWidth: '0', width: '0',
       padding: '0', border: 'none', background: 'transparent',
       fontFamily: FONT, fontSize: '11.5px', color: P.text,
       outline: 'none', opacity: '0', pointerEvents: 'none',
+      caretColor: P.accent,
       transition: 'opacity 0.15s ease',
     });
 
@@ -8252,18 +8603,23 @@ void main() {
         '#' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: impeccable-voice-pulse 1.1s ease-in-out infinite; }' +
         '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
         '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
+        '#' + PREFIX + '-page-chat-input { caret-color: oklch(84% 0.19 80.46); }' +
+        '#' + PREFIX + '-page-chat[data-input-focused="true"]:not([data-expanded="true"]) #' + PREFIX + '-page-chat-input::placeholder { color: oklch(72% 0.024 82); }' +
         '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       uiAppendStyle(s);
     }
 
-    pageChatEl.addEventListener('pointerdown', keepSteerPointerInside);
+    pageChatEl.addEventListener('pointerdown', (e) => {
+      keepSteerPointerInside(e);
+      if (steerLocked || pageChatVoiceBtn.contains(e.target)) return;
+      armPageChatForTyping({ expand: true, focus: false });
+    });
     pageChatEl.addEventListener('mousedown', keepSteerPointerInside);
     pageChatEl.addEventListener('click', (e) => {
       keepSteerPointerInside(e);
       if (steerLocked) return;
       if (pageChatVoiceBtn.contains(e.target)) return;
-      expandPageChat({ focus: false });
-      focusPageChatInput('page-chat-click');
+      armPageChatForTyping({ expand: true, focus: true });
     });
 
     pageChatVoiceBtn.addEventListener('pointerdown', keepSteerPointerInside);
@@ -8286,7 +8642,9 @@ void main() {
     });
 
     pageChatInput.addEventListener('focus', () => {
+      steerInputWasFocused = true;
       syncPageChatFocusRing();
+      syncPageChatChrome();
     });
 
     pageChatInput.addEventListener('blur', () => {
@@ -8953,10 +9311,11 @@ void main() {
         cancelInsertConfigure();
         return;
       }
+      teardownConfigureChrome();
       hideHighlight();
-      hideBar();
       hideActionPicker();
       selectedElement = null;
+      hoveredElement = null;
       configureKind = 'replace';
       if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
     } else {
@@ -10250,6 +10609,8 @@ void main() {
       console.log('[impeccable] Resumed active variant session ' + currentSessionId + ' (' + arrivedVariants + '/' + expectedVariants + ' variants).');
     }
 
+    if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
+    syncPageInteractionCursor();
     syncPageChatFocus('init-complete');
   }
 
