@@ -93,8 +93,8 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       /#ffffff/i.test(r.snippet || '')
     );
     assert.ok(
-      mutedWhiteFindings.length >= 2,
-      'expected muted paragraph and list body copy on white to use the APCA body-copy target',
+      mutedWhiteFindings.length >= 3,
+      'expected muted paragraph, list body copy, and small bold heading on white to use the stricter APCA target',
     );
     assert.ok(
       f.some(r => r.antipattern === 'gray-on-color' && /gradient/i.test(r.snippet || '')),

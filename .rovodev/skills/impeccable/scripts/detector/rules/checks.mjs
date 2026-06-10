@@ -72,7 +72,7 @@ const BODY_COPY_TAGS = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption'
 
 function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount, bgColor, isStyledButton }) {
   if (isStyledButton) return 45;
-  if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
+  if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700))) return 45;
   if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
 
   const text = (directText || '').trim();
