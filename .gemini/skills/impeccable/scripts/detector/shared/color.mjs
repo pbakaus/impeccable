@@ -71,6 +71,56 @@ function contrastRatio(c1, c2) {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
+// APCA 0.0.98G constants, matching apca-w3 0.1.9's main contrast path.
+const APCA = {
+  mainTRC: 2.4,
+  sRco: 0.2126729,
+  sGco: 0.7151522,
+  sBco: 0.0721750,
+  normBG: 0.56,
+  normTXT: 0.57,
+  revTXT: 0.62,
+  revBG: 0.65,
+  blkThrs: 0.022,
+  blkClmp: 1.414,
+  scaleBoW: 1.14,
+  scaleWoB: 1.14,
+  loBoWoffset: 0.027,
+  loWoBoffset: 0.027,
+  deltaYmin: 0.0005,
+  loClip: 0.1,
+};
+
+function srgbToApcaY({ r, g, b }) {
+  const toLinear = channel => Math.pow(channel / 255, APCA.mainTRC);
+  return APCA.sRco * toLinear(r) + APCA.sGco * toLinear(g) + APCA.sBco * toLinear(b);
+}
+
+function apcaContrast(textColor, backgroundColor) {
+  if (!textColor || !backgroundColor) return null;
+  let textY = srgbToApcaY(textColor);
+  let backgroundY = srgbToApcaY(backgroundColor);
+  const isOutOfRange = Number.isNaN(textY)
+    || Number.isNaN(backgroundY)
+    || Math.min(textY, backgroundY) < 0
+    || Math.max(textY, backgroundY) > 1.1;
+  if (isOutOfRange) return 0;
+
+  textY = textY > APCA.blkThrs ? textY : textY + Math.pow(APCA.blkThrs - textY, APCA.blkClmp);
+  backgroundY = backgroundY > APCA.blkThrs
+    ? backgroundY
+    : backgroundY + Math.pow(APCA.blkThrs - backgroundY, APCA.blkClmp);
+
+  if (Math.abs(backgroundY - textY) < APCA.deltaYmin) return 0;
+  if (backgroundY > textY) {
+    const contrast = (Math.pow(backgroundY, APCA.normBG) - Math.pow(textY, APCA.normTXT)) * APCA.scaleBoW;
+    return (contrast < APCA.loClip ? 0 : contrast - APCA.loBoWoffset) * 100;
+  }
+
+  const contrast = (Math.pow(backgroundY, APCA.revBG) - Math.pow(textY, APCA.revTXT)) * APCA.scaleWoB;
+  return (contrast > -APCA.loClip ? 0 : contrast + APCA.loWoBoffset) * 100;
+}
+
 function parseGradientColors(bgImage) {
   if (!bgImage || !bgImage.includes('gradient')) return [];
   const colors = [];
@@ -117,6 +167,7 @@ export {
   parseRgb,
   relativeLuminance,
   contrastRatio,
+  apcaContrast,
   parseGradientColors,
   hasChroma,
   getHue,

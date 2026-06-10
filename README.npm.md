@@ -42,7 +42,7 @@ npx impeccable detect --fast src/
 
 **Typography Issues**: overused fonts (Inter, Roboto), flat type hierarchy, single font families
 
-**Color & Contrast**: WCAG AA violations, gray text on colored backgrounds, pure black/white
+**Color & Contrast**: APCA readability checks with WCAG 2 compliance context, gray text on colored backgrounds, pure black/white
 
 **Layout & Composition**: nested cards, monotonous spacing, everything-centered layouts
 

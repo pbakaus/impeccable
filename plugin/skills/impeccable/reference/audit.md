@@ -9,7 +9,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 1. Accessibility (A11y)
 
 **Check for**:
-- **Contrast issues**: Text contrast ratios < 4.5:1 (or 7:1 for AAA)
+- **Contrast issues**: Check `PRODUCT.md` for the stored contrast target. Use WCAG 2 ratios for AA compliance projects; use APCA when the project chose readability/design judgment; report both when the project chose both. If no target is stored, ask once and update `PRODUCT.md`.
 - **Missing ARIA**: Interactive elements without proper roles, labels, or states
 - **Keyboard navigation**: Missing focus indicators, illogical tab order, keyboard traps
 - **Semantic HTML**: Improper heading hierarchy, missing landmarks, divs instead of buttons
@@ -17,6 +17,11 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 - **Form issues**: Inputs without labels, poor error messaging, missing required indicators
 
 **Score 0-4**: 0=Inaccessible (fails WCAG A), 1=Major gaps (few ARIA labels, no keyboard nav), 2=Partial (some a11y effort, significant gaps), 3=Good (WCAG AA mostly met, minor gaps), 4=Excellent (WCAG AA fully met, approaches AAA)
+
+**Contrast target options**:
+- **WCAG 2 AA compliance**: use this when external audits, procurement, legal review, or scanner parity matter. It is the current compliance signal, but it can push awkward design changes on saturated brand colors and miss some dark-mode readability problems.
+- **APCA readability**: use this when the project values practical legibility and color quality. It is better for dark mode, light-on-dark text, font size/weight, and short UI labels, but it is not the current WCAG 2 compliance standard.
+- **Both**: use APCA for design/readability decisions and include WCAG 2 AA results for formal compliance context.
 
 ### 2. Performance
 
@@ -130,4 +135,3 @@ After presenting the summary, tell the user:
 - Skip positive findings (celebrate what works)
 - Forget to prioritize (everything can't be P0)
 - Report false positives without verification
-

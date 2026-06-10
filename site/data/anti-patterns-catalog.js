@@ -118,7 +118,7 @@ export const VISUAL_EXAMPLES = {
 
   'gray-on-color': `<div style="background: oklch(60% 0.20 265); padding: 16px 18px; border-radius: 6px; font-family: system-ui, sans-serif;"><div style="color: #9ca3af; font-size: 13px;">Gray text on a colored background. Washed out and hard to read.</div></div>`,
 
-  'low-contrast': `<div style="background: #fff; padding: 16px 18px; font-family: system-ui, sans-serif;"><div style="color: #d4d4d4; font-size: 13px;">Light gray text on a white background. 1.6:1 contrast, fails WCAG.</div></div>`,
+  'low-contrast': `<div style="background: #000; padding: 16px 18px; font-family: system-ui, sans-serif;"><div style="color: #aaa; font-size: 16px;">Gray body text on black. WCAG 2 passes it; APCA is stricter for this readability case.</div></div>`,
 
   'layout-transition': `<div style="font-family: system-ui, sans-serif; color: #111; display: flex; align-items: center; gap: 10px;"><div style="background: oklch(65% 0.22 265); border-radius: 6px; animation: janky 1.2s ease-in-out infinite; width: 60px; height: 30px;"></div><div style="font-size: 12px; color: #555;">Animating width/height causes layout jank.</div><style>@keyframes janky { 0%,100% { width: 60px; } 50% { width: 120px; } }</style></div>`,
 
@@ -235,7 +235,7 @@ export const GALLERY_ITEMS = [
     id: 'bad-contrast',
     title: 'Bad Contrast Choices',
     desc:
-      'Gray text on colored backgrounds, low-contrast labels, unreadable combinations. Looking good and being readable should not conflict.',
+      'Gray text on colored backgrounds, APCA readability failures, unreadable combinations. Looking good and being readable should not conflict.',
   },
   {
     id: 'redundant-ux-writing',
