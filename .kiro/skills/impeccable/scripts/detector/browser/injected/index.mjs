@@ -669,8 +669,7 @@ if (IS_BROWSER) {
       if (!hasDirectText || isEmojiOnlyText(directText)) continue;
 
       const bgColor = readOwnBackgroundColor(el, style);
-      const isStyledButton = (tag === 'a' || tag === 'button')
-        && bgColor && bgColor.a > 0.5;
+      const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
       if (SAFE_TAGS.has(tag) && !isStyledButton) continue;
 
       const rect = getDirectTextRect(el) || el.getBoundingClientRect();
@@ -683,7 +682,7 @@ if (IS_BROWSER) {
       const fontSize = parseFloat(style.fontSize) || 16;
       const fontWeight = parseInt(style.fontWeight) || 400;
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
-      const threshold = isLargeText ? 3.0 : 4.5;
+      const wcagThreshold = isLargeText ? 3.0 : 4.5;
       const clip = {
         x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),
         y: Math.max(0, Math.floor(rect.top + window.scrollY - 2)),
@@ -691,11 +690,16 @@ if (IS_BROWSER) {
         height: Math.max(1, Math.ceil(rect.height + 4)),
       };
 
+      const text = directText.trim().replace(/\s+/g, ' ');
       candidates.push({
         selector: generateSelector(el),
         tagName: tag,
-        text: directText.trim().replace(/\s+/g, ' ').slice(0, 80),
-        threshold,
+        text: text.slice(0, 80),
+        wordCount: text ? text.split(/\s+/).length : 0,
+        fontSize,
+        fontWeight,
+        isStyledButton,
+        wcagThreshold,
         reasons,
         clip,
         textColor,
@@ -1118,7 +1122,7 @@ if (IS_BROWSER) {
       return { ...candidate, status: 'unresolved', confidence: 'none', reason: 'text outside viewport' };
     }
 
-    const ratios = [];
+    const samples = [];
     const methods = new Set();
     const unresolved = [];
     for (const point of points) {
@@ -1128,36 +1132,54 @@ if (IS_BROWSER) {
         continue;
       }
       const fg = blendRgba(textColor, sample.color);
-      ratios.push(contrastRatio(fg, sample.color));
+      const lc = apcaContrast(fg, sample.color);
+      const threshold = apcaThresholdForText({
+        tag: candidate.tagName,
+        fontSize: candidate.fontSize || 16,
+        fontWeight: candidate.fontWeight || 400,
+        directText: candidate.text || '',
+        wordCount: candidate.wordCount,
+        bgColor: sample.color,
+        isStyledButton: candidate.isStyledButton,
+      });
+      samples.push({
+        lc,
+        threshold,
+        ratio: contrastRatio(fg, sample.color),
+        margin: Math.abs(lc ?? 0) - threshold,
+      });
       if (sample.method) methods.add(sample.method);
     }
 
-    if (ratios.length < Math.min(3, points.length)) {
+    if (samples.length < Math.min(3, points.length)) {
       return {
         ...candidate,
         status: 'unresolved',
         confidence: 'none',
-        samples: ratios.length,
+        samples: samples.length,
         reason: [...new Set(unresolved.filter(Boolean))].slice(0, 3).join(', ') || 'not enough readable samples',
       };
     }
 
-    ratios.sort((a, b) => a - b);
-    const pick = pct => ratios[Math.min(ratios.length - 1, Math.max(0, Math.floor((pct / 100) * ratios.length)))];
-    const measuredRatio = pick(10);
-    const medianRatio = pick(50);
-    const status = measuredRatio < candidate.threshold ? 'fail' : 'pass';
+    samples.sort((a, b) => a.margin - b.margin);
+    const pick = pct => samples[Math.min(samples.length - 1, Math.max(0, Math.floor((pct / 100) * samples.length)))];
+    const measured = pick(10);
+    const median = pick(50);
+    const measuredLc = measured.lc ?? 0;
+    const status = Math.abs(measuredLc) < measured.threshold ? 'fail' : 'pass';
     const method = [...methods].sort().join(', ') || 'browser-visual';
     const textLabel = candidate.text ? ` "${candidate.text}"` : '';
-    const detail = `browser contrast ${measuredRatio.toFixed(1)}:1 median ${medianRatio.toFixed(1)}:1 (need ${candidate.threshold}:1) via ${method}${textLabel}`;
+    const detail = `browser APCA contrast Lc ${Math.round(measuredLc)} median ${Math.round(median.lc ?? 0)} (target ${measured.threshold}; WCAG ${measured.ratio.toFixed(1)}:1/${candidate.wcagThreshold || 4.5}:1) via ${method}${textLabel}`;
     return {
       ...candidate,
       status,
       confidence: method.includes('canvas-') ? 'high' : 'medium',
       method,
-      ratio: measuredRatio,
-      medianRatio,
-      samples: ratios.length,
+      apcaLc: measuredLc,
+      apcaThreshold: measured.threshold,
+      ratio: measured.ratio,
+      medianRatio: median.ratio,
+      samples: samples.length,
       finding: status === 'fail' ? { id: 'low-contrast', snippet: detail } : null,
     };
   }

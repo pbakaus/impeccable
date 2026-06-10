@@ -67,15 +67,15 @@ function isStyledControl(tag, hasDirectText, bgColor) {
   return (tag === 'a' || tag === 'button') && hasDirectText && bgColor && bgColor.a > 0.5;
 }
 
-function apcaThresholdForText({ tag, fontSize, fontWeight, directText, bgColor, isStyledButton }) {
+function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount, bgColor, isStyledButton }) {
   if (isStyledButton) return 45;
   if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
   if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
 
   const text = (directText || '').trim();
-  const wordCount = text ? text.split(/\s+/).length : 0;
+  const resolvedWordCount = Number.isFinite(wordCount) ? wordCount : (text ? text.split(/\s+/).length : 0);
   const bgLum = bgColor ? relativeLuminance(bgColor) : 1;
-  if (bgLum < 0.02 || wordCount >= 12) return 60;
+  if (bgLum < 0.02 || resolvedWordCount >= 12) return 60;
 
   return 45;
 }
@@ -117,7 +117,9 @@ function checkColors(opts) {
       });
       let worstIdx = 0;
       for (let i = 1; i < contrasts.length; i++) {
-        if (Math.abs(contrasts[i].lc ?? 0) < Math.abs(contrasts[worstIdx].lc ?? 0)) worstIdx = i;
+        const margin = Math.abs(contrasts[i].lc ?? 0) - contrasts[i].threshold;
+        const worstMargin = Math.abs(contrasts[worstIdx].lc ?? 0) - contrasts[worstIdx].threshold;
+        if (margin < worstMargin) worstIdx = i;
       }
       const { bg, lc, threshold, ratio } = contrasts[worstIdx];
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);

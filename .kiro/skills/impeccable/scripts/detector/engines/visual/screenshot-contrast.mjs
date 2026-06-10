@@ -51,6 +51,66 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
       const l2 = luminance(b);
       return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
     };
+    const APCA = {
+      mainTRC: 2.4,
+      sRco: 0.2126729,
+      sGco: 0.7151522,
+      sBco: 0.0721750,
+      normBG: 0.56,
+      normTXT: 0.57,
+      revTXT: 0.62,
+      revBG: 0.65,
+      blkThrs: 0.022,
+      blkClmp: 1.414,
+      scaleBoW: 1.14,
+      scaleWoB: 1.14,
+      loBoWoffset: 0.027,
+      loWoBoffset: 0.027,
+      deltaYmin: 0.0005,
+      loClip: 0.1,
+    };
+    const apcaY = ({ r, g, b }) => {
+      const toLinear = channel => Math.pow(channel / 255, APCA.mainTRC);
+      return APCA.sRco * toLinear(r) + APCA.sGco * toLinear(g) + APCA.sBco * toLinear(b);
+    };
+    const apcaContrast = (textColor, backgroundColor) => {
+      let textY = apcaY(textColor);
+      let backgroundY = apcaY(backgroundColor);
+      const isOutOfRange = Number.isNaN(textY)
+        || Number.isNaN(backgroundY)
+        || Math.min(textY, backgroundY) < 0
+        || Math.max(textY, backgroundY) > 1.1;
+      if (isOutOfRange) return 0;
+
+      textY = textY > APCA.blkThrs ? textY : textY + Math.pow(APCA.blkThrs - textY, APCA.blkClmp);
+      backgroundY = backgroundY > APCA.blkThrs
+        ? backgroundY
+        : backgroundY + Math.pow(APCA.blkThrs - backgroundY, APCA.blkClmp);
+
+      if (Math.abs(backgroundY - textY) < APCA.deltaYmin) return 0;
+      if (backgroundY > textY) {
+        const contrast = (Math.pow(backgroundY, APCA.normBG) - Math.pow(textY, APCA.normTXT)) * APCA.scaleBoW;
+        return (contrast < APCA.loClip ? 0 : contrast - APCA.loBoWoffset) * 100;
+      }
+
+      const contrast = (Math.pow(backgroundY, APCA.revBG) - Math.pow(textY, APCA.revTXT)) * APCA.scaleWoB;
+      return (contrast > -APCA.loClip ? 0 : contrast + APCA.loWoBoffset) * 100;
+    };
+    const apcaThreshold = (bgColor) => {
+      if (candidate.isStyledButton) return 45;
+      const tag = candidate.tagName || '';
+      const fontSize = candidate.fontSize || 16;
+      const fontWeight = candidate.fontWeight || 400;
+      if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
+      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
+
+      const text = (candidate.text || '').trim();
+      const wordCount = Number.isFinite(candidate.wordCount)
+        ? candidate.wordCount
+        : (text ? text.split(/\s+/).length : 0);
+      if (luminance(bgColor) < 0.02 || wordCount >= 12) return 60;
+      return 45;
+    };
 
     const cssTextColor = candidate.textColor && !candidate.preferRenderedForeground
       ? {
@@ -59,7 +119,7 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
           b: candidate.textColor.b,
         }
       : null;
-    const ratios = [];
+    const samples = [];
     let glyphPixels = 0;
     let strongestDelta = 0;
     for (let i = 0; i < beforePixels.length; i += 4) {
@@ -80,27 +140,41 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
         g: afterPixels[i + 1],
         b: afterPixels[i + 2],
       };
-      ratios.push(ratio(fg, bg));
+      const lc = apcaContrast(fg, bg);
+      const threshold = apcaThreshold(bg);
+      samples.push({
+        lc,
+        threshold,
+        ratio: ratio(fg, bg),
+        margin: Math.abs(lc ?? 0) - threshold,
+      });
     }
 
-    if (ratios.length < 8) {
+    if (samples.length < 8) {
       return {
         glyphPixels,
         strongestDelta,
-        worstRatio: null,
+        worstLc: null,
+        p10Lc: null,
+        p10Threshold: null,
         p10Ratio: null,
         medianRatio: null,
       };
     }
 
-    ratios.sort((a, b) => a - b);
-    const pick = pct => ratios[Math.min(ratios.length - 1, Math.max(0, Math.floor((pct / 100) * ratios.length)))];
+    samples.sort((a, b) => a.margin - b.margin);
+    const pick = pct => samples[Math.min(samples.length - 1, Math.max(0, Math.floor((pct / 100) * samples.length)))];
+    const p10 = pick(10);
+    const median = pick(50);
     return {
       glyphPixels,
       strongestDelta,
-      worstRatio: ratios[0],
-      p10Ratio: pick(10),
-      medianRatio: pick(50),
+      worstLc: samples[0].lc,
+      p10Lc: p10.lc,
+      p10Threshold: p10.threshold,
+      p10Ratio: p10.ratio,
+      medianLc: median.lc,
+      medianRatio: median.ratio,
     };
   }, { beforeBase64, afterBase64, candidate });
 }
@@ -171,14 +245,14 @@ async function captureVisualContrastCandidate(page, candidate, viewport) {
   }
 
   const metrics = await compareScreenshotContrast(page, beforeBase64, afterBase64, candidate);
-  if (!metrics || !Number.isFinite(metrics.p10Ratio) || metrics.glyphPixels < 8) return null;
-  const measuredRatio = metrics.p10Ratio;
-  if (measuredRatio >= candidate.threshold) return null;
+  if (!metrics || !Number.isFinite(metrics.p10Lc) || !Number.isFinite(metrics.p10Threshold) || metrics.glyphPixels < 8) return null;
+  if (Math.abs(metrics.p10Lc) >= metrics.p10Threshold) return null;
   const textLabel = candidate.text ? ` "${candidate.text}"` : '';
   const reasonLabel = (candidate.reasons || []).slice(0, 3).join(', ') || 'visual background';
+  const wcagThreshold = candidate.wcagThreshold || 4.5;
   return {
     id: 'low-contrast',
-    snippet: `pixel contrast ${measuredRatio.toFixed(1)}:1 median ${metrics.medianRatio.toFixed(1)}:1 (need ${candidate.threshold}:1) on ${reasonLabel}${textLabel}`,
+    snippet: `pixel APCA contrast Lc ${Math.round(metrics.p10Lc)} median ${Math.round(metrics.medianLc ?? 0)} (target ${metrics.p10Threshold}; WCAG ${metrics.p10Ratio.toFixed(1)}:1/${wcagThreshold}:1) on ${reasonLabel}${textLabel}`,
   };
 }
 
