@@ -278,10 +278,11 @@ describe('detectUrl — browser-only fixtures', () => {
       });
       assert.equal(result.before, 0);
       assert.equal(result.after, 0);
-      assert.equal(result.failed.length, 5, `expected 5 browser visual failures, got: ${JSON.stringify(result)}`);
+      assert.equal(result.failed.length, 6, `expected 6 browser visual failures, got: ${JSON.stringify(result)}`);
       assert.ok(result.failed.some(snippet => /White text on light image/i.test(snippet)));
       assert.ok(result.failed.some(snippet => /Dark text on dark image/i.test(snippet)));
       assert.ok(result.failed.some(snippet => /Consolidated workforce availability/i.test(snippet)));
+      assert.ok(result.failed.some(snippet => /Gray text on APCA gradient/i.test(snippet)));
       assert.ok(result.failed.every(snippet => /browser APCA contrast/i.test(snippet)));
       assert.ok(result.passed.some(text => /White text on dark image/i.test(text)));
       assert.ok(result.passed.some(text => /Dark text on light image/i.test(text)));
@@ -459,10 +460,10 @@ describe('detectUrl — browser-only fixtures', () => {
       });
       const offscreenVisualGroups = offscreenResult.groups.filter(group =>
         group.types.includes('low-contrast') &&
-        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text|Consolidated workforce availability)/i.test(group.text)
+        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text|Consolidated workforce availability|Gray text on APCA gradient)/i.test(group.text)
       );
-      assert.equal(offscreenResult.analyses, 5, `expected 5 opt-in visual failures, got: ${JSON.stringify(offscreenResult)}`);
-      assert.equal(offscreenVisualGroups.length, 5, `expected 5 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenResult.analyses, 6, `expected 6 opt-in visual failures, got: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenVisualGroups.length, 6, `expected 6 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
       assert.ok(offscreenResult.maxScrollY > 0, `offscreen opt-in should be allowed to scroll: ${JSON.stringify(offscreenResult)}`);
       assert.equal(offscreenResult.finalScrollY, 0, `offscreen opt-in should restore scroll: ${JSON.stringify(offscreenResult)}`);
     } finally {

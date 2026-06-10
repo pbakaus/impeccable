@@ -3697,16 +3697,30 @@ if (IS_BROWSER) {
     };
   }
 
-  function pickWorstContrastColor(textColor, colors) {
+  function pickWorstContrastColor(textColor, colors, candidate = {}) {
     const usable = (colors || []).filter(Boolean);
     if (!usable.length) return null;
     let worst = usable[0];
-    let worstRatio = contrastRatio(textColor, worst);
+    const contrastMargin = (color) => {
+      const fg = blendRgba(textColor, color);
+      const lc = apcaContrast(fg, color);
+      const threshold = apcaThresholdForText({
+        tag: candidate.tagName,
+        fontSize: candidate.fontSize || 16,
+        fontWeight: candidate.fontWeight || 400,
+        directText: candidate.text || '',
+        wordCount: candidate.wordCount,
+        bgColor: color,
+        isStyledButton: candidate.isStyledButton,
+      });
+      return Math.abs(lc ?? 0) - threshold;
+    };
+    let worstMargin = contrastMargin(worst);
     for (const color of usable.slice(1)) {
-      const ratio = contrastRatio(textColor, color);
-      if (ratio < worstRatio) {
+      const margin = contrastMargin(color);
+      if (margin < worstMargin) {
         worst = color;
-        worstRatio = ratio;
+        worstMargin = margin;
       }
     }
     return worst;
@@ -3916,12 +3930,12 @@ if (IS_BROWSER) {
     }
   }
 
-  async function sampleCssBackground(el, style, point, textColor) {
+  async function sampleCssBackground(el, style, point, textColor, candidate) {
     const rect = el.getBoundingClientRect();
     const bgImage = style.backgroundImage || '';
     if (bgImage && bgImage !== 'none') {
       if (/gradient/i.test(bgImage)) {
-        const color = pickWorstContrastColor(textColor, parseGradientColors(bgImage));
+        const color = pickWorstContrastColor(textColor, parseGradientColors(bgImage), candidate);
         if (color) return { status: 'sampled', color, method: 'analytic-gradient' };
       }
       if (/url\s*\(/i.test(bgImage)) {
@@ -3986,7 +4000,7 @@ if (IS_BROWSER) {
     return points;
   }
 
-  async function sampleVisualBackgroundAtPoint(el, point, textColor, depth = 0) {
+  async function sampleVisualBackgroundAtPoint(el, point, textColor, candidate, depth = 0) {
     if (depth > 8) {
       return { status: 'unresolved', reason: 'background stack too deep' };
     }
@@ -4025,10 +4039,10 @@ if (IS_BROWSER) {
         continue;
       }
       const style = getComputedStyle(node);
-      const sample = await sampleCssBackground(node, style, point, textColor);
+      const sample = await sampleCssBackground(node, style, point, textColor, candidate);
       if (sample.status === 'sampled') {
         if (!sample.color || sample.color.a == null || sample.color.a >= 0.95) return sample;
-        const under = await sampleVisualBackgroundAtPoint(node.parentElement || document.body, point, textColor, depth + 1);
+        const under = await sampleVisualBackgroundAtPoint(node.parentElement || document.body, point, textColor, candidate, depth + 1);
         if (under.status === 'sampled') {
           return {
             status: 'sampled',
@@ -4086,7 +4100,7 @@ if (IS_BROWSER) {
     const methods = new Set();
     const unresolved = [];
     for (const point of points) {
-      const sample = await sampleVisualBackgroundAtPoint(el, point, textColor);
+      const sample = await sampleVisualBackgroundAtPoint(el, point, textColor, candidate);
       if (sample.status !== 'sampled' || !sample.color) {
         unresolved.push(sample.reason);
         continue;
