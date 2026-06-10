@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
+import { hooksJsonFor } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -403,6 +404,21 @@ function copyDirSync(src, dest) {
   }
 }
 
+function syncRootHookManifests(rootDir) {
+  const synced = [];
+  for (const config of Object.values(PROVIDERS)) {
+    if (!config.emitHooks) continue;
+    const manifest = hooksJsonFor(config.emitHooks);
+    if (!manifest) continue;
+    const rel = config.hooksManifestRel || path.join('hooks', 'hooks.json');
+    const dest = path.join(rootDir, config.configDir, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
+    synced.push(path.join(config.configDir, rel).split(path.sep).join('/'));
+  }
+  return synced;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -654,6 +670,29 @@ async function build() {
       if (fs.existsSync(agentsDest)) fs.rmSync(agentsDest, { recursive: true, force: true });
       if (fs.existsSync(agentsSrc)) {
         copyDirSync(agentsSrc, agentsDest);
+      }
+    }
+
+    const syncedHooks = syncRootHookManifests(ROOT_DIR);
+    if (syncedHooks.length > 0) {
+      console.log(`🪝 Synced hook manifests to: ${syncedHooks.join(', ')}`);
+    }
+
+    // Remove deprecated skill stubs from local harness dirs. They exist
+    // in dist/ so the cleanup script can redirect users, but they should
+    // not clutter the repo's own skill directories.
+    const deprecatedLocalSkills = [
+      'frontend-design', 'teach-impeccable',
+      'arrange', 'normalize', 'onboard', 'extract',
+      // v3.0 consolidation: standalone skills -> /impeccable sub-commands
+      'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
+      'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
+      'overdrive', 'polish', 'quieter', 'shape', 'typeset',
+    ];
+    for (const { configDir } of syncConfigs) {
+      for (const name of deprecatedLocalSkills) {
+        const p = path.join(ROOT_DIR, configDir, 'skills', name);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
       }
     }
 

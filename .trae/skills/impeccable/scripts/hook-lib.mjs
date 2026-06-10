@@ -6,7 +6,7 @@
  * spawning a subprocess. `hook.mjs` itself is the thin stdin/stdout shim.
  *
  * Public surface (everything exported is part of the contract):
- *   ENVELOPE_PREFIX, ALLOWED_EXTS, SENSITIVE_PATH, GENERATED_PATH, TRUTHY
+ *   ENVELOPE_PREFIX, ALLOWED_EXTS, ACK_EXTS, SENSITIVE_PATH, GENERATED_PATH, TRUTHY
  *   truthy(value)
  *   readConfig(cwd) / DEFAULT_CONFIG / getConfigPath(cwd) / getLocalConfigPath(cwd)
  *   normalizeIgnoreValue(value)
@@ -17,6 +17,7 @@
  *   dedupeAgainstCache(findings, cache, sessionId, filePath)
  *   renderTemplate(findings, filePath, config, opts)
  *   renderCleanAck(filePath, opts) / renderPendingAck(filePath, known, opts)
+ *   shouldEmitAckForFile(filePath)
  *   writeAuditLog(env, entry)
  *   loadDetector() -> Promise<{ detectText, detectHtml }>
  *   matchesAnyGlob(filePath, globs)
@@ -47,6 +48,11 @@ export const ALLOWED_EXTS = new Set([
   '.css', '.scss', '.sass', '.less', '.ts', '.js',
 ]);
 
+export const ACK_EXTS = new Set([
+  '.tsx', '.jsx', '.html', '.htm', '.vue', '.svelte', '.astro',
+  '.css', '.scss', '.sass', '.less',
+]);
+
 // Hard-skip regex for sensitive files. Cannot be turned off via config.
 // Match tokenized secret/credential filenames, not UI names such as
 // CredentialForm.tsx, SecretPage.jsx, or secretary-dashboard.vue.
@@ -68,7 +74,6 @@ export const DEFAULT_CONFIG = Object.freeze({
   ignoreRules: [],
   ignoreFiles: [],
   ignoreValues: [],
-  minSeverity: 'warning',
   limits: { maxFindings: 5, maxChars: 8000 },
 });
 
@@ -81,7 +86,7 @@ export const HOOK_LOCAL_IGNORE_PATTERNS = Object.freeze([
 const HOOK_IGNORE_MARKER_OPEN = '# impeccable-hook-ignore-start';
 const HOOK_IGNORE_MARKER_CLOSE = '# impeccable-hook-ignore-end';
 const CACHE_MAX_SESSIONS = 8;
-const EDIT_COUNT_THRESHOLD = 6;
+export const EDIT_COUNT_THRESHOLD = 6;
 
 export function truthy(value) {
   return typeof value === 'string' && TRUTHY.test(value);
@@ -160,9 +165,6 @@ function applyConfigSource(config, raw) {
   }
   if (Array.isArray(raw.ignoreValues)) {
     config.ignoreValues = mergeIgnoreValues(config.ignoreValues, raw.ignoreValues);
-  }
-  if (typeof raw.minSeverity === 'string') {
-    config.minSeverity = raw.minSeverity;
   }
   if (raw.limits && typeof raw.limits === 'object') {
     config.limits = {
@@ -412,22 +414,14 @@ export function matchesAnyGlob(filePath, globs) {
   return false;
 }
 
-const SEVERITY_ORDER = { advisory: 0, warning: 1, error: 2 };
-
-function severityRank(s) {
-  return SEVERITY_ORDER[s] ?? SEVERITY_ORDER.warning;
-}
-
 export function filterFindings(findings, _content, _ext, config) {
   if (!Array.isArray(findings) || findings.length === 0) return [];
   const ignoreRules = new Set((config.ignoreRules || []).map((rule) => normalizeIgnoreRule(rule)));
   const ignoreValues = normalizeIgnoreValueEntries(config.ignoreValues || []);
-  const minRank = severityRank(config.minSeverity || 'warning');
   return findings.filter((f) => {
     if (!f || typeof f !== 'object') return false;
     if (ignoreRules.has(normalizeIgnoreRule(f.antipattern))) return false;
     if (isIgnoredFindingValue(f, ignoreValues)) return false;
-    if (severityRank(f.severity) < minRank) return false;
     return true;
   });
 }
@@ -948,6 +942,10 @@ export function renderPendingAck(filePath, knownFindings, opts = {}) {
   return `${ENVELOPE_PREFIX} Design hook scanned ${display}. Still has ${count} issue(s) flagged earlier this session (${sample}${more}). Address them before finalizing — the previous reminder still applies.`;
 }
 
+export function shouldEmitAckForFile(filePath) {
+  return ACK_EXTS.has(path.extname(String(filePath || '')).toLowerCase());
+}
+
 // The directive footer is the part of the hook output that steers model
 // behavior. Three intentional moves:
 //   1. **Imperative, not advisory.** "Fix these..." beats "Consider
@@ -1155,7 +1153,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       return result({ emitted: false, quiet: true, durationMs: Date.now() - started });
     }
 
-    if (pendingWinner) {
+    if (pendingWinner && shouldEmitAckForFile(pendingWinner.filePath)) {
       const text = renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd });
       return {
         exitCode: 0,
@@ -1189,7 +1187,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       };
     }
 
-    if (cleanWinner) {
+    if (cleanWinner && shouldEmitAckForFile(cleanWinner.filePath)) {
       const text = renderCleanAck(cleanWinner.filePath, { cwd: projectCwd });
       return {
         exitCode: 0,
@@ -1204,6 +1202,10 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
           durationMs: Date.now() - started,
         },
       };
+    }
+
+    if (pendingWinner || cleanWinner) {
+      return result({ emitted: false, skipped: 'non-ui-ack', durationMs: Date.now() - started });
     }
 
     if (suppressedHit) {

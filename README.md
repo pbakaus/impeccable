@@ -270,6 +270,8 @@ Installed hook surfaces:
 
 The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
 
+If you want skills without hook manifests, pass `--no-hooks` to `npx impeccable skills install` or `npx impeccable skills update`.
+
 For debugging, set `IMPECCABLE_HOOK_LOG=/path/to/hook.ndjson` to write one NDJSON line per hook invocation. Leave it unset for normal use.
 
 Codex requires one platform step that Impeccable cannot safely skip: open `/hooks` after install or update and approve the project hook. There is no Codex marketplace/plugin install flow for this hook.

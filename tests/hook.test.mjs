@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import {
   ENVELOPE_PREFIX,
   ALLOWED_EXTS,
+  ACK_EXTS,
   DEFAULT_CONFIG,
   SENSITIVE_PATH,
   GENERATED_PATH,
@@ -34,6 +35,7 @@ import {
   renderTemplate,
   renderCleanAck,
   renderPendingAck,
+  shouldEmitAckForFile,
   matchesAnyGlob,
   writeAuditLog,
   suppressionNotice,
@@ -145,7 +147,6 @@ describe('readConfig()', () => {
     assert.deepEqual(cfg.ignoreRules, ['side-tab']);
     assert.deepEqual(cfg.ignoreFiles, ['src/legacy/**']);
     assert.deepEqual(cfg.ignoreValues, []);
-    assert.equal(cfg.minSeverity, 'error');
     assert.equal(cfg.limits.maxFindings, 2);
     assert.equal(cfg.limits.maxChars, 1000);
   });
@@ -182,7 +183,6 @@ describe('readConfig()', () => {
       { rule: 'overused-font', value: 'inter', reason: 'local override' },
       { rule: 'overused-font', value: 'roboto' },
     ]);
-    assert.equal(cfg.minSeverity, 'warning');
     assert.equal(cfg.limits.maxFindings, 4);
     assert.equal(cfg.limits.maxChars, 1000);
   });
@@ -281,7 +281,7 @@ describe('matchesAnyGlob()', () => {
 });
 
 describe('filterFindings()', () => {
-  it('drops by ignoreRules and minSeverity', () => {
+  it('drops by ignoreRules and ignores legacy minSeverity config', () => {
     const content = [
       'a',                                          // line 1
       'b',                                          // line 2
@@ -293,10 +293,10 @@ describe('filterFindings()', () => {
     ];
     const filtered = filterFindings(findings, content, '.ts', {
       ignoreRules: ['side-tab'],
-      minSeverity: 'warning',
+      minSeverity: 'error',
       limits: DEFAULT_CONFIG.limits,
     });
-    assert.deepEqual(filtered.map((f) => f.antipattern), ['gradient-text']);
+    assert.deepEqual(filtered.map((f) => f.antipattern), ['gradient-text', 'overused-font']);
   });
 
   it('does not treat source comments as hook suppression', () => {
@@ -622,6 +622,42 @@ describe('runHook()', () => {
     assert.equal(r.audit.kind, 'clean');
   });
 
+  it('does not emit clean acks for plain .ts files', async () => {
+    const file = writeFixture('src/server.ts', 'export const value = 1;');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {},
+      cwd,
+      detector: fakeDetector([]),
+    });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.skipped, 'non-ui-ack');
+  });
+
+  it('still emits findings for plain .ts files', async () => {
+    const file = writeFixture('src/styles.ts', 'export const css = "border-left: 4px solid #7c3aed";');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {},
+      cwd,
+      detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.match(r.stdout, /Required design corrections/);
+    assert.match(r.stdout, /side-tab/);
+  });
+
+  it('does not emit pending acks for plain .js files', async () => {
+    const file = writeFixture('src/build.js', 'export const value = 1;');
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const first = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /Required design corrections/);
+
+    const second = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.equal(second.stdout, '');
+    assert.equal(second.audit.skipped, 'non-ui-ack');
+  });
+
   it('IMPECCABLE_HOOK_QUIET=1 suppresses clean and pending acks, keeps findings emission', async () => {
     // The opt-out kill switch for users who want the old silent-on-clean
     // behavior. Findings still emit because those are real signals; the
@@ -865,6 +901,17 @@ describe('ALLOWED_EXTS', () => {
     }
     for (const ext of ['.md', '.py', '.go', '.json']) {
       assert.ok(!ALLOWED_EXTS.has(ext), `unexpected allowed: ${ext}`);
+    }
+  });
+
+  it('keeps clean/pending acknowledgements to UI-ish files', () => {
+    for (const ext of ['.tsx', '.jsx', '.html', '.css', '.vue', '.svelte', '.astro', '.scss', '.sass', '.less', '.htm']) {
+      assert.ok(ACK_EXTS.has(ext), `missing ack extension: ${ext}`);
+      assert.equal(shouldEmitAckForFile(`/x/src/App${ext}`), true);
+    }
+    for (const ext of ['.ts', '.js']) {
+      assert.ok(!ACK_EXTS.has(ext), `unexpected ack extension: ${ext}`);
+      assert.equal(shouldEmitAckForFile(`/x/src/tool${ext}`), false);
     }
   });
 });
@@ -1294,6 +1341,50 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.user_message, /side-tab/);
   });
 
+  it('preToolUse denies shell append redirects that bypass the Write tool', () => {
+    const filePath = path.join(cwd, 'src/AppendedCard.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Shell',
+        tool_input: {
+          command: `cat >> "${filePath}" <<'EOF'\n<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>\n<div class="card">Hello</div>\nEOF\n`,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /AppendedCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
+  it('preToolUse denies shell tee writes that bypass the Write tool', () => {
+    const filePath = path.join(cwd, 'src/TeeCard.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Shell',
+        tool_input: {
+          command: `cat <<'EOF' | tee -a "${filePath}"\n<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>\n<div class="card">Hello</div>\nEOF\n`,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /TeeCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
   it('preToolUse denies shell copy writes when copied content has detector findings', () => {
     const sourcePath = path.join(cwd, 'src/SourceCard.html');
     const destPath = path.join(cwd, 'src/CopiedCard.html');
@@ -1321,6 +1412,86 @@ describe('Cursor hook scripts', () => {
     assert.equal(payload.permission, 'deny');
     assert.match(payload.user_message, /CopiedCard\.html/);
     assert.match(payload.user_message, /side-tab/);
+  });
+
+  it('preToolUse reconstructs Edit old_string/new_string into a full proposed file before scanning', () => {
+    const filePath = path.join(cwd, 'src/EditCard.html');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const oldString = '<div class="card">Hello</div>';
+    fs.writeFileSync(filePath, oldString);
+    const newString = '<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style>\n<div class="card">Hello</div>';
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: filePath,
+          old_string: oldString,
+          new_string: newString,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /EditCard\.html/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
+  it('preToolUse allows fragment-only edits instead of denying on partial context', () => {
+    const filePath = path.join(cwd, 'src/MissingEditCard.html');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: filePath,
+          new_string: '<div style="border-left: 4px solid #7c3aed; border-radius: 16px;">Hello</div>',
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+  });
+
+  it('preToolUse downgrades repeated identical denials to allow-with-warning after the edit threshold', () => {
+    const filePath = path.join(cwd, 'src/LoopCard.html');
+    const input = JSON.stringify({
+      hook_event_name: 'preToolUse',
+      cwd,
+      session_id: 'cursor-loop',
+      tool_name: 'Write',
+      tool_input: {
+        file_path: filePath,
+        content: '<style>.card { border-left: 4px solid #7c3aed; border-radius: 16px; padding: 16px; }</style><div class="card">Hello</div>',
+      },
+    });
+
+    let payload;
+    for (let i = 0; i < 7; i++) {
+      const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+        cwd: path.resolve('.'),
+        input,
+        env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+        encoding: 'utf-8',
+      });
+      payload = JSON.parse(out);
+    }
+
+    assert.equal(payload.permission, 'allow');
+    assert.match(payload.agent_message, /allowing this write to avoid a loop/);
+    const cache = readCache(cwd);
+    const denials = cache.sessions['cursor-loop'].files[filePath].cursorDenials;
+    assert.equal(Object.values(denials)[0], 7);
   });
 
   it('preToolUse honors truthy IMPECCABLE_HOOK_DISABLED values before stdin parsing', () => {

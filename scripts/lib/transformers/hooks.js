@@ -12,7 +12,6 @@
 export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook.mjs';
 
 const TIMEOUT_SECONDS = 5;
-const SKILL_HOOK_SCRIPT_REL = 'skills/impeccable/scripts/hook.mjs';
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
@@ -28,27 +27,6 @@ export function buildClaudeSettingsManifest() {
             {
               type: 'command',
               command: `node "${CLAUDE_PROJECT_HOOK}"`,
-              timeout: TIMEOUT_SECONDS,
-              statusMessage: 'Scanning design',
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
-
-export function buildClaudePluginHooksManifest({ pluginRootPlaceholder = '${CLAUDE_PLUGIN_ROOT}' } = {}) {
-  return {
-    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
-    hooks: {
-      PostToolUse: [
-        {
-          matcher: 'Edit|Write|MultiEdit',
-          hooks: [
-            {
-              type: 'command',
-              command: `node "${pluginRootPlaceholder}/${SKILL_HOOK_SCRIPT_REL}"`,
               timeout: TIMEOUT_SECONDS,
               statusMessage: 'Scanning design',
             },
@@ -105,11 +83,4 @@ export function hooksJsonFor(provider) {
     default:
       return null;
   }
-}
-
-export function hookArtifactPathFor(configDir) {
-  if (configDir === '.claude') return 'settings.json';
-  if (configDir === '.cursor') return 'hooks.json';
-  if (configDir === '.codex') return 'hooks.json';
-  return null;
 }

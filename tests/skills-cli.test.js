@@ -80,6 +80,27 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
     ].join('\n'));
     writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("local bundle context");\n');
   }
+  if (providers.includes('.claude')) {
+    mkdirSync(join(bundleRoot, '.claude'), { recursive: true });
+    writeFileSync(join(bundleRoot, '.claude', 'settings.json'), JSON.stringify({
+      description: 'fresh claude hook',
+      hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] }] },
+    }, null, 2));
+  }
+  if (providers.includes('.cursor')) {
+    mkdirSync(join(bundleRoot, '.cursor'), { recursive: true });
+    writeFileSync(join(bundleRoot, '.cursor', 'hooks.json'), JSON.stringify({
+      version: 1,
+      hooks: { preToolUse: [{ command: 'node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"' }] },
+    }, null, 2));
+  }
+  if (providers.includes('.agents')) {
+    mkdirSync(join(bundleRoot, '.codex'), { recursive: true });
+    writeFileSync(join(bundleRoot, '.codex', 'hooks.json'), JSON.stringify({
+      description: 'fresh codex hook',
+      hooks: { PostToolUse: [{ matcher: 'apply_patch', hooks: [{ type: 'command', command: 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"' }] }] },
+    }, null, 2));
+  }
   return bundleRoot;
 }
 
@@ -135,6 +156,42 @@ describe('skills install: already-installed detection', () => {
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('repairs missing hook manifests on already-installed projects', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-repair-hooks-'));
+    execSync('git init', { cwd: tmp });
+    createFakeSkills(tmp, ['impeccable'], ['.claude']);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Installed hooks into: .claude');
+    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('--no-hooks does not repair missing hook manifests on already-installed projects', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-no-hooks-repair-'));
+    execSync('git init', { cwd: tmp });
+    createFakeSkills(tmp, ['impeccable'], ['.claude']);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const output = run('skills install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).not.toContain('Installed hooks into');
+    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(false);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -339,6 +396,30 @@ describe('skills install/update: local universal bundle e2e', () => {
       expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain(`Local deterministic bundle for ${provider}.`);
       expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
     }
+    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.codex', 'hooks.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('--no-hooks installs skills without hook manifests', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-no-hooks-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp);
+
+    const output = run('skills install -y --providers=claude,codex,cursor --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Done!');
+    expect(output).not.toContain('Installed hooks into');
+    for (const provider of ['.claude', '.agents', '.cursor']) {
+      expect(existsSync(join(tmp, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+    }
+    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(false);
+    expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(false);
+    expect(existsSync(join(tmp, '.codex', 'hooks.json'))).toBe(false);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -362,6 +443,49 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(content).not.toContain('stale: true');
     expect(content).toContain('version: 9.9.9-local');
     expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
+    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update --no-hooks refreshes skills without touching malformed hook manifests', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-no-hooks-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.cursor']);
+
+    run('skills install -y --providers=cursor --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    mkdirSync(join(tmp, '.cursor'), { recursive: true });
+    writeFileSync(join(tmp, '.cursor', 'hooks.json'), '{ malformed');
+
+    const output = run('skills update -y --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Skills are up to date');
+    expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toBe('{ malformed');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update reports malformed hook manifests cleanly on the up-to-date path', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-update-bad-hooks-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.cursor']);
+
+    run('skills install -y --providers=cursor', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    writeFileSync(join(tmp, '.cursor', 'hooks.json'), '{ malformed');
+
+    expect(() => run('skills update -y', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      stdio: 'pipe',
+    })).toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -385,6 +509,39 @@ describe('skills install/update: local universal bundle e2e', () => {
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
+});
+
+describe('hook manifest merge helpers', () => {
+  test('mergeHookManifests refreshes fresh description and version while preserving third-party hooks', () => {
+    const merged = mergeHookManifests(
+      {
+        version: 0,
+        description: 'old description',
+        hooks: {
+          preToolUse: [
+            { command: 'node third-party.mjs' },
+            { command: 'node .cursor/skills/impeccable/scripts/hook-before-edit.mjs' },
+          ],
+        },
+      },
+      {
+        version: 1,
+        description: 'fresh description',
+        hooks: {
+          preToolUse: [
+            { command: 'node .cursor/skills/impeccable/scripts/hook-before-edit.mjs' },
+          ],
+        },
+      },
+    );
+
+    expect(merged.version).toBe(1);
+    expect(merged.description).toBe('fresh description');
+    expect(merged.hooks.preToolUse.map((entry) => entry.command)).toEqual([
+      'node third-party.mjs',
+      'node .cursor/skills/impeccable/scripts/hook-before-edit.mjs',
+    ]);
+  });
 });
 
 // ─── Update fallback (remote direct download smoke) ──────────────────────────

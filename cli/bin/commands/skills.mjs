@@ -494,7 +494,8 @@ function mergeHookManifests(existing, fresh) {
     : {};
 
   const merged = { ...existingObject, hooks: {} };
-  if (freshObject.version !== undefined && merged.version === undefined) merged.version = freshObject.version;
+  if (freshObject.version !== undefined) merged.version = freshObject.version;
+  if (freshObject.description !== undefined) merged.description = freshObject.description;
 
   const hookEvents = new Set([...Object.keys(existingHooks), ...Object.keys(freshHooks)]);
   for (const event of hookEvents) {
@@ -682,6 +683,7 @@ async function link(flags) {
 async function install(flags) {
   const force = flags.includes('--force');
   const yes = flags.includes('-y') || flags.includes('--yes');
+  const installHooks = !flags.includes('--no-hooks');
   const providersValue = getFlagValue(flags, '--providers');
   const root = findProjectRoot();
   const existing = isAlreadyInstalled(root);
@@ -689,7 +691,9 @@ async function install(flags) {
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
     const targets = providersValue ? resolveInstallTargets(root, providersValue) : findInstalledProviders(root);
-    const missingHookDests = expectedHookDests(root, targets).filter(dest => !existsSync(dest));
+    const missingHookDests = installHooks
+      ? expectedHookDests(root, targets).filter(dest => !existsSync(dest))
+      : [];
     if (missingHookDests.length > 0) {
       let bundleDir;
       try {
@@ -745,7 +749,7 @@ async function install(flags) {
   let hookTargets = [];
   try {
     written = copyProviderSkills(bundleDir, root, targets);
-    hookTargets = copyProviderHooks(bundleDir, root, targets, { force });
+    hookTargets = installHooks ? copyProviderHooks(bundleDir, root, targets, { force }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
     console.error(`Install failed: ${e.message}`);
@@ -844,6 +848,7 @@ function downloadFile(url, dest) {
 async function update(flags = []) {
   const yes = flags.includes('-y') || flags.includes('--yes');
   const force = flags.includes('--force');
+  const installHooks = !flags.includes('--no-hooks');
 
   // Download the latest skills directly from impeccable.style.
   // We skip `npx skills update` because it has a known upstream bug
@@ -878,13 +883,19 @@ async function update(flags = []) {
 
   // Compare local vs remote -- skip if already up to date
   if (isUpToDate(root, copyProviders, tmpDir)) {
-    const hookTargets = copyProviderHooks(tmpDir, root, copyProviders, { force });
-    rmSync(tmpDir, { recursive: true, force: true });
-    const v = getSkillsVersion(root);
-    console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
-    if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
-    console.log('Nothing else to do.');
-    process.exit(0);
+    try {
+      const hookTargets = installHooks ? copyProviderHooks(tmpDir, root, copyProviders, { force }) : [];
+      rmSync(tmpDir, { recursive: true, force: true });
+      const v = getSkillsVersion(root);
+      console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
+      if (hookTargets.length > 0) console.log(`Installed hooks into: ${hookTargets.join(', ')}`);
+      console.log('Nothing else to do.');
+      process.exit(0);
+    } catch (e) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      console.error(`Update failed: ${e.message}`);
+      process.exit(1);
+    }
   }
 
   console.log(`Found skills in: ${copyProviders.join(', ')}`);
@@ -924,7 +935,7 @@ async function update(flags = []) {
         updated++;
       }
     }
-    const hookTargets = copyProviderHooks(tmpDir, root, providers, { force });
+    const hookTargets = installHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
 
     rmSync(tmpDir, { recursive: true, force: true });
 

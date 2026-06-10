@@ -14,12 +14,25 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const prRoot = resolve(__dirname, '..');
-const defaultTargetRepo = '/Users/abdulwahab/impeccable-live-react';
 const defaultBundle = join(prRoot, 'dist', 'universal.zip');
 const defaultProviders = ['direct', 'claude', 'codex', 'cursor'];
 
 const args = parseArgs(process.argv.slice(2));
-const targetRepo = resolve(args.repo || defaultTargetRepo);
+if (args.help || args.h || !args.repo) {
+  const usage = [
+    'Usage: bun run smoke:hooks -- --repo <target-repo> [--bundle dist/universal.zip] [--providers direct,claude,codex,cursor]',
+    '',
+    'The target repo must be explicit so this local smoke does not depend on one contributor machine path.',
+  ].join('\n');
+  if (args.help || args.h) {
+    console.log(usage);
+    process.exit(0);
+  }
+  console.error(usage);
+  process.exit(1);
+}
+
+const targetRepo = resolve(args.repo);
 const bundlePath = resolve(args.bundle || defaultBundle);
 const selectedProviders = (args.providers || defaultProviders.join(','))
   .split(',')

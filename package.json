@@ -65,6 +65,7 @@
     "test:live-e2e-agent": "node scripts/run-tests.mjs live-e2e-agent",
     "test:skill-behavior": "node scripts/run-tests.mjs skill-behavior",
     "test:live-svelte-adapter-deepseek": "node scripts/run-tests.mjs live-svelte-adapter-deepseek",
+    "smoke:hooks": "node scripts/smoke-provider-hooks.mjs",
     "bench:detector": "node scripts/benchmark-detector.mjs",
     "bench:detector:browser": "node scripts/benchmark-detector.mjs --browser",
     "audit": "bun audit --audit-level=moderate",

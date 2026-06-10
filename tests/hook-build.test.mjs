@@ -95,6 +95,12 @@ describe('generated hook artifacts in repo', () => {
     });
   }
 
+  it('root hook manifests exactly match the hook builders', () => {
+    assert.deepEqual(readJson('.claude/settings.json'), buildClaudeSettingsManifest());
+    assert.deepEqual(readJson('.cursor/hooks.json'), buildCursorHooksManifest());
+    assert.deepEqual(readJson('.codex/hooks.json'), buildCodexHooksManifest());
+  });
+
   it('Claude project settings reference hook.mjs in .claude/skills', () => {
     const manifest = readJson('.claude/settings.json');
     const handler = manifest.hooks.PostToolUse[0].hooks[0];

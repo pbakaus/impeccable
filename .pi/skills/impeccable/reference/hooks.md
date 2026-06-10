@@ -2,7 +2,7 @@
 
 Manage the **design detector hook** for the current project.
 
-The hook runs the impeccable design detector on direct file edits to design-relevant files (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`). Claude Code and Codex use `PostToolUse` and push a short system reminder into the agent's context after the edit; findings get a correction prompt, pending issues get a re-nudge, and clean files get a short ack unless `IMPECCABLE_HOOK_QUIET=1` is set. Cursor uses `preToolUse` to block bad proposed writes before they land and stays silent when it allows a clean write.
+The hook runs the impeccable design detector on direct file edits to design-relevant files (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`, `.css`, `.scss`, `.sass`, `.less`, `.ts`, `.js`). Claude Code and Codex use `PostToolUse` and push a short system reminder into the agent's context after the edit; findings get a correction prompt, pending issues get a re-nudge, and clean UI-ish files get a short ack unless `IMPECCABLE_HOOK_QUIET=1` is set. Plain `.ts` and `.js` files are still scanned, but stay quiet unless the detector finds something. Cursor uses `preToolUse` to block bad proposed writes before they land and stays silent when it allows a clean write.
 
 This command toggles the hook **per project** by editing `.impeccable/hook.json`. Local-only ignore policy lives in `.impeccable/hook.local.json`, which is gitignored. To disable globally, set `IMPECCABLE_HOOK_DISABLED=1` in your shell environment.
 

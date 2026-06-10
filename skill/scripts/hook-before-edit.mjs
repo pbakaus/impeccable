@@ -15,11 +15,14 @@ import path from 'node:path';
 
 import {
   ALLOWED_EXTS,
+  EDIT_COUNT_THRESHOLD,
   GENERATED_PATH,
   SENSITIVE_PATH,
   filterFindings,
   loadDetector,
   matchesAnyGlob,
+  persistCache,
+  readCache,
   readConfig,
   renderTemplate,
   resolveProjectCwd,
@@ -39,13 +42,13 @@ function done(payload = null) {
   process.exit(0);
 }
 
-function allow(extra = {}) {
+function allow(extra = {}, payload = {}) {
   writeAuditLog(process.env, {
     ts: new Date().toISOString(),
     event: 'preToolUse',
     ...extra,
   });
-  return done({ permission: 'allow' });
+  return done({ permission: 'allow', ...payload });
 }
 
 function deny(message, audit) {
@@ -76,24 +79,87 @@ function proposedFilePath(event, cwd) {
   return path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
 }
 
-function proposedContent(event, cwd) {
+function proposedContent(event, cwd, filePath) {
   const input = toolInput(event);
-  for (const key of ['content', 'streamContent', 'new_string', 'newString', 'new_str', 'replacement', 'text']) {
+  for (const key of ['content', 'streamContent', 'text']) {
     if (typeof input[key] === 'string') return input[key];
   }
-  if (Array.isArray(input.edits)) {
-    const parts = input.edits
-      .map((edit) => edit && typeof edit === 'object'
-        ? (edit.new_string || edit.newString || edit.replacement || edit.text || '')
-        : '')
-      .filter(Boolean);
-    if (parts.length > 0) return parts.join('\n');
+
+  const editProjection = projectedEditContent(input, filePath, cwd);
+  if (editProjection !== undefined) return editProjection;
+
+  if (hasFragmentEditContent(input)) {
+    return { skipped: 'fragment-only-edit' };
   }
+
   const shellContent = shellHereDocContent(shellCommand(input));
   if (shellContent) return shellContent;
   const copiedContent = shellCopiedFileContent(shellCommand(input), cwd);
   if (copiedContent) return copiedContent;
   return '';
+}
+
+function hasFragmentEditContent(input) {
+  if (!input || typeof input !== 'object') return false;
+  if (typeof input.new_string === 'string' || typeof input.newString === 'string' || typeof input.new_str === 'string' || typeof input.replacement === 'string') {
+    return true;
+  }
+  return Array.isArray(input.edits) && input.edits.some((edit) => edit && typeof edit === 'object');
+}
+
+function projectedEditContent(input, filePath, cwd) {
+  if (!filePath) return undefined;
+  const singleOld = firstString(input, ['old_string', 'oldString', 'old_str', 'target']);
+  const singleNew = firstString(input, ['new_string', 'newString', 'new_str', 'replacement']);
+  if (singleOld !== undefined || singleNew !== undefined) {
+    if (singleOld === undefined || singleNew === undefined) return { skipped: 'fragment-only-edit' };
+    const original = readExistingProjectFile(filePath, cwd);
+    if (original === null) return { skipped: 'edit-original-unreadable' };
+    const projected = replaceOnce(original, singleOld, singleNew);
+    return projected === null ? { skipped: 'edit-old-string-missing' } : projected;
+  }
+
+  if (!Array.isArray(input.edits)) return undefined;
+  const original = readExistingProjectFile(filePath, cwd);
+  if (original === null) return { skipped: 'edit-original-unreadable' };
+
+  let projected = original;
+  for (const edit of input.edits) {
+    if (!edit || typeof edit !== 'object') return { skipped: 'fragment-only-edit' };
+    const oldString = firstString(edit, ['old_string', 'oldString', 'old_str', 'target']);
+    const newString = firstString(edit, ['new_string', 'newString', 'new_str', 'replacement']);
+    if (oldString === undefined || newString === undefined) return { skipped: 'fragment-only-edit' };
+    const next = replaceOnce(projected, oldString, newString);
+    if (next === null) return { skipped: 'edit-old-string-missing' };
+    projected = next;
+  }
+  return projected;
+}
+
+function firstString(obj, keys) {
+  for (const key of keys) {
+    if (typeof obj?.[key] === 'string') return obj[key];
+  }
+  return undefined;
+}
+
+function replaceOnce(original, oldString, newString) {
+  if (oldString === '') return null;
+  const index = original.indexOf(oldString);
+  if (index === -1) return null;
+  return `${original.slice(0, index)}${newString}${original.slice(index + oldString.length)}`;
+}
+
+function readExistingProjectFile(filePath, cwd) {
+  if (!isInsideProject(filePath, cwd)) return null;
+  if (SENSITIVE_PATH.test(filePath) || GENERATED_PATH.test(filePath)) return null;
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size > 1024 * 1024) return null;
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
 }
 
 function shellCommand(input) {
@@ -104,12 +170,25 @@ function shellCommand(input) {
 
 function shellRedirectPath(command) {
   if (!command || typeof command !== 'string') return '';
-  const match = command.match(/(?:^|[\s;&|])(?:>|1>)\s*(?:"([^"]+)"|'([^']+)'|([^<>\s]+))/);
+  const match = command.match(/(?:^|[\s;&|])(?:>>?|1>>?)\s*(?:"([^"]+)"|'([^']+)'|([^<>\s]+))/);
   return (match?.[1] || match?.[2] || match?.[3] || '').trim();
 }
 
 function shellWriteDestination(command) {
-  return shellRedirectPath(command) || shellCopyPaths(command)?.dest || '';
+  return shellRedirectPath(command) || shellTeeDestination(command) || shellCopyPaths(command)?.dest || '';
+}
+
+function shellTeeDestination(command) {
+  const words = shellWords(command);
+  const teeIndex = words.findIndex((word) => path.basename(word) === 'tee');
+  if (teeIndex === -1) return '';
+  for (const word of words.slice(teeIndex + 1)) {
+    if (['&&', '||', ';', '|'].includes(word)) break;
+    if (word === '--') continue;
+    if (word.startsWith('-')) continue;
+    return word;
+  }
+  return '';
 }
 
 function shellCopiedFileContent(command, cwd) {
@@ -154,7 +233,7 @@ function shellWords(command) {
 
 function shellHereDocContent(command) {
   if (!command || typeof command !== 'string') return '';
-  const markerMatch = command.match(/<<-?\s*['"]?([A-Za-z0-9_.-]+)['"]?\r?\n/);
+  const markerMatch = command.match(/<<-?\s*['"]?([A-Za-z0-9_.-]+)['"]?[^\r\n]*\r?\n/);
   if (!markerMatch) return '';
   const marker = markerMatch[1];
   const start = (markerMatch.index || 0) + markerMatch[0].length;
@@ -196,6 +275,27 @@ function cursorBlockMessage(findings, filePath, config, cwd) {
   return blocked.length > 4000 ? `${blocked.slice(0, 3984)}\n...(truncated)` : blocked;
 }
 
+function findingSignature(findings) {
+  return findings
+    .map((finding) => `${finding.antipattern || 'unknown'}:${finding.line || 0}`)
+    .sort()
+    .join('|');
+}
+
+function bumpCursorDenial(cache, sessionId, filePath, findings) {
+  const session = cache.sessions[sessionId] || { updatedAt: Date.now(), files: {} };
+  cache.sessions[sessionId] = session;
+  session.updatedAt = Date.now();
+  const fileEntry = session.files[filePath] || { editCount: 0, findings: [] };
+  session.files[filePath] = fileEntry;
+  const key = findingSignature(findings);
+  fileEntry.cursorDenials = fileEntry.cursorDenials && typeof fileEntry.cursorDenials === 'object'
+    ? fileEntry.cursorDenials
+    : {};
+  fileEntry.cursorDenials[key] = (fileEntry.cursorDenials[key] || 0) + 1;
+  return { key, count: fileEntry.cursorDenials[key] };
+}
+
 async function main() {
   if (truthy(process.env.IMPECCABLE_HOOK_DISABLED)) {
     return allow({ skipped: 'env-disabled' });
@@ -216,7 +316,6 @@ async function main() {
   const cwd = resolveProjectCwd(event);
   const started = Date.now();
   const filePath = proposedFilePath(event, cwd);
-  const content = proposedContent(event, cwd);
   const audit = {
     harness: 'cursor',
     tool: event.tool_name || null,
@@ -231,6 +330,12 @@ async function main() {
   const ext = path.extname(filePath).toLowerCase();
   audit.ext = ext;
   if (!ALLOWED_EXTS.has(ext)) return allow({ ...audit, skipped: 'extension', durationMs: Date.now() - started });
+
+  const contentResult = proposedContent(event, cwd, filePath);
+  if (contentResult && typeof contentResult === 'object' && contentResult.skipped) {
+    return allow({ ...audit, skipped: contentResult.skipped, durationMs: Date.now() - started });
+  }
+  const content = typeof contentResult === 'string' ? contentResult : '';
   if (!content) return allow({ ...audit, skipped: 'no-proposed-content', durationMs: Date.now() - started });
 
   const config = readConfig(cwd);
@@ -264,10 +369,32 @@ async function main() {
   }
 
   const message = cursorBlockMessage(filtered, filePath, config, cwd);
+  const sessionId = event.session_id || event.conversation_id || 'unknown';
+  const cache = readCache(cwd);
+  const denial = bumpCursorDenial(cache, sessionId, filePath, filtered);
+  persistCache(cwd, cache);
+  if (denial.count > EDIT_COUNT_THRESHOLD) {
+    const warning = `${message}\n\nThis is the ${denial.count}th repeated denial for the same file and finding signature, so Impeccable is allowing this write to avoid a loop. Reconsider the issue immediately after the tool runs.`;
+    return allow({
+      ...audit,
+      findings: (findings || []).length,
+      blockedFindings: filtered.length,
+      cursorDenialKey: denial.key,
+      cursorDenialCount: denial.count,
+      downgraded: true,
+      chars: warning.length,
+      durationMs: Date.now() - started,
+    }, {
+      user_message: warning,
+      agent_message: warning,
+    });
+  }
   return deny(message, {
     ...audit,
     findings: (findings || []).length,
     blockedFindings: filtered.length,
+    cursorDenialKey: denial.key,
+    cursorDenialCount: denial.count,
     chars: message.length,
     durationMs: Date.now() - started,
   });

@@ -67,7 +67,6 @@ function mergeConfig(existing) {
     ignoreRules: Array.isArray(base.ignoreRules) ? Array.from(new Set(base.ignoreRules.map(String))) : [],
     ignoreFiles: Array.isArray(base.ignoreFiles) ? Array.from(new Set(base.ignoreFiles.map(String))) : [],
     ignoreValues: normalizeIgnoreValueEntries(base.ignoreValues || []),
-    minSeverity: typeof base.minSeverity === 'string' ? base.minSeverity : DEFAULT_CONFIG.minSeverity,
     limits: {
       maxFindings: Number.isFinite(base?.limits?.maxFindings) ? base.limits.maxFindings : DEFAULT_CONFIG.limits.maxFindings,
       maxChars: Number.isFinite(base?.limits?.maxChars) ? base.limits.maxChars : DEFAULT_CONFIG.limits.maxChars,
@@ -88,9 +87,6 @@ function mergeLocalConfig(existing) {
     out.ignoreFiles = Array.from(new Set(base.ignoreFiles.map(String)));
   }
   out.ignoreValues = normalizeIgnoreValueEntries(base.ignoreValues || []);
-  if (typeof base.minSeverity === 'string') {
-    out.minSeverity = base.minSeverity;
-  }
   if (base.limits && typeof base.limits === 'object') {
     const limits = {};
     if (Number.isFinite(base.limits.maxFindings)) limits.maxFindings = base.limits.maxFindings;
@@ -124,7 +120,6 @@ function statusReport(cwd) {
     `  ignoreRules:  ${cfg.ignoreRules.length ? cfg.ignoreRules.join(', ') : '(none)'}`,
     `  ignoreFiles:  ${cfg.ignoreFiles.length ? cfg.ignoreFiles.join(', ') : '(none)'}`,
     `  ignoreValues: ${ignoreValues.length ? ignoreValues.join(', ') : '(none)'}`,
-    `  minSeverity:  ${cfg.minSeverity}`,
     `  maxFindings:  ${cfg.limits.maxFindings}`,
     `  maxChars:     ${cfg.limits.maxChars}`,
     `  env override: ${envState}`,
