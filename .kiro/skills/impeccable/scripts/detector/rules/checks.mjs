@@ -64,8 +64,8 @@ function isEmojiOnlyText(text) {
   return text.replace(EMOJI_CHARS_GLOBAL, '').trim() === '';
 }
 
-function isStyledControl(tag, hasDirectText, bgColor) {
-  return (tag === 'a' || tag === 'button') && hasDirectText && bgColor && bgColor.a > 0.5;
+function isStyledControl(tag, hasDirectText, bgColor, hasOwnVisualBackground = false) {
+  return (tag === 'a' || tag === 'button') && hasDirectText && ((bgColor && bgColor.a > 0.5) || hasOwnVisualBackground);
 }
 
 const BODY_COPY_TAGS = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption', 'dd', 'dt']);
@@ -84,15 +84,15 @@ function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount
 }
 
 function checkColors(opts) {
-  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, effectiveBgSourceTag, fontSize, fontWeight, hasDirectText, directText, isEmojiOnly, bgClip, bgImage, classList } = opts;
+  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, effectiveBgSourceTag, effectiveBgIsOwn, fontSize, fontWeight, hasDirectText, directText, isEmojiOnly, bgClip, bgImage, classList } = opts;
   if (SAFE_TAGS.has(tag)) {
     // Exception for <a> and <button> elements styled as buttons. SAFE_TAGS
     // exists to suppress contrast noise on inline links and unstyled controls,
     // where the element has no own background and the contrast against the
     // ancestor surface is already the intended visual. When the element has
-    // its own opaque background and direct text, it is a styled button — and
+    // its own visible background and direct text, it is a styled button — and
     // contrast on its own surface is a real, frequent bug worth flagging.
-    const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
+    const isStyledButton = isStyledControl(tag, hasDirectText, bgColor, effectiveBgIsOwn && effectiveBgStops?.length > 0);
     const isBodyCopy = hasDirectText && BODY_COPY_TAGS.has(tag);
     if (!isStyledButton && !isBodyCopy) return [];
   }
@@ -116,7 +116,7 @@ function checkColors(opts) {
       const contrasts = bgs.map(b => {
         const foreground = blendRgba(textColor, b);
         const lc = apcaContrast(foreground, b);
-        const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
+        const isStyledButton = isStyledControl(tag, hasDirectText, bgColor, effectiveBgIsOwn && effectiveBgStops?.length > 0);
         const threshold = apcaThresholdForText({ tag, fontSize, fontWeight, directText, bgColor: b, isStyledButton });
         return { bg: b, foreground, lc, threshold, ratio: contrastRatio(foreground, b) };
       });
@@ -724,7 +724,7 @@ function resolveGradientStops(el, win) {
     const bgImage = style.backgroundImage || '';
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
       const stops = parseGradientColors(bgImage);
-      if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '' };
+      if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '', sourceIsSelf: current === el };
     }
     if (!DETECTOR_IS_BROWSER) {
       // jsdom doesn't decompose `background:` shorthand — peek at the raw inline style
@@ -732,7 +732,7 @@ function resolveGradientStops(el, win) {
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
       if (bgMatch && /gradient/i.test(bgMatch[1])) {
         const stops = parseGradientColors(bgMatch[1]);
-        if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '' };
+        if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '', sourceIsSelf: current === el };
       }
     }
     current = current.parentElement;
@@ -807,6 +807,7 @@ function checkElementColorsDOM(el) {
     effectiveBg,
     effectiveBgStops: effectiveBgGradient?.stops || null,
     effectiveBgSourceTag: effectiveBgGradient?.sourceTag || '',
+    effectiveBgIsOwn: effectiveBgGradient?.sourceIsSelf || false,
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -1702,6 +1703,7 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
     effectiveBg,
     effectiveBgStops: effectiveBgGradient?.stops || null,
     effectiveBgSourceTag: effectiveBgGradient?.sourceTag || '',
+    effectiveBgIsOwn: effectiveBgGradient?.sourceIsSelf || false,
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,

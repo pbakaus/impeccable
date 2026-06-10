@@ -27,7 +27,7 @@ AI slop (design tells that scream "AI made this"):
 - Thin borders with wide drop shadows, repeating-stripe backgrounds
 
 Quality issues (general design and accessibility):
-- Low contrast text (WCAG AA), gray text on colored backgrounds
+- Low contrast text (APCA readability with WCAG 2 context), gray text on colored backgrounds
 - Cramped padding, tight line height
 - Skipped heading levels
 - Line length too long, text running to the viewport edge

@@ -669,7 +669,9 @@ if (IS_BROWSER) {
       if (!hasDirectText || isEmojiOnlyText(directText)) continue;
 
       const bgColor = readOwnBackgroundColor(el, style);
-      const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
+      const bgImage = style.backgroundImage || '';
+      const hasOwnVisualBackground = bgImage && bgImage !== 'none' && /(gradient|url\s*\()/i.test(bgImage);
+      const isStyledButton = isStyledControl(tag, hasDirectText, bgColor, hasOwnVisualBackground);
       const isBodyCopy = hasDirectText && BODY_COPY_TAGS.has(tag);
       if (SAFE_TAGS.has(tag) && !isStyledButton && !isBodyCopy) continue;
 

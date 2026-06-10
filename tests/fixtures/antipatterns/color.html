@@ -15,6 +15,7 @@
        for <a> and <button>). */
     .styled-pill-low { background-color: rgb(31, 26, 21); color: rgb(91, 79, 68); display: inline-block; padding: 9px 18px; border-radius: 999px; font-weight: 500; font-size: 14px; text-decoration: none; }
     .low-contrast-button { background-color: rgb(55, 65, 81); color: rgb(108, 114, 128); display: inline-block; padding: 10px 20px; border-radius: 8px; border: 0; font-size: 14px; }
+    .gradient-low-contrast-button { background-image: linear-gradient(90deg, #010203 0%, #fefefe 100%); color: #ababab; display: inline-block; padding: 10px 20px; border-radius: 8px; border: 0; font-size: 16px; font-weight: 600; }
     .good-pill-high { background-color: rgb(20, 20, 25); color: rgb(245, 240, 232); display: inline-block; padding: 9px 18px; border-radius: 999px; font-weight: 500; font-size: 14px; text-decoration: none; }
     .uplinked-orange-action { background-color: rgb(236, 130, 39); color: rgb(255, 255, 255); display: inline-block; padding: 10px 18px; border: 0; border-radius: 8px; font-size: 14px; font-weight: 600; }
     .translucent-orange-action { background-color: rgb(236, 130, 39); color: rgba(255, 255, 255, 0.5); display: inline-block; padding: 10px 18px; border: 0; border-radius: 8px; font-size: 14px; font-weight: 600; }
@@ -92,6 +93,7 @@
            Same SAFE_TAGS exception — buttons styled with their own background should
            still pass through the contrast check. -->
       <button class="low-contrast-button" data-test="low-contrast-button">Submit</button>
+      <button class="gradient-low-contrast-button" data-test="gradient-low-contrast-button">Gradient action</button>
       <button class="translucent-orange-action" data-test="translucent-orange-action">Approve shift</button>
 
       <h3>Tailwind color anti-patterns</h3>

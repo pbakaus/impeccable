@@ -84,6 +84,10 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       'expected low-contrast finding for gray text on the APCA-worst gradient stop',
     );
     assert.ok(
+      f.filter(r => r.antipattern === 'low-contrast' && /#ababab/i.test(r.snippet || '') && /#fefefe/i.test(r.snippet || '')).length >= 2,
+      'expected low-contrast findings for both gradient body copy and a gradient-styled button',
+    );
+    assert.ok(
       f.some(r => r.antipattern === 'low-contrast' && /#f6c193/i.test(r.snippet || '') && /#ec8227/i.test(r.snippet || '')),
       'expected translucent text on a local gradient to be composited before APCA',
     );
