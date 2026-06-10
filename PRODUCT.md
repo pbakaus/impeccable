@@ -38,8 +38,10 @@ The site and brand must be the antithesis of everything Impeccable critiques. Sp
 
 ## Accessibility & Inclusion
 
+Contrast target: Both. Use APCA for design/readability decisions, and keep WCAG 2.1 AA visible for formal compliance context.
+
 Baseline: WCAG 2.1 AA on all pages. Key commitments:
-- Color contrast ratios verified with actual contrast checks, not eyeballing.
+- Contrast verified with APCA readability checks and WCAG 2.1 AA context, not eyeballing.
 - All interactive elements keyboard-navigable with visible focus states.
 - `prefers-reduced-motion` respected for every animation.
 - Semantic HTML first, ARIA as a supplement, never as a workaround.
