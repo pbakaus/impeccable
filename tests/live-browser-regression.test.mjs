@@ -307,6 +307,23 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('configure input Escape tears down annotation overlay before returning to picking', () => {
+    // The configure prompt auto-focuses. While focused, the global keydown
+    // handler bails on own() inputs, so this local Escape path must hide the
+    // annotation overlay. Leaving it active strands a crosshair layer that
+    // flashes comment pins on every click after pick mode is turned off.
+    assert.match(
+      SOURCE,
+      /input\.addEventListener\('keydown', \(e\) => \{[\s\S]{0,400}?if \(e\.key === 'Escape'\) \{[\s\S]{0,200}?exitConfigureToPicking\('configure-input-escape'\)/,
+      'configure input Escape must call exitConfigureToPicking so annot overlay is removed',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\)[\s\S]{0,500}?teardownConfigureChrome\(\);/,
+      'togglePick off must tear down configure chrome so a stuck annot overlay cannot survive IDLE',
+    );
+  });
+
   it('pick mode preference persists in localStorage', () => {
     assert.match(
       SOURCE,

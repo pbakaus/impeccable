@@ -1873,11 +1873,7 @@
         e.stopPropagation();
         e.preventDefault();
         input.blur();
-        disableInlineEdit();
-        hideBar();
-        renderEditBadge('hidden');
-        state = 'PICKING';
-        syncPageChatFocus('configure-input-escape');
+        exitConfigureToPicking('configure-input-escape');
         return;
       }
       // Let arrow keys pass through to the element picker when the input is empty
@@ -2992,6 +2988,25 @@
     hoveredElement = null;
     hideHighlight();
     syncPageChatFocus('editing-outside-click');
+  }
+
+  function teardownConfigureChrome() {
+    disableInlineEdit();
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    renderEditBadge('hidden');
+  }
+
+  function exitConfigureToPicking(reason, opts = {}) {
+    teardownConfigureChrome();
+    state = 'PICKING';
+    if (opts.clearHover) {
+      hoveredElement = null;
+      hideHighlight();
+    }
+    syncPageChatFocus(reason);
   }
 
   // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
@@ -5592,15 +5607,7 @@
       && !selectedElement.contains(e.target)
     ) {
       if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-      hideBar();
-      stopScrollTracking();
-      hideAnnotOverlay();
-      clearAnnotations();
-      renderEditBadge('hidden');
-      state = 'PICKING';
-      hoveredElement = null;
-      hideHighlight();
-      syncPageChatFocus('configure-outside-click');
+      exitConfigureToPicking('configure-outside-click', { clearHover: true });
       return;
     }
     if (state === 'PICKING' && insertActive) {
@@ -5767,7 +5774,8 @@
       if (state === 'EDITING') { cancelEditing(); return; }
       if (state === 'CONFIGURING') {
         if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-        disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); renderEditBadge('hidden'); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return;
+        exitConfigureToPicking('escape-from-configure');
+        return;
       }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
@@ -8953,10 +8961,11 @@ void main() {
         cancelInsertConfigure();
         return;
       }
+      teardownConfigureChrome();
       hideHighlight();
-      hideBar();
       hideActionPicker();
       selectedElement = null;
+      hoveredElement = null;
       configureKind = 'replace';
       if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
     } else {
