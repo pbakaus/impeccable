@@ -80,8 +80,8 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       'expected low-contrast finding for gray heading on blue/purple gradient',
     );
     assert.ok(
-      f.some(r => r.antipattern === 'low-contrast' && /#aaaaaa/i.test(r.snippet || '') && /#000000/i.test(r.snippet || '')),
-      'expected low-contrast finding for gray text on the failing black gradient stop',
+      f.some(r => r.antipattern === 'low-contrast' && /#ababab/i.test(r.snippet || '') && /#fefefe/i.test(r.snippet || '')),
+      'expected low-contrast finding for gray text on the APCA-worst gradient stop',
     );
     assert.ok(
       f.some(r => r.antipattern === 'low-contrast' && /#aaaaaa/i.test(r.snippet || '') && /#ffffff/i.test(r.snippet || '')),
