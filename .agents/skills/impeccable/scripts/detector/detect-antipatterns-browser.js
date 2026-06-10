@@ -705,11 +705,12 @@ function isStyledControl(tag, hasDirectText, bgColor, hasOwnVisualBackground = f
 }
 
 const BODY_COPY_TAGS = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption', 'dd', 'dt']);
+const HEADING_TEXT_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 
 function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount, bgColor, isStyledButton }) {
   if (isStyledButton) return 45;
-  if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700))) return 45;
-  if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
+  if (HEADING_TEXT_TAGS.has(tag) && (fontSize >= 24 || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700))) return 45;
+  if (HEADING_TEXT_TAGS.has(tag)) return 60;
 
   const text = (directText || '').trim();
   const resolvedWordCount = Number.isFinite(wordCount) ? wordCount : (text ? text.split(/\s+/).length : 0);

@@ -206,6 +206,17 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       apcaDarkModeFinding,
       'gray body text on black should be flagged by the APCA readability detector even though WCAG 2 reports a high ratio'
     );
+
+    const largeH4FalsePositive = f.some(r =>
+      r.antipattern === 'low-contrast' &&
+      /#a7a7a7/i.test(r.snippet || '') &&
+      /#ffffff/i.test(r.snippet || '')
+    );
+    assert.equal(
+      largeH4FalsePositive,
+      false,
+      'large h4-h6 headings should use the same APCA large-heading target as h1-h3'
+    );
   });
 
   it('color: emoji-only text is never flagged as low-contrast', async () => {

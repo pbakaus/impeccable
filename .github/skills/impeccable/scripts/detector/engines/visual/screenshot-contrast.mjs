@@ -103,8 +103,9 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
       const fontWeight = candidate.fontWeight || 400;
       const largeBoldTextPx = 14 * (96 / 72);
       const bodyCopyTags = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption', 'dd', 'dt']);
-      if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || (fontSize >= largeBoldTextPx && fontWeight >= 700))) return 45;
-      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
+      const headingTags = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+      if (headingTags.has(tag) && (fontSize >= 24 || (fontSize >= largeBoldTextPx && fontWeight >= 700))) return 45;
+      if (headingTags.has(tag)) return 60;
 
       const text = (candidate.text || '').trim();
       const wordCount = Number.isFinite(candidate.wordCount)
