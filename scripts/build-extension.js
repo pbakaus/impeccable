@@ -18,7 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { getDefaultRules } from '../cli/engine/registry/antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -72,14 +72,15 @@ console.log(`Generated ${path.relative(ROOT, DETECTOR_OUTPUT)} (${(output.length
 
 // Include description so the devtools panel can show the full rule explanation
 // in tooltips.
-const apJson = ANTIPATTERNS.map(({ id, name, category, description }) => ({
+const defaultRules = getDefaultRules();
+const apJson = defaultRules.map(({ id, name, category, description }) => ({
   id,
   name,
   category: category || 'quality',
   description: description || '',
 }));
 fs.writeFileSync(AP_OUTPUT, JSON.stringify(apJson, null, 2) + '\n');
-console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${ANTIPATTERNS.length} rules)`);
+console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${defaultRules.length} rules)`);
 
 // --- 3. Zip packaging ---
 

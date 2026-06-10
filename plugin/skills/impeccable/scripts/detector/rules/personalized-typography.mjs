@@ -1,10 +1,14 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { generate, parse, walk } from 'css-tree';
 
 import { finding } from '../findings.mjs';
 import { normalizeDimensions } from '../registry/dimensions.mjs';
 import { GENERIC_FONTS } from '../shared/constants.mjs';
+
+const require = createRequire(import.meta.url);
+let cssTreeLoadAttempted = false;
+let cssTreeModule = null;
 
 const TYPOGRAPHY_PROPERTIES = {
   'font-size': {
@@ -48,13 +52,29 @@ function startDirFor(filePath) {
   }
 }
 
+function samePath(a, b) {
+  return path.resolve(a) === path.resolve(b);
+}
+
+function isWithinDir(child, parent) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function isProjectBoundary(dir) {
+  return fs.existsSync(path.join(dir, '.git')) || fs.existsSync(path.join(dir, 'package.json'));
+}
+
 function findDesignSidecar(filePath) {
   let dir = startDirFor(filePath);
   const visited = new Set();
+  const cwd = path.resolve(process.cwd());
+  const cwdBoundary = isWithinDir(dir, cwd) ? cwd : null;
   while (dir && !visited.has(dir)) {
     visited.add(dir);
     const candidate = path.join(dir, '.impeccable', 'design.json');
     if (fs.existsSync(candidate)) return candidate;
+    if (isProjectBoundary(dir) || (cwdBoundary && samePath(dir, cwdBoundary))) break;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -96,7 +116,7 @@ function formatNumber(num) {
 }
 
 function toPx(value) {
-  const match = String(value).trim().match(/^(-?\d*\.?\d+)(px|rem|em)$/i);
+  const match = String(value).trim().match(/^(-?\d*\.?\d+)(px|rem)$/i);
   if (!match) return null;
   const n = Number(match[1]);
   if (!Number.isFinite(n)) return null;
@@ -180,6 +200,17 @@ function hasAllowedTypography(allowed) {
   return Object.values(allowed).some(entry => entry.comparable.size > 0);
 }
 
+function getCssTree() {
+  if (cssTreeLoadAttempted) return cssTreeModule;
+  cssTreeLoadAttempted = true;
+  try {
+    cssTreeModule = require('css-tree');
+  } catch {
+    cssTreeModule = null;
+  }
+  return cssTreeModule;
+}
+
 function lineAt(text, index) {
   return text.slice(0, index).split(/\r?\n/).length;
 }
@@ -211,6 +242,9 @@ function extractCssSegments(content) {
 }
 
 function parseCssDeclarations(segment) {
+  const cssTree = getCssTree();
+  if (!cssTree) throw new Error('css-tree unavailable');
+  const { generate, parse, walk } = cssTree;
   const declarations = [];
   const ast = parse(segment.text, {
     context: segment.context,
@@ -264,7 +298,13 @@ function extractTypographyDeclarations(content) {
 
 function shouldSkipObservedValue(value) {
   const normalized = normalizeCssValue(value);
-  return !normalized || normalized.includes('var(') || normalized.includes('{') || SKIPPED_VALUES.has(normalized);
+  return !normalized
+    || normalized.includes('var(')
+    || normalized.includes('{')
+    || normalized.includes('$')
+    || normalized.includes('@')
+    || normalized.includes('#{')
+    || SKIPPED_VALUES.has(normalized);
 }
 
 function propertyMatchesAllowed(prop, value, allowed) {
@@ -294,8 +334,16 @@ function detectPersonalizedTypography(content, filePath, options = {}) {
   const typography = loadTypographyTokens(filePath);
   if (!typography) return [];
 
+  const scale = typographyScale(typography);
+  if (!scale) return [];
   const allowed = buildAllowedTypography(typography);
-  if (!hasAllowedTypography(allowed)) return [];
+  if (!hasAllowedTypography(allowed)) {
+    return [finding(
+      'personalized-scale-unreadable',
+      filePath,
+      'tokens.typography.scale exists but contains no usable fontSize, lineHeight, letterSpacing, or fontFamily values',
+    )];
+  }
   const findings = [];
 
   for (const declaration of extractTypographyDeclarations(content)) {

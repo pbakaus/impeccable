@@ -16,6 +16,7 @@ export {
   TYPOGRAPHY_RULE_IDS,
   DIMENSION_RULE_IDS,
   getAntipattern,
+  getDefaultRules,
   getRulesForCategory,
   getRulesForDimension,
   getRuleIdsForDimensions,

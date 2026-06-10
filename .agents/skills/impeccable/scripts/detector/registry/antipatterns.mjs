@@ -321,7 +321,7 @@ const ANTIPATTERNS = [
     conditional: 'personalized-typography-scale',
     name: 'Font size outside design system',
     description:
-      'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+      'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
     skillSection: 'Typography',
     skillGuideline: 'font sizes should match the design typography scale',
   },
@@ -331,7 +331,7 @@ const ANTIPATTERNS = [
     conditional: 'personalized-typography-scale',
     name: 'Line height outside design system',
     description:
-      'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+      'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
     skillSection: 'Typography',
     skillGuideline: 'line heights should match the design typography scale',
   },
@@ -341,7 +341,7 @@ const ANTIPATTERNS = [
     conditional: 'personalized-typography-scale',
     name: 'Letter spacing outside design system',
     description:
-      'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token or update the design system.',
+      'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
     skillSection: 'Typography',
     skillGuideline: 'letter spacing should match the design typography scale',
   },
@@ -351,9 +351,19 @@ const ANTIPATTERNS = [
     conditional: 'personalized-typography-scale',
     name: 'Font family outside design system',
     description:
-      'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token or update the design system.',
+      'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token, or update the design system only with user sign-off.',
     skillSection: 'Typography',
     skillGuideline: 'font families should match the design typography scale',
+  },
+  {
+    id: 'personalized-scale-unreadable',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Unreadable typography token scale',
+    description:
+      'tokens.typography.scale exists in .impeccable/design.json but does not use the detector shape. Use scale.fontSize, scale.lineHeight, scale.letterSpacing, and scale.fontFamily arrays.',
+    skillSection: 'Typography',
+    skillGuideline: 'typography scale snapshots should be explicit detector-readable arrays',
   },
   {
     id: 'text-overflow',
@@ -436,6 +446,10 @@ function getRulesForCategory(category) {
   return ANTIPATTERNS.filter(rule => rule.category === category);
 }
 
+function getDefaultRules() {
+  return ANTIPATTERNS.filter(rule => !rule.conditional);
+}
+
 function getRuleEngineSupport(engine) {
   return RULE_ENGINE_SUPPORT[engine] || new Set();
 }
@@ -476,6 +490,7 @@ export {
   TYPOGRAPHY_RULE_IDS,
   DIMENSION_RULE_IDS,
   getAntipattern,
+  getDefaultRules,
   getRulesForCategory,
   getRulesForDimension,
   getRuleIdsForDimensions,

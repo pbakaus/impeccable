@@ -15,6 +15,10 @@ import {
   checkElementTextOverflowDOM,
   isScreenReaderOnlyTextStyle,
 } from '../cli/engine/rules/checks.mjs';
+import {
+  parseDetectArgs,
+  typographyUrlPersonalizationNote,
+} from '../cli/engine/cli/main.mjs';
 
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
@@ -943,6 +947,7 @@ describe('ANTIPATTERNS registry', () => {
       'non-token-line-height',
       'non-token-letter-spacing',
       'non-token-font-family',
+      'personalized-scale-unreadable',
     ]) {
       expect(ids.has(id)).toBe(true);
     }
@@ -1014,12 +1019,44 @@ describe('typography dimension', () => {
     });
   });
 
+  test('CLI dimension flag accepts equals and comma-list forms', () => {
+    expect(parseDetectArgs(['--dimension=typography', 'index.html']).scanOptions.dimensions).toEqual(['typography']);
+    expect(parseDetectArgs(['--dimension', 'type,typeset', 'index.html']).scanOptions.dimensions).toEqual(['typography']);
+  });
+
+  test('CLI dimension flag rejects missing or unknown dimensions', () => {
+    expect(() => parseDetectArgs(['--dimension'])).toThrow('--dimension requires a value');
+    expect(() => parseDetectArgs(['--dimension', '--json'])).toThrow('--dimension requires a value');
+    expect(() => parseDetectArgs(['--dimension', 'bogus'])).toThrow('Unknown detector dimension "bogus"');
+  });
+
+  test('CLI warns that URL typography scans cannot run personalized token checks', () => {
+    expect(typographyUrlPersonalizationNote({ dimensions: ['typography'] })).toContain('URL typography scans run generic browser typography rules only');
+    expect(typographyUrlPersonalizationNote({ dimensions: [] })).toBe('');
+  });
+
   test('semantic role-only typography snapshots do not enable personalized checks', async () => {
     await withStaticFixture({
       '.impeccable/design.json': designSidecar(ROLE_ONLY_TYPOGRAPHY_TOKENS),
       'index.html': KEIO_DISTILLED_HTML,
     }, async ({ file }) => {
       const f = await detectHtml(file, { dimensions: ['typography'] });
+      expect(personalizedIds(f)).toEqual([]);
+    });
+  });
+
+  test('unreadable explicit typography scale surfaces a warning finding', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar({
+        scale: {
+          xs: { fontSize: '12px' },
+          base: { fontSize: '16px' },
+        },
+      }),
+      'index.html': KEIO_DISTILLED_HTML,
+    }, async ({ file }) => {
+      const f = await detectHtml(file, { dimensions: ['typography'] });
+      expect(findingIds(f)).toContain('personalized-scale-unreadable');
       expect(personalizedIds(f)).toEqual([]);
     });
   });
@@ -1050,7 +1087,7 @@ describe('typography dimension', () => {
     });
   });
 
-  test('personalized typography reports real HTML line numbers and ignores linked CSS source', async () => {
+  test('personalized typography reports real HTML line numbers and scans linked CSS as its own source', async () => {
     const html = `<!doctype html>
 <html>
 <head>
@@ -1072,8 +1109,10 @@ describe('typography dimension', () => {
       const f = await detectHtml(file, { dimensions: ['typography'] });
       const personalized = f.filter(item => item.antipattern.startsWith('non-token-'));
       expect(personalized.length).toBeGreaterThan(0);
-      expect(personalized.some(item => item.snippet.includes('font-size: 99px'))).toBe(false);
-      for (const item of personalized) {
+      const linked = personalized.find(item => item.snippet.includes('font-size: 99px'));
+      expect(linked?.file).toBe(path.join(path.dirname(file), 'linked.css'));
+      expect(linked?.line).toBe(1);
+      for (const item of personalized.filter(item => item.file === file)) {
         expect(item.line).toBeGreaterThanOrEqual(1);
         expect(item.line).toBeLessThanOrEqual(lineCount);
       }
@@ -1102,6 +1141,54 @@ describe('typography dimension', () => {
       await withStaticFixture(files, async ({ file }) => {
         expect(personalizedIds(await detectHtml(file, { dimensions: ['typography'] }))).toEqual([]);
       });
+    }
+  });
+
+  test('personalized typography skips SCSS and LESS token variables', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'vars.scss': '.title { font-size: $heading-size; line-height: $heading-leading; letter-spacing: #{var-name}; }',
+      'vars.less': '.title { font-size: @heading-size; line-height: @heading-leading; }',
+      'index.html': '<!doctype html><html><body></body></html>',
+    }, async ({ dir }) => {
+      for (const name of ['vars.scss', 'vars.less']) {
+        const sourcePath = path.join(dir, name);
+        const f = detectText(fs.readFileSync(sourcePath, 'utf8'), sourcePath, { dimensions: ['typography'] });
+        expect(personalizedIds(f)).toEqual([]);
+      }
+    });
+  });
+
+  test('personalized typography does not treat em as root-px equivalent', async () => {
+    await withStaticFixture({
+      '.impeccable/design.json': designSidecar({
+        scale: {
+          fontSize: ['16px'],
+          lineHeight: ['1.5'],
+          letterSpacing: ['0.32px'],
+          fontFamily: ['"DM Sans", sans-serif'],
+        },
+      }),
+      'index.html': '<!doctype html><html><head><style>.a { font-size: 1em; letter-spacing: 0.02em; }</style></head><body><p class="a">Text</p></body></html>',
+    }, async ({ file }) => {
+      const snippets = (await detectHtml(file, { dimensions: ['typography'] })).map(item => item.snippet);
+      expect(snippets).toContain('font-size: 1em is not in design typography scale: 16px');
+      expect(snippets).toContain('letter-spacing: 0.02em is not in design typography scale: 0.32px');
+    });
+  });
+
+  test('personalized typography sidecar lookup stops at project boundary', async () => {
+    const fixture = writeStaticFixture({
+      '.impeccable/design.json': designSidecar(NARROW_TYPOGRAPHY_TOKENS),
+      'project/package.json': '{"private":true}',
+      'project/src/page.css': '.hero { font-size: 23px; line-height: 0.98; }',
+    });
+    try {
+      const cssPath = path.join(fixture.dir, 'project', 'src', 'page.css');
+      const f = detectText(fs.readFileSync(cssPath, 'utf8'), cssPath, { dimensions: ['typography'] });
+      expect(personalizedIds(f)).toEqual([]);
+    } finally {
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
   });
 
@@ -1142,6 +1229,30 @@ describe('typography dimension', () => {
       expect(personalizedIds(tsxFindings)).toContain('non-token-font-size');
       expect(personalizedIds(tsxFindings)).toContain('non-token-line-height');
     });
+  });
+
+  test('bundled skill detector works without repo node_modules', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-bundled-skill-'));
+    try {
+      const scriptsDir = path.join(dir, 'scripts');
+      const projectDir = path.join(dir, 'project');
+      fs.mkdirSync(scriptsDir, { recursive: true });
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.cpSync(path.join(import.meta.dir, '..', 'cli', 'engine'), path.join(scriptsDir, 'detector'), { recursive: true });
+      fs.copyFileSync(path.join(import.meta.dir, '..', 'skill', 'scripts', 'detect.mjs'), path.join(scriptsDir, 'detect.mjs'));
+      fs.writeFileSync(path.join(projectDir, 'index.html'), '<!doctype html><html><head><style>p { font-size: 16px; }</style></head><body><p>OK</p></body></html>');
+
+      const result = spawnSync('node', [path.join(scriptsDir, 'detect.mjs'), '--json', projectDir], {
+        cwd: projectDir,
+        encoding: 'utf-8',
+        timeout: 15000,
+      });
+      expect([0, 2]).toContain(result.status);
+      expect(result.stderr).not.toContain('ERR_MODULE_NOT_FOUND');
+      expect(() => JSON.parse(result.stdout.trim() || '[]')).not.toThrow();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

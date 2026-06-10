@@ -148,6 +148,11 @@ function parseDetectArgs(args) {
   };
 }
 
+function typographyUrlPersonalizationNote(scanOptions = {}) {
+  if (!scanOptions.dimensions?.includes('typography')) return '';
+  return 'Note: URL typography scans run generic browser typography rules only; personalized .impeccable/design.json token checks require local file or directory targets.\n';
+}
+
 async function detectCli() {
   let args = process.argv.slice(2).map(arg => {
     if (arg === '-json') return '--json';
@@ -176,6 +181,7 @@ async function detectCli() {
   if (helpMode) { printUsage(); process.exit(0); }
 
   let allFindings = [];
+  let printedUrlTypographyNote = false;
 
   if (!process.stdin.isTTY && targets.length === 0) {
     allFindings = await handleStdin(scanOptions);
@@ -187,6 +193,11 @@ async function detectCli() {
     try {
       for (const target of paths) {
         if (/^https?:\/\//i.test(target)) {
+          const urlTypographyNote = typographyUrlPersonalizationNote(scanOptions);
+          if (urlTypographyNote && !printedUrlTypographyNote) {
+            process.stderr.write(urlTypographyNote);
+            printedUrlTypographyNote = true;
+          }
           try {
             const scanner = browserDetector
               ? (url) => browserDetector.detectUrl(url, scanOptions)
@@ -257,7 +268,7 @@ async function detectCli() {
             const ext = path.extname(file).toLowerCase();
             let fileFindings;
             if (HTML_EXTENSIONS.has(ext)) {
-              fileFindings = await detectHtml(file, scanOptions);
+              fileFindings = await detectHtml(file, { ...scanOptions, skipLinkedCssPersonalized: true });
             } else {
               fileFindings = detectText(fs.readFileSync(file, 'utf-8'), file, scanOptions);
             }
@@ -294,4 +305,4 @@ async function detectCli() {
   process.exit(0);
 }
 
-export { formatFindings, handleStdin, confirm, printUsage, parseDetectArgs, detectCli };
+export { formatFindings, handleStdin, confirm, printUsage, parseDetectArgs, typographyUrlPersonalizationNote, detectCli };

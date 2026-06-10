@@ -19,6 +19,7 @@ const TYPOGRAPHY_RULE_IDS = new Set([
   'non-token-line-height',
   'non-token-letter-spacing',
   'non-token-font-family',
+  'personalized-scale-unreadable',
 ]);
 
 const DIMENSION_RULE_IDS = {
