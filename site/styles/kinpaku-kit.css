@@ -1198,18 +1198,17 @@
   margin: 0 4px 0 6px;
   border-radius: 5px;
   background: var(--ks-graphite);
-  border: 1px solid oklch(92% 0 0 / 0.1);
+  border: 1px solid transparent;
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
-  transition: border-color 0.15s ease;
+  transition: width 0.18s ease, border-color 0.15s ease;
 }
 
 .home-kinpaku .live-demo-gbar-chat.is-expanded,
 .live-mode-kinpaku .live-demo-gbar-chat.is-expanded {
   width: min(220px, 42vw);
   cursor: text;
-  border-color: oklch(78% 0.12 82 / 0.55);
 }
 
 .home-kinpaku .live-demo-gbar-chat-icon,
@@ -1251,7 +1250,21 @@
   outline: none;
   opacity: 0;
   pointer-events: none;
+  caret-color: var(--ks-kinpaku);
   transition: opacity 0.15s ease;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint {
+  display: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input {
+  width: auto;
+  padding: 0 4px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .home-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-hint,

@@ -1873,11 +1873,7 @@
         e.stopPropagation();
         e.preventDefault();
         input.blur();
-        disableInlineEdit();
-        hideBar();
-        renderEditBadge('hidden');
-        state = 'PICKING';
-        syncPageChatFocus('configure-input-escape');
+        exitConfigureToPicking('configure-input-escape');
         return;
       }
       // Let arrow keys pass through to the element picker when the input is empty
@@ -2992,6 +2988,25 @@
     hoveredElement = null;
     hideHighlight();
     syncPageChatFocus('editing-outside-click');
+  }
+
+  function teardownConfigureChrome() {
+    disableInlineEdit();
+    hideBar();
+    stopScrollTracking();
+    hideAnnotOverlay();
+    clearAnnotations();
+    renderEditBadge('hidden');
+  }
+
+  function exitConfigureToPicking(reason, opts = {}) {
+    teardownConfigureChrome();
+    state = 'PICKING';
+    if (opts.clearHover) {
+      hoveredElement = null;
+      hideHighlight();
+    }
+    syncPageChatFocus(reason);
   }
 
   // Prefer the leaf's own id/class; if it has neither (e.g. a bare <em>),
@@ -5592,15 +5607,7 @@
       && !selectedElement.contains(e.target)
     ) {
       if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-      hideBar();
-      stopScrollTracking();
-      hideAnnotOverlay();
-      clearAnnotations();
-      renderEditBadge('hidden');
-      state = 'PICKING';
-      hoveredElement = null;
-      hideHighlight();
-      syncPageChatFocus('configure-outside-click');
+      exitConfigureToPicking('configure-outside-click', { clearHover: true });
       return;
     }
     if (state === 'PICKING' && insertActive) {
@@ -5767,7 +5774,8 @@
       if (state === 'EDITING') { cancelEditing(); return; }
       if (state === 'CONFIGURING') {
         if (configureKind === 'insert') { cancelInsertConfigure(); return; }
-        disableInlineEdit(); hideBar(); stopScrollTracking(); hideAnnotOverlay(); clearAnnotations(); renderEditBadge('hidden'); state = 'PICKING'; syncPageChatFocus('escape-from-configure'); return;
+        exitConfigureToPicking('escape-from-configure');
+        return;
       }
       if (state === 'CYCLING') { handleDiscard(); return; }
       if (state === 'SAVING' || state === 'CONFIRMED') return; // don't interrupt
@@ -7419,6 +7427,8 @@ void main() {
   let voiceCtx = null;
   const PAGE_CHAT_COLLAPSED_W = '88px';
   const PAGE_CHAT_PROCESSING_W = '76px';
+  const PAGE_CHAT_PLACEHOLDER_COLLAPSED = 'Steer…';
+  const PAGE_CHAT_PLACEHOLDER_EXPANDED = 'Steer the page…';
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
@@ -7509,13 +7519,16 @@ void main() {
   function syncPageChatChrome() {
     if (!pageChatEl) return;
     const P = pageChatPalette();
+    const inputFocused = pageChatInput && activeElementDeep() === pageChatInput;
     pageChatEl.style.background = P.chatSurface;
-    pageChatEl.style.borderColor = steerLocked
-      ? P.patinaSoft
-      : (pageChatExpanded ? P.accentSoft : P.hairline);
+    pageChatEl.style.borderColor = 'transparent';
     if (pageChatHint) pageChatHint.style.color = steerLocked ? P.patinaPale : P.textDim;
     const chatIcon = pageChatEl?.firstElementChild;
-    if (chatIcon) chatIcon.style.color = steerLocked ? P.patinaPale : P.textDim;
+    if (chatIcon) {
+      chatIcon.style.color = steerLocked
+        ? P.patinaPale
+        : (inputFocused || pageChatExpanded ? P.text : P.textDim);
+    }
     if (pageChatInput) pageChatInput.style.color = P.text;
     if (pageChatVoiceBtn) {
       const listening = pageChatVoiceBtn.dataset.listening === 'true';
@@ -7686,24 +7699,44 @@ void main() {
   function syncPageChatFocusRing() {
     if (!pageChatEl || !pageChatInput) return;
     const focused = activeElementDeep() === pageChatInput;
+    const typingReady = focused && !steerLocked;
     pageChatEl.dataset.inputFocused = focused ? 'true' : 'false';
-    const P = pageChatPalette();
-    pageChatEl.style.borderColor = steerLocked
-      ? P.patinaSoft
-      : (pageChatExpanded ? P.accentSoft : P.hairline);
     pageChatEl.style.boxShadow = 'none';
+
+    if (pageChatExpanded) {
+      pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
+      pageChatInput.style.width = '';
+      pageChatInput.style.padding = '0 6px';
+      pageChatInput.style.opacity = steerLocked ? '0.72' : '1';
+      pageChatInput.style.pointerEvents = steerLocked ? 'none' : 'auto';
+      return;
+    }
+
+    if (typingReady) {
+      // Collapsed type-to-steer: show the real input + caret instead of a
+      // truncated patina "Steer" label with an invisible focused field.
+      pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
+      if (pageChatHint) {
+        pageChatHint.style.display = 'none';
+        pageChatHint.style.opacity = '0';
+      }
+      pageChatInput.style.width = '';
+      pageChatInput.style.padding = '0 4px';
+      pageChatInput.style.opacity = '1';
+      pageChatInput.style.pointerEvents = 'auto';
+      return;
+    }
+
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
     if (pageChatHint) {
-      pageChatHint.style.color = steerLocked
-        ? P.patinaPale
-        : ((!pageChatExpanded && focused) ? P.patinaPale : P.textDim);
+      pageChatHint.style.display = '';
+      pageChatHint.style.opacity = '1';
+      pageChatHint.style.visibility = '';
     }
-    if (!pageChatExpanded) {
-      pageChatInput.style.width = '0';
-      pageChatInput.style.padding = '0';
-      pageChatInput.style.opacity = '0';
-      pageChatInput.style.pointerEvents = focused ? 'auto' : 'none';
-      if (pageChatHint) pageChatHint.style.visibility = '';
-    }
+    pageChatInput.style.width = '0';
+    pageChatInput.style.padding = '0';
+    pageChatInput.style.opacity = '0';
+    pageChatInput.style.pointerEvents = 'none';
   }
 
   function focusSteerChat(reason) {
@@ -7723,6 +7756,7 @@ void main() {
     try { window.focus(); } catch { /* embed may block */ }
     try { pageChatInput.focus({ preventScroll: true }); } catch { pageChatInput.focus(); }
     syncPageChatFocusRing();
+    syncPageChatChrome();
     steerFocusLog('focusSteerChat result', {
       reason,
       before: steerFocusTargetLabel(before),
@@ -7769,6 +7803,7 @@ void main() {
     pageChatEl.dataset.expanded = 'true';
     pageChatEl.style.width = PAGE_CHAT_EXPANDED_W;
     pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
     if (pageChatHint) {
       pageChatHint.style.display = 'none';
       pageChatHint.style.opacity = '0';
@@ -7777,6 +7812,20 @@ void main() {
     pageChatInput.style.padding = '0 6px';
     pageChatInput.style.opacity = steerLocked ? '0.72' : '1';
     pageChatInput.style.pointerEvents = steerLocked ? 'none' : 'auto';
+    return true;
+  }
+
+  function armPageChatForTyping(opts = {}) {
+    if (!pageChatEl || !pageChatInput || steerLocked) return false;
+    const expand = opts.expand !== false;
+    const focus = opts.focus !== false;
+    if (expand && !pageChatExpanded) {
+      preparePageChatInputForTyping();
+      syncPageChatChrome();
+    }
+    if (focus) return focusPageChatInput('arm-page-chat');
+    syncPageChatFocusRing();
+    syncPageChatChrome();
     return true;
   }
 
@@ -8180,12 +8229,12 @@ void main() {
       height: '28px', margin: '0 4px 0 ' + (GLOBAL_BAR_SECTION_GAP - GLOBAL_BAR_INNER_GAP) + 'px',
       borderRadius: '7px',
       background: P.chatSurface,
-      border: '1px solid ' + P.hairline,
+      border: '1px solid transparent',
       overflow: 'hidden',
       cursor: 'pointer',
       flexShrink: '0',
       width: PAGE_CHAT_COLLAPSED_W,
-      transition: 'border-color 0.15s ease',
+      transition: 'width 0.18s ease, border-color 0.15s ease',
     });
     pageChatEl.id = PREFIX + '-page-chat';
     pageChatEl.dataset.expanded = 'false';
@@ -8211,13 +8260,14 @@ void main() {
     pageChatInput = document.createElement('input');
     pageChatInput.id = PREFIX + '-page-chat-input';
     pageChatInput.type = 'text';
-    pageChatInput.placeholder = 'Steer the page…';
+    pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_COLLAPSED;
     pageChatInput.setAttribute('aria-label', 'Steer the page');
     Object.assign(pageChatInput.style, {
       flex: '1', minWidth: '0', width: '0',
       padding: '0', border: 'none', background: 'transparent',
       fontFamily: FONT, fontSize: '11.5px', color: P.text,
       outline: 'none', opacity: '0', pointerEvents: 'none',
+      caretColor: P.accent,
       transition: 'opacity 0.15s ease',
     });
 
@@ -8252,18 +8302,23 @@ void main() {
         '#' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: impeccable-voice-pulse 1.1s ease-in-out infinite; }' +
         '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
         '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
+        '#' + PREFIX + '-page-chat-input { caret-color: oklch(84% 0.19 80.46); }' +
+        '#' + PREFIX + '-page-chat[data-input-focused="true"]:not([data-expanded="true"]) #' + PREFIX + '-page-chat-input::placeholder { color: oklch(72% 0.024 82); }' +
         '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       uiAppendStyle(s);
     }
 
-    pageChatEl.addEventListener('pointerdown', keepSteerPointerInside);
+    pageChatEl.addEventListener('pointerdown', (e) => {
+      keepSteerPointerInside(e);
+      if (steerLocked || pageChatVoiceBtn.contains(e.target)) return;
+      armPageChatForTyping({ expand: true, focus: false });
+    });
     pageChatEl.addEventListener('mousedown', keepSteerPointerInside);
     pageChatEl.addEventListener('click', (e) => {
       keepSteerPointerInside(e);
       if (steerLocked) return;
       if (pageChatVoiceBtn.contains(e.target)) return;
-      expandPageChat({ focus: false });
-      focusPageChatInput('page-chat-click');
+      armPageChatForTyping({ expand: true, focus: true });
     });
 
     pageChatVoiceBtn.addEventListener('pointerdown', keepSteerPointerInside);
@@ -8286,7 +8341,9 @@ void main() {
     });
 
     pageChatInput.addEventListener('focus', () => {
+      steerInputWasFocused = true;
       syncPageChatFocusRing();
+      syncPageChatChrome();
     });
 
     pageChatInput.addEventListener('blur', () => {
@@ -8953,10 +9010,11 @@ void main() {
         cancelInsertConfigure();
         return;
       }
+      teardownConfigureChrome();
       hideHighlight();
-      hideBar();
       hideActionPicker();
       selectedElement = null;
+      hoveredElement = null;
       configureKind = 'replace';
       if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
     } else {

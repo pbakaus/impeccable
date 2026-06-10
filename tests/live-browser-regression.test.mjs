@@ -305,6 +305,21 @@ describe('live-browser.js regression guards', () => {
       /steer-blur-recover/,
       'steer blur should recover focus for type-to-steer when not selecting page text',
     );
+    assert.match(
+      SOURCE,
+      /function syncPageChatFocusRing\(\)[\s\S]{0,900}?typingReady[\s\S]{0,500}?pageChatInput\.style\.opacity = '1'/,
+      'collapsed steer focus must reveal the real input and caret instead of a patina truncated label',
+    );
+    assert.match(
+      SOURCE,
+      /armPageChatForTyping\([\s\S]{0,120}?expand: true/,
+      'steer pill pointerdown must expand before click so focus never flashes a dead collapsed state',
+    );
+    assert.match(
+      SOURCE,
+      /function syncPageChatChrome\(\)[\s\S]{0,400}?pageChatEl\.style\.borderColor = 'transparent'/,
+      'steer pill must stay borderless; surface contrast carries the affordance',
+    );
   });
 
   it('configure input Escape tears down annotation overlay before returning to picking', () => {
