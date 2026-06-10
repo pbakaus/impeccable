@@ -84,6 +84,10 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       'expected low-contrast finding for gray text on the APCA-worst gradient stop',
     );
     assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /#f6c193/i.test(r.snippet || '') && /#ec8227/i.test(r.snippet || '')),
+      'expected translucent text on a local gradient to be composited before APCA',
+    );
+    assert.ok(
       f.some(r => r.antipattern === 'low-contrast' && /#aaaaaa/i.test(r.snippet || '') && /#ffffff/i.test(r.snippet || '')),
       'expected short muted body copy on white to use the APCA body-copy target',
     );

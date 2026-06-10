@@ -84,7 +84,7 @@ function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount
 }
 
 function checkColors(opts) {
-  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, fontSize, fontWeight, hasDirectText, directText, isEmojiOnly, bgClip, bgImage, classList } = opts;
+  const { tag, textColor, bgColor, effectiveBg, effectiveBgStops, effectiveBgSourceTag, fontSize, fontWeight, hasDirectText, directText, isEmojiOnly, bgClip, bgImage, classList } = opts;
   if (SAFE_TAGS.has(tag)) {
     // Exception for <a> and <button> elements styled as buttons. SAFE_TAGS
     // exists to suppress contrast noise on inline links and unstyled controls,
@@ -130,17 +130,11 @@ function checkColors(opts) {
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const wcagThreshold = isLargeText ? 3.0 : 4.5;
       if (Math.abs(lc ?? 0) < threshold) {
-        // Skip the false-positive class where text has alpha < 1 AND we
-        // couldn't find an opaque ancestor (effectiveBg is null, we're
-        // comparing against gradient-stop fallback). In jsdom mode the
-        // detector can't resolve `var(--X)` color tokens, so a dark
-        // section sitting between the text and the body's decorative
-        // gradient is invisible to us — we end up measuring contrast
-        // against the body's paper-grain noise instead of the real
-        // local bg. Real low-contrast bugs use alpha=1 and have a
-        // resolvable opaque ancestor; semi-transparent Tailwind tokens
-        // like `text-paper/60` on `bg-ink` sections are the FP pattern.
-        const isAlphaFallbackFP = !DETECTOR_IS_BROWSER && !effectiveBg && (textColor.a != null && textColor.a < 1);
+        // Skip the false-positive class where alpha text falls through to a
+        // page-level decorative gradient fallback. Local gradient backgrounds
+        // still get checked because the stops are the real visible surface.
+        const isPageGradientFallback = effectiveBgSourceTag === 'body' || effectiveBgSourceTag === 'html';
+        const isAlphaFallbackFP = !DETECTOR_IS_BROWSER && !effectiveBg && isPageGradientFallback && (textColor.a != null && textColor.a < 1);
         if (!isAlphaFallbackFP) {
           findings.push({ id: 'low-contrast', snippet: `APCA readability Lc ${Math.round(lc ?? 0)} (target ${threshold}; WCAG ${ratio.toFixed(1)}:1/${wcagThreshold}:1) — text ${colorToHex(foreground)} on ${colorToHex(bg)}` });
         }
@@ -730,7 +724,7 @@ function resolveGradientStops(el, win) {
     const bgImage = style.backgroundImage || '';
     if (bgImage && bgImage !== 'none' && /gradient/i.test(bgImage)) {
       const stops = parseGradientColors(bgImage);
-      if (stops.length > 0) return stops;
+      if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '' };
     }
     if (!DETECTOR_IS_BROWSER) {
       // jsdom doesn't decompose `background:` shorthand — peek at the raw inline style
@@ -738,7 +732,7 @@ function resolveGradientStops(el, win) {
       const bgMatch = rawStyle.match(/background(?:-image)?\s*:\s*([^;]+)/i);
       if (bgMatch && /gradient/i.test(bgMatch[1])) {
         const stops = parseGradientColors(bgMatch[1]);
-        if (stops.length > 0) return stops;
+        if (stops.length > 0) return { stops, sourceTag: current.tagName?.toLowerCase() || '' };
       }
     }
     current = current.parentElement;
@@ -805,12 +799,14 @@ function checkElementColorsDOM(el) {
   const directText = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
   const hasDirectText = directText.trim().length > 0;
   const effectiveBg = resolveBackground(el);
+  const effectiveBgGradient = effectiveBg ? null : resolveGradientStops(el);
   return checkColors({
     tag,
     textColor: parseRgb(style.color),
     bgColor: readOwnBackgroundColor(el, style),
     effectiveBg,
-    effectiveBgStops: effectiveBg ? null : resolveGradientStops(el),
+    effectiveBgStops: effectiveBgGradient?.stops || null,
+    effectiveBgSourceTag: effectiveBgGradient?.sourceTag || '',
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
@@ -1665,6 +1661,7 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
   const hasDirectText = directText.trim().length > 0;
 
   const effectiveBg = resolveBackground(el, window, customPropMap);
+  const effectiveBgGradient = effectiveBg ? null : resolveGradientStops(el, window);
   // jsdom returns literal "var(--X)" / "oklch(...)" for color, so plain
   // parseRgb misses Tailwind-tokenized text colors. Resolve through the
   // customPropMap first; fall back to parseRgb for vanilla rgb() pages.
@@ -1703,7 +1700,8 @@ function checkElementColors(el, style, tag, window, customPropMap, hasAnchorInhe
     textColor,
     bgColor: readOwnBackgroundColor(el, style),
     effectiveBg,
-    effectiveBgStops: effectiveBg ? null : resolveGradientStops(el, window),
+    effectiveBgStops: effectiveBgGradient?.stops || null,
+    effectiveBgSourceTag: effectiveBgGradient?.sourceTag || '',
     fontSize: parseFloat(style.fontSize) || 16,
     fontWeight: parseInt(style.fontWeight) || 400,
     hasDirectText,
