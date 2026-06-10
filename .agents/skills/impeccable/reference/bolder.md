@@ -93,7 +93,7 @@ Systematically increase impact across these dimensions:
 - Add effects randomly without purpose (chaos ≠ bold)
 - Sacrifice readability for aesthetics (body text must be readable)
 - Make everything bold (then nothing is bold; you need contrast)
-- Ignore accessibility (bold design must still meet WCAG standards)
+- Ignore accessibility (bold design must still meet the stored contrast target)
 - Overwhelm with motion (animation fatigue is real)
 - Copy trendy aesthetics blindly (bold means distinctive, not derivative)
 

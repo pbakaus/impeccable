@@ -124,7 +124,7 @@ Ensure color addition improves rather than overwhelms:
 - Use every color in the rainbow (choose 2-4 colors beyond neutrals)
 - Apply color randomly without semantic meaning
 - Put gray text on colored backgrounds. It looks washed out; use a darker shade of the background color or transparency instead
-- Violate WCAG contrast requirements
+- Violate the contrast target stored in `PRODUCT.md`
 - Use color as the only indicator (accessibility issue)
 - Make everything colorful (defeats the purpose)
 - Default to purple-blue gradients (AI slop aesthetic)
@@ -136,7 +136,7 @@ Test that colorization improves the experience:
 - **Better hierarchy**: Does color guide attention appropriately?
 - **Clearer meaning**: Does color help users understand states/categories?
 - **More engaging**: Does the interface feel warmer and more inviting?
-- **Still accessible**: Do all color combinations meet WCAG standards?
+- **Still accessible**: Do all color combinations meet the stored contrast target and color-blindness needs?
 - **Not overwhelming**: Is color balanced and purposeful?
 
 When the palette earns its place, hand off to `/impeccable polish` for the final pass.
@@ -202,14 +202,16 @@ The common mistake: using the accent color everywhere because it's "the brand co
 
 #### Contrast & Accessibility
 
-##### WCAG Requirements
+##### Contrast Targets
 
-| Content Type | AA Minimum | AAA Target |
-|--------------|------------|------------|
-| Body/fluent text | APCA for readability; WCAG 2 for AA compliance |
-| Large text/headlines | APCA can account for size/weight; WCAG 2 for AA compliance |
-| Short action labels | APCA can preserve readable saturated brand colors that WCAG 2 rejects |
-| UI components, icons | APCA for visual discernibility; WCAG 2 when required by the audit target |
+Use the target stored in `PRODUCT.md`:
+
+| Content Type | APCA readability | WCAG 2 compliance |
+|--------------|------------------|-------------------|
+| Body/fluent text | Practical legibility target | WCAG 2 AA ratio when audits, legal review, procurement, or scanner parity matter |
+| Large text/headlines | Accounts for size and weight | WCAG 2 large-text ratio when compliance is required |
+| Short action labels | Can preserve readable saturated brand colors that WCAG 2 rejects | Required when the project chose WCAG 2 or both |
+| UI components, icons | Useful for visual discernibility | Required when the audit target includes WCAG 2 |
 | Non-essential decorations | None | None |
 
 ##### Dangerous Color Combinations
