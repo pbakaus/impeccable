@@ -410,9 +410,9 @@ describe('detectUrl — browser-only fixtures', () => {
           scrollY: window.scrollY,
         };
       });
-      assert.equal(lazyResult.analyses, 6, `expected lazy visual resolution after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
-      assert.ok(lazyResult.overlays >= 6, `expected lazy visual overlay after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
-      assert.ok(lazyResult.labels >= 6, `expected lazy visual label after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.equal(lazyResult.analyses, 5, `expected lazy visual resolution after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.overlays >= 5, `expected lazy visual overlay after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.labels >= 5, `expected lazy visual label after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
       assert.equal(lazyResult.targetHasOverlay, true, `expected lazy visual target to get a regular overlay, got: ${JSON.stringify(lazyResult)}`);
       assert.ok(lazyResult.scrollY > 0, `test should have naturally scrolled to the offscreen case: ${JSON.stringify(lazyResult)}`);
 

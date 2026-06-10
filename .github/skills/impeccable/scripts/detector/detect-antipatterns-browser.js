@@ -729,7 +729,8 @@ function checkColors(opts) {
     // its own opaque background and direct text, it is a styled button — and
     // contrast on its own surface is a real, frequent bug worth flagging.
     const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
-    if (!isStyledButton) return [];
+    const isBodyCopy = hasDirectText && BODY_COPY_TAGS.has(tag);
+    if (!isStyledButton && !isBodyCopy) return [];
   }
   const findings = [];
 
