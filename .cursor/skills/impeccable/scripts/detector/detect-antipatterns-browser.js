@@ -704,6 +704,8 @@ function isStyledControl(tag, hasDirectText, bgColor) {
   return (tag === 'a' || tag === 'button') && hasDirectText && bgColor && bgColor.a > 0.5;
 }
 
+const BODY_COPY_TAGS = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption', 'dd', 'dt']);
+
 function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount, bgColor, isStyledButton }) {
   if (isStyledButton) return 45;
   if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
@@ -712,7 +714,7 @@ function apcaThresholdForText({ tag, fontSize, fontWeight, directText, wordCount
   const text = (directText || '').trim();
   const resolvedWordCount = Number.isFinite(wordCount) ? wordCount : (text ? text.split(/\s+/).length : 0);
   const bgLum = bgColor ? relativeLuminance(bgColor) : 1;
-  if (bgLum < 0.02 || resolvedWordCount >= 12) return 60;
+  if (bgLum < 0.02 || BODY_COPY_TAGS.has(tag) || resolvedWordCount >= 12) return 60;
 
   return 45;
 }

@@ -84,6 +84,10 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       'expected low-contrast finding for gray text on the failing black gradient stop',
     );
     assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /#aaaaaa/i.test(r.snippet || '') && /#ffffff/i.test(r.snippet || '')),
+      'expected short muted body copy on white to use the APCA body-copy target',
+    );
+    assert.ok(
       f.some(r => r.antipattern === 'gray-on-color' && /gradient/i.test(r.snippet || '')),
       'expected gray-on-color finding referencing gradient',
     );

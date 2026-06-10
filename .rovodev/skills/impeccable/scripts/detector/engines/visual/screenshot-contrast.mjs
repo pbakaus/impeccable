@@ -101,6 +101,7 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
       const tag = candidate.tagName || '';
       const fontSize = candidate.fontSize || 16;
       const fontWeight = candidate.fontWeight || 400;
+      const bodyCopyTags = new Set(['p', 'li', 'blockquote', 'figcaption', 'caption', 'dd', 'dt']);
       if (['h1', 'h2', 'h3'].includes(tag) && (fontSize >= 24 || fontWeight >= 700)) return 45;
       if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) return 60;
 
@@ -108,7 +109,7 @@ async function compareScreenshotContrast(page, beforeBase64, afterBase64, candid
       const wordCount = Number.isFinite(candidate.wordCount)
         ? candidate.wordCount
         : (text ? text.split(/\s+/).length : 0);
-      if (luminance(bgColor) < 0.02 || wordCount >= 12) return 60;
+      if (luminance(bgColor) < 0.02 || bodyCopyTags.has(tag) || wordCount >= 12) return 60;
       return 45;
     };
 

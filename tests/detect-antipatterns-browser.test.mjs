@@ -202,8 +202,8 @@ describe('detectUrl — browser-only fixtures', () => {
     );
     assert.equal(
       visualFindings.length,
-      5,
-      `expected 5 visual contrast findings, got ${visualFindings.length}: ${JSON.stringify(visualFindings.map(r => r.snippet))}`,
+      6,
+      `expected 6 visual contrast findings, got ${visualFindings.length}: ${JSON.stringify(visualFindings.map(r => r.snippet))}`,
     );
     assert.ok(
       f.some(r =>
@@ -229,6 +229,10 @@ describe('detectUrl — browser-only fixtures', () => {
       f.some(r => r.antipattern === 'low-contrast' && /Consolidated workforce availability/i.test(r.snippet || '')),
       'expected long fluent text to use the stricter APCA target before snippet truncation',
     );
+    assert.ok(
+      f.some(r => r.antipattern === 'low-contrast' && /Uplinked orange image/i.test(r.snippet || '')),
+      'expected white body text on Uplinked orange imagery to use the stricter APCA body-copy target',
+    );
     assert.equal(
       f.some(r => r.antipattern === 'low-contrast' && /White text on dark image/i.test(r.snippet || '')),
       false,
@@ -241,8 +245,8 @@ describe('detectUrl — browser-only fixtures', () => {
     );
     assert.equal(
       f.some(r => r.antipattern === 'low-contrast' && /Uplinked orange image/i.test(r.snippet || '')),
-      false,
-      'white text on Uplinked orange image should pass APCA sampling',
+      true,
+      'white body text on Uplinked orange image should fail APCA body-copy sampling',
     );
     assert.equal(
       f.some(r => r.antipattern === 'low-contrast' && /Should (?:flag|pass) after pixel sampling/i.test(r.snippet || '')),
@@ -278,15 +282,15 @@ describe('detectUrl — browser-only fixtures', () => {
       });
       assert.equal(result.before, 0);
       assert.equal(result.after, 0);
-      assert.equal(result.failed.length, 6, `expected 6 browser visual failures, got: ${JSON.stringify(result)}`);
+      assert.equal(result.failed.length, 7, `expected 7 browser visual failures, got: ${JSON.stringify(result)}`);
       assert.ok(result.failed.some(snippet => /White text on light image/i.test(snippet)));
       assert.ok(result.failed.some(snippet => /Dark text on dark image/i.test(snippet)));
       assert.ok(result.failed.some(snippet => /Consolidated workforce availability/i.test(snippet)));
       assert.ok(result.failed.some(snippet => /Gray text on APCA gradient/i.test(snippet)));
+      assert.ok(result.failed.some(snippet => /Uplinked orange image/i.test(snippet)));
       assert.ok(result.failed.every(snippet => /browser APCA contrast/i.test(snippet)));
       assert.ok(result.passed.some(text => /White text on dark image/i.test(text)));
       assert.ok(result.passed.some(text => /Dark text on light image/i.test(text)));
-      assert.ok(result.passed.some(text => /Uplinked orange image/i.test(text)));
     } finally {
       await browser.close().catch(() => {});
     }
@@ -406,9 +410,9 @@ describe('detectUrl — browser-only fixtures', () => {
           scrollY: window.scrollY,
         };
       });
-      assert.equal(lazyResult.analyses, 5, `expected lazy visual resolution after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
-      assert.ok(lazyResult.overlays >= 5, `expected lazy visual overlay after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
-      assert.ok(lazyResult.labels >= 5, `expected lazy visual label after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.equal(lazyResult.analyses, 6, `expected lazy visual resolution after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.overlays >= 6, `expected lazy visual overlay after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
+      assert.ok(lazyResult.labels >= 6, `expected lazy visual label after scrolling into view, got: ${JSON.stringify(lazyResult)}`);
       assert.equal(lazyResult.targetHasOverlay, true, `expected lazy visual target to get a regular overlay, got: ${JSON.stringify(lazyResult)}`);
       assert.ok(lazyResult.scrollY > 0, `test should have naturally scrolled to the offscreen case: ${JSON.stringify(lazyResult)}`);
 
@@ -460,10 +464,10 @@ describe('detectUrl — browser-only fixtures', () => {
       });
       const offscreenVisualGroups = offscreenResult.groups.filter(group =>
         group.types.includes('low-contrast') &&
-        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text|Consolidated workforce availability|Gray text on APCA gradient)/i.test(group.text)
+        /(?:White text on light image|Dark text on dark image|Translucent white text|Muted gray text|Consolidated workforce availability|Gray text on APCA gradient|Uplinked orange image)/i.test(group.text)
       );
-      assert.equal(offscreenResult.analyses, 6, `expected 6 opt-in visual failures, got: ${JSON.stringify(offscreenResult)}`);
-      assert.equal(offscreenVisualGroups.length, 6, `expected 6 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenResult.analyses, 7, `expected 7 opt-in visual failures, got: ${JSON.stringify(offscreenResult)}`);
+      assert.equal(offscreenVisualGroups.length, 7, `expected 7 opt-in visual groups, got: ${JSON.stringify(offscreenResult)}`);
       assert.ok(offscreenResult.maxScrollY > 0, `offscreen opt-in should be allowed to scroll: ${JSON.stringify(offscreenResult)}`);
       assert.equal(offscreenResult.finalScrollY, 0, `offscreen opt-in should restore scroll: ${JSON.stringify(offscreenResult)}`);
     } finally {
