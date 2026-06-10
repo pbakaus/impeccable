@@ -1270,6 +1270,15 @@
     return pill;
   }
 
+  const VARIANT_COUNT_MIN = 1;
+  const VARIANT_COUNT_MAX = 4;
+
+  function cycleSelectedCount() {
+    if (selectedCount >= VARIANT_COUNT_MAX) selectedCount = VARIANT_COUNT_MIN;
+    else selectedCount += 1;
+    return selectedCount;
+  }
+
   function buildConfigureCountPill({ controlsLocked, onClick }) {
     const count = el('button', configureModifierPillStyle({
       fontFamily: MONO, fontWeight: '600', letterSpacing: '-0.02em',
@@ -2058,8 +2067,7 @@
       onClick: (e) => {
         e.stopPropagation();
         if (controlsLocked) { showManualApplyBusyToast(); return; }
-        selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
-        count.textContent = '\u00D7' + selectedCount;
+        count.textContent = '\u00D7' + cycleSelectedCount();
       },
     });
 
@@ -2155,8 +2163,7 @@
       onClick: (e) => {
         e.stopPropagation();
         if (controlsLocked) { showManualApplyBusyToast(); return; }
-        selectedCount = selectedCount >= 4 ? 2 : selectedCount + 1;
-        count.textContent = '\u00D7' + selectedCount;
+        count.textContent = '\u00D7' + cycleSelectedCount();
       },
     });
 

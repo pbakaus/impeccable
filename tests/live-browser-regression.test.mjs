@@ -541,6 +541,19 @@ describe('live-browser.js regression guards', () => {
     assert.match(SOURCE, /buildConfigureActionCluster\(voiceBtn, go\)/, 'voice and submit share an action cluster');
   });
 
+  it('variant count pill cycles through x1', () => {
+    assert.match(
+      SOURCE,
+      /function cycleSelectedCount\(\)[\s\S]{0,200}?selectedCount = VARIANT_COUNT_MIN/,
+      'variant count must wrap back to x1 after the max',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /selectedCount >= 4 \? 2/,
+      'variant count must not skip x1 by wrapping 4 back to 2',
+    );
+  });
+
   it('variant injection resolves the picked anchor before entering recovery', () => {
     assert.match(
       SOURCE,
