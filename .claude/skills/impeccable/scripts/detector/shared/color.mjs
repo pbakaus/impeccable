@@ -71,6 +71,24 @@ function contrastRatio(c1, c2) {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
+function clampByte(value) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function blendRgba(fg, bg) {
+  if (!fg) return bg || null;
+  if (!bg || fg.a == null || fg.a >= 0.999) {
+    return { r: clampByte(fg.r), g: clampByte(fg.g), b: clampByte(fg.b), a: fg.a == null ? 1 : fg.a };
+  }
+  const alpha = Math.max(0, Math.min(1, fg.a));
+  return {
+    r: clampByte(fg.r * alpha + bg.r * (1 - alpha)),
+    g: clampByte(fg.g * alpha + bg.g * (1 - alpha)),
+    b: clampByte(fg.b * alpha + bg.b * (1 - alpha)),
+    a: 1,
+  };
+}
+
 // APCA 0.0.98G constants, matching apca-w3 0.1.9's main contrast path.
 const APCA = {
   mainTRC: 2.4,
@@ -167,6 +185,7 @@ export {
   parseRgb,
   relativeLuminance,
   contrastRatio,
+  blendRgba,
   apcaContrast,
   parseGradientColors,
   hasChroma,

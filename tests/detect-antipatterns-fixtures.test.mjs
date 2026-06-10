@@ -124,6 +124,12 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       /#374151/i.test(r.snippet || '')
     );
     assert.ok(styledButtonFlag, 'expected low-contrast finding for styled <button>');
+    const translucentButtonFlag = f.some(r =>
+      r.antipattern === 'low-contrast' &&
+      /#f6c193/i.test(r.snippet || '') &&
+      /#ec8227/i.test(r.snippet || '')
+    );
+    assert.ok(translucentButtonFlag, 'expected low-contrast finding for translucent text composited over orange');
   });
 
   it('color: inline <a> without own background remains skipped (no regression)', async () => {

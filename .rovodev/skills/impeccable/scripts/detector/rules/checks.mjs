@@ -10,6 +10,7 @@ import {
 } from '../shared/constants.mjs';
 import {
   apcaContrast,
+  blendRgba,
   colorToHex,
   contrastRatio,
   getHue,
@@ -110,10 +111,11 @@ function checkColors(opts) {
       // Low contrast uses APCA as the detector's readability signal while
       // reporting WCAG 2 context for teams that still need AA parity.
       const contrasts = bgs.map(b => {
-        const lc = apcaContrast(textColor, b);
+        const foreground = blendRgba(textColor, b);
+        const lc = apcaContrast(foreground, b);
         const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
         const threshold = apcaThresholdForText({ tag, fontSize, fontWeight, directText, bgColor: b, isStyledButton });
-        return { bg: b, lc, threshold, ratio: contrastRatio(textColor, b) };
+        return { bg: b, foreground, lc, threshold, ratio: contrastRatio(foreground, b) };
       });
       let worstIdx = 0;
       for (let i = 1; i < contrasts.length; i++) {
@@ -121,7 +123,7 @@ function checkColors(opts) {
         const worstMargin = Math.abs(contrasts[worstIdx].lc ?? 0) - contrasts[worstIdx].threshold;
         if (margin < worstMargin) worstIdx = i;
       }
-      const { bg, lc, threshold, ratio } = contrasts[worstIdx];
+      const { bg, foreground, lc, threshold, ratio } = contrasts[worstIdx];
       const isLargeText = fontSize >= WCAG_LARGE_TEXT_PX || (fontSize >= WCAG_LARGE_BOLD_TEXT_PX && fontWeight >= 700);
       const wcagThreshold = isLargeText ? 3.0 : 4.5;
       if (Math.abs(lc ?? 0) < threshold) {
@@ -137,7 +139,7 @@ function checkColors(opts) {
         // like `text-paper/60` on `bg-ink` sections are the FP pattern.
         const isAlphaFallbackFP = !DETECTOR_IS_BROWSER && !effectiveBg && (textColor.a != null && textColor.a < 1);
         if (!isAlphaFallbackFP) {
-          findings.push({ id: 'low-contrast', snippet: `APCA readability Lc ${Math.round(lc ?? 0)} (target ${threshold}; WCAG ${ratio.toFixed(1)}:1/${wcagThreshold}:1) — text ${colorToHex(textColor)} on ${colorToHex(bg)}` });
+          findings.push({ id: 'low-contrast', snippet: `APCA readability Lc ${Math.round(lc ?? 0)} (target ${threshold}; WCAG ${ratio.toFixed(1)}:1/${wcagThreshold}:1) — text ${colorToHex(foreground)} on ${colorToHex(bg)}` });
         }
       }
     }
