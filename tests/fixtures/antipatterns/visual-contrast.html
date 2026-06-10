@@ -54,7 +54,8 @@
       background-position: center;
     }
 
-    .image-card p {
+    .image-card p,
+    .image-card li {
       position: relative;
       z-index: 1;
       max-width: 28ch;
@@ -147,6 +148,12 @@
 
       <article class="image-card orange-image">
         <p style="color: rgb(255, 255, 255);">White body text on Uplinked orange image should fail APCA body-copy sampling.</p>
+      </article>
+
+      <article class="image-card pale-pattern">
+        <ul style="margin: 0; padding-left: 1.2rem; color: rgb(255, 255, 255);">
+          <li>White list copy on a pale image should use APCA visual sampling.</li>
+        </ul>
       </article>
     </section>
 

@@ -3652,7 +3652,8 @@ if (IS_BROWSER) {
 
       const bgColor = readOwnBackgroundColor(el, style);
       const isStyledButton = isStyledControl(tag, hasDirectText, bgColor);
-      if (SAFE_TAGS.has(tag) && !isStyledButton) continue;
+      const isBodyCopy = hasDirectText && BODY_COPY_TAGS.has(tag);
+      if (SAFE_TAGS.has(tag) && !isStyledButton && !isBodyCopy) continue;
 
       const rect = getDirectTextRect(el) || el.getBoundingClientRect();
       if (!rect || rect.width < 4 || rect.height < 4) continue;
