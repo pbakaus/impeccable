@@ -316,8 +316,8 @@ function migrateUnprefixImpeccable(root) {
     let entries;
     try { entries = readdirSync(skillsDir); } catch { continue; }
     for (const name of entries) {
-      // A prefixed impeccable skill is `<prefix>impeccable` -- not the canonical
-      // `impeccable`, and not the legacy `teach-impeccable` (cleanup handles that).
+      // A prefixed impeccable skill is `<prefix>impeccable`, not the canonical
+      // `impeccable` and not an unrelated legacy skill name.
       if (name === 'impeccable' || name === 'teach-impeccable') continue;
       if (!name.endsWith('-impeccable')) continue;
       if (!isRealSkillDir(skillsDir, name)) continue;
@@ -609,18 +609,6 @@ async function install(flags) {
   }
   console.log(`Installed impeccable into: ${targets.join(', ')}`);
 
-  // Clean up deprecated skills from previous versions
-  try {
-    const { cleanup } = await import('../../../skill/scripts/cleanup-deprecated.mjs');
-    const result = cleanup(root);
-    const total = result.deletedPaths.length + result.removedLockEntries.length;
-    if (total > 0) {
-      console.log(`Cleaned up ${total} deprecated skill(s) from previous versions.`);
-    }
-  } catch {
-    // Cleanup script not available -- skip
-  }
-
   console.log('\nDone! Run /impeccable init in your AI harness to set up design context.\n');
 }
 
@@ -705,19 +693,6 @@ function downloadFile(url, dest) {
 async function update(flags = []) {
   const yes = flags.includes('-y') || flags.includes('--yes');
 
-  // Clean up deprecated skills from previous versions.
-  try {
-    const { cleanup } = await import('../../../skill/scripts/cleanup-deprecated.mjs');
-    const root = findProjectRoot();
-    const result = cleanup(root);
-    const total = result.deletedPaths.length + result.removedLockEntries.length;
-    if (total > 0) {
-      console.log(`Cleaned up ${total} deprecated skill(s) from previous versions.\n`);
-    }
-  } catch {
-    // Cleanup script not available (e.g. running from npm package) -- skip
-  }
-
   // Download the latest skills directly from impeccable.style.
   // We skip `npx skills update` because it has a known upstream bug
   // (vercel-labs/skills#775) where it can't find the lock file.
@@ -796,14 +771,6 @@ async function update(flags = []) {
     }
 
     rmSync(tmpDir, { recursive: true, force: true });
-
-    // Run cleanup to remove deprecated stubs from the fresh download
-    try {
-      const { cleanup: postCleanup } = await import('../../../skill/scripts/cleanup-deprecated.mjs');
-      postCleanup(root);
-    } catch {
-      // Not available -- skip
-    }
 
     const v = getSkillsVersion(root);
     console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);

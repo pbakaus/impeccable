@@ -12,11 +12,13 @@ describe('live browser script parts', () => {
   it('resolves the canonical browser script order', () => {
     const parts = resolveLiveBrowserScriptParts('/repo/skill/scripts');
 
-    assert.deepEqual(parts.map((part) => part.name), ['session-state', 'browser-ui']);
+    assert.deepEqual(parts.map((part) => part.name), ['session-state', 'dom-helpers', 'browser-ui']);
     assert.equal(parts[0].file, 'live-browser-session.js');
-    assert.equal(parts[1].file, 'live-browser.js');
+    assert.equal(parts[1].file, 'live-browser-dom.js');
+    assert.equal(parts[2].file, 'live-browser.js');
     assert.equal(parts[0].path, path.join('/repo/skill/scripts', 'live-browser-session.js'));
-    assert.equal(parts[1].path, path.join('/repo/skill/scripts', 'live-browser.js'));
+    assert.equal(parts[1].path, path.join('/repo/skill/scripts', 'live-browser-dom.js'));
+    assert.equal(parts[2].path, path.join('/repo/skill/scripts', 'live-browser.js'));
   });
 
   it('asserts missing script parts by name', () => {
@@ -34,6 +36,7 @@ describe('live browser script parts', () => {
 
     assert.deepEqual(loaded.map((part) => part.source), [
       'source:live-browser-session.js',
+      'source:live-browser-dom.js',
       'source:live-browser.js',
     ]);
   });
@@ -45,6 +48,7 @@ describe('live browser script parts', () => {
       vocabulary: [{ value: 'shape', label: 'Shape' }],
       parts: [
         { name: 'session-state', file: 'live-browser-session.js', source: 'window.__SESSION_PART__ = true;' },
+        { name: 'dom-helpers', file: 'live-browser-dom.js', source: 'window.__DOM_PART__ = true;' },
         { name: 'browser-ui', file: 'live-browser.js', source: 'window.__BROWSER_PART__ = true;' },
       ],
     });
@@ -53,14 +57,17 @@ describe('live browser script parts', () => {
     const portIndex = script.indexOf('window.__IMPECCABLE_PORT__');
     const vocabIndex = script.indexOf('window.__IMPECCABLE_VOCAB__');
     const sessionIndex = script.indexOf('window.__SESSION_PART__');
+    const domIndex = script.indexOf('window.__DOM_PART__');
     const browserIndex = script.indexOf('window.__BROWSER_PART__');
 
     assert.ok(tokenIndex !== -1);
     assert.ok(tokenIndex < portIndex);
     assert.ok(portIndex < vocabIndex);
     assert.ok(vocabIndex < sessionIndex);
-    assert.ok(sessionIndex < browserIndex);
+    assert.ok(sessionIndex < domIndex);
+    assert.ok(domIndex < browserIndex);
     assert.match(script, /impeccable live script part: session-state \(live-browser-session\.js\)/);
+    assert.match(script, /impeccable live script part: dom-helpers \(live-browser-dom\.js\)/);
     assert.match(script, /impeccable live script part: browser-ui \(live-browser\.js\)/);
   });
 });

@@ -33,16 +33,12 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 #### Typography
 
 - Cap body line length at 65–75ch.
-- Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales.
-- Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces.
 - Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights.
-- No all-caps body copy. Sentences in ALL CAPS are unreadable at body sizes.
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing.
 - Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed".
 - Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans.
 
-Two hard typographic ceilings you currently miss:
-- Hero clamp() max ≤ 6rem. 8–11rem (128–176px) reads as comically loud, not bold.
+One hard typographic ceiling you currently miss:
 - Display letter-spacing ≥ -0.04em. Your default of -0.05 to -0.085em on display H1s makes the letters touch and reads as cramped. -0.02 to -0.03em is plenty for tight grotesque display; -0.04em is the floor.
 
 #### Layout
@@ -66,15 +62,6 @@ Two hard typographic ceilings you currently miss:
 #### Interaction
 
 - Dropdowns rendered with `position: absolute` inside an `overflow: hidden` or `overflow: auto` container will be clipped. Use the native `<dialog>` / popover API, `position: fixed`, or a portal to escape the stacking context.
-
-### Copy
-
-- Every word earns its place. No restated headings, no intros that repeat the title.
-- **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
-- **No aphoristic-cadence body copy as a default voice.** If multiple section copy blocks share a single repeating sentence rhythm, especially a contrarian-sounding closer, rewrite. Specific, not aphoristic.
-- **No marketing buzzwords.** The streamline / empower / supercharge / leverage / unleash / transform / seamless / world-class / enterprise-grade / next-generation / cutting-edge / game-changer / mission-critical family of phrases. Pick a specific noun and a verb that describes what the product literally does.
-- Button labels: verb + object. "Save changes" beats "OK"; "Delete project" beats "Yes". The label should say what will happen.
-- Link text needs standalone meaning. "View pricing plans" beats "Click here"; screen readers announce links out of context.
 
 ### New projects only (when no prior work exists)
 

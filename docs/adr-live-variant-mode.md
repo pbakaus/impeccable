@@ -1,12 +1,12 @@
 # ADR: Live Variant Mode
 
-**Status:** Implemented (v3.1, feature branch `feature/single-skill-consolidation`)
+**Status:** Implemented
 **Date:** 2026-04-12
 **Author:** Paul Bakaus + Claude
 
 ## Context
 
-Impeccable is a design skill for AI coding agents. It teaches AI harnesses (Claude Code, Cursor, Gemini CLI, Codex, etc.) how to produce better frontend design. The skill has 22 commands (bolder, quieter, polish, typeset, etc.) that the agent runs on source code.
+Impeccable is a design skill for AI coding agents. It teaches AI harnesses (Claude Code, Cursor, Gemini CLI, Codex, etc.) how to produce better frontend design. The skill has 23 commands (bolder, quieter, polish, typeset, etc.) that the agent runs on source code.
 
 The missing piece: there was no way to visually iterate on a live page. The user could ask the agent to "make this bolder," but they had to read the code diff, reload the page, and decide if they liked it. If not, they'd ask again, wait, reload, repeat. Slow and disconnected.
 
@@ -258,12 +258,4 @@ Net effect: 4 tool calls (wrap + edit + read + reply) instead of 8+.
 
 - **Bun's static HTML import**: Bun's `import from "index.html"` caches at module load time. Source changes require a server restart to appear in the served HTML. The no-HMR fallback (fetch from `/source`) handles this, but it's less seamless than Vite/Next.js where HMR works natively.
 - **Single generation at a time**: only one generate/cycle session can be active. This is by design (the source file can only have one variant wrapper at a time).
-- **Inspection-only accept (v1)**: accepting a variant presents the code to the user and cleans up the scaffolding. Write-back (keeping the variant in place) is planned for v2.
 - **No cancel during generation**: once the agent starts generating, it finishes all variants before the user can interact again.
-
-## Future work
-
-- **Write-back on accept**: instead of restoring the original after accept, keep the accepted variant as the new source.
-- **Detect-to-fix flow**: clicking a detected anti-pattern pre-selects that element and pre-fills the action (e.g., "overused font" pre-fills "typeset").
-- **Background poll for Claude Code**: use `run_in_background: true` to keep the main conversation free during the poll loop.
-- **Streaming variants**: progressive reveal as the agent writes each variant (currently batched for speed).

@@ -189,8 +189,11 @@ impeccable/
         providers.js               # Provider config map
         index.js                   # Re-exports
   tests/                           # Bun test suite
-  HARNESSES.md                     # Provider capabilities reference
-  DEVELOP.md                       # This file
+  docs/
+    HARNESSES.md                   # Provider capabilities reference
+    STYLE.md                       # Editorial style guide
+    adr-live-variant-mode.md       # Live mode architecture decision record
+    DEVELOP.md                     # This file
   README.md                        # User documentation
 ```
 

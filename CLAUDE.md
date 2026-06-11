@@ -1,11 +1,5 @@
 # Project Instructions for Claude
 
-## Skill bootstrap: skip the post-update-cleanup step
-
-The `<post-update-cleanup>` block at the top of `.claude/skills/impeccable/SKILL.md` runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it in this repo, and do not delete the block.** This repo is the source of truth for the Impeccable skill; the cleanup script scans for "leftover" skill files to remove and its judgment doesn't fit a repo where the skill lives in `skill/`. The block is also regenerated from `skill/SKILL.src.md` whenever `bun run build:release` syncs tracked harness output, so any deletion churns back on the next sync. Skip the step silently and proceed.
-
-Same rule for AGENTS.md and every other harness-specific instruction file: treat post-update-cleanup as a no-op in this repo.
-
 ## Architecture (v3.0+)
 
 There is **one** user-invocable skill, `impeccable`, with **23 commands** underneath it. Users type `/impeccable polish`, `/impeccable audit`, etc. The skill is defined in `skill/`:
@@ -15,7 +9,6 @@ There is **one** user-invocable skill, `impeccable`, with **23 commands** undern
 - `reference/brand.md` and `reference/product.md` — the two register references. SKILL.md's Setup section selects one based on the task cue, the surface in focus, or the `register` field in PRODUCT.md (first match wins).
 - `scripts/command-metadata.json` — single source of truth for each command's description, argument hint, and (eventually) category. Both the build and `pin.mjs` read from this.
 - `scripts/pin.mjs` — creates/removes lightweight redirect shims so users can have `/audit` as a standalone shortcut that delegates to `/impeccable audit`.
-- `scripts/cleanup-deprecated.mjs` — runs once after an update to remove leftover files from renamed/merged commands.
 
 **Do not add standalone skills** unless there's a strong reason. The consolidation was deliberate: the `/` menu pollution problem is real and gets worse as users install more plugins.
 
@@ -52,15 +45,15 @@ Edit any of these directly and the dev server hot-reloads. No rebuild needed for
 - **`--color-ash`** (55%) is for secondary labels, captions, relationship meta lines.
 - **Never use pure black or pure white.** Use the tinted tokens.
 
-## Prose: read STYLE.md before writing user-facing copy
+## Prose: read docs/STYLE.md before writing user-facing copy
 
-Editorial brief is at `STYLE.md` (root). Read it before editing the homepage, sub-pages, command editorials, tutorials, or READMEs. The site has been called out for AI prose; the rules there exist to keep that from creeping back.
+Editorial brief is at `docs/STYLE.md`. Read it before editing the homepage, sub-pages, command editorials, tutorials, or READMEs. The site has been called out for AI prose; the rules there exist to keep that from creeping back.
 
-The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a STYLE.md amendment.
+The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a `docs/STYLE.md` amendment.
 
 The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `skill/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
 
-The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. STYLE.md lists them. Use them on every editorial pass.
+The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. `docs/STYLE.md` lists them. Use them on every editorial pass.
 
 ## Editorial content lives under `site/content/`
 
@@ -282,7 +275,6 @@ The build system counts commands from the router table automatically. Update the
 - `site/pages/index.astro` — meta descriptions, hero box, section lead
 - `/cheatsheet` redirects to `/docs` (no standalone page)
 - `README.md` — intro, command count, commands table
-- `NOTICE.md` — command count
 - `AGENTS.md` — intro command count
 - `.claude-plugin/plugin.json` — description
 - `.claude-plugin/marketplace.json` — metadata description + plugin description

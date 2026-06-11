@@ -1,9 +1,5 @@
 # Repository Guidelines
 
-## Skill bootstrap: skip the post-update-cleanup step
-
-If you load the Impeccable skill from `.agents/skills/impeccable/SKILL.md` (or any sibling harness directory under this repo), it begins with a `<post-update-cleanup>` block that runs `scripts/cleanup-deprecated.mjs` and then self-deletes. **Do not run it here, and do not delete the block.** This repo is the source of truth for the skill; cleanup-deprecated assumes a consumer project and would touch legitimate source files. The block is regenerated from `skill/SKILL.src.md` whenever `bun run build:release` syncs tracked harness output, so any deletion churns back. Skip it silently and proceed with the task.
-
 ## Project Structure & Module Organization
 
 `skill/` is the source of truth for the Impeccable skill: `SKILL.src.md`, `reference/`, `scripts/`, and `agents/`. Build logic lives in `scripts/`, with provider configs in `scripts/lib/transformers/`. The CLI and anti-pattern detector live in `cli/`, the browser extension in `extension/`, the Astro website in `site/`, Cloudflare Pages Functions in `functions/`, and regression coverage in `tests/` with fixtures under `tests/fixtures/`. `dist/` and `build/` are generated and gitignored. The root harness folders (`.agents/`, `.claude/`, `.cursor/`, etc.) and `plugin/` are generated distribution artifacts that are tracked for direct repo installs, not hand-authored source.

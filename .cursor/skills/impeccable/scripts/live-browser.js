@@ -195,93 +195,31 @@
   // Helpers
   //
 
-  function own(el) {
-    return el && (el.id?.startsWith(PREFIX) || el.closest?.('[id^="' + PREFIX + '"]'));
+  const domHelpers = window.__IMPECCABLE_LIVE_DOM__?.createLiveBrowserDomHelpers({
+    prefix: PREFIX,
+    skipTags: SKIP_TAGS,
+    document,
+  });
+  if (!domHelpers) {
+    console.error('[impeccable] live-browser-dom.js was not loaded. Live mode cannot start safely.');
+    window.__IMPECCABLE_LIVE_INIT__ = false;
+    return;
   }
-
-  function pickable(el) {
-    if (!el || el.nodeType !== 1) return false;
-    if (SKIP_TAGS.has(el.tagName.toLowerCase())) return false;
-    if (own(el)) return false;
-    const r = el.getBoundingClientRect();
-    return r.width >= 20 && r.height >= 20;
-  }
-
-  function desc(el) {
-    if (!el) return '';
-    let s = el.tagName.toLowerCase();
-    if (el.id) s += '#' + el.id;
-    else if (el.classList.length) s += '.' + [...el.classList].slice(0, 2).join('.');
-    return s;
-  }
-
-  function rectIsUsableAnchor(rect) {
-    return !!rect && rect.width > 0.5 && rect.height > 0.5;
-  }
-
-  function makeFrozenAnchor(el) {
-    if (!el || !el.getBoundingClientRect) return null;
-    const r = el.getBoundingClientRect();
-    if (!rectIsUsableAnchor(r)) return null;
-    const rect = {
-      x: r.x, y: r.y,
-      top: r.top, left: r.left,
-      right: r.right, bottom: r.bottom,
-      width: r.width, height: r.height,
-    };
-    return {
-      __impeccableFrozenAnchor: true,
-      tagName: el.tagName || 'DIV',
-      id: el.id || '',
-      classList: el.classList ? [...el.classList] : [],
-      hasAttribute: () => false,
-      getBoundingClientRect: () => rect,
-    };
-  }
-
-  function id8() { return crypto.randomUUID().replace(/-/g, '').slice(0, 8); }
-
-  function cssId(id) {
-    if (window.CSS?.escape) return CSS.escape(id);
-    return String(id).replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
-  }
-
-  function liveUiRoot() {
-    const root = window.__IMPECCABLE_LIVE_UI_ROOT__;
-    if (root && typeof root.appendChild === 'function') return root;
-    return document.body;
-  }
-
-  function uiAppend(el) {
-    liveUiRoot().appendChild(el);
-    return el;
-  }
-
-  function uiAppendStyle(styleEl) {
-    const root = liveUiRoot();
-    if (root && root !== document.body) root.appendChild(styleEl);
-    else document.head.appendChild(styleEl);
-    return styleEl;
-  }
-
-  function uiGetById(id) {
-    const root = liveUiRoot();
-    if (root?.getElementById) {
-      const found = root.getElementById(id);
-      if (found) return found;
-    }
-    if (root?.querySelector) {
-      const found = root.querySelector('#' + cssId(id));
-      if (found) return found;
-    }
-    return document.getElementById(id);
-  }
-
-  function activeElementDeep() {
-    let active = document.activeElement;
-    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
-    return active;
-  }
+  const {
+    own,
+    pickable,
+    desc,
+    rectIsUsableAnchor,
+    makeFrozenAnchor,
+    id8,
+    cssId,
+    liveUiRoot,
+    uiAppend,
+    uiAppendStyle,
+    uiGetById,
+    activeElementDeep,
+    defangOutsideHandlers,
+  } = domHelpers;
 
   window.__IMPECCABLE_LIVE_CHROME_CORE__ = {
     version: 1,
@@ -313,45 +251,6 @@
       evtSourceReadyState: evtSource ? evtSource.readyState : null,
     }),
   };
-
-  // Modal-aware chrome: keep our floating UI clickable inside Radix /
-  // Headless UI / vaul portals.
-  //
-  // Two host-page behaviors break us when the picked element lives inside a
-  // modal dialog:
-  //
-  //   1. Modal scroll-lock disables outside pointer events. Radix's
-  //      `DismissableLayer` sets `document.body.style.pointerEvents = 'none'`
-  //      while a modal is open and only restores `auto` on the layer. Our
-  //      chrome inherits `none` from <body> and becomes unclickable.
-  //   2. The dialog's outside-interaction handler (Radix's
-  //      `usePointerDownOutside`) listens at document level and dismisses
-  //      the dialog whenever a `pointerdown` lands outside the layer node.
-  //      Our chrome is a sibling of <body>, so Radix classifies our clicks
-  //      as outside and tears the dialog down mid-task.
-  //
-  // We can't reliably re-parent our chrome into the dialog subtree (z-index
-  // stacking, scroll containers, theming all become host-page concerns), so
-  // we defang both behaviors at our root:
-  //
-  //   - `pointer-events: auto !important` overrides the inherited `none`.
-  //   - Stop `pointerdown` / `mousedown` propagation so the document-level
-  //     dismiss listener never fires for our clicks.
-  //   - Stop `focusin` propagation so any focus shifts inside our chrome
-  //     don't read as "focus moved outside the dialog" to focus traps.
-  //
-  // Click events still bubble normally - only the early pointer/focus
-  // signals that drive outside-interaction detection are silenced.
-  function defangOutsideHandlers(rootEl, { setPointerEvents = true } = {}) {
-    if (!rootEl) return;
-    if (setPointerEvents) {
-      rootEl.style.setProperty('pointer-events', 'auto', 'important');
-    }
-    const stop = (e) => e.stopPropagation();
-    rootEl.addEventListener('pointerdown', stop);
-    rootEl.addEventListener('mousedown', stop);
-    rootEl.addEventListener('focusin', stop);
-  }
 
   //
   // Highlight overlay

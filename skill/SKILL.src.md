@@ -38,17 +38,13 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 #### Typography
 
 - Cap body line length at 65–75ch. <!-- rule:skill-typo-line-length -->
-- Hierarchy through scale + weight contrast (≥1.25 ratio between steps). Avoid flat scales. <!-- rule:skill-typo-scale-ratio -->
-- Cap font-family count at 3 (display + body + optional mono). More than 3 reads as indecision, not richness. One well-tuned family with weight contrast usually beats three competing typefaces. <!-- rule:skill-typo-font-count -->
 - Don't pair fonts that are similar but not identical (two geometric sans-serifs, two humanist sans-serifs). Pair on a contrast axis (serif + sans, geometric + humanist) or use one family in multiple weights. <!-- rule:skill-typo-font-pairing-contrast -->
-- No all-caps body copy. Sentences in ALL CAPS are unreadable at body sizes. <!-- rule:skill-typo-no-all-caps-body -->
 - Hero / display heading ceiling: clamp() max ≤ 6rem (~96px). Above that the page is shouting, not designing. <!-- rule:skill-typo-hero-ceiling -->
 - Display heading letter-spacing floor: ≥ -0.04em. Anything tighter and letters touch; cramped, not "designed". <!-- rule:skill-typo-tracking-floor -->
 - Use `text-wrap: balance` on h1–h3 for even line lengths; `text-wrap: pretty` on long prose to reduce orphans. <!-- rule:skill-typo-text-wrap-balance -->
 
 <codex>
-Two hard typographic ceilings you currently miss:
-- Hero clamp() max ≤ 6rem. 8–11rem (128–176px) reads as comically loud, not bold. <!-- rule:skill-typo-codex-hero-ceiling-repeat -->
+One hard typographic ceiling you currently miss:
 - Display letter-spacing ≥ -0.04em. Your default of -0.05 to -0.085em on display H1s makes the letters touch and reads as cramped. -0.02 to -0.03em is plenty for tight grotesque display; -0.04em is the floor. <!-- rule:skill-typo-codex-tracking-repeat -->
 </codex>
 
@@ -77,15 +73,6 @@ Two hard typographic ceilings you currently miss:
 <gemini>
 **Gemini-specific defect: hard ban.** Never animate `<img>` elements on hover. This includes any `transform` on `:hover` of an image, AND `.group:hover .group-hover\:scale` / `.group:hover .group-hover\:rotate` / `.group:hover .group-hover\:translate` patterns from Tailwind that animate a child image via a parent hover. This is your single most common motion tell; it adds no information (the image isn't an action target) and reads as "AI animated this because it could". If a card needs hover feedback, animate the card's background, border, or shadow. Never the image, never via the image's parent. <!-- rule:skill-interaction-gemini-no-image-hover -->
 </gemini>
-
-### Copy
-
-- Every word earns its place. No restated headings, no intros that repeat the title. <!-- rule:skill-copy-every-word-earns -->
-- **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`. <!-- rule:skill-copy-no-em-dashes -->
-- **No aphoristic-cadence body copy as a default voice.** If multiple section copy blocks share a single repeating sentence rhythm, especially a contrarian-sounding closer, rewrite. Specific, not aphoristic. <!-- rule:skill-copy-no-aphoristic-cadence -->
-- **No marketing buzzwords.** The streamline / empower / supercharge / leverage / unleash / transform / seamless / world-class / enterprise-grade / next-generation / cutting-edge / game-changer / mission-critical family of phrases. Pick a specific noun and a verb that describes what the product literally does. <!-- rule:skill-copy-no-buzzwords -->
-- Button labels: verb + object. "Save changes" beats "OK"; "Delete project" beats "Yes". The label should say what will happen. <!-- rule:skill-copy-button-verb-object -->
-- Link text needs standalone meaning. "View pricing plans" beats "Click here"; screen readers announce links out of context. <!-- rule:skill-copy-link-standalone -->
 
 ### New projects only (when no prior work exists)
 

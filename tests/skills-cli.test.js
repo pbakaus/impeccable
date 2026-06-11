@@ -299,7 +299,7 @@ describe('skills: unprefix migration', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test('leaves the legacy teach-impeccable name alone (cleanup owns that)', () => {
+  test('leaves unrelated legacy skill names alone', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-mig-legacy-'));
     createFakeSkills(tmp, ['teach-impeccable'], ['.claude']);
 

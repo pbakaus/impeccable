@@ -651,11 +651,10 @@ export function compileProviderBlocks(content, activeTags = []) {
 /**
  * Strip `<!-- rule:id -->` markers from skill markdown.
  *
- * The impeccable-evals registry at `tools/instruction-rules.ts` pins
- * each instruction line to a stable ID. Markers in the source keep
- * that mapping verifiable in lock-step with the file. The model that
- * loads the staged SKILL.md should not see them, so this strip runs
- * during the per-provider staging in factory.js.
+ * External eval tooling can pin each instruction line to a stable ID.
+ * Markers in the source keep that mapping verifiable in lock-step with
+ * the file. Staged SKILL.md files should not expose them, so this strip
+ * runs during the per-provider staging in factory.js.
  *
  * Removes the marker plus any leading whitespace on the same line, so
  * `something. <!-- rule:foo -->` becomes `something.` and a standalone
