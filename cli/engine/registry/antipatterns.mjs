@@ -290,6 +290,13 @@ const ANTIPATTERNS = [
       'Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.',
   },
   {
+    id: 'label-line-height',
+    category: 'quality',
+    name: 'Oversized line-height on small text',
+    description:
+      'UI labels, chips, badges and small text elements should not inherit large body-text line heights. Use a tighter line-height so spacing is controlled by padding.',
+  },
+  {
     id: 'all-caps-body',
     category: 'quality',
     name: 'All-caps body text',

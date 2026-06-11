@@ -392,6 +392,13 @@ const ANTIPATTERNS = [
       'Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.',
   },
   {
+    id: 'label-line-height',
+    category: 'quality',
+    name: 'Oversized line-height on small text',
+    description:
+      'UI labels, chips, badges and small text elements should not inherit large body-text line heights. Use a tighter line-height so spacing is controlled by padding.',
+  },
+  {
     id: 'all-caps-body',
     category: 'quality',
     name: 'All-caps body text',
@@ -2186,6 +2193,25 @@ function checkQuality(opts) {
     const isUppercase = style.textTransform === 'uppercase';
     if (!skipTags.includes(tag) && !inUIContext && !isUppercase) {
       findings.push({ id: 'tiny-text', snippet: `${fontSize}px body text` });
+    }
+  }
+
+  // --- Small UI text with oversized line-height ---
+  if (fontSize > 0 && fontSize <= 13 && lineHeightPx != null) {
+    const ratio = lineHeightPx / fontSize;
+
+    const isUILabel =
+      tag === 'label' ||
+      (el.closest &&
+        el.closest(
+          'button, [role="button"], [class*="badge" i], [class*="chip" i], [class*="pill" i], [class*="tag" i], [class*="label" i]'
+        ));
+
+    if (isUILabel && ratio > 1.7) {
+      findings.push({
+        id: 'label-line-height',
+        snippet: `${fontSize}px text with ${ratio.toFixed(2)}x line-height`,
+      });
     }
   }
 

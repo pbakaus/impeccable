@@ -1,6 +1,21 @@
 Typography carries most of the information on the page. Replace generic defaults (Inter, Roboto, system fallback at flat scale) with type that reflects the brand and scales with intentional contrast.
 
 ---
+## Mechanical Pre-Scan (required before visual review)
+
+Run these greps on the target files before any visual analysis. Surface every hit in your response so the user can decide which to fix vs. accept as a scoped exception.
+
+# Orphan pixel font sizes (off-ramp arbitrary values)
+grep -rn 'text-\[[0-9]*\.?[0-9]*px\]' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+
+# Ad-hoc line heights
+grep -rn 'leading-\[' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+
+# Hard-coded hex colors in component files
+grep -rn '#[0-9a-fA-F]\{3,6\}' --include="*.tsx" --include="*.ts" --include="*.css" --include="*.jsx" --include="*.js" .
+
+# px font sizes outside of Tailwind brackets (raw CSS)
+grep -rn 'font-size:\s*[0-9]*\.?[0-9]*px' --include="*.css" --include="*.scss" ./.
 
 ## Register
 

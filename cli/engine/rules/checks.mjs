@@ -1619,6 +1619,30 @@ function checkQuality(opts) {
     }
   }
 
+  // --- Small UI text with oversized line-height ---
+  if (fontSize > 0 && fontSize <= 13 && lineHeightPx != null) {
+    const ratio = lineHeightPx / fontSize;
+
+    let isUILabel = false;
+    if (tag === 'label' || tag === 'button') {
+      isUILabel = true;
+    } else if (el.closest) {
+      isUILabel = !!el.closest('button, [role="button"], [class*="badge" i], [class*="chip" i], [class*="pill" i], [class*="tag" i], [class*="label" i]');
+    } else {
+      const role = el.getAttribute ? el.getAttribute('role') : el.attribs?.role;
+      const cls = el.getAttribute ? el.getAttribute('class') : el.attribs?.class;
+      isUILabel = role === 'button' || (cls && /badge|chip|pill|tag|label/i.test(cls));
+    }
+
+    if (isUILabel && ratio > 1.7) {
+      const text = (el.textContent || '').trim().substring(0, 30);
+      findings.push({
+        id: 'label-line-height',
+        snippet: `${fontSize}px text with ${ratio.toFixed(2)}x line-height "${text}"`,
+      });
+    }
+  }
+
   // --- All-caps body text ---
   if (hasDirectText && textLen > 30 && style.textTransform === 'uppercase') {
     if (!['h1','h2','h3','h4','h5','h6'].includes(tag)) {
