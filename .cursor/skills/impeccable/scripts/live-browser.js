@@ -6297,6 +6297,16 @@
     sendEvent({ type: 'prefetch', pageUrl: path });
   }
 
+  function shouldPassthroughElementNav(deepActive, e) {
+    if (!deepActive || !own(deepActive)) return false;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false;
+    if (!/^(INPUT|TEXTAREA)$/.test(deepActive.tagName || '')) return false;
+    if (deepActive.value) return false;
+    if (deepActive.id === PREFIX + '-input' && state === 'CONFIGURING') return true;
+    if (deepActive.id === PREFIX + '-page-chat-input' && state === 'PICKING') return true;
+    return false;
+  }
+
   function handleKeyDown(e) {
     // When the annotation input is focused, let it handle its own keys.
     if (annotEditing && annotEditing.input && e.target === annotEditing.input) return;
@@ -6305,6 +6315,7 @@
       deepActive
       && own(deepActive)
       && /^(INPUT|TEXTAREA|SELECT)$/.test(deepActive.tagName || '')
+      && !shouldPassthroughElementNav(deepActive, e)
     ) {
       return;
     }

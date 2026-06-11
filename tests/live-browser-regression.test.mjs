@@ -327,6 +327,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('empty configure and steer inputs passthrough arrow nav to handleKeyDown', () => {
+    assert.match(
+      SOURCE,
+      /function shouldPassthroughElementNav\(deepActive, e\)[\s\S]{0,500}?PREFIX \+ '-input' && state === 'CONFIGURING'/,
+      'configure prompt must passthrough empty arrow keys for sibling navigation',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldPassthroughElementNav\(deepActive, e\)[\s\S]{0,700}?PREFIX \+ '-page-chat-input' && state === 'PICKING'/,
+      'steer prompt must passthrough empty arrow keys while picking',
+    );
+    assert.match(
+      SOURCE,
+      /&& !shouldPassthroughElementNav\(deepActive, e\)/,
+      'global input guard must honor empty-input arrow passthrough',
+    );
+  });
+
   it('configure input Escape tears down annotation overlay before returning to picking', () => {
     // The configure prompt auto-focuses. While focused, the global keydown
     // handler bails on own() inputs, so this local Escape path must hide the
