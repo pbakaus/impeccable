@@ -5000,14 +5000,15 @@
     const originalMarkup = origContent.outerHTML;
 
     pendingVariantAnchorRetryObserver = new MutationObserver(() => {
-      if (document.querySelector('[data-impeccable-variants="' + sessionId + '"]')) {
-        pendingVariantAnchorRetryObserver.disconnect();
-        pendingVariantAnchorRetryObserver = null;
-        recoveryWaitingForAnchor = false;
-        return;
+      // Retry once either the anchor element or the session wrapper shows up.
+      // A wrapper can land incomplete ("wrap HMR landed, variant insert did
+      // not"); injectVariantsFromSource owns both cases - it replaces an
+      // existing wrapper from source and clears recoveryWaitingForAnchor.
+      const wrapperLanded = !!document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
+      if (!wrapperLanded) {
+        const liveEl = resolveLiveInjectionAnchor(originalMarkup);
+        if (!liveEl?.parentElement) return;
       }
-      const liveEl = resolveLiveInjectionAnchor(originalMarkup);
-      if (!liveEl?.parentElement) return;
       pendingVariantAnchorRetryObserver.disconnect();
       pendingVariantAnchorRetryObserver = null;
       injectVariantsFromSource(filePath, sessionId);
