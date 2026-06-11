@@ -453,8 +453,8 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /buildInsertConfigureRow[\s\S]*?const count = el\('button', configureModifierPillStyle\(/,
-      'insert count toggle uses the same compact modifier pill chrome',
+      /buildInsertConfigureRow[\s\S]*?buildConfigureCountControl\(/,
+      'insert count toggle uses the same inline bar control as configure mode',
     );
     assert.match(
       SOURCE,
@@ -510,7 +510,7 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
-  it('configure row groups modifier pills left of the input and voice with submit', () => {
+  it('configure row groups selection and input on the left, trailing controls before submit', () => {
     assert.match(
       SOURCE,
       /function configureModifierPillStyle\(extra = \{\}\)[\s\S]{0,480}?background: 'transparent'[\s\S]{0,120}?color: P\.textDim/,
@@ -536,9 +536,54 @@ describe('live-browser.js regression guards', () => {
       /function configureInputShellStyle\(\)[\s\S]{0,200}?alignItems: 'center'[\s\S]{0,120}?padding: '0 6px 0 ' \+ CONFIGURE_BAR_INSET/,
       'configure shell vertically centers the row; inset matches centered pill margin',
     );
-    assert.match(SOURCE, /modifierPills\.appendChild\(pill\)/, 'action dropdown pill lives in the modifier group');
-    assert.match(SOURCE, /modifierPills\.appendChild\(count\)/, 'variant count pill lives beside the action dropdown');
-    assert.match(SOURCE, /buildConfigureActionCluster\(voiceBtn, go\)/, 'voice and submit share an action cluster');
+    assert.match(
+      SOURCE,
+      /inputShell\.appendChild\(buildSelectionPill[\s\S]{0,120}?inputShell\.appendChild\(input\)/,
+      'selection pill and prompt input share the left side of the bar',
+    );
+    assert.match(
+      SOURCE,
+      /buildConfigureTrailingCluster\(\[action, count\], voiceBtn, go\)/,
+      'freeform and variant count sit just left of voice and submit',
+    );
+  });
+
+  it('configure bar keeps selection pill, inline controls, outline, and instant tooltips', () => {
+    assert.match(SOURCE, /function buildSelectionPill\(/, 'selected element tag lives in the configure bar');
+    assert.match(SOURCE, /CONFIGURE_SELECTION_PILL_PAD = '1px 4px'/, 'selection pill uses 1px 4px padding');
+    assert.match(
+      SOURCE,
+      /function configureSelectionPillStyle\(extra = \{\}\)[\s\S]{0,400}?color: P\.patina/,
+      'selection pill label uses patina text color',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /function configureSelectionPillStyle\(extra = \{\}\)[\s\S]{0,400}?minHeight:/,
+      'selection pill must not impose a min-height',
+    );
+    assert.match(
+      SOURCE,
+      /gridArea: '1 \/ 1'/,
+      'selection pill swaps tag and clear faces without resizing the bar',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldShowHighlightTagTooltip\(\)[\s\S]{0,160}?state !== 'CONFIGURING'/,
+      'configure mode keeps the outline but drops the floating tag tooltip',
+    );
+    assert.match(SOURCE, /function buildConfigureActionControl\(/, 'action dropdown is an inline bar control, not a pill');
+    assert.match(SOURCE, /function buildConfigureCountControl\(/, 'variant count is an inline bar control, not a pill');
+    assert.match(
+      SOURCE,
+      /const hiTarget = resolveBarAnchor\(\);[\s\S]{0,200}?showHighlight\(hiTarget\);/,
+      'scroll tracking keeps the element outline visible while configuring',
+    );
+    assert.match(SOURCE, /function showConfigureBarTooltip\(/, 'configure controls use instant custom tooltips');
+    assert.doesNotMatch(
+      SOURCE,
+      /count\.title = controlsLocked \? 'Apply is still running' : 'Variants: click to change'/,
+      'variant count must not rely on native title tooltips',
+    );
   });
 
   it('variant count pill cycles through x1', () => {

@@ -779,7 +779,9 @@ export async function clickSaveEdit(page) {
 async function clickEditBadgeButton(page, label) {
   const proxyRect = await page.evaluate((text) => {
     const proxies = [...document.querySelectorAll('[data-impeccable-edit-badge-proxy="true"]')];
-    const proxy = proxies.find((candidate) => (candidate.title || '').includes(text));
+    const proxy = proxies.find((candidate) =>
+      (candidate.title || candidate.getAttribute('aria-label') || '').includes(text)
+    );
     if (!proxy) return null;
     const rect = proxy.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return null;
@@ -797,7 +799,7 @@ async function clickEditBadgeButton(page, label) {
     const clicked = await page.evaluate(({ badgeSel, text }) => {
       const badge = window.__impeccableLiveQuery(badgeSel);
       const btn = [...(badge?.querySelectorAll('button') || [])].find((candidate) =>
-        (candidate.textContent || '').includes(text)
+        (candidate.textContent || candidate.getAttribute('aria-label') || candidate.title || '').includes(text)
       );
       if (!btn) return false;
       btn.click();

@@ -99,7 +99,7 @@
   const LIVE_UI_SURFACES = [
     { key: 'global-bottom-bar', ids: [PREFIX + '-global-bar', PREFIX + '-global-bar-brand', PREFIX + '-pick-toggle', PREFIX + '-insert-toggle', PREFIX + '-detect-toggle', PREFIX + '-detect-badge', PREFIX + '-design-toggle', PREFIX + '-page-chat', PREFIX + '-page-chat-input', PREFIX + '-page-chat-voice'] },
     { key: 'pending-copy-edit-dock', ids: [PREFIX + '-pending-dock'] },
-    { key: 'element-selection-chrome', ids: [PREFIX + '-highlight', PREFIX + '-tooltip', PREFIX + '-bar', PREFIX + '-configure-input-wrap', PREFIX + '-input', PREFIX + '-configure-voice'] },
+    { key: 'element-selection-chrome', ids: [PREFIX + '-highlight', PREFIX + '-tooltip', PREFIX + '-bar', PREFIX + '-configure-input-wrap', PREFIX + '-selection-pill', PREFIX + '-input', PREFIX + '-configure-voice', PREFIX + '-configure-bar-tooltip'] },
     { key: 'action-picker', ids: [PREFIX + '-picker'] },
     { key: 'edit-chrome', ids: [PREFIX + '-edit-badge'] },
     { key: 'generating-row', ids: [PREFIX + '-bar', PREFIX + '-shader'] },
@@ -286,31 +286,53 @@
     uiAppend(tooltipEl);
   }
 
+  function shouldShowHighlightTagTooltip() {
+    // Configure/edit carry the tag in the bar selection pill — keep only the outline.
+    return state !== 'CONFIGURING' && state !== 'EDITING';
+  }
+
+  function hideHighlightTagTooltip() {
+    if (!tooltipEl) return;
+    tooltipEl.style.opacity = '0';
+    tooltipEl.style.display = 'none';
+  }
+
   function showHighlight(el) {
     if (!el || !highlightEl) return;
     if (el.hasAttribute?.('data-impeccable-insert-placeholder')) return;
     const r = el.getBoundingClientRect();
     const top = (r.top - 2) + 'px', left = (r.left - 2) + 'px';
     const width = (r.width + 4) + 'px', height = (r.height + 4) + 'px';
-    const tipTop = r.top - 20;
-    const tipY = (tipTop < 4 ? r.bottom + 4 : tipTop) + 'px';
-    const tipX = Math.max(4, r.left) + 'px';
-    tooltipEl.textContent = desc(el);
+    const showTagTooltip = shouldShowHighlightTagTooltip();
 
     const hiWasHidden = highlightEl.style.display === 'none' || highlightEl.style.opacity === '0';
     if (hiWasHidden) {
       // Snap to first target without animating from (0,0), then fade in.
       highlightEl.style.transition = 'none';
       Object.assign(highlightEl.style, { top, left, width, height, display: 'block' });
-      tooltipEl.style.transition = 'none';
-      Object.assign(tooltipEl.style, { top: tipY, left: tipX, display: 'block' });
       void highlightEl.offsetWidth;
       highlightEl.style.transition = HIGHLIGHT_TRANSITION;
       highlightEl.style.opacity = '1';
+    } else {
+      Object.assign(highlightEl.style, { top, left, width, height, display: 'block', opacity: '1' });
+    }
+
+    if (!showTagTooltip) {
+      hideHighlightTagTooltip();
+      return;
+    }
+
+    const tipTop = r.top - 20;
+    const tipY = (tipTop < 4 ? r.bottom + 4 : tipTop) + 'px';
+    const tipX = Math.max(4, r.left) + 'px';
+    tooltipEl.textContent = desc(el);
+    if (hiWasHidden) {
+      tooltipEl.style.transition = 'none';
+      Object.assign(tooltipEl.style, { top: tipY, left: tipX, display: 'block' });
+      void tooltipEl.offsetWidth;
       tooltipEl.style.transition = TOOLTIP_TRANSITION;
       tooltipEl.style.opacity = '1';
     } else {
-      Object.assign(highlightEl.style, { top, left, width, height, display: 'block', opacity: '1' });
       Object.assign(tooltipEl.style, { top: tipY, left: tipX, display: 'block', opacity: '1' });
     }
   }
@@ -1099,6 +1121,7 @@
     setTimeout(() => { if (barEl && hideSeq === barHideSeq) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
+    hideConfigureBarTooltip();
     if (state === 'EDITING') restoreInlineEditDrafts();
     disableInlineEdit();
   }
@@ -1128,10 +1151,11 @@
   // Configure row — the floating bar surface IS the input; modifier pills sit left of the field.
 
   const CONFIGURE_BAR_H = '36px';
-  // 26px pill (18px track + 6px pad + 2px border) centered in 36px bar → 5px inset.
-  const CONFIGURE_BAR_INSET = '5px';
+  // Compact selection pill + 7px inset balances vertical centering in the 36px bar.
+  const CONFIGURE_BAR_INSET = '7px';
   const CONFIGURE_PILL_RADIUS = '7px';
-  const CONFIGURE_ACTION_PILL_BORDER = '1px solid oklch(35% 0 0)';
+  const CONFIGURE_SELECTION_PILL_BORDER = '1px solid oklch(70% 0.12 188)';
+  const CONFIGURE_SELECTION_PILL_PAD = '1px 4px';
   const CONFIGURE_ROW_FONT_SIZE = '12px';
   const CONFIGURE_ROW_TRACK_H = '18px';
   const CONFIGURE_PILL_PAD_Y = '3px';
@@ -1213,6 +1237,27 @@
     };
   }
 
+  function configureSelectionPillStyle(extra = {}) {
+    const P = configureBarPalette();
+    return {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '2px', height: 'auto', flexShrink: '0',
+      padding: CONFIGURE_SELECTION_PILL_PAD,
+      boxSizing: 'border-box',
+      border: CONFIGURE_SELECTION_PILL_BORDER,
+      borderRadius: CONFIGURE_PILL_RADIUS,
+      background: 'transparent',
+      color: P.patina,
+      cursor: 'pointer',
+      transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+      whiteSpace: 'nowrap',
+      ...configureRowTextMetrics({
+        fontFamily: MONO, fontWeight: '600', letterSpacing: '-0.01em',
+      }),
+      ...extra,
+    };
+  }
+
   function configureModifierPillStyle(extra = {}) {
     const P = configureBarPalette();
     return {
@@ -1231,6 +1276,35 @@
     };
   }
 
+  function configureInlineControlStyle(extra = {}) {
+    const P = configureBarPalette();
+    return {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      gap: '2px', height: CONFIGURE_ROW_TRACK_H, flexShrink: '0',
+      padding: '0', margin: '0',
+      boxSizing: 'border-box',
+      border: 'none', borderRadius: '0',
+      background: 'transparent',
+      color: P.textDim, cursor: 'pointer',
+      transition: 'color 0.12s ease, background 0.12s ease',
+      whiteSpace: 'nowrap',
+      ...configureRowTextMetrics(),
+      ...extra,
+    };
+  }
+
+  function bindConfigureInlineControlHover(btn, controlsLocked) {
+    btn.addEventListener('mouseenter', () => {
+      if (controlsLocked) return;
+      const P = configureBarPalette();
+      btn.style.color = P.text;
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (controlsLocked) return;
+      btn.style.color = configureBarPalette().textDim;
+    });
+  }
+
   function bindConfigureModifierPillHover(btn, controlsLocked) {
     btn.addEventListener('mouseenter', () => {
       if (controlsLocked) return;
@@ -1246,10 +1320,174 @@
     });
   }
 
-  function buildConfigureActionPill({ controlsLocked, onClick }) {
-    const pill = el('button', configureModifierPillStyle({
-      border: CONFIGURE_ACTION_PILL_BORDER,
-    }));
+  let configureBarTooltipEl = null;
+
+  function ensureConfigureBarTooltip() {
+    if (configureBarTooltipEl) return configureBarTooltipEl;
+    const P = configureBarPalette();
+    configureBarTooltipEl = el('div', {
+      position: 'fixed',
+      display: 'none',
+      zIndex: String(Z.bar + 7),
+      pointerEvents: 'none',
+      maxWidth: 'min(360px, calc(100vw - 16px))',
+      padding: '6px 9px',
+      borderRadius: '7px',
+      background: P.chatSurface,
+      border: '1px solid ' + P.hairline,
+      boxShadow: P.shadow,
+      color: P.text,
+      fontFamily: FONT,
+      fontSize: '11px',
+      fontWeight: '500',
+      lineHeight: '1.35',
+      letterSpacing: '0.01em',
+      whiteSpace: 'normal',
+      wordBreak: 'break-word',
+    });
+    configureBarTooltipEl.id = PREFIX + '-configure-bar-tooltip';
+    uiAppend(configureBarTooltipEl);
+    return configureBarTooltipEl;
+  }
+
+  function showConfigureBarTooltip(anchor, message) {
+    if (!anchor || !message) return;
+    const tip = ensureConfigureBarTooltip();
+    tip.textContent = message;
+    tip.style.transition = 'none';
+    tip.style.display = 'block';
+    tip.style.opacity = '1';
+    const r = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - tipW - 8, r.left + r.width / 2 - tipW / 2));
+    const top = Math.max(8, r.top - tipH - 8);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function hideConfigureBarTooltip() {
+    if (!configureBarTooltipEl) return;
+    configureBarTooltipEl.style.display = 'none';
+    configureBarTooltipEl.style.opacity = '0';
+  }
+
+  function selectionTagLabel(el) {
+    if (!el) return '';
+    if (el.hasAttribute?.('data-impeccable-insert-placeholder')) return 'slot';
+    return el.tagName.toLowerCase();
+  }
+
+  function elementPath(el, maxDepth = 8) {
+    if (!el) return '';
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && node !== document.body) {
+      let part = node.tagName.toLowerCase();
+      if (node.id) part += '#' + node.id;
+      else if (node.classList?.length) part += '.' + [...node.classList].slice(0, 2).join('.');
+      parts.unshift(part);
+      node = node.parentElement;
+      if (parts.length >= maxDepth) break;
+    }
+    return parts.join(' \u203a ');
+  }
+
+  function variantCountTooltipText(count) {
+    const n = Number(count) || selectedCount;
+    const word = n === 1 ? 'variant' : 'variants';
+    return 'Click to change \u00b7 ' + n + ' ' + word;
+  }
+
+  function removeConfigureSelection() {
+    hideConfigureBarTooltip();
+    if (configureKind === 'insert') {
+      cancelInsertConfigure();
+      return;
+    }
+    selectedElement = null;
+    exitConfigureToPicking('selection-pill-remove', { clearHover: true });
+  }
+
+  function buildSelectionPill({ el: targetEl, controlsLocked }) {
+    const tag = selectionTagLabel(targetEl);
+    const path = elementPath(targetEl);
+    const P = configureBarPalette();
+    const pill = el('button', configureSelectionPillStyle({ minWidth: '32px' }));
+    pill.id = PREFIX + '-selection-pill';
+    pill.type = 'button';
+    pill.setAttribute('aria-label', 'Selected element: ' + tag);
+    pill.disabled = controlsLocked;
+    pill.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    pill.style.opacity = controlsLocked ? '0.58' : '1';
+    pill.style.flexShrink = '0';
+
+    const faceStack = el('span', {
+      display: 'grid', placeItems: 'center',
+      width: '100%', minWidth: '1.25em',
+      lineHeight: CONFIGURE_ROW_TRACK_H,
+    });
+    const tagFace = el('span', {
+      gridArea: '1 / 1',
+      transition: 'opacity 0.12s ease',
+      color: P.patina,
+    });
+    const clearFace = el('span', {
+      gridArea: '1 / 1',
+      opacity: '0',
+      transition: 'opacity 0.12s ease',
+      color: 'oklch(58% 0.15 35)',
+    });
+    tagFace.textContent = tag;
+    clearFace.textContent = '\u00D7';
+    faceStack.appendChild(tagFace);
+    faceStack.appendChild(clearFace);
+    pill.appendChild(faceStack);
+
+    let armed = false;
+    const setHovered = (hovered) => {
+      armed = hovered;
+      tagFace.style.opacity = hovered ? '0' : '1';
+      clearFace.style.opacity = hovered ? '1' : '0';
+      pill.style.background = hovered ? P.toggleActive : 'transparent';
+      pill.style.border = CONFIGURE_SELECTION_PILL_BORDER;
+      pill.setAttribute('aria-label', hovered ? 'Clear selection' : 'Selected element: ' + tag);
+    };
+    pill.addEventListener('mouseenter', () => {
+      if (controlsLocked) {
+        showConfigureBarTooltip(pill, 'Apply is still running');
+        return;
+      }
+      setHovered(true);
+      if (path) showConfigureBarTooltip(pill, path);
+    });
+    pill.addEventListener('mouseleave', () => {
+      hideConfigureBarTooltip();
+      setHovered(false);
+    });
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (controlsLocked) { showManualApplyBusyToast(); return; }
+      if (!armed) return;
+      removeConfigureSelection();
+    });
+    return pill;
+  }
+
+  function bindConfigureCountPillTooltip(count, controlsLocked) {
+    count.removeAttribute('title');
+    count.addEventListener('mouseenter', () => {
+      if (controlsLocked) {
+        showConfigureBarTooltip(count, 'Apply is still running');
+        return;
+      }
+      showConfigureBarTooltip(count, variantCountTooltipText(selectedCount));
+    });
+    count.addEventListener('mouseleave', hideConfigureBarTooltip);
+  }
+
+  function buildConfigureActionControl({ controlsLocked, onClick }) {
+    const control = el('button', configureInlineControlStyle());
     const label = document.createElement('span');
     label.textContent = actionLabel();
     const caret = el('span', {
@@ -1259,15 +1497,14 @@
     });
     caret.textContent = '\u25BE';
     caret.setAttribute('aria-hidden', 'true');
-    pill.appendChild(label);
-    pill.appendChild(caret);
-    pill.disabled = controlsLocked;
-    pill.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
-    pill.style.opacity = controlsLocked ? '0.58' : '1';
-    if (controlsLocked) pill.title = 'Apply is still running';
-    bindConfigureModifierPillHover(pill, controlsLocked);
-    pill.addEventListener('click', onClick);
-    return pill;
+    control.appendChild(label);
+    control.appendChild(caret);
+    control.disabled = controlsLocked;
+    control.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
+    control.style.opacity = controlsLocked ? '0.58' : '1';
+    bindConfigureInlineControlHover(control, controlsLocked);
+    control.addEventListener('click', onClick);
+    return control;
   }
 
   const VARIANT_COUNT_MIN = 1;
@@ -1279,16 +1516,16 @@
     return selectedCount;
   }
 
-  function buildConfigureCountPill({ controlsLocked, onClick }) {
-    const count = el('button', configureModifierPillStyle({
+  function buildConfigureCountControl({ controlsLocked, onClick }) {
+    const count = el('button', configureInlineControlStyle({
       fontFamily: MONO, fontWeight: '600', letterSpacing: '-0.02em',
     }));
     count.textContent = '\u00D7' + selectedCount;
-    count.title = controlsLocked ? 'Apply is still running' : 'Variants: click to change';
     count.disabled = controlsLocked;
     count.style.cursor = controlsLocked ? 'not-allowed' : 'pointer';
     count.style.opacity = controlsLocked ? '0.58' : '1';
-    bindConfigureModifierPillHover(count, controlsLocked);
+    bindConfigureInlineControlHover(count, controlsLocked);
+    bindConfigureCountPillTooltip(count, controlsLocked);
     count.addEventListener('click', onClick);
     return count;
   }
@@ -1316,11 +1553,20 @@
     return voiceBtn;
   }
 
-  function buildConfigureActionCluster(voiceBtn, submitBtn) {
+  function buildConfigureTrailingCluster(controls, voiceBtn, submitBtn) {
     const cluster = el('div', {
       display: 'inline-flex', alignItems: 'stretch', flexShrink: '0',
       height: '100%', borderLeft: '1px solid ' + BP.hairline,
     });
+    if (controls.length) {
+      const controlsWrap = el('div', {
+        display: 'inline-flex', alignItems: 'center', gap: '8px',
+        padding: '0 10px', flexShrink: '0', height: '100%',
+      });
+      controls.forEach((control) => controlsWrap.appendChild(control));
+      cluster.appendChild(controlsWrap);
+    }
+    voiceBtn.style.borderLeft = '1px solid ' + BP.hairline;
     cluster.appendChild(voiceBtn);
     cluster.appendChild(submitBtn);
     return cluster;
@@ -2048,12 +2294,7 @@
       input.style.opacity = '0.58';
     }
 
-    const modifierPills = el('div', {
-      display: 'inline-flex', alignItems: 'center', gap: '3px',
-      flexShrink: '0',
-    });
-
-    const pill = buildConfigureActionPill({
+    const action = buildConfigureActionControl({
       controlsLocked,
       onClick: (e) => {
         e.stopPropagation();
@@ -2062,18 +2303,19 @@
       },
     });
 
-    const count = buildConfigureCountPill({
+    const count = buildConfigureCountControl({
       controlsLocked,
       onClick: (e) => {
         e.stopPropagation();
         if (controlsLocked) { showManualApplyBusyToast(); return; }
         count.textContent = '\u00D7' + cycleSelectedCount();
+        if (count.matches(':hover')) {
+          showConfigureBarTooltip(count, variantCountTooltipText(selectedCount));
+        }
       },
     });
 
-    modifierPills.appendChild(pill);
-    modifierPills.appendChild(count);
-    inputShell.appendChild(modifierPills);
+    inputShell.appendChild(buildSelectionPill({ el: selectedElement, controlsLocked }));
     inputShell.appendChild(input);
 
     if (!uiGetById(PREFIX + '-configure-input-style')) {
@@ -2121,7 +2363,7 @@
     });
 
     row.appendChild(inputShell);
-    row.appendChild(buildConfigureActionCluster(voiceBtn, go));
+    row.appendChild(buildConfigureTrailingCluster([action, count], voiceBtn, go));
     syncConfigureInputChrome();
 
     if (!controlsLocked) setTimeout(() => input.focus(), 60);
@@ -2153,22 +2395,19 @@
       input.style.opacity = '0.58';
     }
 
-    const modifierPills = el('div', {
-      display: 'inline-flex', alignItems: 'center', gap: '3px',
-      flexShrink: '0',
-    });
-
-    const count = buildConfigureCountPill({
+    const count = buildConfigureCountControl({
       controlsLocked,
       onClick: (e) => {
         e.stopPropagation();
         if (controlsLocked) { showManualApplyBusyToast(); return; }
         count.textContent = '\u00D7' + cycleSelectedCount();
+        if (count.matches(':hover')) {
+          showConfigureBarTooltip(count, variantCountTooltipText(selectedCount));
+        }
       },
     });
 
-    modifierPills.appendChild(count);
-    inputShell.appendChild(modifierPills);
+    inputShell.appendChild(buildSelectionPill({ el: selectedElement, controlsLocked }));
     inputShell.appendChild(input);
 
     input.addEventListener('input', () => syncInsertCreateButton());
@@ -2226,7 +2465,7 @@
     });
     create.addEventListener('mouseleave', hideInsertCreateTooltip);
     row.appendChild(inputShell);
-    row.appendChild(buildConfigureActionCluster(voiceBtn, create));
+    row.appendChild(buildConfigureTrailingCluster([count], voiceBtn, create));
     syncInsertCreateButton(create, input);
     syncConfigureInputChrome();
     if (!controlsLocked) setTimeout(() => input.focus(), 60);
@@ -2518,7 +2757,7 @@
       position: 'fixed', zIndex: Z.picker,
       display: 'none', opacity: '0',
       transform: 'scale(0.96) translateY(4px)',
-      transformOrigin: 'bottom left',
+      transformOrigin: 'bottom right',
       transition: 'opacity 0.18s ' + EASE + ', transform 0.2s ' + EASE,
       background: P.surface,
       border: '1px solid ' + P.border,
@@ -2594,14 +2833,18 @@
       chip.style.background = isActive ? P.accentSoft : 'transparent';
       chip.style.color = isActive ? P.accent : P.text;
     });
-    // Position above the bar
+    // Position above the bar, right-aligned to the configure bar edge.
     const barRect = barEl.getBoundingClientRect();
     const pickerH = 170; // approximate; grows with icon + label rows
     let top = barRect.top - pickerH - 6;
     if (top < 8) top = barRect.bottom + 6;
+    pickerEl.style.display = 'block';
+    const pickerW = pickerEl.offsetWidth;
+    let left = barRect.right - pickerW;
+    left = Math.max(8, Math.min(left, window.innerWidth - pickerW - 8));
     Object.assign(pickerEl.style, {
-      top: top + 'px', left: barRect.left + 'px',
-      display: 'block',
+      top: top + 'px',
+      left: left + 'px',
     });
     requestAnimationFrame(() => {
       pickerEl.style.opacity = '1';
@@ -3138,6 +3381,7 @@
   }
 
   function teardownConfigureChrome() {
+    hideConfigureBarTooltip();
     disableInlineEdit();
     hideBar();
     stopScrollTracking();
@@ -4057,6 +4301,12 @@
   // Edit content badge - floating button at element top-right to enter EDITING mode
   //
 
+  const EDIT_COPY_LABEL = 'Edit copy';
+  const EDIT_COPY_ICON =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>' +
+    '</svg>';
+
   function usesShadowChromeRoot() {
     const root = liveUiRoot();
     return root && root !== document.body && root.host && root.host.id === PREFIX + '-root';
@@ -4207,7 +4457,7 @@
         editBadgeProxyRoot.appendChild(proxy);
         editBadgeProxyByTarget.set(target, proxy);
       }
-      proxy.title = target.title || target.textContent || 'Edit copy';
+      proxy.title = target.title || target.getAttribute('aria-label') || target.textContent || EDIT_COPY_LABEL;
       styleEditBadgeProxy(proxy, target);
     }
   }
@@ -4247,13 +4497,16 @@
     }
     const r = selectedElement.getBoundingClientRect();
     const bw = editBadgeEl.offsetWidth;
+    // Match showHighlight's 2px outset so the badge right edge lines up with the outline.
+    const outlineRight = r.right + 2;
     editBadgeEl.style.top = Math.max(4, r.top - 28) + 'px';
-    editBadgeEl.style.left = Math.min(window.innerWidth - bw - 4, r.right - bw) + 'px';
+    editBadgeEl.style.left = Math.min(window.innerWidth - bw - 4, outlineRight - bw) + 'px';
     syncEditBadgeHitProxies();
   }
 
   function renderEditBadge(mode) {
     if (mode === 'hidden' || !editBadgeEl) {
+      hideConfigureBarTooltip();
       if (editBadgeEl) editBadgeEl.style.display = 'none';
       syncEditBadgeHitProxies();
       return;
@@ -4291,16 +4544,36 @@
       const disabled = mode === 'idle-disabled';
       editBadgeEl.innerHTML = '';
       const btn = document.createElement('button');
-      btn.textContent = 'Edit copy';
-      Object.assign(btn.style, calloutStyle(disabled ? MUTED : ACCENT, disabled ? HAIRLINE : ACCENT));
+      btn.type = 'button';
+      btn.innerHTML = EDIT_COPY_ICON;
+      btn.setAttribute('aria-label', EDIT_COPY_LABEL);
+      Object.assign(btn.style, calloutStyle(
+        disabled ? MUTED : PRIMARY_TEXT,
+        disabled ? HAIRLINE : ACCENT,
+      ));
+      Object.assign(btn.style, {
+        padding: '4px',
+        minWidth: '22px',
+        width: '22px',
+        height: '22px',
+        minHeight: '22px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        lineHeight: '0',
+        letterSpacing: '0',
+        background: disabled ? SURFACE : ACCENT,
+      });
       if (disabled) {
         btn.style.cursor = 'not-allowed';
         btn.style.opacity = '0.55';
         btn.disabled = true;
-        btn.title = 'Edit copy is disabled while the current copy edit is applying';
+        const disabledTip = EDIT_COPY_LABEL + ' is disabled while the current copy edit is applying';
+        btn.addEventListener('mouseenter', () => showConfigureBarTooltip(btn, disabledTip));
+        btn.addEventListener('mouseleave', hideConfigureBarTooltip);
       } else {
-        btn.addEventListener('mouseenter', () => { btn.style.background = ACCENT; btn.style.color = PRIMARY_TEXT; });
-        btn.addEventListener('mouseleave', () => { btn.style.background = SURFACE; btn.style.color = ACCENT; });
+        btn.addEventListener('mouseenter', () => showConfigureBarTooltip(btn, EDIT_COPY_LABEL));
+        btn.addEventListener('mouseleave', hideConfigureBarTooltip);
         btn.onclick = enterEditingMode;
       }
       editBadgeEl.appendChild(btn);
@@ -4316,9 +4589,8 @@
       cancel.onclick = cancelEditing;
       const save = document.createElement('button');
       save.textContent = 'Save';
-      Object.assign(save.style, calloutStyle(ACCENT));
-      save.addEventListener('mouseenter', () => { save.style.background = ACCENT; save.style.color = PRIMARY_TEXT; });
-      save.addEventListener('mouseleave', () => { save.style.background = SURFACE; save.style.color = ACCENT; });
+      Object.assign(save.style, calloutStyle(PRIMARY_TEXT, ACCENT));
+      save.style.background = ACCENT;
       save.onclick = applyEditing;
       editBadgeEl.append(cancel, save);
     }

@@ -1340,45 +1340,71 @@
 .live-mode-kinpaku .live-demo-ctx-command {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex: 1;
   min-width: 0;
   height: 36px;
-  padding: 0 6px 0 5px;
+  padding: 0 6px 0 7px;
   background: transparent;
   border: 0;
   overflow: hidden;
+}
+
+.home-kinpaku .live-demo-ctx-trailing,
+.live-mode-kinpaku .live-demo-ctx-trailing {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
 }
 
 .home-kinpaku .live-demo-ctx-modifiers,
 .live-mode-kinpaku .live-demo-ctx-modifiers {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 8px;
+  padding: 0 10px;
   flex-shrink: 0;
 }
 
-.home-kinpaku .live-demo-ctx-pill,
+.home-kinpaku .live-demo-ctx-selection,
+.live-mode-kinpaku .live-demo-ctx-selection {
+  box-sizing: border-box;
+  min-width: 28px;
+  height: auto;
+  padding: 1px 4px;
+  border: 1px solid oklch(70% 0.12 188);
+  border-radius: 7px;
+  flex-shrink: 0;
+  background: transparent;
+  color: oklch(70% 0.12 188);
+  font-family: var(--ks-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.home-kinpaku .live-demo-ctx-action,
 .home-kinpaku .live-demo-ctx-count,
-.live-mode-kinpaku .live-demo-ctx-pill,
+.live-mode-kinpaku .live-demo-ctx-action,
 .live-mode-kinpaku .live-demo-ctx-count {
   box-sizing: border-box;
-  min-height: 18px;
-  height: auto;
-  padding: 3px 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--ks-text-muted);
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.12s ease;
 }
 
-.home-kinpaku .live-demo-ctx-pill,
-.live-mode-kinpaku .live-demo-ctx-pill {
-  border-color: oklch(35% 0 0);
+.home-kinpaku .live-demo-ctx-count,
+.live-mode-kinpaku .live-demo-ctx-count {
+  font-family: var(--ks-mono);
+  font-weight: 600;
 }
 
 .home-kinpaku .live-demo-ctx-row--configure,
@@ -1415,17 +1441,21 @@
   border-left: 0;
 }
 
-.home-kinpaku .live-demo-ctx-pill-caret,
-.live-mode-kinpaku .live-demo-ctx-pill-caret {
+.home-kinpaku .live-demo-ctx-action-caret,
+.live-mode-kinpaku .live-demo-ctx-action-caret {
   font-size: 10px;
   color: inherit;
 }
 
-.home-kinpaku .live-demo-ctx-pill:hover,
-.home-kinpaku .live-demo-ctx-count:hover,
-.live-mode-kinpaku .live-demo-ctx-pill:hover,
-.live-mode-kinpaku .live-demo-ctx-count:hover {
+.home-kinpaku .live-demo-ctx-selection:hover,
+.live-mode-kinpaku .live-demo-ctx-selection:hover {
   background: oklch(27% 0 0);
+}
+
+.home-kinpaku .live-demo-ctx-action:hover,
+.home-kinpaku .live-demo-ctx-count:hover,
+.live-mode-kinpaku .live-demo-ctx-action:hover,
+.live-mode-kinpaku .live-demo-ctx-count:hover {
   color: var(--ks-text);
 }
 
@@ -1433,6 +1463,7 @@
 .live-mode-kinpaku .live-demo-ctx-input {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   flex: 1;
   min-width: 0;
   height: 18px;
@@ -1451,8 +1482,8 @@
   background: oklch(94% 0.02 82);
 }
 
-.home-kinpaku .live-demo-ctx-count,
-.live-mode-kinpaku .live-demo-ctx-count {
+.home-kinpaku .live-demo-ctx-selection,
+.live-mode-kinpaku .live-demo-ctx-selection {
   background: transparent;
   border-color: transparent;
   color: var(--ks-text-muted);

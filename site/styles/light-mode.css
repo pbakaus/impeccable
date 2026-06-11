@@ -1376,14 +1376,16 @@ html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-dem
   background: oklch(94% 0.02 82);
 }
 
-html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-pill,
-html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-pill {
+html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-selection,
+html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-selection {
   background: transparent;
-  border: 1px solid oklch(35% 0 0);
-  color: var(--ks-text-muted);
+  border: 1px solid oklch(70% 0.12 188);
+  color: oklch(70% 0.12 188);
 }
 
+html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-action,
 html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-count,
+html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-action,
 html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-count {
   background: transparent;
   border: 0;
