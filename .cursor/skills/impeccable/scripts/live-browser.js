@@ -8592,7 +8592,9 @@ void main() {
       if (pageChatEl) pageChatEl.dataset.voiceListening = listening ? 'true' : 'false';
       syncPageChatChrome();
     } else if (voiceCtx?.mode === 'configure') {
-      const voiceBtn = uiGetById(PREFIX + '-configure-voice');
+      // The bar shows either the replace row's voice button or the insert
+      // row's - both run voice through the 'configure' mode.
+      const voiceBtn = uiGetById(PREFIX + '-configure-voice') || uiGetById(PREFIX + '-insert-voice');
       if (voiceBtn) {
         voiceBtn.dataset.active = listening ? 'true' : 'false';
         voiceBtn.dataset.listening = listening ? 'true' : 'false';
