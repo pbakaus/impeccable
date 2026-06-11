@@ -22,6 +22,7 @@ import {
   runCopyEditBatchAgent,
   runCopyEditPostApplyChecks,
 } from './live-copy-edit-agent.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -1214,9 +1215,11 @@ export async function commitManualEdits({
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = stripTargetArgs(rawArgs);
   if (args.includes('--help') || args.includes('-h')) {
-    console.log('Usage: node live-commit-manual-edits.mjs [--page-url=<url>] [--provider=auto|codex|claude|mock]');
+    console.log('Usage: node live-commit-manual-edits.mjs [--page-url=<url>] [--provider=auto|codex|claude|mock] [--target <path>]');
     process.exit(0);
   }
 

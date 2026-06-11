@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { ensureLiveGitIgnores } from '../skill/scripts/live-inject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INJECT = resolve(__dirname, '..', 'skill/scripts/live-inject.mjs');
@@ -80,6 +81,20 @@ describe('live-inject — insert/remove round-trip preserves file bytes', () => 
     const removed = runInjectDefault(tmp, ['--remove']);
     assert.equal(removed.ok, true);
     assert.equal(readFileSync(join(tmp, 'index.html'), 'utf-8'), original);
+  });
+
+  it('preserves root and child live ignore patterns in a shared git exclude file', () => {
+    mkdirSync(join(tmp, '.git', 'info'), { recursive: true });
+    mkdirSync(join(tmp, 'apps', 'dashboard'), { recursive: true });
+
+    const rootResult = ensureLiveGitIgnores(tmp);
+    const childResult = ensureLiveGitIgnores(join(tmp, 'apps', 'dashboard'));
+    const exclude = readFileSync(join(tmp, '.git', 'info', 'exclude'), 'utf-8');
+
+    assert.equal(rootResult.mode, 'git-info-exclude');
+    assert.equal(childResult.mode, 'git-info-exclude');
+    assert.match(exclude, /^\.impeccable\/live\/server\.json$/m);
+    assert.match(exclude, /^apps\/dashboard\/\.impeccable\/live\/server\.json$/m);
   });
 
   it('round-trips an HTML file without mangling indentation', () => {

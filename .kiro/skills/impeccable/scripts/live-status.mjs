@@ -4,11 +4,14 @@
  */
 
 import { createLiveSessionStore } from './live/session-store.mjs';
-import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 import { manualApplyResumeHint } from './live-resume.mjs';
+import { chdirToLiveTarget } from './live-target.mjs';
 
 function readServerInfo() {
-  return readLiveServerInfo(process.cwd())?.info || null;
+  const record = readLiveServerInfo(process.cwd());
+  if (record?.ambiguous) return { ambiguous: true, candidates: record.candidates || [] };
+  return record?.info || null;
 }
 
 async function fetchServerStatus(info) {
@@ -23,8 +26,11 @@ async function fetchServerStatus(info) {
 }
 
 export async function statusCli() {
+  const liveTarget = chdirToLiveTarget(process.argv.slice(2));
+  if (!liveTarget.targetPath) chdirToSingleDiscoveredProjectRoot();
   const info = readServerInfo();
-  const server = await fetchServerStatus(info);
+  const ambiguous = info?.ambiguous ? info : null;
+  const server = ambiguous ? null : await fetchServerStatus(info);
   const store = createLiveSessionStore({ cwd: process.cwd() });
   const activeSessions = store.listActiveSessions();
   const manualApply = findPendingManualApply(server, activeSessions);
@@ -35,13 +41,15 @@ export async function statusCli() {
       connectedClients: server.connectedClients,
       agentPolling: server.agentPolling,
       pendingEvents: server.pendingEvents,
-    } : null,
+    } : ambiguous ? { ambiguous: true, candidates: ambiguous.candidates } : null,
     activeSessions: server?.activeSessions || activeSessions,
     recoveryHint: manualApply
       ? manualApplyResumeHint(manualApply)
       : server
         ? 'Run live-poll.mjs to continue pending work, or live-complete.mjs --id <session> after manual cleanup.'
-        : 'Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.',
+        : ambiguous
+          ? 'Multiple child live servers found. Re-run with --target <path>.'
+          : 'Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.',
   };
   console.log(JSON.stringify(payload, null, 2));
 }
@@ -53,6 +61,12 @@ function findPendingManualApply(server, activeSessions) {
     ?.map((session) => session.pendingEvent)
     .find((event) => event?.type === 'manual_edit_apply');
   return fromSession || null;
+}
+
+function chdirToSingleDiscoveredProjectRoot() {
+  const record = readLiveServerInfo(process.cwd());
+  if (!record?.info?.projectRoot) return;
+  if (!samePath(record.info.projectRoot, process.cwd())) process.chdir(record.info.projectRoot);
 }
 
 const _running = process.argv[1];

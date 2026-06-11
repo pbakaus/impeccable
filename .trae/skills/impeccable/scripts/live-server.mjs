@@ -21,7 +21,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { parseDesignMd } from './lib/design-parser.mjs';
-import { resolveContextDir } from './context.mjs';
+import { loadContext } from './context.mjs';
 import {
   assembleLiveBrowserScript,
   assertLiveBrowserScriptParts,
@@ -39,6 +39,7 @@ import {
   readLiveServerInfo,
   removeLiveServerInfo,
   resolveDesignSidecarPath,
+  samePath,
   writeLiveServerInfo,
 } from './lib/impeccable-paths.mjs';
 import { countByPage as countPendingByPage } from './live/manual-edits-buffer.mjs';
@@ -50,14 +51,35 @@ import {
   applyDeferredSvelteComponentAccepts,
   removeAllSvelteComponentSessions,
 } from './live/svelte-component.mjs';
+import { chdirToLiveTarget, resolveStoredTargetPath, stripTargetArgs } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
 // DESIGN sidecar is project-local at .impeccable/design.json, with legacy
 // DESIGN.json fallback for existing projects.
-const CONTEXT_DIR = resolveContextDir(process.cwd());
+let LIVE_TARGET = null;
+let args = [];
+let PROJECT_CONTEXT = null;
+let CONTEXT_DIR = null;
+let DESIGN_MD_PATH = null;
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+
+function initRuntime(rawArgs = process.argv.slice(2)) {
+  LIVE_TARGET = chdirToLiveTarget(rawArgs);
+  args = stripTargetArgs(rawArgs);
+  PROJECT_CONTEXT = loadContext(process.cwd());
+  CONTEXT_DIR = PROJECT_CONTEXT.contextDir;
+  DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
+    ? path.resolve(process.cwd(), PROJECT_CONTEXT.designPath)
+    : null;
+}
+
+function targetForwardArgs() {
+  return LIVE_TARGET?.absoluteTargetPath
+    ? ['--target', LIVE_TARGET.absoluteTargetPath]
+    : [];
+}
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -371,10 +393,7 @@ function hasProjectContext() {
   // PRODUCT.md carries brand voice / anti-references — that's what determines
   // whether variants are brand-aware. DESIGN.md (visual tokens) is a separate
   // concern, surfaced by the design panel's own empty state.
-  try {
-    fs.accessSync(path.join(CONTEXT_DIR, 'PRODUCT.md'), fs.constants.R_OK);
-    return true;
-  } catch { return false; }
+  return !!PROJECT_CONTEXT?.hasProduct;
 }
 
 function statOrNull(filePath) {
@@ -529,6 +548,9 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       res.end(JSON.stringify({
         status: 'ok', port: state.port, mode: 'variant',
         hasProjectContext: hasProjectContext(),
+        targetPath: LIVE_TARGET.absoluteTargetPath || LIVE_TARGET.targetPath,
+        projectRoot: process.cwd(),
+        repoRoot: PROJECT_CONTEXT.repoRoot,
         connectedClients: state.sseClients.size,
       }));
       return;
@@ -549,8 +571,8 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
       const token = url.searchParams.get('token');
       if (token !== state.token) { res.writeHead(401); res.end('Unauthorized'); return; }
 
-      const mdPath = path.join(CONTEXT_DIR, 'DESIGN.md');
-      const jsonPath = resolveDesignSidecarPath(process.cwd(), CONTEXT_DIR) || getDesignSidecarPath(process.cwd());
+      const mdPath = DESIGN_MD_PATH;
+      const jsonPath = resolveDesignSidecarPath(process.cwd(), PROJECT_CONTEXT.designContextDir || CONTEXT_DIR) || getDesignSidecarPath(process.cwd());
       const mdStat = statOrNull(mdPath);
       const jsonStat = statOrNull(jsonPath);
 
@@ -985,7 +1007,8 @@ function applyLegacyDeferredAcceptsOnStartup() {
 // Main
 // ---------------------------------------------------------------------------
 
-const args = process.argv.slice(2);
+export async function serverCli(rawArgs = process.argv.slice(2)) {
+initRuntime(rawArgs);
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`Usage: node live-server.mjs [options]
@@ -1000,6 +1023,7 @@ Commands:
 Options:
   --background  Start detached, print connection JSON to stdout, then exit
   --port=PORT   Use a specific port (default: auto-detect starting at 8400)
+  --target PATH  Scope live state/context to a monorepo child project
   --keep-inject Only with stop: skip live-inject.mjs --remove
   --help        Show this help
 
@@ -1021,8 +1045,19 @@ Endpoints:
 
 if (args.includes('stop')) {
   const keepInject = args.includes('--keep-inject');
+  let info = null;
   try {
-    const { info } = readLiveServerInfo(process.cwd()) || {};
+    const record = readLiveServerInfo(process.cwd());
+    if (record?.ambiguous) {
+      console.log(JSON.stringify({
+        ok: false,
+        error: 'ambiguous_live_servers',
+        candidates: record.candidates || [],
+        hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to stop.',
+      }, null, 2));
+      process.exit(1);
+    }
+    info = record?.info || null;
     const res = await fetch(`http://localhost:${info.port}/stop?token=${info.token}`);
     if (res.ok) console.log(`Stopped live server on port ${info.port}.`);
   } catch {
@@ -1030,8 +1065,12 @@ if (args.includes('stop')) {
   }
   if (!keepInject) {
     const injectPath = path.join(__dirname, 'live-inject.mjs');
+    const removeTargetArgs = targetForwardArgs();
+    if (removeTargetArgs.length === 0 && info?.targetPath) {
+      removeTargetArgs.push('--target', resolveStoredTargetPath(info) || info.targetPath);
+    }
     try {
-      const out = execFileSync(process.execPath, [injectPath, '--remove'], {
+      const out = execFileSync(process.execPath, [injectPath, '--remove', ...removeTargetArgs], {
         encoding: 'utf-8',
         cwd: process.cwd(),
       });
@@ -1061,7 +1100,10 @@ if (args.includes('stop')) {
 // print the connection JSON, then exit.  This keeps the startup command
 // simple (no shell backgrounding or chained commands).
 if (args.includes('--background')) {
-  const childArgs = args.filter(a => a !== '--background');
+  const childArgs = [
+    ...args.filter(a => a !== '--background'),
+    ...targetForwardArgs(),
+  ];
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...childArgs], {
     detached: true,
     stdio: 'ignore',
@@ -1076,7 +1118,15 @@ if (args.includes('--background')) {
       const { info } = readLiveServerInfo(process.cwd()) || {};
       if (info.pid !== process.pid) {
         // Output JSON so the agent can read port + token from stdout.
-        console.log(JSON.stringify(info));
+        const discoveredChild = info.projectRoot && !samePath(info.projectRoot, process.cwd());
+        console.log(JSON.stringify(discoveredChild ? {
+          ...info,
+          discovered: true,
+          projectRoot: info.projectRoot || null,
+          repoRoot: info.repoRoot || null,
+          targetPath: info.targetPath || null,
+          hint: 'Discovered an existing child live server from the monorepo root. Use --target <path> to address a specific child project.',
+        } : info));
         process.exit(0);
       }
     } catch { /* not ready yet */ }
@@ -1121,7 +1171,14 @@ const { detectScript, liveScriptParts } = loadBrowserScripts();
 httpServer = http.createServer(createRequestHandler({ detectScript, liveScriptParts }));
 
 httpServer.listen(state.port, '127.0.0.1', () => {
-  writeLiveServerInfo(process.cwd(), { pid: process.pid, port: state.port, token: state.token });
+  writeLiveServerInfo(process.cwd(), {
+    pid: process.pid,
+    port: state.port,
+    token: state.token,
+    targetPath: LIVE_TARGET.absoluteTargetPath || LIVE_TARGET.targetPath,
+    projectRoot: process.cwd(),
+    repoRoot: PROJECT_CONTEXT.repoRoot,
+  });
   const url = `http://localhost:${state.port}`;
   console.log(`\nImpeccable live server running on ${url}`);
   console.log(`Token: ${state.token}\n`);
@@ -1132,3 +1189,18 @@ httpServer.listen(state.port, '127.0.0.1', () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+}
+
+function invokedAsScript() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  try {
+    return fs.realpathSync(arg) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedAsScript()) {
+  await serverCli();
+}

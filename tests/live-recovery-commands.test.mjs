@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -20,6 +20,34 @@ function withTempProject(fn) {
 function runJson(script, args, cwd) {
   const out = execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf-8' });
   return JSON.parse(out);
+}
+
+function setupMonorepoChildLiveSession(cwd, id = 'child-recover-1') {
+  const repoRoot = realpathSync(cwd);
+  writeFileSync(join(repoRoot, 'package.json'), JSON.stringify({
+    private: true,
+    workspaces: ['apps/*'],
+  }));
+  const childRoot = join(repoRoot, 'apps', 'dashboard');
+  mkdirSync(join(childRoot, '.impeccable', 'live'), { recursive: true });
+  writeFileSync(join(childRoot, '.impeccable', 'live', 'server.json'), JSON.stringify({
+    pid: process.pid,
+    port: 8401,
+    token: 'child',
+    projectRoot: childRoot,
+    repoRoot,
+  }));
+
+  const store = createLiveSessionStore({ cwd: childRoot });
+  store.appendEvent({
+    type: 'generate',
+    id,
+    action: 'impeccable',
+    count: 2,
+    pageUrl: '/',
+    element: { outerHTML: '<section>Dashboard</section>' },
+  });
+  return { childRoot, store };
 }
 
 describe('live recovery CLI commands', () => {
@@ -98,6 +126,38 @@ describe('live recovery CLI commands', () => {
       /Finish carbonize cleanup in src\/App\.jsx/,
       'event=live_resume.carbonize_next_action actor=agent operation=recover_carbonize risk=carbonize_cleanup_hidden_after_accept expected=cleanup-specific action actual=' + resume.nextAction,
     );
+  }));
+
+  it('resumes the single discovered child live server from a monorepo root', () => withTempProject((cwd) => {
+    setupMonorepoChildLiveSession(cwd, 'child-recover-1');
+
+    const resume = runJson(RESUME_SCRIPT, ['--id', 'child-recover-1'], cwd);
+    assert.equal(resume.active, true);
+    assert.equal(resume.snapshot.id, 'child-recover-1');
+    assert.match(resume.nextAction, /child-recover-1/);
+  }));
+
+  it('reads status from the single discovered child live server sessions', () => withTempProject((cwd) => {
+    setupMonorepoChildLiveSession(cwd, 'child-status-1');
+
+    const status = runJson(STATUS_SCRIPT, [], cwd);
+    assert.equal(status.liveServer, null);
+    assert.equal(status.activeSessions.length, 1);
+    assert.equal(status.activeSessions[0].id, 'child-status-1');
+  }));
+
+  it('completes the single discovered child live server session from a monorepo root', () => withTempProject((cwd) => {
+    const { childRoot } = setupMonorepoChildLiveSession(cwd, 'child-complete-1');
+
+    const completed = runJson(COMPLETE_SCRIPT, ['--id', 'child-complete-1'], cwd);
+    assert.equal(completed.ok, true);
+    assert.equal(completed.phase, 'completed');
+
+    const childStore = createLiveSessionStore({ cwd: childRoot, sessionId: 'child-complete-1' });
+    assert.equal(childStore.getSnapshot('child-complete-1', { includeCompleted: true }).phase, 'completed');
+
+    const rootStore = createLiveSessionStore({ cwd, sessionId: 'child-complete-1' });
+    assert.deepEqual(rootStore.listActiveSessions(), []);
   }));
 
   it('marks a session completed through the canonical completion command', () => withTempProject((cwd) => {

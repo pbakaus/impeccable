@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { completionAckForAcceptResult, completionTypeForAcceptResult } from './live/completion.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { chdirToLiveTarget, resolveStoredTargetPath, stripTargetArgs } from './live-target.mjs';
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -26,6 +27,13 @@ const EVENT_TYPES_NEEDING_AGENT_REPLY = new Set(['generate', 'steer', 'manual_ed
 
 function readServerInfo() {
   const record = readLiveServerInfo(process.cwd());
+  if (record?.ambiguous) {
+    console.error('Multiple child live servers found. Re-run with --target <path> so Impeccable knows which app to poll.');
+    for (const candidate of record.candidates || []) {
+      console.error(`- ${candidate.targetPath || candidate.projectRoot || candidate.path}`);
+    }
+    process.exit(1);
+  }
   if (!record) {
     console.error('No running live server found. Start one with: npx impeccable live');
     process.exit(1);
@@ -179,18 +187,19 @@ export async function fetchNextEvent(base, token, { totalDeadline } = {}) {
   }
 }
 
-export async function augmentEventWithAcceptHandling(event, base, token) {
+export async function augmentEventWithAcceptHandling(event, base, token, options = {}) {
   if (event.type !== 'accept' && event.type !== 'discard') return event;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const acceptScript = path.join(__dirname, 'live-accept.mjs');
-  const scriptArgs = buildAcceptScriptArgs(event);
+  const scriptArgs = buildAcceptScriptArgs(event, options);
+  const cwd = resolveAcceptScriptCwd(options);
 
   try {
     const out = execFileSync(
       'node',
       [acceptScript, ...scriptArgs],
-      { encoding: 'utf-8', cwd: process.cwd(), timeout: 30_000 },
+      { encoding: 'utf-8', cwd, timeout: 30_000 },
     );
     event._acceptResult = JSON.parse(out.trim());
   } catch (err) {
@@ -216,10 +225,16 @@ export async function augmentEventWithAcceptHandling(event, base, token) {
   return event;
 }
 
-export function buildAcceptScriptArgs(event) {
+export function resolveAcceptScriptCwd({ targetPath = null, projectRoot = null } = {}) {
+  if (!targetPath && projectRoot) return String(projectRoot);
+  return process.cwd();
+}
+
+export function buildAcceptScriptArgs(event, { targetPath = null } = {}) {
   const scriptArgs = event.type === 'discard'
     ? ['--id', String(event.id), '--discard']
     : ['--id', String(event.id), '--variant', String(event.variantId)];
+  if (targetPath) scriptArgs.push('--target', String(targetPath));
   if (event.pageUrl) scriptArgs.push('--page-url', String(event.pageUrl));
   if (event.type === 'accept' && event.paramValues && Object.keys(event.paramValues).length > 0) {
     scriptArgs.push('--param-values', JSON.stringify(event.paramValues));
@@ -240,10 +255,14 @@ export function printPollEvent(event) {
   console.log(JSON.stringify(event));
 }
 
-export async function runPollOnce(base, token, { totalTimeout = 600_000 } = {}) {
+export async function runPollOnce(base, token, {
+  totalTimeout = 600_000,
+  targetPath = null,
+  projectRoot = null,
+} = {}) {
   const deadline = Date.now() + totalTimeout;
   const event = await fetchNextEvent(base, token, { totalDeadline: deadline });
-  await augmentEventWithAcceptHandling(event, base, token);
+  await augmentEventWithAcceptHandling(event, base, token, { targetPath, projectRoot });
   writeCarbonizeBanner(event);
   printPollEvent(event);
   return event;
@@ -252,13 +271,15 @@ export async function runPollOnce(base, token, { totalTimeout = 600_000 } = {}) 
 export async function runPollStream(base, token, {
   ackTimeoutMs = 600_000,
   ackPollIntervalMs = 400,
+  targetPath = null,
+  projectRoot = null,
   shouldContinue = () => true,
 } = {}) {
   process.stderr.write('[impeccable-poll] stream mode: one JSON object per line on stdout; use --reply while this process stays running\n');
 
   while (shouldContinue()) {
     const event = await fetchNextEvent(base, token);
-    await augmentEventWithAcceptHandling(event, base, token);
+    await augmentEventWithAcceptHandling(event, base, token, { targetPath, projectRoot });
     writeCarbonizeBanner(event);
     printPollEvent(event);
 
@@ -299,7 +320,9 @@ function handlePollError(err) {
 }
 
 export async function pollCli() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = stripTargetArgs(rawArgs);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: impeccable poll [options]
@@ -320,6 +343,7 @@ Options:
   --ack-timeout=MS    Stream mode: max wait for --reply after generate/steer (default: 600000)
   --file PATH         Attach a source file path to the reply (generate/steer flow)
   --data JSON         Attach a JSON result object to the reply (manual_edit_apply flow). Must be valid JSON
+  --target PATH       Scope live server state to a monorepo child project
   --help              Show this help message
 
 Harness note:
@@ -330,6 +354,7 @@ Harness note:
 
   const info = readServerInfo();
   const base = `http://localhost:${info.port}`;
+  const targetPath = resolveStoredTargetPath(info);
 
   // Reply mode: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]
   if (args.includes('--reply')) {
@@ -360,13 +385,21 @@ Harness note:
 
   try {
     if (streamMode) {
-      await runPollStream(base, info.token, { ackTimeoutMs });
+      await runPollStream(base, info.token, {
+        ackTimeoutMs,
+        targetPath,
+        projectRoot: info.projectRoot || null,
+      });
       return;
     }
 
     const timeoutArg = args.find((a) => a.startsWith('--timeout='));
     const totalTimeout = timeoutArg ? parseInt(timeoutArg.split('=')[1], 10) : 600_000;
-    await runPollOnce(base, info.token, { totalTimeout });
+    await runPollOnce(base, info.token, {
+      totalTimeout,
+      targetPath,
+      projectRoot: info.projectRoot || null,
+    });
   } catch (err) {
     handlePollError(err);
   }

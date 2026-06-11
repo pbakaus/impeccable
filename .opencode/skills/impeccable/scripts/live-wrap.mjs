@@ -20,11 +20,14 @@ import {
   scaffoldSvelteComponentSession,
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
 export async function wrapCli() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  chdirToLiveTarget(rawArgs);
+  const args = stripTargetArgs(rawArgs);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: impeccable wrap [options]
@@ -50,6 +53,7 @@ Optional:
   --page-url URL     Current page URL. Required when pending manual edits may
                      affect the picked source block. Pending edits are filtered
                      to this page so an edit on /a doesn't bleed into /b.
+  --target PATH      Scope source/state lookup to a monorepo child project
   --help             Show this help message
 
 Output (JSON):

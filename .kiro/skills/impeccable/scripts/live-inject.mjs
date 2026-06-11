@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveLiveConfigPath } from './lib/impeccable-paths.mjs';
+import { chdirToLiveTarget } from './live-target.mjs';
 import {
   applySvelteKitLiveAdapter,
   detectSvelteKitProject,
@@ -24,7 +25,6 @@ import {
 } from './live/sveltekit-adapter.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = resolveLiveConfigPath({ cwd: process.cwd(), scriptsDir: __dirname });
 const MARKER_OPEN_TEXT = 'impeccable-live-start';
 const MARKER_CLOSE_TEXT = 'impeccable-live-end';
 const IGNORE_MARKER_OPEN = '# impeccable-live-ignore-start';
@@ -62,6 +62,8 @@ const HARD_EXCLUDES = [
 
 export async function injectCli() {
   const args = process.argv.slice(2);
+  const liveTarget = chdirToLiveTarget(args);
+  const CONFIG_PATH = resolveLiveConfigPath({ cwd: process.cwd(), scriptsDir: __dirname });
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live-inject.mjs [options]
@@ -73,6 +75,7 @@ Modes:
   --port PORT   Insert script tag pointing at http://localhost:PORT/live.js
   --remove      Remove the script tag (if present)
   --check       Print whether .impeccable/live/config.json exists and its content
+  --target PATH Resolve config/state relative to the active monorepo child project
 
 Output (JSON):
   { ok, file, inserted|removed, config? }`);
@@ -81,29 +84,35 @@ Output (JSON):
 
   if (args.includes('--check')) {
     if (!fs.existsSync(CONFIG_PATH)) {
-      console.log(JSON.stringify({ ok: false, error: 'config_missing', path: CONFIG_PATH }));
+      console.log(JSON.stringify({
+        ok: false,
+        error: 'config_missing',
+        path: CONFIG_PATH,
+        targetPath: liveTarget.targetPath,
+        projectRoot: process.cwd(),
+      }));
       process.exit(0);
     }
     let cfg;
     try {
       cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     } catch (err) {
-      console.log(JSON.stringify({ ok: false, error: 'config_invalid', message: err.message, path: CONFIG_PATH }));
+      console.log(JSON.stringify({ ok: false, error: 'config_invalid', message: err.message, path: CONFIG_PATH, targetPath: liveTarget.targetPath, projectRoot: process.cwd() }));
       return;
     }
     try {
       validateConfig(cfg);
     } catch (err) {
-      console.log(JSON.stringify({ ok: false, error: 'config_invalid', message: err.message, path: CONFIG_PATH }));
+      console.log(JSON.stringify({ ok: false, error: 'config_invalid', message: err.message, path: CONFIG_PATH, targetPath: liveTarget.targetPath, projectRoot: process.cwd() }));
       return;
     }
-    console.log(JSON.stringify({ ok: true, config: cfg, path: CONFIG_PATH }));
+    console.log(JSON.stringify({ ok: true, config: cfg, path: CONFIG_PATH, targetPath: liveTarget.targetPath, projectRoot: process.cwd() }));
     return;
   }
 
   // Load config
   if (!fs.existsSync(CONFIG_PATH)) {
-    console.error(JSON.stringify({ ok: false, error: 'config_missing', path: CONFIG_PATH }));
+    console.error(JSON.stringify({ ok: false, error: 'config_missing', path: CONFIG_PATH, targetPath: liveTarget.targetPath, projectRoot: process.cwd() }));
     process.exit(1);
   }
   const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
@@ -176,12 +185,15 @@ Output (JSON):
 export function ensureLiveGitIgnores(cwd = process.cwd()) {
   const target = resolveIgnoreTarget(cwd);
   const existing = fs.existsSync(target.path) ? fs.readFileSync(target.path, 'utf-8') : '';
+  const patterns = scopedLiveIgnorePatterns(cwd, target.baseDir);
+  const markerRe = new RegExp(`${escapeRegExp(IGNORE_MARKER_OPEN)}[\\s\\S]*?${escapeRegExp(IGNORE_MARKER_CLOSE)}`);
+  const existingPatterns = readExistingIgnoreBlockPatterns(existing, markerRe);
+  const mergedPatterns = [...new Set([...existingPatterns, ...patterns])];
   const block = [
     IGNORE_MARKER_OPEN,
-    ...LIVE_IGNORE_PATTERNS,
+    ...mergedPatterns,
     IGNORE_MARKER_CLOSE,
   ].join('\n');
-  const markerRe = new RegExp(`${escapeRegExp(IGNORE_MARKER_OPEN)}[\\s\\S]*?${escapeRegExp(IGNORE_MARKER_CLOSE)}`);
 
   let updated;
   if (markerRe.test(existing)) {
@@ -200,31 +212,53 @@ export function ensureLiveGitIgnores(cwd = process.cwd()) {
     file: path.relative(cwd, target.path).split(path.sep).join('/'),
     mode: target.mode,
     changed: updated !== existing,
-    patterns: [...LIVE_IGNORE_PATTERNS],
+    patterns: mergedPatterns,
   };
+}
+
+function readExistingIgnoreBlockPatterns(existing, markerRe) {
+  const match = existing.match(markerRe);
+  if (!match) return [];
+  return match[0]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && line !== IGNORE_MARKER_OPEN && line !== IGNORE_MARKER_CLOSE);
 }
 
 function resolveIgnoreTarget(cwd) {
   const gitExcludePath = resolveGitInfoExcludePath(cwd);
   if (gitExcludePath) {
-    return { path: gitExcludePath, mode: 'git-info-exclude' };
+    return { path: gitExcludePath.path, mode: 'git-info-exclude', baseDir: gitExcludePath.baseDir };
   }
-  return { path: path.join(cwd, '.gitignore'), mode: 'gitignore' };
+  return { path: path.join(cwd, '.gitignore'), mode: 'gitignore', baseDir: cwd };
 }
 
 function resolveGitInfoExcludePath(cwd) {
-  const dotGit = path.join(cwd, '.git');
-  if (!fs.existsSync(dotGit)) return null;
+  let dir = path.resolve(cwd);
+  while (true) {
+    const dotGit = path.join(dir, '.git');
+    if (fs.existsSync(dotGit)) {
+      const stat = fs.statSync(dotGit);
+      if (stat.isDirectory()) return { path: path.join(dotGit, 'info', 'exclude'), baseDir: dir };
+      if (stat.isFile()) {
+        const body = fs.readFileSync(dotGit, 'utf-8').trim();
+        const match = body.match(/^gitdir:\s*(.+)$/i);
+        if (match) {
+          const gitDir = path.isAbsolute(match[1]) ? match[1] : path.resolve(dir, match[1]);
+          return { path: path.join(gitDir, 'info', 'exclude'), baseDir: dir };
+        }
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
 
-  const stat = fs.statSync(dotGit);
-  if (stat.isDirectory()) return path.join(dotGit, 'info', 'exclude');
-  if (!stat.isFile()) return null;
-
-  const body = fs.readFileSync(dotGit, 'utf-8').trim();
-  const match = body.match(/^gitdir:\s*(.+)$/i);
-  if (!match) return null;
-  const gitDir = path.isAbsolute(match[1]) ? match[1] : path.resolve(cwd, match[1]);
-  return path.join(gitDir, 'info', 'exclude');
+function scopedLiveIgnorePatterns(cwd, baseDir = cwd) {
+  const rel = path.relative(baseDir, cwd).split(path.sep).filter(Boolean).join('/');
+  if (!rel) return [...LIVE_IGNORE_PATTERNS];
+  return LIVE_IGNORE_PATTERNS.map((pattern) => `${rel}/${pattern}`.replace(/\/+/g, '/'));
 }
 
 function escapeRegExp(value) {

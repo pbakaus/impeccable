@@ -17,6 +17,7 @@
  */
 
 import { readBuffer, removeEntries, truncateBuffer } from './live/manual-edits-buffer.mjs';
+import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 function argVal(args, name) {
   const prefix = name + '=';
@@ -27,9 +28,11 @@ function argVal(args, name) {
   return null;
 }
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+chdirToLiveTarget(rawArgs);
+const args = stripTargetArgs(rawArgs);
 if (args.includes('--help') || args.includes('-h')) {
-  console.log('Usage: node live-discard-manual-edits.mjs [--page-url=<url>]');
+  console.log('Usage: node live-discard-manual-edits.mjs [--page-url=<url>] [--target <path>]');
   process.exit(0);
 }
 
