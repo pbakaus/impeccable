@@ -1482,13 +1482,6 @@
   background: oklch(94% 0.02 82);
 }
 
-.home-kinpaku .live-demo-ctx-selection,
-.live-mode-kinpaku .live-demo-ctx-selection {
-  background: transparent;
-  border-color: transparent;
-  color: var(--ks-text-muted);
-}
-
 .home-kinpaku .live-demo-ctx-go,
 .live-mode-kinpaku .live-demo-ctx-go,
 .home-kinpaku .live-demo-ctx-accept,

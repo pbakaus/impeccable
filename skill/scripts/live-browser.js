@@ -99,7 +99,7 @@
   const LIVE_UI_SURFACES = [
     { key: 'global-bottom-bar', ids: [PREFIX + '-global-bar', PREFIX + '-global-bar-brand', PREFIX + '-pick-toggle', PREFIX + '-insert-toggle', PREFIX + '-detect-toggle', PREFIX + '-detect-badge', PREFIX + '-design-toggle', PREFIX + '-page-chat', PREFIX + '-page-chat-input', PREFIX + '-page-chat-voice'] },
     { key: 'pending-copy-edit-dock', ids: [PREFIX + '-pending-dock'] },
-    { key: 'element-selection-chrome', ids: [PREFIX + '-highlight', PREFIX + '-tooltip', PREFIX + '-bar', PREFIX + '-configure-input-wrap', PREFIX + '-selection-pill', PREFIX + '-input', PREFIX + '-configure-voice', PREFIX + '-configure-bar-tooltip'] },
+    { key: 'element-selection-chrome', ids: [PREFIX + '-highlight', PREFIX + '-tooltip', PREFIX + '-bar', PREFIX + '-selection-pill', PREFIX + '-input', PREFIX + '-configure-voice', PREFIX + '-configure-bar-tooltip'] },
     { key: 'action-picker', ids: [PREFIX + '-picker'] },
     { key: 'edit-chrome', ids: [PREFIX + '-edit-badge'] },
     { key: 'generating-row', ids: [PREFIX + '-bar', PREFIX + '-shader'] },
@@ -1178,7 +1178,7 @@
     barEl.dataset.configureSurface = 'false';
     barEl.removeAttribute('data-input-focused');
     barEl.removeAttribute('data-voice-listening');
-    barEl.style.padding = '6px';
+    barEl.style.padding = '5px';
     barEl.style.background = BP.surface;
     barEl.style.overflow = '';
     barEl.style.border = '1px solid ' + BP.border;
@@ -1444,31 +1444,32 @@
     faceStack.appendChild(clearFace);
     pill.appendChild(faceStack);
 
-    let armed = false;
-    const setHovered = (hovered) => {
-      armed = hovered;
-      tagFace.style.opacity = hovered ? '0' : '1';
-      clearFace.style.opacity = hovered ? '1' : '0';
-      pill.style.background = hovered ? P.toggleActive : 'transparent';
+    const setArmed = (armed) => {
+      tagFace.style.opacity = armed ? '0' : '1';
+      clearFace.style.opacity = armed ? '1' : '0';
+      pill.style.background = armed ? P.toggleActive : 'transparent';
       pill.style.border = CONFIGURE_SELECTION_PILL_BORDER;
-      pill.setAttribute('aria-label', hovered ? 'Clear selection' : 'Selected element: ' + tag);
+      pill.setAttribute('aria-label', armed ? 'Clear selection' : 'Selected element: ' + tag);
     };
-    pill.addEventListener('mouseenter', () => {
+    const arm = () => {
       if (controlsLocked) {
         showConfigureBarTooltip(pill, 'Apply is still running');
         return;
       }
-      setHovered(true);
+      setArmed(true);
       if (path) showConfigureBarTooltip(pill, path);
-    });
-    pill.addEventListener('mouseleave', () => {
+    };
+    const disarm = () => {
       hideConfigureBarTooltip();
-      setHovered(false);
-    });
+      setArmed(false);
+    };
+    pill.addEventListener('mouseenter', arm);
+    pill.addEventListener('mouseleave', disarm);
+    pill.addEventListener('focus', arm);
+    pill.addEventListener('blur', disarm);
     pill.addEventListener('click', (e) => {
       e.stopPropagation();
       if (controlsLocked) { showManualApplyBusyToast(); return; }
-      if (!armed) return;
       removeConfigureSelection();
     });
     return pill;
@@ -1915,18 +1916,18 @@
   }
 
   let pageInteractionCursorActive = false;
-  let pickCursorStyleMounted = false;
 
   function ensurePickCursorStyle() {
-    if (pickCursorStyleMounted) return;
-    pickCursorStyleMounted = true;
+    if (document.getElementById(PREFIX + '-pick-cursor-style')) return;
     const style = document.createElement('style');
     style.id = PREFIX + '-pick-cursor-style';
     style.textContent =
       'html.' + PICK_CURSOR_CLASS + ' * { cursor: crosshair !important; }\n'
       + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"],\n'
       + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"] * { cursor: revert !important; }';
-    uiAppendStyle(style);
+    // Styles the host page, not the chrome - inside the adapter's shadow UI
+    // root (uiAppendStyle's target) these selectors would match nothing.
+    document.head.appendChild(style);
   }
 
   /** Page-level cursor while pick or insert mode is targeting page elements. */
@@ -1953,6 +1954,16 @@
       document.documentElement.style.cursor = '';
       pageInteractionCursorActive = false;
     }
+  }
+
+  /**
+   * Single entry point for interaction-state transitions. The pick-mode
+   * crosshair is derived from `state`, so a bare `state = ...` assignment
+   * leaves the page cursor out of sync with the mode it advertises.
+   */
+  function setLiveState(next) {
+    state = next;
+    syncPageInteractionCursor();
   }
 
   /** Element used to position the floating bar / shader during a session. */
@@ -2273,6 +2284,21 @@
     }
   }
 
+  /** Stylesheet shared by the replace and insert configure rows. */
+  function ensureConfigureInputStyle() {
+    if (uiGetById(PREFIX + '-configure-input-style')) return;
+    const s = document.createElement('style');
+    s.id = PREFIX + '-configure-input-style';
+    s.textContent =
+      '@keyframes impeccable-configure-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
+      '#' + PREFIX + '-input, #' + PREFIX + '-insert-input { box-sizing: border-box; height: ' + CONFIGURE_ROW_TRACK_H + '; line-height: ' + CONFIGURE_ROW_TRACK_H + '; padding: 0; margin: 0; caret-color: ' + CONFIGURE_PILL_TEXT + '; }' +
+      '#' + PREFIX + '-input::placeholder, #' + PREFIX + '-insert-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
+      '#' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
+      '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
+      '#' + PREFIX + '-configure-voice:hover, #' + PREFIX + '-insert-voice:hover { background: oklch(27% 0 0); color: ' + BP.accent + '; }';
+    uiAppendStyle(s);
+  }
+
   function buildConfigureRow() {
     const controlsLocked = pendingApplyInFlight === true;
     const row = el('div', {
@@ -2318,18 +2344,7 @@
     inputShell.appendChild(buildSelectionPill({ el: selectedElement, controlsLocked }));
     inputShell.appendChild(input);
 
-    if (!uiGetById(PREFIX + '-configure-input-style')) {
-      const s = document.createElement('style');
-      s.id = PREFIX + '-configure-input-style';
-      s.textContent =
-        '@keyframes impeccable-configure-voice-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }' +
-        '#' + PREFIX + '-input, #' + PREFIX + '-insert-input { box-sizing: border-box; height: ' + CONFIGURE_ROW_TRACK_H + '; line-height: ' + CONFIGURE_ROW_TRACK_H + '; padding: 0; margin: 0; caret-color: ' + CONFIGURE_PILL_TEXT + '; }' +
-        '#' + PREFIX + '-input::placeholder, #' + PREFIX + '-insert-input::placeholder { color: ' + BP.textDim + '; opacity: 1; }' +
-        '#' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: impeccable-configure-voice-pulse 1.1s ease-in-out infinite; }' +
-        '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-configure-voice[data-listening="true"] svg, #' + PREFIX + '-insert-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
-        '#' + PREFIX + '-configure-voice:hover, #' + PREFIX + '-insert-voice:hover { background: oklch(27% 0 0); color: ' + BP.accent + '; }';
-      uiAppendStyle(s);
-    }
+    ensureConfigureInputStyle();
 
     input.addEventListener('focus', () => syncConfigureInputChrome());
     input.addEventListener('blur', () => syncConfigureInputChrome());
@@ -2409,6 +2424,8 @@
 
     inputShell.appendChild(buildSelectionPill({ el: selectedElement, controlsLocked }));
     inputShell.appendChild(input);
+
+    ensureConfigureInputStyle();
 
     input.addEventListener('input', () => syncInsertCreateButton());
     input.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -3327,7 +3344,7 @@
 
   function enterEditingMode() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
-    state = 'EDITING';
+    setLiveState('EDITING');
     hideBar();
     hideAnnotOverlay();
     renderEditBadge('editing');
@@ -3360,7 +3377,7 @@
   function cancelEditing() {
     restoreInlineEditDrafts();
     disableInlineEdit();
-    state = 'CONFIGURING';
+    setLiveState('CONFIGURING');
     showBar('configure');
     showAnnotOverlay(selectedElement);
     renderEditBadge('idle');
@@ -3374,7 +3391,7 @@
     hideAnnotOverlay();
     clearAnnotations();
     renderEditBadge('hidden');
-    state = 'PICKING';
+    setLiveState('PICKING');
     hoveredElement = null;
     hideHighlight();
     syncPageChatFocus('editing-outside-click');
@@ -3392,7 +3409,7 @@
 
   function exitConfigureToPicking(reason, opts = {}) {
     teardownConfigureChrome();
-    state = 'PICKING';
+    setLiveState('PICKING');
     if (opts.clearHover) {
       hoveredElement = null;
       hideHighlight();
@@ -3621,7 +3638,7 @@
       updatePendingCounter(stashResult.pendingCount || 0);
       maybeShowFirstSaveToast();
       disableInlineEdit();
-      state = 'CONFIGURING';
+      setLiveState('CONFIGURING');
       showBar('configure');
       showAnnotOverlay(selectedElement);
       renderEditBadge('idle');
@@ -4858,18 +4875,21 @@
 
   function elementMatchesOriginalMarkup(liveEl, origContent) {
     if (!isUsableInjectionAnchor(liveEl) || !origContent) return false;
+    // A matching id is decisive on its own: ids are unique, while the source
+    // tag and class names may not survive the build (component tags, hashed
+    // CSS-module class names).
+    if (origContent.id) return liveEl.id === origContent.id;
     if (liveEl.tagName !== origContent.tagName) return false;
-    if (origContent.id && liveEl.id !== origContent.id) return false;
 
     const origClasses = normalizeElementClassName(origContent).split(/\s+/).filter(Boolean)
       .filter((name) => /^[A-Za-z_-][\w-]*$/.test(name));
     if (origClasses.length > 0 && !origClasses.every((name) => liveEl.classList.contains(name))) return false;
 
     const origText = (origContent.textContent || '').trim();
-    if (!origContent.id && origClasses.length === 0 && origText.length >= 4) {
+    if (origClasses.length === 0 && origText.length >= 4) {
       const liveText = (liveEl.textContent || '').trim();
       const needle = origText.slice(0, Math.min(40, origText.length));
-      if (!liveText.includes(needle) && !origText.includes(liveText.slice(0, 40))) return false;
+      if (!liveText.includes(needle) && !(liveText.length >= 4 && origText.includes(liveText.slice(0, 40)))) return false;
     }
     return true;
   }
@@ -4890,7 +4910,7 @@
       if (classes.length > 0 && !classes.every((name) => c.classList.contains(name))) continue;
       if (!snapshot.id && classes.length === 0 && needle.length >= 4) {
         const text = (c.textContent || '').trim();
-        if (!text.includes(needle.slice(0, 40)) && !needle.includes(text.slice(0, 40))) continue;
+        if (!text.includes(needle.slice(0, 40)) && !(text.length >= 4 && needle.includes(text.slice(0, 40)))) continue;
       }
       return c;
     }
@@ -4917,11 +4937,6 @@
           if (!isUsableInjectionAnchor(c)) continue;
           if (expectedClasses.every((name) => c.classList.contains(name))) return c;
         }
-        const subset = expectedClasses.slice(0, Math.min(2, expectedClasses.length));
-        for (const c of candidates) {
-          if (!isUsableInjectionAnchor(c)) continue;
-          if (subset.every((name) => c.classList.contains(name))) return c;
-        }
       }
     }
 
@@ -4933,7 +4948,7 @@
       for (const c of candidates) {
         if (!isUsableInjectionAnchor(c)) continue;
         const text = (c.textContent || '').trim();
-        if (!text.includes(needle) && !origText.includes(text.slice(0, 40))) continue;
+        if (!text.includes(needle) && !(text.length >= 4 && origText.includes(text.slice(0, 40)))) continue;
         if (text.length < bestLen) { best = c; bestLen = text.length; }
       }
       if (best) return best;
@@ -4960,7 +4975,7 @@
       if (origContent.id && selectedElement.id === origContent.id) return selectedElement;
       if (origClasses.length === 0) return selectedElement;
       const overlap = origClasses.filter((name) => selectedElement.classList.contains(name));
-      if (overlap.length >= Math.min(origClasses.length, 1)) return selectedElement;
+      if (overlap.length >= 1) return selectedElement;
     }
 
     return null;
@@ -5004,7 +5019,7 @@
   function enterRecoveryWaitingForAnchor({ filePath, sessionId, srcWrapper, checkpointReason, trackScroll }) {
     recoveryWaitingForAnchor = true;
     selectedElement = document.body;
-    state = 'GENERATING';
+    setLiveState('GENERATING');
     showBar('generating');
     if (trackScroll !== false) startScrollTracking();
     saveSession();
@@ -5179,7 +5194,7 @@
         previewFile: manifestPath,
         previewMode: 'svelte-component',
       });
-      if (state !== 'CYCLING') state = 'GENERATING';
+      if (state !== 'CYCLING') setLiveState('GENERATING');
 
       const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (existingWrapper && svelteComponentSession?.sessionId === sessionId) {
@@ -5189,7 +5204,7 @@
         expectedVariants = arrivedVariants;
         visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants ? visibleVariant : 1;
         await mountSvelteComponentVariant(visibleVariant || 1);
-        state = 'CYCLING';
+        setLiveState('CYCLING');
         showOrUpdateCyclingBar();
         saveSession();
         return;
@@ -5269,7 +5284,7 @@
       }
 
       selectedElement = mountTarget.firstElementChild || mountTarget;
-      state = 'CYCLING';
+      setLiveState('CYCLING');
       recoveryWaitingForAnchor = false;
       hideShaderOverlay();
       showOrUpdateCyclingBar();
@@ -5328,7 +5343,7 @@
     arrivedVariants = 0;
     visibleVariant = 0;
     selectedElement = null;
-    state = 'PICKING';
+    setLiveState('PICKING');
     hideBar();
     if (message) showToast(message, 5000);
   }
@@ -5417,7 +5432,7 @@
         // Update selectedElement to the visible variant's content
         selectedElement = pickVariantContent(wrapper, visibleVariant) || wrapper.parentElement;
 
-        state = 'CYCLING';
+        setLiveState('CYCLING');
         recoveryWaitingForAnchor = false;
         hideShaderOverlay();
         showOrUpdateCyclingBar();
@@ -5823,7 +5838,7 @@
       if (expected > 0) expectedVariants = expected;
 
       if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
-        state = 'CYCLING';
+        setLiveState('CYCLING');
         recoveryWaitingForAnchor = false;
         hideShaderOverlay();
         if (wrapper.dataset.impeccableMode === 'insert') finalizeInsertSession();
@@ -5909,7 +5924,7 @@
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
-          if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
+          if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
           syncPageInteractionCursor();
           syncPageChatFocus('sse-connected');
           break;
@@ -5936,7 +5951,7 @@
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
-              state = 'CYCLING';
+              setLiveState('CYCLING');
               showOrUpdateCyclingBar();
               disableInlineEdit();
               refreshParamsPanel();
@@ -5986,7 +6001,7 @@
         case 'error':
           if (pendingAcceptedSession?.id && msg.id === pendingAcceptedSession.id) {
             pendingAcceptedSession = null;
-            state = 'CYCLING';
+            setLiveState('CYCLING');
             updateBarContent('cycling');
             showToast('Could not complete accept cleanup. Try Accept again.', 5000);
             break;
@@ -5996,7 +6011,7 @@
           showToast('Error: ' + msg.message, 5000);
           hideBar();
           renderEditBadge('hidden');
-          state = 'PICKING';
+          setLiveState('PICKING');
           break;
       }
     };
@@ -6034,7 +6049,7 @@
     // transient disconnect as an explicit discard.
     selectedElement = null;
     selectedAction = 'impeccable';
-    state = recoveryState;
+    setLiveState(recoveryState);
     if (currentSessionId) saveSession();
   }
 
@@ -6193,13 +6208,12 @@
       hideInsertLine();
       configureKind = 'insert';
       selectedElement = placeholder;
-      state = 'CONFIGURING';
+      setLiveState('CONFIGURING');
       hideHighlight();
       clearAnnotations();
       showAnnotOverlay(placeholder);
       showBar('configure');
       startScrollTracking();
-      syncPageInteractionCursor();
       return;
     }
     if (state !== 'PICKING' || !pickActive) return;
@@ -6212,7 +6226,7 @@
     e.preventDefault();
     e.stopPropagation();
     selectedElement = hoveredElement;
-    state = 'CONFIGURING';
+    setLiveState('CONFIGURING');
     showHighlight(selectedElement);
     clearAnnotations();
     showAnnotOverlay(selectedElement);
@@ -6362,7 +6376,7 @@
       if (state === 'PICKING') {
         if (insertActive) toggleInsert();
         else if (pickActive) togglePick();
-        else { hideHighlight(); state = 'IDLE'; }
+        else { hideHighlight(); setLiveState('IDLE'); }
         return;
       }
     }
@@ -6386,7 +6400,7 @@
       } else if (e.key === 'Enter') {
         e.preventDefault();
         selectedElement = hoveredElement;
-        state = 'CONFIGURING';
+        setLiveState('CONFIGURING');
         showHighlight(selectedElement);
         clearAnnotations();
         showAnnotOverlay(selectedElement);
@@ -6468,7 +6482,7 @@
     hideAnnotOverlay();
     clearAnnotations();
 
-    state = 'GENERATING';
+    setLiveState('GENERATING');
     // Disable the Edit badge: starting a manual text edit mid-generation would
     // conflict with the variant wrap that's about to land in the same DOM
     // region. Only swap if the badge was visible - picked elements with no
@@ -6493,7 +6507,7 @@
     clearInsertPicking();
     configureKind = 'replace';
     selectedElement = null;
-    state = insertActive ? 'PICKING' : 'IDLE';
+    setLiveState(insertActive ? 'PICKING' : 'IDLE');
     hideHighlight();
     syncPageChatFocus('insert-configure-cancel');
   }
@@ -6543,7 +6557,7 @@
     hideAnnotOverlay();
     clearAnnotations();
 
-    state = 'GENERATING';
+    setLiveState('GENERATING');
     showBar('generating');
     startScrollTracking();
     saveSession();
@@ -7301,7 +7315,7 @@ void main() {
       || acceptWrapper?.dataset?.impeccablePreview === 'svelte-component';
     const acceptedSnapshot = snapshotAcceptedVariantDom(acceptedSessionId, acceptedVariant);
 
-    state = 'SAVING';
+    setLiveState('SAVING');
     updateBarContent('saving');
     pendingAcceptedSession = {
       id: acceptedSessionId,
@@ -7316,7 +7330,7 @@ void main() {
       .then(() => {})
       .catch(() => {
         if (pendingAcceptedSession?.id === acceptedSessionId) pendingAcceptedSession = null;
-        state = 'CYCLING';
+        setLiveState('CYCLING');
         showOrUpdateCyclingBar();
         showToast('Could not confirm accept with the live server. Session kept for recovery; try Accept again.', 5000);
       });
@@ -7335,7 +7349,7 @@ void main() {
     if (pending.isSvelteComponent) {
       commitAcceptedSvelteComponentToDom(pending.id);
     }
-    state = 'CONFIRMED';
+    setLiveState('CONFIRMED');
     updateBarContent('confirmed');
     scheduleAcceptCleanup(pending);
     return true;
@@ -7459,7 +7473,7 @@ void main() {
     selectedAction = 'impeccable';
     pendingAcceptedSession = null;
     renderEditBadge('hidden');
-    state = 'PICKING';
+    setLiveState('PICKING');
   }
 
   function commitAcceptedVariantToDom(sessionId, variantId) {
@@ -7605,7 +7619,7 @@ void main() {
 
     const restoredAnchor = findLiveElementFromAnchorSnapshot(pickedAnchorSnapshot);
     selectedElement = restoredAnchor || document.body;
-    state = 'GENERATING';
+    setLiveState('GENERATING');
     recoveryWaitingForAnchor = !restoredAnchor;
     showBar('generating');
     startScrollTracking();
@@ -7720,7 +7734,7 @@ void main() {
     currentSessionId = null;
     selectedAction = 'impeccable';
     renderEditBadge('hidden');
-    state = 'PICKING';
+    setLiveState('PICKING');
   }
 
   //
@@ -7823,7 +7837,7 @@ void main() {
         : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
       selectedElement = resolveSvelteComponentAnchor()
         || wrapper.parentElement;
-      state = 'CYCLING';
+      setLiveState('CYCLING');
       hideShaderOverlay();
       showBar('cycling');
       startScrollTracking();
@@ -7859,7 +7873,7 @@ void main() {
     const isInsert = wrapper.dataset.impeccableMode === 'insert';
     const visEl = visibleVariant > 0 ? pickVariantContent(wrapper, visibleVariant) : null;
     const origEl = pickVariantContent(wrapper, 'original');
-    state = resumedState;
+    setLiveState(resumedState);
     if (isInsert && resumedState === 'GENERATING' && arrivedVariants === 0) {
       selectedElement = ensureInsertPlaceholder() || findInsertAnchorInDom() || wrapper;
     } else {
@@ -9607,9 +9621,9 @@ void main() {
       selectedElement = null;
       hoveredElement = null;
       configureKind = 'replace';
-      if (state === 'PICKING' || state === 'CONFIGURING') state = 'IDLE';
+      if (state === 'PICKING' || state === 'CONFIGURING') setLiveState('IDLE');
     } else {
-      if (state === 'IDLE') state = 'PICKING';
+      if (state === 'IDLE') setLiveState('PICKING');
     }
     syncPageChatFocus('toggle-pick');
   }
@@ -9625,10 +9639,10 @@ void main() {
       selectedElement = null;
       configureKind = 'replace';
       if (state === 'CONFIGURING') cancelInsertConfigure();
-      else if (state === 'IDLE' || state === 'PICKING') state = 'PICKING';
+      else if (state === 'IDLE' || state === 'PICKING') setLiveState('PICKING');
     } else {
       clearInsertPicking();
-      if (state === 'PICKING' && !pickActive) state = 'IDLE';
+      if (state === 'PICKING' && !pickActive) setLiveState('IDLE');
     }
     saveInteractionPrefs();
     updateGlobalBarState();
@@ -9709,6 +9723,7 @@ void main() {
     pageChatVoiceBtn = null;
     pageChatExpanded = false;
     if (insertCreateTooltipEl) { insertCreateTooltipEl.remove(); insertCreateTooltipEl = null; }
+    if (configureBarTooltipEl) { configureBarTooltipEl.remove(); configureBarTooltipEl = null; }
     if (highlightEl) { highlightEl.remove(); highlightEl = null; }
     if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
     if (barEl) { barEl.remove(); barEl = null; }
@@ -9722,7 +9737,8 @@ void main() {
     window.removeEventListener('message', onDetectMessage);
     // Remove detection overlays
     window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
-    state = 'IDLE';
+    setLiveState('IDLE');
+    document.getElementById(PREFIX + '-pick-cursor-style')?.remove();
     window.__IMPECCABLE_LIVE_INIT__ = false;
     console.log('[impeccable] Live mode exited.');
   }
@@ -10899,7 +10915,7 @@ void main() {
       console.log('[impeccable] Resumed active variant session ' + currentSessionId + ' (' + arrivedVariants + '/' + expectedVariants + ' variants).');
     }
 
-    if (state === 'IDLE' && (pickActive || insertActive)) state = 'PICKING';
+    if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
     syncPageInteractionCursor();
     syncPageChatFocus('init-complete');
   }

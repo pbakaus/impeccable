@@ -128,7 +128,7 @@ describe('live-browser.js regression guards', () => {
   it('exits inline editing directly on outside click', () => {
     assert.match(
       SOURCE,
-      /function cancelEditingToPicking\(\) \{[\s\S]{0,600}?state = 'PICKING';/,
+      /function cancelEditingToPicking\(\) \{[\s\S]{0,600}?setLiveState\('PICKING'\);/,
       'outside-click editing cancel should avoid rebuilding configure UI before hiding it',
     );
     assert.match(
@@ -201,7 +201,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function handleServerLost\(\)[\s\S]{0,300}?const recoveryState = currentSessionId \? state : 'IDLE';[\s\S]{0,1200}?state = recoveryState;[\s\S]{0,120}?if \(currentSessionId\) saveSession\(\);/,
+      /function handleServerLost\(\)[\s\S]{0,300}?const recoveryState = currentSessionId \? state : 'IDLE';[\s\S]{0,1200}?setLiveState\(recoveryState\);[\s\S]{0,120}?if \(currentSessionId\) saveSession\(\);/,
       'server-lost cleanup should keep the current session phase in local recovery state instead of rewriting it to GENERATING',
     );
   });
@@ -380,7 +380,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /if \(state === 'IDLE' && \(pickActive \|\| insertActive\)\) state = 'PICKING';/,
+      /if \(state === 'IDLE' && \(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\);/,
       'SSE connected must arm insert mode when saved preference has insert on',
     );
   });

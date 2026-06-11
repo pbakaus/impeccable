@@ -93,8 +93,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function buildConfigureRow\(\)[\s\S]{0,80}?const controlsLocked = pendingApplyInFlight === true;[\s\S]*?go\.disabled = controlsLocked;/,
+      /function buildConfigureRow\(\)[\s\S]{0,80}?const controlsLocked = pendingApplyInFlight === true;[\s\S]*?const go = buildConfigureSubmitButton\(\{\s*controlsLocked,/,
       'Configure controls should render disabled while manual copy edits are applying',
+    );
+    assert.match(
+      SOURCE,
+      /function buildConfigureSubmitButton\(\{ controlsLocked[\s\S]{0,700}?btn\.disabled = controlsLocked;/,
+      'the configure submit button must disable itself while manual copy edits are applying',
     );
     assert.match(
       SOURCE,
@@ -293,7 +298,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /case 'error':\s*if \(pendingAcceptedSession\?\.id && msg\.id === pendingAcceptedSession\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,80}?state = 'CYCLING';[\s\S]{0,80}?updateBarContent\('cycling'\);[\s\S]{0,160}?break;/,
+      /case 'error':\s*if \(pendingAcceptedSession\?\.id && msg\.id === pendingAcceptedSession\.id\) \{[\s\S]{0,80}?pendingAcceptedSession = null;[\s\S]{0,80}?setLiveState\('CYCLING'\);[\s\S]{0,80}?updateBarContent\('cycling'\);[\s\S]{0,160}?break;/,
       'an SSE error for a queued accept should invalidate pending accept state and keep variants retryable',
     );
     assert.equal(

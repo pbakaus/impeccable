@@ -1364,6 +1364,21 @@ html.light .live-mode-kinpaku .live-demo-gbar-chat-input {
    was an 11%-darker olive-cast block that read as heavy and unrefined on the
    white bar. A barely-there warm off-white recess with a crisp hairline reads
    as polished product chrome — the border does the separating, not a gray slab. */
+/* The configure-phase bar mirrors the real overlay chrome, which keeps a dark
+   surface in both themes. The pale light-mode bar from the rule above would
+   swallow the near-white prompt text below, so the configuring phase opts back
+   into the overlay's dark surface. */
+html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"],
+html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] {
+  background: oklch(15% 0.008 95);
+  border-color: oklch(92% 0 0 / 0.14);
+}
+
+html.light .home-kinpaku .why-live-frame > .why-live-ctx.live-demo-ctx[data-phase="configuring"] {
+  background: oklch(15% 0.008 95);
+  border-color: oklch(92% 0 0 / 0.14);
+}
+
 html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-input,
 html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-input {
   background: transparent;
@@ -1389,7 +1404,14 @@ html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-dem
 html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-count {
   background: transparent;
   border: 0;
-  color: var(--ks-text-muted);
+  /* Light muted tone from the base sheet: these sit on the dark configure
+     surface, where the light-theme text-muted token would vanish. */
+  color: oklch(63% 0.024 82);
+}
+
+html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-voice,
+html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-voice {
+  color: oklch(63% 0.024 82);
 }
 
 html.light .home-kinpaku .live-demo-ctx-go,
