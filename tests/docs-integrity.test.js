@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
-import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { getDefaultRules } from '../cli/engine/registry/antipatterns.mjs';
 
 const ROOT = process.cwd();
 
@@ -114,7 +114,7 @@ describe('docs integrity', () => {
       fs.readFileSync(path.join(ROOT, 'skill/scripts/command-metadata.json'), 'utf8')
     );
     const commandCount = Object.keys(commandMetadata).length;
-    const detectorCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
+    const detectorCount = new Set(getDefaultRules().map(rule => rule.id)).size;
 
     const files = [
       'README.md',

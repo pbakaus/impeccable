@@ -2,6 +2,57 @@
   "schemaVersion": 2,
   "generatedAt": "2026-05-26T00:00:00Z",
   "title": "Design System: Impeccable",
+  "tokens": {
+    "typography": {
+      "roles": {
+        "wordmark": {
+          "fontFamily": "Alumni Sans, Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif",
+          "fontSize": "1.3rem",
+          "fontWeight": 400,
+          "letterSpacing": "0.15em",
+          "lineHeight": 1
+        },
+        "display": {
+          "fontFamily": "Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif",
+          "fontSize": "clamp(3.4rem, 6.5vw, 5.6rem)",
+          "fontWeight": 300,
+          "letterSpacing": "-0.01em",
+          "lineHeight": 1.02
+        },
+        "headline": {
+          "fontFamily": "Alumni Sans Pinstripe, Albert Sans, Arial, sans-serif",
+          "fontSize": "clamp(2.6rem, 4vw, 3.4rem)",
+          "fontWeight": 600,
+          "letterSpacing": "0",
+          "lineHeight": 1.04
+        },
+        "title": {
+          "fontFamily": "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif",
+          "fontSize": "1.18rem",
+          "fontWeight": 500,
+          "lineHeight": 1.35
+        },
+        "body": {
+          "fontFamily": "Albert Sans, Avenir Next, Helvetica Neue, Arial, system-ui, sans-serif",
+          "fontSize": "1.02rem",
+          "fontWeight": 400,
+          "lineHeight": 1.8
+        },
+        "eyebrow": {
+          "fontFamily": "SFMono-Regular, Roboto Mono, Consolas, monospace",
+          "fontSize": "0.7rem",
+          "fontWeight": 500,
+          "letterSpacing": "0.18em"
+        },
+        "mono": {
+          "fontFamily": "SFMono-Regular, Roboto Mono, Consolas, monospace",
+          "fontSize": "0.72rem",
+          "fontWeight": 500,
+          "letterSpacing": "0.22em"
+        }
+      }
+    }
+  },
   "extensions": {
     "colorMeta": {
       "kinpaku-gold": {

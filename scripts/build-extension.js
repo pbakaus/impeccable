@@ -18,7 +18,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { getExtensionAntipatternsMetadata } from './lib/build-extension-metadata.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -70,16 +70,9 @@ console.log(`Generated ${path.relative(ROOT, DETECTOR_OUTPUT)} (${(output.length
 
 // --- 2. Extract antipatterns.json ---
 
-// Include description so the devtools panel can show the full rule explanation
-// in tooltips.
-const apJson = ANTIPATTERNS.map(({ id, name, category, description }) => ({
-  id,
-  name,
-  category: category || 'quality',
-  description: description || '',
-}));
+const apJson = getExtensionAntipatternsMetadata();
 fs.writeFileSync(AP_OUTPUT, JSON.stringify(apJson, null, 2) + '\n');
-console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${ANTIPATTERNS.length} rules)`);
+console.log(`Generated ${path.relative(ROOT, AP_OUTPUT)} (${apJson.length} rules)`);
 
 // --- 3. Zip packaging ---
 

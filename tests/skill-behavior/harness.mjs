@@ -30,6 +30,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const SKILL_SOURCE_DIR = path.join(REPO_ROOT, 'skill');
 const MAX_BASH_OUTPUT_BYTES = 200_000;
+const DEFAULT_TOOL_PATH = [
+  path.dirname(process.execPath),
+  process.env.PATH,
+  process.env.BUN_INSTALL ? path.join(process.env.BUN_INSTALL, 'bin') : null,
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin',
+].filter(Boolean).join(':');
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
 
 /**
  * Strip the YAML frontmatter and replace `{{...}}` placeholders so SKILL.md
@@ -116,7 +131,10 @@ function safeResolve(root, userPath) {
 
 function execBash(workspace, command, timeoutMs = 20_000, extraEnv = {}) {
   return new Promise((resolve) => {
-    const proc = spawn('bash', ['-lc', command], { cwd: workspace, env: { ...process.env, ...extraEnv } });
+    const env = { ...process.env, ...extraEnv };
+    env.PATH = [path.dirname(process.execPath), env.PATH || DEFAULT_TOOL_PATH].filter(Boolean).join(':');
+    const bootstrapCommand = `export PATH=${shellQuote(env.PATH)}; ${command}`;
+    const proc = spawn('bash', ['-lc', bootstrapCommand], { cwd: workspace, env });
     let stdout = '';
     let stderr = '';
     const truncatedFlag = { val: false };

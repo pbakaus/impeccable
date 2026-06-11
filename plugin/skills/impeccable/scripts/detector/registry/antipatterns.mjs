@@ -1,3 +1,13 @@
+import {
+  DIMENSION_RULE_IDS,
+  TYPOGRAPHY_RULE_IDS,
+  filterByDimensions,
+  findingRuleId,
+  getRuleIdsForDimensions,
+  getRulesForDimension as getRulesForDimensionFromCatalog,
+  normalizeDimensions,
+} from './dimensions.mjs';
+
 const ANTIPATTERNS = [
   // ── AI slop: tells that something was AI-generated ──
   {
@@ -306,6 +316,56 @@ const ANTIPATTERNS = [
       'Letter spacing above 0.05em on body text disrupts natural character groupings and slows reading. Reserve wide tracking for short uppercase labels only.',
   },
   {
+    id: 'non-token-font-size',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Font size outside design system',
+    description:
+      'A font-size value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
+    skillSection: 'Typography',
+    skillGuideline: 'font sizes should match the design typography scale',
+  },
+  {
+    id: 'non-token-line-height',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Line height outside design system',
+    description:
+      'A line-height value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
+    skillSection: 'Typography',
+    skillGuideline: 'line heights should match the design typography scale',
+  },
+  {
+    id: 'non-token-letter-spacing',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Letter spacing outside design system',
+    description:
+      'A letter-spacing value does not match the typography scale in .impeccable/design.json. Use a documented typography token, or update the design system only with user sign-off.',
+    skillSection: 'Typography',
+    skillGuideline: 'letter spacing should match the design typography scale',
+  },
+  {
+    id: 'non-token-font-family',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Font family outside design system',
+    description:
+      'A font-family value does not match the typography families in .impeccable/design.json. Use a documented family token, or update the design system only with user sign-off.',
+    skillSection: 'Typography',
+    skillGuideline: 'font families should match the design typography scale',
+  },
+  {
+    id: 'personalized-scale-unreadable',
+    category: 'quality',
+    conditional: 'personalized-typography-scale',
+    name: 'Unreadable typography token scale',
+    description:
+      'tokens.typography.scale exists in .impeccable/design.json but does not use the detector shape. Use scale.fontSize, scale.lineHeight, scale.letterSpacing, and scale.fontFamily arrays.',
+    skillSection: 'Typography',
+    skillGuideline: 'typography scale snapshots should be explicit detector-readable arrays',
+  },
+  {
     id: 'text-overflow',
     category: 'quality',
     name: 'Content overflowing its container',
@@ -386,8 +446,16 @@ function getRulesForCategory(category) {
   return ANTIPATTERNS.filter(rule => rule.category === category);
 }
 
+function getDefaultRules() {
+  return ANTIPATTERNS.filter(rule => !rule.conditional);
+}
+
 function getRuleEngineSupport(engine) {
   return RULE_ENGINE_SUPPORT[engine] || new Set();
+}
+
+function getRulesForDimension(dimension) {
+  return getRulesForDimensionFromCatalog(ANTIPATTERNS, dimension);
 }
 
 // Set of provider tags that gate rules off by default (e.g. 'gpt', 'gemini').
@@ -402,18 +470,33 @@ function filterByProviders(findings, providers = []) {
   const enabled = new Set(providers || []);
   if (!GATED_PROVIDERS.size) return findings;
   return findings.filter(f => {
-    const rule = getAntipattern(f.antipattern);
+    const rule = getAntipattern(findingRuleId(f));
     if (!rule || !rule.gated) return true;
     return enabled.has(rule.gated);
   });
+}
+
+function filterFindings(findings, options = {}) {
+  return filterByDimensions(
+    filterByProviders(findings, options?.providers),
+    options?.dimensions,
+  );
 }
 
 export {
   ANTIPATTERNS,
   RULE_ENGINE_SUPPORT,
   GATED_PROVIDERS,
+  TYPOGRAPHY_RULE_IDS,
+  DIMENSION_RULE_IDS,
   getAntipattern,
+  getDefaultRules,
   getRulesForCategory,
+  getRulesForDimension,
+  getRuleIdsForDimensions,
   getRuleEngineSupport,
+  normalizeDimensions,
   filterByProviders,
+  filterByDimensions,
+  filterFindings,
 };

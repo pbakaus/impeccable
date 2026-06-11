@@ -25,7 +25,8 @@ import {
   resolveBackground,
   resolveBorderRadiusPx,
 } from '../../rules/checks.mjs';
-import { filterByProviders } from '../../registry/antipatterns.mjs';
+import { filterFindings } from '../../registry/antipatterns.mjs';
+import { detectPersonalizedTypography } from '../../rules/personalized-typography.mjs';
 import { detectText, runTextContentAnalyzers } from '../regex/detect-text.mjs';
 import {
   StaticDocument,
@@ -33,6 +34,18 @@ import {
   buildStaticWindow,
   collectStaticCssText,
 } from './css-cascade.mjs';
+
+function collectLinkedStylesheetPaths(root, fileDir, modules) {
+  const paths = [];
+  const links = modules.selectAll('link', root.children || []);
+  for (const link of links) {
+    const rel = link.attribs?.rel || '';
+    const href = link.attribs?.href || '';
+    if (!/\bstylesheet\b/i.test(rel) || !href || /^(https?:)?\/\//i.test(href)) continue;
+    paths.push(path.resolve(fileDir, href));
+  }
+  return paths;
+}
 
 function checkStaticPageTypography(document, window) {
   const findings = [];
@@ -202,7 +215,17 @@ async function detectHtml(filePath, options = {}) {
     }
   }
 
-  return filterByProviders(findings, options.providers);
+  findings.push(...detectPersonalizedTypography(html, filePath, options));
+  if (!options?.skipLinkedCssPersonalized) {
+    for (const cssPath of collectLinkedStylesheetPaths(root, fileDir, modules)) {
+      try {
+        const css = fs.readFileSync(cssPath, 'utf-8');
+        findings.push(...detectPersonalizedTypography(css, cssPath, options));
+      } catch { /* skip unreadable linked CSS */ }
+    }
+  }
+
+  return filterFindings(findings, options);
 }
 
 export { checkStaticPageTypography, STATIC_ELEMENT_RULES, detectHtml };

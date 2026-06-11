@@ -237,9 +237,11 @@ Concrete, forceful guardrails. Lead each with "Do" or "Don't". Be specific: incl
 - **Don't** [...]
 ```
 
-### Step 4b: Write .impeccable/design.json sidecar (extensions only)
+### Step 4b: Write .impeccable/design.json sidecar
 
-The frontmatter owns token primitives (colors, typography, rounded, spacing, components). The sidecar at `.impeccable/design.json` carries **what Stitch's schema can't hold**: tonal ramps per color, shadow/elevation tokens, motion tokens, breakpoints, full component HTML/CSS snippets (the panel renders these into a shadow DOM), and narrative (north star, rules, do's/don'ts). It extends the frontmatter, it doesn't duplicate it.
+The frontmatter owns token primitives (colors, typography, rounded, spacing, components). The sidecar at `.impeccable/design.json` mostly carries **what Stitch's schema can't hold**: tonal ramps per color, shadow/elevation tokens, motion tokens, breakpoints, full component HTML/CSS snippets (the panel renders these into a shadow DOM), and narrative (north star, rules, do's/don'ts).
+
+One exception is intentional: write `tokens.typography` as a denormalized typography snapshot derived from the `DESIGN.md` frontmatter. Keep semantic role data under `tokens.typography.roles`; write an explicit `tokens.typography.scale` only when you can name the allowed values for detector consumption. `/impeccable typeset` personalized preflight reads only `scale`, not `roles`, so semantic role snapshots do not become accidental exhaustive allowlists. `DESIGN.md` remains the source of truth; the sidecar snapshot is derived data.
 
 Regenerate the sidecar whenever you regenerate root `DESIGN.md`. If the user only asks to refresh the sidecar (e.g., from the live panel's stale-hint), preserve `DESIGN.md` and write only `.impeccable/design.json`.
 
@@ -250,6 +252,31 @@ Regenerate the sidecar whenever you regenerate root `DESIGN.md`. If the user onl
   "schemaVersion": 2,
   "generatedAt": "ISO-8601 string",
   "title": "Design System: [Project Title]",
+  "tokens": {
+    "typography": {
+      "roles": {
+        "display": {
+          "fontFamily": "Cormorant Garamond, Georgia, serif",
+          "fontSize": "clamp(2.5rem, 7vw, 4.5rem)",
+          "fontWeight": 300,
+          "lineHeight": 1,
+          "letterSpacing": "normal"
+        },
+        "body": {
+          "fontFamily": "Karla, system-ui, sans-serif",
+          "fontSize": "1rem",
+          "fontWeight": 400,
+          "lineHeight": 1.6
+        }
+      },
+      "scale": {
+        "fontSize": ["0.875rem", "1rem", "1.25rem", "clamp(2.5rem, 7vw, 4.5rem)"],
+        "lineHeight": [1, 1.2, 1.5, 1.6],
+        "letterSpacing": ["normal", "-0.01em"],
+        "fontFamily": ["Cormorant Garamond, Georgia, serif", "Karla, system-ui, sans-serif"]
+      }
+    }
+  },
   "extensions": {
     "colorMeta": {
       "primary":        { "role": "primary",  "displayName": "Editorial Magenta", "canonical": "oklch(60% 0.25 350)", "tonalRamp": ["...", "...", "..."] },
@@ -289,7 +316,7 @@ Regenerate the sidecar whenever you regenerate root `DESIGN.md`. If the user onl
 }
 ```
 
-**What changed from schemaVersion 1.** The old sidecar carried token primitive arrays (`tokens.colors[]`, `tokens.typography[]`, etc.). Those values now live in the frontmatter. The sidecar only carries metadata that can't live in the frontmatter (tonal ramps, canonical OKLCH when the hex is an approximation, display names, role hints), keyed by the frontmatter token name (`colorMeta.<token-name>`, `typographyMeta.<token-name>`). Components still carry full HTML/CSS because Stitch's 8-prop set can't hold them.
+**What changed from schemaVersion 1.** The old sidecar carried token primitive arrays (`tokens.colors[]`, `tokens.typography[]`, etc.). Those values now live in the frontmatter. The sidecar carries metadata that can't live in the frontmatter (tonal ramps, canonical OKLCH when the hex is an approximation, display names, role hints), keyed by the frontmatter token name (`colorMeta.<token-name>`, `typographyMeta.<token-name>`). The only primitive snapshot that remains is `tokens.typography`, with optional `roles` for semantic context and optional `scale` for detector consumption. Components still carry full HTML/CSS because Stitch's 8-prop set can't hold them.
 
 #### Component translation rules
 

@@ -1,8 +1,9 @@
 import { GENERIC_FONTS } from '../../shared/constants.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
-import { filterByProviders } from '../../registry/antipatterns.mjs';
+import { filterFindings } from '../../registry/antipatterns.mjs';
 import { profileFindings, profileStep } from '../../profile/profiler.mjs';
+import { detectPersonalizedTypography } from '../../rules/personalized-typography.mjs';
 
 // ---------------------------------------------------------------------------
 // Regex fallback (non-HTML files: CSS, JSX, TSX, etc.)
@@ -520,7 +521,9 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
-  return filterByProviders(deduped, options?.providers);
+  deduped.push(...detectPersonalizedTypography(content, filePath, options));
+
+  return filterFindings(deduped, options);
 }
 
 export {

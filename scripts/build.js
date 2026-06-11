@@ -22,7 +22,7 @@ import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProj
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { createAllZips } from './lib/zip.js';
-import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { getDefaultRules } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
 /**
@@ -51,7 +51,7 @@ function generateCounts(rootDir, skills, buildDir) {
   }
 
   // Count detection rules from the detector registry.
-  const detectionCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
+  const detectionCount = new Set(getDefaultRules().map(rule => rule.id)).size;
 
   // Write generated counts module
   const genDir = path.join(rootDir, 'site/public/js/generated');

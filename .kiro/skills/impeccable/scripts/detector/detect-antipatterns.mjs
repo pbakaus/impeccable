@@ -10,7 +10,21 @@
 
 import { detectCli } from './cli/main.mjs';
 
-export { ANTIPATTERNS, RULE_ENGINE_SUPPORT, getAntipattern, getRulesForCategory, getRuleEngineSupport } from './registry/antipatterns.mjs';
+export {
+  ANTIPATTERNS,
+  RULE_ENGINE_SUPPORT,
+  TYPOGRAPHY_RULE_IDS,
+  DIMENSION_RULE_IDS,
+  getAntipattern,
+  getDefaultRules,
+  getRulesForCategory,
+  getRulesForDimension,
+  getRuleIdsForDimensions,
+  getRuleEngineSupport,
+  normalizeDimensions,
+  filterByDimensions,
+  filterFindings,
+} from './registry/antipatterns.mjs';
 export { SAFE_TAGS, BORDER_SAFE_TAGS, OVERUSED_FONTS, GENERIC_FONTS, KNOWN_SERIF_FONTS } from './shared/constants.mjs';
 export { isNeutralColor, parseRgb, relativeLuminance, contrastRatio, parseGradientColors, hasChroma, getHue, colorToHex } from './shared/color.mjs';
 export { isFullPage } from './shared/page.mjs';
@@ -26,6 +40,7 @@ export { createDetectorProfile, summarizeDetectorProfile } from './profile/profi
 export { detectHtml } from './engines/static-html/detect-html.mjs';
 export { detectUrl, createBrowserDetector } from './engines/browser/detect-url.mjs';
 export { detectText, extractStyleBlocks, extractCSSinJS } from './engines/regex/detect-text.mjs';
+export { detectPersonalizedTypography } from './rules/personalized-typography.mjs';
 export {
   walkDir,
   SCANNABLE_EXTENSIONS,

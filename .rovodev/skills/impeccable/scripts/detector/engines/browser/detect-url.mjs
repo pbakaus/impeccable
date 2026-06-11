@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { finding } from '../../findings.mjs';
-import { filterByProviders } from '../../registry/antipatterns.mjs';
+import { filterFindings } from '../../registry/antipatterns.mjs';
+import { getRuleIdsForDimensions } from '../../registry/dimensions.mjs';
 import { profileFindingsAsync, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
 import { captureVisualContrastCandidate } from '../visual/screenshot-contrast.mjs';
 
@@ -90,6 +91,7 @@ async function detectUrl(url, options = {}) {
   const settleMs = Number.isFinite(options?.settleMs) ? options.settleMs : 0;
   const viewport = options?.viewport || { width: 1280, height: 800 };
   const externalBrowser = options?.browser || null;
+  const enabledRules = getRuleIdsForDimensions(options?.dimensions);
   let puppeteer;
   if (!externalBrowser) {
     try {
@@ -168,12 +170,13 @@ async function detectUrl(url, options = {}) {
       phase: 'scan',
       ruleId: 'configure-pure-detect',
       target: url,
-    }, () => page.evaluate(() => {
+    }, () => page.evaluate(({ enabledRules }) => {
       window.__IMPECCABLE_CONFIG__ = {
         ...(window.__IMPECCABLE_CONFIG__ || {}),
         autoScan: false,
+        enabledRules,
       };
-    }));
+    }, { enabledRules: enabledRules ? [...enabledRules] : [] }));
     await profileStepAsync(profile, {
       engine: 'browser',
       phase: 'scan',
@@ -213,7 +216,7 @@ async function detectUrl(url, options = {}) {
       }, () => browser.close());
     }
   }
-  return filterByProviders(results.map(f => finding(f.id, url, f.snippet)), options.providers);
+  return filterFindings(results.map(f => finding(f.id, url, f.snippet)), options);
 }
 
 async function createBrowserDetector(options = {}) {
