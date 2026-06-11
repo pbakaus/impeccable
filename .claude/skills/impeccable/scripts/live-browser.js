@@ -3399,7 +3399,8 @@
 
   function teardownConfigureChrome() {
     hideConfigureBarTooltip();
-    disableInlineEdit();
+    // hideBar() restores unsaved EDITING drafts before it disables inline
+    // edit; disabling here first would wipe the draft metadata it needs.
     hideBar();
     stopScrollTracking();
     hideAnnotOverlay();
