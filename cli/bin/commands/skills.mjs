@@ -666,6 +666,7 @@ const HOOK_EXPLAINER = [
 // re-asks: a recorded decision or an already-installed hook short-circuits, and
 // non-interactive runs keep the historical install-by-default behavior.
 async function decideHookInstall(root, targets, { yes } = {}) {
+  if (targets.length === 0) return false;
   const consent = getHookConsent(root);
   if (consent === 'declined') return false;
   if (consent === 'accepted') return true;
@@ -1112,6 +1113,7 @@ function copyDirSync(src, dest) {
 export {
   copyProviderHooks,
   copyProviderSkills,
+  decideHookInstall,
   expectedHookDests,
   linkProviderSkills,
   mergeHookManifests,

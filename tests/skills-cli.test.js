@@ -17,6 +17,7 @@ import { tmpdir } from 'os';
 import {
   copyProviderHooks,
   copyProviderSkills,
+  decideHookInstall,
   expectedHookDests,
   mergeHookManifests,
   migrateUnprefixImpeccable,
@@ -575,6 +576,18 @@ describe('skills install/update: local universal bundle e2e', () => {
       cwd: tmp,
       env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
     });
+    expect(existsSync(join(tmp, '.impeccable', 'config.local.json'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('does not opt into hooks when no provider targets are installed', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-consent-no-targets-'));
+    execSync('git init', { cwd: tmp });
+
+    const wantHooks = await decideHookInstall(tmp, [], { yes: true });
+
+    expect(wantHooks).toBe(false);
     expect(existsSync(join(tmp, '.impeccable', 'config.local.json'))).toBe(false);
 
     rmSync(tmp, { recursive: true, force: true });
