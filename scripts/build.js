@@ -786,5 +786,9 @@ async function build() {
   console.log('\n✨ Build complete!');
 }
 
-// Run the build
-build();
+// Run the build. A rejection here (e.g. the release zip failing to build) must
+// exit non-zero so a broken artifact never deploys silently.
+build().catch((err) => {
+  console.error(`\n❌ Build failed: ${err.message}`);
+  process.exit(1);
+});
