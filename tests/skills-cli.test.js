@@ -158,7 +158,12 @@ describe('skills install: already-installed detection', () => {
     const skillDir = join(tmp, '.cursor', 'skills', 'i-impeccable');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: i-impeccable\n---\n');
-    writeFileSync(join(tmp, '.cursor', 'hooks.json'), JSON.stringify({ version: 1, hooks: {} }));
+    // Seed the hook so the already-installed path sees it wired up and doesn't
+    // try to repair it (which would need the bundle).
+    writeFileSync(join(tmp, '.cursor', 'hooks.json'), JSON.stringify({
+      version: 1,
+      hooks: { preToolUse: [{ command: 'node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"' }] },
+    }));
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');
@@ -198,6 +203,31 @@ describe('skills install: already-installed detection', () => {
     expect(output).toContain('already installed');
     expect(output).not.toContain('Installed hooks into');
     expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('repairs the hook when settings.local.json exists without the Impeccable marker', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-repair-unrelated-local-'));
+    execSync('git init', { cwd: tmp });
+    createFakeSkills(tmp, ['impeccable'], ['.claude']);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    // A local settings file that exists for unrelated reasons (e.g. permissions)
+    // must not be mistaken for an installed hook.
+    writeFileSync(join(tmp, '.claude', 'settings.local.json'),
+      JSON.stringify({ permissions: { allow: ['Bash(ls:*)'] } }, null, 2));
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Installed hooks into: .claude');
+    // The hook is merged in, and the unrelated local settings are preserved.
+    const merged = JSON.parse(readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8'));
+    expect(JSON.stringify(merged)).toContain('skills/impeccable/scripts/hook.mjs');
+    expect(merged.permissions.allow).toContain('Bash(ls:*)');
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

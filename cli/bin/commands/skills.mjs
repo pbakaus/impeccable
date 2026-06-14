@@ -475,17 +475,19 @@ function fileHasImpeccableHookMarker(file) {
   }
 }
 
-// Whether the hook manifest is already in place for a provider, used to decide
-// if the already-installed fast path should top up a missing hook file. The
-// canonical target's existence gates it (matching the historical behavior),
-// plus we honor our hook living in a shared sibling (Claude's settings.json)
-// so honored-in-place installs don't trigger a needless repair download.
+// Whether our hook is already wired up for a provider, used to decide if the
+// already-installed fast path should top up a missing hook. We look for the
+// Impeccable marker — not mere file existence — because the target files
+// (settings.local.json, hooks.json) commonly hold unrelated local settings; an
+// existence check would falsely report "installed" and skip repairing a missing
+// hook that `update` would otherwise add. For Claude we also honor our hook
+// living in the shared settings.json sibling (a legacy install or user move).
 function hookInstalledForProvider(root, provider) {
   const artifacts = PROVIDER_HOOK_ARTIFACTS[provider] || [];
   if (artifacts.length === 0) return true;
   return artifacts.every(({ destProvider, rel, destRel }) => {
     const writeRel = destRel || rel;
-    if (existsSync(join(root, destProvider, writeRel))) return true;
+    if (fileHasImpeccableHookMarker(join(root, destProvider, writeRel))) return true;
     if (writeRel !== rel && fileHasImpeccableHookMarker(join(root, destProvider, rel))) return true;
     return false;
   });
