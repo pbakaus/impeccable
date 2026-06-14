@@ -609,6 +609,17 @@ describe('writeAuditLog()', () => {
     assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), true);
     assert.equal(fs.existsSync(log), true);
   });
+
+  it('resolves a relative auditLog path against the project root, not the process cwd', () => {
+    const projectDir = path.join(cwd, 'project');
+    fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
+      JSON.stringify({ hook: { auditLog: 'logs/hook.ndjson' } }));
+    assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), true);
+    // Written under the project root, not the fallback cwd.
+    assert.equal(fs.existsSync(path.join(projectDir, 'logs', 'hook.ndjson')), true);
+    assert.equal(fs.existsSync(path.join(cwd, 'logs', 'hook.ndjson')), false);
+  });
 });
 
 describe('payload()', () => {

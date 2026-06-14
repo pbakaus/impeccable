@@ -878,19 +878,25 @@ export function expandScanTargets(primaryTargets, projectCwd) {
 }
 
 export function writeAuditLog(env, entry, cwd = process.cwd()) {
-  // Env wins; otherwise fall back to the unified config's hook.auditLog path,
-  // resolved from the event's project root (entry.cwd) when present, since the
-  // hook process cwd can differ from the project being edited.
+  // The event's project root (entry.cwd) when present, else the passed cwd. Both
+  // config reads and relative log paths resolve against this, since the hook
+  // process cwd can differ from the project being edited.
+  const baseCwd = entry && typeof entry.cwd === 'string' && entry.cwd ? entry.cwd : cwd;
+  // Env wins; otherwise fall back to the unified config's hook.auditLog path.
   let target = env?.IMPECCABLE_HOOK_LOG;
   if (!target || typeof target !== 'string') {
-    const resolveCwd = entry && typeof entry.cwd === 'string' && entry.cwd ? entry.cwd : cwd;
-    try { target = readConfig(resolveCwd).auditLog; } catch { target = null; }
+    try { target = readConfig(baseCwd).auditLog; } catch { target = null; }
   }
   if (!target || typeof target !== 'string') return false;
   try {
-    const expanded = target.startsWith('~/')
-      ? path.join(process.env.HOME || process.env.USERPROFILE || '.', target.slice(2))
-      : target;
+    let expanded;
+    if (target.startsWith('~/')) {
+      expanded = path.join(process.env.HOME || process.env.USERPROFILE || '.', target.slice(2));
+    } else if (path.isAbsolute(target)) {
+      expanded = target;
+    } else {
+      expanded = path.resolve(baseCwd, target);
+    }
     fs.mkdirSync(path.dirname(expanded), { recursive: true });
     const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n';
     fs.appendFileSync(expanded, line);
