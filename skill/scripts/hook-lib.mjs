@@ -878,10 +878,13 @@ export function expandScanTargets(primaryTargets, projectCwd) {
 }
 
 export function writeAuditLog(env, entry, cwd = process.cwd()) {
-  // Env wins; otherwise fall back to the unified config's hook.auditLog path.
+  // Env wins; otherwise fall back to the unified config's hook.auditLog path,
+  // resolved from the event's project root (entry.cwd) when present, since the
+  // hook process cwd can differ from the project being edited.
   let target = env?.IMPECCABLE_HOOK_LOG;
   if (!target || typeof target !== 'string') {
-    try { target = readConfig(cwd).auditLog; } catch { target = null; }
+    const resolveCwd = entry && typeof entry.cwd === 'string' && entry.cwd ? entry.cwd : cwd;
+    try { target = readConfig(resolveCwd).auditLog; } catch { target = null; }
   }
   if (!target || typeof target !== 'string') return false;
   try {
@@ -1030,6 +1033,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     audit.harness = harness;
 
     const projectCwd = event.cwd || cwd;
+    audit.cwd = projectCwd;
     const primaryFiles = normalizeScanTargets(resolveTargetFiles(event, projectCwd), projectCwd);
     const primaryFileSet = new Set(primaryFiles);
     const targetFiles = expandScanTargets(primaryFiles, projectCwd);

@@ -61,7 +61,10 @@ function writeConfig(cwd, hookConfig, opts = {}) {
   if (opts.local) ensureHookGitExcludes(cwd);
   const existingRaw = readRawConfigFile(filePath).raw;
   const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
-  const next = { ...existing, hook: hookConfig };
+  const existingHook = existing.hook && typeof existing.hook === 'object' && !Array.isArray(existing.hook) ? existing.hook : {};
+  // Merge over the existing hook object so fields the merge helpers don't manage
+  // (consent, quiet, auditLog) survive a `/impeccable hooks` edit.
+  const next = { ...existing, hook: { ...existingHook, ...hookConfig } };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(next, null, 2) + '\n');
   return filePath;

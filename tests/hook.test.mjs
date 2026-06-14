@@ -415,6 +415,23 @@ describe('hook-admin.mjs', () => {
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
   });
 
+  it('a /impeccable hooks edit preserves sibling hook fields (consent, quiet)', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    // A recorded per-developer consent in the local file...
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({ hook: { consent: 'declined' } }));
+    runAdmin(['ignore-value', 'overused-font', 'Inter', '--local']);
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).hook;
+    assert.equal(local.consent, 'declined', 'consent must survive a local ignore-value edit');
+    assert.equal(local.ignoreValues.length, 1);
+
+    // ...and a shared quiet flag survives an on/off toggle.
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { quiet: true } }));
+    runAdmin(['off']);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    assert.equal(shared.enabled, false);
+    assert.equal(shared.quiet, true, 'quiet must survive an enable/disable toggle');
+  });
+
   it('ignore-rule overused-font requires explicit broad suppression', () => {
     assert.throws(
       () => runAdmin(['ignore-rule', 'overused-font']),
@@ -580,6 +597,17 @@ describe('writeAuditLog()', () => {
     writeAuditLog({ IMPECCABLE_HOOK_LOG: envLog }, { event: 'PostToolUse' }, cwd);
     assert.equal(fs.existsSync(envLog), true);
     assert.equal(fs.existsSync(cfgLog), false);
+  });
+
+  it('resolves config auditLog from entry.cwd (the event project root), not the fallback cwd', () => {
+    const projectDir = path.join(cwd, 'project');
+    const log = path.join(cwd, 'event-cwd.ndjson');
+    fs.mkdirSync(path.join(projectDir, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, '.impeccable', 'config.json'),
+      JSON.stringify({ hook: { auditLog: log } }));
+    // The fallback cwd (root) has no config; entry.cwd points at the project.
+    assert.equal(writeAuditLog({}, { event: 'PostToolUse', cwd: projectDir }, cwd), true);
+    assert.equal(fs.existsSync(log), true);
   });
 });
 

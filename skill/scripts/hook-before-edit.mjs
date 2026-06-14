@@ -382,6 +382,7 @@ async function main() {
   const filePath = proposedFilePath(event, cwd);
   const audit = {
     harness: 'cursor',
+    cwd,
     tool: event.tool_name || null,
     file: filePath || null,
   };
