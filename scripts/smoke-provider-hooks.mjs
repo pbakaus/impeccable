@@ -54,8 +54,11 @@ const smokeFiles = {
 };
 
 const results = [];
+const hookConfigFiles = ['.impeccable/config.json', '.impeccable/config.local.json'];
+const originalHookConfigFiles = new Map();
 
 main().catch((error) => {
+  restoreHookConfigFiles();
   if (!results.some((result) => !result.pass)) {
     record('fatal', false, String(error?.message || error), 'fatal');
   }
@@ -67,6 +70,7 @@ main().catch((error) => {
 async function main() {
   assertPath(targetRepo, 'target repo');
   assertPath(bundlePath, 'universal bundle');
+  snapshotHookConfigFiles();
   mkdirSync(smokeDir, { recursive: true });
   ensureTargetGitExclude();
 
@@ -85,6 +89,7 @@ async function main() {
 
   cleanSmokeFiles();
   clearRuntimeState();
+  restoreHookConfigFiles();
   writeSummary();
 
   const failed = results.filter((result) => !result.pass);
@@ -238,7 +243,7 @@ function cleanInstalledImpeccable() {
     rmSync(join(targetRepo, rel), { recursive: true, force: true });
   }
 
-  for (const rel of ['.claude/settings.json', '.cursor/hooks.json', '.codex/hooks.json']) {
+  for (const rel of ['.claude/settings.json', '.claude/settings.local.json', '.cursor/hooks.json', '.codex/hooks.json']) {
     stripManifest(rel);
   }
 
@@ -319,6 +324,47 @@ function stripManifest(rel) {
   }
 }
 
+function snapshotHookConfigFiles() {
+  for (const rel of hookConfigFiles) {
+    const file = join(targetRepo, rel);
+    originalHookConfigFiles.set(rel, existsSync(file) ? readFileSync(file, 'utf8') : null);
+  }
+}
+
+function restoreHookConfigFiles() {
+  if (originalHookConfigFiles.size === 0) return;
+  for (const [rel, content] of originalHookConfigFiles.entries()) {
+    const file = join(targetRepo, rel);
+    if (content === null) {
+      rmSync(file, { force: true });
+    } else {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, content);
+    }
+  }
+}
+
+function resetHookConfigForSmoke() {
+  for (const rel of hookConfigFiles) {
+    const file = join(targetRepo, rel);
+    if (!existsSync(file)) continue;
+    let raw;
+    try {
+      raw = JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      rmSync(file, { force: true });
+      continue;
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('hook' in raw)) continue;
+    const { hook, ...rest } = raw;
+    if (Object.keys(rest).length === 0) {
+      rmSync(file, { force: true });
+    } else {
+      writeFileSync(file, `${JSON.stringify(rest, null, 2)}\n`);
+    }
+  }
+}
+
 function stripImpeccableHookEntry(entry) {
   if (!entry || typeof entry !== 'object') return entry;
   if (containsImpeccableHook(entry)) return null;
@@ -338,7 +384,7 @@ function containsImpeccableHook(value) {
 }
 
 function verifyInstallShape() {
-  const claude = readText('.claude/settings.json');
+  const claude = readText('.claude/settings.local.json');
   const codex = readText('.codex/hooks.json');
   const cursor = readText('.cursor/hooks.json');
   assertCount(claude, '.claude/skills/impeccable/scripts/hook.mjs', 1, 'Claude hook.mjs');
@@ -464,14 +510,13 @@ function runConfirmedExceptionPersistenceChecks() {
   for (const provider of providers) {
     runConfirmedExceptionForProvider(provider);
   }
-  record('confirmed exception persistence', true, `${providers.join(', ')} ignored confirmed overused-font values through shared hook.json, not source comments`);
+  record('confirmed exception persistence', true, `${providers.join(', ')} ignored confirmed overused-font values through shared config.json, not source comments`);
 }
 
 function runConfirmedExceptionForProvider(provider) {
   clearRuntimeState();
   const rel = confirmedSmokeFile(provider);
   const file = writeConfirmedFixture(rel);
-  const configPath = join(targetRepo, '.impeccable', 'hook.json');
   const beforeLog = `${provider}-confirmed-before.ndjson`;
   const afterLog = `${provider}-confirmed-after.ndjson`;
 
@@ -480,9 +525,7 @@ function runConfirmedExceptionForProvider(provider) {
 
   const first = runInstalledProviderHook(provider, file, beforeLog);
   requireRuleFinding(`${provider} confirmed exception first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`, 'overused-font');
-  if (existsSync(configPath)) {
-    throw new Error(`${provider} hook wrote .impeccable/hook.json before explicit confirmation`);
-  }
+  assertNoSpecificFontIgnoreConfig(provider);
 
   run('node', [
     providerAdminScript(provider),
@@ -498,7 +541,7 @@ function runConfirmedExceptionForProvider(provider) {
     timeoutMs: 60 * 1000,
   });
 
-  const config = readJson(configPath);
+  const config = readSharedHookConfig();
   assertSpecificFontIgnoreConfig(provider, config);
 
   clearTransientHookState();
@@ -539,7 +582,6 @@ function runAgentChosenFontExceptionForProvider(provider) {
   clearRuntimeState();
   const rel = agentChoiceSmokeFile(provider);
   const file = writeConfirmedFixture(rel);
-  const configPath = join(targetRepo, '.impeccable', 'hook.json');
   const beforeLog = `${provider}-agent-choice-before.ndjson`;
   const afterLog = `${provider}-agent-choice-after.ndjson`;
 
@@ -548,13 +590,11 @@ function runAgentChosenFontExceptionForProvider(provider) {
 
   const first = runInstalledProviderHook(provider, file, beforeLog);
   requireRuleFinding(`${provider} agent-choice first hook`, `${first.stdout}\n${first.stderr}\n${readMaybe(join(smokeDir, beforeLog))}`, 'overused-font');
-  if (existsSync(configPath)) {
-    throw new Error(`${provider} hook wrote .impeccable/hook.json before explicit confirmation`);
-  }
+  assertNoSpecificFontIgnoreConfig(provider);
 
   runProviderAgentFontException(provider, rel);
 
-  const config = readJson(configPath);
+  const config = readSharedHookConfig();
   assertSpecificFontIgnoreConfig(provider, config);
 
   clearTransientHookState();
@@ -646,6 +686,30 @@ function assertSpecificFontIgnoreConfig(provider, config) {
   if (!ignoredValue) {
     throw new Error(`${provider} did not persist overused-font=roboto in ignoreValues`);
   }
+}
+
+function assertNoSpecificFontIgnoreConfig(provider) {
+  const file = join(targetRepo, '.impeccable', 'config.json');
+  if (!existsSync(file)) return;
+  const raw = readJson(file);
+  const config = raw && typeof raw === 'object' && !Array.isArray(raw) && raw.hook && typeof raw.hook === 'object'
+    ? raw.hook
+    : null;
+  if (!config) return;
+  const broad = Array.isArray(config.ignoreRules) && config.ignoreRules.includes('overused-font');
+  const specific = Array.isArray(config.ignoreValues)
+    && config.ignoreValues.some((entry) => entry.rule === 'overused-font' && entry.value === 'roboto');
+  if (broad || specific) {
+    throw new Error(`${provider} hook config already suppressed overused-font=roboto before explicit confirmation`);
+  }
+}
+
+function readSharedHookConfig() {
+  const raw = readJson(join(targetRepo, '.impeccable', 'config.json'));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !raw.hook || typeof raw.hook !== 'object') {
+    throw new Error('Missing .impeccable/config.json hook config');
+  }
+  return raw.hook;
 }
 
 function runInstalledProviderHook(provider, file, logName) {
@@ -891,7 +955,7 @@ function fontExceptionPrompt(provider, rel) {
   return [
     `Read the installed Impeccable hooks reference for ${provider}, then persist a confirmed hook exception for Roboto specifically in ${rel}.`,
     'The user confirms Roboto is intentional for this fixture, but did not ask to ignore overused fonts generally.',
-    'Use the /impeccable hooks / hook-admin flow; do not edit .impeccable/hook.json by hand and do not edit the source fixture.',
+    'Use the /impeccable hooks / hook-admin flow; do not edit .impeccable/config.json by hand and do not edit the source fixture.',
     'The final config must use ignoreValues for overused-font=roboto and must not add overused-font to ignoreRules.',
     'After updating the config, stop.',
   ].join(' ');
@@ -959,6 +1023,7 @@ function cleanSmokeFiles() {
 }
 
 function clearRuntimeState() {
+  resetHookConfigForSmoke();
   for (const rel of [
     '.impeccable/hook.cache.json',
     '.impeccable/hook.pending.json',

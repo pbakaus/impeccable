@@ -432,6 +432,42 @@ describe('hook-admin.mjs', () => {
     assert.equal(shared.quiet, true, 'quiet must survive an enable/disable toggle');
   });
 
+  it('hooks on accepts declined consent and installs missing provider manifests', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({ hook: { consent: 'declined', quiet: true } }));
+    for (const provider of ['.claude', '.agents', '.cursor']) {
+      fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
+    }
+    fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'OtherTool', hooks: [{ type: 'command', command: 'node "./local-hook.mjs"' }] },
+          { matcher: 'Edit', hooks: [{ type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' }] },
+        ],
+      },
+    }));
+
+    const out = runAdmin(['on']);
+    assert.match(out, /Recorded local hook consent/);
+    assert.match(out, /Installed or repaired hook manifests for: \.claude, \.agents, \.cursor/);
+
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    assert.equal(shared.enabled, true);
+    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).hook;
+    assert.equal(local.consent, 'accepted');
+    assert.equal(local.quiet, true, 'unrelated local hook fields survive consent repair');
+
+    const claude = fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf-8');
+    assert.match(claude, /local-hook\.mjs/);
+    assert.equal(claude.split('skills/impeccable/scripts/hook.mjs').length - 1, 1);
+
+    const codex = fs.readFileSync(path.join(cwd, '.codex', 'hooks.json'), 'utf-8');
+    assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
+    const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
+    assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
+  });
+
   it('ignore-rule overused-font requires explicit broad suppression', () => {
     assert.throws(
       () => runAdmin(['ignore-rule', 'overused-font']),

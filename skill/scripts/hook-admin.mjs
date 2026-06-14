@@ -35,6 +35,81 @@ import {
 } from './hook-lib.mjs';
 
 const ACTIONS = new Set(['status', 'on', 'off', 'ignore-rule', 'ignore-file', 'ignore-value', 'reset']);
+const IMPECCABLE_HOOK_COMMAND_MARKERS = [
+  'skills/impeccable/scripts/hook-probe.mjs',
+  'skills/impeccable/scripts/hook.mjs',
+  'skills/impeccable/scripts/hook-before-edit.mjs',
+  'skills/impeccable/scripts/hook-after-edit.mjs',
+  'skills/impeccable/scripts/hook-stop.mjs',
+];
+const TIMEOUT_SECONDS = 5;
+const STATUS_MESSAGE = 'Checking UI changes';
+
+const HOOK_MANIFEST_TARGETS = [
+  {
+    provider: '.claude',
+    skillRel: '.claude/skills/impeccable',
+    destRel: '.claude/settings.local.json',
+    sharedDestRel: '.claude/settings.json',
+    manifest: () => ({
+      description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Edit|Write|MultiEdit',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"',
+                timeout: TIMEOUT_SECONDS,
+                statusMessage: STATUS_MESSAGE,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  },
+  {
+    provider: '.agents',
+    skillRel: '.agents/skills/impeccable',
+    destRel: '.codex/hooks.json',
+    manifest: () => ({
+      description: 'Impeccable design detector: runs after Edit/Write/apply_patch on UI files and surfaces findings as system reminders.',
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Edit|Write|apply_patch',
+            hooks: [
+              {
+                type: 'command',
+                command: 'node "$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs"',
+                timeout: TIMEOUT_SECONDS,
+                statusMessage: STATUS_MESSAGE,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  },
+  {
+    provider: '.cursor',
+    skillRel: '.cursor/skills/impeccable',
+    destRel: '.cursor/hooks.json',
+    manifest: () => ({
+      version: 1,
+      hooks: {
+        preToolUse: [
+          {
+            command: 'node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"',
+            timeout: TIMEOUT_SECONDS,
+          },
+        ],
+      },
+    }),
+  },
+];
 
 function readRawConfigFile(filePath) {
   if (!fs.existsSync(filePath)) return { exists: false, malformed: false, raw: null };
@@ -144,7 +219,178 @@ function setEnabled(cwd, value) {
   const config = mergeConfig(readRawConfig(cwd));
   config.enabled = value;
   const target = writeConfig(cwd, config);
-  return `Design hook ${value ? 'enabled' : 'disabled'} for this project (wrote ${path.relative(cwd, target) || target}).`;
+  if (!value) {
+    return `Design hook disabled for this project (wrote ${path.relative(cwd, target) || target}).`;
+  }
+
+  const localTarget = writeConfig(cwd, { consent: 'accepted' }, { local: true });
+  const repaired = repairHookManifests(cwd);
+  const parts = [
+    `Design hook enabled for this project (wrote ${path.relative(cwd, target) || target}).`,
+    `Recorded local hook consent in ${path.relative(cwd, localTarget) || localTarget}.`,
+  ];
+  if (repaired.written.length > 0) {
+    parts.push(`Installed or repaired hook manifests for: ${repaired.written.join(', ')}.`);
+  } else if (repaired.already.length > 0) {
+    parts.push(`Hook manifests already installed for: ${repaired.already.join(', ')}.`);
+  } else {
+    parts.push('No installed provider skill folders found to repair.');
+  }
+  if (repaired.backups.length > 0) {
+    parts.push(`Backed up malformed manifest(s): ${repaired.backups.map((filePath) => path.relative(cwd, filePath) || filePath).join(', ')}.`);
+  }
+  return parts.join(' ');
+}
+
+function repairHookManifests(cwd) {
+  const result = { written: [], already: [], backups: [] };
+  for (const target of HOOK_MANIFEST_TARGETS) {
+    if (!fs.existsSync(path.join(cwd, target.skillRel))) continue;
+    const dest = path.join(cwd, target.destRel);
+    const sharedDest = target.sharedDestRel ? path.join(cwd, target.sharedDestRel) : null;
+
+    if (sharedDest && fileHasImpeccableHookMarker(sharedDest)) {
+      pruneImpeccableHookFromManifest(dest);
+      result.already.push(target.provider);
+      continue;
+    }
+
+    const fresh = target.manifest();
+    let next = fresh;
+    if (fs.existsSync(dest)) {
+      try {
+        next = mergeHookManifests(JSON.parse(fs.readFileSync(dest, 'utf-8')), fresh);
+      } catch {
+        const backup = `${dest}.bak`;
+        fs.copyFileSync(dest, backup);
+        result.backups.push(backup);
+      }
+    }
+
+    const serialized = `${JSON.stringify(next, null, 2)}\n`;
+    const current = fs.existsSync(dest) ? safeReadText(dest) : null;
+    if (current === serialized) {
+      result.already.push(target.provider);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, serialized);
+    result.written.push(target.provider);
+  }
+  return result;
+}
+
+function safeReadText(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+function mergeHookManifests(existing, fresh) {
+  const existingObject = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const freshObject = fresh && typeof fresh === 'object' && !Array.isArray(fresh) ? fresh : {};
+  const existingHooks = existingObject.hooks && typeof existingObject.hooks === 'object' && !Array.isArray(existingObject.hooks)
+    ? existingObject.hooks
+    : {};
+  const freshHooks = freshObject.hooks && typeof freshObject.hooks === 'object' && !Array.isArray(freshObject.hooks)
+    ? freshObject.hooks
+    : {};
+
+  const merged = { ...existingObject, hooks: {} };
+  if (freshObject.version !== undefined) merged.version = freshObject.version;
+  if (freshObject.description !== undefined) merged.description = freshObject.description;
+
+  const hookEvents = new Set([...Object.keys(existingHooks), ...Object.keys(freshHooks)]);
+  for (const event of hookEvents) {
+    const preserved = stripImpeccableHookEntries(existingHooks[event]);
+    const added = Array.isArray(freshHooks[event]) ? freshHooks[event] : [];
+    const mergedEntries = [...preserved, ...added];
+    if (mergedEntries.length > 0) merged.hooks[event] = mergedEntries;
+  }
+  return merged;
+}
+
+function fileHasImpeccableHookMarker(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  if (!parsed.hooks || typeof parsed.hooks !== 'object') return false;
+  return valueHasImpeccableHookMarker(parsed.hooks);
+}
+
+function valueHasImpeccableHookMarker(value) {
+  if (typeof value === 'string') {
+    return IMPECCABLE_HOOK_COMMAND_MARKERS.some((marker) => value.includes(marker));
+  }
+  if (Array.isArray(value)) return value.some(valueHasImpeccableHookMarker);
+  if (value && typeof value === 'object') return Object.values(value).some(valueHasImpeccableHookMarker);
+  return false;
+}
+
+function stripImpeccableHookEntry(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  if (valueHasImpeccableHookMarker(entry.command) || valueHasImpeccableHookMarker(entry.args)) {
+    return null;
+  }
+  if (!Array.isArray(entry.hooks)) return entry;
+
+  const strippedHooks = entry.hooks
+    .map(stripImpeccableHookEntry)
+    .filter(Boolean);
+
+  if (strippedHooks.length === 0 && entry.hooks.some(valueHasImpeccableHookMarker)) {
+    return null;
+  }
+  return { ...entry, hooks: strippedHooks };
+}
+
+function stripImpeccableHookEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map(stripImpeccableHookEntry)
+    .filter(Boolean);
+}
+
+function pruneImpeccableHookFromManifest(manifestPath) {
+  if (!fileHasImpeccableHookMarker(manifestPath)) return false;
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  } catch {
+    return false;
+  }
+
+  const existingHooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+    ? parsed.hooks
+    : {};
+  const cleanedHooks = {};
+  for (const [event, entries] of Object.entries(existingHooks)) {
+    const kept = stripImpeccableHookEntries(entries);
+    if (kept.length > 0) cleanedHooks[event] = kept;
+  }
+
+  const next = { ...parsed };
+  if (Object.keys(cleanedHooks).length > 0) {
+    next.hooks = cleanedHooks;
+  } else {
+    delete next.hooks;
+    delete next.description;
+    delete next.version;
+  }
+
+  if (Object.keys(next).length === 0) {
+    fs.rmSync(manifestPath, { force: true });
+  } else {
+    fs.writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+  }
+  return true;
 }
 
 function normalizeRuleId(rule) {
