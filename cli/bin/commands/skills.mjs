@@ -653,10 +653,10 @@ function copyProviderHooks(bundleDir, root, providers, { force = false } = {}) {
 
 const HOOK_EXPLAINER = [
   '',
-  'Impeccable can install a design hook (runs after each UI file edit) for this',
-  'project. It runs the anti-pattern detector on what you just changed and feeds',
-  'any findings back to your agent, so design slop gets caught as you build. It',
-  'never blocks an edit and stays silent on clean files. Change it later with',
+  'Impeccable can install a design hook for this project. In Claude/Codex it',
+  'checks UI files after edits; in Cursor it checks proposed writes before they',
+  'land and can block writes with detector findings. It feeds results back to',
+  'your agent so design slop gets caught as you build. Change it later with',
   '/impeccable hooks on|off.',
   '',
 ].join('\n');
