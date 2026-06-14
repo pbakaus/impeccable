@@ -1,18 +1,27 @@
 /**
  * Build-pipeline emitters for the Impeccable design hook.
  *
- * The hook install path in this PR is project-local:
- *   - Claude Code: `.claude/settings.json`
- *   - Codex: `.codex/hooks.json`
- *   - Cursor: `.cursor/hooks.json`
+ * Two emission targets exist:
  *
- * No provider marketplace or Codex plugin packaging is emitted here.
+ * 1. Project-local install (the `npx impeccable skills install` CLI path):
+ *      - Claude Code: `.claude/settings.json`   (${CLAUDE_PROJECT_DIR}-relative)
+ *      - Codex:       `.codex/hooks.json`
+ *      - Cursor:      `.cursor/hooks.json`
+ *
+ * 2. Claude Code plugin package (the marketplace / `/plugin install` path):
+ *      - `plugin/hooks/hooks.json`              (${CLAUDE_PLUGIN_ROOT}-relative)
+ *
+ * The plugin variant resolves the hook script relative to the installed plugin
+ * root rather than assuming a `.claude/skills/impeccable/` layout, so it stays
+ * correct wherever Claude Code unpacks the plugin.
  */
 
 export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook.mjs';
 
 const TIMEOUT_SECONDS = 5;
+const STATUS_MESSAGE = 'Checking UI changes';
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
+const CLAUDE_PLUGIN_HOOK = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
 
@@ -28,7 +37,32 @@ export function buildClaudeSettingsManifest() {
               type: 'command',
               command: `node "${CLAUDE_PROJECT_HOOK}"`,
               timeout: TIMEOUT_SECONDS,
-              statusMessage: 'Scanning design',
+              statusMessage: STATUS_MESSAGE,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+// Plugin-packaged variant of the Claude hook. Same schema as the settings.json
+// manifest (Claude Code reads an identical `hooks` object from a plugin's
+// `hooks/hooks.json`), but the command resolves relative to ${CLAUDE_PLUGIN_ROOT}
+// so it does not depend on the skill being copied into `.claude/skills/`.
+export function buildClaudePluginHooksManifest() {
+  return {
+    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
+    hooks: {
+      PostToolUse: [
+        {
+          matcher: 'Edit|Write|MultiEdit',
+          hooks: [
+            {
+              type: 'command',
+              command: `node "${CLAUDE_PLUGIN_HOOK}"`,
+              timeout: TIMEOUT_SECONDS,
+              statusMessage: STATUS_MESSAGE,
             },
           ],
         },
@@ -49,7 +83,7 @@ export function buildCodexHooksManifest() {
               type: 'command',
               command: `node "${CODEX_PROJECT_HOOK}"`,
               timeout: TIMEOUT_SECONDS,
-              statusMessage: 'Scanning design',
+              statusMessage: STATUS_MESSAGE,
             },
           ],
         },

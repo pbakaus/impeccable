@@ -8,9 +8,8 @@
 
 import path from 'path';
 import { createWriteStream, existsSync, statSync } from 'fs';
-import * as archiverModule from 'archiver';
-
-const createArchiver = archiverModule.default || archiverModule.create || archiverModule;
+// archiver v8 is ESM and exports format-specific classes (no factory function).
+import { ZipArchive } from 'archiver';
 
 /**
  * Create ZIP file for a provider directory
@@ -30,7 +29,7 @@ export async function createProviderZip(providerDir, distDir, providerName) {
   try {
     await new Promise((resolve, reject) => {
       const output = createWriteStream(zipPath);
-      const archive = createArchiver('zip', { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
 
       output.on('close', resolve);
       archive.on('error', reject);

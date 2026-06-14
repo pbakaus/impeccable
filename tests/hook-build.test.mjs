@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   buildClaudeSettingsManifest,
+  buildClaudePluginHooksManifest,
   buildCodexHooksManifest,
   buildCursorHooksManifest,
   hooksJsonFor,
@@ -38,7 +39,7 @@ describe('hook manifest builders', () => {
     assert.equal(group.matcher, 'Edit|Write|MultiEdit');
     assert.equal(handler.type, 'command');
     assert.equal(handler.timeout, 5);
-    assert.equal(handler.statusMessage, 'Scanning design');
+    assert.equal(handler.statusMessage, 'Checking UI changes');
     expectCommand(handler.command, '.claude/skills/impeccable/scripts/hook.mjs');
     assert.ok(handler.command.includes('${CLAUDE_PROJECT_DIR}'));
     assert.equal(handler.args, undefined);
@@ -53,7 +54,7 @@ describe('hook manifest builders', () => {
     assert.equal(group.matcher, 'Edit|Write|apply_patch');
     assert.equal(handler.type, 'command');
     assert.equal(handler.timeout, 5);
-    assert.equal(handler.statusMessage, 'Scanning design');
+    assert.equal(handler.statusMessage, 'Checking UI changes');
     expectCommand(handler.command, '.agents/skills/impeccable/scripts/hook.mjs');
     assert.ok(handler.command.includes('git rev-parse --show-toplevel'));
     assert.ok(!handler.command.includes('${PLUGIN_ROOT}'));
@@ -142,17 +143,37 @@ describe('generated hook artifacts in repo', () => {
     }
   });
 
-  it('does not generate plugin or stale Codex hook packaging artifacts', () => {
+  it('does not generate stale Codex hook packaging artifacts', () => {
     for (const rel of [
       '.claude/hooks/hooks.json',
       '.agents/hooks',
       '.agents/plugins/marketplace.json',
       'plugin-codex',
-      'plugin/hooks/hooks.json',
       'plugin/.codex-plugin/plugin.json',
     ]) {
       assert.equal(fs.existsSync(path.join(REPO_ROOT, rel)), false, `${rel} should not exist`);
     }
+  });
+
+  it('packages the Claude design hook in the plugin via plugin-root paths', () => {
+    const abs = path.join(REPO_ROOT, 'plugin/hooks/hooks.json');
+    assert.ok(fs.existsSync(abs), 'plugin/hooks/hooks.json missing - did you forget bun run build:release?');
+
+    const manifest = readJson('plugin/hooks/hooks.json');
+    assert.deepEqual(manifest, buildClaudePluginHooksManifest());
+
+    const handler = manifest.hooks.PostToolUse[0].hooks[0];
+    assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write|MultiEdit');
+    expectCommand(handler.command, 'skills/impeccable/scripts/hook.mjs');
+    // Resolves relative to the installed plugin, not a `.claude/skills/` layout.
+    assert.ok(handler.command.includes('${CLAUDE_PLUGIN_ROOT}'),
+      `plugin hook command must use $\{CLAUDE_PLUGIN_ROOT}: ${handler.command}`);
+    assert.ok(!handler.command.includes('${CLAUDE_PROJECT_DIR}'),
+      `plugin hook command must not use $\{CLAUDE_PROJECT_DIR}: ${handler.command}`);
+
+    // The script the plugin hook points at must ship inside the plugin payload.
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook-lib.mjs')));
   });
 
   it('generated hook runtime can import the bundled detector', async () => {

@@ -9,7 +9,7 @@
             "type": "command",
             "command": "node \"$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs\"",
             "timeout": 5,
-            "statusMessage": "Scanning design"
+            "statusMessage": "Checking UI changes"
           }
         ]
       }

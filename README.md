@@ -264,7 +264,7 @@ On Claude Code, Codex, and Cursor, `npx impeccable skills install` and `npx impe
 
 Installed hook surfaces:
 
-- Claude Code: `.claude/settings.json` runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`.
+- Claude Code: `.claude/settings.local.json` (gitignored, machine-local) runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`. A hook moved into the shared `settings.json` is honored in place.
 - Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`.
 - Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
 

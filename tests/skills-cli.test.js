@@ -137,7 +137,13 @@ describe('skills install: already-installed detection', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-'));
     execSync('git init', { cwd: tmp });
     createFakeSkills(tmp);
-    writeFileSync(join(tmp, '.claude', 'settings.json'), JSON.stringify({ hooks: {} }));
+    // Seed the canonical hook target so the already-installed path sees the hook
+    // wired up and doesn't try to repair it (which would need the bundle).
+    writeFileSync(join(tmp, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [
+        { type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' },
+      ] }] },
+    }));
 
     const output = run('skills install -y', { cwd: tmp });
     expect(output).toContain('already installed');
@@ -173,7 +179,7 @@ describe('skills install: already-installed detection', () => {
 
     expect(output).toContain('already installed');
     expect(output).toContain('Installed hooks into: .claude');
-    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -191,7 +197,7 @@ describe('skills install: already-installed detection', () => {
 
     expect(output).toContain('already installed');
     expect(output).not.toContain('Installed hooks into');
-    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(false);
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(false);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -396,9 +402,38 @@ describe('skills install/update: local universal bundle e2e', () => {
       expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf8')).toContain(`Local deterministic bundle for ${provider}.`);
       expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
     }
-    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
     expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(true);
     expect(existsSync(join(tmp, '.codex', 'hooks.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('honors an existing hook in shared settings.json and never duplicates into settings.local.json', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-shared-hook-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    // Simulate a user who moved (or whose legacy install left) the hook in the
+    // team-shared settings.json.
+    mkdirSync(join(tmp, '.claude'), { recursive: true });
+    writeFileSync(join(tmp, '.claude', 'settings.json'), JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [
+        { type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' },
+      ] }] },
+    }, null, 2));
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Done!');
+    // The hook is honored in place: no local override is written, and the
+    // shared file is left exactly as the user had it (one hook, no dupes).
+    expect(output).not.toContain('Installed hooks into');
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(false);
+    const shared = JSON.parse(readFileSync(join(tmp, '.claude', 'settings.json'), 'utf8'));
+    expect(shared.hooks.PostToolUse).toHaveLength(1);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
@@ -417,7 +452,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     for (const provider of ['.claude', '.agents', '.cursor']) {
       expect(existsSync(join(tmp, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
     }
-    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(false);
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(false);
     expect(existsSync(join(tmp, '.cursor', 'hooks.json'))).toBe(false);
     expect(existsSync(join(tmp, '.codex', 'hooks.json'))).toBe(false);
 
@@ -443,7 +478,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(content).not.toContain('stale: true');
     expect(content).toContain('version: 9.9.9-local');
     expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
-    expect(existsSync(join(tmp, '.claude', 'settings.json'))).toBe(true);
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

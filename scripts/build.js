@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
-import { hooksJsonFor } from './lib/transformers/hooks.js';
+import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -708,9 +708,11 @@ async function build() {
     const pluginManifestDir = path.join(pluginRoot, '.claude-plugin');
     const pluginSkillsDir = path.join(pluginRoot, 'skills');
     const pluginAgentsDir = path.join(pluginRoot, 'agents');
+    const pluginHooksDir = path.join(pluginRoot, 'hooks');
     if (fs.existsSync(pluginManifestDir)) fs.rmSync(pluginManifestDir, { recursive: true });
     if (fs.existsSync(pluginSkillsDir)) fs.rmSync(pluginSkillsDir, { recursive: true });
     if (fs.existsSync(pluginAgentsDir)) fs.rmSync(pluginAgentsDir, { recursive: true });
+    if (fs.existsSync(pluginHooksDir)) fs.rmSync(pluginHooksDir, { recursive: true });
 
     const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
     const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
@@ -745,6 +747,16 @@ async function build() {
     if (fs.existsSync(claudeAgentsSrc)) {
       copyDirSync(claudeAgentsSrc, pluginAgentsDir);
     }
+
+    // Ship the design detector as a plugin-packaged hook. Claude Code
+    // auto-discovers `hooks/hooks.json` at the plugin root, so marketplace /
+    // `/plugin install` users get the PostToolUse hook without it being merged
+    // into their project `.claude/settings.json` (that path is the CLI's job).
+    fs.mkdirSync(pluginHooksDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginHooksDir, 'hooks.json'),
+      JSON.stringify(buildClaudePluginHooksManifest(), null, 2) + '\n',
+    );
 
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
   } else {

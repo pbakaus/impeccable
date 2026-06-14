@@ -6,7 +6,7 @@ The hook runs the impeccable design detector on direct file edits to design-rele
 
 This command toggles the hook **per project** by editing `.impeccable/hook.json`. Local-only ignore policy lives in `.impeccable/hook.local.json`, which is gitignored. To disable globally, set `IMPECCABLE_HOOK_DISABLED=1` in your shell environment.
 
-Supported harnesses: Claude Code (`.claude/settings.json` in the project), Codex (`.codex/hooks.json` in the project), and Cursor (`.cursor/hooks.json` in the project).
+Supported harnesses: Claude Code (`.claude/settings.local.json` in the project, which is gitignored so the hook stays machine-local; a hook you move into the shared `settings.json` is honored in place too), Codex (`.codex/hooks.json` in the project), and Cursor (`.cursor/hooks.json` in the project).
 
 On **Cursor**, `preToolUse` checks proposed Write/Edit/Shell write content and denies only when the real detector finds an issue. The denial message is visible to the agent as the tool error, so the agent can reconsider before the bad write lands.
 
@@ -74,7 +74,7 @@ node .github/skills/impeccable/scripts/hook-admin.mjs ignore-file "src/legacy/Ca
 - Never modify `.impeccable/hook.json` or `.impeccable/hook.local.json` by hand from this command. Always go through `hook-admin.mjs` so writes stay validated and the file shape stays consistent.
 - Do not edit the hook scripts themselves (`hook.mjs`, `hook-lib.mjs`, `hook-before-edit.mjs`) from this flow. Those are skill plumbing.
 - Cursor can block a proposed write when the detector finds a real issue. Claude Code and Codex do not block the edit; they emit a post-edit reminder instead. Disabling stops both blocking and reminders.
-- The hook is bundled with the Impeccable skill and installed through project-local manifests: `.claude/settings.json`, `.codex/hooks.json`, and `.cursor/hooks.json`. On Codex, the user must approve the hook via `/hooks` the first time. On Cursor, confirm hooks are enabled under Settings -> Hooks.
+- The hook is bundled with the Impeccable skill and installed through project-local manifests: `.claude/settings.local.json`, `.codex/hooks.json`, and `.cursor/hooks.json`. On Codex, the user must approve the hook via `/hooks` the first time. On Cursor, confirm hooks are enabled under Settings -> Hooks.
 
 ## Failure modes
 
