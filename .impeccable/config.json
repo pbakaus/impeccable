@@ -1,0 +1,15 @@
+{
+  "hook": {
+    "enabled": true,
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "tests/fixtures/**",
+      "site/pages/slop/**"
+    ],
+    "ignoreValues": [],
+    "limits": {
+      "maxFindings": 5,
+      "maxChars": 8000
+    }
+  }
+}

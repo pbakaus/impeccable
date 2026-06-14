@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * `/impeccable hooks <on|off|status|reset>` — manage the design hook
- * via .impeccable/hook.json and .impeccable/hook.local.json in the current
- * project.
+ * via the `hook` key of .impeccable/config.json and .impeccable/config.local.json
+ * in the current project.
  *
  * Usage:
  *   node hook-admin.mjs status                         # print current state
@@ -45,16 +45,25 @@ function readRawConfigFile(filePath) {
   }
 }
 
+// The hook settings to edit: the unified file's `hook` subtree.
 function readRawConfig(cwd, opts = {}) {
-  const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
-  return readRawConfigFile(filePath).raw;
+  const unified = readRawConfigFile(opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd)).raw;
+  if (unified && typeof unified === 'object' && unified.hook && typeof unified.hook === 'object') {
+    return unified.hook;
+  }
+  return null;
 }
 
-function writeConfig(cwd, config, opts = {}) {
+// Write the hook config back under the `hook` key of the unified file, leaving
+// any sibling keys (e.g. updateCheck) untouched.
+function writeConfig(cwd, hookConfig, opts = {}) {
   const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
   if (opts.local) ensureHookGitExcludes(cwd);
+  const existingRaw = readRawConfigFile(filePath).raw;
+  const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
+  const next = { ...existing, hook: hookConfig };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
+  fs.writeFileSync(filePath, JSON.stringify(next, null, 2) + '\n');
   return filePath;
 }
 
@@ -102,8 +111,8 @@ function statusReport(cwd) {
   const cfg = readConfig(cwd);
   const envKill = process.env.IMPECCABLE_HOOK_DISABLED;
   const envState = envKill ? `IMPECCABLE_HOOK_DISABLED=${envKill}` : 'unset';
-  const cfgPath = path.relative(cwd, getConfigPath(cwd)) || '.impeccable/hook.json';
-  const localPath = path.relative(cwd, getLocalConfigPath(cwd)) || '.impeccable/hook.local.json';
+  const cfgPath = path.relative(cwd, getConfigPath(cwd)) || '.impeccable/config.json';
+  const localPath = path.relative(cwd, getLocalConfigPath(cwd)) || '.impeccable/config.local.json';
   const cachePath = path.relative(cwd, getCachePath(cwd)) || '.impeccable/hook.cache.json';
   const fileState = (info, relPath, absent) => {
     if (info.malformed) return `${relPath} (malformed; ignored)`;
@@ -256,7 +265,23 @@ function addIgnoreValue(cwd, args) {
 
 function reset(cwd) {
   const removed = [];
-  for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd), getCachePath(cwd), getPendingPath(cwd)]) {
+  // Unified files may hold non-hook keys (e.g. updateCheck); strip only the
+  // hook subtree and keep the rest, deleting the file only if nothing remains.
+  for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd)]) {
+    try {
+      const raw = readRawConfigFile(filePath).raw;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('hook' in raw)) continue;
+      const { hook, ...rest } = raw;
+      if (Object.keys(rest).length === 0) {
+        fs.unlinkSync(filePath);
+      } else {
+        fs.writeFileSync(filePath, JSON.stringify(rest, null, 2) + '\n');
+      }
+      removed.push(path.relative(cwd, filePath) || filePath);
+    } catch { /* ignore */ }
+  }
+  // State files are wholly ours; delete outright.
+  for (const filePath of [getCachePath(cwd), getPendingPath(cwd)]) {
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);

@@ -529,6 +529,57 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('recorded consent "declined" skips the hook (no prompt, no --no-hooks needed)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-consent-declined-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    mkdirSync(join(tmp, '.impeccable'), { recursive: true });
+    writeFileSync(join(tmp, '.impeccable', 'config.local.json'),
+      JSON.stringify({ hook: { consent: 'declined' } }));
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Installed impeccable into: .claude');
+    expect(output).not.toContain('Installed hooks into');
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('recorded consent "accepted" installs the hook even non-interactively', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-consent-accepted-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+    mkdirSync(join(tmp, '.impeccable'), { recursive: true });
+    writeFileSync(join(tmp, '.impeccable', 'config.local.json'),
+      JSON.stringify({ hook: { consent: 'accepted' } }));
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(output).toContain('Installed hooks into: .claude');
+    expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('--no-hooks records no consent decision (one-off skip)', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-consent-nohooks-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    run('skills install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(existsSync(join(tmp, '.impeccable', 'config.local.json'))).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('--no-hooks installs skills without hook manifests', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-local-no-hooks-'));
     execSync('git init', { cwd: tmp });

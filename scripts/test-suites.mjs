@@ -41,6 +41,7 @@ export const SUITES = {
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
           'tests/lib/utils.test.js',
+          'tests/lib/impeccable-config.test.js',
           'tests/lib/transformers/factory.test.js',
           'tests/lib/transformers/providers.test.js',
           'tests/docs-integrity.test.js',

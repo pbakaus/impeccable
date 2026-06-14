@@ -51,7 +51,7 @@ Thumbs.db
 .impeccable/live/pending-manual-edits.json
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/history/
-.impeccable/hook.local.json
+.impeccable/config.local.json
 .impeccable/hook.pending.json
 .impeccable/provider-smoke/
 src/__impeccable_provider_smoke_*.html

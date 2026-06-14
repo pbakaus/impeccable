@@ -100,14 +100,14 @@ it('gitignores local Impeccable runtime artifacts', () => {
     '.impeccable/live/manual-edit-evidence/example.json',
     '.impeccable/hook.cache.json',
     '.impeccable/hook.pending.json',
-    '.impeccable/hook.local.json',
+    '.impeccable/config.local.json',
     '.impeccable/live/deferred-svelte-component-accepts.json',
   ], { cwd: REPO_ROOT, encoding: 'utf-8' });
   assert.match(ignored, /\.impeccable\/live\/manual-edit-apply-transaction\.json/);
   assert.match(ignored, /\.impeccable\/live\/manual-edit-evidence\/example\.json/);
   assert.match(ignored, /\.impeccable\/hook\.cache\.json/);
   assert.match(ignored, /\.impeccable\/hook\.pending\.json/);
-  assert.match(ignored, /\.impeccable\/hook\.local\.json/);
+  assert.match(ignored, /\.impeccable\/config\.local\.json/);
   assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
 });
 

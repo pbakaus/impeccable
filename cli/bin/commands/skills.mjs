@@ -17,6 +17,7 @@ import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import extract from 'extract-zip';
+import { getHookConsent, setHookConsent } from '../../lib/impeccable-config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
@@ -650,6 +651,39 @@ function copyProviderHooks(bundleDir, root, providers, { force = false } = {}) {
   return [...new Set(written)];
 }
 
+const HOOK_EXPLAINER = [
+  '',
+  'Impeccable can install a design hook (runs after each UI file edit) for this',
+  'project. It runs the anti-pattern detector on what you just changed and feeds',
+  'any findings back to your agent, so design slop gets caught as you build. It',
+  'never blocks an edit and stays silent on clean files. Change it later with',
+  '/impeccable hooks on|off.',
+  '',
+].join('\n');
+
+// Decide whether to install the design hook. Prompts once (default yes) the
+// first time, records the answer in .impeccable/config.local.json, and never
+// re-asks: a recorded decision or an already-installed hook short-circuits, and
+// non-interactive runs keep the historical install-by-default behavior.
+async function decideHookInstall(root, targets, { yes } = {}) {
+  const consent = getHookConsent(root);
+  if (consent === 'declined') return false;
+  if (consent === 'accepted') return true;
+  // Existing hook users (hook already wired up) are never nagged.
+  if (targets.length > 0 && targets.every(provider => hookInstalledForProvider(root, provider))) {
+    return true;
+  }
+  // Undecided and not yet installed. Non-interactive (-y or no TTY) keeps the
+  // historical default-on behavior without recording a (re-promptable) decision.
+  if (yes || !process.stdin.isTTY) return true;
+
+  process.stdout.write(HOOK_EXPLAINER);
+  const ans = await ask('Install the design hook? (Y/n) ');
+  const accepted = !(ans === 'n' || ans === 'no');
+  setHookConsent(root, accepted ? 'accepted' : 'declined');
+  return accepted;
+}
+
 function resolveLinkSource(sourceValue, root) {
   const sourcePath = sourceValue || '.impeccable';
   const checkoutRoot = isAbsolute(sourcePath) ? sourcePath : resolve(root, sourcePath);
@@ -795,7 +829,8 @@ async function install(flags) {
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
     const targets = providersValue ? resolveInstallTargets(root, providersValue) : findInstalledProviders(root);
-    const missingHookTargets = installHooks
+    const wantHooks = installHooks && await decideHookInstall(root, targets, { yes });
+    const missingHookTargets = wantHooks
       ? targets.filter(provider => !hookInstalledForProvider(root, provider))
       : [];
     if (missingHookTargets.length > 0) {
@@ -836,6 +871,8 @@ async function install(flags) {
     }
   }
 
+  const wantHooks = installHooks && await decideHookInstall(root, targets, { yes });
+
   console.log('\nDownloading impeccable skills...');
   let bundleDir;
   try {
@@ -853,7 +890,7 @@ async function install(flags) {
   let hookTargets = [];
   try {
     written = copyProviderSkills(bundleDir, root, targets);
-    hookTargets = installHooks ? copyProviderHooks(bundleDir, root, targets, { force }) : [];
+    hookTargets = wantHooks ? copyProviderHooks(bundleDir, root, targets, { force }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
     console.error(`Install failed: ${e.message}`);
@@ -988,7 +1025,8 @@ async function update(flags = []) {
   // Compare local vs remote -- skip if already up to date
   if (isUpToDate(root, copyProviders, tmpDir)) {
     try {
-      const hookTargets = installHooks ? copyProviderHooks(tmpDir, root, copyProviders, { force }) : [];
+      const wantHooks = installHooks && await decideHookInstall(root, copyProviders, { yes });
+      const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, copyProviders, { force }) : [];
       rmSync(tmpDir, { recursive: true, force: true });
       const v = getSkillsVersion(root);
       console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
@@ -1039,7 +1077,8 @@ async function update(flags = []) {
         updated++;
       }
     }
-    const hookTargets = installHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
+    const wantHooks = installHooks && await decideHookInstall(root, providers, { yes });
+    const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
 
     rmSync(tmpDir, { recursive: true, force: true });
 

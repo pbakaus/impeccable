@@ -38,7 +38,7 @@ async function main() {
     cwd: process.cwd(),
   });
 
-  writeAuditLog(process.env, result.audit);
+  writeAuditLog(process.env, result.audit, process.cwd());
 
   if (result.stdout) process.stdout.write(result.stdout);
   process.exit(result.exitCode || 0);
