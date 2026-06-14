@@ -465,14 +465,21 @@ function expectedHookDests(root, providers) {
   );
 }
 
+// Whether a hook manifest file actually wires up the Impeccable hook. We parse
+// the JSON and scan only the `hooks` subtree (via valueHasImpeccableHookMarker),
+// not the raw file text: an unrelated string elsewhere — e.g. a permissions
+// allow entry that happens to mention the hook path — must not read as a hook.
 function fileHasImpeccableHookMarker(file) {
   if (!existsSync(file)) return false;
+  let parsed;
   try {
-    const raw = readFileSync(file, 'utf-8');
-    return IMPECCABLE_HOOK_COMMAND_MARKERS.some(marker => raw.includes(marker));
+    parsed = JSON.parse(readFileSync(file, 'utf-8'));
   } catch {
     return false;
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  if (!parsed.hooks || typeof parsed.hooks !== 'object') return false;
+  return valueHasImpeccableHookMarker(parsed.hooks);
 }
 
 // Whether our hook is already wired up for a provider, used to decide if the
@@ -529,6 +536,46 @@ function stripImpeccableHookEntries(entries) {
     .filter(Boolean);
 }
 
+// Remove our hook from a manifest file, preserving any unrelated content. Used
+// when the hook is honored in the shared settings.json so a stale machine-local
+// copy doesn't make the detector run twice. Drops the file if nothing but our
+// hook scaffolding remains. Returns true if it changed anything.
+function pruneImpeccableHookFromManifest(manifestPath) {
+  if (!fileHasImpeccableHookMarker(manifestPath)) return false;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  } catch {
+    return false;
+  }
+
+  const existingHooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+    ? parsed.hooks
+    : {};
+  const cleanedHooks = {};
+  for (const [event, entries] of Object.entries(existingHooks)) {
+    const kept = stripImpeccableHookEntries(entries);
+    if (kept.length > 0) cleanedHooks[event] = kept;
+  }
+
+  const next = { ...parsed };
+  if (Object.keys(cleanedHooks).length > 0) {
+    next.hooks = cleanedHooks;
+  } else {
+    // Our hook was the only thing here; drop the hook-manifest scaffolding too.
+    delete next.hooks;
+    delete next.description;
+    delete next.version;
+  }
+
+  if (Object.keys(next).length === 0) {
+    rmSync(manifestPath, { force: true });
+  } else {
+    writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+  }
+  return true;
+}
+
 function mergeHookManifests(existing, fresh) {
   const existingObject = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
   const freshObject = fresh && typeof fresh === 'object' && !Array.isArray(fresh) ? fresh : {};
@@ -570,10 +617,14 @@ function copyProviderHooks(bundleDir, root, providers, { force = false } = {}) {
       if (!existsSync(src)) continue;
 
       // Leave-it-never-duplicate: our hook already lives in the team-shared
-      // settings.json (a legacy install or a deliberate user move). Writing it
-      // to the local override too would run the detector twice per edit, so
-      // honor it in place and skip.
-      if (sharedDest && fileHasImpeccableHookMarker(sharedDest)) continue;
+      // settings.json (a legacy install or a deliberate user move). Honor it in
+      // place and skip the local write — but first strip any stale copy from the
+      // local override, or Claude Code would load both and run the detector
+      // twice per edit.
+      if (sharedDest && fileHasImpeccableHookMarker(sharedDest)) {
+        pruneImpeccableHookFromManifest(dest);
+        continue;
+      }
 
       const fresh = readJsonFile(src, 'Bundled hook manifest');
       let next = fresh;
