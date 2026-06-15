@@ -234,7 +234,7 @@
   background: oklch(4% 0.004 95 / 0.72);
   backdrop-filter: blur(8px) saturate(1.4);
   -webkit-backdrop-filter: blur(8px) saturate(1.4);
-  border: 1px solid oklch(58% 0.065 82 / 0.32);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
@@ -244,7 +244,7 @@
 
 .home-kinpaku .hero-rebuild-right .split-label-item[data-point="after"] {
   color: var(--ks-kinpaku);
-  border-color: oklch(78% 0.10 82 / 0.45);
+  border-color: oklch(78% 0.12 82 / 0.45);
 }
 
 @media (max-width: 1080px) {
@@ -1693,7 +1693,7 @@
   text-transform: uppercase;
   color: var(--ks-kinpaku);
   background: oklch(8% 0.006 95 / 0.72);
-  border: 1px solid var(--ks-gold-hairline, oklch(58% 0.065 82 / 0.32));
+  border: 1px solid var(--ks-rule);
   border-radius: 4px;
   padding: 3px 7px;
   opacity: 0;

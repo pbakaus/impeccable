@@ -1501,7 +1501,7 @@ html.light .docs-kinpaku .docs-start-rail-divider {
 .docs-kinpaku .docs-command-demo .split-before {
   background:
     linear-gradient(90deg, oklch(10% 0.006 95 / 0.92), oklch(12% 0.012 60 / 0.72)),
-    radial-gradient(circle at 28% 25%, oklch(60% 0.05 80 / 0.18), transparent 11rem);
+    radial-gradient(circle at 28% 25%, oklch(78% 0.12 82 / 0.12), transparent 11rem);
 }
 
 .docs-kinpaku .docs-command-demo .split-after {

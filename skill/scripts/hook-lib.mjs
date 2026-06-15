@@ -225,6 +225,11 @@ export function normalizeIgnoreValueEntries(entries) {
     const value = normalizeIgnoreValue(entry.value);
     if (!rule || !value) continue;
     const normalized = { rule, value };
+    const files = uniqueStrings([
+      ...(typeof entry.file === 'string' && entry.file.trim() ? [entry.file.trim()] : []),
+      ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
+    ]);
+    if (files.length > 0) normalized.files = files;
     if (typeof entry.reason === 'string' && entry.reason.trim()) {
       normalized.reason = entry.reason.trim();
     }
@@ -239,12 +244,16 @@ export function normalizeIgnoreValueEntries(entries) {
 function mergeIgnoreValues(existing, incoming) {
   const map = new Map();
   for (const entry of normalizeIgnoreValueEntries(existing)) {
-    map.set(`${entry.rule}\0${entry.value}`, entry);
+    map.set(`${entry.rule}\0${entry.value}\0${ignoreValueFilesKey(entry.files)}`, entry);
   }
   for (const entry of normalizeIgnoreValueEntries(incoming)) {
-    map.set(`${entry.rule}\0${entry.value}`, entry);
+    map.set(`${entry.rule}\0${entry.value}\0${ignoreValueFilesKey(entry.files)}`, entry);
   }
   return Array.from(map.values());
+}
+
+function ignoreValueFilesKey(files) {
+  return Array.isArray(files) && files.length > 0 ? files.join('\x1f') : '';
 }
 
 export function readCache(cwd) {
@@ -455,7 +464,26 @@ function isIgnoredFindingValue(finding, ignoreValues) {
   const rule = normalizeIgnoreRule(finding.antipattern);
   const value = extractFindingIgnoreValue(finding);
   if (!rule || !value) return false;
-  return ignoreValues.some((entry) => entry.rule === rule && entry.value === value);
+  return ignoreValues.some((entry) => {
+    const wildcardValue = entry.value === '*';
+    if (entry.rule !== rule || (!wildcardValue && entry.value !== value)) return false;
+    if (!Array.isArray(entry.files) || entry.files.length === 0) return !wildcardValue;
+    return findingMatchesScopedIgnoreFile(finding, entry.files);
+  });
+}
+
+function findingMatchesScopedIgnoreFile(finding, globs) {
+  const filePath = String(finding?.file || '').trim();
+  if (!filePath) return false;
+  if (matchesAnyGlob(filePath, globs)) return true;
+
+  const normalized = filePath.split(path.sep).join('/');
+  const parts = normalized.split('/').filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    const suffix = parts.slice(i).join('/');
+    if (matchesAnyGlob(suffix, globs)) return true;
+  }
+  return false;
 }
 
 export function extractFindingIgnoreValue(finding) {

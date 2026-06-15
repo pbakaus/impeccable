@@ -85,6 +85,7 @@ describe('normalizeDesignSystem()', () => {
     assert.equal(isAllowedRadiusRaw('0', designSystem), true);
     assert.equal(isAllowedRadiusRaw('50%', designSystem), true);
     assert.equal(isAllowedRadiusRaw('80px', designSystem), true);
+    assert.equal(isAllowedRadiusRaw('100px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('9999px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('18px', designSystem), false);
   });
@@ -158,6 +159,31 @@ describe('checkSourceDesignSystem()', () => {
     assert.deepEqual(
       findings.map((item) => item.ignoreValue),
       ['Poppins', '#ff00aa', '18px'],
+    );
+  });
+
+  it('does not treat issue labels, HTML entities, or font variables as literal design values', () => {
+    const designSystem = sampleDesignSystem();
+    const findings = checkSourceDesignSystem(`
+<a href="https://github.com/example/repo/issues/155">#155</a>
+<span class="spread-flow-icon">&#8596;</span>
+const MONO = 'SFMono-Regular, Roboto Mono, Consolas, monospace';
+const FONT = 'IBM Plex Sans, Arial, sans-serif';
+button.innerHTML = \`<span style="font-family:\${labelFont || FONT};">Pick</span>\`;
+scale.style.cssText = 'font-family:' + MONO + '; font-size: 10px;';
+.demo [style*="background: #fef3c7"] {
+  border-color: #ff00aa;
+}
+
+.bad {
+  font-family: "Poppins", sans-serif;
+  color: #cc00ff;
+}
+`, '/tmp/source.jsx', { designSystem });
+
+    assert.deepEqual(
+      findings.map((item) => item.ignoreValue),
+      ['#ff00aa', 'Poppins', '#cc00ff'],
     );
   });
 });

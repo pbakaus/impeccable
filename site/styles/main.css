@@ -2576,7 +2576,7 @@ code {
   content: '\2713';
   position: absolute;
   left: 0;
-  color: var(--color-success, #22c55e);
+  color: var(--color-success, var(--ks-patina));
   font-weight: 600;
 }
 

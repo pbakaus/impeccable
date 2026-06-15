@@ -2681,12 +2681,12 @@
     });
     const check = el('span', {
       fontSize: '15px', lineHeight: '1', flexShrink: '0',
-      color: 'oklch(45% 0.15 145)',
+      color: 'oklch(45% 0.18 145)',
     });
     check.textContent = '\u2713';
     row.appendChild(check);
     const label = el('span', {
-      fontSize: '12px', color: 'oklch(35% 0.1 145)', fontWeight: '600',
+      fontSize: '12px', color: 'oklch(49% 0.08 188)', fontWeight: '600',
     });
     label.textContent = 'Variant applied';
     row.appendChild(label);
@@ -8192,7 +8192,7 @@ void main() {
   const PAGE_CHAT_PLACEHOLDER_EXPANDED = 'Steer the page…';
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
-  const AGENT_DISCONNECTED_MARK = 'oklch(56% 0.032 82 / 0.78)';
+  const AGENT_DISCONNECTED_MARK = 'oklch(62% 0 0 / 0.78)';
   const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run live-poll.mjs to connect';
   const GLOBAL_BAR_SECTION_GAP = 8;
   const GLOBAL_BAR_INNER_GAP = 2;
@@ -8259,8 +8259,8 @@ void main() {
       // Neutral hairline for internal control borders / dividers (was a warm
       // gold rule that read as muddy champagne edges on the pill / input / count).
       hairline: 'oklch(92% 0 0 / 0.12)',
-      text: 'oklch(84% 0.035 82)',
-      textDim: 'oklch(63% 0.024 82)',
+      text: 'oklch(91% 0 0)',
+      textDim: 'oklch(72% 0 0)',
       accent: C.brand,
       accentSoft: C.brandSoft,
       exitHover: 'oklch(58% 0.15 35 / 0.18)',
@@ -9064,9 +9064,9 @@ void main() {
         '#' + PREFIX + '-page-chat[data-voice-listening="true"] { border-color: oklch(70% 0.12 188 / 0.45); }' +
         '#' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: impeccable-voice-pulse 1.1s ease-in-out infinite; }' +
         '@media (prefers-reduced-motion: reduce) { #' + PREFIX + '-page-chat-voice[data-listening="true"] svg { animation: none; opacity: 1; } }' +
-        '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(63% 0.024 82); opacity: 1; }' +
+        '#' + PREFIX + '-page-chat-input::placeholder { color: oklch(72% 0 0); opacity: 1; }' +
         '#' + PREFIX + '-page-chat-input { caret-color: oklch(84% 0.19 80.46); }' +
-        '#' + PREFIX + '-page-chat[data-input-focused="true"]:not([data-expanded="true"]) #' + PREFIX + '-page-chat-input::placeholder { color: oklch(72% 0.024 82); }' +
+        '#' + PREFIX + '-page-chat[data-input-focused="true"]:not([data-expanded="true"]) #' + PREFIX + '-page-chat-input::placeholder { color: oklch(72% 0 0); }' +
         '#' + PREFIX + '-page-chat-voice:hover { background: oklch(78% 0.12 82 / 0.12); }';
       uiAppendStyle(s);
     }
@@ -9306,7 +9306,7 @@ void main() {
     const agentDot = el('span', {
       position: 'absolute', right: '-1px', bottom: '7px',
       width: '6px', height: '6px', borderRadius: '50%',
-      background: 'oklch(78% 0.14 75)',
+      background: 'oklch(77% 0.13 82)',
       boxShadow: '0 0 0 2px ' + P.surface,
       display: 'none', pointerEvents: 'none',
     });
@@ -9408,11 +9408,11 @@ void main() {
     // DESIGN.md panel toggle - quartet of color squares as the mark.
     const designBtn = makeIconBtn({
       id: PREFIX + '-design-toggle',
-      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);flex-shrink:0">
+      svg: `<span style="display:inline-grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:14px;height:14px;border-radius:3px;overflow:hidden;box-shadow:inset 0 0 0 1px oklch(92% 0 0 / 0.13);flex-shrink:0">
         <span style="background:oklch(84% 0.19 80.46)"></span>
         <span style="background:oklch(70% 0.12 188)"></span>
-        <span style="background:oklch(84% 0.035 82)"></span>
-        <span style="background:oklch(34% 0.014 82)"></span>
+        <span style="background:oklch(91% 0 0)"></span>
+        <span style="background:oklch(34% 0 0)"></span>
       </span>`,
       label: 'DESIGN.md',
       ariaLabel: 'Toggle DESIGN.md panel',
@@ -9996,8 +9996,8 @@ void main() {
     meta:     'oklch(55% 0 0)',
     hairline: 'oklch(88% 0 0)',
     hairlineSoft: 'oklch(92% 0 0)',
-    amber:    'oklch(70% 0.13 65)',         // stale-hint accent
-    amberBg:  'oklch(95% 0.05 80)',
+    amber:    'oklch(77% 0.13 82)',         // stale-hint accent
+    amberBg:  'oklch(89% 0.055 84)',
   };
 
   function designPanelCss(BP) {
@@ -10088,7 +10088,7 @@ void main() {
       }
       .empty strong { color: ${DP.ink}; display: block; margin-bottom: 6px; font-size: 14px; }
       .empty code { font-family: ${MONO}; background: ${DP.canvas}; padding: 1px 6px; border-radius: 4px; font-size: 12px; color: ${DP.ink}; }
-      .error { color: oklch(45% 0.15 25); }
+      .error { color: oklch(58% 0.15 35); }
 
       /* Stale hint */
       .stale {
@@ -10240,8 +10240,8 @@ void main() {
         content: ''; position: absolute; left: 4px; top: 13px;
         width: 8px; height: 8px; border-radius: 50%;
       }
-      .coll .do::before { background: oklch(62% 0.16 145); }
-      .coll .dont::before { background: oklch(58% 0.22 25); }
+      .coll .do::before { background: oklch(45% 0.18 145); }
+      .coll .dont::before { background: oklch(58% 0.15 35); }
 
       .coll .overview-body {
         font-size: 12px; line-height: 1.55; color: ${DP.ink2};

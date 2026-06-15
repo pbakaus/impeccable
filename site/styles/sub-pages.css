@@ -195,7 +195,7 @@ a {
 }
 
 .site-header-github-star {
-  color: #f59e0b;
+  color: var(--color-accent);
   width: 12px;
   height: 12px;
   flex-shrink: 0;
@@ -1134,15 +1134,15 @@ main#main {
 }
 
 .rule-card-layer[data-layer="browser"] {
-  color: oklch(40% 0.12 230);
-  border-color: oklch(90% 0.05 230);
-  background: oklch(97% 0.02 230);
+  color: var(--ks-patina-deep);
+  border-color: oklch(70% 0.12 188 / 0.32);
+  background: oklch(70% 0.12 188 / 0.08);
 }
 
 .rule-card-layer[data-layer="llm"] {
-  color: oklch(45% 0.15 45);
-  border-color: oklch(92% 0.08 45);
-  background: oklch(98% 0.03 45);
+  color: var(--ks-kinpaku-deep);
+  border-color: oklch(77% 0.13 82 / 0.34);
+  background: oklch(77% 0.13 82 / 0.08);
 }
 
 /* Layer legend dl inside the How-to-read block. */

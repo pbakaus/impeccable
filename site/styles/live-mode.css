@@ -161,7 +161,7 @@
   background: var(--color-accent);
 }
 .live-demo-card--v3 {
-  background: oklch(96% 0.02 350);
+  background: var(--color-cream);
   border: 1px solid var(--color-accent-soft);
 }
 .live-demo-card--v3 h3 em { color: var(--color-accent); font-style: italic; }
@@ -347,11 +347,11 @@
   flex-shrink: 0;
   border-radius: 3px;
   overflow: hidden;
-  box-shadow: inset 0 0 0 1px oklch(58% 0.065 82 / 0.55);
+  box-shadow: inset 0 0 0 1px var(--color-mist);
 }
 .live-demo-gbar-dmd span:nth-child(1) { background: oklch(84% 0.19 80.46); }
 .live-demo-gbar-dmd span:nth-child(2) { background: oklch(70% 0.12 188); }
-.live-demo-gbar-dmd span:nth-child(3) { background: oklch(84% 0.035 82); }
+.live-demo-gbar-dmd span:nth-child(3) { background: oklch(91% 0 0); }
 .live-demo-gbar-dmd span:nth-child(4) { background: oklch(34% 0.014 82); }
 .live-demo-gbar-x {
   display: inline-flex;
@@ -487,7 +487,7 @@
   height: 18px;
   padding: 0;
   background: transparent;
-  color: oklch(63% 0.024 82);
+  color: var(--color-ash);
   border: 0;
   border-radius: 0;
   font-family: var(--font-body);
@@ -504,7 +504,7 @@
 }
 .live-demo-ctx-action:hover,
 .live-demo-ctx-count:hover {
-  color: oklch(84% 0.035 82);
+  color: var(--color-ink);
 }
 .live-demo-ctx-action-caret {
   font-size: 10px;
@@ -541,9 +541,9 @@
   height: 36px;
   padding: 0;
   background: transparent;
-  color: oklch(63% 0.024 82);
+  color: var(--color-ash);
   border: 0;
-  border-right: 1px solid oklch(22% 0 0);
+  box-shadow: inset -1px 0 0 oklch(22% 0 0);
   border-radius: 0;
   cursor: pointer;
 }
@@ -551,7 +551,7 @@
   display: inline-block;
   width: 1px;
   height: 13px;
-  background: oklch(94% 0.02 82);
+  background: var(--color-ink);
   margin-left: 2px;
   animation: liveDemoCaret 1s steps(1) infinite;
 }
@@ -569,7 +569,7 @@
   background: var(--color-accent);
   color: var(--color-paper);
   border: 0;
-  border-left: 1px solid oklch(22% 0 0);
+  box-shadow: inset 1px 0 0 oklch(22% 0 0);
   border-radius: 0;
   font-family: var(--font-body);
   font-size: 0;
@@ -801,7 +801,7 @@
   background: var(--color-cream);
   padding: 18px 22px;
   border: 0;
-  border-top: 3px solid var(--color-ink);
+  box-shadow: inset 0 3px 0 var(--color-ink);
   border-radius: 0;
   gap: 6px;
 }
@@ -902,7 +902,7 @@
 .live-demo-card--v3 {
   position: relative;
   background:
-    radial-gradient(circle at 20% 80%, oklch(92% 0.08 350) 0, transparent 45%),
+    radial-gradient(circle at 20% 80%, oklch(77% 0.13 82 / 0.16) 0, transparent 45%),
     var(--color-cream);
   border: 1px dashed var(--color-accent);
   border-radius: 10px;

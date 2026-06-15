@@ -369,6 +369,40 @@ describe('filterFindings()', () => {
     assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), ['overused-font:2', 'bounce-easing:4', 'side-tab:3']);
   });
 
+  it('scopes ignoreValues to file globs when files are provided', () => {
+    const findings = [
+      { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: '#8b5cf6' },
+      { ...finding('design-system-color', 2, { file: '/tmp/project/site/styles/feature.css' }), ignoreValue: '#8b5cf6' },
+      { ...finding('design-system-color', 3, { file: '/tmp/project/site/styles/home-kinpaku.css' }), ignoreValue: 'oklch(60% 0.25 350 / 0.22)' },
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [
+        { rule: 'design-system-color', value: '#8b5cf6', files: ['site/styles/main.css'] },
+        { rule: 'design-system-color', value: 'oklch(60% 0.25 350 / 0.22)', file: 'site/styles/home-kinpaku.css' },
+      ],
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => `${f.file}:${f.line}`), ['/tmp/project/site/styles/feature.css:2']);
+  });
+
+  it('allows wildcard ignoreValues only when scoped to files', () => {
+    const findings = [
+      { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: '#8b5cf6' },
+      { ...finding('design-system-color', 2, { file: '/tmp/project/site/styles/feature.css' }), ignoreValue: '#8b5cf6' },
+      { ...finding('design-system-font', 3, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: 'Inter' },
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [
+        { rule: 'design-system-color', value: '*', files: ['site/styles/main.css'] },
+        { rule: 'design-system-font', value: '*' },
+      ],
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), ['design-system-color:2', 'design-system-font:3']);
+  });
+
   it('extracts overused-font values from primary, CSS, and Google font snippets', () => {
     assert.equal(
       extractFindingIgnoreValue(finding('overused-font', 1, { snippet: 'Primary font: Open Sans (80% of text)' })),

@@ -494,7 +494,7 @@
   color: var(--color-accent);
   font-family: var(--font-mono);
   font-size: 10px;
-  border-radius: 11px;
+  border-radius: 10px;
 }
 
 .docs-viz-designmd-card {
@@ -541,7 +541,7 @@
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: oklch(55% 0.22 25);
+  color: var(--ks-vermilion);
   flex-shrink: 0;
 }
 
@@ -608,8 +608,10 @@
 
 /* BRAND variant — editorial-magazine, serif display, drenched accent */
 .docs-viz-register-frame--brand {
-  background: oklch(96% 0.02 30);
-  border-color: oklch(80% 0.08 30);
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.1), transparent 54%),
+    var(--color-cream);
+  border-color: var(--color-accent-soft);
   padding: 28px 22px;
 }
 
@@ -619,7 +621,7 @@
   font-weight: 500;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: oklch(40% 0.12 30);
+  color: var(--color-accent);
   margin-bottom: 8px;
 }
 
@@ -629,7 +631,7 @@
   font-weight: 400;
   font-size: 28px;
   line-height: 1;
-  color: oklch(20% 0.1 30);
+  color: var(--color-ink);
   margin: 0 0 10px 0;
 }
 
@@ -638,7 +640,7 @@
   font-style: italic;
   font-size: 13px;
   line-height: 1.5;
-  color: oklch(35% 0.04 30);
+  color: var(--color-charcoal);
   margin: 0 0 14px 0;
   max-width: 26ch;
 }
@@ -646,8 +648,8 @@
 .docs-viz-register-frame--brand .docs-viz-reg-btn {
   align-self: flex-start;
   padding: 8px 18px;
-  background: oklch(20% 0.1 30);
-  color: oklch(96% 0.02 30);
+  background: var(--color-ink);
+  color: var(--color-paper);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -898,11 +900,11 @@
 }
 
 .docs-viz-report-dim-fill--warn {
-  background: oklch(72% 0.15 70);
+  background: var(--ks-kinpaku-rich);
 }
 
 .docs-viz-report-dim-fill--fail {
-  background: oklch(60% 0.2 25);
+  background: var(--ks-vermilion);
 }
 
 .docs-viz-report-dim-score {
@@ -929,10 +931,10 @@
   border-radius: 3px;
 }
 
-.docs-viz-report-sev--p0 { background: oklch(50% 0.22 25); }
-.docs-viz-report-sev--p1 { background: oklch(58% 0.18 45); }
-.docs-viz-report-sev--p2 { background: oklch(70% 0.13 80); }
-.docs-viz-report-sev--p3 { background: oklch(55% 0.06 260); }
+.docs-viz-report-sev--p0 { background: var(--ks-vermilion); }
+.docs-viz-report-sev--p1 { background: oklch(52% 0.16 35); }
+.docs-viz-report-sev--p2 { background: var(--ks-kinpaku-rich); }
+.docs-viz-report-sev--p3 { background: var(--color-ash); }
 
 .docs-viz-report-sev-n {
   font-weight: 500;
@@ -980,7 +982,7 @@
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  background: oklch(60% 0.2 25);
+  background: var(--ks-vermilion);
   color: var(--color-paper);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -990,7 +992,7 @@
 }
 
 .docs-viz-critique-verdict-value--pass {
-  background: oklch(52% 0.18 150);
+  background: oklch(45% 0.18 145);
 }
 
 .docs-viz-critique-cols {
@@ -1083,9 +1085,9 @@
   text-align: right;
 }
 
-.docs-viz-critique-heur-score--good { color: oklch(45% 0.18 150); }
-.docs-viz-critique-heur-score--ok { color: oklch(55% 0.15 70); }
-.docs-viz-critique-heur-score--bad { color: oklch(55% 0.22 25); }
+.docs-viz-critique-heur-score--good { color: oklch(45% 0.18 145); }
+.docs-viz-critique-heur-score--ok { color: var(--ks-kinpaku-rich); }
+.docs-viz-critique-heur-score--bad { color: var(--ks-vermilion); }
 
 /* ============================================
    STEP ARTIFACTS — inline mocks in tutorials
@@ -1235,7 +1237,7 @@
 
 .docs-viz-variant--v1 { background: var(--color-cream); }
 .docs-viz-variant--v2 .docs-viz-variant-btn { background: var(--color-accent); }
-.docs-viz-variant--v3 { background: oklch(96% 0.02 350); }
+.docs-viz-variant--v3 { background: var(--color-cream); }
 
 /* Accept pill */
 .docs-viz-accept-pill {
@@ -1328,7 +1330,7 @@
   margin: 0;
   max-width: 56ch;
   padding: 10px 14px;
-  border-left: 2px solid var(--color-accent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
   background: color-mix(in oklab, var(--color-accent) 6%, transparent);
   border-radius: 0 4px 4px 0;
 }
@@ -1387,7 +1389,7 @@
 }
 
 .live-mode-start-copy.is-copied {
-  color: oklch(70% 0.18 145);
+  color: oklch(45% 0.18 145);
 }
 
 /* Demo section — wraps the animated homepage .live-demo block.
@@ -2745,7 +2747,9 @@
 }
 
 .designing-lane-mock--brand {
-  background: oklch(96% 0.02 30);
+  background:
+    linear-gradient(135deg, oklch(78% 0.12 82 / 0.1), transparent 54%),
+    var(--color-cream);
 }
 
 .designing-lane-mock--brand .designing-lane-mock-label {
@@ -2753,14 +2757,14 @@
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: oklch(40% 0.12 30);
+  color: var(--color-accent);
 }
 
 .designing-lane-mock--brand .designing-lane-mock-title {
   font-family: var(--font-display);
   font-style: italic;
   font-size: 22px;
-  color: oklch(20% 0.1 30);
+  color: var(--color-ink);
   line-height: 1.1;
 }
 
@@ -2846,8 +2850,8 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  background: oklch(95% 0.04 25);
-  color: oklch(55% 0.22 25);
+  background: oklch(58% 0.15 35 / 0.1);
+  color: var(--ks-vermilion);
   border-radius: 50%;
   font-family: var(--font-mono);
   font-size: 12px;

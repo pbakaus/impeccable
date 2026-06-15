@@ -878,7 +878,7 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: oklch(40% 0.02 82);
+  background: var(--ks-rule);
 }
 .designing-kinpaku .docs-viz-live-url {
   margin-left: 8px;

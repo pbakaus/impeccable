@@ -170,8 +170,13 @@ function splitFontStack(stack) {
 }
 
 function primaryFont(stack) {
-  if (!stack || /var\(/i.test(stack)) return '';
+  if (!stack || /var\(/i.test(stack) || !isLiteralFontStack(stack)) return '';
   return splitFontStack(stack).find(font => !GENERIC_FONTS.has(font)) || '';
+}
+
+function isLiteralFontStack(stack) {
+  const text = String(stack || '');
+  return !/[$`{}]|\s\+\s|\|\|/.test(text);
 }
 
 function cssColorLabel(raw) {
@@ -373,13 +378,49 @@ function isAllowedRadiusRaw(raw, designSystem) {
   if (text.includes('var(') || text.includes('%')) return true;
   const px = resolveLengthPx(text, 16);
   if (px == null || !Number.isFinite(px) || px <= RADIUS_TOLERANCE_PX) return true;
-  if (designSystem.hasPillRadius && px >= 999) return true;
+  if (designSystem.hasPillRadius && px >= 99) return true;
   return designSystem.allowedRadii.some(entry => Math.abs(entry.px - px) <= RADIUS_TOLERANCE_PX);
 }
 
 function lineLooksCommented(line) {
   const trimmed = String(line || '').trim();
   return trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('<!--');
+}
+
+function isProbablyColorLiteral(line, match) {
+  const raw = match?.[0] || '';
+  if (isInsideCssAttributeSelector(line, match?.index ?? -1)) return false;
+  if (!raw.startsWith('#')) return true;
+
+  const index = match.index ?? -1;
+  if (index <= 0) return index === 0;
+
+  const before = line.slice(0, index);
+  const after = line.slice(index + raw.length);
+  if (before.endsWith('&')) return false; // HTML numeric entity, e.g. &#8596;
+
+  const prevNonSpace = before.match(/\S(?=\s*$)/)?.[0] || '';
+  const nextNonSpace = after.match(/^\s*(\S)/)?.[1] || '';
+  if (prevNonSpace === '>' && nextNonSpace === '<') return false; // plain text, e.g. PR #155
+
+  const styleContext = /(?:^|[{\s;"'`(,])(?:color|background(?:-color|-image)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|box-shadow|text-shadow|fill|stroke)\s*:\s*[^;{}"'`]*/i.test(before);
+  const cssFunctionContext = /(?:linear-gradient|radial-gradient|conic-gradient|color-mix)\([^)]*$/i.test(before);
+  const jsColorKeyContext = /(?:^|[,{]\s*)(?:color|background|backgroundColor|borderColor|outlineColor|fill|stroke|boxShadow|textShadow)\s*[:=]\s*["'`]?[^"'`,}]*/i.test(before);
+
+  return styleContext || cssFunctionContext || jsColorKeyContext;
+}
+
+function isInsideCssAttributeSelector(line, index) {
+  if (index < 0) return false;
+  const before = line.slice(0, index);
+  const lastOpen = before.lastIndexOf('[');
+  if (lastOpen === -1) return false;
+  const lastClose = before.lastIndexOf(']');
+  if (lastClose > lastOpen) return false;
+  const after = line.slice(index);
+  const close = after.indexOf(']');
+  const block = after.indexOf('{');
+  return close !== -1 && (block === -1 || close < block);
 }
 
 function makeDesignFinding(id, filePath, snippet, line = 0, extras = {}) {
@@ -468,6 +509,7 @@ function checkSourceDesignSystem(content, filePath, options = {}) {
 
     if (designSystem.hasColors) {
       for (const match of line.matchAll(CSS_COLOR_RE)) {
+        if (!isProbablyColorLiteral(line, match)) continue;
         const raw = cssColorLabel(match[0]);
         if (isAllowedColorRaw(raw, designSystem)) continue;
         findings.push(makeDesignFinding(

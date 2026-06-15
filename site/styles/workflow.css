@@ -16,12 +16,12 @@
    ============================================ */
 
 /* Category accent colors */
-.magazine-spread[data-category="create"] { --spread-accent: oklch(55% 0.20 340); }
-.magazine-spread[data-category="evaluate"] { --spread-accent: oklch(55% 0.20 300); }
-.magazine-spread[data-category="refine"] { --spread-accent: oklch(55% 0.18 260); }
-.magazine-spread[data-category="simplify"] { --spread-accent: oklch(55% 0.20 80); }
-.magazine-spread[data-category="harden"] { --spread-accent: oklch(55% 0.20 160); }
-.magazine-spread[data-category="system"] { --spread-accent: oklch(45% 0.05 0); }
+.magazine-spread[data-category="create"] { --spread-accent: var(--color-accent); }
+.magazine-spread[data-category="evaluate"] { --spread-accent: var(--ks-patina); }
+.magazine-spread[data-category="refine"] { --spread-accent: var(--color-accent); }
+.magazine-spread[data-category="simplify"] { --spread-accent: var(--ks-kinpaku-rich); }
+.magazine-spread[data-category="harden"] { --spread-accent: var(--ks-patina); }
+.magazine-spread[data-category="system"] { --spread-accent: var(--color-ash); }
 
 .magazine-container {
   position: relative;
@@ -743,7 +743,7 @@
 }
 
 .terminal-done {
-  color: var(--color-success, #22c55e);
+  color: var(--color-success, var(--ks-patina));
   font-weight: 500;
 }
 
@@ -2002,7 +2002,7 @@
 .why-terminal-line { white-space: pre; }
 .why-terminal-line--prompt { color: oklch(90% 0 0); }
 .why-terminal-prompt { color: var(--color-accent); margin-right: 4px; }
-.why-terminal-ok { color: oklch(75% 0.15 145); }
+.why-terminal-ok { color: var(--ks-patina); }
 .why-terminal-arrow { color: var(--color-accent); }
 .why-terminal-line--hint {
   margin-top: 6px;
@@ -2164,8 +2164,8 @@
   border-radius: 999px;
 }
 .why-ci-status--fail {
-  color: oklch(78% 0.18 25);
-  background: oklch(30% 0.15 25 / 0.3);
+  color: var(--ks-vermilion);
+  background: oklch(58% 0.15 35 / 0.16);
 }
 .why-ci-body {
   padding: 14px;
@@ -2185,11 +2185,11 @@
 }
 .why-ci-issue code {
   background: transparent;
-  color: oklch(70% 0.12 220);
+  color: var(--ks-patina);
   padding: 0;
   font-size: 1em;
 }
-.why-ci-x { color: oklch(75% 0.18 25); }
+.why-ci-x { color: var(--ks-vermilion); }
 .why-ci-summary {
   margin-top: 8px;
   padding-top: 8px;
@@ -2440,7 +2440,7 @@
 
 /* ─ Panel 03: path + meta additions ─ */
 .why-terminal-path {
-  color: oklch(88% 0.05 220);
+  color: var(--ks-patina);
 }
 .why-terminal-meta {
   color: oklch(58% 0 0);
@@ -2524,7 +2524,7 @@
   text-transform: uppercase;
   color: var(--color-accent);
 }
-.why-flow-tile--agent .why-flow-tile-kicker { color: oklch(72% 0.15 350); }
+.why-flow-tile--agent .why-flow-tile-kicker { color: var(--ks-patina); }
 .why-flow-tile-title {
   font-family: var(--font-display);
   font-style: italic;
@@ -3173,8 +3173,8 @@
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
-.antidote-pair-figure--before figcaption { color: oklch(35% 0.15 25); background: oklch(98% 0.04 25 / 0.9); }
-.antidote-pair-figure--after figcaption { color: oklch(45% 0.18 145); background: oklch(96% 0.04 145 / 0.9); }
+.antidote-pair-figure--before figcaption { color: var(--ks-vermilion); background: oklch(58% 0.15 35 / 0.1); }
+.antidote-pair-figure--after figcaption { color: var(--ks-patina); background: oklch(70% 0.12 188 / 0.1); }
 .antidote-pair:hover .antidote-pair-figure {
   box-shadow: 0 14px 28px oklch(0% 0 0 / 0.1);
 }
@@ -3326,7 +3326,7 @@
 .ab-after-data-d {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: oklch(45% 0.18 145);
+  color: var(--ks-patina);
 }
 
 /* After 03: one big honest insight */

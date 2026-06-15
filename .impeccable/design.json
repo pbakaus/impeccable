@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-05-26T00:00:00Z",
+  "generatedAt": "2026-06-15T23:30:35.569Z",
   "title": "Design System: Impeccable",
   "extensions": {
     "colorMeta": {
@@ -10,14 +10,18 @@
         "canonical": "oklch(84% 0.19 80.46)",
         "description": "Primary accent. CTAs, wordmark, active state, live picker borders, key rules.",
         "tonalRamp": [
-          "oklch(18% 0.04 78)",
-          "oklch(28% 0.07 79)",
-          "oklch(38% 0.10 80)",
-          "oklch(48% 0.12 80)",
-          "oklch(58% 0.14 80)",
-          "oklch(68% 0.16 80)",
-          "oklch(78% 0.18 80)",
-          "oklch(88% 0.12 82)"
+          "oklch(22% 0.04 78)",
+          "oklch(34% 0.06 78)",
+          "oklch(48% 0.08 78)",
+          "oklch(61% 0.085 78)",
+          "oklch(72% 0.105 82)",
+          "oklch(78% 0.12 82)",
+          "oklch(84% 0.075 84)",
+          "oklch(89% 0.055 84)",
+          "oklch(95% 0.04 84)",
+          "oklch(98% 0.04 84)",
+          "oklch(94% 0.07 82)",
+          "oklch(98% 0.035 84)"
         ]
       },
       "verdigris-patina": {
@@ -26,14 +30,13 @@
         "canonical": "oklch(70% 0.12 188)",
         "description": "Secondary accent. Improved states, live indicators, focus rings, contrast against gold.",
         "tonalRamp": [
-          "oklch(18% 0.04 188)",
-          "oklch(28% 0.06 188)",
-          "oklch(38% 0.08 188)",
-          "oklch(48% 0.09 188)",
-          "oklch(58% 0.10 188)",
-          "oklch(68% 0.11 188)",
-          "oklch(78% 0.10 188)",
-          "oklch(88% 0.06 188)"
+          "oklch(22% 0.04 188)",
+          "oklch(49% 0.08 188)",
+          "oklch(58% 0.085 185)",
+          "oklch(70% 0.105 190)",
+          "oklch(71% 0.082 184)",
+          "oklch(76% 0.088 190)",
+          "oklch(82% 0.07 188)"
         ]
       },
       "lacquer-black": {
@@ -47,46 +50,125 @@
           "oklch(11% 0.006 95)",
           "oklch(15% 0.008 95)",
           "oklch(19% 0.008 95)",
-          "oklch(28% 0.010 95)",
-          "oklch(40% 0.012 82)",
-          "oklch(55% 0.014 82)"
+          "oklch(22% 0.008 95)",
+          "oklch(34% 0.014 82)",
+          "oklch(58% 0.012 95)"
         ]
       },
-      "lacquer-deep": {
+      "neutral-text": {
         "role": "neutral",
-        "displayName": "Lacquer Deep",
-        "canonical": "oklch(4% 0.004 95)",
-        "description": "Deepest inset surfaces, live picker bar fill, CTA text on gold."
+        "displayName": "Neutral Text Ramp",
+        "canonical": "oklch(88% 0 0)",
+        "description": "Neutral white/gray text and utility stops shared by dark docs, live overlay, and light-mode chrome.",
+        "tonalRamp": [
+          "oklch(100% 0 0)",
+          "oklch(99% 0 0)",
+          "oklch(98.5% 0 0)",
+          "oklch(98% 0 0)",
+          "oklch(96% 0 0)",
+          "oklch(94% 0 0)",
+          "oklch(91% 0 0)",
+          "oklch(88% 0 0)",
+          "oklch(85% 0 0)",
+          "oklch(80% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(65% 0 0)",
+          "oklch(62% 0 0)",
+          "oklch(58% 0 0)",
+          "oklch(55% 0 0)",
+          "oklch(45% 0 0)",
+          "oklch(42% 0 0)",
+          "oklch(40% 0 0)",
+          "oklch(35% 0 0)",
+          "oklch(34% 0 0)",
+          "oklch(30% 0 0)",
+          "oklch(25% 0 0)",
+          "oklch(24% 0 0)",
+          "oklch(22% 0 0)"
+        ]
       },
-      "raised-lacquer": {
+      "light-paper": {
         "role": "neutral",
-        "displayName": "Raised Lacquer",
-        "canonical": "oklch(11% 0.006 95)",
-        "description": "Panels, cards, inputs, demo frames."
+        "displayName": "Light Mode Paper",
+        "canonical": "oklch(97% 0.012 95)",
+        "description": "Light theme surfaces, ink, and rules from site/styles/kinpaku-tokens.css.",
+        "tonalRamp": [
+          "oklch(99% 0.008 95)",
+          "oklch(97.5% 0.004 95)",
+          "oklch(97% 0.012 95)",
+          "oklch(96% 0.012 95)",
+          "oklch(94% 0.014 95)",
+          "oklch(92% 0.014 95)",
+          "oklch(91% 0.012 95)",
+          "oklch(88% 0.014 95)",
+          "oklch(72% 0.02 95)",
+          "oklch(65% 0.01 95)",
+          "oklch(55% 0.012 95)",
+          "oklch(45% 0.015 95)",
+          "oklch(30% 0.02 95)",
+          "oklch(25% 0.02 95)",
+          "oklch(25% 0.018 95)",
+          "oklch(18% 0.02 95)"
+        ]
       },
-      "champagne": {
-        "role": "neutral",
-        "displayName": "Champagne",
-        "canonical": "oklch(84% 0.035 82)",
-        "description": "Headlines, strong labels, picker bar default text."
+      "command-category": {
+        "role": "data-viz",
+        "displayName": "Command Category Colors",
+        "canonical": "oklch(86% 0.075 82)",
+        "description": "Homepage proof modules use a constrained category palette for command groups, not generic decoration.",
+        "tonalRamp": [
+          "oklch(86% 0.075 82)",
+          "oklch(76% 0.088 190)",
+          "oklch(89% 0.055 84)",
+          "oklch(84% 0.055 84)",
+          "oklch(88% 0.047 84)",
+          "oklch(61% 0.085 78)",
+          "oklch(70% 0.096 72)",
+          "oklch(82% 0.095 76)",
+          "oklch(58% 0.085 185)",
+          "oklch(71% 0.082 184)",
+          "oklch(58% 0.028 82)",
+          "oklch(71% 0.028 82)"
+        ]
       },
-      "text-warm": {
-        "role": "neutral",
-        "displayName": "Warm Text",
-        "canonical": "oklch(81% 0.03 82)",
-        "description": "Body copy on dark lacquer surfaces."
-      },
-      "text-muted": {
-        "role": "neutral",
-        "displayName": "Muted Text",
-        "canonical": "oklch(63% 0.024 82)",
-        "description": "Captions, meta, inactive picker controls."
+      "terminal-chrome": {
+        "role": "utility",
+        "displayName": "Terminal Chrome",
+        "canonical": "#ff5f56",
+        "description": "Conventional faux terminal traffic-light dots.",
+        "tonalRamp": [
+          "#ff5f56",
+          "#ffbd2e",
+          "#27c93f"
+        ]
       },
       "vermilion-warning": {
         "role": "state",
         "displayName": "Vermilion Warning",
         "canonical": "oklch(58% 0.15 35)",
-        "description": "Errors, anti-pattern warnings, live picker exit hover."
+        "description": "Errors, anti-pattern warnings, live picker exit hover.",
+        "tonalRamp": [
+          "oklch(52% 0.16 35)",
+          "oklch(46% 0.13 35)",
+          "oklch(42% 0.13 35)",
+          "oklch(22% 0.04 35)",
+          "oklch(58% 0.15 35)"
+        ]
+      },
+      "positive-success": {
+        "role": "state",
+        "displayName": "Positive Success",
+        "canonical": "oklch(45% 0.18 145)",
+        "description": "Success and accepted states: confirmation rows, diff additions, and positive status badges.",
+        "tonalRamp": [
+          "oklch(40% 0.10 145)",
+          "oklch(45% 0.18 145)",
+          "oklch(58% 0.12 145)",
+          "oklch(75% 0.12 145)",
+          "oklch(95% 0.05 145)",
+          "oklch(96% 0.04 145)"
+        ]
       }
     },
     "typographyMeta": {
@@ -149,9 +231,49 @@
       }
     ],
     "breakpoints": [
-      { "name": "md", "value": "980px" },
-      { "name": "lg", "value": "1080px" }
-    ]
+      {
+        "name": "md",
+        "value": "980px"
+      },
+      {
+        "name": "lg",
+        "value": "1080px"
+      }
+    ],
+    "roundedMeta": {
+      "code": {
+        "value": "3px",
+        "purpose": "Inline code, terminal chips, tiny badges."
+      },
+      "controlSm": {
+        "value": "5px",
+        "purpose": "Compact icon and chip controls."
+      },
+      "controlMd": {
+        "value": "7px",
+        "purpose": "Live overlay buttons and segmented controls."
+      },
+      "xl": {
+        "value": "10px",
+        "purpose": "Picker bars, compact frames, and small visual shells."
+      },
+      "panel": {
+        "value": "12px",
+        "purpose": "Larger panels and demo canvases."
+      },
+      "overlay": {
+        "value": "14px",
+        "purpose": "Detached overlay panels."
+      },
+      "visualFrame": {
+        "value": "16px",
+        "purpose": "Large illustrative frames only."
+      },
+      "pill": {
+        "value": "999px",
+        "purpose": "Tags, toggles, and circular controls."
+      }
+    }
   },
   "components": [
     {
@@ -215,17 +337,61 @@
       "Small radii, restrained borders, and almost no decorative shadow."
     ],
     "rules": [
-      { "name": "The Gold Carries Brand Rule", "section": "colors", "body": "Kinpaku gold is the primary brand signal. If a single accent must represent Impeccable, use gold, not magenta or cyan." },
-      { "name": "The Patina Has Meaning Rule", "section": "colors", "body": "Verdigris is secondary. It marks improvement, live state, or contrast against gold. Do not use it as a generic decoration field." },
-      { "name": "The Texture Budget Rule", "section": "colors", "body": "Leaf and patina textures are for brand-bearing moments: hero seams, CTA fills, dividers, major swatches, and select system modules. Generic cards stay mostly flat." },
-      { "name": "The OKLCH-Only Rule", "section": "colors", "body": "New colors are declared in OKLCH. Hex appears only inside third-party examples or imported assets." },
-      { "name": "The Weight-Inversion Rule", "section": "typography", "body": "Section h2s read heavier (600) than the hero h1 (300). This is deliberate: the hero is elegant and thin so the page can breathe; section anchors carry more weight to ground each block." },
-      { "name": "The Two-Face Rule", "section": "typography", "body": "Display sizes use Alumni Sans Pinstripe. Anything sized below 1.2rem uses Albert Sans. Pinstripe at small sizes loses its identity and reads as a bad rendering." },
-      { "name": "The Tracked Labels Are Short Rule", "section": "typography", "body": "Tracked uppercase labels are for short system markers. Do not write full sentences in tracked caps." },
-      { "name": "The Dark Type Needs Air Rule", "section": "typography", "body": "Body text on lacquer uses line-height 1.65 to 1.8 and a max width of 65 to 75ch." },
-      { "name": "The Hairline First Rule", "section": "elevation", "body": "Use 1px gold hairlines before adding shadow." },
-      { "name": "The No Glass Rule", "section": "elevation", "body": "Translucency can exist in overlays, but decorative blur/glass panels are not part of this system." },
-      { "name": "The Picker Is Brand Rule", "section": "components", "body": "Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the full kinpaku border, lacquer-deep fill, and carved-tile mark." }
+      {
+        "name": "The Gold Carries Brand Rule",
+        "section": "colors",
+        "body": "Kinpaku gold is the primary brand signal. If a single accent must represent Impeccable, use gold, not magenta or cyan."
+      },
+      {
+        "name": "The Patina Has Meaning Rule",
+        "section": "colors",
+        "body": "Verdigris is secondary. It marks improvement, live state, or contrast against gold. Do not use it as a generic decoration field."
+      },
+      {
+        "name": "The Texture Budget Rule",
+        "section": "colors",
+        "body": "Leaf and patina textures are for brand-bearing moments: hero seams, CTA fills, dividers, major swatches, and select system modules. Generic cards stay mostly flat."
+      },
+      {
+        "name": "The OKLCH-Only Rule",
+        "section": "colors",
+        "body": "New colors are declared in OKLCH. Hex appears only inside third-party examples or imported assets."
+      },
+      {
+        "name": "The Weight-Inversion Rule",
+        "section": "typography",
+        "body": "Section h2s read heavier (600) than the hero h1 (300). This is deliberate: the hero is elegant and thin so the page can breathe; section anchors carry more weight to ground each block."
+      },
+      {
+        "name": "The Two-Face Rule",
+        "section": "typography",
+        "body": "Display sizes use Alumni Sans Pinstripe. Anything sized below 1.2rem uses Albert Sans. Pinstripe at small sizes loses its identity and reads as a bad rendering."
+      },
+      {
+        "name": "The Tracked Labels Are Short Rule",
+        "section": "typography",
+        "body": "Tracked uppercase labels are for short system markers. Do not write full sentences in tracked caps."
+      },
+      {
+        "name": "The Dark Type Needs Air Rule",
+        "section": "typography",
+        "body": "Body text on lacquer uses line-height 1.65 to 1.8 and a max width of 65 to 75ch."
+      },
+      {
+        "name": "The Hairline First Rule",
+        "section": "elevation",
+        "body": "Use 1px gold hairlines before adding shadow."
+      },
+      {
+        "name": "The No Glass Rule",
+        "section": "elevation",
+        "body": "Translucency can exist in overlays, but decorative blur/glass panels are not part of this system."
+      },
+      {
+        "name": "The Picker Is Brand Rule",
+        "section": "components",
+        "body": "Live mode UI is Impeccable product chrome, not host-page chrome. It always ships the full kinpaku border, lacquer-deep fill, and carved-tile mark."
+      }
     ],
     "dos": [
       "Do use kinpaku gold as the primary brand color.",

@@ -141,7 +141,7 @@ html.light .kinpaku-chrome .site-header-github {
 html.light .kinpaku-chrome .site-header-github:hover {
   color: var(--ks-patina-deep);
   border-color: var(--ks-patina);
-  background: oklch(52% 0.11 188 / 0.08);
+  background: oklch(49% 0.08 188 / 0.08);
 }
 
 @media (max-width: 760px) {
@@ -483,7 +483,7 @@ html.light .home-kinpaku .why-visual--ci {
   background:
     linear-gradient(90deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
     linear-gradient(180deg, oklch(77% 0.13 82 / 0.03) 1px, transparent 1px),
-    radial-gradient(circle at 92% 12%, oklch(52% 0.11 188 / 0.08), transparent 18rem),
+    radial-gradient(circle at 92% 12%, oklch(49% 0.08 188 / 0.08), transparent 18rem),
     var(--ks-lacquer-raised);
   background-size: 34px 34px, 34px 34px, auto, auto;
 }
@@ -996,7 +996,7 @@ html.light .home-kinpaku .load-error {
 
 html.light .home-kinpaku .install-primary-howto {
   background:
-    linear-gradient(135deg, oklch(52% 0.11 188 / 0.06), transparent 44%),
+    linear-gradient(135deg, oklch(49% 0.08 188 / 0.06), transparent 44%),
     var(--ks-lacquer-raised);
 }
 
@@ -1008,7 +1008,7 @@ html.light .home-kinpaku .foundation-plinth {
 
 html.light .home-kinpaku .foundation-column:hover .foundation-card {
   box-shadow:
-    inset 0 0 0 1px oklch(52% 0.11 188 / 0.10),
+    inset 0 0 0 1px oklch(49% 0.08 188 / 0.10),
     0 24px 58px oklch(25% 0.02 95 / 0.08);
 }
 
@@ -1020,11 +1020,11 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
   --demo-text: oklch(28% 0.018 95);
   --demo-muted: oklch(45% 0.015 95);
   --demo-dim: oklch(58% 0.012 95);
-  --demo-warning-panel: oklch(94% 0.04 72);
-  --demo-danger-panel: oklch(94% 0.04 35);
-  --demo-info-panel: oklch(94% 0.04 205);
-  --demo-purple: oklch(52% 0.14 286);
-  --demo-purple-soft: oklch(92% 0.04 286);
+  --demo-warning-panel: oklch(89% 0.055 84);
+  --demo-danger-panel: oklch(58% 0.15 35 / 0.1);
+  --demo-info-panel: oklch(70% 0.12 188 / 0.1);
+  --demo-purple: var(--ks-kinpaku-rich);
+  --demo-purple-soft: oklch(89% 0.055 84);
 }
 
 html.light .home-kinpaku .spread-demo-area .demo-split-comparison .split-after,
@@ -1049,7 +1049,7 @@ html.light .home-kinpaku .slop-callout {
 html.light .home-kinpaku .why-visual--writes,
 html.light .home-kinpaku .why-visual--extension {
   background:
-    radial-gradient(circle at 92% 12%, oklch(52% 0.11 188 / 0.08), transparent 18rem),
+    radial-gradient(circle at 92% 12%, oklch(49% 0.08 188 / 0.08), transparent 18rem),
     var(--ks-lacquer-raised);
 }
 
@@ -1067,7 +1067,7 @@ html.light .home-kinpaku .why-visual--extension .why-browser-chrome {
 }
 
 html.light .home-kinpaku .why-writes-line--del {
-  color: oklch(46% 0.12 30);
+  color: oklch(52% 0.16 35);
   background: oklch(58% 0.15 35 / 0.10);
 }
 
@@ -1096,7 +1096,7 @@ html.light .home-kinpaku .why-visual--v2 .v2-new-browser-frame {
   background:
     linear-gradient(90deg, oklch(77% 0.13 82 / 0.05) 1px, transparent 1px),
     linear-gradient(180deg, oklch(77% 0.13 82 / 0.04) 1px, transparent 1px),
-    radial-gradient(circle at 72% 58%, oklch(52% 0.11 188 / 0.06), transparent 7rem),
+    radial-gradient(circle at 72% 58%, oklch(49% 0.08 188 / 0.06), transparent 7rem),
     var(--ks-lacquer);
 }
 
@@ -1406,12 +1406,12 @@ html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-dem
   border: 0;
   /* Light muted tone from the base sheet: these sit on the dark configure
      surface, where the light-theme text-muted token would vanish. */
-  color: oklch(63% 0.024 82);
+  color: oklch(72% 0 0);
 }
 
 html.light .home-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-voice,
 html.light .live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] .live-demo-ctx-voice {
-  color: oklch(63% 0.024 82);
+  color: oklch(72% 0 0);
 }
 
 html.light .home-kinpaku .live-demo-ctx-go,
