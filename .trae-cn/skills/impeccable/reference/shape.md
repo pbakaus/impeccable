@@ -1,18 +1,18 @@
-Shape the UX and UI for a feature before any code is written. This command produces a **design brief**: a structured artifact that guides implementation through discovery, not guesswork.
+Shape the UX and UI for a feature before any code is written. This command produces a confirmed design brief, so implementation has task-specific intent grounded in the current PRODUCT.md, BRAND.md, and DESIGN.md context.
 
-**Scope**: Design planning only. This command does NOT write code. It produces the thinking that makes code good.
+**Scope**: Design planning only. This command does NOT write implementation code.
 
-**Output**: A design brief that can be handed off to /impeccable craft, or directly to /impeccable for freeform implementation. When visual direction probes are used, the images are supporting artifacts, not the primary output.
+**Output**: A chat-confirmed design brief that can be handed off to /impeccable craft, or directly to /impeccable for freeform implementation. When visual direction probes are used, the images are supporting artifacts, not the primary output.
 
 ## Philosophy
 
 Most AI-generated UIs fail not because of bad code, but because of skipped thinking. They jump to "here's a card grid" without asking "what is the user trying to accomplish?" This command inverts that: understand deeply first, so implementation is precise.
 
-## Phase 1: Discovery Interview
+## Phase 1: Chat Interview
 
 **Do NOT write any code or make any design decisions during this phase.** Your only job is to understand the feature deeply enough to make excellent design decisions later.
 
-This is a required interaction, not optional guidance. Ask these questions in conversation, adapting based on answers. Don't dump them all at once; have a natural dialogue. ask the user directly to clarify what you cannot infer.
+Ask these questions in conversation, adapting based on answers. Don't dump them all at once; have a natural dialogue. ask the user directly to clarify what you cannot infer.
 
 ### Interview cadence
 
@@ -68,6 +68,8 @@ Scope answers are task-scoped. Don't write them to PRODUCT.md or DESIGN.md; carr
 ### Anti-Goals
 - What should this NOT be? What would be a wrong direction?
 - What's the biggest risk of getting this wrong?
+
+If PRODUCT.md, BRAND.md, or DESIGN.md is missing, stop and run /impeccable init first. Shape should not create those project-level files.
 
 ## Phase 1.5: Visual Direction Probe (Capability-Gated)
 
@@ -162,4 +164,4 @@ ask the user directly to clarify what you cannot infer. Ask for explicit confirm
 
 If the user disagrees with any part, revisit the relevant discovery questions. A shape run is incomplete until the user confirms direction.
 
-Once confirmed, the brief is complete. The user can now hand it to /impeccable, or use it to guide any other implementation approach. (If the user wants the full discovery-then-build flow in one step, they should use /impeccable craft instead, which runs this command internally.)
+Once confirmed, the shape run is complete. The user can now hand the brief to /impeccable, or use it to guide any other implementation approach. (If the user wants the full discovery-then-build flow in one step, they should use /impeccable craft instead, which runs this command internally.)

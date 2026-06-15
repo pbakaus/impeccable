@@ -7,6 +7,7 @@ export const OPT_IN_SUITES = [
   'live-e2e',
   'live-e2e-accept-cleanup',
   'skill-behavior',
+  'init-recording-live-flux',
   'live-svelte-adapter-deepseek',
 ];
 
@@ -25,11 +26,12 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(context|context-signals|critique-storage|design-parser|impeccable-paths|is-generated))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(context|context-signals|critique-storage|design-parser|impeccable-paths|is-generated|questionnaire\/))/,
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
       /^tests\/(build|context|context-signals|critique-storage|design-parser|docs-integrity|impeccable-paths|skills-cli|test-suites|windows-path-fix)\.test\.(js|mjs)$/,
+      /^tests\/questionnaire-.*\.(mjs|js)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -56,6 +58,15 @@ export const SUITES = {
           'tests/critique-storage.test.mjs',
           'tests/design-parser.test.mjs',
           'tests/impeccable-paths.test.mjs',
+          'tests/questionnaire-schema.test.mjs',
+          'tests/questionnaire-design-md.test.mjs',
+          'tests/questionnaire-init-schema.test.mjs',
+          'tests/questionnaire-init-image-provider.test.mjs',
+          'tests/questionnaire-init-md.test.mjs',
+          'tests/questionnaire-server.test.mjs',
+          'tests/questionnaire-browser.test.mjs',
+          'tests/questionnaire-installed-skill.test.mjs',
+          'tests/questionnaire-init-recording.test.mjs',
           'tests/test-suites.test.mjs',
         ],
       },
@@ -232,14 +243,35 @@ export const SUITES = {
       ...COMMON_INFRA_PATTERNS,
       /^skill\/SKILL\.src\.md$/,
       /^skill\/reference\/(init|document|brand|product|shape|craft|audit|polish|live)\.md$/,
-      /^skill\/scripts\/(context|context-signals|detect|detect-csp)\.mjs$/,
+      /^skill\/scripts\/(context|context-signals|detect|detect-csp|questionnaire\/)/,
       /^tests\/skill-behavior\//,
     ],
     commands: [
       {
         runner: 'node',
         timeoutMs: 300000,
-        files: ['tests/skill-behavior/scenarios.test.mjs'],
+        files: [
+          'tests/skill-behavior/questionnaire-reference.test.mjs',
+          'tests/skill-behavior/scenarios.test.mjs',
+        ],
+      },
+    ],
+  },
+  'init-recording-live-flux': {
+    description: 'Opt-in live Flux recording sweep for the browser-first init questionnaire.',
+    optIn: true,
+    needsPlaywright: true,
+    triggers: [
+      ...COMMON_INFRA_PATTERNS,
+      /^skill\/scripts\/questionnaire\//,
+      /^tests\/questionnaire-init-recording-live-flux\.test\.mjs$/,
+    ],
+    commands: [
+      {
+        runner: 'node',
+        timeoutMs: 1800000,
+        env: { IMPECCABLE_INIT_RECORDING_LIVE: '1' },
+        files: ['tests/questionnaire-init-recording-live-flux.test.mjs'],
       },
     ],
   },

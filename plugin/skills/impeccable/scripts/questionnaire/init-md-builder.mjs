@@ -1,0 +1,506 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  INIT_SLIDES,
+  initAnswersByKey,
+  validateCompleteInitAnswers,
+} from './init-schema.mjs';
+
+export const PRODUCT_MD_FILENAME = 'PRODUCT.md';
+export const BRAND_MD_FILENAME = 'BRAND.md';
+export const DESIGN_MD_FILENAME = 'DESIGN.md';
+export const STAGED_INIT_DIR = path.join('.impeccable', 'init');
+
+export function buildInitArtifacts({
+  answers,
+  imageBatches = {},
+  typographyBatches = {},
+  uploadedAssets = [],
+  selectedImagePaths = {},
+  command = 'init',
+  prompt = '',
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  const allImages = flattenImages(imageBatches);
+  const allTypography = flattenTypography(typographyBatches);
+  validateCompleteInitAnswers(answers, { images: allImages, typography: allTypography });
+
+  const keyed = initAnswersByKey(answers);
+  const product = parseProductOverview(keyed.productOverview?.value || prompt);
+  const selectedCueImages = imagesForAnswer(keyed.visualCues, allImages);
+  const selectedPalette = imagesForAnswer(keyed.palette, allImages)[0] || null;
+  const selectedTypography = typographyForAnswer(keyed.typography, allTypography)[0] || null;
+  const productAssets = normalizeAssetList(keyed.assets?.assets || uploadedAssets);
+  const paletteColors = selectedPalette?.colors || [];
+  const cueLabels = selectedCueImages.map((image) => image.label);
+  const routeFamilies = [...new Set(selectedCueImages.map((image) => image.routeFamily).filter(Boolean))];
+
+  return {
+    productMd: buildProductMd({
+      product,
+      keyed,
+      productAssets,
+      generatedAt,
+      command,
+    }),
+    brandMd: buildBrandMd({
+      product,
+      keyed,
+      productAssets,
+      selectedCueImages,
+      selectedPalette,
+      selectedTypography,
+      selectedImagePaths,
+      routeFamilies,
+      generatedAt,
+      command,
+    }),
+    designMd: buildDesignMd({
+      product,
+      keyed,
+      selectedCueImages,
+      selectedPalette,
+      selectedTypography,
+      paletteColors,
+      cueLabels,
+      routeFamilies,
+      generatedAt,
+      command,
+    }),
+  };
+}
+
+export function writeInitArtifacts({ cwd = process.cwd(), artifacts }) {
+  const targets = resolveInitWriteTargets(cwd);
+  const writes = [
+    ['product', artifacts.productMd, targets.product],
+    ['brand', artifacts.brandMd, targets.brand],
+    ['design', artifacts.designMd, targets.design],
+  ];
+  for (const [, content, target] of writes) {
+    fs.mkdirSync(path.dirname(target.absolutePath), { recursive: true });
+    fs.writeFileSync(target.absolutePath, content);
+  }
+  return {
+    targetPaths: {
+      product: targets.product.targetPath,
+      brand: targets.brand.targetPath,
+      design: targets.design.targetPath,
+    },
+    writeActions: {
+      product: targets.product.action,
+      brand: targets.brand.action,
+      design: targets.design.action,
+    },
+    existing: {
+      product: targets.product.existing,
+      brand: targets.brand.existing,
+      design: targets.design.existing,
+    },
+  };
+}
+
+export function resolveInitWriteTargets(cwd = process.cwd()) {
+  return {
+    product: resolveSingleTarget(cwd, PRODUCT_MD_FILENAME, path.join(STAGED_INIT_DIR, 'PRODUCT.next.md')),
+    brand: resolveSingleTarget(cwd, BRAND_MD_FILENAME, path.join(STAGED_INIT_DIR, 'BRAND.next.md')),
+    design: resolveSingleTarget(cwd, DESIGN_MD_FILENAME, path.join(STAGED_INIT_DIR, 'DESIGN.next.md')),
+  };
+}
+
+export function saveSelectedInitImages({
+  cwd = process.cwd(),
+  sessionId,
+  answers = {},
+  imageBatches = {},
+} = {}) {
+  const allImages = flattenImages(imageBatches);
+  const selectedIds = [
+    ...asArray(answers['visual-cues']?.value),
+    ...asArray(answers.palette?.value),
+  ];
+  const byId = new Map(allImages.map((image) => [image.id, image]));
+  const out = {};
+  const dir = path.join(cwd, STAGED_INIT_DIR, 'generated', sanitizeFilePart(sessionId || 'session'));
+  for (const id of selectedIds) {
+    const image = byId.get(id);
+    if (!image?.dataUrl) continue;
+    const parsed = parseDataUrl(image.dataUrl);
+    if (!parsed) continue;
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = parsed.mimeType.includes('webp') ? 'webp' : parsed.mimeType.includes('jpeg') || parsed.mimeType.includes('jpg') ? 'jpg' : 'png';
+    const filename = `${sanitizeFilePart(image.id)}.${ext}`;
+    const absolutePath = path.join(dir, filename);
+    fs.writeFileSync(absolutePath, parsed.bytes);
+    out[image.id] = path.relative(cwd, absolutePath).split(path.sep).join('/');
+  }
+  return out;
+}
+
+export function initSlideSummary(answers = {}) {
+  return INIT_SLIDES
+    .map((slide) => {
+      const answer = answers[slide.id];
+      if (!answer) return null;
+      return { id: slide.id, title: slide.title, label: answer.label, value: answer.value };
+    })
+    .filter(Boolean);
+}
+
+function buildProductMd({ product, keyed, productAssets, generatedAt, command }) {
+  return `# Product
+
+<!-- SEED: generated by Impeccable ${command} browser init questionnaire at ${generatedAt}. -->
+
+## Register
+
+brand
+
+## Users
+
+${sentence(product.audience || keyed.audienceFit?.value || 'The first audience should feel understood by the first screen.')}
+
+## Product Purpose
+
+${sentence(product.description || keyed.productOverview?.value)} Success means the visitor understands what this is, who it is for, and why it is hard to replace.
+
+## Differentiator
+
+${sentence(keyed.differentiator?.value)}
+
+## Existing Material
+
+${productAssets.length > 0 ? productAssets.map((asset) => `- **${cleanInline(asset.name)}** (${cleanInline(asset.role)}): \`${cleanInline(asset.path || asset.id)}\``).join('\n') : '- No local product material was added during init.'}
+
+## Brand Personality
+
+The brand should be trusted for ${lowerFirst(sentence(keyed.trust?.label || keyed.trust?.value))} It should appeal first to ${lowerFirst(sentence(keyed.audienceFit?.label || keyed.audienceFit?.value))}
+
+## Anti-references
+
+${sentence(keyed.antiAudience?.label || keyed.antiAudience?.value)}
+
+## Design Principles
+
+- Make the first screen identify the product, audience, and difference without generic category copy.
+- Let real product material and selected brand cues guide color and image decisions.
+- Choose a specific audience over a broad average visitor.
+- Refuse the tastes and promises named in the anti-reference section.
+
+## Accessibility & Inclusion
+
+Baseline: WCAG 2.1 AA, visible focus states, keyboard-accessible controls, responsive layouts, and reduced-motion alternatives.
+`;
+}
+
+function buildBrandMd({
+  product,
+  keyed,
+  productAssets,
+  selectedCueImages,
+  selectedPalette,
+  selectedTypography,
+  selectedImagePaths,
+  routeFamilies,
+  generatedAt,
+  command,
+}) {
+  return `# Brand
+
+<!-- SEED: generated by Impeccable ${command} browser init questionnaire at ${generatedAt}. -->
+
+## Brand Snapshot
+
+**Name:** ${cleanInline(product.name || 'Unnamed brand')}
+
+${sentence(product.description || keyed.productOverview?.value)}
+
+**First audience:** ${sentence(product.audience || keyed.audienceFit?.label || keyed.audienceFit?.value)}
+
+**What makes it special:** ${sentence(keyed.differentiator?.value)}
+
+## What The Brand Should Be Trusted For
+
+${sentence(keyed.trust?.label || keyed.trust?.value)}
+
+## Who Should Feel Seen
+
+${sentence(keyed.audienceFit?.label || keyed.audienceFit?.value)}
+
+## Who This Is Not For
+
+${sentence(keyed.antiAudience?.label || keyed.antiAudience?.value)}
+
+## Existing Brand Material
+
+${productAssets.length > 0 ? productAssets.map((asset, index) => `- **Image/asset ${index + 1}: ${cleanInline(asset.name)}** (${cleanInline(asset.role)}): \`${cleanInline(asset.path || asset.id)}\``).join('\n') : '- No local product material was added during init.'}
+
+## Selected Visual Cues
+
+${selectedCueImages.length > 0 ? selectedCueImages.map((image) => cueMarkdown(image, selectedImagePaths[image.id])).join('\n\n') : 'No visual cues were selected.'}
+
+## Route Families
+
+${routeFamilies.length > 0 ? routeFamilies.map((family) => `- \`${family}\``).join('\n') : '- No route families recorded.'}
+
+## Selected Palette
+
+${selectedPalette ? `**${cleanInline(selectedPalette.label)}** (\`${selectedPalette.id}\`)` : 'No palette selected.'}
+
+${selectedPalette ? imageMarkdown(selectedPalette, selectedImagePaths[selectedPalette.id]) : ''}
+
+${selectedPalette?.colors?.length ? selectedPalette.colors.map((color) => `- **${cleanInline(color.name)}**: \`${cleanInline(color.oklch)}\``).join('\n') : ''}
+
+## Selected Type Voice
+
+${selectedTypography ? `**${cleanInline(selectedTypography.label)}**: ${cleanInline(selectedTypography.heading.family)} for headings, ${cleanInline(selectedTypography.body.family)} for body.` : 'No typography selected.'}
+
+${selectedTypography ? sentence(selectedTypography.rationale) : ''}
+
+## Brand Guardrails
+
+- Carry the selected cue images forward as brand behavior: spacing, image direction, rhythm, shape, edge, surface, and motion.
+- Do not flatten cue cards into decorative stickers.
+- Do not ignore the selected non-fit audience or anti-reference.
+- Do not use text, logos, lettering, numerals, or watermarks inside generated cue images.
+
+## Prompt History
+
+${selectedCueImages.concat(selectedPalette ? [selectedPalette] : []).map((image) => `### ${cleanInline(image.label)}
+
+- ID: \`${image.id}\`
+- Kind: \`${image.kind}\`
+${image.routeFamily ? `- Route family: \`${image.routeFamily}\`` : ''}
+- Prompt: ${sentence(image.prompt)}`).join('\n\n') || 'No image prompts were recorded.'}
+`;
+}
+
+function buildDesignMd({
+  product,
+  keyed,
+  selectedCueImages,
+  selectedPalette,
+  selectedTypography,
+  paletteColors,
+  cueLabels,
+  routeFamilies,
+  generatedAt,
+  command,
+}) {
+  const colorTokens = paletteColors.length === 4 ? paletteColors : fallbackPalette();
+  const headingFamily = selectedTypography?.heading?.family || 'system-ui';
+  const bodyFamily = selectedTypography?.body?.family || 'system-ui';
+  const description = product.description || keyed.productOverview?.value || `Design direction for ${product.name || 'the brand'}.`;
+  return `---
+name: ${yamlString(product.name || 'Brand')}
+description: ${yamlString(description)}
+colors:
+  background: "${cleanInline(colorTokens[0].oklch)}"
+  primary: "${cleanInline(colorTokens[1].oklch)}"
+  surface: "${cleanInline(colorTokens[2].oklch)}"
+  contrast: "${cleanInline(colorTokens[3].oklch)}"
+typography:
+  display:
+    fontFamily: "${cleanInline(headingFamily)}, serif"
+    fontWeight: ${(selectedTypography?.heading?.weights || [400]).at(-1)}
+    lineHeight: 1.04
+  body:
+    fontFamily: "${cleanInline(bodyFamily)}, sans-serif"
+    fontWeight: ${(selectedTypography?.body?.weights || [400])[0]}
+    lineHeight: 1.7
+---
+
+# Design System: ${cleanInline(product.name || 'Brand')}
+
+<!-- SEED: generated by Impeccable ${command} browser init questionnaire at ${generatedAt}. Brand strategy lives in BRAND.md. -->
+
+## 1. Overview
+
+Read \`BRAND.md\` before designing. The visual system grows from ${cueLabels.length > 0 ? cueLabels.map(cleanInline).join(', ') : 'the selected brand cues'} and the promise that ${lowerFirst(sentence(keyed.trust?.label || keyed.trust?.value))}
+
+The site should speak first to ${lowerFirst(sentence(product.audience || keyed.audienceFit?.label || keyed.audienceFit?.value))} It should avoid ${lowerFirst(sentence(keyed.antiAudience?.label || keyed.antiAudience?.value))}
+
+## 2. Colors
+
+Selected palette: ${selectedPalette ? `**${cleanInline(selectedPalette.label)}** (\`${selectedPalette.id}\`)` : 'Use the four-color seed below.'}
+
+${colorTokens.map((color) => `- **${cleanInline(color.name)}**: \`${cleanInline(color.oklch)}\``).join('\n')}
+
+Color should preserve the selected cue route families: ${routeFamilies.length > 0 ? routeFamilies.map((family) => `\`${family}\``).join(', ') : 'brand-specific cue routes'}. Do not flatten the palette back into generic beige, navy, purple-gradient, or SaaS-neutral defaults.
+
+## 3. Typography
+
+${selectedTypography ? `Use **${cleanInline(selectedTypography.heading.family)}** for heading voice and **${cleanInline(selectedTypography.body.family)}** for body copy.` : 'Choose typography from the selected brand voice before implementation.'}
+
+${selectedTypography ? `- **Font CSS:** ${cleanInline(selectedTypography.cssUrl)}
+- **Rationale:** ${sentence(selectedTypography.rationale)}
+- **Usage:** ${sentence(selectedTypography.usage)}
+${selectedTypography.avoid ? `- **Avoid:** ${sentence(selectedTypography.avoid)}` : ''}` : ''}
+
+## 4. Imagery And Cues
+
+Use the selected images embedded in \`BRAND.md\` as art-direction source material. Translate them into layout rhythm, surface treatment, iconography, image crops, motion, and interaction states. Do not copy them literally onto every section.
+
+Selected cue IDs:
+${selectedCueImages.length > 0 ? selectedCueImages.map((image) => `- \`${image.id}\` (${cleanInline(image.label)}${image.routeFamily ? `, ${image.routeFamily}` : ''})`).join('\n') : '- None'}
+
+## 5. Components
+
+- Buttons should express the selected color world clearly and pass contrast checks.
+- Inputs and forms should use visible labels, strong focus states, and readable placeholder text.
+- Cards are allowed only when they clarify comparison or selection; avoid nested cards.
+- Image-led sections should use real uploaded or generated material rather than placeholder blocks.
+
+## 6. Motion And Accessibility
+
+- Respect \`prefers-reduced-motion\`.
+- Keep every generated image decorative unless it communicates product truth; then write useful alt text.
+- Confirm keyboard access for uploads, option cards, image expansion, and final actions.
+- Maintain WCAG AA contrast after translating the palette into implementation tokens.
+
+## 7. Do And Don't
+
+### Do
+
+- Do use \`BRAND.md\` as the source of brand meaning.
+- Do let product material influence palette, imagery, and cue interpretation.
+- Do make the differentiator visible before adding polish.
+
+### Don't
+
+- Don't pick visual defaults from the category alone.
+- Don't ignore this refusal: ${sentence(keyed.antiAudience?.label || keyed.antiAudience?.value)}
+- Don't use contact-sheet image outputs; cue and palette cards must remain independent images.
+`;
+}
+
+function cueMarkdown(image, imagePath) {
+  return `### ${cleanInline(image.label)}
+
+${imageMarkdown(image, imagePath)}
+
+- ID: \`${image.id}\`
+- Route family: \`${cleanInline(image.routeFamily || 'unrecorded')}\`
+- Design translation: carry this into spacing, surface, edge, image, icon, motion, or interaction behavior.`;
+}
+
+function imageMarkdown(image, imagePath) {
+  if (!image) return '';
+  const src = imagePath || '';
+  return src ? `![${cleanInline(image.label)}](${src})` : '';
+}
+
+function resolveSingleTarget(cwd, filename, stagedPath) {
+  const directPath = path.join(cwd, filename);
+  if (fs.existsSync(directPath)) {
+    return {
+      targetPath: stagedPath,
+      absolutePath: path.join(cwd, stagedPath),
+      existing: true,
+      action: 'staged',
+    };
+  }
+  return {
+    targetPath: filename,
+    absolutePath: directPath,
+    existing: false,
+    action: 'written',
+  };
+}
+
+function parseProductOverview(value) {
+  const text = cleanInline(value);
+  const match = text.match(/^(.+?)\s+is\s+(an?|the)\s+(.+?)\s+for\s+(.+)$/i);
+  if (match) {
+    return {
+      name: cleanInline(match[1]),
+      description: `${cleanInline(match[1])} is ${cleanInline(match[2])} ${cleanInline(match[3])}.`,
+      audience: cleanInline(match[4]),
+    };
+  }
+  const first = text.split(/[.;]/)[0]?.trim() || '';
+  return {
+    name: first.length <= 48 ? first : '',
+    description: text,
+    audience: '',
+  };
+}
+
+function normalizeAssetList(assets) {
+  return Array.isArray(assets) ? assets.filter(Boolean) : [];
+}
+
+function flattenImages(imageBatches = {}) {
+  return Object.values(imageBatches)
+    .flatMap((batches) => Array.isArray(batches) ? batches : [])
+    .flatMap((batch) => Array.isArray(batch.images) ? batch.images : []);
+}
+
+function flattenTypography(typographyBatches = {}) {
+  return Object.values(typographyBatches)
+    .flatMap((batches) => Array.isArray(batches) ? batches : [])
+    .flatMap((batch) => Array.isArray(batch.fontSets) ? batch.fontSets : []);
+}
+
+function imagesForAnswer(answer, images) {
+  const ids = asArray(answer?.value);
+  const byId = new Map(images.map((image) => [image.id, image]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function typographyForAnswer(answer, typography) {
+  const ids = asArray(answer?.value);
+  const byId = new Map(typography.map((fontSet) => [fontSet.id, fontSet]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function fallbackPalette() {
+  return [
+    { name: 'Ground', oklch: 'oklch(96% 0.01 95)' },
+    { name: 'Primary', oklch: 'oklch(58% 0.16 75)' },
+    { name: 'Surface', oklch: 'oklch(90% 0.02 95)' },
+    { name: 'Contrast', oklch: 'oklch(24% 0.03 95)' },
+  ];
+}
+
+function parseDataUrl(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) return null;
+  return {
+    mimeType: match[1].toLowerCase(),
+    bytes: Buffer.from(match[2], 'base64'),
+  };
+}
+
+function sanitizeFilePart(value) {
+  return String(value || 'file')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'file';
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [value].filter(Boolean);
+}
+
+function yamlString(value) {
+  return JSON.stringify(cleanInline(value));
+}
+
+function sentence(value) {
+  const text = cleanInline(value);
+  if (!text) return '';
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function cleanInline(value) {
+  if (value && typeof value === 'object' && 'value' in value) return cleanInline(value.value);
+  if (Array.isArray(value)) return value.join(', ');
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function lowerFirst(value) {
+  const text = String(value || '').trim();
+  return text ? text.charAt(0).toLowerCase() + text.slice(1) : '';
+}

@@ -11,7 +11,7 @@ Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/ski
 Every model trained on the same SaaS templates. Skip the guidance and you get the same handful of tells on every project: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
 
 Impeccable adds:
-- **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
+- **One setup flow.** `/impeccable init` opens a browser questionnaire and writes `PRODUCT.md`, `BRAND.md`, and `DESIGN.md`, so later commands know the product, audience, brand cues, palette, type, and guardrails.
 - **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
 - **41 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
@@ -31,7 +31,7 @@ Start every new project with:
 /impeccable init
 ```
 
-`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes project context that every later command reads.
+`init` asks what you are making, what material already exists, what the brand should mean, and which visual cues, colors, and type direction should carry forward. It writes project context that every later command reads.
 
 ### 23 Commands
 
@@ -40,7 +40,7 @@ All commands are accessed through `/impeccable`:
 | Command | What it does |
 |---------|--------------|
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
-| `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
+| `/impeccable init` | Browser-first setup: gather Product, Brand, and Design context; write PRODUCT.md, BRAND.md, and DESIGN.md |
 | `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
 | `/impeccable shape` | Plan UX/UI before writing code |

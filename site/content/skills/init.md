@@ -1,64 +1,66 @@
 ---
-tagline: "Set up a project for Impeccable, once. Context, live mode, and where to start."
+tagline: "Set up Product, Brand, and Design context in one browser-first flow."
 ---
 
 <div class="docs-viz-hero">
   <div class="docs-viz-file">
     <div class="docs-viz-file-header">
-      <span class="docs-viz-file-name">PRODUCT.md</span>
-      <span class="docs-viz-file-status">Loaded on every command</span>
+      <span class="docs-viz-file-name">PRODUCT.md · BRAND.md · DESIGN.md</span>
+      <span class="docs-viz-file-status">Loaded on future commands</span>
     </div>
     <div class="docs-viz-file-body">
       <div class="docs-viz-file-row">
-        <span class="docs-viz-file-k">Register</span>
-        <span class="docs-viz-file-v">Product. Design serves the task.</span>
+        <span class="docs-viz-file-k">Product</span>
+        <span class="docs-viz-file-v">What exists, who it is for, why it is hard to replace.</span>
       </div>
       <div class="docs-viz-file-row">
-        <span class="docs-viz-file-k">Users</span>
-        <span class="docs-viz-file-v">SREs on call, reading fast, often in the dark.</span>
+        <span class="docs-viz-file-k">Brand</span>
+        <span class="docs-viz-file-v">Trust, audience fit, visual cues, route families, guardrails.</span>
       </div>
       <div class="docs-viz-file-row">
-        <span class="docs-viz-file-k">Brand voice</span>
-        <span class="docs-viz-file-v">Calm, clinical, no hype.</span>
-      </div>
-      <div class="docs-viz-file-row">
-        <span class="docs-viz-file-k">Anti-references</span>
-        <span class="docs-viz-file-v">Purple gradients. Glassmorphism. "Boost your productivity."</span>
+        <span class="docs-viz-file-k">Design</span>
+        <span class="docs-viz-file-v">Palette, typography, components, motion, accessibility.</span>
       </div>
     </div>
-    <div class="docs-viz-file-footer">Every command reads this before writing a line of code.</div>
+    <div class="docs-viz-file-footer">Init creates the context every later command should respect.</div>
   </div>
-  <p class="docs-viz-caption">A finished PRODUCT.md. Strategy only: who, what, why. No colors, no fonts, no pixel values, those live in DESIGN.md.</p>
+  <p class="docs-viz-caption">A browser questionnaire for brand-new sites and products. Answer, upload product material, choose visual cues, then lock the design direction.</p>
 </div>
 
 ## When to use it
 
-Run `/impeccable init` once at the start of a project. Without it, every other command has to guess: generic SaaS voice, safe-default fonts, the AI color palette. With it, every command reads your answers before it generates.
+Run `/impeccable init` at the start of a project, or when the brand direction changes. Without it, later commands have to guess. With it, they read the product, brand, and design context before shaping or building.
 
 Reach for it when:
 
-- **You just installed Impeccable in a new project.** First thing to run. Other commands will nudge you toward it if you skip.
-- **The project's brand direction has shifted.** New positioning, new audience, new voice. Re-run `init` and the updated context flows through every command.
-- **Another command said "no design context found"** and stopped. That is the signal: run init, then resume.
+- **You are starting a new site or product.** Init gives future agents a shared source of truth.
+- **You have real product material.** Upload product photos, testimonials, process shots, GIFs, or MP4s so visual direction grows from the actual thing.
+- **The brand direction changed.** Re-run init and stage updated next files without overwriting the old ones.
+- **Another command reports missing context.** Run init, then resume.
 
 ## How it works
 
-One codebase scan feeds everything init writes:
+Init opens a local browser questionnaire with three sections:
 
-- **`PRODUCT.md`** is the strategic file. It stores the audience, product purpose, voice, anti-references, design principles, accessibility needs, and the brand/product choice. Answers "who, what, why".
-- **`DESIGN.md`** is the visual file. Colors, typography, elevation, components, do's and don'ts. Answers "how it looks". Written by the delegated `/impeccable document` command, which init invokes at the end.
-- **Live mode config.** Since the same crawl already knows your framework and entry files, init pre-configures `/impeccable live` so it opens straight into variant mode with no first-time setup.
+- **What exists:** what you are making, what assets you already have, what makes it special.
+- **What it means:** what people should trust, who should feel seen, who it is not for, and what visual cues the brand should carry.
+- **How it appears:** color palette and typography direction.
 
-The flow scans the codebase first (README, package.json, components, tokens, brand assets) and asks you to confirm one core choice: is this a brand surface or a product surface?
+The page shows one focused question at a time. Most slides offer generated choices plus a freeform input. The secondary action is **Choose for me**, which asks the agent to make the strongest choice from your previous answers; it is not a silent skip.
 
-- **Brand:** landing pages, marketing pages, portfolios, campaigns. The impression is the product.
-- **Product:** app UI, dashboards, admin screens, tools. The design helps someone finish a task.
+Visual cue cards are generated as four independent images. Each has a route family such as material/object, graphic/shape, gesture/motion, atmosphere/light, playful/character, pattern/ornament, surreal/metaphor, or editorial/cultural. The point is variety: four art-direction doors, not four versions of the same object.
 
-The docs call that choice **register**. It shapes typography, motion, color, and density. After that, init asks only what it could not infer: users, personality in three real words, references and anti-references, accessibility requirements.
+Palette cards are generated from the selected cues and uploaded assets. Typography cards use real loadable fonts, not images, so you can see the actual heading and body voice.
 
-PRODUCT.md is strategic only. No colors, no fonts, no pixel values. Those live in DESIGN.md. Keeping the two files separate is deliberate: strategy can stay stable while the visual system evolves.
+## Output
 
-It closes by pointing you at the best commands to run next, picked from what the scan turned up: `craft` or `shape` for new work, `critique` or `audit` for what is already there, `live` to iterate visually. No guessing where to begin.
+Init writes:
+
+- **`PRODUCT.md`** for product definition, audience, differentiator, assets, register, and practical context.
+- **`BRAND.md`** for trust, audience fit/non-fit, selected cue images, route families, prompt history, and guardrails.
+- **`DESIGN.md`** for palette, typography, component, motion, and accessibility guidance linked back to `BRAND.md`.
+
+If any file already exists, init stages the replacement under `.impeccable/init/*.next.md` and asks before merge or replace.
 
 ## Try it
 
@@ -66,13 +68,11 @@ It closes by pointing you at the best commands to run next, picked from what the
 /impeccable init
 ```
 
-Expect a 5 to 8 minute interview. The first question is usually the brand/product choice; the rest are short. Init will quote back what it inferred from your code ("from the routes, this looks like a product surface, match?") so you are confirming, not starting from scratch.
-
-Along the way it offers to run `/impeccable document` for you. Say yes unless you have a specific reason to hold off. A real DESIGN.md is what keeps variants, polishes, and audits on-brand.
+Expect a visual browser flow, not a long chat interview. The first question is simple: “What are we making?”
 
 ## Pitfalls
 
-- **Skipping it to "just try a command quickly".** Every other command will interview you mid-flight instead. Running init first is faster, not slower.
-- **Giving generic answers.** "Modern and clean" is not useful. "Warm, mechanical, opinionated" is. Be specific. Be willing to disagree with safe defaults.
-- **Treating PRODUCT.md as immutable.** The file is yours. If init put something in there that is not quite right, edit it. Every command reads the current file.
-- **Listing only adjectives for references.** Brands, products, printed objects: named, not described. "Klim Type Foundry specimen pages", not "technical and clean". Anti-references should be equally specific.
+- **Treating Choose for me as skip.** It delegates the decision to the agent and records the rationale.
+- **Uploading generic stock instead of real material.** Product images, process shots, and proof make later cue and palette choices sharper.
+- **Choosing four similar cues.** A useful batch gives you different art-direction routes.
+- **Ignoring staged files.** Existing PRODUCT, BRAND, and DESIGN files are never overwritten silently.

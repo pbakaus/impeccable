@@ -32,12 +32,12 @@ tagline: "Think before you build. Produce a design brief through discovery, not 
     </div>
     <div class="docs-viz-file-footer">Hand it to <code>/impeccable</code>, <code>/impeccable craft</code>, or any implementation flow.</div>
   </div>
-  <p class="docs-viz-caption">A shape brief is a compass, not a spec. It captures intent, not UI. Implementation skills read it before writing a line of code.</p>
+  <p class="docs-viz-caption">A shape brief is a compass, not a spec. It captures task intent, not global brand context. Implementation skills read it before writing code.</p>
 </div>
 
 ## When to use it
 
-`/impeccable shape` is where a feature starts. Before anyone writes code, before anyone argues about the hero treatment, before anyone picks a font. Use it to force a discovery conversation about purpose, users, content, and constraints, then capture the answers as a design brief the implementation skills can lean on.
+`/impeccable shape` is where a feature or surface starts. Before anyone writes code, before anyone argues about the hero treatment, before anyone picks a font. Use it to force a discovery conversation about purpose, users, content, constraints, and visual direction, then capture the answers as a design brief the implementation skills can lean on.
 
 Reach for it whenever a feature is about to start, a ticket is vague, or you catch yourself writing JSX to figure out what the product should be.
 
@@ -45,7 +45,9 @@ Reach for it whenever a feature is about to start, a ticket is vague, or you cat
 
 Most AI-generated UIs fail not because of bad code, but because of skipped thinking. The model jumps to "here is a card grid" without asking "what is the user trying to accomplish". `/impeccable shape` inverts that order.
 
-The skill runs a structured discovery interview in conversation. It will not write code during this phase. The questions cover:
+The skill runs a structured discovery interview in conversation. It will not write code during this phase.
+
+The questions cover:
 
 - **Purpose and context**: what the feature is for, who uses it, what state of mind they are in
 - **Content and data**: what is displayed, realistic ranges, edge cases, what is dynamic
@@ -56,10 +58,12 @@ You answer naturally. The skill asks follow-ups, not a form. At the end it produ
 
 Note: if you want the full flow (discovery interview, then straight into building), use `/impeccable craft` instead. It runs `/impeccable shape` internally, then continues into implementation with visual iteration. `/impeccable shape` standalone is for when you want just the brief, so you can take it to whatever implementation approach you prefer.
 
+For exploratory brand or site direction before Shape, use `/impeccable init`. It generates visual cue, palette, and typography cards and writes or stages `PRODUCT.md`, `BRAND.md`, and `DESIGN.md`.
+
 ## Try it
 
 ```
-/impeccable shape a daily digest email preferences page
+/impeccable shape a new website for a boutique architecture studio
 ```
 
 Expect a 5 to 10 question conversation. The skill asks things like "who is the person opening this, and are they already committed or still curious" and "what happens when the user has unsubscribed from everything, do we hide the feature or show something". You answer, and a brief materializes.

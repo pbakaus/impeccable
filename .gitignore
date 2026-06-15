@@ -33,6 +33,8 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.impeccable/.env
+.impeccable/env
 
 # Cloudflare
 .wrangler/
@@ -50,6 +52,16 @@ Thumbs.db
 .impeccable/live/manual-edit-evidence/
 .impeccable/live/pending-manual-edits.json
 .impeccable/live/deferred-svelte-component-accepts.json
+.impeccable/questionnaire/server.json
+.impeccable/questionnaire/sessions/
+.impeccable/init/generated/
+.impeccable/init/live-image-smoke/
+.impeccable/init/previews/
+.impeccable/init/screenshots/
+.impeccable/init/recordings/
+.impeccable/init/uploads/
+.impeccable/identity-image-e2e/
+.impeccable/identity-demo/
 .impeccable/history/
 # Per-run critique snapshots are local artifacts. ignore.md (also under
 # this dir) carries deferrals the user may want to share, so it's

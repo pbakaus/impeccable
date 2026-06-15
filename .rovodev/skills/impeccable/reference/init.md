@@ -1,172 +1,171 @@
 # Init Flow
 
-The setup command for a project. One codebase crawl feeds everything it writes:
+Browser-first project setup. This command creates the project context files future Impeccable commands read:
 
-- **PRODUCT.md** (strategic): root project file for register, target users, product purpose, brand personality, anti-references, strategic design principles. Answers "who/what/why".
-- **DESIGN.md** (visual): root project file for visual theme, color palette, typography, components, layout. Follows the [Google Stitch DESIGN.md format](https://stitch.withgoogle.com/docs/design-md/format/). Answers "how it looks".
-- **`.impeccable/live/config.json`** (live mode): pre-configured so `/impeccable live` boots straight into variant mode with no first-time detour.
+- **`PRODUCT.md`**: product definition, first audience, differentiator, existing material, register, and practical context.
+- **`BRAND.md`**: brand trust, audience fit and non-fit, selected visual cue images, route families, prompt history, and guardrails.
+- **`DESIGN.md`**: implementation-ready palette, typography, component, motion, and accessibility direction linked back to `BRAND.md`.
 
-It closes by pointing the user at the best command to run next. Every other impeccable command reads PRODUCT.md and DESIGN.md before doing any work.
+Use this flow for new projects and greenfield brand/site work. Do not route this through MCP.
 
-## Step 1: Load current state
+## Step 1: Launch the browser questionnaire
 
-Check what already exists. PRODUCT.md and DESIGN.md live at the project root, or under `.agents/context/` or `docs/` (case-insensitive). Read whichever are present with your native file tool. Also note whether `.impeccable/live/config.json` already exists (Step 6 leaves it untouched if so).
+Start the local questionnaire server:
 
-Decision tree:
-- **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md), then decide on DESIGN.md based on whether there's code to analyze.
-- **PRODUCT.md exists, DESIGN.md missing**: skip to Step 5 and offer to run `/impeccable document` for DESIGN.md.
-- **PRODUCT.md exists but has no `## Register` section (legacy)**: add it. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field.
-- **Both exist**: ask the user directly to clarify what you cannot infer. Ask which file to refresh. Skip the one the user doesn't want changed.
-- **Just DESIGN.md exists (unusual)**: do Steps 2-4 to produce PRODUCT.md.
-
-Never silently overwrite an existing file. Always confirm first.
-
-If init was invoked as a setup blocker by another command, such as `/impeccable craft landing page`, pause that command here. Complete init, then resume the original command. Your own writes are the freshest source; no reload needed. For craft, resume into shape next; init creates project context, but it is not a substitute for the task-specific shape interview and confirmed design brief.
-
-## Step 2: Explore the codebase
-
-Before asking questions, thoroughly scan the project to discover what you can. This single crawl feeds PRODUCT.md, DESIGN.md, **and** the live-mode framework detection in Step 6, so be thorough once rather than re-scanning later:
-
-- **README and docs**: Project purpose, target audience, any stated goals
-- **Package.json / config files**: Tech stack, dependencies, existing design libraries, **and the framework** (Vite/SPA, Next.js, Nuxt, SvelteKit, Astro, multi-page static) plus the HTML entry the browser actually loads
-- **Existing components**: Current design patterns, spacing, typography in use
-- **Brand assets**: Logos, favicons, color values already defined
-- **Design tokens / CSS variables**: Existing color palettes, font stacks, spacing scales
-- **Any style guides or brand documentation**
-
-Also form a **register hypothesis** from what you find:
-
-- Brand signals: `/`, `/about`, `/pricing`, `/blog/*`, `/docs/*`, hero sections, big typography, scroll-driven sections, landing-page-shaped content.
-- Product signals: `/app/*`, `/dashboard`, `/settings`, `/(auth)`, forms, data tables, side/top nav, app-shell components.
-
-Register is a hypothesis at this point, not a decision; Step 3 confirms it.
-
-Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 7 turns these into concrete recommendations without re-analyzing.
-
-## Step 3: Ask strategic questions (for PRODUCT.md)
-
-ask the user directly to clarify what you cannot infer. Ask only about what you couldn't infer from the codebase.
-
-### Interview mode, not confirmation mode
-
-If the repo is empty or the user's brief is sparse, run a short interview before proposing PRODUCT.md. Do **not** turn a one-sentence request into a complete inferred PRODUCT.md and ask for blanket confirmation.
-
-- Use the harness's structured question tool when one exists. Otherwise, ask directly in chat and stop.
-- Ask **2-3 questions per round**, then wait for answers.
-- Use inferred answers as hypotheses or options, not as finished facts.
-- Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
-- Round 1 should establish register, users/purpose, and desired outcome.
-- Round 2 should establish brand personality or references, anti-references, and accessibility needs.
-
-### Minimum viable interview
-
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
-
-### Register (ask first; it shapes everything below)
-
-Every design task is either **brand** (marketing, landing, campaign, long-form content, portfolio: design IS the product) or **product** (app UI, admin, dashboards, tools: design SERVES the product).
-
-If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [brand / product] surface. Does that match your intent, or should we treat it differently?"*
-
-If the signal is genuinely split (e.g. a product with a big marketing landing), ask the user directly to clarify what you cannot infer. Ask which register describes the **primary** surface. The register can be overridden per task later, but PRODUCT.md carries one default.
-
-### Users & Purpose
-- Who uses this? What's their context when using it?
-- What job are they trying to get done?
-- For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency)
-- For product: what workflow are they in? What's the primary task on any given screen?
-
-### Brand & Personality
-- How would you describe the brand personality in 3 words?
-- Reference sites or apps that capture the right feel? What specifically about them?
-  - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
-- What should this explicitly NOT look like? Any anti-references?
-
-### Accessibility & Inclusion
-- Specific accessibility requirements? (WCAG level, known user needs)
-- Considerations for reduced motion, color blindness, or other accommodations?
-
-Skip questions where the answer is already clear. **Do NOT ask about colors, fonts, radii, or visual styling here.** Those belong in DESIGN.md, not PRODUCT.md.
-
-## Step 4: Write PRODUCT.md
-
-Write PRODUCT.md only after the user has confirmed the strategic answers from Step 3. If an inferred answer is uncertain or unconfirmed, ask before writing.
-
-Synthesize into a strategic document:
-
-```markdown
-# Product
-
-## Register
-
-product
-
-## Users
-[Who they are, their context, the job to be done]
-
-## Product Purpose
-[What this product does, why it exists, what success looks like]
-
-## Brand Personality
-[Voice, tone, 3-word personality, emotional goals]
-
-## Anti-references
-[What this should NOT look like. Specific bad-example sites or patterns to avoid.]
-
-## Design Principles
-[3-5 strategic principles derived from the conversation. Principles like "practice what you preach", "show, don't tell", "expert confidence". NOT visual rules like "use OKLCH" or "magenta accent".]
-
-## Accessibility & Inclusion
-[WCAG level, known user needs, considerations]
+```bash
+node .rovodev/skills/impeccable/scripts/questionnaire/init-questionnaire.mjs --prompt "<user prompt>"
 ```
 
-Register is either `brand` or `product` as a bare value. No prose, no commentary.
+Read the printed JSON. Open the returned `url` for the user. Keep the server process running until the flow finishes or the user cancels.
 
-Write to `PROJECT_ROOT/PRODUCT.md`. If `.impeccable.md` existed, the loader already renamed it; merge into that content rather than starting from scratch.
+If the browser/server launch clearly fails, fall back to the same questions in chat and say the browser path failed. Do not silently skip init.
 
-## Step 5: Decide on DESIGN.md
+## Step 2: Poll browser events
 
-Offer `/impeccable document` either way. Two paths:
+Poll events with:
 
-- **Code exists** (CSS tokens, components, a running site): "I can generate a DESIGN.md that captures your visual system (colors, typography, components) so variants stay on-brand. Want to do that now?"
-- **Pre-implementation** (empty project): "I can seed a starter DESIGN.md from five quick questions about color strategy, type direction, motion energy, and references. You can re-run once there's code, to capture the real tokens. Want to do that now?"
+```bash
+node .rovodev/skills/impeccable/scripts/questionnaire/init-poll.mjs --session-id <sessionId>
+```
 
-If the user agrees, delegate to `/impeccable document` (it auto-detects scan vs seed). Load its reference and follow that flow.
+The server also exposes live-style HTTP routes:
 
-If the user prefers to skip, mention they can run `/impeccable document` any time later.
+- `GET /events?token=...&sessionId=...` streams browser state updates to the page.
+- `GET /poll?token=...&sessionId=...&timeoutMs=...` lets the agent wait for browser events.
+- `POST /poll` lets the agent send slide payloads, image batches, typography batches, messages, and completion replies.
 
-## Step 6: Configure live mode (when code exists)
+Every answer after the first slide must feed back to the chat session. The server stores state, but the agent owns the intelligence.
 
-If the project has code with HTML entries and a dev server (the same "code exists" condition that puts `/impeccable document` in scan mode), pre-configure live mode now. You already identified the framework and the served HTML entry in Step 2, so this is nearly free, and it spares the user the first-time setup detour when they later run `/impeccable live`.
+## Step 3: Author each next slide
 
-**Skip this step for empty / pre-implementation projects** (nothing to inject into yet). Tell the user live mode will configure itself the first time they run it once there's code.
+The first slide is static:
 
-**If `.impeccable/live/config.json` already exists, leave it untouched** and note that live mode is already configured.
+1. **What are we making?**
+   `Name it, describe it, and say who it is for.`
 
-Otherwise:
+After each answer, generate the next slide as a complete payload before the browser advances. This includes upload, visual cue, palette, and typography slides. Do not patch user words into canned templates, and do not let base schema copy leak through. Include:
 
-1. Write `.impeccable/live/config.json`. Choose `files` (the HTML entries the browser actually loads), `insertBefore`, and `commentSyntax` from the framework table in [live.md](live.md)'s **First-time setup** section, using the framework you found in Step 2. That table is canonical; do not restate it here. For multi-page static sites, prefer a glob (`["public/**/*.html"]`) over a literal list.
-2. Run `node .rovodev/skills/impeccable/scripts/detect-csp.mjs`. If it reports a patchable shape (`append-arrays` / `append-string`), use the **consent prompt template** from live.md before editing any source file. On decline, skip the patch. For `middleware` / `meta-tag` shapes, surface the detected files and ask the user to add `http://localhost:8400` to `script-src` and `connect-src` manually. For `null`, there's nothing to do.
-3. Set `cspChecked: true` in the config once CSP is handled (patched, declined, manual, or not needed). The schema and per-shape patch details live in live.md's First-time setup; follow it rather than duplicating.
+- `title`
+- `prompt`
+- `placeholder` or upload/request copy
+- 3-6 multiple-choice options when the slide is not an upload or generated-card slide
+- concise option hints when useful
 
-Writing the config file is harmless and needs no consent; only the CSP **source-file patch** requires a yes.
+Use this underlying data flow, but rewrite every post-first slide in the user's brand language:
 
-## Step 7: Recommend starting points, then wrap up
+1. `What are we making?`
+2. existing assets/material
+3. differentiator
+4. trust signal
+5. first audience
+6. anti-audience / anti-goals
+7. visual cue selection
+8. palette selection
+9. typography selection
 
-Summarize tersely:
-- Register captured (brand / product)
-- What was written (PRODUCT.md, DESIGN.md, live config, or a subset)
-- The 3-5 strategic principles from PRODUCT.md that will guide future work
-- If DESIGN.md or live config is pending, one line on how to set it up later
+Use short, easy wording. Avoid startup-workshop language and generic titles like `Who should feel seen?`, `What should people trust?`, `What should it carry visually?`, `Which colors feel true?`, or `Which type feels right?`.
 
-Then recommend the **best commands to run next**, drawn from what your Step 2 crawl already surfaced. Do not run a fresh analysis here; surface observations you already have. Tailor to register and to what you saw, offer the 2-4 most relevant (not a menu dump), and give the exact command to type. Group by intent:
+Good examples:
 
-- **Build something new**: `/impeccable craft <feature>` (shape, then build end-to-end) or `/impeccable shape <feature>` (plan first). Lead with this for empty or early-stage projects.
-- **Improve what's there**: name the specific surface. `/impeccable critique <page>` for a scored UX review; `/impeccable audit <area>` for a11y / perf / responsive checks; `/impeccable polish <component>` for a pre-ship pass. When the crawl flagged a specific weakness, point the matching command at it: thin hierarchy or spacing → `layout`, flat or gray palette → `colorize`, missing error / empty states → `harden` or `onboard`, dull or unclear copy → `clarify`.
-- **Iterate visually**: `/impeccable live` (configured in Step 6) to pick elements in the browser and generate variants in place.
+- `What should new puppy owners trust first?`
+- `What should Puppy Wear refuse?`
+- `What should Puppy Wear carry visually?`
+- `Which colors fit soft paw protection?`
+- `Which type fits Puppy Wear?`
 
-The full command menu is one bare `/impeccable` away; keep this list short and pointed.
+## Step 4: Handle uploads and recommended defaults
 
-If init was invoked as a blocker by another impeccable command (e.g. the user ran `/impeccable polish` with no PRODUCT.md), resume that original task now. Your own writes are the freshest source; no reload needed.
+The upload slide stores local assets under `.impeccable/init/uploads/<session-id>/`. Product photos, testimonials, process shots, GIFs, and MP4s are all valid. GIFs are best for quick visual review; MP4 works too.
 
-Optionally ask the user directly to clarify what you cannot infer. Ask whether they'd like a brief summary of PRODUCT.md appended to AGENTS.md for easier agent reference. If yes, append a short **Design Context** pointer section there.
+Choice slides show a recommended option selected by default. If the user presses Continue without editing, treat that recommended option as the answer. There is no visible `Choose for me` control in this flow.
+
+## Step 5: Generate visual cue cards
+
+After the anti-audience answer, send a brand-specific visual cue slide payload before the browser advances. Then keep polling for the image request.
+
+The image request payload includes an `imageProvider` field:
+
+- `provider: "flux"` means `IMAGE_API_KEY` was found and the local server will attempt four parallel FLUX Pro requests automatically. Keep polling until the browser receives `image_batch`, or send a short message if the provider fails.
+- `provider: "builtin-quadrant"` means no local image key was found. The browser shows a native alert once: `No IMAGE_API_KEY in .impeccable/.env. Using built-in images; Flux is faster.` Use the request's `builtInQuadrant.prompt` with the chat's built-in image generator, then send the resulting PNG sheet back with `action: "image_sheet"` so the server crops it into four normal cards.
+
+`IMAGE_API_KEY` is the canonical key name. Compatibility aliases are `IMPECCABLE_IMAGE_API_KEY`, `BFL_API_KEY`, and `FLUX_API_KEY`. The runtime checks process env first, then `.impeccable/.env`, then `.impeccable/env`. Never print, persist, screenshot, or echo the raw key.
+
+When FLUX is available, generate exactly four independent 1:1 visual cue images in parallel and send them with `image_batch`. Do not send a contact sheet, collage, montage, sprite sheet, or one image cropped into four cards on the FLUX path.
+
+Use FLUX Pro (`flux-2-pro-preview`) with `quality`-equivalent production prompts and `1024x1024` opaque outputs when the key exists. The BFL API uses `x-key`; never expose it to the browser. Follow OpenAI and BFL prompting guidance: put the most important concept early, use a consistent labeled structure, state intended use, and specify concrete medium, subject, composition, framing, lighting, palette/mood, texture, and constraints. Prefer positive visual direction, then keep the final negative line short. When uploads exist, reference them by index and role.
+
+Each cue image payload must include:
+
+- `id`
+- `label`
+- `routeFamily`
+- `prompt`
+- `dataUrl`
+
+Allowed `routeFamily` values:
+
+- `material-object`
+- `graphic-shape`
+- `gesture-motion`
+- `atmosphere-light`
+- `playful-character`
+- `pattern-ornament`
+- `surreal-metaphor`
+- `editorial-cultural`
+
+Each batch of four must include at least three different route families unless the user explicitly asks for a narrow direction. A batch should feel like four different art-direction doors, not four variations of the same object.
+
+Prompt structure:
+
+- `Intent`: first-round brand identity cue, not decoration.
+- `Brand context`: prior answers plus uploaded product image context.
+- `Route family`: one allowed route family.
+- `Concept route`: specific motif and strategic reason.
+- `Visual language`: medium, form, texture, composition, framing, light, color temperature.
+- `Design translation`: how this could become spacing, surface, edge, image, icon, motion, or interaction behavior.
+- `Constraints`: no text, lettering, numerals, logos, watermark, UI mockup, website, or fake packaging label.
+
+## Step 6: Generate palette and typography cards
+
+After visual cues are selected, send a brand-specific palette slide payload before the browser advances. Then generate exactly four palette cards from selected cues, prior answers, and uploaded product imagery. Each palette card needs:
+
+- one independent image
+- exactly four OKLCH colors
+- role-aware color names
+- no text inside the image
+
+Palette prompts must inherit selected cue route families. Do not flatten the selected cues back into generic material fragments.
+
+Palette image requests follow the same provider rule as visual cues. If the server has a Flux key, it may generate the four palette images automatically, but the payload still must include exactly four OKLCH colors per card. If no key exists, use the request's 2x2 quadrant prompt and return `image_sheet`; the server crops the sheet and preserves the normal browser `image_batch` shape.
+
+After a palette is selected, send a brand-specific typography slide payload before the browser advances. Then generate exactly four typography cards. Typography cards are not images. Use real loadable fonts and include:
+
+- Google Fonts CSS URL
+- heading family, weights, style, fallback
+- body family, weights, style, fallback
+- brand-specific sample heading/body
+- rationale, usage, and optional avoid notes
+
+Use the typography guidance from the skill: avoid reflex fonts, pair on a real contrast axis, and make the font choice feel like the brand as an object.
+
+## Step 7: Complete and report
+
+On completion, the server writes:
+
+- `PRODUCT.md`
+- `BRAND.md`
+- `DESIGN.md`
+
+If any already exist, it stages:
+
+- `.impeccable/init/PRODUCT.next.md`
+- `.impeccable/init/BRAND.next.md`
+- `.impeccable/init/DESIGN.next.md`
+
+Never overwrite existing files silently. If files were staged, ask the user whether to merge or replace.
+
+Report the written/staged paths, the selected visual cues, the selected palette, and the selected type direction. Then recommend the next command:
+
+- `/impeccable craft <site or feature>` to build from the new context.
+- `/impeccable shape <surface>` to plan a specific surface before code.
+- `/impeccable live` once there is a running site to visually iterate in browser.

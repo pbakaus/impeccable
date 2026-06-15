@@ -27,6 +27,7 @@ for (const cat of CATEGORY_ORDER) {
 }
 
 const session = [
+  { slug: 'init', verb: 'Set up' },
   { slug: 'shape', verb: 'Plan' },
   { slug: 'craft', verb: 'Build' },
   { slug: 'critique', verb: 'Review' },
@@ -42,7 +43,7 @@ const startSteps = [
   {
     label: 'Set context',
     command: '/impeccable init',
-    line: 'Answer the short setup interview. Say yes when it offers DESIGN.md.',
+    line: 'Answer the browser questionnaire and choose visual direction.',
   },
   {
     label: 'Try it',
@@ -56,7 +57,7 @@ const choices = [
     need: 'Set up a project',
     command: '/impeccable init',
     href: '/docs/init',
-    line: 'Create PRODUCT.md and DESIGN.md.',
+    line: 'Create PRODUCT.md, BRAND.md, and DESIGN.md.',
   },
   {
     need: 'Improve an existing page',
@@ -94,6 +95,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
   { id: 'bolder-quieter', a: 'bolder', b: 'quieter', arrow: '↔', line: 'Two halves of voice. Loud or restrained, never neutral.' },
   { id: 'audit-harden', a: 'audit', b: 'harden', arrow: '→', line: 'Find the technical issues. Then fix them.' },
   { id: 'critique-polish', a: 'critique', b: 'polish', arrow: '→', line: 'Review the work. Then refine it.' },
+  { id: 'init-shape', a: 'init', b: 'shape', arrow: '→', line: 'Set product, brand, and design context. Then plan the interface.' },
   { id: 'shape-craft', a: 'shape', b: 'craft', arrow: '→', line: 'Plan the feature. Then build the plan.' },
 ];
 ---

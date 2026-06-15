@@ -2,7 +2,7 @@
 
 Build a feature with impeccable UX and UI quality: shape the design, land the visual direction, build real production code, inspect and improve in-browser until it meets a high-end studio bar.
 
-Before writing code, you need: PRODUCT.md loaded, register identified and the matching reference loaded, and a confirmed design direction for this task (either from `shape` or supplied by the user). PRODUCT.md is project context, not a task-specific brief.
+Before writing code, you need: PRODUCT.md loaded, register identified and the matching reference loaded, BRAND.md/DESIGN.md available when the project has visual direction, and a confirmed design direction for this task (either from `shape` or supplied by the user). PRODUCT.md is project context, not a task-specific brief.
 
 Treat any approved visual direction (generated mock or stated reference) as a concrete contract for composition, hierarchy, density, atmosphere, signature motifs, and distinctive visual moves. Don't let mocks replace structure, copy, accessibility, or state design. But if the live result lacks the approved direction's major ingredients, the implementation is wrong.
 
@@ -42,7 +42,9 @@ Default: Astro for brand briefs, the project's existing framework for product br
 
 ## Step 1: Shape the Design
 
-Run $impeccable shape, passing along whatever feature description the user provided. Shape is **required** for craft; it is what produces a confirmed direction.
+Run $impeccable shape with whatever feature description the user provided. Shape is **required** for craft; it produces the task-specific confirmed direction. It does not replace the project-level init files.
+
+If PRODUCT.md, BRAND.md, or DESIGN.md is missing and the task depends on brand/site direction, stop and run $impeccable init first.
 
 Present the shape output and stop. Wait for the user to confirm, override, or course-correct before writing code.
 

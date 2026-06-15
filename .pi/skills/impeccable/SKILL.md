@@ -100,9 +100,9 @@ If someone could look at this interface and say "AI made that" without doubt, it
 
 | Command | Category | Description | Reference |
 |---|---|---|---|
-| `craft [feature]` | Build | Shape, then build a feature end-to-end | [reference/craft.md](reference/craft.md) |
-| `shape [feature]` | Build | Plan UX/UI before writing code | [reference/shape.md](reference/shape.md) |
-| `init` | Build | Set up project context: PRODUCT.md, DESIGN.md, live config, next steps | [reference/init.md](reference/init.md) |
+| `craft [website/surface/feature]` | Build | Shape, then build end-to-end from PRODUCT.md, BRAND.md, and DESIGN.md context | [reference/craft.md](reference/craft.md) |
+| `shape [website/surface/feature]` | Build | Plan UX/UI before code using the current project context | [reference/shape.md](reference/shape.md) |
+| `init` | Build | Browser-first setup: Product, Brand, and Design questionnaire; writes or stages PRODUCT.md, BRAND.md, and DESIGN.md | [reference/init.md](reference/init.md) |
 | `document` | Build | Generate DESIGN.md from existing project code | [reference/document.md](reference/document.md) |
 | `extract [target]` | Build | Pull reusable tokens and components into design system | [reference/extract.md](reference/extract.md) |
 | `critique [target]` | Evaluate | UX design review with heuristic scoring | [reference/critique.md](reference/critique.md) |
@@ -149,7 +149,7 @@ Setup (context gathering, register) is already loaded by then; sub-commands don'
 
 If the first word is `craft`, setup still runs first, but [reference/craft.md](reference/craft.md) owns the rest of the flow. If setup invokes `init` as a blocker, finish init, refresh context, then resume the original command and target.
 
-`teach` is a deprecated alias for `init`: if the user types it, load [reference/init.md](reference/init.md) and proceed as if they ran `init`.
+`teach` and `identity` are deprecated aliases for `init`: if the user types either one, load [reference/init.md](reference/init.md) and proceed as if they ran `init`.
 
 ## Pin / Unpin
 

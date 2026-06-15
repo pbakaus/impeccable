@@ -1,10 +1,10 @@
 {
   "craft": {
-    "description": "Full confirmed-brief-then-build flow. Runs multi-round shape discovery first, resolves visual probe and north-star mock gates when available, then builds and visually iterates. Use when building a new feature end-to-end.",
-    "argumentHint": "[feature description]"
+    "description": "Shape, then build a website, surface, or feature end-to-end using the current PRODUCT.md, BRAND.md, and DESIGN.md context. Use after init when you want Impeccable to plan, implement, visually inspect, and iterate.",
+    "argumentHint": "[website, surface, or feature description]"
   },
   "init": {
-    "description": "Sets up a project for impeccable. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles); offers DESIGN.md (visual: colors, typography, components) when code exists; pre-configures live mode; then recommends the best commands to run next. Every other command reads these files before doing work. Use once per project.",
+    "description": "Browser-first setup for a new brand/site/project. Runs a guided Product, Brand, and Design questionnaire with uploads, visual cue cards, palette cards, and typography cards, then writes or stages PRODUCT.md, BRAND.md, and DESIGN.md. Use once at the start or when the brand direction changes.",
     "argumentHint": ""
   },
   "document": {
@@ -84,8 +84,8 @@
     "argumentHint": "[target]"
   },
   "shape": {
-    "description": "Plan UX and UI before code. Runs a required multi-round discovery interview, uses visual probes when available, and produces a user-confirmed design brief for implementation.",
-    "argumentHint": "[feature to shape]"
+    "description": "Plan UX and UI before code using the current project context. Produces a focused user-confirmed brief for a website, surface, or feature before implementation.",
+    "argumentHint": "[website, surface, or feature to shape]"
   },
   "typeset": {
     "description": "Improves typography by fixing font choices, hierarchy, sizing, weight, and readability so text feels intentional. Use when the user mentions fonts, type, readability, text hierarchy, sizing looks off, or wants more polished, intentional typography.",
