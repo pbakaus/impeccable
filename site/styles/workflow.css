@@ -26,11 +26,13 @@
 .magazine-container {
   position: relative;
   width: 100%;
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: clamp(172px, 21vw, 200px) minmax(0, 1fr);
   gap: var(--spacing-lg);
   align-items: start;
   overflow: hidden;
+  padding: var(--spacing-lg);
 }
 
 @media (min-width: 1100px) {

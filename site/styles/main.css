@@ -968,14 +968,15 @@ code {
   align-items: baseline;
   gap: var(--spacing-xs);
   margin-bottom: 8px;
-  overflow: hidden;
+  overflow: visible;
+  padding-bottom: 0.08em;
 }
 
 .foundation-card-label {
   font-family: var(--font-display);
   font-size: 1.35rem;
   color: var(--color-ink);
-  line-height: 1.1;
+  line-height: 1.16;
 }
 
 .foundation-card-count {
@@ -1060,8 +1061,8 @@ code {
 .anim-blink { animation: blink-key 1s step-end infinite; }
 @keyframes blink-key { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-/* Tablet: 3-col grid (switch before stairs clip) */
-@media (max-width: 1200px) {
+/* Narrow desktop/tablet: 3-col grid before seven columns squeeze copy. */
+@media (max-width: 1280px) {
   .foundation-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
