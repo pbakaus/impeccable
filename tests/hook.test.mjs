@@ -219,11 +219,12 @@ describe('readConfig()', () => {
   it('parses the new quiet and auditLog fields from the unified config', () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: { quiet: true, auditLog: '~/hook.ndjson' },
+      hook: { quiet: true, auditLog: '~/hook.ndjson', designSystem: { enabled: false } },
     }));
     const cfg = readConfig(cwd);
     assert.equal(cfg.quiet, true);
     assert.equal(cfg.auditLog, '~/hook.ndjson');
+    assert.deepEqual(cfg.designSystem, { enabled: false });
   });
 });
 
@@ -243,6 +244,22 @@ describe('readCache / persistCache / bumpEditCount', () => {
     const file = reloaded.sessions['sid-1'].files['/x/a.tsx'];
     assert.equal(file.editCount, 2);
     assert.ok(file.findings.includes('side-tab:12'));
+  });
+
+  it('keeps same-line value-specific findings distinct in the cache', () => {
+    const cache = readCache(cwd);
+    const hotPink = {
+      ...finding('design-system-color', 7, { snippet: 'Undocumented color #ff00aa' }),
+      ignoreValue: '#ff00aa',
+    };
+    const cyan = {
+      ...finding('design-system-color', 7, { snippet: 'Undocumented color rgb(20, 180, 220)' }),
+      ignoreValue: 'rgb(20, 180, 220)',
+    };
+
+    assert.deepEqual(dedupeAgainstCache([hotPink, cyan], cache, 'sid-1', '/x/a.css'), [hotPink, cyan]);
+    rememberFindings(cache, 'sid-1', '/x/a.css', [hotPink]);
+    assert.deepEqual(dedupeAgainstCache([hotPink, cyan], cache, 'sid-1', '/x/a.css'), [cyan]);
   });
 
   it('garbage-collects oldest sessions over CACHE_MAX_SESSIONS', () => {
@@ -726,6 +743,48 @@ describe('runHook()', () => {
     return abs;
   }
 
+  function writeDesignMd() {
+    fs.writeFileSync(path.join(cwd, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+rounded:
+  md: "8px"
+---
+
+# Design System
+`);
+  }
+
+  function designFinding(value = 'Poppins') {
+    return {
+      ...finding('design-system-font', 1, {
+        name: 'Font outside DESIGN.md',
+        description: 'A font is used that is not declared in DESIGN.md typography.',
+        snippet: `font-family: "${value}", sans-serif;`,
+      }),
+      ignoreValue: value,
+    };
+  }
+
+  function designAwareDetector({ stale = false } = {}) {
+    return {
+      loadDesignSystemForCwd: (projectCwd) => (
+        fs.existsSync(path.join(projectCwd, 'DESIGN.md'))
+          ? { present: true, hasFonts: true, mdNewerThanJson: stale }
+          : null
+      ),
+      detectText: (_content, _filePath, options = {}) => (
+        options.designSystem ? [designFinding()] : []
+      ),
+      detectHtml: (_filePath, options = {}) => (
+        options.designSystem ? [designFinding()] : []
+      ),
+    };
+  }
+
   it('emits findings on first fire, then a pending-ack on subsequent dedup hits', async () => {
     // The "no silent fires" policy turns the previously-silent dedup hit
     // into a pending re-nudge that keeps the unresolved finding in the
@@ -890,6 +949,94 @@ describe('runHook()', () => {
     const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
     assert.equal(r.stdout, '');
     assert.equal(r.audit.skipped, 'config-disabled');
+  });
+
+  it('only unlocks design-system detector findings when DESIGN.md exists', async () => {
+    const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
+    const det = designAwareDetector();
+
+    const withoutDesign = await runHook({
+      stdinJson: JSON.stringify(eventFor(file, 'design-system-off')),
+      env: {},
+      cwd,
+      detector: det,
+    });
+    assert.match(withoutDesign.stdout, /No anti-patterns/);
+    assert.doesNotMatch(withoutDesign.stdout, /design-system-font/);
+
+    writeDesignMd();
+    const withDesign = await runHook({
+      stdinJson: JSON.stringify(eventFor(file, 'design-system-on')),
+      env: {},
+      cwd,
+      detector: det,
+    });
+    assert.match(withDesign.stdout, /Design hook findings requiring review/);
+    assert.match(withDesign.stdout, /design-system-font/);
+    assert.match(withDesign.stdout, /ignore-value design-system-font Poppins --shared/);
+  });
+
+  it('respects hook.designSystem.enabled=false', async () => {
+    writeDesignMd();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: { designSystem: { enabled: false } },
+    }));
+    const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
+
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file, 'design-system-disabled')),
+      env: {},
+      cwd,
+      detector: designAwareDetector(),
+    });
+
+    assert.match(r.stdout, /No anti-patterns/);
+    assert.doesNotMatch(r.stdout, /design-system-font/);
+  });
+
+  it('suppresses design-system findings through ignore-value', async () => {
+    writeDesignMd();
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      hook: {
+        ignoreValues: [
+          { rule: 'design-system-font', value: 'Poppins' },
+        ],
+      },
+    }));
+    const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
+
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file, 'design-system-ignore-value')),
+      env: {},
+      cwd,
+      detector: designAwareDetector(),
+    });
+
+    assert.match(r.stdout, /No anti-patterns/);
+    assert.doesNotMatch(r.stdout, /design-system-font/);
+  });
+
+  it('adds a non-blocking note when DESIGN.md is newer than the sidecar', async () => {
+    writeDesignMd();
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = {
+      loadDesignSystemForCwd: () => ({ present: true, mdNewerThanJson: true }),
+      detectText: () => [],
+      detectHtml: () => [],
+    };
+
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file, 'design-system-stale-sidecar')),
+      env: {},
+      cwd,
+      detector: det,
+    });
+
+    assert.match(r.stdout, /No anti-patterns/);
+    assert.match(r.stdout, /DESIGN\.md is newer than \.impeccable\/design\.json/);
+    assert.match(r.stdout, /\/impeccable document/);
   });
 
   it('rejects sensitive paths before reading file content', async () => {

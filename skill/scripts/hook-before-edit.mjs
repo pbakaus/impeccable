@@ -16,6 +16,7 @@ import path from 'node:path';
 import {
   ALLOWED_EXTS,
   EDIT_COUNT_THRESHOLD,
+  ENVELOPE_PREFIX,
   GENERATED_PATH,
   SENSITIVE_PATH,
   filterFindings,
@@ -339,6 +340,22 @@ function cursorBlockMessage(findings, filePath, config, cwd) {
   return blocked.length > 4000 ? `${blocked.slice(0, 3984)}\n...(truncated)` : blocked;
 }
 
+function designSystemOptions(config, detector, cwd) {
+  if (config?.designSystem?.enabled === false) return {};
+  if (!detector || typeof detector.loadDesignSystemForCwd !== 'function') return {};
+  try {
+    const designSystem = detector.loadDesignSystemForCwd(cwd);
+    return designSystem ? { designSystem } : {};
+  } catch {
+    return {};
+  }
+}
+
+function appendDesignSystemNote(message, scanOptions) {
+  if (!message || !scanOptions?.designSystem?.mdNewerThanJson) return message;
+  return `${message}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run /impeccable document to refresh the design-system sidecar.`;
+}
+
 function findingSignature(findings) {
   return findings
     .map((finding) => `${finding.antipattern || 'unknown'}:${finding.line || 0}`)
@@ -415,10 +432,11 @@ async function main() {
   if (!detector || typeof detector.detectText !== 'function') {
     return allow({ ...audit, skipped: 'detector-missing', durationMs: Date.now() - started });
   }
+  const scanOptions = designSystemOptions(config, detector, cwd);
 
   let findings = [];
   try {
-    findings = await detector.detectText(content, filePath);
+    findings = await detector.detectText(content, filePath, scanOptions);
   } catch {
     return allow({ ...audit, error: 'detector-threw', durationMs: Date.now() - started });
   }
@@ -433,7 +451,7 @@ async function main() {
     });
   }
 
-  const message = cursorBlockMessage(filtered, filePath, config, cwd);
+  const message = appendDesignSystemNote(cursorBlockMessage(filtered, filePath, config, cwd), scanOptions);
   const sessionId = event.session_id || event.conversation_id || 'unknown';
   const cache = readCache(cwd);
   const denial = bumpCursorDenial(cache, sessionId, filePath, filtered);

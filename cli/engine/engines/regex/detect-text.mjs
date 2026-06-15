@@ -1,4 +1,5 @@
 import { GENERIC_FONTS } from '../../shared/constants.mjs';
+import { checkSourceDesignSystem } from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
 import { filterByProviders } from '../../registry/antipatterns.mjs';
@@ -501,6 +502,15 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'css-in-js',
     }));
+  }
+
+  if (options?.designSystem) {
+    findings.push(...profileFindings(profile, {
+      engine: 'regex',
+      phase: 'source',
+      ruleId: 'design-system',
+      target: filePath,
+    }, () => checkSourceDesignSystem(content, filePath, { designSystem: options.designSystem })));
   }
 
   // Deduplicate findings (same antipattern + similar snippet, within 2 lines)

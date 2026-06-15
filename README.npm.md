@@ -1,6 +1,6 @@
 # Impeccable CLI
 
-Detect UI anti-patterns and design quality issues from the command line. Scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 41 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
+Detect UI anti-patterns and design quality issues from the command line. Scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 44 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ npx impeccable detect --fast src/
 
 **Quality**: tiny body text, cramped padding, long line lengths, small touch targets
 
-41 deterministic detector rules in total. See the full catalog at [impeccable.style/slop](https://impeccable.style/slop).
+44 deterministic detector rules in total. See the full catalog at [impeccable.style/slop](https://impeccable.style/slop).
 
 ## Exit Codes
 

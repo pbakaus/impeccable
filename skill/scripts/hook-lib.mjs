@@ -73,6 +73,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
   quiet: false,
   auditLog: null,
+  designSystem: { enabled: true },
   ignoreRules: [],
   ignoreFiles: [],
   ignoreValues: [],
@@ -158,6 +159,7 @@ function cloneDefaultConfig() {
     ignoreRules: [],
     ignoreFiles: [],
     ignoreValues: [],
+    designSystem: { ...DEFAULT_CONFIG.designSystem },
     limits: { ...DEFAULT_CONFIG.limits },
   };
 }
@@ -172,6 +174,12 @@ function applyConfigSource(config, raw) {
   }
   if (typeof raw.auditLog === 'string' && raw.auditLog.trim()) {
     config.auditLog = raw.auditLog.trim();
+  }
+  if (raw.designSystem && typeof raw.designSystem === 'object' && !Array.isArray(raw.designSystem)) {
+    config.designSystem = {
+      ...config.designSystem,
+      enabled: raw.designSystem.enabled === false ? false : true,
+    };
   }
   if (Array.isArray(raw.ignoreRules)) {
     config.ignoreRules = uniqueStrings([...config.ignoreRules, ...raw.ignoreRules]);
@@ -453,7 +461,14 @@ function isIgnoredFindingValue(finding, ignoreValues) {
 export function extractFindingIgnoreValue(finding) {
   if (!finding || typeof finding !== 'object') return '';
   const rule = normalizeIgnoreRule(finding.antipattern);
-  if (rule !== 'overused-font' && rule !== 'bounce-easing') return '';
+  const directValueRules = new Set([
+    'overused-font',
+    'bounce-easing',
+    'design-system-font',
+    'design-system-color',
+    'design-system-radius',
+  ]);
+  if (!directValueRules.has(rule)) return '';
   return normalizeIgnoreValue(extractFindingIgnoreValueRaw(finding, rule));
 }
 
@@ -520,7 +535,7 @@ export function dedupeAgainstCache(findings, cache, sessionId, filePath) {
   const known = new Set(fileEntry.findings || []);
   const fresh = [];
   for (const f of findings) {
-    const key = `${f.antipattern}:${f.line || 0}`;
+    const key = findingCacheKey(f);
     if (known.has(key)) continue;
     known.add(key);
     fresh.push(f);
@@ -531,9 +546,19 @@ export function dedupeAgainstCache(findings, cache, sessionId, filePath) {
 export function rememberFindings(cache, sessionId, filePath, findings) {
   const fileEntry = ensureFile(cache, sessionId, filePath);
   const known = new Set(fileEntry.findings || []);
-  for (const f of findings) known.add(`${f.antipattern}:${f.line || 0}`);
+  for (const f of findings) known.add(findingCacheKey(f));
   fileEntry.findings = Array.from(known);
   ensureSession(cache, sessionId).updatedAt = Date.now();
+}
+
+function findingCacheKey(finding) {
+  const line = finding?.line || 0;
+  const value = extractFindingIgnoreValue(finding);
+  if (line > 0 && value) return `${finding.antipattern}:${line}:${value}`;
+  if (line > 0) return `${finding.antipattern}:${line}`;
+  if (value) return `${finding.antipattern}:0:${value}`;
+  const snippet = String(finding?.snippet || '').trim().slice(0, 80);
+  return snippet ? `${finding.antipattern}:0:${snippet}` : `${finding.antipattern}:0`;
 }
 
 export function renderTemplate(findings, filePath, config, opts = {}) {
@@ -942,7 +967,11 @@ export async function loadDetector(candidates = DETECTOR_CANDIDATES) {
   const found = candidates.find((c) => fs.existsSync(c));
   if (!found) return null;
   const mod = await import(pathToFileURL(found));
-  detectorCache = { detectText: mod.detectText, detectHtml: mod.detectHtml };
+  detectorCache = {
+    detectText: mod.detectText,
+    detectHtml: mod.detectHtml,
+    loadDesignSystemForCwd: mod.loadDesignSystemForCwd,
+  };
   return detectorCache;
 }
 
@@ -997,6 +1026,22 @@ export function renderPendingAck(filePath, knownFindings, opts = {}) {
 
 export function shouldEmitAckForFile(filePath) {
   return ACK_EXTS.has(path.extname(String(filePath || '')).toLowerCase());
+}
+
+function designSystemOptions(config, detector, projectCwd) {
+  if (config?.designSystem?.enabled === false) return {};
+  if (!detector || typeof detector.loadDesignSystemForCwd !== 'function') return {};
+  try {
+    const designSystem = detector.loadDesignSystemForCwd(projectCwd);
+    return designSystem ? { designSystem } : {};
+  } catch {
+    return {};
+  }
+}
+
+function appendDesignSystemNote(text, scanOptions) {
+  if (!text || !scanOptions?.designSystem?.mdNewerThanJson) return text;
+  return `${text}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run /impeccable document to refresh the design-system sidecar.`;
 }
 
 // The directive footer is the part of the hook output that steers model
@@ -1086,6 +1131,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       persistCache(projectCwd, cache);
       return result({ skipped: 'detector-missing', durationMs: Date.now() - started });
     }
+    const scanOptions = designSystemOptions(config, det, projectCwd);
 
     let pendingWinner = null;
     let cleanWinner = null;
@@ -1143,9 +1189,9 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
       let findings;
       let detectorThrew = false;
       if ((ext === '.html' || ext === '.htm') && typeof det.detectHtml === 'function') {
-        try { findings = await det.detectHtml(filePath); } catch { findings = []; detectorThrew = true; }
+        try { findings = await det.detectHtml(filePath, scanOptions); } catch { findings = []; detectorThrew = true; }
       } else {
-        try { findings = await det.detectText(content, filePath); } catch { findings = []; detectorThrew = true; }
+        try { findings = await det.detectText(content, filePath, scanOptions); } catch { findings = []; detectorThrew = true; }
       }
 
       const filtered = filterFindings(findings || [], content, ext, config);
@@ -1176,7 +1222,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 
     if (freshGroups.length > 0) {
       const firstGroup = freshGroups[0];
-      const text = renderGroupedTemplate(freshGroups, config, { cwd: projectCwd });
+      const text = appendDesignSystemNote(renderGroupedTemplate(freshGroups, config, { cwd: projectCwd }), scanOptions);
       const allFindings = freshGroups.flatMap((group) => group.findings);
       return {
         exitCode: 0,
@@ -1208,7 +1254,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     }
 
     if (pendingWinner && shouldEmitAckForFile(pendingWinner.filePath)) {
-      const text = renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd });
+      const text = appendDesignSystemNote(renderPendingAck(pendingWinner.filePath, pendingWinner.known, { cwd: projectCwd }), scanOptions);
       return {
         exitCode: 0,
         stdout: payload(text, 'PostToolUse', harness),
@@ -1242,7 +1288,7 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     }
 
     if (cleanWinner && shouldEmitAckForFile(cleanWinner.filePath)) {
-      const text = renderCleanAck(cleanWinner.filePath, { cwd: projectCwd });
+      const text = appendDesignSystemNote(renderCleanAck(cleanWinner.filePath, { cwd: projectCwd }), scanOptions);
       return {
         exitCode: 0,
         stdout: payload(text, 'PostToolUse', harness),

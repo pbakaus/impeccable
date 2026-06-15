@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { loadDesignSystemForCwd } from '../design-system.mjs';
 import { createBrowserDetector, detectUrl } from '../engines/browser/detect-url.mjs';
 import { detectHtml } from '../engines/static-html/detect-html.mjs';
 import { detectText } from '../engines/regex/detect-text.mjs';
@@ -79,10 +80,11 @@ function printUsage() {
 Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
-  --json    Output results as JSON
-  --gpt     Also report GPT-specific provider tells (off by default)
-  --gemini  Also report Gemini-specific provider tells (off by default)
-  --help    Show this help message
+  --json              Output results as JSON
+  --gpt               Also report GPT-specific provider tells (off by default)
+  --gemini            Also report Gemini-specific provider tells (off by default)
+  --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
+  --help              Show this help message
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -117,7 +119,9 @@ async function detectCli() {
   const providers = [];
   if (args.includes('--gpt')) providers.push('gpt');
   if (args.includes('--gemini')) providers.push('gemini');
-  const scanOptions = { providers };
+  const designSystemEnabled = !args.includes('--no-design-system');
+  const designSystem = designSystemEnabled ? loadDesignSystemForCwd(process.cwd()) : null;
+  const scanOptions = designSystem ? { providers, designSystem } : { providers };
   const targets = args.filter(a => !a.startsWith('--'));
 
   if (helpMode) { printUsage(); process.exit(0); }

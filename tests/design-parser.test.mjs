@@ -120,4 +120,26 @@ Prose.
     assert.equal(model.frontmatter.colors['kinpaku-gold'], 'oklch(84% 0.19 80.46)');
     assert.equal(model.frontmatter.colors['gold-hairline'], 'oklch(58% 0.065 82 / 0.32)');
   });
+
+  it('normalizes quoted YAML keys in token maps', () => {
+    const md = `---
+rounded:
+  "2xl": "80px"
+  '3xl': "96px"
+colors:
+  "brand-gold": "#d9a531"
+---
+
+# Design System: Quoted Keys
+
+## 1. Overview
+
+Prose.
+`;
+    const model = parseDesignMd(md);
+    assert.equal(model.frontmatter.rounded['2xl'], '80px');
+    assert.equal(model.frontmatter.rounded['3xl'], '96px');
+    assert.equal(model.frontmatter.colors['brand-gold'], '#d9a531');
+    assert.equal(model.frontmatter.rounded['"2xl"'], undefined);
+  });
 });

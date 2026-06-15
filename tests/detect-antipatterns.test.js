@@ -19,6 +19,12 @@ const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
 const BENCH_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'benchmark-detector.mjs');
 
+function withoutDesignSystemArgs(args) {
+  return args[0] === 'detect'
+    ? ['detect', '--no-design-system', ...args.slice(1)]
+    : ['--no-design-system', ...args];
+}
+
 function writeStaticFixture(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-static-'));
   for (const [name, contents] of Object.entries(files)) {
@@ -856,7 +862,11 @@ describe('walkDir', () => {
 
 describe('CLI', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
+    return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
+  }
+  function runIn(cwd, ...args) {
+    const result = spawnSync('node', [SCRIPT, ...args], { cwd, encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -916,6 +926,43 @@ describe('CLI', () => {
     const { code, stderr } = run(path.join(FIXTURES, 'linked-stylesheet.html'));
     expect(code).toBe(2);
     expect(stderr).toContain('side-tab');
+  });
+
+  test('local DESIGN.md enables design-system rules by default and --no-design-system disables them', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-design-system-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+  paper: "#f7f4ee"
+rounded:
+  md: "8px"
+---
+
+# Design System
+`);
+      fs.writeFileSync(path.join(dir, 'index.html'), `
+        <section style="font-family: 'Poppins', sans-serif; color: #ff00aa; background: #f7f4ee; border-radius: 18px;">
+          Design drift
+        </section>
+      `);
+
+      const active = runIn(dir, '--json', 'index.html');
+      expect(active.code).toBe(2);
+      const activeIds = JSON.parse(active.stdout).map((finding) => finding.antipattern);
+      expect(activeIds).toContain('design-system-font');
+      expect(activeIds).toContain('design-system-color');
+      expect(activeIds).toContain('design-system-radius');
+
+      const disabled = runIn(dir, '--json', '--no-design-system', 'index.html');
+      const disabledIds = JSON.parse(disabled.stdout).map((finding) => finding.antipattern);
+      expect(disabledIds.some((id) => id.startsWith('design-system-'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('warns on nonexistent path', () => {
@@ -1165,7 +1212,7 @@ describe('detectText -- CSS-in-JS', () => {
 
 describe('CLI -- framework fixtures', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1223,7 +1270,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
   let stderr;
 
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1281,7 +1328,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
 
 describe('CLI -- Next.js + CSS Modules project', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1333,7 +1380,7 @@ describe('CLI -- Next.js + CSS Modules project', () => {
 
 describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1490,7 +1537,7 @@ describe('resolveImport', () => {
 
 describe('CLI -- multi-file scan', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1577,7 +1624,7 @@ describe('FRAMEWORK_CONFIGS', () => {
 
 describe('CLI -- dev server suggestion', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 

@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   detectHtml,
+  normalizeDesignSystem,
 } from '../cli/engine/detect-antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -241,6 +242,79 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
   it('typography-should-pass: zero findings', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
     assert.equal(f.length, 0);
+  });
+
+  it('design-system: flags only values outside the provided DESIGN.md tokens', async () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        },
+        colors: {
+          ink: '#241f1a',
+          paper: '#f7f4ee',
+          surface: '#ffffff',
+          accent: '#b8422e',
+          border: '#d4c7b9',
+        },
+        rounded: {
+          sm: '4px',
+          md: '8px',
+          '"2xl"': '32px',
+          full: '999px',
+        },
+      },
+      sidecar: {
+        extensions: {
+          colorMeta: {
+            accent: {
+              canonical: '#b8422e',
+              tonalRamp: ['#923524', '#d55a42'],
+            },
+          },
+        },
+      },
+    });
+    const f = await detectHtml(path.join(FIXTURES, 'design-system.html'), { designSystem });
+    const designFindings = f.filter((r) => r.antipattern.startsWith('design-system-'));
+    const snippets = designFindings.map((r) => r.snippet).join('\n');
+
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-font'), 'expected unsupported font');
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-color'), 'expected undocumented colors');
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-radius'), 'expected undocumented radius');
+    assert.ok(
+      designFindings.some((r) => r.antipattern === 'design-system-font' && /Google Fonts: Poppins/.test(r.snippet || '')),
+      'expected source-level Google Fonts usage in HTML to be flagged',
+    );
+    assert.doesNotMatch(snippets, /Undocumented color #ff00aa/, 'source and computed color findings should not duplicate');
+    assert.doesNotMatch(snippets, /font-family: Poppins/, 'source and computed font findings should not duplicate');
+    assert.doesNotMatch(snippets, /border-radius: 18px is outside/, 'source and computed radius findings should not duplicate');
+    assert.doesNotMatch(snippets, /on style "\.design-system-fixture/, 'static DOM design pass should skip <style> content');
+
+    for (const label of [
+      'Flag Font Unsupported',
+      'Flag Color Hot Pink',
+      'Flag Background Cyan',
+      'Flag Border Teal',
+      'Flag Radius Eighteen',
+    ]) {
+      assert.match(snippets, new RegExp(label), `expected ${label} to be flagged`);
+    }
+    for (const label of [
+      'Pass Display Font',
+      'Pass Generic Font',
+      'Pass Token Color',
+      'Pass Alpha Color',
+      'Pass Close Color',
+      'Pass Ramp Color',
+      'Pass Zero Radius',
+      'Pass Percent Radius',
+      'Pass Scale Radius',
+      'Pass Pill Radius',
+    ]) {
+      assert.doesNotMatch(snippets, new RegExp(label), `${label} should pass`);
+    }
   });
 
   it('numbered-section-markers: visible sequence flags while script/style/svg internals pass', async () => {
