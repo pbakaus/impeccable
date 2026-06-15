@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
-import extract from 'extract-zip';
+import StreamZip from 'node-stream-zip';
 import { getHookConsent, setHookConsent } from '../../lib/impeccable-config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -437,6 +437,25 @@ function hashSkillsDir(skillsDir) {
 }
 
 /**
+ * Extract every entry of a zip archive into `targetDir`. This replaces
+ * `extract-zip`, whose `yauzl`/`fd-slicer` read stack stalls on Node v24.16.0 /
+ * v26.1.0+ (nodejs/node#63487): extraction stops after a handful of entries,
+ * its promise never settles, and -- because nothing else keeps the event loop
+ * alive -- the CLI exits 0 with no error, so `npx impeccable install` silently
+ * installs nothing. `node-stream-zip` reads entries directly with `fs` and is
+ * unaffected on every Node version.
+ */
+async function extractZip(zipPath, targetDir) {
+  const zip = new StreamZip.async({ file: zipPath });
+  try {
+    // `null` extracts the whole archive; resolves with the entry count.
+    await zip.extract(null, targetDir);
+  } finally {
+    await zip.close();
+  }
+}
+
+/**
  * Download the universal bundle to a temp dir and return its path.
  * Caller is responsible for cleanup.
  */
@@ -448,7 +467,7 @@ async function downloadAndExtractBundle() {
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
-  await extract(tmpZip, { dir: tmpDir });
+  await extractZip(tmpZip, tmpDir);
   rmSync(tmpZip, { force: true });
   return tmpDir;
 }
@@ -467,7 +486,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
     return tmpDir;
   }
 
-  await extract(source, { dir: tmpDir });
+  await extractZip(source, tmpDir);
   return tmpDir;
 }
 
@@ -1701,6 +1720,7 @@ export {
   copyProviderSkills,
   decideHookInstall,
   expectedHookDests,
+  extractZip,
   formatInstallDetectionLines,
   linkProviderSkills,
   mergeHookManifests,

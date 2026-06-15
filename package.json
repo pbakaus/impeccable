@@ -81,9 +81,9 @@
     "css-select": "^7.0.0",
     "css-tree": "^3.2.1",
     "domutils": "^4.0.2",
-    "extract-zip": "^2.0.1",
     "htmlparser2": "^12.0.0",
-    "marked": "^18.0.5"
+    "marked": "^18.0.5",
+    "node-stream-zip": "^1.15.0"
   },
   "optionalDependencies": {
     "puppeteer": "^25.1.0"
