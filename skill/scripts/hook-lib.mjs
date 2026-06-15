@@ -1056,7 +1056,7 @@ export function shouldEmitAckForFile(filePath) {
   return ACK_EXTS.has(path.extname(String(filePath || '')).toLowerCase());
 }
 
-function designSystemOptions(config, detector, projectCwd) {
+export function designSystemOptions(config, detector, projectCwd) {
   if (config?.designSystem?.enabled === false) return {};
   if (!detector || typeof detector.loadDesignSystemForCwd !== 'function') return {};
   try {
@@ -1067,7 +1067,7 @@ function designSystemOptions(config, detector, projectCwd) {
   }
 }
 
-function appendDesignSystemNote(text, scanOptions) {
+export function appendDesignSystemNote(text, scanOptions) {
   if (!text || !scanOptions?.designSystem?.mdNewerThanJson) return text;
   return `${text}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run /impeccable document to refresh the design-system sidecar.`;
 }

@@ -161,6 +161,7 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.match(snippets, /Flag Font Unsupported/);
     assert.match(snippets, /Flag Color Hot Pink/);
     assert.match(snippets, /Flag Radius Eighteen/);
+    assert.doesNotMatch(snippets, /Pass Mid Pill Radius/);
   });
 
   it('clipped-overflow-container: utility-named popovers still flag when clipped', async () => {

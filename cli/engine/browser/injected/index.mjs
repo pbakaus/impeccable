@@ -1337,7 +1337,7 @@ if (IS_BROWSER) {
     if (text.includes('var(') || text.includes('%')) return true;
     const px = resolveLengthPx(text, 16);
     if (px == null || !Number.isFinite(px) || px <= DESIGN_RADIUS_TOLERANCE_PX) return true;
-    if (designSystem.hasPillRadius && px >= 999) return true;
+    if (designSystem.hasPillRadius && px >= 99) return true;
     return designSystem.allowedRadii.some(allowed => Math.abs(allowed - px) <= DESIGN_RADIUS_TOLERANCE_PX);
   }
 

@@ -16,9 +16,10 @@ import path from 'node:path';
 import {
   ALLOWED_EXTS,
   EDIT_COUNT_THRESHOLD,
-  ENVELOPE_PREFIX,
   GENERATED_PATH,
   SENSITIVE_PATH,
+  appendDesignSystemNote,
+  designSystemOptions,
   filterFindings,
   loadDetector,
   matchesAnyGlob,
@@ -338,22 +339,6 @@ function cursorBlockMessage(findings, filePath, config, cwd) {
     '[impeccable@1] Impeccable design hook blocked this write before it landed. Design hook findings requiring review',
   );
   return blocked.length > 4000 ? `${blocked.slice(0, 3984)}\n...(truncated)` : blocked;
-}
-
-function designSystemOptions(config, detector, cwd) {
-  if (config?.designSystem?.enabled === false) return {};
-  if (!detector || typeof detector.loadDesignSystemForCwd !== 'function') return {};
-  try {
-    const designSystem = detector.loadDesignSystemForCwd(cwd);
-    return designSystem ? { designSystem } : {};
-  } catch {
-    return {};
-  }
-}
-
-function appendDesignSystemNote(message, scanOptions) {
-  if (!message || !scanOptions?.designSystem?.mdNewerThanJson) return message;
-  return `${message}\n\n${ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run /impeccable document to refresh the design-system sidecar.`;
 }
 
 function findingSignature(findings) {
