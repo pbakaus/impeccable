@@ -291,10 +291,13 @@ Impeccable includes a standalone CLI for detecting anti-patterns without an AI h
 npx impeccable detect src/                   # scan a directory
 npx impeccable detect index.html             # scan an HTML file
 npx impeccable detect https://example.com    # scan a URL (Puppeteer)
-npx impeccable detect --fast --json .        # regex-only, JSON output
+npx impeccable detect --json .               # CI-friendly JSON output
+npx impeccable detect --no-config src/       # raw scan, ignoring .impeccable filters
 ```
 
 The detector catches 44 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
+
+By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` filters as the design hook: `hook.ignoreRules`, `hook.ignoreFiles`, `hook.ignoreValues`, and `hook.designSystem.enabled`.
 
 ## Supported Tools
 

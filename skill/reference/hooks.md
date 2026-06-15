@@ -6,6 +6,8 @@ The hook runs the impeccable design detector on direct file edits to design-rele
 
 This command toggles the hook **per project** by editing `.impeccable/config.json` (the unified Impeccable config; hook settings live under its `hook` key). Per-developer overrides, including the install consent decision (`hook.consent`) the CLI records, live in the gitignored `.impeccable/config.local.json`. Set `hook.enabled: false` to turn the hook off, `hook.quiet: true` to silence the clean/pending acks, or `hook.auditLog` to a file path for an NDJSON log. The legacy `IMPECCABLE_HOOK_DISABLED`, `IMPECCABLE_HOOK_QUIET`, and `IMPECCABLE_HOOK_LOG` env vars are still honored and override these config values when set.
 
+Manual `npx impeccable detect` scans use the same project filter config by default: `hook.ignoreRules`, `hook.ignoreFiles`, `hook.ignoreValues`, and `hook.designSystem.enabled`. `hook.enabled` only controls automatic hook execution, not manual CLI scans. Use `npx impeccable detect --no-config ...` for a raw detector run that ignores project filters.
+
 Supported harnesses: Claude Code (`.claude/settings.local.json` in the project, which is gitignored so the hook stays machine-local; a hook you move into the shared `settings.json` is honored in place too), Codex (`.codex/hooks.json` in the project), and Cursor (`.cursor/hooks.json` in the project).
 
 On **Cursor**, `preToolUse` checks proposed Write/Edit/Shell write content and denies only when the real detector finds an issue. The denial message is visible to the agent as the tool error, so the agent can reconsider before the bad write lands.

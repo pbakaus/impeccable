@@ -21,8 +21,8 @@ const BENCH_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'benchmark-dete
 
 function withoutDesignSystemArgs(args) {
   return args[0] === 'detect'
-    ? ['detect', '--no-design-system', ...args.slice(1)]
-    : ['--no-design-system', ...args];
+    ? ['detect', '--no-design-system', '--no-config', ...args.slice(1)]
+    : ['--no-design-system', '--no-config', ...args];
 }
 
 function writeStaticFixture(files) {
@@ -963,6 +963,108 @@ rounded:
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('hook designSystem.enabled=false disables CLI design-system rules', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-design-disabled-'));
+    try {
+      fs.mkdirSync(path.join(dir, '.impeccable'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.impeccable', 'config.json'), JSON.stringify({
+        hook: { designSystem: { enabled: false } },
+      }));
+      fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+  paper: "#f7f4ee"
+rounded:
+  md: "8px"
+---
+
+# Design System
+`);
+      fs.writeFileSync(path.join(dir, 'index.html'), `
+        <section style="font-family: 'Poppins', sans-serif; color: #ff00aa; background: #f7f4ee; border-radius: 18px;">
+          Design drift
+        </section>
+      `);
+
+      const result = runIn(dir, '--json', 'index.html');
+      const ids = JSON.parse(result.stdout).map((finding) => finding.antipattern);
+      expect(ids.some((id) => id.startsWith('design-system-'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('respects .impeccable config ignoreFiles like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        hook: { ignoreFiles: ['src/noisy.css'] },
+      }),
+      'src/noisy.css': "body { font-family: 'Inter', sans-serif; }",
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src');
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout.trim())).toEqual([]);
+    });
+  });
+
+  test('respects .impeccable config ignoreRules like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        hook: { ignoreRules: ['side-tab'] },
+      }),
+      'src/card.css': '.card { border-left: 4px solid #3b82f6; border-radius: 12px; }',
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src/card.css');
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout.trim())).toEqual([]);
+    });
+  });
+
+  test('respects .impeccable config ignoreValues like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        hook: {
+          ignoreValues: [
+            { rule: 'overused-font', value: 'Inter' },
+          ],
+        },
+      }),
+      'src/fonts.css': [
+        "body { font-family: 'Inter', sans-serif; }",
+        "h1 { font-family: 'Roboto', sans-serif; }",
+      ].join('\n'),
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src/fonts.css');
+      expect(code).toBe(2);
+      const snippets = JSON.parse(stdout.trim()).map(f => f.snippet).join('\n');
+      expect(snippets).not.toContain('Inter');
+      expect(snippets).toContain('Roboto');
+    });
+  });
+
+  test('respects scoped wildcard ignoreValues like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        hook: {
+          ignoreValues: [
+            { rule: 'overused-font', value: '*', files: ['src/main.css'] },
+          ],
+        },
+      }),
+      'src/main.css': "body { font-family: 'Inter', sans-serif; }",
+      'src/other.css': "body { font-family: 'Inter', sans-serif; }",
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src');
+      expect(code).toBe(2);
+      const findings = JSON.parse(stdout.trim());
+      expect(findings.some(f => f.file.endsWith('src/main.css'))).toBe(false);
+      expect(findings.some(f => f.file.endsWith('src/other.css'))).toBe(true);
+    });
   });
 
   test('warns on nonexistent path', () => {
