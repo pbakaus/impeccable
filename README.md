@@ -292,7 +292,7 @@ npx impeccable detect src/                   # scan a directory
 npx impeccable detect index.html             # scan an HTML file
 npx impeccable detect https://example.com    # scan a URL (Puppeteer)
 npx impeccable detect --json .               # CI-friendly JSON output
-npx impeccable detect --no-config src/       # raw scan, ignoring .impeccable filters
+npx impeccable detect --no-config src/       # raw scan, ignoring project config/context
 npx impeccable ignores list                  # show detector ignores
 npx impeccable ignores add-file "src/legacy/**"
 npx impeccable ignores add-value overused-font Inter --reason "Brand font"

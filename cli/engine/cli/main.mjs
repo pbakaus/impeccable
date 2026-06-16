@@ -88,7 +88,7 @@ Options:
   --json              Output results as JSON
   --gpt               Also report GPT-specific provider tells (off by default)
   --gemini            Also report Gemini-specific provider tells (off by default)
-  --no-config         Do not apply .impeccable config filters/settings
+  --no-config         Do not apply project config, detector ignores, or DESIGN.md
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
   --help              Show this help message
 
@@ -131,11 +131,11 @@ async function detectCli() {
   const configEnabled = !args.includes('--no-config');
   const detectionConfig = configEnabled
     ? readDetectionConfig(process.cwd())
-    : { ignoreRules: [], ignoreFiles: [], ignoreValues: [], designSystem: { enabled: true } };
+    : { ignoreRules: [], ignoreFiles: [], ignoreValues: [] };
   const providers = [];
   if (args.includes('--gpt')) providers.push('gpt');
   if (args.includes('--gemini')) providers.push('gemini');
-  const designSystemEnabled = !args.includes('--no-design-system') && detectionConfig.designSystem.enabled !== false;
+  const designSystemEnabled = configEnabled && !args.includes('--no-design-system') && detectionConfig.designSystem?.enabled !== false;
   const designSystem = designSystemEnabled ? loadDesignSystemForCwd(process.cwd()) : null;
   const scanOptions = designSystem ? { providers, designSystem } : { providers };
   const targets = args.filter(a => !a.startsWith('--'));

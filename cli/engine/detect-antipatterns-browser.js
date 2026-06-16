@@ -4423,6 +4423,7 @@ if (IS_BROWSER) {
           category: ap ? ap.category : 'quality',
           severity: ap?.severity || 'warning',
           detail: f.detail || f.snippet,
+          ignoreValue: f.ignoreValue || f.value || '',
           name: ap ? ap.name : (f.type || f.id),
           description: ap ? ap.description : '',
         };
@@ -4575,6 +4576,7 @@ if (IS_BROWSER) {
         findings.push({
           type: 'design-system-font',
           detail: `${tag}${browserSampleText(el)} uses ${font}; not declared in DESIGN.md typography`,
+          ignoreValue: font,
         });
       }
     }
@@ -4599,6 +4601,7 @@ if (IS_BROWSER) {
         findings.push({
           type: 'design-system-color',
           detail: `${kind} ${label} on ${tag}${browserSampleText(el)} is outside DESIGN.md colors`,
+          ignoreValue: label,
         });
       }
     }
@@ -4611,6 +4614,7 @@ if (IS_BROWSER) {
         findings.push({
           type: 'design-system-radius',
           detail: `border-radius ${token} on ${tag}${browserSampleText(el)} is outside the DESIGN.md rounded scale`,
+          ignoreValue: token,
         });
       }
     }
@@ -4640,6 +4644,7 @@ if (IS_BROWSER) {
         findings.push({
           type: 'design-system-font',
           detail: `Google Fonts: ${display} is not declared in DESIGN.md typography`,
+          ignoreValue: display,
         });
       }
     }

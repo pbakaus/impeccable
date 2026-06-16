@@ -291,6 +291,16 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.doesNotMatch(snippets, /font-family: Poppins/, 'source and computed font findings should not duplicate');
     assert.doesNotMatch(snippets, /border-radius: 18px is outside/, 'source and computed radius findings should not duplicate');
     assert.doesNotMatch(snippets, /on style "\.design-system-fixture/, 'static DOM design pass should skip <style> content');
+    assert.equal(
+      designFindings.find((r) => /Flag Color Hot Pink/.test(r.snippet || ''))?.line,
+      37,
+      'deduped HTML design findings should keep the source line when available',
+    );
+    assert.equal(
+      designFindings.find((r) => /Flag Radius Eighteen/.test(r.snippet || ''))?.line,
+      40,
+      'deduped radius findings should keep the source line when available',
+    );
 
     for (const label of [
       'Flag Font Unsupported',

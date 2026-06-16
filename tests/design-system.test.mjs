@@ -55,6 +55,12 @@ function sampleDesignSystem() {
             tonalRamp: ['#d9a531', '#b98518'],
           },
         },
+        roundedMeta: {
+          soft: {
+            canonical: '12px',
+            values: ['24px'],
+          },
+        },
       },
     },
   });
@@ -85,6 +91,8 @@ describe('normalizeDesignSystem()', () => {
     assert.equal(isAllowedRadiusRaw('0', designSystem), true);
     assert.equal(isAllowedRadiusRaw('50%', designSystem), true);
     assert.equal(isAllowedRadiusRaw('80px', designSystem), true);
+    assert.equal(isAllowedRadiusRaw('12px', designSystem), true);
+    assert.equal(isAllowedRadiusRaw('24px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('100px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('9999px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('18px', designSystem), false);
@@ -118,6 +126,9 @@ rounded:
             tonalRamp: ['#d55a42'],
           },
         },
+        roundedMeta: {
+          lg: { canonical: '24px' },
+        },
       },
     }));
 
@@ -131,6 +142,7 @@ rounded:
     assert.equal(loaded.mdNewerThanJson, true);
     assert.equal(isAllowedColorRaw('#d55a42', loaded), true);
     assert.equal(isAllowedRadiusRaw('80px', loaded), true);
+    assert.equal(isAllowedRadiusRaw('24px', loaded), true);
   });
 });
 

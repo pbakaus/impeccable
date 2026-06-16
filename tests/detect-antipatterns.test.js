@@ -960,6 +960,10 @@ rounded:
       const disabled = runIn(dir, '--json', '--no-design-system', 'index.html');
       const disabledIds = JSON.parse(disabled.stdout).map((finding) => finding.antipattern);
       expect(disabledIds.some((id) => id.startsWith('design-system-'))).toBe(false);
+
+      const raw = runIn(dir, '--json', '--no-config', 'index.html');
+      const rawIds = JSON.parse(raw.stdout).map((finding) => finding.antipattern);
+      expect(rawIds.some((id) => id.startsWith('design-system-'))).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

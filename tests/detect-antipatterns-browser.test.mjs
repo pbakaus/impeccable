@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBrowserDetector, detectUrl, normalizeDesignSystem } from '../cli/engine/detect-antipatterns.mjs';
+import { filterDetectionFindings } from '../cli/lib/impeccable-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -162,6 +163,16 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.match(snippets, /Flag Color Hot Pink/);
     assert.match(snippets, /Flag Radius Eighteen/);
     assert.doesNotMatch(snippets, /Pass Mid Pill Radius/);
+
+    const filtered = filterDetectionFindings(f, {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'design-system-font', value: 'poppins' }],
+    });
+    assert.equal(
+      filtered.some(r => r.antipattern === 'design-system-font' && /poppins/i.test(r.ignoreValue || r.snippet || '')),
+      false,
+      'URL design-system findings should carry ignoreValue for CLI suppressions',
+    );
   });
 
   it('clipped-overflow-container: utility-named popovers still flag when clipped', async () => {

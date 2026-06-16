@@ -284,13 +284,45 @@ function addRoundedScale(out, rounded) {
   if (!rounded || typeof rounded !== 'object') return;
   for (const [rawName, value] of Object.entries(rounded)) {
     const name = unquoteYamlKey(rawName).toLowerCase();
-    if (typeof value !== 'string' && typeof value !== 'number') continue;
-    const raw = String(value).trim();
-    if (!raw || /var\(/i.test(raw) || raw.includes('%')) continue;
-    const px = resolveLengthPx(raw, 16);
-    if (px == null || !Number.isFinite(px)) continue;
-    out.allowedRadii.push({ name, value: raw, px });
-    if (/^(full|pill|round|rounded-full)$/.test(name)) out.hasPillRadius = true;
+    addRoundedToken(out, name, value);
+  }
+}
+
+function addRoundedToken(out, name, value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return;
+  const raw = String(value).trim();
+  if (!raw || /var\(/i.test(raw) || raw.includes('%')) return;
+  const px = resolveLengthPx(raw, 16);
+  if (px == null || !Number.isFinite(px)) return;
+  out.allowedRadii.push({ name, value: raw, px });
+  if (/(^|\.)(full|pill|round|rounded-full)$/.test(name)) out.hasPillRadius = true;
+}
+
+function addSidecarRadii(out, sidecar) {
+  const roundedMeta = sidecar?.extensions?.roundedMeta;
+  if (!roundedMeta || typeof roundedMeta !== 'object') return;
+
+  for (const [rawName, meta] of Object.entries(roundedMeta)) {
+    const name = unquoteYamlKey(rawName).toLowerCase();
+    if (typeof meta === 'string' || typeof meta === 'number') {
+      addRoundedToken(out, `sidecar.${name}`, meta);
+      continue;
+    }
+    if (!meta || typeof meta !== 'object') continue;
+    for (const key of ['canonical', 'value']) {
+      if (typeof meta[key] === 'string' || typeof meta[key] === 'number') {
+        addRoundedToken(out, `sidecar.${name}.${key}`, meta[key]);
+      }
+    }
+    for (const key of ['values', 'aliases']) {
+      if (!Array.isArray(meta[key])) continue;
+      for (const [index, value] of meta[key].entries()) {
+        addRoundedToken(out, `sidecar.${name}.${key}[${index}]`, value);
+      }
+    }
+    if (/^(full|pill|round|rounded-full)$/.test(name) || /^(full|pill|round)$/i.test(String(meta.role || ''))) {
+      out.hasPillRadius = true;
+    }
   }
 }
 
@@ -312,6 +344,7 @@ function normalizeDesignSystem(input = {}) {
   addColorObject(out, frontmatter.colors);
   addSidecarColors(out, sidecar);
   addRoundedScale(out, frontmatter.rounded);
+  addSidecarRadii(out, sidecar);
 
   out.hasFonts = out.allowedFonts.size > 0;
   out.hasColors = out.allowedColorKeys.size > 0;
@@ -666,13 +699,17 @@ function canonicalDesignFindingKey(item) {
 
 function mergeDesignSystemFindings(...groups) {
   const out = [];
-  const seen = new Set();
+  const seen = new Map();
   for (const group of groups) {
     for (const item of group || []) {
       const key = canonicalDesignFindingKey(item);
       if (key) {
-        if (seen.has(key)) continue;
-        seen.add(key);
+        if (seen.has(key)) {
+          const existing = out[seen.get(key)];
+          if ((existing.line || 0) <= 0 && (item.line || 0) > 0) existing.line = item.line;
+          continue;
+        }
+        seen.set(key, out.length);
       }
       out.push(item);
     }

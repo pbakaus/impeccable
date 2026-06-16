@@ -213,7 +213,7 @@ async function detectUrl(url, options = {}) {
         return window.impeccableDetect({ decorate: false, serialize: true });
       });
       return serializedGroups.flatMap(({ findings }) =>
-        findings.map(f => ({ id: f.type, snippet: f.detail }))
+        findings.map(f => ({ id: f.type, snippet: f.detail, ignoreValue: f.ignoreValue || '' }))
       );
     });
     const visualFindings = await runVisualContrastFallback(page, serializedGroups, options, profile, url);
@@ -234,7 +234,11 @@ async function detectUrl(url, options = {}) {
       }, () => browser.close());
     }
   }
-  return filterByProviders(results.map(f => finding(f.id, url, f.snippet)), options.providers);
+  return filterByProviders(results.map(f => {
+    const item = finding(f.id, url, f.snippet);
+    if (f.ignoreValue) item.ignoreValue = f.ignoreValue;
+    return item;
+  }), options.providers);
 }
 
 async function createBrowserDetector(options = {}) {
