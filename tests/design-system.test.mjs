@@ -175,6 +175,28 @@ describe('checkSourceDesignSystem()', () => {
     );
   });
 
+  it('strips CSS priority markers before checking font-family declarations', () => {
+    const designSystem = sampleDesignSystem();
+    const findings = checkSourceDesignSystem(`
+.good {
+  font-family: "IBM Plex Sans", Arial, sans-serif !important;
+}
+
+.also-good {
+  font-family: "Avenir Next" !important;
+}
+
+.bad {
+  font-family: "Poppins" !important;
+}
+`, '/tmp/important.css', { designSystem });
+
+    assert.deepEqual(
+      findings.map((item) => item.ignoreValue),
+      ['Poppins'],
+    );
+  });
+
   it('does not treat issue labels, HTML entities, or font variables as literal design values', () => {
     const designSystem = sampleDesignSystem();
     const findings = checkSourceDesignSystem(`

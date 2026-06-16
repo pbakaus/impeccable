@@ -156,6 +156,8 @@ function safeReadJson(filePath) {
 function normalizeFontName(value) {
   return String(value || '')
     .trim()
+    .replace(/\s*!important\s*$/i, '')
+    .trim()
     .replace(/^["']|["']$/g, '')
     .replace(/\+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -164,6 +166,7 @@ function normalizeFontName(value) {
 
 function splitFontStack(stack) {
   return String(stack || '')
+    .replace(/\s*!important\s*$/i, '')
     .split(',')
     .map(normalizeFontName)
     .filter(Boolean);
