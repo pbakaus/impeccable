@@ -160,17 +160,18 @@ describe('checkSourceDesignSystem()', () => {
 .bad {
   font-family: "Poppins", sans-serif;
   color: #ff00aa;
+  background: rgba(255, 0, 170, 1);
   border-radius: 18px;
 }
 `, '/tmp/source.css', { designSystem });
 
     assert.deepEqual(
       findings.map((item) => item.antipattern),
-      ['design-system-font', 'design-system-color', 'design-system-radius'],
+      ['design-system-font', 'design-system-color', 'design-system-color', 'design-system-radius'],
     );
     assert.deepEqual(
       findings.map((item) => item.ignoreValue),
-      ['Poppins', '#ff00aa', '18px'],
+      ['Poppins', '#ff00aa', 'rgba(255, 0, 170, 1)', '18px'],
     );
   });
 
@@ -181,6 +182,8 @@ describe('checkSourceDesignSystem()', () => {
 <span class="spread-flow-icon">&#8596;</span>
 const MONO = 'SFMono-Regular, Roboto Mono, Consolas, monospace';
 const FONT = 'IBM Plex Sans, Arial, sans-serif';
+const COLOR_SAMPLE = 'rgba(255, 0, 170, 1)';
+const COLOR_NOTE = 'oklch(60% 0.2 20)';
 button.innerHTML = \`<span style="font-family:\${labelFont || FONT};">Pick</span>\`;
 scale.style.cssText = 'font-family:' + MONO + '; font-size: 10px;';
 .demo [style*="background: #fef3c7"] {

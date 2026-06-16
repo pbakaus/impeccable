@@ -422,19 +422,20 @@ function lineLooksCommented(line) {
 
 function isProbablyColorLiteral(line, match) {
   const raw = match?.[0] || '';
-  if (isInsideCssAttributeSelector(line, match?.index ?? -1)) return false;
-  if (!raw.startsWith('#')) return true;
-
   const index = match.index ?? -1;
-  if (index <= 0) return index === 0;
+  if (index < 0) return false;
+  if (isInsideCssAttributeSelector(line, index)) return false;
 
   const before = line.slice(0, index);
   const after = line.slice(index + raw.length);
-  if (before.endsWith('&')) return false; // HTML numeric entity, e.g. &#8596;
 
-  const prevNonSpace = before.match(/\S(?=\s*$)/)?.[0] || '';
-  const nextNonSpace = after.match(/^\s*(\S)/)?.[1] || '';
-  if (prevNonSpace === '>' && nextNonSpace === '<') return false; // plain text, e.g. PR #155
+  if (raw.startsWith('#')) {
+    if (before.endsWith('&')) return false; // HTML numeric entity, e.g. &#8596;
+
+    const prevNonSpace = before.match(/\S(?=\s*$)/)?.[0] || '';
+    const nextNonSpace = after.match(/^\s*(\S)/)?.[1] || '';
+    if (prevNonSpace === '>' && nextNonSpace === '<') return false; // plain text, e.g. PR #155
+  }
 
   const styleContext = /(?:^|[{\s;"'`(,])(?:color|background(?:-color|-image)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|box-shadow|text-shadow|fill|stroke)\s*:\s*[^;{}"'`]*/i.test(before);
   const cssFunctionContext = /(?:linear-gradient|radial-gradient|conic-gradient|color-mix)\([^)]*$/i.test(before);
