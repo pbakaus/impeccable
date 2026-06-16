@@ -93,8 +93,9 @@ Options:
   --help              Show this help message
 
 Project config:
-  Respects .impeccable/config.json and .impeccable/config.local.json hook
-  filters: ignoreRules, ignoreFiles, ignoreValues, and designSystem.enabled.
+  Respects .impeccable/config.json and .impeccable/config.local.json detector
+  settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
+  and detector.designSystem.enabled.
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)

@@ -8,7 +8,11 @@
  * ignore filtering, and exclude marker in sync if either side changes.
  *
  * Schema (config.json shared / config.local.json gitignored, per-developer):
- *   { "hook": { "consent": "accepted" | "declined", "ignoreRules": [], "ignoreFiles": [], "ignoreValues": [], ... }, "updateCheck": bool }
+ *   {
+ *     "detector": { "ignoreRules": [], "ignoreFiles": [], "ignoreValues": [], "designSystem": { "enabled": true } },
+ *     "hook": { "consent": "accepted" | "declined", ... },
+ *     "updateCheck": bool
+ *   }
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
@@ -35,6 +39,12 @@ function hookSection(raw) {
   return raw && raw.hook && typeof raw.hook === 'object' && !Array.isArray(raw.hook) ? raw.hook : null;
 }
 
+function detectorSection(raw) {
+  return raw && raw.detector && typeof raw.detector === 'object' && !Array.isArray(raw.detector) ? raw.detector : null;
+}
+
+const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem']);
+
 const DEFAULT_DETECTION_CONFIG = Object.freeze({
   ignoreRules: [],
   ignoreFiles: [],
@@ -48,6 +58,14 @@ function cloneDetectionConfig() {
     ignoreFiles: [],
     ignoreValues: [],
     designSystem: { ...DEFAULT_DETECTION_CONFIG.designSystem },
+  };
+}
+
+function cloneRawDetectionConfig() {
+  return {
+    ignoreRules: [],
+    ignoreFiles: [],
+    ignoreValues: [],
   };
 }
 
@@ -83,9 +101,71 @@ function uniqueStrings(values) {
  */
 export function readDetectionConfig(root) {
   const config = cloneDetectionConfig();
-  applyDetectionConfigSource(config, hookSection(safeReadJson(getConfigPath(root))));
-  applyDetectionConfigSource(config, hookSection(safeReadJson(getLocalConfigPath(root))));
+  for (const filePath of [getConfigPath(root), getLocalConfigPath(root)]) {
+    const raw = safeReadJson(filePath);
+    // Back-compat: old builds stored detector filters under hook.*.
+    applyDetectionConfigSource(config, hookSection(raw));
+    applyDetectionConfigSource(config, detectorSection(raw));
+  }
   return config;
+}
+
+export function readRawDetectionConfig(root, opts = {}) {
+  const raw = safeReadJson(opts.local ? getLocalConfigPath(root) : getConfigPath(root));
+  const config = cloneRawDetectionConfig();
+  applyDetectionConfigSource(config, hookSection(raw));
+  applyDetectionConfigSource(config, detectorSection(raw));
+  return config;
+}
+
+export function writeDetectionConfig(root, detectorConfig, opts = {}) {
+  const filePath = opts.local ? getLocalConfigPath(root) : getConfigPath(root);
+  if (opts.local) ensureConfigGitExclude(root);
+  const existing = safeReadJson(filePath) || {};
+  const existingHook = hookSection(existing);
+  const nextHook = stripDetectorKeys(existingHook);
+  const nextDetector = {
+    ...(detectorSection(existing) || {}),
+    ...normalizeDetectionConfigForWrite(detectorConfig),
+  };
+  const next = {
+    ...existing,
+    detector: nextDetector,
+  };
+  if (nextHook && Object.keys(nextHook).length > 0) {
+    next.hook = nextHook;
+  } else {
+    delete next.hook;
+  }
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`);
+  return filePath;
+}
+
+function normalizeDetectionConfigForWrite(config) {
+  const out = {};
+  if (Array.isArray(config?.ignoreRules)) {
+    out.ignoreRules = uniqueStrings(config.ignoreRules.map((rule) => normalizeIgnoreRule(rule)).filter(Boolean));
+  }
+  if (Array.isArray(config?.ignoreFiles)) {
+    out.ignoreFiles = uniqueStrings(config.ignoreFiles.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()));
+  }
+  out.ignoreValues = normalizeIgnoreValueEntries(config?.ignoreValues || []);
+  if (config?.designSystem && typeof config.designSystem === 'object' && !Array.isArray(config.designSystem)) {
+    out.designSystem = {
+      enabled: config.designSystem.enabled === false ? false : true,
+    };
+  }
+  return out;
+}
+
+function stripDetectorKeys(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!DETECTOR_CONFIG_KEYS.has(key)) out[key] = value;
+  }
+  return out;
 }
 
 export function normalizeIgnoreValue(value) {

@@ -1,6 +1,5 @@
 {
-  "hook": {
-    "enabled": true,
+  "detector": {
     "ignoreRules": [],
     "ignoreFiles": [
       "tests/fixtures/**",
@@ -73,7 +72,10 @@
         "createdAt": "2026-06-15T23:37:38.170Z",
         "reason": "Generic slop card intentionally uses Inter for the before-state comparison"
       }
-    ],
+    ]
+  },
+  "hook": {
+    "enabled": true,
     "limits": {
       "maxFindings": 5,
       "maxChars": 8000

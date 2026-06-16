@@ -136,10 +136,14 @@ export function resolveProjectCwd(event, fallback = process.cwd()) {
 
 export function readConfig(cwd) {
   const config = cloneDefaultConfig();
-  // Hook settings live under the `hook` key of config.json (shared) and
-  // config.local.json (per-developer, gitignored); local wins.
-  applyConfigSource(config, hookSection(safeReadJson(getConfigPath(cwd))));
-  applyConfigSource(config, hookSection(safeReadJson(getLocalConfigPath(cwd))));
+  // Hook runtime settings live under `hook`; detector filters live under
+  // `detector`. Back-compat: older configs stored detector filters in `hook`,
+  // so read those first and let canonical `detector` settings win.
+  for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd)]) {
+    const raw = safeReadJson(filePath);
+    applyConfigSource(config, hookSection(raw));
+    applyDetectorConfigSource(config, detectorSection(raw));
+  }
   return config;
 }
 
@@ -147,6 +151,11 @@ export function readConfig(cwd) {
 function hookSection(raw) {
   if (!raw || typeof raw !== 'object') return null;
   return raw.hook && typeof raw.hook === 'object' && !Array.isArray(raw.hook) ? raw.hook : null;
+}
+
+function detectorSection(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return raw.detector && typeof raw.detector === 'object' && !Array.isArray(raw.detector) ? raw.detector : null;
 }
 
 function numberOr(value, fallback) {
@@ -164,17 +173,8 @@ function cloneDefaultConfig() {
   };
 }
 
-function applyConfigSource(config, raw) {
+function applyDetectorConfigSource(config, raw) {
   if (!raw || typeof raw !== 'object') return config;
-  if (Object.prototype.hasOwnProperty.call(raw, 'enabled')) {
-    config.enabled = raw.enabled === false ? false : true;
-  }
-  if (Object.prototype.hasOwnProperty.call(raw, 'quiet')) {
-    config.quiet = raw.quiet === true;
-  }
-  if (typeof raw.auditLog === 'string' && raw.auditLog.trim()) {
-    config.auditLog = raw.auditLog.trim();
-  }
   if (raw.designSystem && typeof raw.designSystem === 'object' && !Array.isArray(raw.designSystem)) {
     config.designSystem = {
       ...config.designSystem,
@@ -190,6 +190,21 @@ function applyConfigSource(config, raw) {
   if (Array.isArray(raw.ignoreValues)) {
     config.ignoreValues = mergeIgnoreValues(config.ignoreValues, raw.ignoreValues);
   }
+  return config;
+}
+
+function applyConfigSource(config, raw) {
+  if (!raw || typeof raw !== 'object') return config;
+  if (Object.prototype.hasOwnProperty.call(raw, 'enabled')) {
+    config.enabled = raw.enabled === false ? false : true;
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'quiet')) {
+    config.quiet = raw.quiet === true;
+  }
+  if (typeof raw.auditLog === 'string' && raw.auditLog.trim()) {
+    config.auditLog = raw.auditLog.trim();
+  }
+  applyDetectorConfigSource(config, raw);
   if (raw.limits && typeof raw.limits === 'object') {
     config.limits = {
       maxFindings: numberOr(raw.limits.maxFindings, config.limits.maxFindings),

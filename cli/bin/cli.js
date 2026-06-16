@@ -5,6 +5,7 @@
  *
  * Usage:
  *   npx impeccable detect [file-or-dir-or-url...]
+ *   npx impeccable ignores <list|add-file|add-value|remove-...>
  *   npx impeccable help|install|update
  *   npx impeccable --help
  */
@@ -25,6 +26,7 @@ async function main() {
 
 Commands:
   detect [file-or-dir-or-url...]   Scan for UI anti-patterns and design quality issues
+  ignores                          Manage detector ignore rules, files, and values
   help                             List all available skills and commands
   install                          Install impeccable skills into your project or global harness
   link                             Symlink skills from a local checkout or submodule
@@ -50,6 +52,9 @@ Compatibility:
     process.argv = [process.argv[0], process.argv[1], ...args.slice(1)];
     const { detectCli } = await import('../engine/detect-antipatterns.mjs');
     await detectCli();
+  } else if (command === 'ignores' || command === 'ignore') {
+    const { run } = await import('./commands/ignores.mjs');
+    await run(args.slice(1));
   } else if (command === 'skills') {
     const { run } = await import('./commands/skills.mjs');
     await run(args.slice(1));

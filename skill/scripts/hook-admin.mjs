@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * `/impeccable hooks <on|off|status|reset>` — manage the design hook
- * via the `hook` key of .impeccable/config.json and .impeccable/config.local.json
- * in the current project.
+ * `/impeccable hooks <on|off|status|reset>` — manage the design hook runtime
+ * via the `hook` key and shared detector ignores via the `detector` key in
+ * .impeccable/config.json / .impeccable/config.local.json.
  *
  * Usage:
  *   node hook-admin.mjs status                         # print current state
@@ -120,23 +120,48 @@ function readRawConfigFile(filePath) {
   }
 }
 
-// The hook settings to edit: the unified file's `hook` subtree.
-function readRawConfig(cwd, opts = {}) {
-  const unified = readRawConfigFile(opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd)).raw;
-  if (unified && typeof unified === 'object' && unified.hook && typeof unified.hook === 'object') {
-    return unified.hook;
-  }
-  return null;
+const DETECTOR_CONFIG_KEYS = new Set(['ignoreRules', 'ignoreFiles', 'ignoreValues', 'designSystem']);
+
+function hookSection(unified) {
+  return unified && typeof unified === 'object' && !Array.isArray(unified) && unified.hook && typeof unified.hook === 'object' && !Array.isArray(unified.hook)
+    ? unified.hook
+    : null;
 }
 
-// Write the hook config back under the `hook` key of the unified file, leaving
-// any sibling keys (e.g. updateCheck) untouched.
-function writeConfig(cwd, hookConfig, opts = {}) {
+function detectorSection(unified) {
+  return unified && typeof unified === 'object' && !Array.isArray(unified) && unified.detector && typeof unified.detector === 'object' && !Array.isArray(unified.detector)
+    ? unified.detector
+    : null;
+}
+
+function readRawHookConfig(cwd, opts = {}) {
+  const unified = readRawConfigFile(opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd)).raw;
+  return hookSection(unified);
+}
+
+function readRawDetectorConfig(cwd, opts = {}) {
+  const unified = readRawConfigFile(opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd)).raw;
+  const merged = mergeDetectorConfig(hookSection(unified));
+  return mergeDetectorConfig(detectorSection(unified), merged);
+}
+
+function stripDetectorKeys(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!DETECTOR_CONFIG_KEYS.has(key)) out[key] = value;
+  }
+  return out;
+}
+
+// Write hook runtime config under `hook`, leaving detector filters in
+// `detector` and preserving sibling keys such as updateCheck.
+function writeHookConfig(cwd, hookConfig, opts = {}) {
   const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
   if (opts.local) ensureHookGitExcludes(cwd);
   const existingRaw = readRawConfigFile(filePath).raw;
   const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
-  const existingHook = existing.hook && typeof existing.hook === 'object' && !Array.isArray(existing.hook) ? existing.hook : {};
+  const existingHook = stripDetectorKeys(hookSection(existing));
   // Merge over the existing hook object so fields the merge helpers don't manage
   // (consent, quiet, auditLog) survive a `/impeccable hooks` edit.
   const next = { ...existing, hook: { ...existingHook, ...hookConfig } };
@@ -145,15 +170,28 @@ function writeConfig(cwd, hookConfig, opts = {}) {
   return filePath;
 }
 
-function mergeConfig(existing) {
-  // Persist the full shape so /impeccable hooks edits leave a complete file
-  // for the user to see, not an unhelpful `{"enabled":false}`.
+function writeDetectorConfig(cwd, detectorConfig, opts = {}) {
+  const filePath = opts.local ? getLocalConfigPath(cwd) : getConfigPath(cwd);
+  if (opts.local) ensureHookGitExcludes(cwd);
+  const existingRaw = readRawConfigFile(filePath).raw;
+  const existing = existingRaw && typeof existingRaw === 'object' && !Array.isArray(existingRaw) ? existingRaw : {};
+  const nextHook = stripDetectorKeys(hookSection(existing));
+  const existingDetector = mergeDetectorConfig(detectorSection(existing));
+  const next = {
+    ...existing,
+    detector: mergeDetectorConfig(detectorConfig, existingDetector),
+  };
+  if (Object.keys(nextHook).length > 0) next.hook = nextHook;
+  else delete next.hook;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(next, null, 2) + '\n');
+  return filePath;
+}
+
+function mergeHookConfig(existing) {
   const base = existing && typeof existing === 'object' ? existing : {};
   return {
     enabled: base.enabled === false ? false : true,
-    ignoreRules: Array.isArray(base.ignoreRules) ? Array.from(new Set(base.ignoreRules.map(String))) : [],
-    ignoreFiles: Array.isArray(base.ignoreFiles) ? Array.from(new Set(base.ignoreFiles.map(String))) : [],
-    ignoreValues: normalizeIgnoreValueEntries(base.ignoreValues || []),
     limits: {
       maxFindings: Number.isFinite(base?.limits?.maxFindings) ? base.limits.maxFindings : DEFAULT_CONFIG.limits.maxFindings,
       maxChars: Number.isFinite(base?.limits?.maxChars) ? base.limits.maxChars : DEFAULT_CONFIG.limits.maxChars,
@@ -161,26 +199,52 @@ function mergeConfig(existing) {
   };
 }
 
-function mergeLocalConfig(existing) {
+function mergeDetectorConfig(existing, seed = null) {
   const base = existing && typeof existing === 'object' ? existing : {};
-  const out = {};
-  if (Object.prototype.hasOwnProperty.call(base, 'enabled')) {
-    out.enabled = base.enabled === false ? false : true;
+  const out = seed ? {
+    ignoreRules: [...seed.ignoreRules],
+    ignoreFiles: [...seed.ignoreFiles],
+    ignoreValues: normalizeIgnoreValueEntries(seed.ignoreValues),
+  } : {
+    ignoreRules: [],
+    ignoreFiles: [],
+    ignoreValues: [],
+  };
+  if (seed?.designSystem && typeof seed.designSystem === 'object' && !Array.isArray(seed.designSystem)) {
+    out.designSystem = { ...seed.designSystem };
+  }
+  if (base.designSystem && typeof base.designSystem === 'object' && !Array.isArray(base.designSystem)) {
+    out.designSystem = {
+      ...(out.designSystem || {}),
+      enabled: base.designSystem.enabled === false ? false : true,
+    };
   }
   if (Array.isArray(base.ignoreRules)) {
-    out.ignoreRules = Array.from(new Set(base.ignoreRules.map(String)));
+    out.ignoreRules = Array.from(new Set([...out.ignoreRules, ...base.ignoreRules.map(String)]));
   }
   if (Array.isArray(base.ignoreFiles)) {
-    out.ignoreFiles = Array.from(new Set(base.ignoreFiles.map(String)));
+    out.ignoreFiles = Array.from(new Set([...out.ignoreFiles, ...base.ignoreFiles.map(String)]));
   }
-  out.ignoreValues = normalizeIgnoreValueEntries(base.ignoreValues || []);
-  if (base.limits && typeof base.limits === 'object') {
-    const limits = {};
-    if (Number.isFinite(base.limits.maxFindings)) limits.maxFindings = base.limits.maxFindings;
-    if (Number.isFinite(base.limits.maxChars)) limits.maxChars = base.limits.maxChars;
-    if (Object.keys(limits).length) out.limits = limits;
+  if (Array.isArray(base.ignoreValues)) {
+    out.ignoreValues = mergeIgnoreValueEntries(out.ignoreValues, base.ignoreValues);
   }
   return out;
+}
+
+function mergeIgnoreValueEntries(existing, incoming) {
+  const map = new Map();
+  for (const entry of normalizeIgnoreValueEntries(existing)) {
+    map.set(ignoreValueEntryKey(entry), entry);
+  }
+  for (const entry of normalizeIgnoreValueEntries(incoming)) {
+    map.set(ignoreValueEntryKey(entry), entry);
+  }
+  return Array.from(map.values());
+}
+
+function ignoreValueEntryKey(entry) {
+  const files = Array.isArray(entry.files) && entry.files.length > 0 ? entry.files.join('\x1f') : '';
+  return `${entry.rule}\0${entry.value}\0${files}`;
 }
 
 function statusReport(cwd) {
@@ -216,14 +280,14 @@ function statusReport(cwd) {
 }
 
 function setEnabled(cwd, value) {
-  const config = mergeConfig(readRawConfig(cwd));
+  const config = mergeHookConfig(readRawHookConfig(cwd));
   config.enabled = value;
-  const target = writeConfig(cwd, config);
+  const target = writeHookConfig(cwd, config);
   if (!value) {
     return `Design hook disabled for this project (wrote ${path.relative(cwd, target) || target}).`;
   }
 
-  const localTarget = writeConfig(cwd, { consent: 'accepted' }, { local: true });
+  const localTarget = writeHookConfig(cwd, { consent: 'accepted' }, { local: true });
   const repaired = repairHookManifests(cwd);
   const parts = [
     `Design hook enabled for this project (wrote ${path.relative(cwd, target) || target}).`,
@@ -429,18 +493,18 @@ function addIgnoreRule(cwd, args) {
   if (rule === 'overused-font' && !parsed.allValues) {
     throw new Error('overused-font is value-specific by default. Use /impeccable hooks ignore-value overused-font <font> for a confirmed font, or /impeccable hooks ignore-rule overused-font --all-values only when the user asked to ignore overused fonts generally.');
   }
-  const config = mergeConfig(readRawConfig(cwd));
+  const config = mergeDetectorConfig(readRawDetectorConfig(cwd));
   if (!config.ignoreRules.includes(rule)) config.ignoreRules.push(rule);
-  writeConfig(cwd, config);
-  return `Added "${rule}" to ignoreRules. Current: ${config.ignoreRules.join(', ')}`;
+  writeDetectorConfig(cwd, config);
+  return `Added "${rule}" to detector.ignoreRules. Current: ${config.ignoreRules.join(', ')}`;
 }
 
 function addIgnoreFile(cwd, glob) {
   if (!glob) throw new Error('Pass a glob, e.g. /impeccable hooks ignore-file "src/legacy/**"');
-  const config = mergeConfig(readRawConfig(cwd));
+  const config = mergeDetectorConfig(readRawDetectorConfig(cwd));
   if (!config.ignoreFiles.includes(glob)) config.ignoreFiles.push(glob);
-  writeConfig(cwd, config);
-  return `Added "${glob}" to ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
+  writeDetectorConfig(cwd, config);
+  return `Added "${glob}" to detector.ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
 }
 
 function parseIgnoreValueArgs(args) {
@@ -489,9 +553,7 @@ function addIgnoreValue(cwd, args) {
   }
 
   const local = parsed.local;
-  const config = local
-    ? mergeLocalConfig(readRawConfig(cwd, { local: true }))
-    : mergeConfig(readRawConfig(cwd, { local: false }));
+  const config = mergeDetectorConfig(readRawDetectorConfig(cwd, { local }));
   const key = `${parsed.rule}\0${parsed.value}`;
   const existing = config.ignoreValues.find((entry) => `${entry.rule}\0${entry.value}` === key);
 
@@ -507,20 +569,20 @@ function addIgnoreValue(cwd, args) {
     config.ignoreValues.push(entry);
   }
 
-  const target = writeConfig(cwd, config, { local });
-  const scope = local ? 'local ignoreValues' : 'shared ignoreValues';
+  const target = writeDetectorConfig(cwd, config, { local });
+  const scope = local ? 'local detector.ignoreValues' : 'shared detector.ignoreValues';
   return `Added ${parsed.rule}=${parsed.value} to ${scope} (${path.relative(cwd, target) || target}).`;
 }
 
 function reset(cwd) {
   const removed = [];
   // Unified files may hold non-hook keys (e.g. updateCheck); strip only the
-  // hook subtree and keep the rest, deleting the file only if nothing remains.
+  // hook/detector subtrees and keep the rest, deleting the file only if nothing remains.
   for (const filePath of [getConfigPath(cwd), getLocalConfigPath(cwd)]) {
     try {
       const raw = readRawConfigFile(filePath).raw;
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('hook' in raw)) continue;
-      const { hook, ...rest } = raw;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw) || (!('hook' in raw) && !('detector' in raw))) continue;
+      const { hook, detector, ...rest } = raw;
       if (Object.keys(rest).length === 0) {
         fs.unlinkSync(filePath);
       } else {

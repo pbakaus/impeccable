@@ -133,7 +133,7 @@ describe('readConfig()', () => {
     assert.equal(cfg.limits.maxFindings, DEFAULT_CONFIG.limits.maxFindings);
   });
 
-  it('parses enabled, ignoreRules, ignoreFiles, limits', () => {
+  it('parses hook runtime and legacy hook detector filters', () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
       hook: {
@@ -158,26 +158,30 @@ describe('readConfig()', () => {
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
       hook: {
         enabled: false,
+        minSeverity: 'error',
+        limits: { maxFindings: 2, maxChars: 1000 },
+      },
+      detector: {
         ignoreRules: ['side-tab'],
         ignoreFiles: ['src/legacy/**'],
         ignoreValues: [
           { rule: 'overused-font', value: 'inter', reason: 'team default' },
         ],
-        minSeverity: 'error',
-        limits: { maxFindings: 2, maxChars: 1000 },
       },
     }));
     fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({
       hook: {
         enabled: true,
+        minSeverity: 'warning',
+        limits: { maxFindings: 4 },
+      },
+      detector: {
         ignoreRules: ['gradient-text', 'side-tab'],
         ignoreFiles: ['src/local/**'],
         ignoreValues: [
           { rule: 'overused-font', value: 'Roboto' },
           { rule: 'overused-font', value: 'Inter', reason: 'local override' },
         ],
-        minSeverity: 'warning',
-        limits: { maxFindings: 4 },
       },
     }));
 
@@ -219,7 +223,8 @@ describe('readConfig()', () => {
   it('parses the new quiet and auditLog fields from the unified config', () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: { quiet: true, auditLog: '~/hook.ndjson', designSystem: { enabled: false } },
+      hook: { quiet: true, auditLog: '~/hook.ndjson' },
+      detector: { designSystem: { enabled: false } },
     }));
     const cfg = readConfig(cwd);
     assert.equal(cfg.quiet, true);
@@ -454,8 +459,9 @@ describe('hook-admin.mjs', () => {
     const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
     assert.match(out, /overused-font=inter/);
     assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
-    assert.equal(shared.enabled, true);
+    const raw = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8'));
+    assert.equal(raw.hook, undefined);
+    const shared = raw.detector;
     assert.deepEqual(shared.ignoreRules, []);
     assert.deepEqual(shared.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
       { rule: 'overused-font', value: 'inter', reason: 'User confirmed Inter' },
@@ -466,7 +472,7 @@ describe('hook-admin.mjs', () => {
   it('ignore-value --shared remains accepted for shared config', () => {
     runAdmin(['ignore-value', 'overused-font', 'Open', 'Sans', '--shared', '--reason', 'Brand font']);
     assert.equal(fs.existsSync(getLocalConfigPath(cwd)), false);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
     assert.deepEqual(shared.ignoreValues.map(({ rule, value, reason }) => ({ rule, value, reason })), [
       { rule: 'overused-font', value: 'open sans', reason: 'Brand font' },
     ]);
@@ -476,8 +482,10 @@ describe('hook-admin.mjs', () => {
     runAdmin(['ignore-value', 'overused-font', 'Inter', '--local']);
     runAdmin(['ignore-value', 'OVERUSED-FONT', '"Inter"', '--local', '--reason', 'Still intentional']);
     assert.equal(fs.existsSync(getConfigPath(cwd)), false);
-    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).hook;
-    assert.equal(local.enabled, undefined, 'local ignore should not override shared enabled state');
+    const raw = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
+    assert.equal(raw.hook, undefined);
+    const local = raw.detector;
+    assert.equal(local.designSystem, undefined, 'local ignore should not override shared design-system state');
     assert.equal(local.ignoreValues.length, 1);
     assert.equal(local.ignoreValues[0].reason, 'Still intentional');
 
@@ -491,9 +499,9 @@ describe('hook-admin.mjs', () => {
     // A recorded per-developer consent in the local file...
     fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({ hook: { consent: 'declined' } }));
     runAdmin(['ignore-value', 'overused-font', 'Inter', '--local']);
-    const local = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8')).hook;
-    assert.equal(local.consent, 'declined', 'consent must survive a local ignore-value edit');
-    assert.equal(local.ignoreValues.length, 1);
+    const localRaw = JSON.parse(fs.readFileSync(getLocalConfigPath(cwd), 'utf-8'));
+    assert.equal(localRaw.hook.consent, 'declined', 'consent must survive a local ignore-value edit');
+    assert.equal(localRaw.detector.ignoreValues.length, 1);
 
     // ...and a shared quiet flag survives an on/off toggle.
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ hook: { quiet: true } }));
@@ -549,15 +557,15 @@ describe('hook-admin.mjs', () => {
 
   it('ignore-rule overused-font --all-values writes a whole-rule suppression', () => {
     const out = runAdmin(['ignore-rule', 'overused-font', '--all-values', '--reason', 'User asked to ignore overused fonts generally']);
-    assert.match(out, /Added "overused-font" to ignoreRules/);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    assert.match(out, /Added "overused-font" to detector\.ignoreRules/);
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
     assert.deepEqual(shared.ignoreRules, ['overused-font']);
     assert.deepEqual(shared.ignoreValues, []);
   });
 
   it('ignore-rule still allows non-value rules without --all-values', () => {
     runAdmin(['ignore-rule', 'side-tab']);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
     assert.deepEqual(shared.ignoreRules, ['side-tab']);
   });
 
@@ -575,7 +583,7 @@ describe('hook-admin.mjs', () => {
 
     runAdmin(['ignore-file', 'src/ConfirmedCard.html']);
 
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
+    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
     assert.deepEqual(shared.ignoreFiles, ['src/ConfirmedCard.html']);
 
     const r = await runHook({
@@ -1010,11 +1018,11 @@ rounded:
     assert.match(withDesign.stdout, /ignore-value design-system-font Poppins --shared/);
   });
 
-  it('respects hook.designSystem.enabled=false', async () => {
+  it('respects detector.designSystem.enabled=false', async () => {
     writeDesignMd();
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: { designSystem: { enabled: false } },
+      detector: { designSystem: { enabled: false } },
     }));
     const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
 
@@ -1033,7 +1041,7 @@ rounded:
     writeDesignMd();
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: {
+      detector: {
         ignoreValues: [
           { rule: 'design-system-font', value: 'Poppins' },
         ],
@@ -1108,7 +1116,7 @@ rounded:
     const file = writeFixture('src/legacy/Foo.tsx', 'noop');
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
-      hook: { ignoreFiles: ['src/legacy/**'] },
+      detector: { ignoreFiles: ['src/legacy/**'] },
     }));
     const det = fakeDetector([finding('side-tab', 1)]);
     const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });

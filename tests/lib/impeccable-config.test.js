@@ -13,7 +13,9 @@ import {
   getConfigPath,
   ensureConfigGitExclude,
   readDetectionConfig,
+  readRawDetectionConfig,
   shouldIgnoreDetectionFile,
+  writeDetectionConfig,
 } from '../../cli/lib/impeccable-config.mjs';
 
 describe('cli/lib/impeccable-config', () => {
@@ -69,10 +71,10 @@ describe('cli/lib/impeccable-config', () => {
     expect(ensureConfigGitExclude(root)).toBe(false);
   });
 
-  test('readDetectionConfig merges shared and local hook filters', () => {
+  test('readDetectionConfig merges shared and local detector filters', () => {
     mkdirSync(join(root, '.impeccable'), { recursive: true });
     writeFileSync(getConfigPath(root), JSON.stringify({
-      hook: {
+      detector: {
         ignoreRules: ['side-tab'],
         ignoreFiles: ['src/legacy/**'],
         ignoreValues: [
@@ -83,7 +85,7 @@ describe('cli/lib/impeccable-config', () => {
       },
     }));
     writeFileSync(getLocalConfigPath(root), JSON.stringify({
-      hook: {
+      detector: {
         ignoreRules: ['gradient-text'],
         ignoreFiles: ['src/local/**'],
         ignoreValues: [
@@ -103,6 +105,67 @@ describe('cli/lib/impeccable-config', () => {
       { rule: 'bounce-easing', value: 'bounce-ball' },
     ]);
     expect(cfg.designSystem).toEqual({ enabled: true });
+  });
+
+  test('readDetectionConfig remains backward-compatible with legacy hook filters', () => {
+    mkdirSync(join(root, '.impeccable'), { recursive: true });
+    writeFileSync(getConfigPath(root), JSON.stringify({
+      hook: {
+        ignoreRules: ['side-tab'],
+        ignoreFiles: ['src/legacy/**'],
+        ignoreValues: [{ rule: 'overused-font', value: 'Avenir Next' }],
+        designSystem: { enabled: false },
+      },
+    }));
+    const cfg = readDetectionConfig(root);
+    expect(cfg.ignoreRules).toEqual(['side-tab']);
+    expect(cfg.ignoreFiles).toEqual(['src/legacy/**']);
+    expect(cfg.ignoreValues).toEqual([{ rule: 'overused-font', value: 'avenir next' }]);
+    expect(cfg.designSystem).toEqual({ enabled: false });
+  });
+
+  test('writeDetectionConfig writes detector config and strips legacy hook filters', () => {
+    mkdirSync(join(root, '.impeccable'), { recursive: true });
+    writeFileSync(getConfigPath(root), JSON.stringify({
+      updateCheck: false,
+      hook: {
+        consent: 'accepted',
+        quiet: true,
+        ignoreRules: ['legacy-rule'],
+        ignoreFiles: ['legacy/**'],
+        ignoreValues: [{ rule: 'overused-font', value: 'Legacy' }],
+      },
+    }));
+
+    const config = readRawDetectionConfig(root);
+    config.ignoreRules.push('side-tab');
+    config.ignoreFiles.push('src/legacy/**');
+    writeDetectionConfig(root, config);
+
+    const raw = JSON.parse(readFileSync(getConfigPath(root), 'utf-8'));
+    expect(raw.updateCheck).toBe(false);
+    expect(raw.hook).toEqual({ consent: 'accepted', quiet: true });
+    expect(raw.detector.ignoreRules).toEqual(['legacy-rule', 'side-tab']);
+    expect(raw.detector.ignoreFiles).toEqual(['legacy/**', 'src/legacy/**']);
+    expect(raw.detector.ignoreValues).toEqual([{ rule: 'overused-font', value: 'legacy' }]);
+    expect(raw.detector.designSystem).toBeUndefined();
+  });
+
+  test('writeDetectionConfig local ignores do not create an implicit design-system override', () => {
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    mkdirSync(join(root, '.impeccable'), { recursive: true });
+    writeFileSync(getConfigPath(root), JSON.stringify({
+      detector: { designSystem: { enabled: false } },
+    }));
+
+    const local = readRawDetectionConfig(root, { local: true });
+    local.ignoreValues.push({ rule: 'overused-font', value: 'Inter' });
+    writeDetectionConfig(root, local, { local: true });
+
+    const rawLocal = JSON.parse(readFileSync(getLocalConfigPath(root), 'utf-8'));
+    expect(rawLocal.detector.designSystem).toBeUndefined();
+    expect(readDetectionConfig(root).designSystem).toEqual({ enabled: false });
+    expect(readFileSync(join(root, '.git', 'info', 'exclude'), 'utf-8')).toContain('.impeccable/config.local.json');
   });
 
   test('shouldIgnoreDetectionFile matches relative and absolute paths', () => {

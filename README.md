@@ -293,11 +293,14 @@ npx impeccable detect index.html             # scan an HTML file
 npx impeccable detect https://example.com    # scan a URL (Puppeteer)
 npx impeccable detect --json .               # CI-friendly JSON output
 npx impeccable detect --no-config src/       # raw scan, ignoring .impeccable filters
+npx impeccable ignores list                  # show detector ignores
+npx impeccable ignores add-file "src/legacy/**"
+npx impeccable ignores add-value overused-font Inter --reason "Brand font"
 ```
 
 The detector catches 44 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
 
-By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` filters as the design hook: `hook.ignoreRules`, `hook.ignoreFiles`, `hook.ignoreValues`, and `hook.designSystem.enabled`.
+By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` detector config as the design hook: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, and `detector.designSystem.enabled`. Hook lifecycle settings such as `hook.enabled` only affect automatic hook execution.
 
 ## Supported Tools
 

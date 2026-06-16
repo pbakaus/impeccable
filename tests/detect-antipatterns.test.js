@@ -965,12 +965,12 @@ rounded:
     }
   });
 
-  test('hook designSystem.enabled=false disables CLI design-system rules', () => {
+  test('detector designSystem.enabled=false disables CLI design-system rules', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-design-disabled-'));
     try {
       fs.mkdirSync(path.join(dir, '.impeccable'), { recursive: true });
       fs.writeFileSync(path.join(dir, '.impeccable', 'config.json'), JSON.stringify({
-        hook: { designSystem: { enabled: false } },
+        detector: { designSystem: { enabled: false } },
       }));
       fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
 typography:
@@ -1002,7 +1002,7 @@ rounded:
   test('respects .impeccable config ignoreFiles like the hook', async () => {
     await withStaticFixture({
       '.impeccable/config.json': JSON.stringify({
-        hook: { ignoreFiles: ['src/noisy.css'] },
+        detector: { ignoreFiles: ['src/noisy.css'] },
       }),
       'src/noisy.css': "body { font-family: 'Inter', sans-serif; }",
     }, ({ dir }) => {
@@ -1015,7 +1015,7 @@ rounded:
   test('respects .impeccable config ignoreRules like the hook', async () => {
     await withStaticFixture({
       '.impeccable/config.json': JSON.stringify({
-        hook: { ignoreRules: ['side-tab'] },
+        detector: { ignoreRules: ['side-tab'] },
       }),
       'src/card.css': '.card { border-left: 4px solid #3b82f6; border-radius: 12px; }',
     }, ({ dir }) => {
@@ -1028,7 +1028,7 @@ rounded:
   test('respects .impeccable config ignoreValues like the hook', async () => {
     await withStaticFixture({
       '.impeccable/config.json': JSON.stringify({
-        hook: {
+        detector: {
           ignoreValues: [
             { rule: 'overused-font', value: 'Inter' },
           ],
@@ -1050,7 +1050,7 @@ rounded:
   test('respects scoped wildcard ignoreValues like the hook', async () => {
     await withStaticFixture({
       '.impeccable/config.json': JSON.stringify({
-        hook: {
+        detector: {
           ignoreValues: [
             { rule: 'overused-font', value: '*', files: ['src/main.css'] },
           ],
