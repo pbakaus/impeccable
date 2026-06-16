@@ -29,7 +29,7 @@ export const SUITES = {
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|skills-cli|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|skills-cli|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -37,6 +37,7 @@ export const SUITES = {
         runner: 'bun',
         files: [
           'tests/build.test.js',
+          'tests/cli-ignores.test.js',
           'tests/windows-path-fix.test.js',
           'tests/lib/provider-blocks.test.js',
           'tests/lib/transformers/provider-blocks.test.js',
