@@ -84,6 +84,13 @@ import '../styles/changelog-faq-kinpaku.css';
       </ul>
     </article>
 
+    <article id="cli-v3.0.2" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.2</span><span class="cf-date">June 16, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Install no longer fails silently on newer Node.</strong> On Node v24.16.0 and v26.1.0+, <code>impeccable install</code> printed "Downloading impeccable skills...", exited 0, and wrote nothing. A Node streams change (<a href="https://github.com/nodejs/node/issues/63487" target="_blank" rel="noopener">nodejs/node#63487</a>) made <code>pause()</code>/<code>resume()</code> no-ops on destroyed streams, which stalled the old <code>extract-zip</code> unpacker partway through and left its promise unsettled. ZIP extraction now runs on <code>fflate</code>, which decompresses in memory and is unaffected on every Node version, while staying pure JS so the Windows install fix holds. Reported by <a href="https://github.com/kenryu42" target="_blank" rel="noopener">@kenryu42</a> in <a href="https://github.com/pbakaus/impeccable/issues/250" target="_blank" rel="noopener">#250</a>.</li>
+      </ul>
+    </article>
+
     <article id="cli-v3.0.1" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">CLI v3.0.1</span><span class="cf-date">June 15, 2026</span></header>
       <ul class="cf-items">

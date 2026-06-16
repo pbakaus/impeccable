@@ -10,13 +10,13 @@
 
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, mkdirSync, writeFileSync, rmSync, renameSync, createWriteStream, realpathSync, symlinkSync, readlinkSync, cpSync } from 'node:fs';
-import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
+import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
 import { createInterface, emitKeypressEvents } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { get } from 'node:https';
 import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
-import extract from 'extract-zip';
+import { unzipSync } from 'fflate';
 import { getHookConsent, setHookConsent } from '../../lib/impeccable-config.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -437,6 +437,37 @@ function hashSkillsDir(skillsDir) {
 }
 
 /**
+ * Extract every entry of a zip archive into `targetDir`.
+ *
+ * This replaces `extract-zip`, whose `yauzl`/`fd-slicer` read stack stalls on
+ * Node v24.16.0 / v26.1.0+ (nodejs/node#63487): `pause()`/`resume()` became
+ * no-ops on destroyed streams, so extraction stops after a handful of entries,
+ * its promise never settles, and -- because nothing else keeps the event loop
+ * alive -- the CLI exits 0 with no error, silently installing nothing.
+ *
+ * `fflate` decompresses from an in-memory buffer and never touches the fs
+ * stream path, so it is immune to that regression on every Node version. It is
+ * pure JS with zero dependencies, which keeps the Windows fix from #198 intact
+ * (no `unzip` binary required). We write the entries to disk ourselves, which
+ * lets us guard against zip-slip (`../` entries escaping `targetDir`).
+ */
+async function extractZip(zipPath, targetDir) {
+  const entries = unzipSync(readFileSync(zipPath));
+  const root = resolve(targetDir);
+  for (const [entryPath, bytes] of Object.entries(entries)) {
+    // Directory entries arrive as zero-length names ending in `/`; the files
+    // beneath them create their parents via mkdirSync below.
+    if (entryPath.endsWith('/')) continue;
+    const dest = resolve(root, entryPath);
+    if (dest !== root && !dest.startsWith(root + sep)) {
+      throw new Error(`Refusing to extract entry outside target dir: ${entryPath}`);
+    }
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, bytes);
+  }
+}
+
+/**
  * Download the universal bundle to a temp dir and return its path.
  * Caller is responsible for cleanup.
  */
@@ -448,7 +479,7 @@ async function downloadAndExtractBundle() {
   const tmpDir = join(tmpdir(), `impeccable-update-${Date.now()}`);
   await downloadFile(`${API_BASE}/api/download/bundle/universal`, tmpZip);
   mkdirSync(tmpDir, { recursive: true });
-  await extract(tmpZip, { dir: tmpDir });
+  await extractZip(tmpZip, tmpDir);
   rmSync(tmpZip, { force: true });
   return tmpDir;
 }
@@ -467,7 +498,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
     return tmpDir;
   }
 
-  await extract(source, { dir: tmpDir });
+  await extractZip(source, tmpDir);
   return tmpDir;
 }
 
@@ -1701,6 +1732,7 @@ export {
   copyProviderSkills,
   decideHookInstall,
   expectedHookDests,
+  extractZip,
   formatInstallDetectionLines,
   linkProviderSkills,
   mergeHookManifests,
