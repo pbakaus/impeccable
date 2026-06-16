@@ -154,6 +154,24 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('does not autofocus the steering chat while a page editable is focused', () => {
+    assert.match(
+      SOURCE,
+      /function isPageEditableElement\(el\) \{[\s\S]{0,160}?own\(el\)[\s\S]{0,160}?\^\(INPUT\|TEXTAREA\|SELECT\)\$[\s\S]{0,80}?el\.isContentEditable/,
+      'page-owned inputs, textareas, selects, and contenteditables must be recognized before steer focus recovery runs',
+    );
+    assert.match(
+      SOURCE,
+      /function isPageEditableActive\(\) \{[\s\S]{0,120}?activeElementDeep\(\)[\s\S]{0,120}?isPageEditableElement\(active\) && !isInlineEditActive\(active\)/,
+      'auto-focus recovery must check the deep active element instead of only host text selection',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldSteerAutoFocus\(\) \{[\s\S]{0,160}?&& !isPageEditableActive\(\)/,
+      'steer chat auto-focus must back off while the page owns an editable caret',
+    );
+  });
+
   it('pins edit badge button metrics instead of inheriting host button chrome', () => {
     const start = SOURCE.indexOf('const calloutStyle = (color, borderColor) => ({');
     const end = SOURCE.indexOf('    });', start);
@@ -342,6 +360,22 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /&& !shouldPassthroughElementNav\(deepActive, e\)/,
       'global input guard must honor empty-input arrow passthrough',
+    );
+  });
+
+  it('lets page editables keep Enter and arrow keydown events', () => {
+    const start = SOURCE.indexOf('function handleKeyDown(e)');
+    const pendingApplyStart = SOURCE.indexOf('if (pendingApplyInFlight)', start);
+    const guardSource = SOURCE.slice(start, pendingApplyStart);
+    assert.match(
+      guardSource,
+      /isPageEditableElement\(deepActive\) && !isInlineEditActive\(deepActive\)[\s\S]{0,40}?return;/,
+      'page-owned editables must short-circuit global key handling before variant navigation or accept handling',
+    );
+    assert.match(
+      guardSource,
+      /e\.target\.isContentEditable && isInlineEditActive\(e\.target\)/,
+      'impeccable inline edit rows must keep their existing Escape-cancel path',
     );
   });
 

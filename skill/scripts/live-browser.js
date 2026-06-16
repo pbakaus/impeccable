@@ -6489,10 +6489,13 @@
     ) {
       return;
     }
+    if (isPageEditableElement(deepActive) && !isInlineEditActive(deepActive)) {
+      return;
+    }
     // While a contenteditable text-leaf is focused, let the browser handle
     // all keys except Escape. Escape cancels the current edit (restores
     // original text) and blurs without saving, staying in CONFIGURING.
-    if (e.target.isContentEditable && inlineEditRows.some((r) => r.el === e.target)) {
+    if (e.target.isContentEditable && isInlineEditActive(e.target)) {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
@@ -8312,6 +8315,21 @@ void main() {
       && !steerLocked;
   }
 
+  function isPageEditableElement(el) {
+    if (!el || own(el)) return false;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || '')) return true;
+    return !!el.isContentEditable;
+  }
+
+  function isInlineEditActive(el) {
+    return !!el && inlineEditRows.some((r) => r.el === el);
+  }
+
+  function isPageEditableActive() {
+    const active = activeElementDeep();
+    return isPageEditableElement(active) && !isInlineEditActive(active);
+  }
+
   function pageHasHostTextSelection() {
     const sel = window.getSelection?.();
     if (!sel || sel.isCollapsed) return false;
@@ -8325,6 +8343,7 @@ void main() {
   function shouldSteerAutoFocus() {
     return shouldFocusSteerChat()
       && !steerFocusSuspended
+      && !isPageEditableActive()
       && performance.now() >= steerFocusPauseUntil;
   }
 
