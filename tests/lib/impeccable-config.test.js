@@ -199,6 +199,28 @@ describe('cli/lib/impeccable-config', () => {
     ]);
   });
 
+  test('filterDetectionFindings matches equivalent design-system color values', () => {
+    const findings = [
+      { antipattern: 'design-system-color', file: join(root, 'src', 'rgb.css'), line: 1, ignoreValue: 'rgb(139, 92, 246)' },
+      { antipattern: 'design-system-color', file: join(root, 'src', 'hex.css'), line: 2, ignoreValue: '#8b5cf6' },
+      { antipattern: 'design-system-color', file: join(root, 'src', 'alpha.css'), line: 3, ignoreValue: 'rgba(139, 92, 246, 0.5)' },
+      { antipattern: 'design-system-color', file: join(root, 'src', 'other.css'), line: 4, ignoreValue: '#8b5cf7' },
+      { antipattern: 'design-system-radius', file: join(root, 'src', 'radius.css'), line: 5, ignoreValue: 'rgb(139, 92, 246)' },
+    ];
+    const filtered = filterDetectionFindings(findings, {
+      ignoreValues: [
+        { rule: 'design-system-color', value: '#8b5cf6' },
+        { rule: 'design-system-color', value: 'rgb(139 92 246 / 100%)' },
+      ],
+    });
+
+    expect(filtered.map((f) => `${f.antipattern}:${f.line}`)).toEqual([
+      'design-system-color:3',
+      'design-system-color:4',
+      'design-system-radius:5',
+    ]);
+  });
+
   test('extractFindingIgnoreValue handles fonts, Google font URLs, and motion snippets', () => {
     expect(extractFindingIgnoreValue({ antipattern: 'overused-font', snippet: 'Primary font: Avenir Next (80% of text)' })).toBe('avenir next');
     expect(extractFindingIgnoreValue({ antipattern: 'overused-font', snippet: 'https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@700' })).toBe('alumni sans');

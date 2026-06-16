@@ -391,6 +391,29 @@ describe('filterFindings()', () => {
     assert.deepEqual(filtered.map((f) => `${f.file}:${f.line}`), ['/tmp/project/site/styles/feature.css:2']);
   });
 
+  it('matches equivalent design-system color ignore values', () => {
+    const findings = [
+      { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/rgb.css' }), ignoreValue: 'rgb(139, 92, 246)' },
+      { ...finding('design-system-color', 2, { file: '/tmp/project/site/styles/hex.css' }), ignoreValue: '#8b5cf6' },
+      { ...finding('design-system-color', 3, { file: '/tmp/project/site/styles/alpha.css' }), ignoreValue: 'rgba(139, 92, 246, 0.5)' },
+      { ...finding('design-system-color', 4, { file: '/tmp/project/site/styles/other.css' }), ignoreValue: '#8b5cf7' },
+      { ...finding('design-system-radius', 5, { file: '/tmp/project/site/styles/radius.css' }), ignoreValue: 'rgb(139, 92, 246)' },
+    ];
+    const filtered = filterFindings(findings, '', '.css', {
+      ignoreRules: [],
+      ignoreValues: [
+        { rule: 'design-system-color', value: '#8b5cf6' },
+        { rule: 'design-system-color', value: 'rgb(139 92 246 / 100%)' },
+      ],
+      limits: DEFAULT_CONFIG.limits,
+    });
+    assert.deepEqual(filtered.map((f) => `${f.antipattern}:${f.line}`), [
+      'design-system-color:3',
+      'design-system-color:4',
+      'design-system-radius:5',
+    ]);
+  });
+
   it('allows wildcard ignoreValues only when scoped to files', () => {
     const findings = [
       { ...finding('design-system-color', 1, { file: '/tmp/project/site/styles/main.css' }), ignoreValue: '#8b5cf6' },
