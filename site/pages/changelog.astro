@@ -23,8 +23,19 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
-    <article id="v3.6.0" class="cf-entry cf-entry--current">
-      <header class="cf-entry-head"><span class="cf-version">v3.6.0</span><span class="cf-date">June 14, 2026</span><span class="cf-current-badge">Current</span></header>
+    <article id="v3.7.0" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.7.0</span><span class="cf-date">June 16, 2026</span><span class="cf-current-badge">Current</span></header>
+      <p class="cf-entry-lead">Impeccable now carries project design context into hooks, the detector, and docs. The agent can compare edits against your actual typography, color, and radius system instead of only using global anti-pattern rules.</p>
+      <ul class="cf-items">
+        <li><strong>Design-aware hook detections.</strong> When a project has <code>DESIGN.md</code>, hooks and <code>impeccable detect</code> load the local design system and flag font, color, and radius drift against the documented palette, typography stacks, rounded scale, and sidecar tonal ramps.</li>
+        <li><strong>Ignores now work across hooks and the CLI.</strong> Detector exceptions moved into shared config, and <code>impeccable ignores</code> can list, add, and remove rule, file, and value ignores without hand-editing JSON.</li>
+        <li><strong>Docs cover the full project context path.</strong> New reference pages explain hooks, the detector, configuration, and Design Context, including how <code>PRODUCT.md</code>, <code>DESIGN.md</code>, and <code>.impeccable/design.json</code> are loaded and kept current.</li>
+        <li><strong>Docs code blocks now use the Impeccable palette.</strong> Shiki syntax highlighting uses design-system colors in both light and dark mode, with contrast tests so examples stay readable and do not trigger design-system color drift.</li>
+      </ul>
+    </article>
+
+    <article id="v3.6.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.6.0</span><span class="cf-date">June 14, 2026</span></header>
       <p class="cf-entry-lead">Impeccable now helps while the agent is editing, and the core skill is leaner: ablation-tested guidance, project hooks, sharper detector signal, and Live Mode support for Svelte and manual browser edits.</p>
       <ul class="cf-items">
         <li><strong>Ablation-tested skill core.</strong> The main skill got leaner after rule-level evals across three providers and four niches. Redundant typography and copy guidance moved out of the always-on prompt, rules with no measurable lift were cut, and examples that primed models to repeat the exact pattern being banned were rewritten. The result is a smaller prompt that spends attention on guidance proven to move design output.</li>

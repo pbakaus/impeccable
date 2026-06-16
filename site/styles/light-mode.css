@@ -232,10 +232,6 @@ html.light body.docs-kinpaku :is(
   .docs-index-eyebrow,
   .docs-start-eyebrow,
   .docs-chooser-eyebrow,
-  .docs-live-eyebrow,
-  .docs-flow-eyebrow,
-  .docs-chains-eyebrow,
-  .docs-reference-eyebrow,
   .docs-start-num,
   .docs-flow-verb,
   .docs-flow-arrow,
@@ -552,7 +548,7 @@ html.light .docs-kinpaku .skills-sidebar {
 }
 
 html.light .docs-kinpaku .skills-sidebar-list a[aria-current="page"] {
-  background: var(--docs-accent-wash);
+  background: transparent;
 }
 
 html.light .docs-kinpaku .docs-tile,

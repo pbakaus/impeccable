@@ -29,7 +29,7 @@ export const SUITES = {
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|skills-cli|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|shiki-theme|skills-cli|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -60,6 +60,7 @@ export const SUITES = {
           'tests/hook-build.test.mjs',
           'tests/hook.test.mjs',
           'tests/impeccable-paths.test.mjs',
+          'tests/shiki-theme.test.mjs',
           'tests/test-suites.test.mjs',
           'tests/zip.test.mjs',
         ],

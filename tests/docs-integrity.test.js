@@ -49,6 +49,13 @@ function knownRoutes() {
   }
   routes.add('/tutorials');
 
+  const referenceDir = path.join(ROOT, 'site/content/reference');
+  if (fs.existsSync(referenceDir)) {
+    for (const file of fs.readdirSync(referenceDir).filter(file => file.endsWith('.md'))) {
+      routes.add(`/docs/${file.replace(/\.md$/, '')}`);
+    }
+  }
+
   if (fs.existsSync(path.join(ROOT, 'site/public/neo-mirai/index.html'))) {
     routes.add('/neo-mirai');
   }

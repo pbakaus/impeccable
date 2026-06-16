@@ -27,7 +27,7 @@ Two files at your project root shape everything the skill does:
 - **`PRODUCT.md`** says what the project is for: audience, product purpose, voice, anti-references, and whether the surface is brand or product.
 - **`DESIGN.md`** says how the interface should look: colors, typography, components, elevation, and design rules.
 
-Every command reads both files before generating. The most important setup choice is **brand vs product**: is this a marketing surface where the impression is the product, or an app surface where design helps someone finish a task? The docs call this choice **register**. See [Brand vs product](/tutorials/brand-vs-product) for examples.
+Every command reads both files before generating. The most important setup choice is **brand vs product**: is this a marketing surface where the impression is the product, or an app surface where design helps someone finish a task? The docs call this choice **register**. See [Design Context](/docs/context) for examples.
 
 On first use in a project, `/impeccable` may route you into `init`: a short interview that writes `PRODUCT.md` and offers to write `DESIGN.md`. Future commands read those files without asking again.
 

@@ -56,7 +56,7 @@ The flow scans the codebase first (README, package.json, components, tokens, bra
 
 The docs call that choice **register**. It shapes typography, motion, color, and density. After that, init asks only what it could not infer: users, personality in three real words, references and anti-references, accessibility requirements.
 
-PRODUCT.md is strategic only. No colors, no fonts, no pixel values. Those live in DESIGN.md. Keeping the two files separate is deliberate: strategy can stay stable while the visual system evolves.
+PRODUCT.md is strategic only. No colors, no fonts, no pixel values. Those live in DESIGN.md. Keeping the two files separate is deliberate: strategy can stay stable while the visual system evolves. See [Design Context](/docs/context) for the full load order and how the files interact.
 
 It closes by pointing you at the best commands to run next, picked from what the scan turned up: `craft` or `shape` for new work, `critique` or `audit` for what is already there, `live` to iterate visually. No guessing where to begin.
 

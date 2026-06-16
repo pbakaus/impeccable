@@ -11,6 +11,8 @@ import {
 } from '../../data/sub-pages-data';
 
 const entries = await getCollection('skills');
+const referenceEntries = (await getCollection('reference'))
+  .sort((a, b) => a.data.order - b.data.order);
 
 const tutorials = (await getCollection('tutorials'))
   .sort((a, b) => a.data.order - b.data.order);
@@ -90,6 +92,33 @@ const choices = [
   },
 ];
 
+const manualTopics = [
+  {
+    topic: 'Design Context',
+    href: '/docs/context',
+    label: 'PRODUCT.md + DESIGN.md',
+    line: 'What gets loaded, when it wins, and how the sidecar fits.',
+  },
+  {
+    topic: 'Detector CLI',
+    href: '/docs/detector',
+    label: 'npx impeccable detect',
+    line: 'Run deterministic checks on files, folders, stdin, and URLs.',
+  },
+  {
+    topic: 'Design hooks',
+    href: '/docs/hooks',
+    label: '/impeccable hooks',
+    line: 'Automatic detector feedback inside Claude Code, Codex, and Cursor.',
+  },
+  {
+    topic: 'Config and ignores',
+    href: '/docs/config',
+    label: '.impeccable/config.json',
+    line: 'Shared exceptions, private overrides, and design-system toggles.',
+  },
+].filter(topic => referenceEntries.some(entry => `/docs/${entry.id}` === topic.href));
+
 const chains: { id: string; a: string; b: string; arrow: string; line: string }[] = [
   { id: 'bolder-quieter', a: 'bolder', b: 'quieter', arrow: '↔', line: 'Two halves of voice. Loud or restrained, never neutral.' },
   { id: 'audit-harden', a: 'audit', b: 'harden', arrow: '→', line: 'Find the technical issues. Then fix them.' },
@@ -100,7 +129,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
 
 <Base
   title="Docs | Impeccable"
-  description="Start using /impeccable: install, run init, create project context, then choose the right command for the job."
+  description="Start using /impeccable: install, run init, create design context, then choose the right command for the job."
   activeNav="docs"
   canonicalPath="/docs"
   bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
@@ -113,15 +142,11 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
 
         <section class="docs-start-rail" aria-labelledby="docs-start-h">
           <header class="docs-start-rail-head">
-            <h1 class="docs-start-rail-title" id="docs-start-h">Start with <span>/impeccable</span>.</h1>
+            <h1 class="docs-start-rail-title" id="docs-start-h">Start with <span>/impeccable</span></h1>
             <p class="docs-start-rail-lede">Install, run setup, then try one command on an existing page.</p>
           </header>
 
           <div class="docs-start-rail-sequence">
-            <div class="docs-start-rail-divider docs-start-rail-divider--top" aria-hidden="true">
-              <div class="ksd-divider ksd-divider--double-notch"></div>
-            </div>
-
             <ol class="docs-start-rail-steps docs-start-rail-steps--number-gutter docs-start-rail-steps--inner-inset" aria-label="Quick start steps">
               {startSteps.map((step, i) => (
                 <li class="docs-start-rail-step">
@@ -133,9 +158,6 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
               ))}
             </ol>
 
-            <div class="docs-start-rail-divider docs-start-rail-divider--bottom" aria-hidden="true">
-              <div class="ksd-divider ksd-divider--double-notch"></div>
-            </div>
           </div>
 
           <p class="docs-start-rail-note">Full walkthrough: <a href="/tutorials/getting-started">Getting started</a>.</p>
@@ -143,7 +165,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
 
         <section class="docs-chooser-section" aria-labelledby="docs-chooser-h">
           <header class="docs-chooser-head">
-            <h2 class="docs-chooser-title" id="docs-chooser-h">Choose a command.</h2>
+            <h2 class="docs-chooser-title" id="docs-chooser-h">Choose a command</h2>
           </header>
 
           <div class="docs-chooser-list">
@@ -157,10 +179,27 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
           </div>
         </section>
 
+        <section class="docs-manual-section" aria-labelledby="docs-manual-h">
+          <header class="docs-manual-head">
+            <h2 class="docs-manual-title" id="docs-manual-h">Understand the system</h2>
+            <p class="docs-manual-sub">Commands are only one layer. These docs explain the files, checks, hooks, and config that make them behave consistently.</p>
+          </header>
+
+          <div class="docs-chooser-list docs-manual-list">
+            {manualTopics.map(topic => (
+              <a class="docs-chooser-list-row" href={topic.href}>
+                <span class="docs-chooser-list-need">{topic.topic}</span>
+                <span class="docs-chooser-list-command">{topic.label}</span>
+                <span class="docs-chooser-list-line">{topic.line}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+
         <!-- Live mode: visual iteration -->
         <section class="docs-live" aria-labelledby="docs-live-h">
           <div class="docs-live-copy">
-            <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it.</h2>
+            <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it</h2>
             <p class="docs-live-lede">Use Live Mode when an issue is easier to point at than describe. Pick an element, generate variants, accept one into source.</p>
             <p class="docs-live-cta">
               <a class="ks-button ks-button-primary" href="/docs/live">
@@ -200,7 +239,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- A typical session: linear workflow -->
         <section class="docs-flow-section">
           <header class="docs-flow-head">
-            <h2 class="docs-flow-title">Full session path.</h2>
+            <h2 class="docs-flow-title">Full session path</h2>
             <p class="docs-flow-sub">Plan, build, review, refine.</p>
           </header>
 
@@ -229,7 +268,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- Pairs and chains: the schema -->
         <section class="docs-chains-section">
           <header class="docs-chains-head">
-            <h2 class="docs-chains-title">Useful command pairs.</h2>
+            <h2 class="docs-chains-title">Useful command pairs</h2>
             <p class="docs-chains-sub">Use these when one pass is not enough.</p>
           </header>
 
@@ -250,7 +289,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- Full reference: the cheatsheet -->
         <section class="docs-reference-section" aria-labelledby="docs-reference-h">
           <header class="docs-reference-head">
-            <h2 class="docs-reference-title" id="docs-reference-h">Full command reference.</h2>
+            <h2 class="docs-reference-title" id="docs-reference-h">Full command reference</h2>
           </header>
 
           <div class="docs-reference">

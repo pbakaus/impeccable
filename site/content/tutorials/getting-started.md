@@ -2,12 +2,12 @@
 title: Getting started
 tagline: "From install to your first polish pass in about ten minutes."
 order: 1
-description: "Install Impeccable, run /impeccable init once to establish project context, and run /impeccable polish on something that already exists. The fastest path to seeing what Impeccable changes about AI-generated design."
+description: "Install Impeccable, run /impeccable init once to establish design context, and run /impeccable polish on something that already exists. The fastest path to seeing what Impeccable changes about AI-generated design."
 ---
 
 ## What you'll build
 
-You will end this tutorial with Impeccable installed, project context saved, and one existing page improved with a polish pass. Total time: about ten minutes.
+You will end this tutorial with Impeccable installed, design context saved, and one existing page improved with a polish pass. Total time: about ten minutes.
 
 ## Prerequisites
 
@@ -48,6 +48,8 @@ Prefer a different setup? Claude Code users can install the plugin with `/plugin
 
 When a new version ships later, run `npx impeccable update` from the same project root. `npx impeccable check` tells you first whether you are behind, and plugin users update from the `/plugin` menu instead.
 
+On Claude Code, Codex, and Cursor, the installer can also add Impeccable's automatic design hook. See [Design hooks](/docs/hooks) for harness-specific behavior and approval steps.
+
 ## Step 2. Set up Impeccable for your project
 
 This is the most important step. Design without context produces generic output. The `/impeccable init` command runs a short setup interview and writes `PRODUCT.md` at the root of your project.
@@ -63,7 +65,7 @@ The first question is simple: is this a **brand surface** or a **product surface
 - **Brand surface:** marketing site, landing page, campaign, portfolio. The impression is the product.
 - **Product surface:** app UI, dashboard, admin, workflow tool. The design helps someone finish a task.
 
-The docs call this choice **register**. It changes the defaults Impeccable uses for type, color, density, and motion. See [Brand vs product](/tutorials/brand-vs-product) for examples. Init forms a hypothesis from your codebase and asks you to confirm it.
+The docs call this choice **register**. It changes the defaults Impeccable uses for type, color, density, and motion. See [Design Context](/docs/context) for examples. Init forms a hypothesis from your codebase and asks you to confirm it.
 
 Then a handful of shorter questions:
 
@@ -82,7 +84,7 @@ At the end of `/impeccable init`, the skill offers to run `/impeccable document`
 
 On a fresh project with no visual system yet, document asks a few setup questions and writes a starting scaffold. Refresh it once there is real code.
 
-`PRODUCT.md` carries strategy (who, what, why). `DESIGN.md` carries visuals (colors, typography, components). Every command reads both before generating.
+`PRODUCT.md` carries strategy (who, what, why). `DESIGN.md` carries visuals (colors, typography, components). Every command reads both before generating. See [Design Context](/docs/context) for the full model.
 
 ## Step 3. Polish something
 
@@ -112,6 +114,7 @@ Review the diff. If something does not feel right, ask the model to explain the 
 - [Iterate visually with Live Mode](/tutorials/iterate-live) opens a browser picker on your dev server, generates three production-quality variants per element, and writes the accepted one back to source.
 - `/impeccable critique the landing page` runs a full design review with scoring, persona tests, and automated detection. It is the best way to find what to fix next.
 - `/impeccable audit the checkout` runs accessibility, performance, theming, responsive, and anti-pattern checks against the implementation. Useful before shipping.
+- `npx impeccable detect src/` runs the deterministic detector directly from the terminal. See [Detector CLI](/docs/detector).
 - `/impeccable craft a pricing page for enterprise customers` runs the full shape-then-build flow on a brand new feature.
 - **Pin your favorites.** If you reach for one command constantly, `/impeccable pin audit` makes `/audit` work as a standalone shortcut without reversing the consolidation.
 - `/impeccable redo this hero section` works too. Any description after `/impeccable` applies the design principles to the task.
