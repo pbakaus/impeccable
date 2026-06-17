@@ -1506,11 +1506,18 @@ async function install(flags) {
       const missingHookTargets = wantHooks
         ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
         : [];
+      let updateCheckSkipped = false;
       if (copyTargets.length > 0 || missingHookTargets.length > 0) {
-        bundleDir = await downloadAndExtractBundle();
+        try {
+          bundleDir = await downloadAndExtractBundle();
+        } catch (e) {
+          if (missingHookTargets.length > 0) throw e;
+          updateCheckSkipped = true;
+          console.log(`Could not check for skill updates: ${e.message}`);
+        }
       }
 
-      if (copyTargets.length > 0 && !isUpToDate(installRoot, copyTargets, bundleDir)) {
+      if (!updateCheckSkipped && copyTargets.length > 0 && !isUpToDate(installRoot, copyTargets, bundleDir)) {
         migrateUnprefixImpeccable(installRoot);
         updated = refreshProviderSkills(bundleDir, installRoot, copyTargets);
         const v = getSkillsVersion(installRoot);
@@ -1522,7 +1529,10 @@ async function install(flags) {
         : [];
       if (writtenHookTargets.length > 0) console.log(`Installed hooks into: ${writtenHookTargets.join(', ')}`);
 
-      if (updated === 0 && writtenHookTargets.length === 0) {
+      if (updateCheckSkipped) {
+        console.log('Existing skills were left unchanged.');
+        console.log('Run with --force to reinstall.\n');
+      } else if (updated === 0 && writtenHookTargets.length === 0) {
         const v = getSkillsVersion(installRoot);
         console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
         console.log('Run with --force to reinstall.\n');

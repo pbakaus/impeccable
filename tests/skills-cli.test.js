@@ -157,6 +157,29 @@ describe('skills install: already-installed detection', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('already-installed projects keep working when the update check is offline', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-offline-installed-'));
+    execSync('git init', { cwd: tmp });
+    createFakeSkills(tmp, ['impeccable'], ['.claude']);
+    writeFileSync(join(tmp, '.claude', 'settings.local.json'), JSON.stringify({
+      hooks: { PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [
+        { type: 'command', command: 'node ".claude/skills/impeccable/scripts/hook.mjs"' },
+      ] }] },
+    }));
+
+    const output = run('skills install -y --providers=claude', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: join(tmp, 'missing-bundle') },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Could not check for skill updates');
+    expect(output).toContain('Existing skills were left unchanged.');
+    expect(existsSync(join(tmp, '.claude', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('detects prefixed i-impeccable', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-'));
     execSync('git init', { cwd: tmp });
