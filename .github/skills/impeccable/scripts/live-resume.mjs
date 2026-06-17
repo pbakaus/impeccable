@@ -4,8 +4,6 @@
  */
 
 import { createLiveSessionStore } from './live/session-store.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
-import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 
 function manualApplyReplyCommand(eventOrId = 'EVENT_ID') {
   const id = typeof eventOrId === 'string' ? eventOrId : eventOrId?.id || 'EVENT_ID';
@@ -63,28 +61,10 @@ function parseArgs(argv) {
 }
 
 export async function resumeCli() {
-  const rawArgs = process.argv.slice(2);
-  const liveTarget = chdirToLiveTarget(rawArgs);
-  const args = parseArgs(stripTargetArgs(rawArgs));
+  const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     console.log(`Usage: node live-resume.mjs [--id SESSION_ID]\n\nPrint the active durable session checkpoint and the next safe agent action.`);
     return;
-  }
-
-  if (!liveTarget.targetPath) {
-    const record = readLiveServerInfo(process.cwd());
-    if (record?.ambiguous) {
-      console.log(JSON.stringify({
-        active: false,
-        error: 'ambiguous_live_servers',
-        candidates: record.candidates || [],
-        nextAction: 'Multiple child live servers found. Re-run with --target <path> so Impeccable knows which app to resume.',
-      }, null, 2));
-      return;
-    }
-    if (record?.info?.projectRoot && !samePath(record.info.projectRoot, process.cwd())) {
-      process.chdir(record.info.projectRoot);
-    }
   }
 
   const store = createLiveSessionStore({ cwd: process.cwd(), sessionId: args.id || undefined });

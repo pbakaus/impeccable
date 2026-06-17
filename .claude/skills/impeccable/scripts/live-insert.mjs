@@ -26,7 +26,6 @@ import {
   scaffoldSvelteComponentInsertSession,
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const INSERT_POSITIONS = new Set(['before', 'after']);
 
@@ -96,9 +95,7 @@ function resolveElementMatch({ lines, queries, tag, text }) {
 }
 
 export async function insertCli() {
-  const rawArgs = process.argv.slice(2);
-  chdirToLiveTarget(rawArgs);
-  const args = stripTargetArgs(rawArgs);
+  const args = process.argv.slice(2);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live-insert.mjs [options]
@@ -119,7 +116,6 @@ Element identification (at least one required):
 Optional:
   --file PATH        Source file to search in (skips auto-detection)
   --text TEXT        Anchor textContent for disambiguation (~80 chars)
-  --target PATH      Scope source/state lookup to a monorepo child project
 
 Output (JSON):
   { mode: "insert", file, position, insertLine, commentSyntax, styleMode, styleTag, cssAuthoring }`);

@@ -23,7 +23,6 @@ import {
   inlineSvelteComponentAccept,
   removeSvelteComponentSession,
 } from './live/svelte-component.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -32,9 +31,7 @@ const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 // ---------------------------------------------------------------------------
 
 export async function acceptCli() {
-  const rawArgs = process.argv.slice(2);
-  chdirToLiveTarget(rawArgs);
-  const args = stripTargetArgs(rawArgs);
+  const args = process.argv.slice(2);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live-accept.mjs [options]
@@ -50,7 +47,6 @@ Required:
 
 Options:
   --page-url URL     Current browser page URL; scopes staged copy-edit cleanup
-  --target PATH      Scope source/state lookup to a monorepo child project
   --defer-source-write
                      Deprecated compatibility flag. Svelte component accepts
                      now write the real source immediately.

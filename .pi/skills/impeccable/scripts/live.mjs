@@ -21,16 +21,14 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadContext, resolveTargetSelection } from './context.mjs';
+import { loadContext } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
-import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
-import { resolveLiveTarget, resolveStoredTargetPath } from './live-target.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function liveCli() {
   const args = process.argv.slice(2);
-  const liveTarget = resolveLiveTarget(process.cwd(), args);
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`Usage: node live.mjs
@@ -40,116 +38,37 @@ Prepare everything for live variant mode in a single command:
   - Starts (or reuses) the live server in the background
   - Injects the browser script tag
   - Reads PRODUCT.md / DESIGN.md for project context
-  - In monorepos, choose a child app first; --target <path> is the fallback/manual path
 
 On success, prints a JSON blob with:
-  { ok, serverPort, serverToken, pageFiles, projectRoot, repoRoot, targetPath, productPath, designPath }
-
-On target_selection_required, prints:
-  { ok: false, error: "target_selection_required", targetCandidates }
+  { ok, serverPort, serverToken, pageFile, hasContext, context }
 
 On config_missing, prints:
   { ok: false, error: "config_missing", configPath, hint }
 
 The agent should then:
-  1. If target_selection_required, ask which app to use and rerun from that child cwd
-  2. If config_missing, create the config and re-run this script
-  3. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)
-  4. Enter the poll loop: node live-poll.mjs`);
-    process.exit(0);
-  }
-
-  const targetSelection = resolveTargetSelection(liveTarget.originalCwd, liveTarget.targetOptions);
-  if (targetSelection) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'target_selection_required',
-      ...targetSelection,
-      hint: 'Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.',
-    }, null, 2));
-    process.exit(0);
-  }
-
-  const existingServer = !liveTarget.targetPath
-    ? readLiveServerInfo(liveTarget.originalCwd)
-    : null;
-  if (existingServer?.ambiguous) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'ambiguous_live_servers',
-      candidates: existingServer.candidates || [],
-      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
-    }, null, 2));
-    process.exit(1);
-  }
-
-  const existingChild = existingServer?.info?.projectRoot
-    && !samePath(existingServer.info.projectRoot, liveTarget.originalCwd)
-    ? existingServer.info
-    : null;
-  const discoveredTargetPath = resolveStoredTargetPath(existingChild);
-  const contextCwd = existingChild && !discoveredTargetPath
-    ? existingChild.projectRoot
-    : liveTarget.originalCwd;
-  const contextOptions = discoveredTargetPath
-    ? { targetPath: discoveredTargetPath }
-    : liveTarget.targetOptions;
-  const ctx = loadContext(contextCwd, contextOptions);
-  const activeCwd = ctx.projectRoot || existingChild?.projectRoot || liveTarget.projectRoot;
-  const forwardedTargetArgs = discoveredTargetPath
-    ? ['--target', discoveredTargetPath]
-    : liveTarget.absoluteTargetPath
-      ? ['--target', liveTarget.absoluteTargetPath]
-      : [];
-  const outputTargetPath = liveTarget.targetPath || existingChild?.targetPath || null;
-
-  const missingContext = missingLiveContext(ctx);
-  if (missingContext.length > 0) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'context_missing',
-      missing: missingContext,
-      nextCommand: missingContext.includes('PRODUCT.md') ? 'init' : 'document',
-      targetPath: outputTargetPath,
-      projectRoot: ctx.projectRoot,
-      repoRoot: ctx.repoRoot,
-      productPath: ctx.productPath,
-      designPath: ctx.designPath,
-    }, null, 2));
+  1. If config_missing, create the config and re-run this script
+  2. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)
+  3. Enter the poll loop: node live-poll.mjs`);
     process.exit(0);
   }
 
   // 1. Check config (fail fast if missing — no point starting anything else)
-  const checkOut = runScript('live-inject.mjs', ['--check', ...forwardedTargetArgs], { cwd: activeCwd });
+  const checkOut = runScript('live-inject.mjs', ['--check']);
   const checkResult = safeParse(checkOut);
   if (!checkResult || !checkResult.ok) {
-    console.log(JSON.stringify({
-      ...(checkResult || { ok: false, error: 'check_failed', raw: checkOut }),
-      targetPath: outputTargetPath,
-      projectRoot: ctx.projectRoot,
-      repoRoot: ctx.repoRoot,
-    }));
+    console.log(JSON.stringify(checkResult || { ok: false, error: 'check_failed', raw: checkOut }));
     process.exit(0);
   }
 
   // 2. Start server (or reuse existing)
-  const serverInfo = ensureServerRunning(activeCwd, forwardedTargetArgs);
-  if (serverInfo?.ambiguous) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'ambiguous_live_servers',
-      candidates: serverInfo.candidates || [],
-      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
-    }, null, 2));
-    process.exit(1);
-  }
+  const serverInfo = ensureServerRunning();
   if (!serverInfo) {
     console.log(JSON.stringify({ ok: false, error: 'server_start_failed' }));
     process.exit(1);
   }
 
   // 3. Inject the script tag at the current port
-  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port), ...forwardedTargetArgs], { cwd: activeCwd });
+  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port)]);
   const injectResult = safeParse(injectOut);
   if (!injectResult || !injectResult.ok) {
     console.log(JSON.stringify({
@@ -161,23 +80,22 @@ The agent should then:
     process.exit(1);
   }
 
-  // 4. Compute drift-heal: compare resolved inject targets against the
+  // 4. Load PRODUCT.md + DESIGN.md context.
+  const ctx = loadContext(process.cwd());
+
+  // 5. Compute drift-heal: compare resolved inject targets against the
   //    project's HTML files. Orphans are HTML files not covered by config.
   //    Warning only — the agent decides whether to act.
-  const resolvedFiles = resolveFiles(activeCwd, checkResult.config);
-  const drift = scanForDrift(activeCwd, resolvedFiles, checkResult.config);
+  const resolvedFiles = resolveFiles(process.cwd(), checkResult.config);
+  const drift = scanForDrift(process.cwd(), resolvedFiles, checkResult.config);
 
-  // 5. Emit everything the agent needs
+  // 6. Emit everything the agent needs
   console.log(JSON.stringify({
     ok: true,
     serverPort: serverInfo.port,
     serverToken: serverInfo.token,
     pageFiles: resolvedFiles,
-    liveConfigPath: checkResult.path,
     configDrift: drift,
-    targetPath: outputTargetPath,
-    projectRoot: ctx.projectRoot,
-    repoRoot: ctx.repoRoot,
     hasProduct: ctx.hasProduct,
     product: ctx.product,
     productPath: ctx.productPath,
@@ -185,13 +103,6 @@ The agent should then:
     design: ctx.design,
     designPath: ctx.designPath,
   }, null, 2));
-}
-
-function missingLiveContext(ctx) {
-  const missing = [];
-  if (!ctx.hasProduct) missing.push('PRODUCT.md');
-  if (!ctx.hasDesign) missing.push('DESIGN.md');
-  return missing;
 }
 
 /**
@@ -290,11 +201,11 @@ function globToRegex(pattern) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function runScript(name, args, options = {}) {
+function runScript(name, args) {
   const scriptPath = path.join(__dirname, name);
   const cmd = `node "${scriptPath}" ${args.map(a => `"${a}"`).join(' ')}`;
   try {
-    return execSync(cmd, { encoding: 'utf-8', cwd: options.cwd || process.cwd(), timeout: 15_000 });
+    return execSync(cmd, { encoding: 'utf-8', cwd: process.cwd(), timeout: 15_000 });
   } catch (err) {
     // execSync throws on non-zero exit; return stdout if any
     return err.stdout || err.message || '';
@@ -308,12 +219,10 @@ function safeParse(out) {
 /**
  * Return { pid, port, token } for the running live server, starting one if needed.
  */
-function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
+function ensureServerRunning() {
   // Try to reuse an existing server
   try {
-    const record = readLiveServerInfo(cwd);
-    if (record?.ambiguous) return record;
-    const existing = record?.info;
+    const existing = readLiveServerInfo(process.cwd())?.info;
     if (existing && existing.pid) {
       try {
         process.kill(existing.pid, 0); // throws if dead
@@ -323,7 +232,7 @@ function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
   } catch { /* no PID file */ }
 
   // Start a new server
-  const out = runScript('live-server.mjs', ['--background', ...forwardedTargetArgs], { cwd });
+  const out = runScript('live-server.mjs', ['--background']);
   return safeParse(out);
 }
 

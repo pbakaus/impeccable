@@ -4,8 +4,7 @@
  */
 
 import { createLiveSessionStore } from './live/session-store.mjs';
-import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
-import { chdirToLiveTarget, stripTargetArgs } from './live-target.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 
 function parseArgs(argv) {
   const out = { status: 'complete' };
@@ -22,14 +21,11 @@ function parseArgs(argv) {
 }
 
 export async function completeCli() {
-  const rawArgs = process.argv.slice(2);
-  const liveTarget = chdirToLiveTarget(rawArgs);
-  const args = parseArgs(stripTargetArgs(rawArgs));
+  const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.id) {
     console.log(`Usage: node live-complete.mjs --id SESSION_ID [--discarded|--error MESSAGE]\n\nAppend the final durable session acknowledgement. Use after accept/discard cleanup is verified.`);
     process.exit(args.help ? 0 : 1);
   }
-  if (!liveTarget.targetPath) chdirToSingleDiscoveredProjectRoot();
 
   const serverInfo = readServerInfo();
   const serverResult = serverInfo ? await completeThroughServer(serverInfo, args) : null;
@@ -51,18 +47,7 @@ export async function completeCli() {
 }
 
 function readServerInfo() {
-  const record = readLiveServerInfo(process.cwd());
-  if (record?.ambiguous) {
-    console.error('Multiple child live servers found. Re-run with --target <path> so Impeccable knows which app to complete.');
-    process.exit(1);
-  }
-  return record?.info || null;
-}
-
-function chdirToSingleDiscoveredProjectRoot() {
-  const record = readLiveServerInfo(process.cwd());
-  if (!record?.info?.projectRoot) return;
-  if (!samePath(record.info.projectRoot, process.cwd())) process.chdir(record.info.projectRoot);
+  return readLiveServerInfo(process.cwd())?.info || null;
 }
 
 async function completeThroughServer(info, args) {

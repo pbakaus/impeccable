@@ -8,7 +8,7 @@ A running dev server with hot module replacement (Vite, Next.js, Bun, etc.), OR 
 
 Execute in order. No step skipped, no step reordered.
 
-1. `live.mjs`: boot. In a monorepo root, if live reports `target_selection_required`, ask which app to use and show each option's `PRODUCT.md` and `DESIGN.md` source from `productStatus` / `productPath` and `designStatus` / `designPath`, then rerun from that child app cwd; use `--target <path>` only as a fallback or for explicit path diagnostics. If the user named a route or child app, map it to the matching source file or app directory first, then pass that path and keep using the same target on live helper commands that read state or source. For path-specific live diagnostics, the first live command must be `node .qoder/skills/impeccable/scripts/live.mjs --target <path>`; do not report live context, state, port, injection, or design endpoint details unless they came from that command or from follow-up live helpers using the same target.
+1. `live.mjs`: boot.
 2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
 
@@ -30,14 +30,14 @@ Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodi
 ## Start
 
 ```bash
-node .qoder/skills/impeccable/scripts/live.mjs [--target <path>]
+node .qoder/skills/impeccable/scripts/live.mjs
 ```
 
-Output JSON: `{ ok, serverPort, serverToken, pageFiles, targetPath, projectRoot, repoRoot, hasProduct, product, productPath, hasDesign, design, designPath }`. `pageFiles` is the list of HTML entries the live script was injected into, relative to the active project root. In monorepos, `--target` makes live mode use the same PRODUCT.md / DESIGN.md inheritance rules as `context.mjs --target` and stores live state under the active child project's `.impeccable/live/`, not the repo root. Missing child context files inherit matching root files; do not run init or create child PRODUCT.md / DESIGN.md just because the child folder lacks them. If the user asks which context live mode loaded, answer from these exact JSON fields and name the `live.mjs --target <path>` command you ran. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt.
+Output JSON: `{ ok, serverPort, serverToken, pageFiles, hasProduct, product, productPath, hasDesign, design, designPath }`. `pageFiles` is the list of HTML entries the live script was injected into. Keep PRODUCT.md and DESIGN.md in mind for variant generation; **DESIGN.md wins on visual decisions; PRODUCT.md wins on strategic/voice decisions.** When DESIGN.md is missing, identity is **not** absent; extract it from CSS variables, computed styles, and sibling components on the page (see Step 4 Phase A). Identity preservation is the default; departure from existing identity requires an explicit trigger from PRODUCT.md anti-references or the user's freeform prompt.
 
 `serverPort` and `serverToken` belong to the small **Impeccable live helper** HTTP server (serves `/live.js`, SSE, and `/poll`). That port is **not** your dev server and is usually not the URL you open to view the app. The browser page is whatever origin serves one of the `pageFiles` entries (Vite / Next / Bun / tunnel / LAN hostname).
 
-If output is `{ ok: false, error: "target_selection_required", targetCandidates }`, ask which app to use, showing each candidate's product/design source fields, and rerun from that child app cwd. If output is `{ ok: false, error: "context_missing", missing, nextCommand }`, do not start live setup manually. Follow `nextCommand`: `init` when PRODUCT.md is missing, `document` when only DESIGN.md is missing. If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, this project hasn't been configured for live mode (or its config is stale). See **First-time setup** at the bottom.
+If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, this project hasn't been configured for live mode (or its config is stale). See **First-time setup** at the bottom.
 
 ## Poll loop
 
@@ -45,7 +45,7 @@ If output is `{ ok: false, error: "target_selection_required", targetCandidates 
 
 ```
 LOOP:
-  node .qoder/skills/impeccable/scripts/live-poll.mjs [--target <path>]   # default long timeout; no --timeout=
+  node .qoder/skills/impeccable/scripts/live-poll.mjs   # default long timeout; no --timeout=
   Read JSON; dispatch on "type"
 
   "generate"  → Handle Generate; reply done; LOOP
