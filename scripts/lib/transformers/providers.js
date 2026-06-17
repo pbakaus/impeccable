@@ -44,7 +44,6 @@ export const PROVIDERS = {
     configDir: '.codex',
     displayName: 'Codex',
     frontmatterFields: [],
-    includeVersion: false,
     writeOpenAIMetadata: true,
     // No agentFormat: the Codex subagent ships nested inside the skill's own
     // agents/ folder (see CODEX_SKILL_PROVIDERS in factory.js), which Codex
@@ -60,7 +59,6 @@ export const PROVIDERS = {
     displayName: 'Codex Repo Skills',
     placeholderProvider: 'codex',
     frontmatterFields: [],
-    includeVersion: false,
     writeOpenAIMetadata: true,
   },
   github: {

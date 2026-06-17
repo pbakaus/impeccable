@@ -103,6 +103,14 @@ import '../styles/changelog-faq-kinpaku.css';
       </ul>
     </article>
 
+    <article id="cli-v3.0.3" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.3</span><span class="cf-date">June 17, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Existing installs now pick up script-only skill fixes.</strong> <code>impeccable update</code> compares the complete bundled skill tree instead of just <code>SKILL.md</code>, so fixes in bundled scripts are detected. Running <code>impeccable install</code> on an already-installed project also refreshes stale skill files instead of stopping at "already installed."</li>
+        <li><strong>Codex installs report the skill version.</strong> The <code>.agents</code> and <code>.codex</code> builds now include the same <code>version</code> frontmatter as the other harnesses, so check/update output can show the installed skill version consistently.</li>
+      </ul>
+    </article>
+
     <article id="cli-v3.0.2" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">CLI v3.0.2</span><span class="cf-date">June 16, 2026</span></header>
       <ul class="cf-items">

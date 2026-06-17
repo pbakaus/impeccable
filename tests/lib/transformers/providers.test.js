@@ -65,6 +65,13 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       expect(fs.existsSync(refPath)).toBe(true);
     });
 
+    test('should emit skillsVersion in generated skill frontmatter', () => {
+      const skills = [{ name: 'test', description: 'Test', body: 'Body' }];
+      transform(skills, TEST_DIR, { skillsVersion: '1.2.3-test' });
+      const parsed = parseFrontmatter(fs.readFileSync(skillPath(config, 'test'), 'utf-8'));
+      expect(parsed.frontmatter.version).toBe('1.2.3-test');
+    });
+
     // Field-specific tests based on provider config
     if (config.frontmatterFields.includes('user-invocable')) {
       test('should emit user-invocable for user-invocable skills', () => {

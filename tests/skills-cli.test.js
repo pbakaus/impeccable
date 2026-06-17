@@ -139,6 +139,7 @@ describe('skills install: already-installed detection', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-'));
     execSync('git init', { cwd: tmp });
     createFakeSkills(tmp);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
     // Seed the canonical hook target so the already-installed path sees the hook
     // wired up and doesn't try to repair it (which would need the bundle).
     writeFileSync(join(tmp, '.claude', 'settings.local.json'), JSON.stringify({
@@ -147,7 +148,10 @@ describe('skills install: already-installed detection', () => {
       ] }] },
     }));
 
-    const output = run('skills install -y', { cwd: tmp });
+    const output = run('skills install -y', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
     expect(output).toContain('already installed');
 
     rmSync(tmp, { recursive: true, force: true });
@@ -160,6 +164,7 @@ describe('skills install: already-installed detection', () => {
     const skillDir = join(tmp, '.cursor', 'skills', 'i-impeccable');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: i-impeccable\n---\n');
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.cursor']);
     // Seed the hook so the already-installed path sees it wired up and doesn't
     // try to repair it (which would need the bundle).
     writeFileSync(join(tmp, '.cursor', 'hooks.json'), JSON.stringify({
@@ -167,7 +172,10 @@ describe('skills install: already-installed detection', () => {
       hooks: { preToolUse: [{ command: 'node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"' }] },
     }));
 
-    const output = run('skills install -y', { cwd: tmp });
+    const output = run('skills install -y', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
     expect(output).toContain('already installed');
 
     rmSync(tmp, { recursive: true, force: true });
@@ -865,6 +873,55 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(content).toContain('version: 9.9.9-local');
     expect(existsSync(join(skillDir, 'scripts', 'context.mjs'))).toBe(true);
     expect(existsSync(join(tmp, '.claude', 'settings.local.json'))).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('skills update refreshes script-only bundle changes when SKILL.md is unchanged', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-script-only-update-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    run('skills install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    const scriptPath = join(tmp, '.claude', 'skills', 'impeccable', 'scripts', 'context.mjs');
+    writeFileSync(scriptPath, 'console.log("old broken script");\n');
+
+    const output = run('skills update -y --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Updated');
+    expect(readFileSync(scriptPath, 'utf8')).toBe('console.log("local bundle context");\n');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
+  test('plain install refreshes an already-installed stale skill', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-existing-install-refresh-'));
+    execSync('git init', { cwd: tmp });
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude']);
+
+    const skillDir = join(tmp, '.claude', 'skills', 'impeccable');
+    mkdirSync(join(skillDir, 'scripts'), { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      readFileSync(join(bundleRoot, '.claude', 'skills', 'impeccable', 'SKILL.md'), 'utf8')
+    );
+    writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("old broken script");\n');
+
+    const output = run('skills install -y --providers=claude --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('already installed');
+    expect(output).toContain('Updated');
+    expect(readFileSync(join(skillDir, 'scripts', 'context.mjs'), 'utf8')).toBe('console.log("local bundle context");\n');
 
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);

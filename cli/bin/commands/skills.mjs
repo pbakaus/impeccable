@@ -421,19 +421,20 @@ function getSkillsVersion(root) {
 }
 
 /**
- * Hash all SKILL.md files in a directory tree for comparison.
- * Returns a sorted string of "name:hash" pairs.
+ * Return every file in a directory tree, sorted and relative to the tree root.
  */
-function hashSkillsDir(skillsDir) {
-  if (!existsSync(skillsDir)) return '';
-  const entries = [];
-  for (const name of readdirSync(skillsDir).sort()) {
-    const skillMd = join(skillsDir, name, 'SKILL.md');
-    if (!existsSync(skillMd)) continue;
-    const hash = createHash('sha256').update(readFileSync(skillMd)).digest('hex').slice(0, 12);
-    entries.push(`${name}:${hash}`);
+function listSkillTreeFiles(root, dir = root) {
+  if (!existsSync(dir)) return [];
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listSkillTreeFiles(root, full));
+    } else if (entry.isFile()) {
+      files.push(relative(root, full).split(sep).join('/'));
+    }
   }
-  return entries.join(',');
+  return files;
 }
 
 /**
@@ -507,11 +508,18 @@ async function copyOrExtractLocalBundle(sourceValue) {
  * provider-specific paths. Different install methods (npx skills add
  * vs our bundle) resolve {{scripts_path}} to different provider dirs
  * (e.g. .agents vs .claude), so we strip those differences.
+ * Version fields intentionally remain part of the comparison so metadata-only
+ * releases still refresh installed files.
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/')
-    .replace(/^version:\s*.+$/m, 'version: NORMALIZED');
+    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/');
+}
+
+function hashSkillFile(filePath) {
+  return createHash('sha256')
+    .update(normalizeForHash(readFileSync(filePath, 'utf-8')))
+    .digest('hex');
 }
 
 /**
@@ -536,10 +544,10 @@ function deduplicateProviders(root, providers) {
 
 /**
  * Compare local skills against a downloaded bundle.
- * Only checks skills that exist in the bundle (ignores user's custom
- * skills that aren't part of impeccable). Deduplicates providers that
- * share the same real path (symlinks). Normalizes provider-specific
- * paths and version fields before comparing.
+ * Only checks skills that exist in the bundle (ignores user's custom skills
+ * that aren't part of impeccable). Deduplicates providers that share the same
+ * real path (symlinks). Compares the full bundled skill tree, not just
+ * SKILL.md, so script-only fixes and removed files are detected.
  * Returns true if every bundle skill matches the local copy.
  */
 function isUpToDate(root, providers, bundleDir) {
@@ -551,14 +559,21 @@ function isUpToDate(root, providers, bundleDir) {
     if (!existsSync(bundleSkillsDir)) continue;
 
     for (const name of readdirSync(bundleSkillsDir)) {
-      const bundleMd = join(bundleSkillsDir, name, 'SKILL.md');
-      const localMd = join(localSkillsDir, name, 'SKILL.md');
+      const bundleSkillDir = join(bundleSkillsDir, name);
+      const localSkillDir = join(localSkillsDir, name);
+      const bundleMd = join(bundleSkillDir, 'SKILL.md');
       if (!existsSync(bundleMd)) continue;
-      if (!existsSync(localMd)) return false;
+      if (!existsSync(localSkillDir)) return false;
 
-      const bundleHash = createHash('sha256').update(normalizeForHash(readFileSync(bundleMd, 'utf-8'))).digest('hex');
-      const localHash = createHash('sha256').update(normalizeForHash(readFileSync(localMd, 'utf-8'))).digest('hex');
-      if (bundleHash !== localHash) return false;
+      const bundleFiles = listSkillTreeFiles(bundleSkillDir);
+      const localFiles = listSkillTreeFiles(localSkillDir);
+      if (bundleFiles.join('\n') !== localFiles.join('\n')) return false;
+
+      for (const relPath of bundleFiles) {
+        const bundleHash = hashSkillFile(join(bundleSkillDir, ...relPath.split('/')));
+        const localHash = hashSkillFile(join(localSkillDir, ...relPath.split('/')));
+        if (bundleHash !== localHash) return false;
+      }
     }
   }
   return true;
@@ -1019,6 +1034,26 @@ function copyProviderSkills(bundleDir, root, targets) {
   return written;
 }
 
+function refreshProviderSkills(bundleDir, root, providers) {
+  const unique = deduplicateProviders(root, providers);
+  let updated = 0;
+  for (const { provider, localSkillsDir } of unique) {
+    const srcDir = join(bundleDir, provider, 'skills');
+    if (!existsSync(srcDir)) continue;
+
+    const skills = readdirSync(srcDir, { withFileTypes: true });
+    for (const skill of skills) {
+      if (!skill.isDirectory()) continue;
+      const src = join(srcDir, skill.name);
+      const dest = join(localSkillsDir, skill.name);
+      if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
+      copyDirSync(src, dest);
+      updated++;
+    }
+  }
+  return updated;
+}
+
 function hookArtifactsForProvider(bundleDir, root, provider) {
   return (PROVIDER_HOOK_ARTIFACTS[provider] || []).map(({ sourceProvider, rel, destProvider, destRel }) => {
     const writeRel = destRel || rel;
@@ -1457,23 +1492,38 @@ async function install(flags) {
     const installedTargets = findInstalledProviders(installRoot);
     const hookTargets = targets.filter(provider => installedTargets.includes(provider));
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
-    const missingHookTargets = wantHooks
-      ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
-      : [];
-    if (missingHookTargets.length > 0) {
-      let bundleDir;
-      try {
-        bundleDir = await downloadAndExtractBundle();
-        const writtenHookTargets = copyProviderHooks(bundleDir, hookRoot, missingHookTargets, { skillRoot: installRoot });
-        if (writtenHookTargets.length > 0) console.log(`Installed hooks into: ${writtenHookTargets.join(', ')}`);
-      } catch (e) {
-        console.error(`Hook install failed: ${e.message}`);
-        process.exit(1);
-      } finally {
-        if (bundleDir) rmSync(bundleDir, { recursive: true, force: true });
+    let bundleDir;
+    try {
+      bundleDir = await downloadAndExtractBundle();
+      let updated = 0;
+      if (!isUpToDate(installRoot, installedTargets, bundleDir)) {
+        migrateUnprefixImpeccable(installRoot);
+        updated = refreshProviderSkills(bundleDir, installRoot, installedTargets);
+        const v = getSkillsVersion(installRoot);
+        console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
+
+      const missingHookTargets = wantHooks
+        ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
+        : [];
+      const writtenHookTargets = missingHookTargets.length > 0
+        ? copyProviderHooks(bundleDir, hookRoot, missingHookTargets, { skillRoot: installRoot })
+        : [];
+      if (writtenHookTargets.length > 0) console.log(`Installed hooks into: ${writtenHookTargets.join(', ')}`);
+
+      if (updated === 0 && writtenHookTargets.length === 0) {
+        const v = getSkillsVersion(installRoot);
+        console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
+        console.log('Run with --force to reinstall.\n');
+      } else {
+        console.log('Done!\n');
+      }
+    } catch (e) {
+      console.error(`Install check failed: ${e.message}`);
+      process.exit(1);
+    } finally {
+      if (bundleDir) rmSync(bundleDir, { recursive: true, force: true });
     }
-    console.log('Run with --force to reinstall.\n');
     process.exit(0);
   }
 
@@ -1675,25 +1725,7 @@ async function update(flags = []) {
     const migrated = migrateUnprefixImpeccable(root);
     if (migrated > 0) console.log('Migrated a prefixed install back to /impeccable (the i- prefix is no longer used).');
 
-    // Copy from the bundle to each unique provider folder.
-    // Deduplicate so symlinked dirs (e.g. .claude/skills -> .agents/skills)
-    // are only written once with the correct provider's content.
-    const unique = deduplicateProviders(root, copyProviders);
-    let updated = 0;
-    for (const { provider, localSkillsDir } of unique) {
-      const srcDir = join(tmpDir, provider, 'skills');
-      if (!existsSync(srcDir)) continue;
-
-      const skills = readdirSync(srcDir, { withFileTypes: true });
-      for (const skill of skills) {
-        if (!skill.isDirectory()) continue;
-        const src = join(srcDir, skill.name);
-        const dest = join(localSkillsDir, skill.name);
-        if (existsSync(dest)) rmSync(dest, { recursive: true });
-        copyDirSync(src, dest);
-        updated++;
-      }
-    }
+    const updated = refreshProviderSkills(tmpDir, root, copyProviders);
     const wantHooks = installHooks && await decideHookInstall(root, providers, { yes });
     const hookTargets = wantHooks ? copyProviderHooks(tmpDir, root, providers, { force }) : [];
 
