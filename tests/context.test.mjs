@@ -391,6 +391,31 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(ctx.design, /Root design/);
   });
 
+  it('does not discover dependency or generated directories as workspace candidates', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['packages/**'],
+    }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('packages/ui/package.json', JSON.stringify({ name: '@acme/ui' }, null, 2));
+    write('packages/ui/src/index.ts', 'export const ui = true;\n');
+    write('packages/ui/node_modules/dep/package.json', JSON.stringify({ name: 'dep' }, null, 2));
+    write('packages/ui/node_modules/dep/src/index.ts', 'export const dep = true;\n');
+    write('packages/ui/dist/package.json', JSON.stringify({ name: '@acme/ui-dist' }, null, 2));
+    write('packages/ui/dist/src/index.ts', 'export const dist = true;\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    const selection = parseTargetSelection(res.stdout);
+
+    assert.deepEqual(selection.targetCandidates.map((candidate) => candidate.path), ['packages/ui']);
+  });
+
   it('uses apps and packages folders as a fallback when a monorepo marker exists', () => {
     write('nx.json', '{}\n');
     write('PRODUCT.md', '# Root product\n');

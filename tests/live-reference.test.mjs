@@ -27,6 +27,7 @@ describe('live reference authoring contract', () => {
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
     assert.match(liveMd, /infer the concrete path and run `node \{\{scripts_path\}\}\/live\.mjs --target <path>` instead/);
+    assert.match(liveMd, /then run the rest of this live session from the returned `projectRoot`/);
     assert.doesNotMatch(liveMd, /target_selection_required/);
     assert.doesNotMatch(liveMd, /rerun with the chosen app path as `--target`/);
     assert.doesNotMatch(liveMd, /productStatus/);

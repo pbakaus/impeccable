@@ -27,6 +27,18 @@ const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
 const MONOREPO_MARKER_FILES = ['pnpm-workspace.yaml', 'turbo.json', 'nx.json', 'lerna.json'];
 const MONOREPO_FALLBACK_PROJECT_DIRS = ['apps', 'packages'];
+const WORKSPACE_DISCOVERY_IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.turbo',
+  '.cache',
+  'coverage',
+]);
 
 // ─── Update check ──────────────────────────────────────────────────────────
 // Piggyback a lightweight skill-version check on the once-per-session boot.
@@ -69,7 +81,7 @@ export function loadContext(cwd = process.cwd(), options = {}) {
   };
 }
 
-export function resolveContext(cwd = process.cwd(), options = {}) {
+function resolveContext(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const project = resolveProject(absCwd, options);
   const projectContextDir = resolveLocalContextDir(project.projectRoot);
@@ -131,7 +143,7 @@ export function resolveTargetSelection(cwd = process.cwd(), options = {}) {
   };
 }
 
-export function resolveProject(cwd = process.cwd(), options = {}) {
+function resolveProject(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const targetDir = resolveTargetDir(absCwd, options);
   let repoRoot = findMonorepoRoot(targetDir);
@@ -226,7 +238,7 @@ function hasFallbackWorkspaceChildren(dir) {
     } catch {
       continue;
     }
-    if (entries.some((entry) => entry.isDirectory() && !entry.name.startsWith('.'))) return true;
+    if (entries.some((entry) => entry.isDirectory() && !isIgnoredWorkspaceDiscoveryDir(entry.name))) return true;
   }
   return false;
 }
@@ -248,7 +260,7 @@ function discoverTargetCandidates(repoRoot) {
         continue;
       }
       for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        if (!entry.isDirectory() || isIgnoredWorkspaceDiscoveryDir(entry.name)) continue;
         const root = path.join(base, entry.name);
         roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
       }
@@ -335,7 +347,7 @@ function expandSimplePattern(repoRoot, patternSegments, index = 0, current = rep
   }
   const roots = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (!entry.isDirectory() || isIgnoredWorkspaceDiscoveryDir(entry.name)) continue;
     if (!segmentMatches(segment, entry.name)) continue;
     roots.push(...expandSimplePattern(repoRoot, patternSegments, index + 1, path.join(current, entry.name)));
   }
@@ -345,7 +357,7 @@ function expandSimplePattern(repoRoot, patternSegments, index = 0, current = rep
 function directChildDirs(dir) {
   try {
     return fs.readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .filter((entry) => entry.isDirectory() && !isIgnoredWorkspaceDiscoveryDir(entry.name))
       .map((entry) => path.join(dir, entry.name));
   } catch {
     return [];
@@ -360,7 +372,7 @@ function walkDirs(root, visit) {
     return;
   }
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (!entry.isDirectory() || isIgnoredWorkspaceDiscoveryDir(entry.name)) continue;
     const dir = path.join(root, entry.name);
     visit(dir);
     walkDirs(dir, visit);
@@ -376,6 +388,10 @@ function isCandidateProjectRoot(dir) {
     || fs.existsSync(path.join(dir, 'pages'))
     || fs.existsSync(path.join(dir, 'public'))
   );
+}
+
+function isIgnoredWorkspaceDiscoveryDir(name) {
+  return name.startsWith('.') || WORKSPACE_DISCOVERY_IGNORED_DIRS.has(name);
 }
 
 function findTargetExample(repoRoot, projectRoot) {

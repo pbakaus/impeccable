@@ -71,7 +71,7 @@ The agent should then:
   }
 
   const ctx = loadContext(liveTarget.originalCwd, liveTarget.targetOptions);
-  const activeCwd = ctx.projectRoot || liveTarget.projectRoot;
+  const activeCwd = ctx.projectRoot;
   const outputTargetPath = liveTarget.targetPath || null;
 
   const missingContext = missingLiveContext(ctx);

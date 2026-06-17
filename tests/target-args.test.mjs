@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseTargetPath, stripTargetArgs } from '../skill/scripts/lib/target-args.mjs';
+import { parseTargetPath } from '../skill/scripts/lib/target-args.mjs';
 
 describe('target argument helpers', () => {
   it('uses the last target value when duplicate target flags are present', () => {
@@ -16,9 +16,5 @@ describe('target argument helpers', () => {
       () => parseTargetPath(['--target', '--help'], { strict: true }),
       (err) => err.code === 'TARGET_VALUE_MISSING' && /--target requires a path value/.test(err.message),
     );
-  });
-
-  it('does not consume the next flag when stripping an invalid target pair', () => {
-    assert.deepEqual(stripTargetArgs(['--target', '--help']), ['--help']);
   });
 });

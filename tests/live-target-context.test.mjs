@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
 const LIVE_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live.mjs');
+const LIVE_POLL_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-poll.mjs');
 const LIVE_SERVER_SCRIPT = join(REPO_ROOT, 'skill', 'scripts', 'live-server.mjs');
 const TARGET = 'apps/dashboard/src/App.jsx';
 
@@ -60,6 +61,26 @@ describe('live target-aware monorepo context', () => {
 
       const raw = await fetchDesignRaw(payload);
       assert.match(raw, /ROOT DESIGN LIVE INHERIT/);
+    } finally {
+      stopLive(tmp);
+    }
+  });
+
+  it('continues the live lifecycle from the projectRoot returned by --target', () => {
+    writeChildLiveConfig(tmp);
+
+    const payload = bootLive(tmp);
+    try {
+      assert.equal(payload.ok, true);
+      assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+
+      const poll = runNode(LIVE_POLL_SCRIPT, ['--timeout=50'], payload.projectRoot);
+      assert.equal(poll.status, 0, `stdout:\n${poll.stdout}\nstderr:\n${poll.stderr}`);
+      assert.deepEqual(JSON.parse(poll.stdout), { type: 'timeout' });
+
+      const stop = runNode(LIVE_SERVER_SCRIPT, ['stop', '--keep-inject'], payload.projectRoot);
+      assert.equal(stop.status, 0, `stdout:\n${stop.stdout}\nstderr:\n${stop.stderr}`);
+      assert.match(stop.stdout, /Stopped live server/);
     } finally {
       stopLive(tmp);
     }
