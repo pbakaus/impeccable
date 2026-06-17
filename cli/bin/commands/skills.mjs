@@ -1490,9 +1490,10 @@ async function install(flags) {
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
     const installedTargets = findInstalledProviders(installRoot);
-    const linkedTargets = findLinkedProviders(installRoot, installedTargets);
-    const copyTargets = installedTargets.filter(provider => !linkedTargets.includes(provider));
-    const hookTargets = targets.filter(provider => installedTargets.includes(provider));
+    const selectedInstalledTargets = targets.filter(provider => installedTargets.includes(provider));
+    const linkedTargets = findLinkedProviders(installRoot, selectedInstalledTargets);
+    const copyTargets = selectedInstalledTargets.filter(provider => !linkedTargets.includes(provider));
+    const hookTargets = selectedInstalledTargets;
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
     let bundleDir;
     try {
