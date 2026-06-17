@@ -7,29 +7,30 @@ import { compileProviderBlocks } from '../scripts/lib/utils.js';
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
-  it('keeps setup guidance on nearest project skill script paths', () => {
+  it('keeps setup guidance focused on inferred target paths', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
-    assert.match(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
-    assert.match(skillSrc, /before falling back to a global home install/);
+    assert.match(skillSrc, /infer the concrete path and run `node \{\{scripts_path\}\}\/context\.mjs --target <path>` instead/);
+    assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
+    assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
+    assert.doesNotMatch(skillSrc, /## Context diagnostics/);
     assert.doesNotMatch(liveMd, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
   });
 
-  it('keeps monorepo live app selection ahead of --target fallback', () => {
+  it('keeps monorepo live guidance short and target-driven', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /TARGET_SELECTION_REQUIRED/);
-    assert.match(skillSrc, /rerun helper commands from that child app cwd/);
-    assert.match(skillSrc, /productStatus/);
-    assert.match(skillSrc, /designStatus/);
-    assert.match(skillSrc, /use `--target <path>` only as a fallback/);
-    assert.match(liveMd, /target_selection_required/);
-    assert.match(liveMd, /rerun from that child app cwd/);
-    assert.match(liveMd, /productStatus/);
-    assert.match(liveMd, /designStatus/);
+    assert.match(skillSrc, /--target <path>/);
+    assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
+    assert.doesNotMatch(skillSrc, /productStatus/);
+    assert.doesNotMatch(skillSrc, /designStatus/);
+    assert.match(liveMd, /infer the concrete path and run `node \{\{scripts_path\}\}\/live\.mjs --target <path>` instead/);
+    assert.doesNotMatch(liveMd, /target_selection_required/);
+    assert.doesNotMatch(liveMd, /rerun with the chosen app path as `--target`/);
+    assert.doesNotMatch(liveMd, /productStatus/);
+    assert.doesNotMatch(liveMd, /designStatus/);
   });
 
   it('keeps the live prompt focused on the foreground poll loop', () => {
