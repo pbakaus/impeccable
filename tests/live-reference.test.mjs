@@ -7,6 +7,16 @@ import { compileProviderBlocks } from '../scripts/lib/utils.js';
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
+  it('keeps setup guidance on nearest project skill script paths', () => {
+    const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+
+    assert.match(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
+    assert.match(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
+    assert.match(skillSrc, /before falling back to a global home install/);
+    assert.doesNotMatch(liveMd, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
+  });
+
   it('keeps the live prompt focused on the foreground poll loop', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');

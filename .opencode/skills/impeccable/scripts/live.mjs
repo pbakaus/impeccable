@@ -87,6 +87,22 @@ The agent should then:
     process.exit(0);
   }
 
+  const missingContext = missingLiveContext(ctx);
+  if (missingContext.length > 0) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: 'context_missing',
+      missing: missingContext,
+      nextCommand: missingContext.includes('PRODUCT.md') ? 'init' : 'document',
+      targetPath: outputTargetPath,
+      projectRoot: ctx.projectRoot,
+      repoRoot: ctx.repoRoot,
+      productPath: ctx.productPath,
+      designPath: ctx.designPath,
+    }, null, 2));
+    process.exit(0);
+  }
+
   // 1. Check config (fail fast if missing — no point starting anything else)
   const checkOut = runScript('live-inject.mjs', ['--check', ...forwardedTargetArgs], { cwd: activeCwd });
   const checkResult = safeParse(checkOut);
@@ -153,6 +169,13 @@ The agent should then:
     design: ctx.design,
     designPath: ctx.designPath,
   }, null, 2));
+}
+
+function missingLiveContext(ctx) {
+  const missing = [];
+  if (!ctx.hasProduct) missing.push('PRODUCT.md');
+  if (!ctx.hasDesign) missing.push('DESIGN.md');
+  return missing;
 }
 
 /**

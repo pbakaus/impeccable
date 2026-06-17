@@ -91,6 +91,50 @@ describe('live target-aware monorepo context', () => {
     }
   });
 
+  it('blocks live before server start when PRODUCT.md is missing everywhere', () => {
+    rmSync(join(tmp, 'PRODUCT.md'), { force: true });
+    writeChildLiveConfig(tmp);
+
+    const payload = runLiveContextMissing(tmp);
+
+    assert.deepEqual(payload.missing, ['PRODUCT.md']);
+    assert.equal(payload.nextCommand, 'init');
+    assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+    assert.equal(payload.repoRoot, tmp);
+    assert.equal(payload.productPath, null);
+    assert.equal(payload.designPath, 'DESIGN.md');
+    assertNoLiveBootSideEffects(tmp);
+  });
+
+  it('blocks live before server start when DESIGN.md is missing everywhere', () => {
+    rmSync(join(tmp, 'DESIGN.md'), { force: true });
+    writeChildLiveConfig(tmp);
+
+    const payload = runLiveContextMissing(tmp);
+
+    assert.deepEqual(payload.missing, ['DESIGN.md']);
+    assert.equal(payload.nextCommand, 'document');
+    assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
+    assert.equal(payload.repoRoot, tmp);
+    assert.equal(payload.productPath, 'PRODUCT.md');
+    assert.equal(payload.designPath, null);
+    assertNoLiveBootSideEffects(tmp);
+  });
+
+  it('blocks live before server start with init first when both context files are missing', () => {
+    rmSync(join(tmp, 'PRODUCT.md'), { force: true });
+    rmSync(join(tmp, 'DESIGN.md'), { force: true });
+    writeChildLiveConfig(tmp);
+
+    const payload = runLiveContextMissing(tmp);
+
+    assert.deepEqual(payload.missing, ['PRODUCT.md', 'DESIGN.md']);
+    assert.equal(payload.nextCommand, 'init');
+    assert.equal(payload.productPath, null);
+    assert.equal(payload.designPath, null);
+    assertNoLiveBootSideEffects(tmp);
+  });
+
   it('lets root live-status and live-poll discover the child server when only one is running', () => {
     writeChildLiveConfig(tmp);
 
@@ -239,6 +283,22 @@ function bootLive(root) {
   const res = runNode(LIVE_SCRIPT, ['--target', TARGET], root);
   assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
   return JSON.parse(res.stdout);
+}
+
+function runLiveContextMissing(root) {
+  const res = runNode(LIVE_SCRIPT, ['--target', TARGET], root);
+  assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+  const payload = JSON.parse(res.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'context_missing');
+  assert.equal(payload.targetPath, TARGET);
+  return payload;
+}
+
+function assertNoLiveBootSideEffects(root) {
+  assert.equal(existsSync(join(root, 'apps', 'dashboard', '.impeccable', 'live', 'server.json')), false);
+  assert.equal(existsSync(join(root, '.impeccable', 'live', 'server.json')), false);
+  assert.doesNotMatch(readFileSync(join(root, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /live\.js/);
 }
 
 async function fetchDesignRaw(payload) {
