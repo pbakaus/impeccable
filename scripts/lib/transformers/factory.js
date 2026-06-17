@@ -10,6 +10,7 @@ import {
   stripRuleMarkers,
 } from '../utils.js';
 import { SKILL_CATEGORIES, CATEGORY_ORDER } from '../sub-pages-data.js';
+import { hooksJsonFor } from './hooks.js';
 
 /**
  * Map from frontmatter field name to extraction spec.
@@ -300,10 +301,26 @@ export function createTransformer(config) {
       }
     }
 
+    // Emit the provider hook manifest when the provider opts in.
+    // Claude Code uses `.claude/settings.json`, Codex uses project-local
+    // `.codex/hooks.json`, and Cursor uses `.cursor/hooks.json`.
+    let hooksEmitted = false;
+    if (config.emitHooks) {
+      const manifest = hooksJsonFor(config.emitHooks);
+      if (manifest) {
+        const hooksRel = config.hooksManifestRel || path.join('hooks', 'hooks.json');
+        writeFile(path.join(providerDir, configDir, hooksRel), JSON.stringify(manifest, null, 2) + '\n');
+        hooksEmitted = true;
+      }
+    }
+
     const skillWord = skills.length === 1 ? 'skill' : 'skills';
     const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
     const scriptInfo = scriptCount > 0 ? ` (${scriptCount} script files)` : '';
     const agentInfo = agentCount > 0 ? ` (${agentCount} agent files)` : '';
-    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}`);
+    const hooksInfo = hooksEmitted
+      ? ` (${config.hooksManifestRel || path.join('hooks', 'hooks.json')})`
+      : '';
+    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}${hooksInfo}`);
   };
 }

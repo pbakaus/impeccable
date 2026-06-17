@@ -19,7 +19,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createBrowserDetector, detectUrl } from '../cli/engine/detect-antipatterns.mjs';
+import { createBrowserDetector, detectUrl, normalizeDesignSystem } from '../cli/engine/detect-antipatterns.mjs';
+import { filterDetectionFindings } from '../cli/lib/impeccable-config.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -116,6 +117,64 @@ describe('detectUrl — browser-only fixtures', () => {
     assert.equal(f.filter(r => r.antipattern === 'line-length').length, 1);
   });
 
+  it('design-system: URL scans apply injected design context', async () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        },
+        colors: {
+          ink: '#241f1a',
+          paper: '#f7f4ee',
+          surface: '#ffffff',
+          accent: '#b8422e',
+          border: '#d4c7b9',
+        },
+        rounded: {
+          sm: '4px',
+          md: '8px',
+          '"2xl"': '32px',
+          full: '999px',
+        },
+      },
+      sidecar: {
+        extensions: {
+          colorMeta: {
+            accent: {
+              canonical: '#b8422e',
+              tonalRamp: ['#923524', '#d55a42'],
+            },
+          },
+        },
+      },
+    });
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/design-system.html`, {
+      designSystem,
+      visualContrast: false,
+    });
+    const designFindings = f.filter(r => r.antipattern.startsWith('design-system-'));
+    const snippets = designFindings.map(r => r.snippet || '').join('\n');
+
+    assert.ok(designFindings.some(r => r.antipattern === 'design-system-font'), 'expected unsupported font');
+    assert.ok(designFindings.some(r => r.antipattern === 'design-system-color'), 'expected undocumented colors');
+    assert.ok(designFindings.some(r => r.antipattern === 'design-system-radius'), 'expected undocumented radius');
+    assert.match(snippets, /Flag Font Unsupported/);
+    assert.match(snippets, /Flag Color Hot Pink/);
+    assert.match(snippets, /Flag Radius Eighteen/);
+    assert.doesNotMatch(snippets, /Pass Mid Pill Radius/);
+
+    const filtered = filterDetectionFindings(f, {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'design-system-font', value: 'poppins' }],
+    });
+    assert.equal(
+      filtered.some(r => r.antipattern === 'design-system-font' && /poppins/i.test(r.ignoreValue || r.snippet || '')),
+      false,
+      'URL design-system findings should carry ignoreValue for CLI suppressions',
+    );
+  });
+
   it('clipped-overflow-container: utility-named popovers still flag when clipped', async () => {
     const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/clipped-overflow-container.html`);
     const snippets = f
@@ -179,6 +238,14 @@ describe('detectUrl — browser-only fixtures', () => {
     } finally {
       await browser.close().catch(() => {});
     }
+  });
+
+  it('overused-font: hook inline-ignore comments do not suppress browser findings', async () => {
+    const f = await detectUrl(`${baseUrl}/fixtures/antipatterns/hook-inline-ignore.html`);
+    assert.ok(
+      f.some(r => r.antipattern === 'overused-font' || r.type === 'overused-font' || r.id === 'overused-font'),
+      `expected browser scan to include overused-font despite inline comments: ${JSON.stringify(f)}`,
+    );
   });
 
   it('body-text-viewport-edge: 3 flag paragraphs/list-items, 0 pass cases', async () => {

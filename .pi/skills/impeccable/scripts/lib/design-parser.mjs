@@ -62,7 +62,7 @@ function parseYamlSubset(yaml) {
       stack.pop();
     }
 
-    const key = content.slice(0, colonIdx).trim();
+    const key = unquoteYamlKey(content.slice(0, colonIdx).trim());
     const rest = stripInlineYamlComment(content.slice(colonIdx + 1).trim());
     const parent = stack[stack.length - 1].obj;
 
@@ -91,6 +91,13 @@ function findTopLevelColon(s) {
     }
   }
   return -1;
+}
+
+function unquoteYamlKey(key) {
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    return key.slice(1, -1);
+  }
+  return key;
 }
 
 function stripInlineYamlComment(s) {

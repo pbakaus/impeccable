@@ -120,4 +120,4 @@ The stop also strips the `<script>` tag from your dev entry and stops the helper
 - **The picker never appears on the page.** Either the helper did not start (look for errors in the terminal) or CSP is blocking the inject. Re-run `/impeccable live` and let it re-check CSP. If you declined the patch on first run, delete the `cspChecked` line in `.impeccable/live/config.json` and re-run.
 - **"element lives in a generated file"** on Go. Live detected that the picked element is in a compiled output, not a source file. It routes the accept through a fallback path so the variant still lands in true source. Follow the hint; don't force-accept into the generated file.
 - **Variants don't feel brand-aligned.** Check that `PRODUCT.md` and `DESIGN.md` exist at the project root. Without them, live leans toward generic defaults. Run `/impeccable init` and `/impeccable document` first.
-- **The helper port is in use.** Another live session left its server running. `npx impeccable live stop` releases the port.
+- **The helper port is in use.** Another live session left its server running. `/impeccable live stop` releases the port.

@@ -31,7 +31,7 @@ const MONOREPO_FALLBACK_PROJECT_DIRS = ['apps', 'packages'];
 // ─── Update check ──────────────────────────────────────────────────────────
 // Piggyback a lightweight skill-version check on the once-per-session boot.
 // When a newer skill ships, append an UPDATE_AVAILABLE directive so the agent
-// can offer `npx impeccable skills update`. Everything here is best-effort and
+// can offer `npx impeccable update`. Everything here is best-effort and
 // silent on failure: a network problem, sandbox, or missing cache must never
 // block context output or print an error.
 
@@ -550,8 +550,8 @@ function buildUpdateDirective(localVersion, latestVersion) {
     `UPDATE_AVAILABLE: A newer Impeccable skill is available ` +
     `(installed v${localVersion}, latest v${latestVersion}). ` +
     `Before continuing, ask the user once: "A newer Impeccable (v${latestVersion}) is available. ` +
-    `Update now? It runs \`npx impeccable skills update\`." ` +
-    `If they agree, run \`npx impeccable skills update\` (the update applies to the next session, not this one). ` +
+    `Update now? It runs \`npx impeccable update\`." ` +
+    `If they agree, run \`npx impeccable update\` (the update applies to the next session, not this one). ` +
     `Either way, continue the current task without waiting, and do not raise this again.`
   );
 }
@@ -562,9 +562,23 @@ function buildUpdateDirective(localVersion, latestVersion) {
  * the user's home dir) and re-surfaces a given version at most once per week so
  * the agent never nags. Opt out entirely with IMPECCABLE_NO_UPDATE_CHECK=1.
  */
+// Read the unified config's top-level `updateCheck` (local overrides shared).
+// Inlined rather than importing hook-lib so the boot path stays lightweight.
+function updateCheckDisabledByConfig(cwd = process.cwd()) {
+  let value;
+  for (const name of ['config.json', 'config.local.json']) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', name), 'utf-8'));
+      if (raw && typeof raw === 'object' && typeof raw.updateCheck === 'boolean') value = raw.updateCheck;
+    } catch { /* missing or malformed: ignore */ }
+  }
+  return value === false;
+}
+
 async function computeUpdateDirective(now = Date.now()) {
   try {
     if (process.env.IMPECCABLE_NO_UPDATE_CHECK) return null;
+    if (updateCheckDisabledByConfig()) return null;
     const localVersion = readLocalSkillVersion();
     if (!localVersion) return null;
 

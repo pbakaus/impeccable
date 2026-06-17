@@ -12,17 +12,19 @@ interface Props {
   tagline: string;
   slug: string;
   category: string;
+  pageKind?: 'command' | 'reference';
   allCommands: { slug: string; category: string }[];
 }
 
-const { title, description, tagline, slug } = Astro.props;
+const { title, description, tagline, slug, pageKind = 'command' } = Astro.props;
+const isReference = pageKind === 'reference';
 
 // Decide hero layout at build time: when a command has a registered demo
 // (in site/scripts/demos/commands/<id>.js), the hero is a two-column grid
 // with the demo on the left and h1/lede on the right: same editorial
 // before/after side-by-side that the old site used. When no demo exists,
 // the hero stays single-column.
-const hasDemo = !!getCommandDemo(slug);
+const hasDemo = !isReference && !!getCommandDemo(slug);
 
 const relationships = COMMAND_RELATIONSHIPS[slug] || {};
 ---
@@ -32,10 +34,10 @@ const relationships = COMMAND_RELATIONSHIPS[slug] || {};
   description={description}
   activeNav="docs"
   canonicalPath={`/docs/${slug}`}
-  bodyClass="sub-page skills-layout-page docs-kinpaku"
+  bodyClass="sub-page skills-layout-page docs-kinpaku kinpaku-chrome"
 >
   <div class="skills-layout">
-    <DocsSidebar activeCommand={slug} />
+    <DocsSidebar activeCommand={isReference ? undefined : slug} activeReference={isReference ? slug : undefined} />
 
     <div class="skills-main">
       <div class="skills-detail">
@@ -46,7 +48,6 @@ const relationships = COMMAND_RELATIONSHIPS[slug] || {};
              source the homepage uses. */
           <div class="docs-hero docs-hero--with-demo">
             <header class="sub-page-header">
-              <span class="sub-page-prefix">/impeccable</span>
               <h1 class="sub-page-title">{slug}</h1>
               {tagline && <p class="sub-page-lede">{tagline}</p>}
             </header>
@@ -54,8 +55,7 @@ const relationships = COMMAND_RELATIONSHIPS[slug] || {};
           </div>
         ) : (
           <header class="sub-page-header">
-            <span class="sub-page-prefix">/impeccable</span>
-            <h1 class="sub-page-title">{slug}</h1>
+            <h1 class="sub-page-title">{title}</h1>
             {tagline && <p class="sub-page-lede">{tagline}</p>}
           </header>
         )}
@@ -64,7 +64,7 @@ const relationships = COMMAND_RELATIONSHIPS[slug] || {};
           <slot />
         </div>
 
-        {(relationships.leadsTo || relationships.pairs || relationships.combinesWith) && (
+        {!isReference && (relationships.leadsTo || relationships.pairs || relationships.combinesWith) && (
           <footer class="skills-relationships">
             <h2 class="skills-relationships-title">Related commands</h2>
             <div class="skills-relationships-list">

@@ -234,7 +234,7 @@
   background: oklch(4% 0.004 95 / 0.72);
   backdrop-filter: blur(8px) saturate(1.4);
   -webkit-backdrop-filter: blur(8px) saturate(1.4);
-  border: 1px solid oklch(58% 0.065 82 / 0.32);
+  border: 1px solid var(--ks-rule);
   border-radius: 2px;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
@@ -244,7 +244,7 @@
 
 .home-kinpaku .hero-rebuild-right .split-label-item[data-point="after"] {
   color: var(--ks-kinpaku);
-  border-color: oklch(78% 0.10 82 / 0.45);
+  border-color: oklch(78% 0.12 82 / 0.45);
 }
 
 @media (max-width: 1080px) {
@@ -1323,7 +1323,7 @@
 }
 .hotel-hero--slop .hotel-hero-photo { display: none; }
 .hotel-hero--slop .hotel-hero-title {
-  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   font-weight: 800;
   font-size: 27px;
   letter-spacing: -0.02em;
@@ -1484,7 +1484,7 @@
 /* original — the AI-slop card: generic sans, purple gradient, overdone radius +
    shadow, weak copy. Clashes on purpose with the serif siblings. */
 .hotel-card--slop {
-  font-family: "Inter", "Albert Sans", system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   border-radius: 16px;
   border-color: transparent;
   box-shadow: 0 12px 30px oklch(52% 0.2 295 / 0.4);
@@ -1693,7 +1693,7 @@
   text-transform: uppercase;
   color: var(--ks-kinpaku);
   background: oklch(8% 0.006 95 / 0.72);
-  border: 1px solid var(--ks-gold-hairline, oklch(58% 0.065 82 / 0.32));
+  border: 1px solid var(--ks-rule);
   border-radius: 4px;
   padding: 3px 7px;
   opacity: 0;
@@ -1836,7 +1836,7 @@
   color: var(--ks-champagne);
   background: oklch(13% 0.006 95);
   border: 1px solid var(--ks-rule);
-  border-left: 2px solid var(--ks-kinpaku);
+  box-shadow: inset 0 -2px 0 var(--ks-kinpaku);
   border-radius: 3px;
   padding: 4px 8px;
 }

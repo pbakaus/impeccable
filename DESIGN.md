@@ -24,19 +24,83 @@ colors:
   text-faint: "oklch(62% 0 0)"                # subdued
   text-mute-deep: "oklch(52% 0 0)"            # disabled
 
+  # Neutral ramp and light-mode paper/ink tokens. These mirror html.light in
+  # site/styles/kinpaku-tokens.css plus neutral utility stops used in docs and
+  # the live overlay.
+  neutral-100: "oklch(100% 0 0)"
+  neutral-99: "oklch(99% 0 0)"
+  neutral-98: "oklch(98% 0 0)"
+  neutral-96: "oklch(96% 0 0)"
+  neutral-94: "oklch(94% 0 0)"
+  neutral-85: "oklch(85% 0 0)"
+  neutral-80: "oklch(80% 0 0)"
+  neutral-75: "oklch(75% 0 0)"
+  neutral-55: "oklch(55% 0 0)"
+  neutral-45: "oklch(45% 0 0)"
+  neutral-35: "oklch(35% 0 0)"
+  neutral-34: "oklch(34% 0 0)"
+  neutral-30: "oklch(30% 0 0)"
+  neutral-25: "oklch(25% 0 0)"
+  neutral-24: "oklch(24% 0 0)"
+  neutral-22: "oklch(22% 0 0)"
+  light-paper: "oklch(97% 0.012 95)"
+  light-paper-deep: "oklch(94% 0.014 95)"
+  light-paper-raised: "oklch(99% 0.008 95)"
+  light-graphite: "oklch(91% 0.012 95)"
+  light-graphite-2: "oklch(88% 0.014 95)"
+  light-ink: "oklch(18% 0.02 95)"
+  light-text: "oklch(25% 0.018 95)"
+  light-muted: "oklch(45% 0.015 95)"
+  light-faint: "oklch(55% 0.012 95)"
+  light-disabled: "oklch(65% 0.01 95)"
+  light-rule: "oklch(25% 0.02 95)"
+
   # Gold ramp
   kinpaku-pale: "oklch(86% 0.07 84)"          # hover lift, pale fills
   kinpaku-rich: "oklch(77% 0.13 82)"          # active CTA, severity-medium
   kinpaku-deep: "oklch(61% 0.085 78)"         # borders against the brand
+  kinpaku-rule: "oklch(78% 0.12 82)"          # alpha-friendly rule/glow base
+  kinpaku-rule-rich: "oklch(77% 0.14 82)"     # secondary button soft fill base
+  kinpaku-glint: "oklch(95% 0.04 84)"         # leaf texture highlight overlay
+  kinpaku-glint-bright: "oklch(98% 0.04 84)"  # animated leaf sheen highlight
+  kinpaku-glint-rich: "oklch(94% 0.07 82)"    # warmer leaf sheen edge
+  kinpaku-glint-soft: "oklch(98% 0.035 84)"   # hover glint on gold CTAs
   gold-hairline: "oklch(78% 0 0 / 0.16)"      # default rule — neutral (name kept for compat)
   gold-hairline-strong: "oklch(74% 0.09 82 / 0.6)" # active rule — gold
 
   # Patina ramp
   patina-pale: "oklch(82% 0.07 188)"          # hover lift on patina
   patina-deep: "oklch(49% 0.08 188)"          # deep oxide, dark variants
+  patina-rule: "oklch(70% 0.105 190)"         # alpha-friendly glow/rule base
+  patina-text: "oklch(76% 0.088 190)"         # small readable patina text
+
+  # Legacy command category colors still used by homepage proof modules.
+  category-create-text: "oklch(86% 0.075 82)"
+  category-evaluate-text: "oklch(76% 0.088 190)"
+  category-refine-bg: "oklch(89% 0.055 84)"
+  category-refine-border: "oklch(84% 0.055 84)"
+  category-refine-text: "oklch(88% 0.047 84)"
+  category-simplify-bg: "oklch(61% 0.085 78)"
+  category-simplify-border: "oklch(70% 0.096 72)"
+  category-simplify-text: "oklch(82% 0.095 76)"
+  category-harden-border: "oklch(58% 0.085 185)"
+  category-harden-text: "oklch(71% 0.082 184)"
+  category-system-border: "oklch(58% 0.028 82)"
+  category-system-text: "oklch(71% 0.028 82)"
+
+  # Conventional terminal chrome. Used only for faux terminal window dots.
+  terminal-red: "#ff5f56"
+  terminal-yellow: "#ffbd2e"
+  terminal-green: "#27c93f"
 
   # State (warning only, used sparingly)
   vermilion-warning: "oklch(58% 0.15 35)"
+  vermilion-warning-light: "oklch(52% 0.16 35)"
+  success: "oklch(45% 0.18 145)"
+  success-on-paper: "oklch(40% 0.10 145)"
+  success-bg: "oklch(58% 0.12 145)"
+  success-border: "oklch(75% 0.12 145)"
+  success-soft: "oklch(95% 0.05 145)"
 
 typography:
   wordmark:
@@ -84,9 +148,17 @@ typography:
 rounded:
   none: "0"
   xs: "2px"
+  code: "3px"
   sm: "4px"
+  control-sm: "5px"
   md: "6px"
+  control-md: "7px"
   lg: "8px"
+  xl: "10px"
+  "2xl": "12px"
+  "3xl": "14px"
+  "4xl": "16px"
+  pill: "999px"
 
 spacing:
   xs: "8px"

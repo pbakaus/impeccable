@@ -264,6 +264,14 @@
       border: 3px solid var(--brand);
       border-radius: 4px;
     }
+
+    /* 14: neutral 1px oklch right divider — context-bar hairline, not a side-tab. */
+    #pass-oklch-neutral-right-divider {
+      width: 400px;
+      background: #ffffff;
+      border-radius: 4px;
+      border-right: 1px solid oklch(92% 0 0 / 0.12);
+    }
   </style>
 </head>
 <body>
@@ -319,6 +327,7 @@
       <div class="case" id="pass-var-neutral"><h3>var() neutral</h3><p>--line resolves to gray</p></div>
       <div class="case" id="pass-var-thin"><h3>var() thin</h3><p>1px too thin to qualify</p></div>
       <div class="case" id="pass-var-allsides"><h3>var() all sides</h3><p>uniform, not a side-tab</p></div>
+      <div class="case" id="pass-oklch-neutral-right-divider"><h3>oklch neutral right divider</h3><p>1px neutral context-bar hairline</p></div>
     </div>
   </div>
   <script src="/js/detect-antipatterns-browser.js"></script>

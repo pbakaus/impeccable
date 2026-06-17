@@ -826,7 +826,7 @@
 .ks-logo-tile-links a {
   color: var(--ks-text);
   text-decoration: none;
-  border-bottom: 1px solid oklch(40% 0.015 95);
+  border-bottom: 1px solid var(--ks-rule);
   padding-bottom: 1px;
   transition: color 160ms ease, border-color 160ms ease;
 }

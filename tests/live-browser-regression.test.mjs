@@ -128,7 +128,7 @@ describe('live-browser.js regression guards', () => {
   it('exits inline editing directly on outside click', () => {
     assert.match(
       SOURCE,
-      /function cancelEditingToPicking\(\) \{[\s\S]{0,600}?state = 'PICKING';/,
+      /function cancelEditingToPicking\(\) \{[\s\S]{0,600}?setLiveState\('PICKING'\);/,
       'outside-click editing cancel should avoid rebuilding configure UI before hiding it',
     );
     assert.match(
@@ -151,6 +151,67 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function shouldFocusSteerChat\(\) \{\s*return state !== 'CONFIGURING'\s*&& state !== 'EDITING'\s*&& !steerLocked;\s*\}/,
       'edit-mode contenteditable focus must not be stolen by the global steering chat focus recovery',
+    );
+  });
+
+  it('keeps the Steer pill from clipping its label or the global bar exit control', () => {
+    assert.match(
+      SOURCE,
+      /const PAGE_CHAT_COLLAPSED_W = '104px';/,
+      'collapsed Steer pill should reserve enough room for icon, "Steer", and voice button',
+    );
+    assert.match(
+      SOURCE,
+      /function pageChatExpandedWidth\(\)[\s\S]{0,520}?window\.innerWidth - 16 - nonChatWidth[\s\S]{0,220}?Math\.max\(pageChatCollapsedWidthPx\(\), Math\.min\(PAGE_CHAT_EXPANDED_MAX_W, available\)\)/,
+      'expanded Steer width should reserve viewport room for the rest of the global bar',
+    );
+    assert.match(
+      SOURCE,
+      /syncGlobalBarExpandedLabels\(false\);[\s\S]{0,80}?pageChatEl\.style\.width = pageChatExpandedWidth\(\);/,
+      'opening Steer should collapse inactive mode labels before measuring input width',
+    );
+    assert.match(
+      SOURCE,
+      /maxWidth: 'calc\(100vw - 16px\)'[\s\S]{0,80}?boxSizing: 'border-box'/,
+      'global bar should be constrained to the viewport instead of clipping the exit control offscreen',
+    );
+    assert.match(
+      SOURCE,
+      /globalBarEl = el\('div', \{[\s\S]{0,360}?width: 'max-content'/,
+      'fixed-position global bar must use max-content sizing before maxWidth clamps it, or narrow panes clip the exit button',
+    );
+    assert.match(
+      SOURCE,
+      /const inner = el\('div', \{[\s\S]{0,220}?flex: '0 0 auto'/,
+      'global bar inner controls must not flex-shrink and crop hover labels',
+    );
+    assert.match(
+      SOURCE,
+      /function makeIconBtn[\s\S]{0,360}?flex: '0 0 auto'[\s\S]{0,80}?minWidth: '30px'/,
+      'global bar icon buttons must keep stable hitboxes when Steer expands',
+    );
+    assert.match(
+      SOURCE,
+      /applyGlobalBarLabelState\(expandInactive, pageChatExpanded\)/,
+      'expanded Steer should force labels closed without shrinking the icons',
+    );
+  });
+
+  it('does not autofocus the steering chat while a page editable is focused', () => {
+    assert.match(
+      SOURCE,
+      /function isPageEditableElement\(el\) \{[\s\S]{0,160}?own\(el\)[\s\S]{0,160}?\^\(INPUT\|TEXTAREA\|SELECT\)\$[\s\S]{0,80}?el\.isContentEditable/,
+      'page-owned inputs, textareas, selects, and contenteditables must be recognized before steer focus recovery runs',
+    );
+    assert.match(
+      SOURCE,
+      /function isPageEditableActive\(\) \{[\s\S]{0,120}?activeElementDeep\(\)[\s\S]{0,120}?isPageEditableElement\(active\) && !isInlineEditActive\(active\)/,
+      'auto-focus recovery must check the deep active element instead of only host text selection',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldSteerAutoFocus\(\) \{[\s\S]{0,160}?&& !isPageEditableActive\(\)/,
+      'steer chat auto-focus must back off while the page owns an editable caret',
     );
   });
 
@@ -201,7 +262,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function handleServerLost\(\)[\s\S]{0,300}?const recoveryState = currentSessionId \? state : 'IDLE';[\s\S]{0,1200}?state = recoveryState;[\s\S]{0,120}?if \(currentSessionId\) saveSession\(\);/,
+      /function handleServerLost\(\)[\s\S]{0,300}?const recoveryState = currentSessionId \? state : 'IDLE';[\s\S]{0,1200}?setLiveState\(recoveryState\);[\s\S]{0,120}?if \(currentSessionId\) saveSession\(\);/,
       'server-lost cleanup should keep the current session phase in local recovery state instead of rewriting it to GENERATING',
     );
   });
@@ -305,6 +366,77 @@ describe('live-browser.js regression guards', () => {
       /steer-blur-recover/,
       'steer blur should recover focus for type-to-steer when not selecting page text',
     );
+    assert.match(
+      SOURCE,
+      /function syncPageChatFocusRing\(\)[\s\S]{0,900}?typingReady[\s\S]{0,500}?pageChatInput\.style\.opacity = '1'/,
+      'collapsed steer focus must reveal the real input and caret instead of a patina truncated label',
+    );
+    assert.match(
+      SOURCE,
+      /armPageChatForTyping\([\s\S]{0,120}?expand: true/,
+      'steer pill pointerdown must expand before click so focus never flashes a dead collapsed state',
+    );
+    assert.match(
+      SOURCE,
+      /function syncPageChatChrome\(\)[\s\S]{0,400}?pageChatEl\.style\.borderColor = 'transparent'/,
+      'steer pill must stay borderless; surface contrast carries the affordance',
+    );
+    assert.match(
+      SOURCE,
+      /floating bar surface IS the input; modifier pills sit left of the field/,
+      'element configure bar must use the bar surface as the input, not a nested field',
+    );
+  });
+
+  it('empty configure and steer inputs passthrough arrow nav to handleKeyDown', () => {
+    assert.match(
+      SOURCE,
+      /function shouldPassthroughElementNav\(deepActive, e\)[\s\S]{0,500}?PREFIX \+ '-input' && state === 'CONFIGURING'/,
+      'configure prompt must passthrough empty arrow keys for sibling navigation',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldPassthroughElementNav\(deepActive, e\)[\s\S]{0,700}?PREFIX \+ '-page-chat-input' && state === 'PICKING'/,
+      'steer prompt must passthrough empty arrow keys while picking',
+    );
+    assert.match(
+      SOURCE,
+      /&& !shouldPassthroughElementNav\(deepActive, e\)/,
+      'global input guard must honor empty-input arrow passthrough',
+    );
+  });
+
+  it('lets page editables keep Enter and arrow keydown events', () => {
+    const start = SOURCE.indexOf('function handleKeyDown(e)');
+    const pendingApplyStart = SOURCE.indexOf('if (pendingApplyInFlight)', start);
+    const guardSource = SOURCE.slice(start, pendingApplyStart);
+    assert.match(
+      guardSource,
+      /isPageEditableElement\(deepActive\) && !isInlineEditActive\(deepActive\)[\s\S]{0,40}?return;/,
+      'page-owned editables must short-circuit global key handling before variant navigation or accept handling',
+    );
+    assert.match(
+      guardSource,
+      /e\.target\.isContentEditable && isInlineEditActive\(e\.target\)/,
+      'impeccable inline edit rows must keep their existing Escape-cancel path',
+    );
+  });
+
+  it('configure input Escape tears down annotation overlay before returning to picking', () => {
+    // The configure prompt auto-focuses. While focused, the global keydown
+    // handler bails on own() inputs, so this local Escape path must hide the
+    // annotation overlay. Leaving it active strands a crosshair layer that
+    // flashes comment pins on every click after pick mode is turned off.
+    assert.match(
+      SOURCE,
+      /input\.addEventListener\('keydown', \(e\) => \{[\s\S]{0,400}?if \(e\.key === 'Escape'\) \{[\s\S]{0,200}?exitConfigureToPicking\('configure-input-escape'\)/,
+      'configure input Escape must call exitConfigureToPicking so annot overlay is removed',
+    );
+    assert.match(
+      SOURCE,
+      /function togglePick\(\)[\s\S]{0,500}?teardownConfigureChrome\(\);/,
+      'togglePick off must tear down configure chrome so a stuck annot overlay cannot survive IDLE',
+    );
   });
 
   it('pick mode preference persists in localStorage', () => {
@@ -325,7 +457,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /if \(state === 'IDLE' && \(pickActive \|\| insertActive\)\) state = 'PICKING';/,
+      /if \(state === 'IDLE' && \(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\);/,
       'SSE connected must arm insert mode when saved preference has insert on',
     );
   });
@@ -386,8 +518,18 @@ describe('live-browser.js regression guards', () => {
     assert.match(SOURCE, /border: '2px dotted ' \+ BP\.accent/, 'placeholder border matches insert line (dotted)');
     assert.match(
       SOURCE,
-      /function syncPageInteractionCursor\(\)[\s\S]{0,280}?cursorForInsertAxis/,
+      /function syncPageInteractionCursor\(\)[\s\S]{0,420}?cursorForInsertAxis/,
       'insert picking cursor follows row/column axis',
+    );
+    assert.match(
+      SOURCE,
+      /function ensurePickCursorStyle\(\)[\s\S]{0,420}?cursor: crosshair !important/,
+      'pick mode injects a crosshair cursor that wins over page pointer styles',
+    );
+    assert.match(
+      SOURCE,
+      /document\.documentElement\.classList\.add\(PICK_CURSOR_CLASS\)/,
+      'pick mode toggles a document-level class for the crosshair cursor',
     );
     assert.match(SOURCE, /function hitSiblingInsertGap\(/, 'insert mode detects gaps between siblings');
     assert.match(SOURCE, /function resolveInsertHover\(/, 'insert hover resolves axis-aware boundaries');
@@ -406,12 +548,12 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /buildInsertConfigureRow[\s\S]*?const count = el\('button', \{[\s\S]{0,320}?height: '28px'/,
-      'insert count toggle must match input height',
+      /buildInsertConfigureRow[\s\S]*?buildConfigureCountControl\(/,
+      'insert count toggle uses the same inline bar control as configure mode',
     );
     assert.match(
       SOURCE,
-      /buildInsertConfigureRow[\s\S]*?const create = el\('button', \{[\s\S]{0,320}?height: '28px'/,
+      /buildInsertConfigureRow[\s\S]*?buildConfigureSubmitButton\(/,
       'insert Create button must match input height',
     );
     assert.match(SOURCE, /function resolveBarAnchor\(\)/, 'bar positions from a connected anchor');
@@ -460,6 +602,113 @@ describe('live-browser.js regression guards', () => {
       SOURCE,
       /function handleAccept\(\)[\s\S]{0,360}?const domVisibleVariant = readVisibleVariantFromDOM\(currentSessionId\);[\s\S]{0,120}?if \(domVisibleVariant > 0\) visibleVariant = domVisibleVariant;[\s\S]{0,160}?variantId: String\(visibleVariant\)/,
       'event=live_browser.accept_stale_visible_variant actor=browser operation=accept_after_hmr risk=accept_sends_variant_1_after_user_cycles_to_2 expected=read_dom_visible_variant actual=stale_state_variable',
+    );
+  });
+
+  it('configure row groups selection and input on the left, trailing controls before submit', () => {
+    assert.match(
+      SOURCE,
+      /function configureModifierPillStyle\(extra = \{\}\)[\s\S]{0,480}?background: 'transparent'[\s\S]{0,120}?color: P\.textDim/,
+      'configure modifier chips use muted global-bar idle chrome, not active gold',
+    );
+    assert.match(
+      SOURCE,
+      /const CONFIGURE_ROW_TRACK_H = '18px'/,
+      'configure row shares one text track height across pills and input',
+    );
+    assert.match(
+      SOURCE,
+      /function configureInputFieldStyle\(extra = \{\}\)[\s\S]{0,320}?height: CONFIGURE_ROW_TRACK_H/,
+      'configure input uses the same track height as modifier pills',
+    );
+    assert.match(
+      SOURCE,
+      /const CONFIGURE_PILL_PAD_Y = '3px'/,
+      'modifier pills share 3px vertical padding',
+    );
+    assert.match(
+      SOURCE,
+      /function configureInputShellStyle\(\)[\s\S]{0,200}?alignItems: 'center'[\s\S]{0,120}?padding: '0 6px 0 ' \+ CONFIGURE_BAR_INSET/,
+      'configure shell vertically centers the row; inset matches centered pill margin',
+    );
+    assert.match(
+      SOURCE,
+      /inputShell\.appendChild\(buildSelectionPill[\s\S]{0,120}?inputShell\.appendChild\(input\)/,
+      'selection pill and prompt input share the left side of the bar',
+    );
+    assert.match(
+      SOURCE,
+      /buildConfigureTrailingCluster\(\[action, count\], voiceBtn, go\)/,
+      'freeform and variant count sit just left of voice and submit',
+    );
+  });
+
+  it('configure bar keeps selection pill, inline controls, outline, and instant tooltips', () => {
+    assert.match(SOURCE, /function buildSelectionPill\(/, 'selected element tag lives in the configure bar');
+    assert.match(SOURCE, /CONFIGURE_SELECTION_PILL_PAD = '1px 4px'/, 'selection pill uses 1px 4px padding');
+    assert.match(
+      SOURCE,
+      /function configureSelectionPillStyle\(extra = \{\}\)[\s\S]{0,400}?color: P\.patina/,
+      'selection pill label uses patina text color',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /function configureSelectionPillStyle\(extra = \{\}\)[\s\S]{0,400}?minHeight:/,
+      'selection pill must not impose a min-height',
+    );
+    assert.match(
+      SOURCE,
+      /gridArea: '1 \/ 1'/,
+      'selection pill swaps tag and clear faces without resizing the bar',
+    );
+    assert.match(
+      SOURCE,
+      /function shouldShowHighlightTagTooltip\(\)[\s\S]{0,160}?state !== 'CONFIGURING'/,
+      'configure mode keeps the outline but drops the floating tag tooltip',
+    );
+    assert.match(SOURCE, /function buildConfigureActionControl\(/, 'action dropdown is an inline bar control, not a pill');
+    assert.match(SOURCE, /function buildConfigureCountControl\(/, 'variant count is an inline bar control, not a pill');
+    assert.match(
+      SOURCE,
+      /const hiTarget = resolveBarAnchor\(\);[\s\S]{0,200}?showHighlight\(hiTarget\);/,
+      'scroll tracking keeps the element outline visible while configuring',
+    );
+    assert.match(SOURCE, /function showConfigureBarTooltip\(/, 'configure controls use instant custom tooltips');
+    assert.doesNotMatch(
+      SOURCE,
+      /count\.title = controlsLocked \? 'Apply is still running' : 'Variants: click to change'/,
+      'variant count must not rely on native title tooltips',
+    );
+  });
+
+  it('variant count pill cycles through x1', () => {
+    assert.match(
+      SOURCE,
+      /function cycleSelectedCount\(\)[\s\S]{0,200}?selectedCount = VARIANT_COUNT_MIN/,
+      'variant count must wrap back to x1 after the max',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /selectedCount >= 4 \? 2/,
+      'variant count must not skip x1 by wrapping 4 back to 2',
+    );
+  });
+
+  it('variant injection resolves the picked anchor before entering recovery', () => {
+    assert.match(
+      SOURCE,
+      /function resolveLiveInjectionAnchor\(originalMarkup\)/,
+      'variant source fallback must try the live picked element before giving up on anchor resolution',
+    );
+    assert.match(
+      SOURCE,
+      /pickedAnchor: pickedAnchorSnapshot/,
+      'picked anchor snapshot must persist in session storage for resume and reinjection',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /showToast\('Variants ready\. Reveal the selected element to resume\.'/,
+      'recovery chrome already shows this message in the generating bar; a duplicate toast stacks two bars',
     );
   });
 

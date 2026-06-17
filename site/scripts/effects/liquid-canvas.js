@@ -93,7 +93,7 @@ export function initHeroEffect() {
 
 		// Draw grid lines
 		ctx.beginPath();
-		ctx.strokeStyle = "rgba(100, 40, 50, 0.06)"; // Very subtle base
+			ctx.strokeStyle = "rgba(255, 255, 255, 0.06)"; // Very subtle base
 		ctx.lineWidth = 1;
 
 		const cols = Math.ceil(width / gap) + 1;
@@ -160,6 +160,5 @@ export function initHeroEffect() {
 
 	observer.observe(canvas);
 }
-
 
 

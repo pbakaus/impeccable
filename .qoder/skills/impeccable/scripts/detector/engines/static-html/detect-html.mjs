@@ -2,6 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
+import {
+  checkSourceDesignSystem,
+  collectStaticDesignSystemFindings,
+  mergeDesignSystemFindings,
+} from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { finding } from '../../findings.mjs';
 import { profileFindings, profileStep, profileStepAsync } from '../../profile/profiler.mjs';
@@ -166,6 +171,22 @@ async function detectHtml(filePath, options = {}) {
         findings.push(finding(f.id, filePath, f.snippet));
       }
     }
+  }
+
+  if (options?.designSystem) {
+    const sourceDesignFindings = profileFindings(profile, {
+      engine: 'static-html',
+      phase: 'source',
+      ruleId: 'design-system',
+      target: filePath,
+    }, () => checkSourceDesignSystem(html, filePath, { designSystem: options.designSystem }));
+    const staticDesignFindings = profileFindings(profile, {
+      engine: 'static-html',
+      phase: 'page',
+      ruleId: 'design-system',
+      target: filePath,
+    }, () => collectStaticDesignSystemFindings(document, window, filePath, options.designSystem));
+    findings.push(...mergeDesignSystemFindings(staticDesignFindings, sourceDesignFindings));
   }
 
   if (isFullPage(html)) {

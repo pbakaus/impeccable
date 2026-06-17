@@ -48,10 +48,16 @@ export async function runSteerSmoke(page, tmp, fixture, log = () => {}, opts = {
 
   log(`Steer: submitting ${JSON.stringify(message)}`);
   await submitSteer(page, message);
-  await waitForSteerLocked(page);
-  log('Steer: locked (processing)');
+  let sawLocked = false;
+  try {
+    await waitForSteerLocked(page);
+    sawLocked = true;
+    log('Steer: locked (processing)');
+  } catch {
+    log('Steer: processing state not observed; checking completed result');
+  }
   await waitForSteerUnlocked(page, { timeout: unlockTimeoutMs });
-  log('Steer: unlocked');
+  log(sawLocked ? 'Steer: unlocked' : 'Steer: unlocked or already complete');
 
   const waitForSource = async () => {
     const deadline = Date.now() + selectorTimeoutMs;

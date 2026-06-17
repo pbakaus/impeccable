@@ -1,8 +1,8 @@
 # Impeccable
 
-Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 41 deterministic detector rules for AI-generated frontend design.
+Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 44 deterministic detector rules for AI-generated frontend design.
 
-> **Quick start:** From your project root, run `npx impeccable skills install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
+> **Quick start:** From your project root, run `npx impeccable install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
 
 ## Why Impeccable?
 
@@ -13,7 +13,7 @@ Every model trained on the same SaaS templates. Skip the guidance and you get th
 Impeccable adds:
 - **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
 - **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
-- **41 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
+- **44 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
 ## What's Included
 
@@ -31,7 +31,7 @@ Start every new project with:
 /impeccable init
 ```
 
-`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes project context that every later command reads.
+`init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes design context that every later command reads.
 
 ### 23 Commands
 
@@ -100,12 +100,18 @@ Visit [impeccable.style](https://impeccable.style#casestudies) to see before/aft
 From the root of your project, run:
 
 ```bash
-npx impeccable skills install
+npx impeccable install
 ```
 
-This auto-detects your harness and writes the build compiled for it to the right location (`.claude/skills/`, `.cursor/skills/`, etc.). Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
 
-Claude Code users can alternatively install the plugin with `/plugin marketplace add pbakaus/impeccable`. The general-purpose `npx skills add pbakaus/impeccable` also works, though it installs one shared build for all harnesses rather than the one compiled for yours.
+To refresh an existing install, run:
+
+```bash
+npx impeccable update
+```
+
+Codex users should open `/hooks` after install or update and approve the project hook when prompted. Codex tracks trust by hook definition, so updates that change `.codex/hooks.json` can require approval again.
 
 ### Option 2: Git Submodule
 
@@ -113,7 +119,7 @@ For teams that want to keep Impeccable vendored and updated through Git, add thi
 
 ```bash
 git submodule add https://github.com/pbakaus/impeccable .impeccable
-npx impeccable skills link --source=.impeccable --providers=claude,cursor
+npx impeccable link --source=.impeccable --providers=claude,cursor
 git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
@@ -124,7 +130,7 @@ To update later:
 
 ```bash
 git submodule update --remote .impeccable
-npx impeccable skills link --source=.impeccable --providers=claude,cursor
+npx impeccable link --source=.impeccable --providers=claude,cursor
 ```
 
 ### Option 3: Download from Website
@@ -179,13 +185,16 @@ cp -r dist/gemini/.gemini your-project/
 ```bash
 # Project-local
 cp -r dist/agents/.agents your-project/
+mkdir -p your-project/.codex
+cp dist/codex/.codex/hooks.json your-project/.codex/hooks.json
 
-# Or user-wide
+# Or install the skill user-wide. Copy .codex/hooks.json into each project
+# where you want the design hook to run.
 mkdir -p ~/.agents/skills
 cp -r dist/agents/.agents/skills/* ~/.agents/skills/
 ```
 
-> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed.
+> The asset-producer subagent ships nested inside the skill's own `agents/` folder, which Codex auto-discovers. No separate `.codex/agents/` copy is needed. The hook is project-local because Codex discovers hooks from `.codex/hooks.json` next to trusted project config.
 
 **GitHub Copilot:**
 ```bash
@@ -283,6 +292,33 @@ apps/
 
 When the active file or working directory belongs to a child project, Impeccable uses that child project's `.impeccable/` state for live config, design sidecars, sessions, annotations, and critique storage.
 
+## Design hook
+
+On Claude Code, Codex, and Cursor, `npx impeccable install` and `npx impeccable update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector on direct UI file edits and surfaces findings back into the agent flow. Claude Code and Codex surface findings after the edit. Cursor blocks bad proposed writes before they land.
+
+Installed hook surfaces:
+
+- Claude Code: `.claude/settings.local.json` (gitignored, machine-local) runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`. A hook moved into the shared `settings.json` is honored in place.
+- Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`.
+- Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
+
+The installer preserves unrelated hook entries and settings. If a hook manifest is malformed, install/update aborts by default; rerun with `--force` to back up the malformed file as `.bak` and replace it.
+
+On an interactive `install`/`update`, Impeccable explains the hook and offers to install it (default yes). Your choice is remembered per-developer in the gitignored `.impeccable/config.local.json`, so you are not asked again; `--no-hooks` skips it for that run without recording anything. Hook lifecycle settings live under the `hook` key of `.impeccable/config.json`; detector ignores live under `detector`, shared by `/impeccable hooks` and `npx impeccable detect`.
+
+For debugging, set `hook.auditLog` in `.impeccable/config.json` to a path (or the legacy `IMPECCABLE_HOOK_LOG` env var) to write one NDJSON line per hook invocation. Leave it unset for normal use.
+
+Codex requires one platform step that Impeccable cannot safely skip: open `/hooks` after install or update and approve the project hook. There is no Codex marketplace/plugin install flow for this hook.
+
+Full hook docs: [impeccable.style/docs/hooks](https://impeccable.style/docs/hooks).
+
+Manual copy commands are fallback/debug instructions. The normal path is:
+
+```bash
+npx impeccable install
+npx impeccable update
+```
+
 ## CLI
 
 Impeccable includes a standalone CLI for detecting anti-patterns without an AI harness:
@@ -291,10 +327,18 @@ Impeccable includes a standalone CLI for detecting anti-patterns without an AI h
 npx impeccable detect src/                   # scan a directory
 npx impeccable detect index.html             # scan an HTML file
 npx impeccable detect https://example.com    # scan a URL (Puppeteer)
-npx impeccable detect --fast --json .        # regex-only, JSON output
+npx impeccable detect --json .               # CI-friendly JSON output
+npx impeccable detect --no-config src/       # raw scan, ignoring project config/context
+npx impeccable ignores list                  # show detector ignores
+npx impeccable ignores add-file "src/legacy/**"
+npx impeccable ignores add-value overused-font Inter --reason "Brand font"
 ```
 
-The detector catches 41 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
+The detector catches 44 deterministic issues across AI slop (side-tab borders, purple gradients, bounce easing, dark glows) and general design quality (line length, cramped padding, small touch targets, skipped headings, and more).
+
+By default, `detect` respects the same `.impeccable/config.json` and `.impeccable/config.local.json` detector config as the design hook: `detector.ignoreRules`, `detector.ignoreFiles`, `detector.ignoreValues`, and `detector.designSystem.enabled`. Hook lifecycle settings such as `hook.enabled` only affect automatic hook execution.
+
+Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/docs/detector).
 
 ## Supported Tools
 

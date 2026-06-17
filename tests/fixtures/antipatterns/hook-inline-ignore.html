@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hook inline ignore comments do not suppress detector findings</title>
+    <style>
+      /* impeccable: ignore overused-font */
+      body {
+        font-family: "Roboto", ui-sans-serif, system-ui, sans-serif;
+        margin: 0;
+        padding: 48px;
+      }
+
+      main {
+        max-width: 62ch;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- impeccable: ignore overused-font -->
+    <main>
+      <h1>Roboto remains a detector finding</h1>
+      <p>
+        This fixture deliberately uses Roboto across enough visible text for
+        the browser detector to report the overused-font page finding. Hook
+        exceptions must live in .impeccable/hook.json instead of source comments.
+      </p>
+      <p>
+        The comments above look like old inline hook suppressions, but they are
+        intentionally inert and should not hide the finding from headless scans.
+      </p>
+      <ul>
+        <li>Roboto usage sample one.</li>
+        <li>Roboto usage sample two.</li>
+        <li>Roboto usage sample three.</li>
+        <li>Roboto usage sample four.</li>
+        <li>Roboto usage sample five.</li>
+        <li>Roboto usage sample six.</li>
+        <li>Roboto usage sample seven.</li>
+        <li>Roboto usage sample eight.</li>
+        <li>Roboto usage sample nine.</li>
+        <li>Roboto usage sample ten.</li>
+        <li>Roboto usage sample eleven.</li>
+        <li>Roboto usage sample twelve.</li>
+        <li>Roboto usage sample thirteen.</li>
+        <li>Roboto usage sample fourteen.</li>
+        <li>Roboto usage sample fifteen.</li>
+        <li>Roboto usage sample sixteen.</li>
+        <li>Roboto usage sample seventeen.</li>
+        <li>Roboto usage sample eighteen.</li>
+        <li>Roboto usage sample nineteen.</li>
+        <li>Roboto usage sample twenty.</li>
+      </ul>
+    </main>
+  </body>
+</html>

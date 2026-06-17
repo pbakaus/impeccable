@@ -1,7 +1,7 @@
 ---
 title: Critique with the visual overlay
 tagline: "Use /impeccable critique plus the browser overlay to review a live page with ground truth."
-order: 4
+order: 3
 description: "Run a full design critique that combines LLM assessment, the automated detector, and a live browser overlay so you can see exactly which elements trigger which anti-patterns on the page you're looking at."
 ---
 

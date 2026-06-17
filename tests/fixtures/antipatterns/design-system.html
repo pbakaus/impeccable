@@ -1,0 +1,77 @@
+<section class="design-system-fixture">
+  <style>
+    .design-system-fixture {
+      --brand-accent: #b8422e;
+      background: #f7f4ee;
+      color: #241f1a;
+      font-family: "IBM Plex Sans", Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .case {
+      margin: 0 0 12px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      border: 1px solid #d4c7b9;
+      background: #ffffff;
+      color: #241f1a;
+      font-size: 16px;
+    }
+
+    .fixture-note {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #d4c7b9;
+      background: #f7f4ee;
+      color: #241f1a;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .fixture-note strong {
+      font-weight: 700;
+    }
+
+    .flag-font { font-family: "Poppins", sans-serif; }
+    .flag-color { color: #ff00aa; }
+    .flag-background { background-color: rgb(20, 180, 220); }
+    .flag-border { border-color: #00a982; }
+    .flag-radius { border-radius: 18px; }
+
+    .pass-display-font { font-family: "Avenir Next", Georgia, serif; }
+    .pass-generic-font { font-family: ui-sans-serif, system-ui, sans-serif; }
+    .pass-token-color { color: var(--brand-accent); }
+    .pass-alpha-color { color: rgba(184, 66, 46, 0.45); }
+    .pass-close-color { color: #bb442f; }
+    .pass-ramp-color { color: #d55a42; }
+    .pass-zero-radius { border-radius: 0; }
+    .pass-percent-radius { border-radius: 50%; }
+    .pass-scale-radius { border-radius: 32px; }
+    .pass-mid-pill-radius { border-radius: 100px; }
+    .pass-pill-radius { border-radius: 999px; }
+  </style>
+
+  <aside class="fixture-note">
+    <strong>Browser note:</strong> design-system detections need injected DESIGN.md context, so this page only shows global/browser findings. Use the CLI or hook tests to exercise the design-system rules.
+  </aside>
+
+  <div class="case flag-font">Flag Font Unsupported</div>
+  <div class="case flag-color">Flag Color Hot Pink</div>
+  <div class="case flag-background">Flag Background Cyan</div>
+  <div class="case flag-border">Flag Border Teal</div>
+  <div class="case flag-radius">Flag Radius Eighteen</div>
+  <div class="case" data-font-source="https://fonts.googleapis.com/css2?family=Poppins:wght@400&display=swap">Flag Google Font Source</div>
+
+  <div class="case pass-display-font">Pass Display Font</div>
+  <div class="case pass-generic-font">Pass Generic Font</div>
+  <div class="case pass-token-color">Pass Token Color</div>
+  <div class="case pass-alpha-color">Pass Alpha Color</div>
+  <div class="case pass-close-color">Pass Close Color</div>
+  <div class="case pass-ramp-color">Pass Ramp Color</div>
+  <div class="case pass-zero-radius">Pass Zero Radius</div>
+  <div class="case pass-percent-radius">Pass Percent Radius</div>
+  <div class="case pass-scale-radius">Pass Scale Radius</div>
+  <div class="case pass-mid-pill-radius">Pass Mid Pill Radius</div>
+  <div class="case pass-pill-radius">Pass Pill Radius</div>
+</section>

@@ -323,6 +323,35 @@ const ANTIPATTERNS = [
     skillSection: 'Layout & Space',
     skillGuideline: 'overflow container clipping positioned children',
   },
+  {
+    id: 'design-system-font',
+    category: 'quality',
+    name: 'Font outside DESIGN.md',
+    description:
+      'A font is used that is not declared in DESIGN.md typography. Use the documented type system or update DESIGN.md if this is an intentional brand addition.',
+    skillSection: 'Typography',
+    skillGuideline: 'font family outside the project design system',
+  },
+  {
+    id: 'design-system-color',
+    category: 'quality',
+    severity: 'advisory',
+    name: 'Color outside DESIGN.md',
+    description:
+      'A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.',
+    skillSection: 'Color & Contrast',
+    skillGuideline: 'literal color outside the project design system',
+  },
+  {
+    id: 'design-system-radius',
+    category: 'quality',
+    severity: 'advisory',
+    name: 'Radius outside DESIGN.md',
+    description:
+      'A border-radius value is outside the DESIGN.md rounded scale. Use a documented radius token or update the design system if the new shape is intentional.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'border radius outside the project design system',
+  },
 
   // ── Provider tells: opt-in via --gpt / --gemini (gated off by default) ──
   {

@@ -1,6 +1,6 @@
 {
   "name": "impeccable",
-  "version": "2.3.2",
+  "version": "3.0.3",
   "author": "Paul Bakaus",
   "description": "Design skills, commands, and anti-pattern detection for AI coding agents",
   "keywords": [
@@ -65,6 +65,7 @@
     "test:live-e2e-agent": "node scripts/run-tests.mjs live-e2e-agent",
     "test:skill-behavior": "node scripts/run-tests.mjs skill-behavior",
     "test:live-svelte-adapter-deepseek": "node scripts/run-tests.mjs live-svelte-adapter-deepseek",
+    "smoke:hooks": "node scripts/smoke-provider-hooks.mjs",
     "bench:detector": "node scripts/benchmark-detector.mjs",
     "bench:detector:browser": "node scripts/benchmark-detector.mjs --browser",
     "audit": "bun audit --audit-level=moderate",
@@ -80,7 +81,7 @@
     "css-select": "^7.0.0",
     "css-tree": "^3.2.1",
     "domutils": "^4.0.2",
-    "extract-zip": "^2.0.1",
+    "fflate": "^0.8.3",
     "htmlparser2": "^12.0.0",
     "marked": "^18.0.5"
   },

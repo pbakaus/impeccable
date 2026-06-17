@@ -19,6 +19,12 @@ const FIXTURES = path.join(import.meta.dir, 'fixtures', 'antipatterns');
 const SCRIPT = path.join(import.meta.dir, '..', 'cli', 'engine', 'detect-antipatterns.mjs');
 const BENCH_SCRIPT = path.join(import.meta.dir, '..', 'scripts', 'benchmark-detector.mjs');
 
+function withoutDesignSystemArgs(args) {
+  return args[0] === 'detect'
+    ? ['detect', '--no-design-system', '--no-config', ...args.slice(1)]
+    : ['--no-design-system', '--no-config', ...args];
+}
+
 function writeStaticFixture(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-static-'));
   for (const [name, contents] of Object.entries(files)) {
@@ -130,9 +136,14 @@ describe('detectText — Tailwind side-tab', () => {
     expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
   });
 
-  test('detects border-l-1 + rounded', () => {
-    const f = detectText('<div class="border-l-1 border-blue-500 rounded-md">', 'test.html');
+  test('detects border-l-2 + rounded', () => {
+    const f = detectText('<div class="border-l-2 border-blue-500 rounded-md">', 'test.html');
     expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
+  });
+
+  test('ignores border-l-1 + rounded', () => {
+    const f = detectText('<div class="border-l-1 border-blue-500 rounded-md">', 'test.html');
+    expect(f.filter(r => r.antipattern === 'side-tab')).toHaveLength(0);
   });
 
   test('ignores border-l-1 without rounded', () => {
@@ -149,6 +160,11 @@ describe('detectText — Tailwind side-tab', () => {
 describe('detectText — CSS borders', () => {
   test('detects border-left shorthand', () => {
     const f = detectText('.card { border-left: 4px solid #3b82f6; }', 'test.css');
+    expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
+  });
+
+  test('detects border-left shorthand in Sass', () => {
+    const f = detectText(".card\n  border-left: 4px solid #3b82f6", 'test.sass');
     expect(f.some(r => r.antipattern === 'side-tab')).toBe(true);
   });
 
@@ -239,6 +255,32 @@ describe('partials skip page-level checks', () => {
       '<small style="font-size: 13px">sm</small>\n</body></html>';
     const f = detectText(page, 'index.html');
     expect(f.some(r => r.antipattern === 'flat-type-hierarchy')).toBe(true);
+  });
+});
+
+describe('detectText — numbered section markers', () => {
+  test('flags visible full-page numbered section labels', () => {
+    const page = '<!DOCTYPE html><html><body>' +
+      '<section><span>01</span><h2>Strategy</h2></section>' +
+      '<section><span>02</span><h2>Prototype</h2></section>' +
+      '<section><span>03</span><h2>Launch</h2></section>' +
+      '</body></html>';
+    const f = detectText(page, 'test.html');
+    expect(f.some(r => r.antipattern === 'numbered-section-markers')).toBe(true);
+  });
+
+  test('does not run page-level numbered marker analysis on JS source with embedded HTML strings', () => {
+    const source = `
+      const shell = '<!DOCTYPE html><html><head><title>Preview</title></head><body></body></html>';
+      const palette = 'oklch(86% 0.07 84 / 0.08)';
+      const shadow = '0 0 0 1px oklch(0% 0 0 / 0.04), 0 4px 16px oklch(0% 0 0 / 0.05), 0 1px 3px oklch(0% 0 0 / 0.06)';
+      const size = '11.5px';
+      const eye = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>';
+      const shader = 'float band = bandAt(uv.y - y, 0.05, 0.32);';
+      const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    `;
+    const f = detectText(source, 'live-browser.js');
+    expect(f.filter(r => r.antipattern === 'numbered-section-markers')).toHaveLength(0);
   });
 });
 
@@ -510,8 +552,10 @@ describe('detectText — motion', () => {
   });
 
   test('detects animation: bounce CSS', () => {
-    const f = detectText('.icon { animation: bounce 1s infinite; }', 'test.css');
-    expect(f.some(r => r.antipattern === 'bounce-easing')).toBe(true);
+    const f = detectText('.icon { animation: bounce-ball 1s infinite; }', 'test.css');
+    const finding = f.find(r => r.antipattern === 'bounce-easing');
+    expect(finding).toBeTruthy();
+    expect(finding.snippet).toBe('animation: bounce-ball');
   });
 
   test('detects animation-name: elastic', () => {
@@ -802,6 +846,10 @@ describe('ANTIPATTERNS registry', () => {
 // ---------------------------------------------------------------------------
 
 describe('walkDir', () => {
+  test('includes Sass files in scannable extensions', () => {
+    expect(SCANNABLE_EXTENSIONS.has('.sass')).toBe(true);
+  });
+
   test('finds scannable files', () => {
     const files = walkDir(FIXTURES);
     expect(files.length).toBeGreaterThanOrEqual(3);
@@ -819,7 +867,11 @@ describe('walkDir', () => {
 
 describe('CLI', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
+    return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
+  }
+  function runIn(cwd, ...args) {
+    const result = spawnSync('node', [SCRIPT, ...args], { cwd, encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -879,6 +931,149 @@ describe('CLI', () => {
     const { code, stderr } = run(path.join(FIXTURES, 'linked-stylesheet.html'));
     expect(code).toBe(2);
     expect(stderr).toContain('side-tab');
+  });
+
+  test('local DESIGN.md enables design-system rules by default and --no-design-system disables them', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-design-system-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+  paper: "#f7f4ee"
+rounded:
+  md: "8px"
+---
+
+# Design System
+`);
+      fs.writeFileSync(path.join(dir, 'index.html'), `
+        <section style="font-family: 'Poppins', sans-serif; color: #ff00aa; background: #f7f4ee; border-radius: 18px;">
+          Design drift
+        </section>
+      `);
+
+      const active = runIn(dir, '--json', 'index.html');
+      expect(active.code).toBe(2);
+      const activeIds = JSON.parse(active.stdout).map((finding) => finding.antipattern);
+      expect(activeIds).toContain('design-system-font');
+      expect(activeIds).toContain('design-system-color');
+      expect(activeIds).toContain('design-system-radius');
+
+      const disabled = runIn(dir, '--json', '--no-design-system', 'index.html');
+      const disabledIds = JSON.parse(disabled.stdout).map((finding) => finding.antipattern);
+      expect(disabledIds.some((id) => id.startsWith('design-system-'))).toBe(false);
+
+      const raw = runIn(dir, '--json', '--no-config', 'index.html');
+      const rawIds = JSON.parse(raw.stdout).map((finding) => finding.antipattern);
+      expect(rawIds.some((id) => id.startsWith('design-system-'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('detector designSystem.enabled=false disables CLI design-system rules', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-cli-design-disabled-'));
+    try {
+      fs.mkdirSync(path.join(dir, '.impeccable'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.impeccable', 'config.json'), JSON.stringify({
+        detector: { designSystem: { enabled: false } },
+      }));
+      fs.writeFileSync(path.join(dir, 'DESIGN.md'), `---
+typography:
+  body:
+    fontFamily: "IBM Plex Sans, Arial, sans-serif"
+colors:
+  ink: "#241f1a"
+  paper: "#f7f4ee"
+rounded:
+  md: "8px"
+---
+
+# Design System
+`);
+      fs.writeFileSync(path.join(dir, 'index.html'), `
+        <section style="font-family: 'Poppins', sans-serif; color: #ff00aa; background: #f7f4ee; border-radius: 18px;">
+          Design drift
+        </section>
+      `);
+
+      const result = runIn(dir, '--json', 'index.html');
+      const ids = JSON.parse(result.stdout).map((finding) => finding.antipattern);
+      expect(ids.some((id) => id.startsWith('design-system-'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('respects .impeccable config ignoreFiles like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        detector: { ignoreFiles: ['src/noisy.css'] },
+      }),
+      'src/noisy.css': "body { font-family: 'Inter', sans-serif; }",
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src');
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout.trim())).toEqual([]);
+    });
+  });
+
+  test('respects .impeccable config ignoreRules like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        detector: { ignoreRules: ['side-tab'] },
+      }),
+      'src/card.css': '.card { border-left: 4px solid #3b82f6; border-radius: 12px; }',
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src/card.css');
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout.trim())).toEqual([]);
+    });
+  });
+
+  test('respects .impeccable config ignoreValues like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        detector: {
+          ignoreValues: [
+            { rule: 'overused-font', value: 'Inter' },
+          ],
+        },
+      }),
+      'src/fonts.css': [
+        "body { font-family: 'Inter', sans-serif; }",
+        "h1 { font-family: 'Roboto', sans-serif; }",
+      ].join('\n'),
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src/fonts.css');
+      expect(code).toBe(2);
+      const snippets = JSON.parse(stdout.trim()).map(f => f.snippet).join('\n');
+      expect(snippets).not.toContain('Inter');
+      expect(snippets).toContain('Roboto');
+    });
+  });
+
+  test('respects scoped wildcard ignoreValues like the hook', async () => {
+    await withStaticFixture({
+      '.impeccable/config.json': JSON.stringify({
+        detector: {
+          ignoreValues: [
+            { rule: 'overused-font', value: '*', files: ['src/main.css'] },
+          ],
+        },
+      }),
+      'src/main.css': "body { font-family: 'Inter', sans-serif; }",
+      'src/other.css': "body { font-family: 'Inter', sans-serif; }",
+    }, ({ dir }) => {
+      const { stdout, code } = runIn(dir, '--json', 'src');
+      expect(code).toBe(2);
+      const findings = JSON.parse(stdout.trim());
+      expect(findings.some(f => f.file.endsWith('src/main.css'))).toBe(false);
+      expect(findings.some(f => f.file.endsWith('src/other.css'))).toBe(true);
+    });
   });
 
   test('warns on nonexistent path', () => {
@@ -1128,7 +1323,7 @@ describe('detectText -- CSS-in-JS', () => {
 
 describe('CLI -- framework fixtures', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1186,7 +1381,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
   let stderr;
 
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1244,7 +1439,7 @@ describe('CLI -- Next.js + Tailwind project', () => {
 
 describe('CLI -- Next.js + CSS Modules project', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1296,7 +1491,7 @@ describe('CLI -- Next.js + CSS Modules project', () => {
 
 describe('CLI -- Next.js + CSS-in-JS (styled-components) project', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1398,6 +1593,16 @@ describe('buildImportGraph', () => {
     expect(themeImports.has(path.join(MF, 'variables.scss'))).toBe(true);
   });
 
+  test('resolves Sass @import', () => {
+    const graph = buildImportGraph([
+      path.join(MF, 'theme.sass'),
+      path.join(MF, 'variables.sass'),
+    ]);
+    const themeImports = graph.get(path.join(MF, 'theme.sass'));
+    expect(themeImports).toBeDefined();
+    expect(themeImports.has(path.join(MF, 'variables.sass'))).toBe(true);
+  });
+
   test('ignores bare/node_modules imports', () => {
     const graph = buildImportGraph([
       path.join(MF, 'App.tsx'),
@@ -1443,7 +1648,7 @@ describe('resolveImport', () => {
 
 describe('CLI -- multi-file scan', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 
@@ -1530,7 +1735,7 @@ describe('FRAMEWORK_CONFIGS', () => {
 
 describe('CLI -- dev server suggestion', () => {
   function run(...args) {
-    const result = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf-8', timeout: 15000 });
+    const result = spawnSync('node', [SCRIPT, ...withoutDesignSystemArgs(args)], { encoding: 'utf-8', timeout: 15000 });
     return { stdout: result.stdout || '', stderr: result.stderr || '', code: result.status };
   }
 

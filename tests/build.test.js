@@ -324,3 +324,65 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     expect(fs.existsSync(path.join(DIST_DIR, 'kiro/.kiro/skills'))).toBe(true);
   });
 });
+
+// Resolve a relative import specifier against the importer's bundle-relative
+// path, mirroring Node ESM resolution against the set of bundled script names.
+// Returns the matching bundled name, or null if nothing resolves.
+function resolveBundledImport(importerName, specifier, names) {
+  const dirParts = importerName.split('/').slice(0, -1);
+  const parts = dirParts.concat(specifier.split('/'));
+  const resolved = [];
+  for (const part of parts) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') { resolved.pop(); continue; }
+    resolved.push(part);
+  }
+  const base = resolved.join('/');
+  // ESM needs an explicit extension, but be tolerant of extensionless and
+  // index specifiers so the check tracks real module-resolution behavior.
+  const candidates = [base, `${base}.mjs`, `${base}.js`, `${base}/index.mjs`, `${base}/index.js`];
+  return candidates.find((c) => names.has(c)) || null;
+}
+
+// Regression guard for issue #254: the bundled detector imported
+// `../../lib/impeccable-config.mjs`, a file that lives outside `cli/engine` and
+// was never copied into the bundle, so `/impeccable critique` crashed with
+// "Cannot find module .../lib/impeccable-config.mjs". This walks every bundled
+// script and asserts each relative import resolves to another bundled file, so
+// any future out-of-bundle dependency fails the build instead of the user.
+describe('bundled skill scripts are self-contained', () => {
+  const ROOT_DIR = process.cwd();
+  const { skills } = utils.readSourceFiles(ROOT_DIR);
+  const scripts = skills[0]?.scripts ?? [];
+  const jsScripts = scripts.filter((s) => /\.(mjs|js)$/.test(s.name));
+  const names = new Set(scripts.map((s) => s.name));
+
+  // Static `import ... from '...'` and re-export `export ... from '...'` only;
+  // dynamic `import()` of computed paths (e.g. detect.mjs) is out of scope.
+  const importRe = /(?:^|[\s;])(?:import|export)\b[^'"`]*?\bfrom\s*['"]([^'"]+)['"]/g;
+
+  // Drop comments first so an example like `// import ... from '...'` in a
+  // doc comment (detector/node/file-system.mjs has one) isn't read as a real import.
+  const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  test('the detector bundle includes its config dependency', () => {
+    expect(names.has('lib/impeccable-config.mjs')).toBe(true);
+  });
+
+  test('every relative import resolves to a bundled file', () => {
+    const broken = [];
+    for (const script of jsScripts) {
+      const source = stripComments(script.content);
+      importRe.lastIndex = 0;
+      let match;
+      while ((match = importRe.exec(source)) !== null) {
+        const specifier = match[1];
+        if (!specifier.startsWith('.')) continue; // bare/node specifiers
+        if (!resolveBundledImport(script.name, specifier, names)) {
+          broken.push(`${script.name} -> ${specifier}`);
+        }
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+});

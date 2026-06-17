@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Numbered section marker fixture</title>
+  <style>
+    .fixture-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    .case {
+      margin: 0 0 18px;
+      padding: 16px;
+      border: 1px solid #d7d0c2;
+      border-radius: 8px;
+    }
+    .marker {
+      display: block;
+      font: 700 12px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7c5c00;
+    }
+    .code-like::before {
+      content: "01 02 03";
+    }
+  </style>
+</head>
+<body>
+  <main class="fixture-grid">
+    <section aria-labelledby="flag-title">
+      <h1 id="flag-title">Should flag</h1>
+      <article class="case">
+        <span class="marker">01</span>
+        <h2>Strategy</h2>
+      </article>
+      <article class="case">
+        <span class="marker">02</span>
+        <h2>Prototype</h2>
+      </article>
+      <article class="case">
+        <span class="marker">03</span>
+        <h2>Launch</h2>
+      </article>
+      <article class="case">
+        <span class="marker">04</span>
+        <h2>Measure</h2>
+      </article>
+    </section>
+
+    <section aria-labelledby="pass-title">
+      <h1 id="pass-title">Should pass</h1>
+      <article class="case">
+        <h2>Readable date</h2>
+        <p>Updated June 14, 2026.</p>
+      </article>
+      <article class="case">
+        <h2>Statistic cards</h2>
+        <p>Revenue grew 18%, margin reached 24%, and churn fell to 3%.</p>
+      </article>
+      <article class="case">
+        <h2>CSS generated content</h2>
+        <p class="code-like">Generated numbers in CSS should not count as body copy.</p>
+      </article>
+      <article class="case">
+        <h2>Inline SVG coordinates</h2>
+        <svg width="120" height="32" viewBox="0 0 120 32" aria-hidden="true">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" fill="none" stroke="#333" />
+        </svg>
+      </article>
+      <article class="case">
+        <h2>Script constants</h2>
+        <script>
+          const colorStops = ['01', '02', '03', '04'];
+          const luminance = 0.2126 + 0.7152 + 0.0722;
+          const size = '11.5px';
+        </script>
+        <p>Implementation constants in script blocks are invisible.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

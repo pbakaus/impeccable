@@ -20,7 +20,7 @@ import '../styles/changelog-faq-kinpaku.css';
       <details id="install-location" class="cf-faq-item">
         <summary class="cf-faq-question">Where do I put the downloaded files?</summary>
         <div class="cf-faq-answer">
-          <p>The easiest way is <code>npx impeccable skills install</code>, which detects your AI harness and installs the build compiled for it.</p>
+          <p>The easiest way is <code>npx impeccable install</code>, which shows the harness folders it detected, lets you keep or customize the provider list, and asks whether to install in the current project or globally. Use <code>--scope=project</code> or <code>--scope=global</code> for non-interactive installs.</p>
           <p>If you downloaded the <strong>universal ZIP</strong>, extract it to your <strong>project root</strong> (same level as your <code>package.json</code> or <code>src/</code> folder). It creates hidden folders for each supported tool: <code>.cursor/</code>, <code>.claude/</code>, <code>.gemini/</code>, <code>.codex/</code>, <code>.agents/</code>, and <code>.github/</code>.</p>
           <p>Project-level installation takes precedence and lets you version control your skills.</p>
         </div>
@@ -29,9 +29,9 @@ import '../styles/changelog-faq-kinpaku.css';
       <details id="update" class="cf-faq-item">
         <summary class="cf-faq-question">How do I update to the latest version?</summary>
         <div class="cf-faq-answer">
-          <p>Run <code>npx impeccable skills update</code> from your project root. It downloads the latest skills and cleans up deprecated files. Not sure you're behind? <code>npx impeccable skills check</code> compares what you have installed against the latest release first.</p>
+          <p>Run <code>npx impeccable update</code> from your project root. It downloads the latest skills and cleans up deprecated files. Not sure you're behind? <code>npx impeccable check</code> compares what you have installed against the latest release first.</p>
           <ul>
-            <li><strong>Reinstall:</strong> <code>npx impeccable skills install --force</code> installs fresh.</li>
+            <li><strong>Reinstall:</strong> <code>npx impeccable install --force</code> installs fresh.</li>
             <li><strong>Claude Code plugin:</strong> Open <code>/plugin</code> in Claude Code.</li>
             <li><strong>npx skills:</strong> <code>npx skills add pbakaus/impeccable</code> also works, but installs one shared build for all harnesses rather than the one compiled for yours.</li>
             <li><strong>Manual ZIP:</strong> Download from the homepage and extract to the project root.</li>

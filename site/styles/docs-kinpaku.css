@@ -221,15 +221,15 @@ html.light .docs-kinpaku {
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 14px 0;
+    padding: 12px 0;
     background: transparent;
     border: 0;
-    color: var(--ks-champagne);
+    color: var(--ks-text-muted);
     font-family: var(--ks-font);
-    font-size: 0.76rem;
-    font-weight: 650;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    font-size: 0.92rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
     cursor: pointer;
   }
 
@@ -321,6 +321,7 @@ html.light .docs-kinpaku {
 /* Shared section scaffolding for the index sections ---------------- */
 
 .docs-kinpaku .docs-chooser-section,
+.docs-kinpaku .docs-manual-section,
 .docs-kinpaku .docs-live,
 .docs-kinpaku .docs-flow-section,
 .docs-kinpaku .docs-chains-section,
@@ -332,19 +333,8 @@ html.light .docs-kinpaku {
   margin-bottom: 0;
 }
 
-.docs-kinpaku .docs-live-eyebrow,
-.docs-kinpaku .docs-flow-eyebrow,
-.docs-kinpaku .docs-chains-eyebrow,
-.docs-kinpaku .docs-reference-eyebrow {
-  font-family: var(--ks-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--ks-kinpaku);
-  margin: 0 0 14px;
-}
-
 .docs-kinpaku .docs-chooser-title,
+.docs-kinpaku .docs-manual-title,
 .docs-kinpaku .docs-live-title,
 .docs-kinpaku .docs-flow-title,
 .docs-kinpaku .docs-chains-title,
@@ -361,6 +351,7 @@ html.light .docs-kinpaku {
 }
 
 .docs-kinpaku .docs-live-lede,
+.docs-kinpaku .docs-manual-sub,
 .docs-kinpaku .docs-flow-sub,
 .docs-kinpaku .docs-chains-sub {
   font-size: 1rem;
@@ -376,23 +367,6 @@ html.light .docs-kinpaku {
 .docs-kinpaku .docs-start-rail-sequence {
   display: grid;
   gap: clamp(12px, 1.8vw, 18px);
-}
-
-.docs-kinpaku .docs-start-rail-divider {
-  color: var(--docs-accent);
-  opacity: 0.86;
-}
-
-html.light .docs-kinpaku .docs-start-rail-divider {
-  opacity: 0.58;
-}
-
-.docs-kinpaku .docs-start-rail-divider .ksd-divider {
-  color: currentColor;
-}
-
-.docs-kinpaku .docs-start-rail-divider--top .ksd-divider {
-  transform: scaleY(-1);
 }
 
 .docs-kinpaku .docs-start-rail-steps {
@@ -1034,21 +1008,8 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   margin: 0 0 16px;
 }
 
-/* Small `/impeccable` prefix above the command name — reads like a
-   kinpaku eyebrow so the command verb (the h1) is the real subject.
-   This replaces the earlier prefix-as-inline-text approach where
-   `/impeccable` was at display scale and competed with the verb. */
-.docs-kinpaku .sub-page-prefix {
-  display: block;
-  font-family: var(--ks-mono);
-  font-size: 0.86rem;
-  letter-spacing: 0.02em;
-  color: var(--ks-text-muted);
-  margin: 0 0 8px;
-}
-
 /* Command name (h1) — display scale, kinpaku gold so it carries the
-   page identity. The prefix above provides the `/impeccable …` context. */
+   page identity. */
 .docs-kinpaku .sub-page-title {
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-display-weight);
@@ -1220,8 +1181,6 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   font-weight: var(--ks-type-headline-weight);
   line-height: var(--ks-type-headline-line);
   letter-spacing: -0.005em;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--ks-rule);
   text-wrap: balance;
 }
 
@@ -1299,8 +1258,16 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   color: var(--ks-code-fg);
   background: var(--ks-code-bg);
   border: 0;
-  padding: var(--ks-code-pad);
+  padding: 0.14em 0.36em;
   border-radius: var(--ks-code-radius);
+}
+
+.docs-kinpaku .prose :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+html.light .docs-kinpaku .prose code {
+  background: oklch(25% 0.02 95 / 0.08);
 }
 
 /* Inline code that is itself a link — get the kinpaku cue back, since
@@ -1309,11 +1276,9 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   color: var(--ks-code-cmd);
 }
 
-/* Fenced code blocks — deep lacquer terminal. Shiki injects inline
-   `background-color` and `color` on `pre.astro-code` (default theme is
-   `github-dark`, which reads cool-gray against the warm kinpaku ground),
-   so we override with !important to bake the theme into the kinpaku
-   palette. Syntax token spans inside keep their own colors. */
+/* Fenced code blocks — deep lacquer terminal. Astro/Shiki emits dual-theme
+   CSS variables from site/lib/impeccable-shiki-theme.mjs; the wrapper keeps
+   the surface in the kinpaku token system while token spans swap by theme. */
 .docs-kinpaku .prose pre,
 .docs-kinpaku .prose .code-block,
 .docs-kinpaku .prose pre.astro-code {
@@ -1330,6 +1295,24 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   max-width: 100%;
 }
 
+.docs-kinpaku .prose pre.astro-code span {
+  color: var(--shiki-dark, var(--ks-code-block-fg));
+}
+
+html.light .docs-kinpaku .prose pre.astro-code span {
+  color: var(--shiki-light, var(--ks-code-block-fg));
+}
+
+.docs-kinpaku .prose > * + pre.astro-code,
+.docs-kinpaku .prose > * + pre,
+.docs-kinpaku .prose > * + .code-block-wrap {
+  margin-top: 1.25em;
+}
+
+.docs-kinpaku .prose :is(p, ul, ol) + :is(pre.astro-code, pre, .code-block-wrap) {
+  margin-top: 1.25em;
+}
+
 .docs-kinpaku .prose pre code,
 .docs-kinpaku .prose .code-block code {
   background: transparent;
@@ -1338,6 +1321,11 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   color: inherit;
   font-size: inherit;
   border-radius: 0;
+}
+
+html.light .docs-kinpaku .prose pre code,
+html.light .docs-kinpaku .prose .code-block code {
+  background: transparent;
 }
 
 .docs-kinpaku .prose .code-block-wrap {
@@ -1394,9 +1382,16 @@ html.light .docs-kinpaku .docs-start-rail-divider {
 .docs-kinpaku .prose blockquote {
   margin: 0;
   padding: 6px 0 6px 22px;
+  border-block: 0;
   border-left: 2px solid var(--ks-kinpaku);
   color: var(--ks-text);
   font-style: italic;
+}
+
+.docs-kinpaku .prose .docs-context-note {
+  padding: 4px 0 4px 20px;
+  border-left: 2px solid var(--ks-kinpaku);
+  color: var(--ks-text-muted);
 }
 
 .docs-kinpaku .prose hr {
@@ -1428,6 +1423,164 @@ html.light .docs-kinpaku .docs-start-rail-divider {
   color: var(--ks-kinpaku);
   font-weight: 500;
   border-bottom-color: var(--ks-kinpaku);
+}
+
+@media (max-width: 760px) {
+  .docs-kinpaku .prose table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .docs-kinpaku .prose th,
+  .docs-kinpaku .prose td {
+    min-width: 11rem;
+  }
+}
+
+/* Design Context guide -------------------------------------------------
+
+   The context page needs a quick mental model before it becomes reference
+   prose. Keep these modules small, sharp, and readable inside the normal
+   documentation measure.
+*/
+
+.docs-kinpaku .prose .docs-context-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--ks-rule);
+  border: 1px solid var(--ks-rule);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.docs-kinpaku .prose .docs-context-flow-source,
+.docs-kinpaku .prose .docs-context-flow-output {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px;
+  background: var(--ks-lacquer-raised);
+}
+
+.docs-kinpaku .prose .docs-context-flow-source--generated {
+  background: var(--ks-lacquer-raised);
+}
+
+.docs-kinpaku .prose .docs-context-flow-output {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.26fr);
+  column-gap: 20px;
+  align-items: center;
+  background: var(--ks-lacquer);
+}
+
+.docs-kinpaku .prose .docs-context-flow-label {
+  font-family: var(--ks-mono);
+  font-size: 0.62rem;
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--docs-accent);
+}
+
+.docs-kinpaku .prose .docs-context-flow-source strong,
+.docs-kinpaku .prose .docs-context-flow-output strong {
+  color: var(--ks-champagne);
+  font-family: var(--ks-mono);
+  font-size: 0.84rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.docs-kinpaku .prose .docs-context-flow-source span:last-child,
+.docs-kinpaku .prose .docs-context-flow-output span:last-child {
+  color: var(--ks-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.docs-kinpaku .prose .docs-context-flow-output .docs-context-flow-label,
+.docs-kinpaku .prose .docs-context-flow-output span:last-child {
+  grid-column: 1;
+}
+
+.docs-kinpaku .prose .docs-context-flow-output strong {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) {
+  border-top: 1px solid var(--ks-rule);
+  border-bottom: 1px solid var(--ks-rule);
+  padding: 0;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) + :is(.docs-context-details, .docs-prose-details) {
+  margin-top: 0;
+  border-top: 0;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 0;
+  color: var(--ks-champagne);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) summary::after {
+  content: "+";
+  font-family: var(--ks-mono);
+  color: var(--docs-accent);
+  font-weight: 500;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details)[open] summary::after {
+  content: "-";
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) summary:focus-visible {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 4px;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) > div {
+  display: grid;
+  gap: 0.8em;
+  padding: 0 0 18px;
+  color: var(--ks-text);
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) > div > * {
+  margin: 0;
+}
+
+.docs-kinpaku .prose :is(.docs-context-details, .docs-prose-details) ul {
+  padding-left: 1.4rem;
+}
+
+@media (max-width: 760px) {
+  .docs-kinpaku .prose .docs-context-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-kinpaku .prose .docs-context-flow-output {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
 
 
@@ -1501,7 +1654,7 @@ html.light .docs-kinpaku .docs-start-rail-divider {
 .docs-kinpaku .docs-command-demo .split-before {
   background:
     linear-gradient(90deg, oklch(10% 0.006 95 / 0.92), oklch(12% 0.012 60 / 0.72)),
-    radial-gradient(circle at 28% 25%, oklch(60% 0.05 80 / 0.18), transparent 11rem);
+    radial-gradient(circle at 28% 25%, oklch(78% 0.12 82 / 0.12), transparent 11rem);
 }
 
 .docs-kinpaku .docs-command-demo .split-after {

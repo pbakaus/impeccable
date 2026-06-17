@@ -11,6 +11,17 @@ export const PER_PROJECT_SCRIPT_ARTIFACTS = new Set(['config.json']);
 
 const DETECTOR_BUNDLE_DIR = 'cli/engine';
 
+// Detector source files that live OUTSIDE `cli/engine` but are imported by the
+// bundled engine. `cli/engine/cli/main.mjs` imports `../../lib/impeccable-config.mjs`,
+// which in the source CLI resolves to `cli/lib/impeccable-config.mjs`. The detector
+// bundle copies `cli/engine/**` to `scripts/detector/**`, so from the bundled
+// `scripts/detector/cli/main.mjs` that same `../../lib/...` import resolves to
+// `scripts/lib/impeccable-config.mjs`. Copy the dependency there or the bundled
+// detector fails at import time with "Cannot find module .../lib/impeccable-config.mjs".
+const DETECTOR_EXTERNAL_DEPS = [
+  { src: 'cli/lib/impeccable-config.mjs', dest: 'lib/impeccable-config.mjs' },
+];
+
 // Walk the harness-dir skill tree and return any per-project script
 // artifacts found, ready for restoration after a full sync rm+recopy.
 // Returns [{ relPath, content: Buffer }], where relPath is relative to
@@ -64,6 +75,20 @@ function readDetectorBundleScripts(rootDir) {
     }
   };
   walk(detectorDir);
+
+  // Pull in engine dependencies that live outside the bundle dir so the
+  // generated detector is self-contained (see DETECTOR_EXTERNAL_DEPS).
+  for (const { src, dest } of DETECTOR_EXTERNAL_DEPS) {
+    const srcPath = path.join(rootDir, src);
+    if (!fs.existsSync(srcPath)) continue;
+    scripts.push({
+      name: dest,
+      content: fs.readFileSync(srcPath, 'utf-8'),
+      filePath: srcPath,
+      generated: true,
+    });
+  }
+
   return scripts;
 }
 

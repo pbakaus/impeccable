@@ -681,7 +681,7 @@ code {
   border-radius: 16px;
   padding: 24px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -713,7 +713,7 @@ code {
   color: white;
   border: none;
   border-radius: 8px;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -968,14 +968,15 @@ code {
   align-items: baseline;
   gap: var(--spacing-xs);
   margin-bottom: 8px;
-  overflow: hidden;
+  overflow: visible;
+  padding-bottom: 0.08em;
 }
 
 .foundation-card-label {
   font-family: var(--font-display);
   font-size: 1.35rem;
   color: var(--color-ink);
-  line-height: 1.1;
+  line-height: 1.16;
 }
 
 .foundation-card-count {
@@ -1034,10 +1035,10 @@ code {
 .foundation-column:hover .anim-res-line-1 { transform: translate(-7px, 4.75px) scaleX(0.65); transition-delay: 0.15s; }
 .foundation-column:hover .anim-res-line-2 { transform: translate(-6px, 4.25px) scaleX(0.6); transition-delay: 0.2s; }
 
-/* Interaction (Gentle wobble + full toggle on hover) */
-.anim-toggle-move { animation: toggle-wobble 3s ease-in-out infinite; }
+/* Interaction (Gentle drift + full toggle on hover) */
+.anim-toggle-move { animation: toggle-drift 3s ease-in-out infinite; }
 .foundation-column:hover .anim-toggle-move { animation: toggle-snap 0.35s var(--ease-in-out) forwards; }
-@keyframes toggle-wobble { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+@keyframes toggle-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
 @keyframes toggle-snap { from { transform: translateX(0); fill: var(--color-mist); } to { transform: translateX(8px); fill: var(--color-accent); } }
 
 /* Motion (Gentle bob + full bounce on hover) */
@@ -1060,8 +1061,8 @@ code {
 .anim-blink { animation: blink-key 1s step-end infinite; }
 @keyframes blink-key { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-/* Tablet: 3-col grid (switch before stairs clip) */
-@media (max-width: 1200px) {
+/* Narrow desktop/tablet: 3-col grid before seven columns squeeze copy. */
+@media (max-width: 1280px) {
   .foundation-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -2575,7 +2576,7 @@ code {
   content: '\2713';
   position: absolute;
   left: 0;
-  color: var(--color-success, #22c55e);
+  color: var(--color-success, var(--ks-patina));
   font-weight: 600;
 }
 

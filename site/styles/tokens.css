@@ -70,9 +70,9 @@ button, input, textarea, select {
   --color-text: var(--ks-text);
   --color-paper: oklch(7% 0.006 95);
   --color-cream: oklch(9% 0.006 95);
-  --color-charcoal: oklch(72% 0.025 82);
-  --color-ash: oklch(60% 0.018 82);
-  --color-mist: oklch(58% 0.065 82 / 0.22);
+  --color-charcoal: var(--ks-text-muted);
+  --color-ash: var(--ks-text-faint);
+  --color-mist: var(--ks-rule);
   --color-bg: oklch(11% 0.006 95);
 
   /* Accent — kinpaku gold (was magenta). */

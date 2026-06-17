@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProjectArtifacts } from './lib/utils.js';
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
+import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
@@ -403,6 +404,21 @@ function copyDirSync(src, dest) {
   }
 }
 
+function syncRootHookManifests(rootDir) {
+  const synced = [];
+  for (const config of Object.values(PROVIDERS)) {
+    if (!config.emitHooks) continue;
+    const manifest = hooksJsonFor(config.emitHooks);
+    if (!manifest) continue;
+    const rel = config.hooksManifestRel || path.join('hooks', 'hooks.json');
+    const dest = path.join(rootDir, config.configDir, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, JSON.stringify(manifest, null, 2) + '\n');
+    synced.push(path.join(config.configDir, rel).split(path.sep).join('/'));
+  }
+  return synced;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -657,6 +673,29 @@ async function build() {
       }
     }
 
+    const syncedHooks = syncRootHookManifests(ROOT_DIR);
+    if (syncedHooks.length > 0) {
+      console.log(`🪝 Synced hook manifests to: ${syncedHooks.join(', ')}`);
+    }
+
+    // Remove deprecated skill stubs from local harness dirs. They exist
+    // in dist/ so the cleanup script can redirect users, but they should
+    // not clutter the repo's own skill directories.
+    const deprecatedLocalSkills = [
+      'frontend-design', 'teach-impeccable',
+      'arrange', 'normalize', 'onboard', 'extract',
+      // v3.0 consolidation: standalone skills -> /impeccable sub-commands
+      'adapt', 'animate', 'audit', 'bolder', 'clarify', 'colorize',
+      'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
+      'overdrive', 'polish', 'quieter', 'shape', 'typeset',
+    ];
+    for (const { configDir } of syncConfigs) {
+      for (const name of deprecatedLocalSkills) {
+        const p = path.join(ROOT_DIR, configDir, 'skills', name);
+        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+      }
+    }
+
     console.log(`📋 Synced skills to: ${syncConfigs.map(p => p.configDir).join(', ')}`);
 
     // Build the Claude Code plugin subtree at ./plugin/.
@@ -669,9 +708,11 @@ async function build() {
     const pluginManifestDir = path.join(pluginRoot, '.claude-plugin');
     const pluginSkillsDir = path.join(pluginRoot, 'skills');
     const pluginAgentsDir = path.join(pluginRoot, 'agents');
+    const pluginHooksDir = path.join(pluginRoot, 'hooks');
     if (fs.existsSync(pluginManifestDir)) fs.rmSync(pluginManifestDir, { recursive: true });
     if (fs.existsSync(pluginSkillsDir)) fs.rmSync(pluginSkillsDir, { recursive: true });
     if (fs.existsSync(pluginAgentsDir)) fs.rmSync(pluginAgentsDir, { recursive: true });
+    if (fs.existsSync(pluginHooksDir)) fs.rmSync(pluginHooksDir, { recursive: true });
 
     const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
     const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
@@ -707,6 +748,16 @@ async function build() {
       copyDirSync(claudeAgentsSrc, pluginAgentsDir);
     }
 
+    // Ship the design detector as a plugin-packaged hook. Claude Code
+    // auto-discovers `hooks/hooks.json` at the plugin root, so marketplace /
+    // `/plugin install` users get the PostToolUse hook without it being merged
+    // into their project `.claude/settings.json` (that path is the CLI's job).
+    fs.mkdirSync(pluginHooksDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginHooksDir, 'hooks.json'),
+      JSON.stringify(buildClaudePluginHooksManifest(), null, 2) + '\n',
+    );
+
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
@@ -735,5 +786,9 @@ async function build() {
   console.log('\n✨ Build complete!');
 }
 
-// Run the build
-build();
+// Run the build. A rejection here (e.g. the release zip failing to build) must
+// exit non-zero so a broken artifact never deploys silently.
+build().catch((err) => {
+  console.error(`\n❌ Build failed: ${err.message}`);
+  process.exit(1);
+});

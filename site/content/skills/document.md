@@ -66,7 +66,7 @@ tagline: "Generate a spec-compliant DESIGN.md that captures your visual system s
       </div>
     </div>
   </div>
-  <p class="docs-viz-caption">The six sections are fixed, in a fixed order, with fixed names. Alongside, <code>DESIGN.json</code> ships as a machine-readable sidecar for the Live Mode design panel.</p>
+  <p class="docs-viz-caption">The six sections are fixed, in a fixed order, with fixed names. Alongside, <code>.impeccable/design.json</code> ships as a machine-readable sidecar for tools that need structured design metadata.</p>
 </div>
 
 ## When to use it
@@ -86,9 +86,9 @@ For projects with no code yet (fresh `init` run, nothing built), there is a seed
 
 The scan pass finds design assets in priority order: CSS custom properties, Tailwind config, CSS-in-JS themes, design token files, component source, the global stylesheet, and finally computed styles from the live rendered output if a browser is available. It auto-extracts everything it can, then asks one grouped question for the parts that need creative input: the **Creative North Star** (a single named metaphor for the whole system, like "The Editorial Sanctuary"), descriptive color names, the elevation philosophy, and the component character.
 
-Output is a DESIGN.md with exactly six sections: Overview, Colors, Typography, Elevation, Components, Do's and Don'ts. Headers are fixed character-for-character so the file is parseable by other tools. Alongside it, `DESIGN.json` is written as a machine-readable sidecar. That sidecar is what the live-mode design panel uses to render *this project's* actual button, input, nav, and card tiles instead of a generic approximation.
+Output is a DESIGN.md with exactly six sections: Overview, Colors, Typography, Elevation, Components, Do's and Don'ts. Headers are fixed character-for-character so the file is parseable by other tools. Alongside it, `.impeccable/design.json` is written as a machine-readable sidecar. That sidecar gives Live Mode and design-aware detector rules structured access to this project's actual palette, type, radii, component snippets, and narrative.
 
-Every other command reads DESIGN.md on invocation. Variants, polishes, audits, and new features inherit the visual system without being told.
+Every other command reads DESIGN.md on invocation. Variants, polishes, audits, and new features inherit the visual system without being told. See [Design Context](/docs/context) for how DESIGN.md relates to PRODUCT.md and `.impeccable/design.json`.
 
 ## Try it
 

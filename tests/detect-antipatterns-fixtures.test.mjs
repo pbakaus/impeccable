@@ -10,6 +10,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   detectHtml,
+  detectText,
+  normalizeDesignSystem,
 } from '../cli/engine/detect-antipatterns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -204,7 +206,7 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     assert.equal(leftFindings.length, 11, `expected 11 border-left findings, got ${leftFindings.length}`);
     assert.equal(rightFindings.length, 1, `expected 1 border-right finding, got ${rightFindings.length}`);
     // PASS column must contribute zero border findings of either flavor.
-    // There are 13 pass cases: 6 structural neutrals plus 4 labels (plain
+    // There are 14 pass cases: 7 structural neutrals plus 4 labels (plain
     // inline form label, label with a neutral gray border, label in a form
     // row, and a label with a thin 1px colored left border), plus 3 var()
     // pass cases (neutral-resolving var, thin var, uniform all-sides var).
@@ -215,6 +217,33 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       borderAccent.length, 0,
       `expected 0 border-accent-on-rounded, got ${borderAccent.length}: ${borderAccent.map(r => r.snippet).join('; ')}`
     );
+  });
+
+  it('modern-color-borders: regex fallback skips neutral 1px oklch dividers', () => {
+    const css = `
+      .flag-side-tab {
+        border-radius: 8px;
+        border-left: 2px solid oklch(65% 0.12 250);
+      }
+
+      .pass-context-divider {
+        border-radius: 8px;
+        border-right: 1px solid oklch(92% 0 0 / 0.12);
+      }
+
+      .pass-neutral-side {
+        border-radius: 8px;
+        border-left: 3px solid oklch(80% 0 0);
+      }
+    `;
+    const f = detectText(css, path.join(FIXTURES, 'modern-color-borders-regex.css'));
+    const sideTabs = f.filter(r => r.antipattern === 'side-tab');
+    assert.equal(
+      sideTabs.length,
+      1,
+      `expected only the colored 2px side-tab to flag, got: ${sideTabs.map(r => r.snippet).join('; ')}`
+    );
+    assert.match(sideTabs[0].snippet, /border-left: 2px solid oklch/);
   });
 
   it('typography-should-flag: detects all three issues', async () => {
@@ -241,6 +270,100 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
   it('typography-should-pass: zero findings', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'typography-should-pass.html'));
     assert.equal(f.length, 0);
+  });
+
+  it('design-system: flags only values outside the provided DESIGN.md tokens', async () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        },
+        colors: {
+          ink: '#241f1a',
+          paper: '#f7f4ee',
+          surface: '#ffffff',
+          accent: '#b8422e',
+          border: '#d4c7b9',
+        },
+        rounded: {
+          sm: '4px',
+          md: '8px',
+          '"2xl"': '32px',
+          full: '999px',
+        },
+      },
+      sidecar: {
+        extensions: {
+          colorMeta: {
+            accent: {
+              canonical: '#b8422e',
+              tonalRamp: ['#923524', '#d55a42'],
+            },
+          },
+        },
+      },
+    });
+    const f = await detectHtml(path.join(FIXTURES, 'design-system.html'), { designSystem });
+    const designFindings = f.filter((r) => r.antipattern.startsWith('design-system-'));
+    const snippets = designFindings.map((r) => r.snippet).join('\n');
+
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-font'), 'expected unsupported font');
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-color'), 'expected undocumented colors');
+    assert.ok(designFindings.some((r) => r.antipattern === 'design-system-radius'), 'expected undocumented radius');
+    assert.ok(
+      designFindings.some((r) => r.antipattern === 'design-system-font' && /Google Fonts: Poppins/.test(r.snippet || '')),
+      'expected source-level Google Fonts usage in HTML to be flagged',
+    );
+    assert.doesNotMatch(snippets, /Undocumented color #ff00aa/, 'source and computed color findings should not duplicate');
+    assert.doesNotMatch(snippets, /font-family: Poppins/, 'source and computed font findings should not duplicate');
+    assert.doesNotMatch(snippets, /border-radius: 18px is outside/, 'source and computed radius findings should not duplicate');
+    assert.doesNotMatch(snippets, /on style "\.design-system-fixture/, 'static DOM design pass should skip <style> content');
+    assert.equal(
+      designFindings.find((r) => /Flag Color Hot Pink/.test(r.snippet || ''))?.line,
+      37,
+      'deduped HTML design findings should keep the source line when available',
+    );
+    assert.equal(
+      designFindings.find((r) => /Flag Radius Eighteen/.test(r.snippet || ''))?.line,
+      40,
+      'deduped radius findings should keep the source line when available',
+    );
+
+    for (const label of [
+      'Flag Font Unsupported',
+      'Flag Color Hot Pink',
+      'Flag Background Cyan',
+      'Flag Border Teal',
+      'Flag Radius Eighteen',
+    ]) {
+      assert.match(snippets, new RegExp(label), `expected ${label} to be flagged`);
+    }
+    for (const label of [
+      'Pass Display Font',
+      'Pass Generic Font',
+      'Pass Token Color',
+      'Pass Alpha Color',
+      'Pass Close Color',
+      'Pass Ramp Color',
+      'Pass Zero Radius',
+      'Pass Percent Radius',
+      'Pass Scale Radius',
+      'Pass Pill Radius',
+    ]) {
+      assert.doesNotMatch(snippets, new RegExp(label), `${label} should pass`);
+    }
+  });
+
+  it('numbered-section-markers: visible sequence flags while script/style/svg internals pass', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'numbered-section-markers.html'));
+    const numbered = f.filter(r => r.antipattern === 'numbered-section-markers');
+    assert.equal(
+      numbered.length,
+      1,
+      `expected one visible numbered-marker finding, got: ${numbered.map(r => r.snippet).join('; ')}`
+    );
+    assert.match(numbered[0].snippet, /01, 02, 03/);
   });
 });
 

@@ -1,6 +1,6 @@
 ---
 // Shared sidebar for the /docs section.
-// Renders Tutorials + Commands, highlighting the current entry.
+// Renders Tutorials + Reference + Commands, highlighting the current entry.
 // Used by:
 //   - site/pages/docs/index.astro          (no active entry)
 //   - site/layouts/Doc.astro                (activeCommand)
@@ -14,12 +14,21 @@ import {
 
 interface Props {
   activeCommand?: string;
+  activeReference?: string;
   activeTutorial?: string;
 }
-const { activeCommand, activeTutorial } = Astro.props;
+const { activeCommand, activeReference, activeTutorial } = Astro.props;
 
 const tutorials = (await getCollection('tutorials'))
   .sort((a, b) => a.data.order - b.data.order);
+
+const reference = (await getCollection('reference'))
+  .sort((a, b) => a.data.order - b.data.order);
+const referenceGroups = [
+  { section: 'concepts', label: 'Core concepts' },
+  { section: 'automation', label: 'Automation' },
+  { section: 'reference', label: 'Reference' },
+];
 
 const skills = await getCollection('skills');
 const sidebarGroups: Record<string, { slug: string }[]> = {};
@@ -33,7 +42,7 @@ for (const cat of CATEGORY_ORDER) {
 
 <aside class="skills-sidebar" aria-label="Docs navigation">
   <button class="skills-sidebar-toggle" type="button" aria-expanded="false" aria-controls="skills-sidebar-inner">
-    <span class="skills-sidebar-toggle-label">Docs</span>
+    <span class="skills-sidebar-toggle-label">Browse docs</span>
     <svg class="skills-sidebar-toggle-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
   <div class="skills-sidebar-inner" id="skills-sidebar-inner">
@@ -52,6 +61,29 @@ for (const cat of CATEGORY_ORDER) {
             ))}
           </ul>
         </div>
+      </>
+    )}
+
+    {reference.length > 0 && (
+      <>
+        <p class="skills-sidebar-label">Reference</p>
+        {referenceGroups.map(group => {
+          const entries = reference.filter(entry => entry.data.section === group.section);
+          return entries.length > 0 && (
+            <div class="skills-sidebar-group">
+              <span class="skills-sidebar-category">{group.label}</span>
+              <ul class="skills-sidebar-list">
+                {entries.map(entry => (
+                  <li>
+                    <a href={`/docs/${entry.id}`} aria-current={entry.id === activeReference ? 'page' : undefined}>
+                      <span>{entry.data.title}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
       </>
     )}
 

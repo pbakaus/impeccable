@@ -106,15 +106,29 @@ import '../../styles/live-mode-kinpaku.css';
 
           <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
             <div class="live-demo-ctx-row live-demo-ctx-row--configure">
-              <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
-                <span data-demo-cmd-name>adapt</span>
-                <span class="live-demo-ctx-pill-caret" aria-hidden="true">&#x25BE;</span>
-              </button>
-              <span class="live-demo-ctx-input" data-demo-input>
-                <span data-demo-input-text></span><span class="live-demo-ctx-caret"></span>
-              </span>
-              <button type="button" class="live-demo-ctx-count">&times;3</button>
-              <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">&rarr;</span></button>
+              <div class="live-demo-ctx-command">
+                <span class="live-demo-ctx-input" data-demo-input>
+                  <button type="button" class="live-demo-ctx-selection">h1</button>
+                  <span data-demo-input-text></span><span class="live-demo-ctx-caret"></span>
+                </span>
+              </div>
+              <div class="live-demo-ctx-trailing">
+                <div class="live-demo-ctx-modifiers">
+                  <button type="button" class="live-demo-ctx-action" data-demo-ctx-pill>
+                    <span data-demo-cmd-name>adapt</span>
+                    <span class="live-demo-ctx-action-caret" aria-hidden="true">&#x25BE;</span>
+                  </button>
+                  <button type="button" class="live-demo-ctx-count">&times;3</button>
+                </div>
+                <div class="live-demo-ctx-actions">
+                  <button type="button" class="live-demo-ctx-voice" aria-label="Voice input">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                  </button>
+                  <button type="button" class="live-demo-ctx-go" data-demo-go aria-label="Generate variants">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                  </button>
+                </div>
+              </div>
             </div>
             <LiveDemoPalette pick="delight" />
             <div class="live-demo-ctx-row live-demo-ctx-row--generating">

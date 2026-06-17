@@ -439,6 +439,7 @@ async function assertSelectedElementChrome(page) {
       hasPicker: Boolean(picker),
       hasBadge: Boolean(badge),
       badgeText: badge?.textContent || '',
+      badgeLabel: badge?.querySelector('button')?.getAttribute('aria-label') || badge?.title || '',
       hasHighlight: Boolean(highlight),
       highlightVisible: highlight?.style.display !== 'none',
       hasInput: Boolean(input),
@@ -449,7 +450,7 @@ async function assertSelectedElementChrome(page) {
   assert.equal(result.hasBar, true);
   assert.equal(result.hasPicker, true);
   assert.equal(result.hasBadge, true);
-  assert.match(result.badgeText, /Edit copy/);
+  assert.match(result.badgeLabel, /Edit copy/);
   assert.equal(result.hasHighlight, true);
   assert.equal(result.highlightVisible, true);
   assert.equal(result.hasInput, true);

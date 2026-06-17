@@ -22,7 +22,7 @@
    the gold; plinth is a low-chroma warm dark that sits one step above the
    lacquer bg and reads as inscribed into the surface. */
 .ksd-divider--patina { color: var(--ks-patina); }
-.ksd-divider--plinth { color: oklch(0.42 0.014 82); }
+.ksd-divider--plinth { color: oklch(42% 0 0); }
 
 /* Texture-fill modifiers. The pattern's geometry becomes a mask; the brand
    accent texture becomes the visible fill. Filters match the .ks-accent-band

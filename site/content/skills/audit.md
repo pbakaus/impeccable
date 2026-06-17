@@ -65,7 +65,7 @@ The skill scans your code across five dimensions:
 2. **Performance**: layout thrashing, expensive animations, missing lazy loading, bundle weight.
 3. **Theming**: hard-coded colors, dark mode coverage, token consistency.
 4. **Responsive**: breakpoint behavior, touch targets, mobile viewport handling.
-5. **Anti-patterns**: the same deterministic 25 checks the detector runs.
+5. **Anti-patterns**: the same deterministic checks the [Detector CLI](/docs/detector) runs.
 
 Each dimension gets a 0 to 4 score. Each finding gets a severity: P0 blocks the release, P1 should fix this sprint, P2 is next cycle, P3 is polish. You get back a single document you can paste into a ticket tracker.
 

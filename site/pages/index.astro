@@ -197,15 +197,29 @@ import '../styles/testimonials.css';
 
               <div class="live-demo-ctx" data-demo-ctx data-phase="hidden">
                 <div class="live-demo-ctx-row live-demo-ctx-row--configure">
-                  <button type="button" class="live-demo-ctx-pill" data-demo-ctx-pill>
-                    <span data-demo-cmd-name>adapt</span>
-                    <span class="live-demo-ctx-pill-caret" aria-hidden="true">▾</span>
-                  </button>
-                  <span class="live-demo-ctx-input" data-demo-input>
-                    <span data-demo-input-text></span><span class="live-demo-ctx-caret"></span>
-                  </span>
-                  <button type="button" class="live-demo-ctx-count">×3</button>
-                  <button type="button" class="live-demo-ctx-go" data-demo-go>Go <span aria-hidden="true">→</span></button>
+                  <div class="live-demo-ctx-command">
+                    <span class="live-demo-ctx-input" data-demo-input>
+                      <button type="button" class="live-demo-ctx-selection">h1</button>
+                      <span data-demo-input-text></span><span class="live-demo-ctx-caret"></span>
+                    </span>
+                  </div>
+                  <div class="live-demo-ctx-trailing">
+                    <div class="live-demo-ctx-modifiers">
+                      <button type="button" class="live-demo-ctx-action" data-demo-ctx-pill>
+                        <span data-demo-cmd-name>adapt</span>
+                        <span class="live-demo-ctx-action-caret" aria-hidden="true">▾</span>
+                      </button>
+                      <button type="button" class="live-demo-ctx-count">×3</button>
+                    </div>
+                    <div class="live-demo-ctx-actions">
+                    <button type="button" class="live-demo-ctx-voice" aria-label="Voice input">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                    </button>
+                    <button type="button" class="live-demo-ctx-go" data-demo-go aria-label="Generate variants">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                    </button>
+                    </div>
+                  </div>
                 </div>
                 <LiveDemoPalette pick="colorize" />
                 <div class="live-demo-ctx-row live-demo-ctx-row--generating">
@@ -507,7 +521,7 @@ import '../styles/testimonials.css';
           <article class="ks-bento-tile ks-bento-tile--span-6" id="why-ci">
             <span class="ks-bento-num" data-color="patina">06</span>
             <h3 class="why-panel-title">Block slop before it ships.</h3>
-            <p class="why-panel-body">A detector you can wire into PR checks. 41 deterministic rules, no LLM, exit codes the build can read.</p>
+            <p class="why-panel-body">A detector you can wire into PR checks. 44 deterministic rules, no LLM, exit codes the build can read.</p>
               <div class="why-visual why-visual--ci">
                 <div class="why-ci-window">
                   <div class="why-ci-header">
@@ -545,10 +559,23 @@ import '../styles/testimonials.css';
                 </div>
                 <div class="why-live-ctx live-demo-ctx" data-phase="configuring">
                   <div class="live-demo-ctx-row live-demo-ctx-row--configure">
-                    <span class="live-demo-ctx-pill">bolder<span class="live-demo-ctx-pill-caret" aria-hidden="true">&#x25BE;</span></span>
-                    <span class="live-demo-ctx-input"><span class="live-demo-ctx-caret"></span></span>
-                    <span class="live-demo-ctx-count">&times;3</span>
-                    <span class="live-demo-ctx-go">Go <span aria-hidden="true">&rarr;</span></span>
+                    <div class="live-demo-ctx-command">
+                      <span class="live-demo-ctx-input"><span class="live-demo-ctx-selection">h1</span><span class="live-demo-ctx-caret"></span></span>
+                    </div>
+                    <div class="live-demo-ctx-trailing">
+                      <div class="live-demo-ctx-modifiers">
+                        <span class="live-demo-ctx-action">bolder<span class="live-demo-ctx-action-caret" aria-hidden="true">&#x25BE;</span></span>
+                        <span class="live-demo-ctx-count">&times;3</span>
+                      </div>
+                      <div class="live-demo-ctx-actions">
+                      <span class="live-demo-ctx-voice" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                      </span>
+                      <span class="live-demo-ctx-go" aria-hidden="true">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                      </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -595,8 +622,8 @@ import '../styles/testimonials.css';
           <span class="downloads-rebuild-cmd-label">Install</span>
           <div class="downloads-rebuild-cmd">
             <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
-            <code>npx impeccable skills install</code>
-            <button class="downloads-rebuild-copy" type="button" aria-label="Copy install command" data-copy="npx impeccable skills install">
+            <code>npx impeccable install</code>
+            <button class="downloads-rebuild-copy" type="button" aria-label="Copy install command" data-copy="npx impeccable install">
               <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
@@ -631,8 +658,8 @@ import '../styles/testimonials.css';
           <span class="downloads-rebuild-cmd-label downloads-rebuild-cmd-label--update">Update</span>
           <div class="downloads-rebuild-cmd downloads-rebuild-cmd--update">
             <span class="downloads-rebuild-prompt" aria-hidden="true">$</span>
-            <code>npx impeccable skills update</code>
-            <button class="downloads-rebuild-copy" type="button" aria-label="Copy update command" data-copy="npx impeccable skills update">
+            <code>npx impeccable update</code>
+            <button class="downloads-rebuild-copy" type="button" aria-label="Copy update command" data-copy="npx impeccable update">
               <svg class="downloads-rebuild-copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
                 <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
@@ -645,7 +672,7 @@ import '../styles/testimonials.css';
           </div>
         </div>
 
-        <p class="downloads-rebuild-note">Works with Cursor, Claude Code, GitHub Copilot, Gemini CLI, Codex CLI, and every other major AI coding harness. <code>install</code> sets up the build for your harness. Then run <code>/impeccable init</code> inside your AI tool so the skill can save your project context. <code>update</code> pulls the latest version. Run <code>npx impeccable skills check</code> to see if you're behind. Installed the Claude Code plugin? Update it from the <code>/plugin</code> menu instead.</p>
+        <p class="downloads-rebuild-note">Works with Cursor, Claude Code, GitHub Copilot, Gemini CLI, Codex CLI, and every other major AI coding harness. <code>install</code> sets up the build for your harness. Then run <code>/impeccable init</code> inside your AI tool so the skill can save your design context. <code>update</code> pulls the latest version. Run <code>npx impeccable check</code> to see if you're behind. Installed the Claude Code plugin? Update it from the <code>/plugin</code> menu instead.</p>
 
         <details class="downloads-rebuild-alts">
           <summary class="downloads-rebuild-alts-summary">
@@ -686,7 +713,7 @@ import '../styles/testimonials.css';
                 <span>Copy</span>
               </button>
             </div>
-            <span class="downloads-rebuild-alt-note">The general-purpose skills installer. For now it installs one shared build for all harnesses rather than the build compiled for yours. Prefer <code>npx impeccable skills install</code> above for the correct setup.</span>
+            <span class="downloads-rebuild-alt-note">The general-purpose skills installer. For now it installs one shared build for all harnesses rather than the build compiled for yours. Prefer <code>npx impeccable install</code> above for the correct setup.</span>
           </div>
         </details>
 
@@ -702,7 +729,7 @@ import '../styles/testimonials.css';
         </li>
         <li>
           <strong>CLI for CI</strong>
-          <span><code>npx impeccable detect src/</code> in a PR check. 41 deterministic rules. JSON output, exit codes for build gates.</span>
+          <span><code>npx impeccable detect src/</code> in a PR check. 44 deterministic rules. JSON output, exit codes for build gates.</span>
           <a href="https://www.npmjs.com/package/impeccable" target="_blank" rel="noopener">View on npm →</a>
         </li>
         <li>

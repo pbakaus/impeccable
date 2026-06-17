@@ -11,7 +11,7 @@ const SKIP_DIRS = new Set([
 ]);
 
 const SCANNABLE_EXTENSIONS = new Set([
-  '.html', '.htm', '.css', '.scss', '.less',
+  '.html', '.htm', '.css', '.scss', '.sass', '.less',
   '.jsx', '.tsx', '.js', '.ts',
   '.vue', '.svelte', '.astro',
 ]);

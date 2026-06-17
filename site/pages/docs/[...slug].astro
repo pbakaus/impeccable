@@ -7,6 +7,7 @@ import { SKILL_CATEGORIES } from '../../data/sub-pages-data';
 
 export async function getStaticPaths() {
   const entries = await getCollection('skills');
+  const referenceEntries = await getCollection('reference');
 
   const metadataPath = path.join(process.cwd(), 'skill/scripts/command-metadata.json');
   const commandMetadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
@@ -16,28 +17,42 @@ export async function getStaticPaths() {
     category: SKILL_CATEGORIES[e.id] || 'system',
   }));
 
-  return entries.map(entry => ({
-    params: { slug: entry.id },
-    props: {
-      entry,
-      metadata: commandMetadata[entry.id] || { description: entry.data.tagline, argumentHint: '' },
-      allCommands,
-    },
-  }));
+  return [
+    ...entries.map(entry => ({
+      params: { slug: entry.id },
+      props: {
+        entry,
+        kind: 'command',
+        metadata: commandMetadata[entry.id] || { description: entry.data.tagline, argumentHint: '' },
+        allCommands,
+      },
+    })),
+    ...referenceEntries.map(entry => ({
+      params: { slug: entry.id },
+      props: {
+        entry,
+        kind: 'reference',
+        metadata: { description: entry.data.description, argumentHint: '' },
+        allCommands,
+      },
+    })),
+  ];
 }
 
-const { entry, metadata, allCommands } = Astro.props;
+const { entry, kind, metadata, allCommands } = Astro.props;
 const { Content } = await render(entry);
 const slug = entry.id;
 const category = SKILL_CATEGORIES[slug] || 'system';
+const isReference = kind === 'reference';
 ---
 
 <Doc
-  title={slug}
+  title={isReference ? entry.data.title : slug}
   description={metadata.description}
   tagline={entry.data.tagline}
   slug={slug}
   category={category}
+  pageKind={kind}
   allCommands={allCommands}
 >
   <Content />

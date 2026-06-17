@@ -23,8 +23,40 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
-    <article id="v3.5.0" class="cf-entry cf-entry--current">
-      <header class="cf-entry-head"><span class="cf-version">v3.5.0</span><span class="cf-date">May 28, 2026</span><span class="cf-current-badge">Current</span></header>
+    <article id="v3.7.1" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.7.1</span><span class="cf-date">June 16, 2026</span><span class="cf-current-badge">Current</span></header>
+      <p class="cf-entry-lead">A packaging fix so the bundled detector runs everywhere.</p>
+      <ul class="cf-items">
+        <li><strong><code>/impeccable critique</code> works again.</strong> The bundled detector was missing a config module it needed and crashed on startup. The build now ships that file with the skill, so critique and other detector-backed commands run cleanly.</li>
+      </ul>
+    </article>
+
+    <article id="v3.7.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.7.0</span><span class="cf-date">June 16, 2026</span></header>
+      <p class="cf-entry-lead">Impeccable now carries project design context into hooks, the detector, and docs. The agent can compare edits against your actual typography, color, and radius system instead of only using global anti-pattern rules.</p>
+      <ul class="cf-items">
+        <li><strong>Design-aware hook detections.</strong> When a project has <code>DESIGN.md</code>, hooks and <code>impeccable detect</code> load the local design system and flag font, color, and radius drift against the documented palette, typography stacks, rounded scale, and sidecar tonal ramps.</li>
+        <li><strong>Ignores now work across hooks and the CLI.</strong> Detector exceptions moved into shared config, and <code>impeccable ignores</code> can list, add, and remove rule, file, and value ignores without hand-editing JSON.</li>
+        <li><strong>Docs cover the full project context path.</strong> New reference pages explain hooks, the detector, configuration, and Design Context, including how <code>PRODUCT.md</code>, <code>DESIGN.md</code>, and <code>.impeccable/design.json</code> are loaded and kept current.</li>
+        <li><strong>Docs code blocks now use the Impeccable palette.</strong> Shiki syntax highlighting uses design-system colors in both light and dark mode, with contrast tests so examples stay readable and do not trigger design-system color drift.</li>
+      </ul>
+    </article>
+
+    <article id="v3.6.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.6.0</span><span class="cf-date">June 14, 2026</span></header>
+      <p class="cf-entry-lead">Impeccable now helps while the agent is editing, and the core skill is leaner: ablation-tested guidance, project hooks, sharper detector signal, and Live Mode support for Svelte and manual browser edits.</p>
+      <ul class="cf-items">
+        <li><strong>Ablation-tested skill core.</strong> The main skill got leaner after rule-level evals across three providers and four niches. Redundant typography and copy guidance moved out of the always-on prompt, rules with no measurable lift were cut, and examples that primed models to repeat the exact pattern being banned were rewritten. The result is a smaller prompt that spends attention on guidance proven to move design output.</li>
+        <li><strong>Design hooks for real editing sessions.</strong> <code>/impeccable hooks</code> wires the detector into Claude, Codex, and Cursor projects. Claude and Codex get focused design reminders after UI file edits, Cursor can review proposed writes before they land, and <code>/impeccable hooks on</code> handles manifest setup, repair, and consent for you.</li>
+        <li><strong>Findings stay reviewable.</strong> Hook runs distinguish new findings, already-seen findings, and clean scans, so the agent gets useful pressure without repeated walls of output. Confirmed exceptions can be saved through <code>ignore-value</code>, <code>ignore-file</code>, and <code>ignore-rule</code> in <code>.impeccable</code> config files instead of source comments.</li>
+        <li><strong>The detector now tracks visible design problems more closely.</strong> The 41-rule engine skips hidden elements and screen-reader-only text, understands OKLCH alpha and Sass-like inputs, reports exact motion tokens for bounce or elastic easing, and tightens repeated kickers, oversized H1s, clipped overflow, transparent border/shadow, numbered marker, and cramped-padding checks.</li>
+        <li><strong>Svelte-native Live Mode.</strong> Svelte and SvelteKit variants preview as temporary framework components with params stored in <code>params.json</code>, then accept back into the selected source component. Stateful pages stay closer to their real shape and avoid the HMR resets caused by string-injected previews.</li>
+        <li><strong>Live Mode accepts more real-world edits cleanly.</strong> Manual text edits now have dedicated evidence, apply, and discard routes. Insertions preserve their anchors, accepted variants clean up mapped lists and JSX slots more reliably, and SvelteKit projects get a framework-aware live adapter that leaves <code>src/app.html</code> alone.</li>
+      </ul>
+    </article>
+
+    <article id="v3.5.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.5.0</span><span class="cf-date">May 28, 2026</span></header>
       <p class="cf-entry-lead">The biggest release yet. Per-provider rules that lift GPT-5.5 and Codex most, a skill that adapts to new versus existing projects, and Live Mode in Beta.</p>
 
       <figure class="cf-ba">
@@ -66,8 +98,45 @@ import '../styles/changelog-faq-kinpaku.css';
         <li><strong>A bare <code>/impeccable</code> recommends your next move.</strong> Run it with no command and, instead of a static menu, it reads the project, your dirty git tree, and your latest critique, then leads with the two or three highest-value commands and why (no DESIGN.md yet, run document; unresolved findings in the files you're editing, run polish). It always asks before running anything, and the full menu is still right below.</li>
         <li><strong>A faster detector with no jsdom.</strong> The HTML/CSS engine was rebuilt from the ground up on <code>htmlparser2</code> and a real CSS cascade resolver, replacing jsdom. On the same 160-file HTML corpus it runs about 20x faster under Node: 0.34s where the old jsdom engine took 6.8s, roughly 2 ms per file instead of 43 ms. Dependency-free and small enough to bundle straight into the skill and run inline, not just in the CLI and the extension.</li>
         <li><strong>Detector: 14 new rules.</strong> <code>cream-palette</code>, <code>em-dash-overuse</code>, <code>marketing-buzzword</code>, <code>numbered-section-markers</code>, <code>aphoristic-cadence</code>, <code>theater-slop-phrase</code>, <code>oversized-h1</code>, <code>extreme-negative-tracking</code>, <code>gpt-thin-border-wide-shadow</code>, <code>repeating-stripes-gradient</code>, <code>image-hover-transform</code>, <code>broken-image</code>, <code>text-overflow</code>, and <code>clipped-overflow-container</code>. 41 deterministic rules total, one canonical registry feeding the CLI, the browser extension, critique, and the evals.</li>
-        <li><strong>The skill keeps itself current.</strong> On the first session of the day, Impeccable quietly checks whether a newer version shipped. If one has, it offers to run <code>npx impeccable skills update</code> for you. It always asks first, never nags about a version you declined, and never interrupts the task you're on. Set <code>IMPECCABLE_NO_UPDATE_CHECK=1</code> to turn it off.</li>
+        <li><strong>The skill keeps itself current.</strong> On the first session of the day, Impeccable quietly checks whether a newer version shipped. If one has, it offers to run <code>npx impeccable update</code> for you. It always asks first, never nags about a version you declined, and never interrupts the task you're on. Set <code>IMPECCABLE_NO_UPDATE_CHECK=1</code> to turn it off.</li>
         <li><strong>Sharper craft under the hood.</strong> Beyond the bans, the craft itself got tighter. Small defaults landed where they pay off, like <code>text-wrap: balance</code> on headings, which cleaned up ragged hero type across the ablation runs. And the instructions themselves got leaner: orphan reference files folded into their commands, context loading simplified, and a new LLM-backed test suite that catches instruction-following regressions across three providers on every change. Plus dedicated <a href="/changelog">/changelog</a> and <a href="/faq">/faq</a> pages.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v3.0.3" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.3</span><span class="cf-date">June 17, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Existing installs now pick up script-only skill fixes.</strong> <code>impeccable update</code> compares the complete bundled skill tree instead of just <code>SKILL.md</code>, so fixes in bundled scripts are detected. Running <code>impeccable install</code> on an already-installed project also refreshes stale skill files instead of stopping at "already installed."</li>
+        <li><strong>Codex installs report the skill version.</strong> The <code>.agents</code> and <code>.codex</code> builds now include the same <code>version</code> frontmatter as the other harnesses, so check/update output can show the installed skill version consistently.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v3.0.2" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.2</span><span class="cf-date">June 16, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong><code>impeccable detect</code> now understands your design system.</strong> When a project has <code>DESIGN.md</code>, CLI scans load the same context as hooks and flag font, color, and radius drift against documented typography, palette, rounded scale, and sidecar tonal ramps. Pass <code>--no-design-system</code> when you want the global detector only.</li>
+        <li><strong>Ignore management is now a first-class CLI workflow.</strong> <code>impeccable ignores</code> can list, add, and remove rule, file, and value exceptions in the shared detector config, so teams no longer have to hand-edit <code>.impeccable/config.json</code>. Hooks and manual CLI scans honor the same exceptions.</li>
+        <li><strong>Install no longer fails silently on newer Node.</strong> On Node v24.16.0 and v26.1.0+, <code>impeccable install</code> could print "Downloading impeccable skills...", exit 0, and write nothing. ZIP extraction now uses pure-JS <code>fflate</code>, avoiding the destroyed-stream stall behind <a href="https://github.com/nodejs/node/issues/63487" target="_blank" rel="noopener">nodejs/node#63487</a> while preserving the Windows install fix. Reported by <a href="https://github.com/kenryu42" target="_blank" rel="noopener">@kenryu42</a> in <a href="https://github.com/pbakaus/impeccable/issues/250" target="_blank" rel="noopener">#250</a>.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v3.0.1" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.1</span><span class="cf-date">June 15, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Exact motion findings.</strong> <code>bounce-easing</code> now reports the concrete animation token, Tailwind class, or overshooting cubic-bezier value instead of a generic <code>bounce</code> label. Intentional motion can be kept or ignored at the narrow value level.</li>
+        <li><strong>Hook guidance favors design judgment.</strong> Project hook output now asks agents to classify each finding before editing: fix true design problems, leave intentional demos or domain-appropriate motion alone, and explain the decision.</li>
+      </ul>
+    </article>
+
+    <article id="cli-v3.0.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.0</span><span class="cf-date">June 14, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>Breaking: Node 24 minimum.</strong> The CLI now declares <code>"node": "&gt;=24"</code>. Upgrade Node before installing or running this version.</li>
+        <li><strong>Shorter commands.</strong> <code>impeccable install</code>, <code>impeccable update</code>, <code>impeccable link</code>, and <code>impeccable check</code> are now the primary command shape. The old <code>impeccable skills ...</code> namespace still works for existing scripts.</li>
+        <li><strong>Installer choices match your machine.</strong> <code>impeccable install</code> shows the harnesses it detects, defaults to that set, lets you customize providers through a searchable picker, and asks whether to install into the current project or globally. Project installs are the default unless real global skills already exist.</li>
+        <li><strong>Hooks install with the skill when you opt in.</strong> <code>impeccable install</code> and <code>impeccable update</code> can prompt once for hook consent, persist the local answer, and install or repair the Claude, Codex, and Cursor hook manifests. Teams that only want the skill can still pass <code>--no-hooks</code>.</li>
+        <li><strong>Local and submodule installs are safer.</strong> <code>impeccable link --source=.impeccable</code> supports repo-local development, symlink-safe updates avoid clobbering linked installs, provider aliases include Codex and Rovo Dev names, local bundle overrides are explicit, and ZIP extraction is safer on Windows.</li>
+        <li><strong>Detector output is more precise.</strong> CLI scans pick up the same accuracy work as the skill hooks: hidden-element skips, sr-only text handling, tighter repeated kicker and oversized-H1 heuristics, OKLCH alpha, Sass-like CSS inputs, transparent-border handling, and page-level numbered-marker checks that stay out of implementation literals.</li>
       </ul>
     </article>
 
@@ -105,9 +174,11 @@ import '../styles/changelog-faq-kinpaku.css';
     </article>
 
     <article id="ext-v1.2.0" class="cf-entry">
-      <header class="cf-entry-head"><span class="cf-version">Extension v1.2.0</span><span class="cf-date">June 1, 2026</span></header>
+      <header class="cf-entry-head"><span class="cf-version">Extension v1.2.0</span><span class="cf-date">June 14, 2026</span></header>
       <ul class="cf-items">
-        <li><strong>Firefox build.</strong> The same detector, popup, DevTools panel, and per-rule toggles now ship as a Firefox add-on. <code>bun run build:extension</code> emits a Gecko-compatible package next to the Chrome one, with the background worker declared as an event page and a data-collection declaration that states what the extension already does: the scan runs in the page, and nothing leaves your machine.</li>
+        <li><strong>Firefox support.</strong> The same detector, popup, DevTools panel, and per-rule toggles now ship as a Firefox add-on. The Firefox package declares what the extension already does: scans run in the page, and nothing leaves your machine.</li>
+        <li><strong>The overlay matches the 41-rule engine.</strong> Browser scans pick up the latest detector improvements, including hidden-element skips, sr-only text-overflow handling, tighter repeated kicker, oversized-H1, clipped-overflow, OKLCH alpha, Sass-adjacent CSS parsing, transparent-border handling, and exact animation values for bounce or elastic motion.</li>
+        <li><strong>DevTools opens reliably in packaged builds.</strong> Firefox panel and sidebar URLs are now root-relative, scan responses echo their scan IDs, and the icon set plus store metadata match the current detector.</li>
       </ul>
     </article>
 

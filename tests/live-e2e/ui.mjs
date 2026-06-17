@@ -5,7 +5,8 @@
  * Selector strategy: live-browser.js uses deterministic ids (`impeccable-live-*`)
  * for the global bar, per-element bar, action picker, and params panel. Buttons
  * inside the per-element bar are matched by visible text or unicode glyph
- * (`Go →`, `← / →`, `✓ Accept`, `✕`). All selectors below come from
+ * (`← / →`, `✓ Accept`, `✕`), or by aria-label for icon-only buttons (the
+ * configure submit button). All selectors below come from
  * skill/scripts/live-browser.js — keep this file in sync if
  * the bar's text content changes.
  */
@@ -18,6 +19,9 @@ const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
 const EDIT_BADGE_ID = '#impeccable-live-edit-badge';
 const PENDING_DOCK_ID = '#impeccable-live-pending-dock';
+// The configure-row submit button is icon-only; its accessible name is the
+// only stable handle (see buildConfigureSubmitButton in live-browser.js).
+const GO_BUTTON_ARIA_LABEL = 'Generate variants';
 const STEER_CHAT_ID = '#impeccable-live-page-chat';
 const STEER_INPUT_ID = '#impeccable-live-page-chat-input';
 const PICK_TOGGLE = '#impeccable-live-pick-toggle';
@@ -423,20 +427,21 @@ export async function pickElement(page, selector, opts = {}) {
       await page.waitForSelector(BAR_ID, { state: 'visible', timeout: 1 });
     }
   }
-  // Wait specifically for the Configure-row Go button to be in the bar.
+  // Wait specifically for the Configure-row submit button to be in the bar.
   // pickElement returning before that race-conditions with clickGo on
   // fixtures whose framework re-renders right after pick (modal open, tab
-  // switch). Anchoring the wait on the Go button's text is robust: the bar
-  // can be visible-but-empty (state=PICKING) before showBar('configure')
-  // populates the row.
+  // switch). Anchoring the wait on the submit button's accessible name is
+  // robust: the bar can be visible-but-empty (state=PICKING) before
+  // showBar('configure') populates the row, and the button itself is
+  // icon-only.
   await page.waitForFunction(
-    (barSel) => {
+    ({ barSel, goLabel }) => {
       const bar = window.__impeccableLiveQuery(barSel);
       if (!bar) return false;
       const btns = [...bar.querySelectorAll('button')];
-      return btns.some((b) => /Go\b/.test(b.textContent || ''));
+      return btns.some((b) => (b.getAttribute('aria-label') || '') === goLabel);
     },
-    BAR_ID,
+    { barSel: BAR_ID, goLabel: GO_BUTTON_ARIA_LABEL },
     { timeout: 5_000 },
   );
 }
@@ -532,17 +537,17 @@ export async function setCount(page, count) {
 export async function clickGo(page) {
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
-    await clickBarButton(page, /Go\b/);
+    await clickBarButton(page, { ariaLabel: GO_BUTTON_ARIA_LABEL });
     const advanced = await page.waitForFunction(
-      (barSel) => {
+      ({ barSel, goLabel }) => {
         const bar = window.__impeccableLiveQuery(barSel);
         if (!bar) return false;
         const text = bar.textContent || '';
         if (/Generating\b/.test(text)) return true;
         if (/\d+\s*\/\s*\d+/.test(text)) return true;
-        return ![...bar.querySelectorAll('button')].some((button) => /Go\b/.test(button.textContent || ''));
+        return ![...bar.querySelectorAll('button')].some((button) => (button.getAttribute('aria-label') || '') === goLabel);
       },
-      BAR_ID,
+      { barSel: BAR_ID, goLabel: GO_BUTTON_ARIA_LABEL },
       { timeout: 3_000 },
     ).then(() => true, (err) => {
       lastErr = err;
@@ -616,15 +621,21 @@ export async function clickPrev(page) {
   await clickBarButton(page, '←');
 }
 
+function barButtonMatch(label) {
+  if (label instanceof RegExp) return { kind: 'regex', source: label.source, flags: label.flags };
+  if (label && typeof label === 'object' && label.ariaLabel) return { kind: 'aria', value: label.ariaLabel };
+  return { kind: 'text', value: String(label) };
+}
+
 async function clickBarButton(page, label) {
-  const textMatch = label instanceof RegExp
-    ? { kind: 'regex', source: label.source, flags: label.flags }
-    : { kind: 'text', value: String(label) };
+  const textMatch = barButtonMatch(label);
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       await installLiveQueryHelpers(page);
-      const button = page.locator(`${BAR_ID} button`, { hasText: label });
+      const button = textMatch.kind === 'aria'
+        ? page.locator(`${BAR_ID} button[aria-label="${textMatch.value}"]`)
+        : page.locator(`${BAR_ID} button`, { hasText: label });
       await button.click({ timeout: 5_000 });
       return;
     } catch (err) {
@@ -651,9 +662,7 @@ async function clickBarButton(page, label) {
 async function dispatchBarButton(page, label) {
   try {
     await installLiveQueryHelpers(page);
-    const textMatch = label instanceof RegExp
-      ? { kind: 'regex', source: label.source, flags: label.flags }
-      : { kind: 'text', value: String(label) };
+    const textMatch = barButtonMatch(label);
     return await withTimeout(
       page.evaluate(findAndClickBarButton, { barSel: BAR_ID, textMatch }),
       5_000,
@@ -671,6 +680,7 @@ function findAndClickBarButton({ barSel, textMatch }) {
     .find((candidate) => {
       const text = candidate.textContent || '';
       if (textMatch.kind === 'regex') return new RegExp(textMatch.source, textMatch.flags).test(text);
+      if (textMatch.kind === 'aria') return (candidate.getAttribute('aria-label') || '') === textMatch.value;
       return text.includes(textMatch.value);
     });
   if (!btn) return false;
@@ -779,7 +789,9 @@ export async function clickSaveEdit(page) {
 async function clickEditBadgeButton(page, label) {
   const proxyRect = await page.evaluate((text) => {
     const proxies = [...document.querySelectorAll('[data-impeccable-edit-badge-proxy="true"]')];
-    const proxy = proxies.find((candidate) => (candidate.title || '').includes(text));
+    const proxy = proxies.find((candidate) =>
+      (candidate.title || candidate.getAttribute('aria-label') || '').includes(text)
+    );
     if (!proxy) return null;
     const rect = proxy.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return null;
@@ -797,7 +809,7 @@ async function clickEditBadgeButton(page, label) {
     const clicked = await page.evaluate(({ badgeSel, text }) => {
       const badge = window.__impeccableLiveQuery(badgeSel);
       const btn = [...(badge?.querySelectorAll('button') || [])].find((candidate) =>
-        (candidate.textContent || '').includes(text)
+        (candidate.textContent || candidate.getAttribute('aria-label') || candidate.title || '').includes(text)
       );
       if (!btn) return false;
       btn.click();

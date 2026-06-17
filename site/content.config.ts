@@ -18,4 +18,15 @@ const tutorials = defineCollection({
   }),
 });
 
-export const collections = { skills, tutorials };
+const reference = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './site/content/reference' }),
+  schema: z.object({
+    title: z.string(),
+    tagline: z.string(),
+    description: z.string(),
+    section: z.enum(['concepts', 'automation', 'reference']),
+    order: z.number(),
+  }),
+});
+
+export const collections = { skills, tutorials, reference };

@@ -669,7 +669,7 @@ describe('context.mjs update check', () => {
     assert.equal(res.status, 0);
     assert.match(res.stdout, /UPDATE_AVAILABLE: A newer Impeccable skill is available/);
     assert.match(res.stdout, /installed v1\.0\.0, latest v2\.0\.0/);
-    assert.match(res.stdout, /npx impeccable skills update/);
+    assert.match(res.stdout, /npx impeccable update/);
     // It must come after the real context, never replace it.
     assert.match(res.stdout, /^# PRODUCT\.md/);
   });

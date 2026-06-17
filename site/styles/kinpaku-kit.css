@@ -988,9 +988,9 @@
   --color-paper: oklch(7% 0.006 95);
   --color-cream: oklch(9% 0.006 95);
   --color-bg: oklch(11% 0.006 95);
-  --color-mist: oklch(58% 0.065 82 / 0.22);
-  --color-charcoal: oklch(72% 0.025 82);
-  --color-ash: oklch(60% 0.018 82);
+  --color-mist: var(--ks-rule);
+  --color-charcoal: var(--ks-text-muted);
+  --color-ash: var(--ks-text-faint);
   --color-ink: var(--ks-champagne);
   --color-text: var(--ks-text);
   --color-accent: var(--ks-kinpaku);
@@ -1194,11 +1194,11 @@
   display: inline-flex;
   align-items: center;
   height: 28px;
-  width: 88px;
+  width: 104px;
   margin: 0 4px 0 6px;
   border-radius: 5px;
   background: var(--ks-graphite);
-  border: 1px solid oklch(92% 0 0 / 0.1);
+  border: 1px solid transparent;
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
@@ -1207,9 +1207,8 @@
 
 .home-kinpaku .live-demo-gbar-chat.is-expanded,
 .live-mode-kinpaku .live-demo-gbar-chat.is-expanded {
-  width: min(220px, 42vw);
+  width: min(220px, 34vw);
   cursor: text;
-  border-color: oklch(78% 0.12 82 / 0.55);
 }
 
 .home-kinpaku .live-demo-gbar-chat-icon,
@@ -1251,7 +1250,21 @@
   outline: none;
   opacity: 0;
   pointer-events: none;
+  caret-color: var(--ks-kinpaku);
   transition: opacity 0.15s ease;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-hint {
+  display: none;
+}
+
+.home-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input,
+.live-mode-kinpaku .live-demo-gbar-chat[data-input-focused="true"]:not([data-expanded="true"]) .live-demo-gbar-chat-input {
+  width: auto;
+  padding: 0 4px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .home-kinpaku .live-demo-gbar-chat.is-expanded .live-demo-gbar-chat-hint,
@@ -1316,45 +1329,157 @@
 /* Context bar sub-elements (the inline action panel that appears
    next to a picked element during "configure" / "cycling" / "accepted"
    states). */
-.home-kinpaku .live-demo-ctx-pill,
-.live-mode-kinpaku .live-demo-ctx-pill {
+.home-kinpaku .live-demo-ctx[data-phase="configuring"],
+.live-mode-kinpaku .live-demo-ctx[data-phase="configuring"] {
+  padding: 0;
   background: var(--ks-graphite-2);
-  border: 1px solid oklch(92% 0 0 / 0.12);
-  color: var(--ks-champagne);
+  overflow: hidden;
 }
 
-/* Even heights across the configure row: the pill, input, count, and Go button
-   share one 30px baseline instead of stepping up and down. */
-.home-kinpaku .live-demo-ctx-row--configure > *,
-.live-mode-kinpaku .live-demo-ctx-row--configure > * {
-  height: 30px;
-  box-sizing: border-box;
+.home-kinpaku .live-demo-ctx-command,
+.live-mode-kinpaku .live-demo-ctx-command {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 6px 0 7px;
+  background: transparent;
+  border: 0;
+  overflow: hidden;
+}
+
+.home-kinpaku .live-demo-ctx-trailing,
+.live-mode-kinpaku .live-demo-ctx-trailing {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
+}
+
+.home-kinpaku .live-demo-ctx-modifiers,
+.live-mode-kinpaku .live-demo-ctx-modifiers {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  flex-shrink: 0;
 }
 
-.home-kinpaku .live-demo-ctx-pill-caret,
-.live-mode-kinpaku .live-demo-ctx-pill-caret {
+.home-kinpaku .live-demo-ctx-selection,
+.live-mode-kinpaku .live-demo-ctx-selection {
+  box-sizing: border-box;
+  min-width: 28px;
+  height: auto;
+  padding: 1px 4px;
+  border: 1px solid oklch(70% 0.12 188);
+  border-radius: 7px;
+  flex-shrink: 0;
+  background: transparent;
+  color: oklch(70% 0.12 188);
+  font-family: var(--ks-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.home-kinpaku .live-demo-ctx-action,
+.home-kinpaku .live-demo-ctx-count,
+.live-mode-kinpaku .live-demo-ctx-action,
+.live-mode-kinpaku .live-demo-ctx-count {
+  box-sizing: border-box;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--ks-text-muted);
-}
-
-.home-kinpaku .live-demo-ctx-input,
-.live-mode-kinpaku .live-demo-ctx-input {
-  background: var(--ks-graphite);
-  border: 1px solid oklch(92% 0 0 / 0.12);
-  color: var(--ks-champagne);
-}
-
-.home-kinpaku .live-demo-ctx-caret,
-.live-mode-kinpaku .live-demo-ctx-caret {
-  background: var(--ks-kinpaku);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  transition: color 0.12s ease;
 }
 
 .home-kinpaku .live-demo-ctx-count,
 .live-mode-kinpaku .live-demo-ctx-count {
-  background: var(--ks-graphite-2);
-  border: 1px solid oklch(92% 0 0 / 0.12);
+  font-family: var(--ks-mono);
+  font-weight: 600;
+}
+
+.home-kinpaku .live-demo-ctx-row--configure,
+.live-mode-kinpaku .live-demo-ctx-row--configure {
+  width: 100%;
+  min-height: 36px;
+}
+
+.home-kinpaku .live-demo-ctx-actions,
+.live-mode-kinpaku .live-demo-ctx-actions {
+  display: inline-flex;
+  align-items: stretch;
+  border-left: 1px solid oklch(92% 0 0 / 0.12);
+}
+
+.home-kinpaku .live-demo-ctx-voice,
+.live-mode-kinpaku .live-demo-ctx-voice {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid oklch(92% 0 0 / 0.12);
+  border-radius: 0;
+  background: transparent;
   color: var(--ks-text-muted);
+}
+
+.home-kinpaku .live-demo-ctx-actions .live-demo-ctx-go,
+.live-mode-kinpaku .live-demo-ctx-actions .live-demo-ctx-go {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 0;
+  border-left: 0;
+}
+
+.home-kinpaku .live-demo-ctx-action-caret,
+.live-mode-kinpaku .live-demo-ctx-action-caret {
+  font-size: 10px;
+  color: inherit;
+}
+
+.home-kinpaku .live-demo-ctx-selection:hover,
+.live-mode-kinpaku .live-demo-ctx-selection:hover {
+  background: oklch(27% 0 0);
+}
+
+.home-kinpaku .live-demo-ctx-action:hover,
+.home-kinpaku .live-demo-ctx-count:hover,
+.live-mode-kinpaku .live-demo-ctx-action:hover,
+.live-mode-kinpaku .live-demo-ctx-count:hover {
+  color: var(--ks-text);
+}
+
+.home-kinpaku .live-demo-ctx-input,
+.live-mode-kinpaku .live-demo-ctx-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: oklch(94% 0.02 82);
+}
+
+.home-kinpaku .live-demo-ctx-caret,
+.live-mode-kinpaku .live-demo-ctx-caret {
+  background: oklch(94% 0.02 82);
 }
 
 .home-kinpaku .live-demo-ctx-go,

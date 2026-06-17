@@ -21,6 +21,8 @@
       "position": "after",
       "prompt": "Add a testimonial strip below features",
       "expectSelector": ".inserted-strip",
+      "expectSelectorLlm": "[class*=\"testimonial\"]",
+      "expectSourcePattern": "testimonial",
       "assertAnchorContains": "feature-grid"
     },
     "probe": {

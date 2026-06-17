@@ -32,6 +32,8 @@ const IGNORE_MARKER_CLOSE = '# impeccable-live-ignore-end';
 
 export const LIVE_IGNORE_PATTERNS = Object.freeze([
   '.impeccable/hook.cache.json',
+  '.impeccable/hook.pending.json',
+  '.impeccable/config.local.json',
   '.impeccable/live/server.json',
   '.impeccable/live/sessions/',
   '.impeccable/live/previews/',
