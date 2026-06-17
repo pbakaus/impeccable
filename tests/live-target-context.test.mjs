@@ -181,6 +181,9 @@ describe('live target-aware monorepo context', () => {
   it('asks for an app before starting live from a monorepo root', () => {
     writeRootLiveConfig(tmp);
     writeChildLiveConfig(tmp);
+    write(tmp, 'apps/admin/PRODUCT.md', '# ADMIN PRODUCT LIVE\n');
+    write(tmp, 'apps/admin/DESIGN.md', '# ADMIN DESIGN LIVE\n');
+    write(tmp, 'apps/marketing/PRODUCT.md', '# MARKETING PRODUCT LIVE\n');
 
     const res = runNode(LIVE_SCRIPT, [], tmp);
     assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
@@ -195,6 +198,49 @@ describe('live target-aware monorepo context', () => {
       'apps/dashboard',
       'apps/marketing',
     ]);
+    const byPath = Object.fromEntries(payload.targetCandidates.map((candidate) => [candidate.path, candidate]));
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/admin'].productStatus,
+        productPath: byPath['apps/admin'].productPath,
+        designStatus: byPath['apps/admin'].designStatus,
+        designPath: byPath['apps/admin'].designPath,
+      },
+      {
+        productStatus: 'child',
+        productPath: 'apps/admin/PRODUCT.md',
+        designStatus: 'child',
+        designPath: 'apps/admin/DESIGN.md',
+      },
+    );
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/dashboard'].productStatus,
+        productPath: byPath['apps/dashboard'].productPath,
+        designStatus: byPath['apps/dashboard'].designStatus,
+        designPath: byPath['apps/dashboard'].designPath,
+      },
+      {
+        productStatus: 'inherited',
+        productPath: 'PRODUCT.md',
+        designStatus: 'inherited',
+        designPath: 'DESIGN.md',
+      },
+    );
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/marketing'].productStatus,
+        productPath: byPath['apps/marketing'].productPath,
+        designStatus: byPath['apps/marketing'].designStatus,
+        designPath: byPath['apps/marketing'].designPath,
+      },
+      {
+        productStatus: 'child',
+        productPath: 'apps/marketing/PRODUCT.md',
+        designStatus: 'inherited',
+        designPath: 'DESIGN.md',
+      },
+    );
     assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
     assert.equal(existsSync(join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'server.json')), false);
     assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
@@ -262,6 +308,76 @@ describe('live target-aware monorepo context', () => {
   });
 });
 
+describe('live single-repo context setup guard', () => {
+  let tmp;
+
+  beforeEach(() => {
+    tmp = realpathSync(mkdtempSync(join(tmpdir(), 'impeccable-live-single-')));
+  });
+
+  afterEach(() => {
+    runNode(LIVE_SERVER_SCRIPT, ['stop', '--keep-inject'], tmp);
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('starts live without app selection when PRODUCT.md and DESIGN.md exist', () => {
+    setupSingleRepo(tmp);
+
+    const res = runNode(LIVE_SCRIPT, [], tmp);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+    try {
+      assert.equal(payload.ok, true);
+      assert.equal(payload.targetPath, null);
+      assert.equal(payload.projectRoot, tmp);
+      assert.equal(payload.repoRoot, tmp);
+      assert.equal(payload.productPath, 'PRODUCT.md');
+      assert.equal(payload.designPath, 'DESIGN.md');
+      assert.match(payload.product, /SINGLE PRODUCT/);
+      assert.match(payload.design, /SINGLE DESIGN/);
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), true);
+    } finally {
+      runNode(LIVE_SERVER_SCRIPT, ['stop', '--keep-inject'], tmp);
+    }
+  });
+
+  it('routes missing PRODUCT.md to init without app selection', () => {
+    setupSingleRepo(tmp, { product: false, design: true });
+
+    const payload = runSingleRepoMissingContext(tmp);
+
+    assert.deepEqual(payload.missing, ['PRODUCT.md']);
+    assert.equal(payload.nextCommand, 'init');
+    assert.equal(payload.productPath, null);
+    assert.equal(payload.designPath, 'DESIGN.md');
+    assertNoSingleRepoLiveBootSideEffects(tmp);
+  });
+
+  it('routes missing DESIGN.md to document without app selection', () => {
+    setupSingleRepo(tmp, { product: true, design: false });
+
+    const payload = runSingleRepoMissingContext(tmp);
+
+    assert.deepEqual(payload.missing, ['DESIGN.md']);
+    assert.equal(payload.nextCommand, 'document');
+    assert.equal(payload.productPath, 'PRODUCT.md');
+    assert.equal(payload.designPath, null);
+    assertNoSingleRepoLiveBootSideEffects(tmp);
+  });
+
+  it('routes missing PRODUCT.md and DESIGN.md to init first without app selection', () => {
+    setupSingleRepo(tmp, { product: false, design: false });
+
+    const payload = runSingleRepoMissingContext(tmp);
+
+    assert.deepEqual(payload.missing, ['PRODUCT.md', 'DESIGN.md']);
+    assert.equal(payload.nextCommand, 'init');
+    assert.equal(payload.productPath, null);
+    assert.equal(payload.designPath, null);
+    assertNoSingleRepoLiveBootSideEffects(tmp);
+  });
+});
+
 function setupMonorepo(root) {
   run('git', ['init', '-q'], root);
   write(root, 'package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }, null, 2));
@@ -272,6 +388,19 @@ function setupMonorepo(root) {
   write(root, 'apps/dashboard/public/index.html', '<!doctype html><html><body><main>Dashboard</main></body></html>\n');
   write(root, 'apps/marketing/src/App.jsx', 'export default function Marketing() { return <main>Marketing</main>; }\n');
   write(root, 'apps/admin/src/App.jsx', 'export default function Admin() { return <main>Admin</main>; }\n');
+}
+
+function setupSingleRepo(root, { product = true, design = true } = {}) {
+  run('git', ['init', '-q'], root);
+  write(root, 'package.json', JSON.stringify({ private: true, name: 'single-app' }, null, 2));
+  if (product) write(root, 'PRODUCT.md', '# SINGLE PRODUCT\n');
+  if (design) write(root, 'DESIGN.md', '# SINGLE DESIGN\n');
+  write(root, 'public/index.html', '<!doctype html><html><body><main>Single</main></body></html>\n');
+  write(root, '.impeccable/live/config.json', JSON.stringify({
+    files: ['public/index.html'],
+    insertBefore: '</body>',
+    commentSyntax: 'html',
+  }, null, 2));
 }
 
 function writeRootLiveConfig(root) {
@@ -319,10 +448,26 @@ function runLiveContextMissing(root) {
   return payload;
 }
 
+function runSingleRepoMissingContext(root) {
+  const res = runNode(LIVE_SCRIPT, [], root);
+  assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+  const payload = JSON.parse(res.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'context_missing');
+  assert.equal(payload.targetPath, null);
+  assert.notEqual(payload.error, 'target_selection_required');
+  return payload;
+}
+
 function assertNoLiveBootSideEffects(root) {
   assert.equal(existsSync(join(root, 'apps', 'dashboard', '.impeccable', 'live', 'server.json')), false);
   assert.equal(existsSync(join(root, '.impeccable', 'live', 'server.json')), false);
   assert.doesNotMatch(readFileSync(join(root, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /live\.js/);
+}
+
+function assertNoSingleRepoLiveBootSideEffects(root) {
+  assert.equal(existsSync(join(root, '.impeccable', 'live', 'server.json')), false);
+  assert.doesNotMatch(readFileSync(join(root, 'public', 'index.html'), 'utf-8'), /live\.js/);
 }
 
 async function fetchDesignRaw(payload) {

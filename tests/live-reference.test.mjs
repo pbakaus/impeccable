@@ -23,9 +23,13 @@ describe('live reference authoring contract', () => {
 
     assert.match(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.match(skillSrc, /rerun helper commands from that child app cwd/);
+    assert.match(skillSrc, /productStatus/);
+    assert.match(skillSrc, /designStatus/);
     assert.match(skillSrc, /use `--target <path>` only as a fallback/);
     assert.match(liveMd, /target_selection_required/);
     assert.match(liveMd, /rerun from that child app cwd/);
+    assert.match(liveMd, /productStatus/);
+    assert.match(liveMd, /designStatus/);
   });
 
   it('keeps the live prompt focused on the foreground poll loop', () => {

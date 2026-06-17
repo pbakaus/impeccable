@@ -48,6 +48,12 @@ function write(rel, body = '# placeholder\n') {
   return abs;
 }
 
+function parseTargetSelection(stdout) {
+  const tail = stdout.split('TARGET_SELECTION_REQUIRED:\n')[1];
+  assert.ok(tail, `missing TARGET_SELECTION_REQUIRED block in:\n${stdout}`);
+  return JSON.parse(tail.split('\n\n')[0].trim());
+}
+
 describe('resolveContextDir', () => {
   it('returns cwd when PRODUCT.md is at the root', () => {
     write('PRODUCT.md');
@@ -445,9 +451,94 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /"targetPath": null/);
     assert.match(res.stdout, /"path": "apps\/dashboard"/);
     assert.match(res.stdout, /"targetExample": "apps\/dashboard\/src\/App\.jsx"/);
+    assert.match(res.stdout, /"productStatus": "inherited"/);
+    assert.match(res.stdout, /"productPath": "PRODUCT\.md"/);
+    assert.match(res.stdout, /"designStatus": "inherited"/);
+    assert.match(res.stdout, /"designPath": "DESIGN\.md"/);
     assert.doesNotMatch(res.stdout, /# PRODUCT\.md/);
     assert.doesNotMatch(res.stdout, /# DESIGN\.md/);
     assert.doesNotMatch(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+  });
+
+  it('describes child, inherited, and mixed context sources in app selection candidates', () => {
+    writeMonorepo();
+    write('apps/admin/PRODUCT.md', '# Admin product\n');
+    write('apps/admin/DESIGN.md', '# Admin design\n');
+    write('apps/marketing/PRODUCT.md', '# Marketing product\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    const selection = parseTargetSelection(res.stdout);
+    const byPath = Object.fromEntries(selection.targetCandidates.map((candidate) => [candidate.path, candidate]));
+
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/admin'].productStatus,
+        productPath: byPath['apps/admin'].productPath,
+        designStatus: byPath['apps/admin'].designStatus,
+        designPath: byPath['apps/admin'].designPath,
+      },
+      {
+        productStatus: 'child',
+        productPath: 'apps/admin/PRODUCT.md',
+        designStatus: 'child',
+        designPath: 'apps/admin/DESIGN.md',
+      },
+    );
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/dashboard'].productStatus,
+        productPath: byPath['apps/dashboard'].productPath,
+        designStatus: byPath['apps/dashboard'].designStatus,
+        designPath: byPath['apps/dashboard'].designPath,
+      },
+      {
+        productStatus: 'inherited',
+        productPath: 'PRODUCT.md',
+        designStatus: 'inherited',
+        designPath: 'DESIGN.md',
+      },
+    );
+    assert.deepEqual(
+      {
+        productStatus: byPath['apps/marketing'].productStatus,
+        productPath: byPath['apps/marketing'].productPath,
+        designStatus: byPath['apps/marketing'].designStatus,
+        designPath: byPath['apps/marketing'].designPath,
+      },
+      {
+        productStatus: 'child',
+        productPath: 'apps/marketing/PRODUCT.md',
+        designStatus: 'inherited',
+        designPath: 'DESIGN.md',
+      },
+    );
+  });
+
+  it('marks missing context files in app selection candidates', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('apps/dashboard/src/App.jsx', 'export default null;\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    const selection = parseTargetSelection(res.stdout);
+    const dashboard = selection.targetCandidates.find((candidate) => candidate.path === 'apps/dashboard');
+    assert.equal(dashboard.productStatus, 'inherited');
+    assert.equal(dashboard.productPath, 'PRODUCT.md');
+    assert.equal(dashboard.designStatus, 'missing');
+    assert.equal(dashboard.designPath, null);
   });
 
   it('asks for app selection before init when root context is missing but child context exists', () => {

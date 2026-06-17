@@ -257,11 +257,48 @@ function discoverTargetCandidates(repoRoot) {
   return [...roots.entries()]
     .filter(([rel]) => rel && !rel.startsWith('..'))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([rel, root]) => ({
-      name: path.basename(root),
-      path: rel,
-      targetExample: findTargetExample(repoRoot, root),
-    }));
+    .map(([rel, root]) => {
+      const targetExample = findTargetExample(repoRoot, root);
+      return {
+        name: path.basename(root),
+        path: rel,
+        targetExample,
+        ...resolveCandidateContextSummary(repoRoot, root, targetExample),
+      };
+    });
+}
+
+function resolveCandidateContextSummary(repoRoot, projectRoot, targetPath) {
+  const ctx = resolveContext(repoRoot, { targetPath });
+  return {
+    productStatus: contextSourceStatus(ctx.productPath, repoRoot, projectRoot),
+    productPath: contextSourcePath(ctx.productPath, repoRoot),
+    designStatus: contextSourceStatus(ctx.designPath, repoRoot, projectRoot),
+    designPath: contextSourcePath(ctx.designPath, repoRoot),
+  };
+}
+
+function contextSourceStatus(filePath, repoRoot, projectRoot) {
+  if (!filePath) return 'missing';
+  const absPath = path.resolve(filePath);
+  const absProjectRoot = path.resolve(projectRoot);
+  const absRepoRoot = path.resolve(repoRoot);
+  if (isPathInsideOrEqual(absPath, absProjectRoot)) {
+    return path.dirname(absPath) === absProjectRoot ? 'child' : 'fallback';
+  }
+  if (absProjectRoot !== absRepoRoot && isPathInsideOrEqual(absPath, absRepoRoot)) {
+    return 'inherited';
+  }
+  return 'fallback';
+}
+
+function contextSourcePath(filePath, repoRoot) {
+  if (!filePath) return null;
+  const rel = path.relative(repoRoot, filePath);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+    return rel.split(path.sep).join('/');
+  }
+  return filePath;
 }
 
 function discoverRootsForPattern(repoRoot, rawPattern) {
@@ -860,6 +897,7 @@ function buildMissingTargetDirective() {
 function buildTargetSelectionDirective(selection) {
   return (
     `TARGET_SELECTION_REQUIRED:\n${JSON.stringify(selection, null, 2)}\n\n` +
+    'Show each app with its productStatus/productPath and designStatus/designPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. ' +
     'Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. ' +
     'Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path.'
   );
