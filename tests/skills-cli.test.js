@@ -351,6 +351,36 @@ describe('skills link: submodule installs', () => {
     rmSync(tmp, { recursive: true, force: true });
   }, 15000);
 
+  test('plain install leaves linked installs on the submodule path', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-install-'));
+    execSync('git init', { cwd: tmp });
+    createFakeLinkSource(tmp);
+    const bundleRoot = createFakeUniversalBundle(tmp, ['.claude', '.cursor']);
+    run('skills link --source=.impeccable --providers=claude -y', { cwd: tmp });
+
+    const linkedDest = join(tmp, '.claude', 'skills', 'impeccable');
+    const before = readlinkSync(linkedDest);
+    const copiedDest = join(tmp, '.cursor', 'skills', 'impeccable');
+    mkdirSync(join(copiedDest, 'scripts'), { recursive: true });
+    writeFileSync(join(copiedDest, 'SKILL.md'), '---\nname: impeccable\nstale: true\n---\nOld content.\n');
+    writeFileSync(join(copiedDest, 'scripts', 'context.mjs'), 'console.log("old broken script");\n');
+
+    const output = run('skills install -y --providers=claude,cursor --no-hooks', {
+      cwd: tmp,
+      env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+
+    expect(output).toContain('Linked skills found in: .claude');
+    expect(output).toContain('Continuing with copied installs in: .cursor');
+    expect(output).toContain('Updated');
+    expect(readlinkSync(linkedDest)).toBe(before);
+    expect(lstatSync(linkedDest).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(copiedDest, 'SKILL.md'), 'utf8')).toContain('version: 9.9.9-local');
+    expect(readFileSync(join(copiedDest, 'scripts', 'context.mjs'), 'utf8')).toBe('console.log("local bundle context");\n');
+
+    rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+
   test('deduplicates providers that share one skills directory', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-shared-'));
     execSync('git init', { cwd: tmp });

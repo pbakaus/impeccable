@@ -1490,22 +1490,33 @@ async function install(flags) {
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
     const installedTargets = findInstalledProviders(installRoot);
+    const linkedTargets = findLinkedProviders(installRoot, installedTargets);
+    const copyTargets = installedTargets.filter(provider => !linkedTargets.includes(provider));
     const hookTargets = targets.filter(provider => installedTargets.includes(provider));
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
     let bundleDir;
     try {
-      bundleDir = await downloadAndExtractBundle();
+      if (linkedTargets.length > 0) {
+        console.log(`Linked skills found in: ${linkedTargets.join(', ')}`);
+        console.log('Update the source checkout with `git submodule update --remote`, then rerun `npx impeccable link --source=.impeccable` if new skills are added.');
+        if (copyTargets.length > 0) console.log(`Continuing with copied installs in: ${copyTargets.join(', ')}\n`);
+      }
+
       let updated = 0;
-      if (!isUpToDate(installRoot, installedTargets, bundleDir)) {
+      const missingHookTargets = wantHooks
+        ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
+        : [];
+      if (copyTargets.length > 0 || missingHookTargets.length > 0) {
+        bundleDir = await downloadAndExtractBundle();
+      }
+
+      if (copyTargets.length > 0 && !isUpToDate(installRoot, copyTargets, bundleDir)) {
         migrateUnprefixImpeccable(installRoot);
-        updated = refreshProviderSkills(bundleDir, installRoot, installedTargets);
+        updated = refreshProviderSkills(bundleDir, installRoot, copyTargets);
         const v = getSkillsVersion(installRoot);
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
 
-      const missingHookTargets = wantHooks
-        ? hookTargets.filter(provider => !hookInstalledForProvider(hookRoot, provider))
-        : [];
       const writtenHookTargets = missingHookTargets.length > 0
         ? copyProviderHooks(bundleDir, hookRoot, missingHookTargets, { skillRoot: installRoot })
         : [];
