@@ -433,7 +433,7 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /NEXT STEP: This project's register is `product`\./);
   });
 
-  it('warns when the CLI runs from a monorepo root without --target', () => {
+  it('asks for an app when the CLI runs from a monorepo root without selection', () => {
     writeMonorepo();
     const res = spawnSync(process.execPath, [SCRIPT_PATH], {
       cwd: scratch,
@@ -441,10 +441,46 @@ describe('loadContext (monorepo project context)', () => {
       env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
     });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
+    assert.match(res.stdout, /TARGET_SELECTION_REQUIRED:/);
     assert.match(res.stdout, /"targetPath": null/);
-    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
-    assert.match(res.stdout, /--target <path>/);
+    assert.match(res.stdout, /"path": "apps\/dashboard"/);
+    assert.match(res.stdout, /"targetExample": "apps\/dashboard\/src\/App\.jsx"/);
+    assert.doesNotMatch(res.stdout, /# PRODUCT\.md/);
+    assert.doesNotMatch(res.stdout, /# DESIGN\.md/);
+    assert.doesNotMatch(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+  });
+
+  it('asks for app selection before init when root context is missing but child context exists', () => {
+    write('package.json', JSON.stringify({
+      private: true,
+      workspaces: ['apps/*'],
+    }, null, 2));
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n');
+    write('apps/dashboard/src/App.jsx', 'export default null;\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /TARGET_SELECTION_REQUIRED:/);
+    assert.match(res.stdout, /"path": "apps\/dashboard"/);
+    assert.doesNotMatch(res.stdout, /^NO_PRODUCT_MD:/);
+  });
+
+  it('lets --target . explicitly select the monorepo root', () => {
+    writeMonorepo();
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', '.'], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /# PRODUCT\.md\n\n# Root product/);
+    assert.match(res.stdout, /# DESIGN\.md\n\n# Root design/);
+    assert.match(res.stdout, /"targetPath": "\."/);
+    assert.doesNotMatch(res.stdout, /TARGET_SELECTION_REQUIRED/);
   });
 
   it('does not parse --help as a --target value', () => {
@@ -493,7 +529,7 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
   });
 
-  it('warns about missing target even when root PRODUCT.md is absent', () => {
+  it('asks for app selection even when root PRODUCT.md is absent', () => {
     write('package.json', JSON.stringify({
       private: true,
       workspaces: ['apps/*'],
@@ -507,9 +543,9 @@ describe('loadContext (monorepo project context)', () => {
       env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
     });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /^NO_PRODUCT_MD:/);
-    assert.match(res.stdout, /RESOLVED_CONTEXT:/);
-    assert.match(res.stdout, /MONOREPO_TARGET_REQUIRED/);
+    assert.match(res.stdout, /TARGET_SELECTION_REQUIRED:/);
+    assert.match(res.stdout, /"path": "apps\/dashboard"/);
+    assert.doesNotMatch(res.stdout, /^NO_PRODUCT_MD:/);
   });
 });
 

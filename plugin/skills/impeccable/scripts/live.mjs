@@ -21,7 +21,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadContext } from './context.mjs';
+import { loadContext, resolveTargetSelection } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
 import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
 import { resolveLiveTarget, resolveStoredTargetPath } from './live-target.mjs';
@@ -31,6 +31,45 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function liveCli() {
   const args = process.argv.slice(2);
   const liveTarget = resolveLiveTarget(process.cwd(), args);
+
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`Usage: node live.mjs
+
+Prepare everything for live variant mode in a single command:
+  - Checks .impeccable/live/config.json (required, created once per project)
+  - Starts (or reuses) the live server in the background
+  - Injects the browser script tag
+  - Reads PRODUCT.md / DESIGN.md for project context
+  - In monorepos, choose a child app first; --target <path> is the fallback/manual path
+
+On success, prints a JSON blob with:
+  { ok, serverPort, serverToken, pageFiles, projectRoot, repoRoot, targetPath, productPath, designPath }
+
+On target_selection_required, prints:
+  { ok: false, error: "target_selection_required", targetCandidates }
+
+On config_missing, prints:
+  { ok: false, error: "config_missing", configPath, hint }
+
+The agent should then:
+  1. If target_selection_required, ask which app to use and rerun from that child cwd
+  2. If config_missing, create the config and re-run this script
+  3. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)
+  4. Enter the poll loop: node live-poll.mjs`);
+    process.exit(0);
+  }
+
+  const targetSelection = resolveTargetSelection(liveTarget.originalCwd, liveTarget.targetOptions);
+  if (targetSelection) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: 'target_selection_required',
+      ...targetSelection,
+      hint: 'Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.',
+    }, null, 2));
+    process.exit(0);
+  }
+
   const existingServer = !liveTarget.targetPath
     ? readLiveServerInfo(liveTarget.originalCwd)
     : null;
@@ -63,29 +102,6 @@ async function liveCli() {
       ? ['--target', liveTarget.absoluteTargetPath]
       : [];
   const outputTargetPath = liveTarget.targetPath || existingChild?.targetPath || null;
-
-  if (args.includes('--help') || args.includes('-h')) {
-    console.log(`Usage: node live.mjs
-
-Prepare everything for live variant mode in a single command:
-  - Checks .impeccable/live/config.json (required, created once per project)
-  - Starts (or reuses) the live server in the background
-  - Injects the browser script tag
-  - Reads PRODUCT.md / DESIGN.md for project context
-  - Pass --target <path> in monorepos so live state and context resolve to the active child project
-
-On success, prints a JSON blob with:
-  { ok, serverPort, serverToken, pageFiles, projectRoot, repoRoot, targetPath, productPath, designPath }
-
-On config_missing, prints:
-  { ok: false, error: "config_missing", configPath, hint }
-
-The agent should then:
-  1. If config_missing, create the config and re-run this script
-  2. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)
-  3. Enter the poll loop: node live-poll.mjs`);
-    process.exit(0);
-  }
 
   const missingContext = missingLiveContext(ctx);
   if (missingContext.length > 0) {

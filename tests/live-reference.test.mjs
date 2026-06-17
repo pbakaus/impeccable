@@ -17,6 +17,17 @@ describe('live reference authoring contract', () => {
     assert.doesNotMatch(liveMd, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
   });
 
+  it('keeps monorepo live app selection ahead of --target fallback', () => {
+    const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+
+    assert.match(skillSrc, /TARGET_SELECTION_REQUIRED/);
+    assert.match(skillSrc, /rerun helper commands from that child app cwd/);
+    assert.match(skillSrc, /use `--target <path>` only as a fallback/);
+    assert.match(liveMd, /target_selection_required/);
+    assert.match(liveMd, /rerun from that child app cwd/);
+  });
+
   it('keeps the live prompt focused on the foreground poll loop', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');

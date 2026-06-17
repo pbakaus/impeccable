@@ -71,6 +71,30 @@ describe('live target-aware monorepo context', () => {
     }
   });
 
+  it('boots live from the child cwd without --target after the app is selected', async () => {
+    writeChildLiveConfig(tmp);
+
+    const childRoot = join(tmp, 'apps', 'dashboard');
+    const res = runNode(LIVE_SCRIPT, [], childRoot);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
+    try {
+      assert.equal(payload.ok, true);
+      assert.equal(payload.targetPath, null);
+      assert.equal(payload.projectRoot, childRoot);
+      assert.equal(payload.repoRoot, tmp);
+      assert.equal(payload.productPath, join('..', '..', 'PRODUCT.md'));
+      assert.equal(payload.designPath, join('..', '..', 'DESIGN.md'));
+      assert.match(payload.product, /ROOT PRODUCT LIVE INHERIT/);
+      assert.match(payload.design, /ROOT DESIGN LIVE INHERIT/);
+      assert.equal(payload.liveConfigPath, join(childRoot, '.impeccable', 'live', 'config.json'));
+      assert.equal(existsSync(join(childRoot, '.impeccable', 'live', 'server.json')), true);
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
+    } finally {
+      stopLive(tmp);
+    }
+  });
+
   it('boots live with child PRODUCT.md override and inherited root DESIGN.md', async () => {
     writeChildLiveConfig(tmp);
     write(tmp, 'apps/dashboard/PRODUCT.md', '# DASHBOARD PRODUCT LIVE OVERRIDE\n');
@@ -154,28 +178,30 @@ describe('live target-aware monorepo context', () => {
     }
   });
 
-  it('routes root live through the single discovered child server before config and inject', () => {
+  it('asks for an app before starting live from a monorepo root', () => {
     writeRootLiveConfig(tmp);
     writeChildLiveConfig(tmp);
 
-    const childPayload = bootLive(tmp);
-    try {
-      const res = runNode(LIVE_SCRIPT, [], tmp);
-      assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
-      const payload = JSON.parse(res.stdout);
+    const res = runNode(LIVE_SCRIPT, [], tmp);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    const payload = JSON.parse(res.stdout);
 
-      assert.equal(payload.ok, true);
-      assert.equal(payload.serverPort, childPayload.serverPort);
-      assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
-      assert.equal(payload.liveConfigPath, join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'config.json'));
-      assert.deepEqual(payload.pageFiles, ['public/index.html']);
-      assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
-    } finally {
-      stopLive(tmp);
-    }
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, 'target_selection_required');
+    assert.equal(payload.repoRoot, tmp);
+    assert.equal(payload.projectRoot, tmp);
+    assert.deepEqual(payload.targetCandidates.map((candidate) => candidate.path), [
+      'apps/admin',
+      'apps/dashboard',
+      'apps/marketing',
+    ]);
+    assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
+    assert.equal(existsSync(join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'server.json')), false);
+    assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
+    assert.doesNotMatch(readFileSync(join(tmp, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /live\.js/);
   });
 
-  it('resolves a repo-relative stored child target before root live reuses the server', () => {
+  it('does not reuse a stored child target when starting live from the monorepo root without selection', () => {
     writeRootLiveConfig(tmp);
     writeChildLiveConfig(tmp);
     writeChildServerInfo(tmp, 'dashboard', 8401, { targetPath: TARGET });
@@ -184,28 +210,26 @@ describe('live target-aware monorepo context', () => {
     assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
     const payload = JSON.parse(res.stdout);
 
-    assert.equal(payload.ok, true);
-    assert.equal(payload.serverPort, 8401);
-    assert.equal(payload.projectRoot, join(tmp, 'apps', 'dashboard'));
-    assert.equal(payload.liveConfigPath, join(tmp, 'apps', 'dashboard', '.impeccable', 'live', 'config.json'));
-    assert.equal(payload.targetPath, TARGET);
-    assert.deepEqual(payload.pageFiles, ['public/index.html']);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, 'target_selection_required');
+    assert.equal(payload.repoRoot, tmp);
+    assert.match(payload.hint, /Ask the user which app/);
     assert.doesNotMatch(readFileSync(join(tmp, 'public', 'root.html'), 'utf-8'), /live\.js/);
-    assert.match(readFileSync(join(tmp, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /8401\/live\.js/);
+    assert.doesNotMatch(readFileSync(join(tmp, 'apps', 'dashboard', 'public', 'index.html'), 'utf-8'), /live\.js/);
   });
 
-  it('does not start a root live server when multiple child servers are running', () => {
+  it('asks for app selection before considering multiple running child servers on live start', () => {
     writeRootLiveConfig(tmp);
     for (const app of ['dashboard', 'marketing']) {
       writeChildServerInfo(tmp, app, app === 'dashboard' ? 8401 : 8402);
     }
 
     const res = runNode(LIVE_SCRIPT, [], tmp);
-    assert.equal(res.status, 1, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
+    assert.equal(res.status, 0, `stdout:\n${res.stdout}\nstderr:\n${res.stderr}`);
     const payload = JSON.parse(res.stdout);
     assert.equal(payload.ok, false);
-    assert.equal(payload.error, 'ambiguous_live_servers');
-    assert.equal(payload.candidates.length, 2);
+    assert.equal(payload.error, 'target_selection_required');
+    assert.equal(payload.targetCandidates.length, 3);
     assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'server.json')), false);
   });
 

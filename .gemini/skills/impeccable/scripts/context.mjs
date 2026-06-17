@@ -112,6 +112,25 @@ export function resolveProjectRoot(cwd = process.cwd(), options = {}) {
   return resolveProject(cwd, options).projectRoot;
 }
 
+export function resolveTargetSelection(cwd = process.cwd(), options = {}) {
+  if (hasTargetOption(options)) return null;
+  const project = resolveProject(cwd);
+  if (
+    !project.isMonorepo
+    || !project.projectRoot
+    || !project.repoRoot
+    || path.resolve(project.projectRoot) !== path.resolve(project.repoRoot)
+  ) {
+    return null;
+  }
+  return {
+    targetPath: null,
+    projectRoot: project.projectRoot,
+    repoRoot: project.repoRoot,
+    targetCandidates: discoverTargetCandidates(project.repoRoot),
+  };
+}
+
 export function resolveProject(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const targetDir = resolveTargetDir(absCwd, options);
@@ -210,6 +229,135 @@ function hasFallbackWorkspaceChildren(dir) {
     if (entries.some((entry) => entry.isDirectory() && !entry.name.startsWith('.'))) return true;
   }
   return false;
+}
+
+function discoverTargetCandidates(repoRoot) {
+  const roots = new Map();
+  for (const pattern of readWorkspacePatterns(repoRoot)) {
+    for (const root of discoverRootsForPattern(repoRoot, pattern)) {
+      roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
+    }
+  }
+  if (MONOREPO_MARKER_FILES.some((file) => fs.existsSync(path.join(repoRoot, file)))) {
+    for (const name of MONOREPO_FALLBACK_PROJECT_DIRS) {
+      const base = path.join(repoRoot, name);
+      let entries;
+      try {
+        entries = fs.readdirSync(base, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const root = path.join(base, entry.name);
+        roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
+      }
+    }
+  }
+  return [...roots.entries()]
+    .filter(([rel]) => rel && !rel.startsWith('..'))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([rel, root]) => ({
+      name: path.basename(root),
+      path: rel,
+      targetExample: findTargetExample(repoRoot, root),
+    }));
+}
+
+function discoverRootsForPattern(repoRoot, rawPattern) {
+  const pattern = normalizeWorkspacePattern(rawPattern);
+  if (!pattern || pattern.startsWith('!')) return [];
+  const segments = pattern.split('/').filter(Boolean);
+  if (!segments.length) return [];
+  const firstGlobIndex = segments.findIndex((segment) => segment.includes('*'));
+  const literalPrefix = firstGlobIndex === -1 ? segments : segments.slice(0, firstGlobIndex);
+  const base = path.join(repoRoot, ...literalPrefix);
+  if (!fs.existsSync(base)) return [];
+  if (segments.includes('**')) {
+    const packageRoots = [];
+    walkDirs(base, (dir) => {
+      if (dir !== base && isCandidateProjectRoot(dir)) packageRoots.push(dir);
+    });
+    if (packageRoots.length) return packageRoots;
+    return directChildDirs(base);
+  }
+  return expandSimplePattern(repoRoot, segments);
+}
+
+function expandSimplePattern(repoRoot, patternSegments, index = 0, current = repoRoot) {
+  if (index >= patternSegments.length) return fs.existsSync(current) ? [current] : [];
+  const segment = patternSegments[index];
+  if (!segment.includes('*')) {
+    return expandSimplePattern(repoRoot, patternSegments, index + 1, path.join(current, segment));
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(current, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const roots = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (!segmentMatches(segment, entry.name)) continue;
+    roots.push(...expandSimplePattern(repoRoot, patternSegments, index + 1, path.join(current, entry.name)));
+  }
+  return roots;
+}
+
+function directChildDirs(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => path.join(dir, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+function walkDirs(root, visit) {
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const dir = path.join(root, entry.name);
+    visit(dir);
+    walkDirs(dir, visit);
+  }
+}
+
+function isCandidateProjectRoot(dir) {
+  return !!(
+    fs.existsSync(path.join(dir, 'package.json'))
+    || firstExisting(dir, [...PRODUCT_NAMES, ...DESIGN_NAMES])
+    || fs.existsSync(path.join(dir, 'src'))
+    || fs.existsSync(path.join(dir, 'app'))
+    || fs.existsSync(path.join(dir, 'pages'))
+    || fs.existsSync(path.join(dir, 'public'))
+  );
+}
+
+function findTargetExample(repoRoot, projectRoot) {
+  const examples = [
+    'src/App.jsx',
+    'src/App.tsx',
+    'src/main.jsx',
+    'src/main.tsx',
+    'src/index.jsx',
+    'src/index.ts',
+    'app/page.tsx',
+    'pages/index.tsx',
+    'public/index.html',
+  ];
+  for (const rel of examples) {
+    const abs = path.join(projectRoot, rel);
+    if (fs.existsSync(abs)) return path.relative(repoRoot, abs).split(path.sep).join('/');
+  }
+  return path.relative(repoRoot, projectRoot).split(path.sep).join('/');
 }
 
 function resolveWorkspaceProjectRoot(repoRoot, targetDir) {
@@ -623,6 +771,11 @@ async function cli() {
   }
   const targetProvided = hasTargetOption(cliOptions);
   const targetExists = targetProvided ? pathExistsForTarget(process.cwd(), cliOptions.targetPath) : null;
+  const selection = resolveTargetSelection(process.cwd(), cliOptions);
+  if (selection) {
+    process.stdout.write(buildTargetSelectionDirective(selection) + '\n');
+    process.exit(0);
+  }
   const ctx = loadContext(process.cwd(), cliOptions);
   const updateDirective = await computeUpdateDirective();
 
@@ -701,6 +854,14 @@ function buildMissingTargetDirective() {
     'MONOREPO_TARGET_REQUIRED: This is a monorepo and context.mjs ran without --target. ' +
     'If the user named a file, route, or child app, do not answer from this output. ' +
     `Rerun \`node ${script} --target <path>\` and answer from that run's RESOLVED_CONTEXT fields.`
+  );
+}
+
+function buildTargetSelectionDirective(selection) {
+  return (
+    `TARGET_SELECTION_REQUIRED:\n${JSON.stringify(selection, null, 2)}\n\n` +
+    'Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. ' +
+    'Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path.'
   );
 }
 

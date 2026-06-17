@@ -8,7 +8,7 @@ A running dev server with hot module replacement (Vite, Next.js, Bun, etc.), OR 
 
 Execute in order. No step skipped, no step reordered.
 
-1. `live.mjs`: boot. In a monorepo, `--target <path>` must be a real file or directory path. If the user named a route or child app, map it to the matching source file or app directory first, then pass that path and keep using the same target on live helper commands that read state or source. For path-specific live diagnostics, the first live command must be `node .cursor/skills/impeccable/scripts/live.mjs --target <path>`; do not report live context, state, port, injection, or design endpoint details unless they came from that command or from follow-up live helpers using the same target.
+1. `live.mjs`: boot. In a monorepo root, if live reports `target_selection_required`, ask which app to use and rerun from that child app cwd; use `--target <path>` only as a fallback or for explicit path diagnostics. If the user named a route or child app, map it to the matching source file or app directory first, then pass that path and keep using the same target on live helper commands that read state or source. For path-specific live diagnostics, the first live command must be `node .cursor/skills/impeccable/scripts/live.mjs --target <path>`; do not report live context, state, port, injection, or design endpoint details unless they came from that command or from follow-up live helpers using the same target.
 2. Open the app URL that serves `pageFile` (infer from `package.json`, docs, terminal output, or an open tab). Never use `serverPort`; it's the helper, not the app. **Cursor:** `browser_navigate` to that URL before polling; do not skip. **Other harnesses:** use the available browser tool; if the URL is uncertain, ask the user once.
 3. Poll loop with the default long timeout (600000 ms). After every event or `--reply`, run `live-poll.mjs` again immediately. Never pass a short `--timeout=`.
 
@@ -37,7 +37,7 @@ Output JSON: `{ ok, serverPort, serverToken, pageFiles, targetPath, projectRoot,
 
 `serverPort` and `serverToken` belong to the small **Impeccable live helper** HTTP server (serves `/live.js`, SSE, and `/poll`). That port is **not** your dev server and is usually not the URL you open to view the app. The browser page is whatever origin serves one of the `pageFiles` entries (Vite / Next / Bun / tunnel / LAN hostname).
 
-If output is `{ ok: false, error: "context_missing", missing, nextCommand }`, do not start live setup manually. Follow `nextCommand`: `init` when PRODUCT.md is missing, `document` when only DESIGN.md is missing. If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, this project hasn't been configured for live mode (or its config is stale). See **First-time setup** at the bottom.
+If output is `{ ok: false, error: "target_selection_required", targetCandidates }`, ask which app to use and rerun from that child app cwd. If output is `{ ok: false, error: "context_missing", missing, nextCommand }`, do not start live setup manually. Follow `nextCommand`: `init` when PRODUCT.md is missing, `document` when only DESIGN.md is missing. If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, this project hasn't been configured for live mode (or its config is stale). See **First-time setup** at the bottom.
 
 ## Poll loop
 
