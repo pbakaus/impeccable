@@ -41,7 +41,7 @@ All commands are accessed through `/impeccable`:
 |---------|--------------|
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
 | `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
-| `/impeccable document` | Generate project DESIGN.md from existing project code |
+| `/impeccable document` | Generate root DESIGN.md from existing project code |
 | `/impeccable extract` | Pull reusable components and tokens into the design system |
 | `/impeccable shape` | Plan UX/UI before writing code |
 | `/impeccable critique` | UX design review: hierarchy, clarity, emotional resonance |
@@ -257,40 +257,6 @@ Most commands accept an optional argument to focus on a specific area:
 If you reach for one command often, pin it with `/impeccable pin audit` to get `/audit` as a standalone shortcut.
 
 **Note:** Codex uses skills here, not `/prompts:` commands. Open `/skills` or type `$impeccable`. Repo-local installs live in `.agents/skills/`; user-wide installs live in `~/.agents/skills/`. GitHub Copilot uses `.github/skills/`. Restart the tool if a newly installed skill does not appear.
-
-### Monorepo Context
-
-Impeccable supports project-scoped `PRODUCT.md` and `DESIGN.md` files in monorepos. Root files act as shared defaults, and child app files override them per file.
-
-```text
-Case 1: child apps inherit root context
-
-PRODUCT.md
-DESIGN.md
-apps/
-|-- marketing/
-|-- dashboard/
-`-- admin/
-```
-
-In this shape, running Impeccable inside any child app loads the root `PRODUCT.md` and `DESIGN.md`.
-
-```text
-Case 2: child app context overrides root context
-
-PRODUCT.md
-DESIGN.md
-apps/
-|-- marketing/
-|   |-- PRODUCT.md  -> overrides root PRODUCT.md
-|   `-- DESIGN.md   -> overrides root DESIGN.md
-|-- dashboard/
-|   `-- PRODUCT.md  -> overrides root PRODUCT.md, inherits root DESIGN.md
-`-- admin/
-    `-- inherits root PRODUCT.md + DESIGN.md
-```
-
-When the active file or working directory belongs to a child project, Impeccable uses that child project's `.impeccable/` state for live config, design sidecars, sessions, annotations, and critique storage.
 
 ## Design hook
 

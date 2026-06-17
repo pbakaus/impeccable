@@ -23,8 +23,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadContext, resolveTargetSelection } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
-import { readLiveServerInfo, samePath } from './lib/impeccable-paths.mjs';
-import { resolveLiveTarget, resolveStoredTargetPath } from './live-target.mjs';
+import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+import { resolveLiveTarget } from './live-target.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -70,38 +70,9 @@ The agent should then:
     process.exit(0);
   }
 
-  const existingServer = !liveTarget.targetPath
-    ? readLiveServerInfo(liveTarget.originalCwd)
-    : null;
-  if (existingServer?.ambiguous) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'ambiguous_live_servers',
-      candidates: existingServer.candidates || [],
-      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
-    }, null, 2));
-    process.exit(1);
-  }
-
-  const existingChild = existingServer?.info?.projectRoot
-    && !samePath(existingServer.info.projectRoot, liveTarget.originalCwd)
-    ? existingServer.info
-    : null;
-  const discoveredTargetPath = resolveStoredTargetPath(existingChild);
-  const contextCwd = existingChild && !discoveredTargetPath
-    ? existingChild.projectRoot
-    : liveTarget.originalCwd;
-  const contextOptions = discoveredTargetPath
-    ? { targetPath: discoveredTargetPath }
-    : liveTarget.targetOptions;
-  const ctx = loadContext(contextCwd, contextOptions);
-  const activeCwd = ctx.projectRoot || existingChild?.projectRoot || liveTarget.projectRoot;
-  const forwardedTargetArgs = discoveredTargetPath
-    ? ['--target', discoveredTargetPath]
-    : liveTarget.absoluteTargetPath
-      ? ['--target', liveTarget.absoluteTargetPath]
-      : [];
-  const outputTargetPath = liveTarget.targetPath || existingChild?.targetPath || null;
+  const ctx = loadContext(liveTarget.originalCwd, liveTarget.targetOptions);
+  const activeCwd = ctx.projectRoot || liveTarget.projectRoot;
+  const outputTargetPath = liveTarget.targetPath || null;
 
   const missingContext = missingLiveContext(ctx);
   if (missingContext.length > 0) {
@@ -120,7 +91,7 @@ The agent should then:
   }
 
   // 1. Check config (fail fast if missing — no point starting anything else)
-  const checkOut = runScript('live-inject.mjs', ['--check', ...forwardedTargetArgs], { cwd: activeCwd });
+  const checkOut = runScript('live-inject.mjs', ['--check'], { cwd: activeCwd });
   const checkResult = safeParse(checkOut);
   if (!checkResult || !checkResult.ok) {
     console.log(JSON.stringify({
@@ -133,23 +104,14 @@ The agent should then:
   }
 
   // 2. Start server (or reuse existing)
-  const serverInfo = ensureServerRunning(activeCwd, forwardedTargetArgs);
-  if (serverInfo?.ambiguous) {
-    console.log(JSON.stringify({
-      ok: false,
-      error: 'ambiguous_live_servers',
-      candidates: serverInfo.candidates || [],
-      hint: 'Multiple child live servers are running. Re-run with --target <path> so Impeccable knows which app to use.',
-    }, null, 2));
-    process.exit(1);
-  }
+  const serverInfo = ensureServerRunning(activeCwd);
   if (!serverInfo) {
     console.log(JSON.stringify({ ok: false, error: 'server_start_failed' }));
     process.exit(1);
   }
 
   // 3. Inject the script tag at the current port
-  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port), ...forwardedTargetArgs], { cwd: activeCwd });
+  const injectOut = runScript('live-inject.mjs', ['--port', String(serverInfo.port)], { cwd: activeCwd });
   const injectResult = safeParse(injectOut);
   if (!injectResult || !injectResult.ok) {
     console.log(JSON.stringify({
@@ -308,12 +270,10 @@ function safeParse(out) {
 /**
  * Return { pid, port, token } for the running live server, starting one if needed.
  */
-function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
+function ensureServerRunning(cwd = process.cwd()) {
   // Try to reuse an existing server
   try {
-    const record = readLiveServerInfo(cwd);
-    if (record?.ambiguous) return record;
-    const existing = record?.info;
+    const existing = readLiveServerInfo(cwd)?.info;
     if (existing && existing.pid) {
       try {
         process.kill(existing.pid, 0); // throws if dead
@@ -323,7 +283,7 @@ function ensureServerRunning(cwd = process.cwd(), forwardedTargetArgs = []) {
   } catch { /* no PID file */ }
 
   // Start a new server
-  const out = runScript('live-server.mjs', ['--background', ...forwardedTargetArgs], { cwd });
+  const out = runScript('live-server.mjs', ['--background'], { cwd });
   return safeParse(out);
 }
 

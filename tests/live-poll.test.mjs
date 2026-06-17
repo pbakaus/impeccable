@@ -1,8 +1,5 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 
 import {
   buildAcceptScriptArgs,
@@ -11,9 +8,7 @@ import {
   manualApplyPollBanner,
   parseReplyArgs,
   requiresAgentReply,
-  resolveAcceptScriptCwd,
 } from '../skill/scripts/live-poll.mjs';
-import { resolveStoredTargetPath } from '../skill/scripts/live-target.mjs';
 
 describe('live-poll reply payloads', () => {
   it('preserves structured data for durable carbonize recovery acknowledgements', () => {
@@ -43,74 +38,6 @@ describe('live-poll accept handling', () => {
       }),
       ['--id', 'abc12345', '--variant', '2', '--page-url', '/pricing'],
     );
-  });
-
-  it('forwards targetPath to live-accept for root-discovered child servers', () => {
-    assert.deepEqual(
-      buildAcceptScriptArgs({
-        type: 'discard',
-        id: 'abc12345',
-      }, { targetPath: '/repo/apps/dashboard/src/App.jsx' }),
-      ['--id', 'abc12345', '--discard', '--target', '/repo/apps/dashboard/src/App.jsx'],
-    );
-  });
-
-  it('runs live-accept from the discovered child project when server info has no targetPath', () => {
-    assert.equal(
-      resolveAcceptScriptCwd({ projectRoot: '/repo/apps/dashboard' }),
-      '/repo/apps/dashboard',
-    );
-  });
-
-  it('keeps cwd when targetPath is available because live-accept will resolve the target itself', () => {
-    assert.equal(
-      resolveAcceptScriptCwd({
-        targetPath: '/repo/apps/dashboard/src/App.jsx',
-        projectRoot: '/repo/apps/dashboard',
-      }),
-      process.cwd(),
-    );
-  });
-
-  it('normalizes stored server targets before forwarding them to live-accept', () => {
-    assert.equal(
-      resolveStoredTargetPath({
-        targetPath: 'apps/dashboard/src/App.jsx',
-        projectRoot: '/repo/apps/dashboard',
-        repoRoot: '/repo',
-      }),
-      '/repo/apps/dashboard/src/App.jsx',
-    );
-    assert.equal(
-      resolveStoredTargetPath({
-        targetPath: 'src/App.jsx',
-        projectRoot: '/repo/apps/dashboard',
-        repoRoot: '/repo',
-      }),
-      '/repo/apps/dashboard/src/App.jsx',
-    );
-  });
-
-  it('prefers the stored target candidate that exists on disk', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'impeccable-stored-target-'));
-    try {
-      const repoRoot = join(tmp, 'repo');
-      const projectRoot = join(repoRoot, 'apps', 'dashboard');
-      mkdirSync(join(repoRoot, 'src'), { recursive: true });
-      mkdirSync(projectRoot, { recursive: true });
-      writeFileSync(join(repoRoot, 'src', 'App.jsx'), 'export default null;\n');
-
-      assert.equal(
-        resolveStoredTargetPath({
-          targetPath: 'src/App.jsx',
-          projectRoot,
-          repoRoot,
-        }),
-        join(repoRoot, 'src', 'App.jsx'),
-      );
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
   });
 });
 
