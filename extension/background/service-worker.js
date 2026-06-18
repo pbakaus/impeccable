@@ -20,7 +20,9 @@ function getState(tabId) {
 
 function updateBadge(tabId) {
   const state = tabState.get(tabId);
-  const count = state?.findings?.length || 0;
+  // Count total anti-pattern findings (an element may carry several), matching
+  // the popup and DevTools panel rather than the flagged-element count.
+  const count = state?.findings?.reduce((sum, f) => sum + (f.findings?.length || 0), 0) || 0;
   const text = count > 0 ? String(count) : '';
   chrome.action.setBadgeText({ text, tabId }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ color: '#d6336c', tabId }).catch(() => {});
