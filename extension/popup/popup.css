@@ -63,6 +63,17 @@ h1 {
   margin-bottom: 16px;
 }
 
+.scan-error {
+  margin: -8px 0 16px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: oklch(70% 0.13 30);
+}
+
+.scan-error[hidden] {
+  display: none;
+}
+
 .btn {
   display: block;
   width: 100%;

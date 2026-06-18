@@ -8,6 +8,7 @@ const countNumber = document.getElementById('count-number');
 const countLabel = document.getElementById('count-label');
 const btnScan = document.getElementById('btn-scan');
 const btnToggle = document.getElementById('btn-toggle');
+const scanError = document.getElementById('scan-error');
 
 let overlaysVisible = true;
 
@@ -41,6 +42,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     countLabel.textContent = count === 1 ? 'anti-pattern' : 'anti-patterns';
     btnScan.textContent = 'Scan page';
     btnScan.disabled = false;
+    scanError.hidden = true;
+  }
+  if (msg.action === 'scan-failed') {
+    btnScan.textContent = 'Scan page';
+    btnScan.disabled = false;
+    scanError.textContent = msg.message || 'This page can\u2019t be scanned.';
+    scanError.hidden = false;
   }
   if (msg.action === 'overlays-toggled-broadcast') {
     overlaysVisible = msg.visible;
@@ -51,6 +59,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 btnScan.addEventListener('click', async () => {
   const tabId = await getActiveTabId();
   if (!tabId) return;
+  scanError.hidden = true;
   btnScan.textContent = 'Scanning...';
   btnScan.disabled = true;
   chrome.runtime.sendMessage({ action: 'scan', tabId });
