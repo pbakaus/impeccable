@@ -47,7 +47,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === 'scan-failed') {
     btnScan.textContent = 'Scan page';
     btnScan.disabled = false;
-    scanError.textContent = msg.message || 'This page can\u2019t be scanned.';
+    scanError.textContent = msg.message || 'Couldn\u2019t scan this page.';
     scanError.hidden = false;
   }
   if (msg.action === 'overlays-toggled-broadcast') {

@@ -85,7 +85,7 @@ async function sendScanToTab(tabId) {
     try { url = (await chrome.tabs.get(tabId))?.url || ''; } catch { /* tab gone */ }
     const message = url.startsWith('file:')
       ? 'Can\u2019t scan local files. Enable \u201CAllow access to file URLs\u201D for Impeccable in chrome://extensions.'
-      : (error || 'This page can\u2019t be scanned.');
+      : `Couldn\u2019t scan this page${error ? `: ${error}` : '.'}`;
     chrome.runtime.sendMessage({ action: 'scan-failed', tabId, message }).catch(() => {});
     return;
   }
