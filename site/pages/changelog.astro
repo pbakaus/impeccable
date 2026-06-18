@@ -173,6 +173,15 @@ import '../styles/changelog-faq-kinpaku.css';
       </ul>
     </article>
 
+    <article id="ext-v1.2.1" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">Extension v1.2.1</span><span class="cf-date">June 18, 2026</span></header>
+      <ul class="cf-items">
+        <li><strong>The toolbar badge count matches the popup and panel.</strong> The browser-action badge counted flagged elements while the popup and DevTools panel counted anti-pattern findings, so the same scan showed two numbers (for example 21 vs 34). One element can carry several findings; the badge now counts findings too, so every surface agrees. Reported in <a href="https://github.com/pbakaus/impeccable/issues/262" target="_blank" rel="noopener">#262</a>.</li>
+        <li><strong>Local file scans report why they fail.</strong> Scanning a <code>file://</code> page with file-URL access off used to leave the popup stuck on "Scanning…" forever. The popup now shows the real reason, with a permission hint for local files, and clears it on the next scan. Reported in <a href="https://github.com/pbakaus/impeccable/issues/258" target="_blank" rel="noopener">#258</a>.</li>
+        <li><strong>Popup matches the Kinpaku design system.</strong> The toolbar popup picks up the canonical carved-tile mark and light/dark theming that follows your system preference. Reported in <a href="https://github.com/pbakaus/impeccable/issues/260" target="_blank" rel="noopener">#260</a>.</li>
+      </ul>
+    </article>
+
     <article id="ext-v1.2.0" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">Extension v1.2.0</span><span class="cf-date">June 14, 2026</span></header>
       <ul class="cf-items">

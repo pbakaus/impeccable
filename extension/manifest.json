@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Impeccable",
   "description": "Detect common UI anti-patterns in any web page",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "permissions": ["activeTab", "scripting", "storage", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": {
