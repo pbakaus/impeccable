@@ -19,20 +19,6 @@
   --ks-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --ks-kinpaku-deep: oklch(61% 0.085 78);
-    --ks-kinpaku-ink: var(--ks-patina);
-    --ks-lacquer: oklch(97% 0.012 95);
-    --ks-text: oklch(25% 0.018 95);
-    --ks-text-muted: oklch(45% 0.015 95);
-    --ks-text-faint: oklch(55% 0.012 95);
-    --ks-rule: oklch(25% 0.02 95 / 0.12);
-    --popup-brand: oklch(18% 0.02 95);
-  }
-}
-
 body {
   width: 220px;
   background: var(--ks-lacquer);
@@ -165,18 +151,32 @@ footer a:hover {
 }
 
 @media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --ks-kinpaku-deep: oklch(61% 0.085 78);
+    --ks-lacquer: oklch(97% 0.012 95);
+    --ks-text: oklch(25% 0.018 95);
+    --ks-text-muted: oklch(45% 0.015 95);
+    --ks-text-faint: oklch(55% 0.012 95);
+    --ks-rule: oklch(25% 0.02 95 / 0.12);
+    --popup-brand: oklch(18% 0.02 95);
+  }
+
+  .count-number.has-findings {
+    color: var(--ks-kinpaku-deep);
+  }
+
   .btn-primary {
     color: oklch(14% 0.018 95);
   }
 
-  .btn-secondary {
+  .btn-secondary,
+  .btn-secondary:hover {
     border-color: var(--ks-kinpaku-deep);
-    color: var(--ks-kinpaku-ink);
+    color: var(--ks-kinpaku-deep);
   }
 
   .btn-secondary:hover {
     background: oklch(77% 0.13 82 / 0.10);
-    border-color: var(--ks-kinpaku);
-    color: oklch(77% 0.13 82);
   }
 }
