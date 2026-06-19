@@ -17,6 +17,16 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_COMMANDS = new Set(['help', 'install', 'link', 'update', 'check']);
 
+// Is this a detect target (the `npx impeccable src/` shorthand) or a mistyped
+// command? Flags, URLs, and path-shaped args are targets; anything else is
+// treated as an unknown command rather than scanned silently.
+function looksLikeDetectTarget(arg) {
+  const isFlag = arg.startsWith('-');
+  const isUrl = /^https?:\/\//i.test(arg);
+  const isPathShaped = arg.includes('/') || arg.includes('\\') || arg.includes('.');
+  return isFlag || isUrl || isPathShaped;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -61,11 +71,16 @@ Compatibility:
   } else if (SKILL_COMMANDS.has(command)) {
     const { run } = await import('./commands/skills.mjs');
     await run(args);
-  } else {
+  } else if (looksLikeDetectTarget(command)) {
     // Default: treat as detect arguments (allow `npx impeccable src/` shorthand)
     process.argv = [process.argv[0], process.argv[1], ...args];
     const { detectCli } = await import('../engine/detect-antipatterns.mjs');
     await detectCli();
+  } else {
+    // An unknown bareword: a mistyped command (or an old cached version run
+    // against newer docs). Fail loudly instead of silently statting it as a path.
+    console.error(`Unknown command: "${command}"\n\nTo see a list of supported commands, run:\n  impeccable --help`);
+    process.exit(1);
   }
 }
 
