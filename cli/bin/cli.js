@@ -10,21 +10,22 @@
  *   npx impeccable --help
  */
 
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_COMMANDS = new Set(['help', 'install', 'link', 'update', 'check']);
 
 // Is this a detect target (the `npx impeccable src/` shorthand) or a mistyped
-// command? Flags, URLs, and path-shaped args are targets; anything else is
-// treated as an unknown command rather than scanned silently.
+// command? Flags, URLs, path-shaped args, and real files/dirs (e.g. an
+// extension-less `Dockerfile`) are targets; anything else is an unknown command.
 function looksLikeDetectTarget(arg) {
   const isFlag = arg.startsWith('-');
   const isUrl = /^https?:\/\//i.test(arg);
   const isPathShaped = arg.includes('/') || arg.includes('\\') || arg.includes('.');
-  return isFlag || isUrl || isPathShaped;
+  const isExistingPath = existsSync(resolve(arg));
+  return isFlag || isUrl || isPathShaped || isExistingPath;
 }
 
 async function main() {
