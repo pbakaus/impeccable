@@ -31,43 +31,86 @@ export function readSkillFrontmatterVersion(content) {
 }
 
 /**
+ * Read a file and extract a value, turning read/parse failures into a clean
+ * sentinel instead of a raw throw. A version bump is exactly the moment a
+ * manifest is half-edited, so a malformed file must produce an actionable
+ * diagnostic naming the file, not a stack trace out of build().
+ *
+ * @returns {{ value: any } | { error: string }}
+ */
+function extractFromFile(absPath, extract) {
+  let raw;
+  try {
+    raw = fs.readFileSync(absPath, 'utf-8');
+  } catch (err) {
+    return { error: `could not read file (${err.code || err.message})` };
+  }
+  try {
+    return { value: extract(raw) };
+  } catch (err) {
+    return { error: `could not parse (${err.message})` };
+  }
+}
+
+/**
  * Compare every version-bearing plugin/skill file against root plugin.json.
  *
  * @param {string} rootDir repository root
- * @returns {{ source: string|null, checked: Array<{relPath:string, found:any}>, mismatches: Array<{relPath:string, found:any, expected:string}> }}
- *   `source` is null when root plugin.json is absent (nothing to check).
+ * @returns {{
+ *   source: string|null,
+ *   checked: Array<{relPath:string, found:any}>,
+ *   mismatches: Array<{relPath:string, found:any, expected:string}>,
+ *   errors: Array<{relPath:string, reason:string}>,
+ * }}
+ *   `source` is null only when root plugin.json is absent (nothing to check).
+ *   A present-but-malformed root, or one missing its `version` field, instead
+ *   reports an entry in `errors` so the build fails loudly rather than passing.
  */
 export function collectPluginVersions(rootDir) {
-  const rootManifestPath = path.join(rootDir, '.claude-plugin/plugin.json');
-  if (!fs.existsSync(rootManifestPath)) {
-    return { source: null, checked: [], mismatches: [] };
+  const rootRel = '.claude-plugin/plugin.json';
+  const rootManifestPath = path.join(rootDir, rootRel);
+  const empty = { source: null, checked: [], mismatches: [], errors: [] };
+  if (!fs.existsSync(rootManifestPath)) return empty;
+
+  const rootResult = extractFromFile(rootManifestPath, (raw) => JSON.parse(raw).version);
+  if (rootResult.error) {
+    return { ...empty, errors: [{ relPath: rootRel, reason: rootResult.error }] };
   }
-  const source = JSON.parse(fs.readFileSync(rootManifestPath, 'utf-8')).version;
+  const source = rootResult.value;
+  if (source == null) {
+    return { ...empty, errors: [{ relPath: rootRel, reason: 'missing "version" field' }] };
+  }
 
   const checks = [
     {
       relPath: '.claude-plugin/marketplace.json',
-      read: (absPath) => JSON.parse(fs.readFileSync(absPath, 'utf-8')).plugins?.[0]?.version,
+      read: (raw) => JSON.parse(raw).plugins?.[0]?.version,
     },
     {
       relPath: 'plugin/.claude-plugin/plugin.json',
-      read: (absPath) => JSON.parse(fs.readFileSync(absPath, 'utf-8')).version,
+      read: (raw) => JSON.parse(raw).version,
     },
     {
       relPath: 'plugin/skills/impeccable/SKILL.md',
-      read: (absPath) => readSkillFrontmatterVersion(fs.readFileSync(absPath, 'utf-8')),
+      read: (raw) => readSkillFrontmatterVersion(raw),
     },
   ];
 
   const checked = [];
   const mismatches = [];
+  const errors = [];
   for (const { relPath, read } of checks) {
     const absPath = path.join(rootDir, relPath);
     if (!fs.existsSync(absPath)) continue;
-    const found = read(absPath);
+    const result = extractFromFile(absPath, read);
+    if (result.error) {
+      errors.push({ relPath, reason: result.error });
+      continue;
+    }
+    const found = result.value;
     checked.push({ relPath, found });
     if (found !== source) mismatches.push({ relPath, found, expected: source });
   }
 
-  return { source, checked, mismatches };
+  return { source, checked, mismatches, errors };
 }

@@ -119,23 +119,29 @@ function generateCounts(rootDir, skills, buildDir) {
  * this wrapper owns the console output and the error count the build gates on.
  */
 function validatePluginVersions(rootDir) {
-  const { source, mismatches } = collectPluginVersions(rootDir);
-  if (source == null) return 0;
+  const { source, mismatches, errors } = collectPluginVersions(rootDir);
+  // No root manifest at all → nothing to check (source null with no errors).
+  if (source == null && errors.length === 0) return 0;
 
+  for (const { relPath, reason } of errors) {
+    console.error(`  ❌ ${relPath}: ${reason}`);
+  }
   for (const { relPath, found, expected } of mismatches) {
     console.error(
       `  ❌ ${relPath}: version "${found}" disagrees with .claude-plugin/plugin.json "${expected}"`,
     );
   }
-  if (mismatches.length > 0) {
+
+  const total = errors.length + mismatches.length;
+  if (total > 0) {
     console.error(
-      `\n❌ ${mismatches.length} plugin/skill version mismatch(es). Bump every version together and run ` +
+      `\n❌ ${total} plugin/skill version problem(s). Bump every version together and run ` +
       `\`bun run build:release\` to regenerate the ./plugin subtree (issue #274).`,
     );
   } else {
     console.log(`✓ Plugin/skill versions agree: ${source}`);
   }
-  return mismatches.length;
+  return total;
 }
 
 function validateSkillFrontmatter(skills) {

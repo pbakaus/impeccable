@@ -92,16 +92,48 @@ describe('collectPluginVersions', () => {
 
   test('skips files that do not exist instead of throwing', () => {
     writeFixture(root, { plugin: '3.7.1' }); // only root manifest present
-    const { source, checked, mismatches } = collectPluginVersions(root);
+    const { source, checked, mismatches, errors } = collectPluginVersions(root);
     expect(source).toBe('3.7.1');
     expect(checked).toEqual([]);
     expect(mismatches).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
-  test('returns a null source when root plugin.json is absent', () => {
-    const { source, mismatches } = collectPluginVersions(root);
+  test('returns a null source with no errors when root plugin.json is absent', () => {
+    const { source, mismatches, errors } = collectPluginVersions(root);
     expect(source).toBeNull();
     expect(mismatches).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test('reports a malformed checked manifest as an error instead of throwing', () => {
+    writeFixture(root, { plugin: '3.7.1', subtreePlugin: '3.7.1', skill: '3.7.1' });
+    // marketplace.json half-edited mid-bump: invalid JSON.
+    fs.writeFileSync(path.join(root, '.claude-plugin/marketplace.json'), '{ "plugins": [ { "version": ');
+    const { mismatches, errors } = collectPluginVersions(root);
+    expect(mismatches).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].relPath).toBe('.claude-plugin/marketplace.json');
+    expect(errors[0].reason).toMatch(/parse/i);
+  });
+
+  test('reports a malformed root plugin.json as an error, not a thrown stack', () => {
+    fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'), '{ not json');
+    const { source, errors } = collectPluginVersions(root);
+    expect(source).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].relPath).toBe('.claude-plugin/plugin.json');
+    expect(errors[0].reason).toMatch(/parse/i);
+  });
+
+  test('flags a root plugin.json that exists but has no version field', () => {
+    fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'impeccable' }));
+    const { source, errors } = collectPluginVersions(root);
+    // source stays null, but it is reported as an error rather than silently passing.
+    expect(source).toBeNull();
+    expect(errors).toEqual([{ relPath: '.claude-plugin/plugin.json', reason: 'missing "version" field' }]);
   });
 });
 
