@@ -25,9 +25,10 @@ import '../styles/changelog-faq-kinpaku.css';
 
     <article id="next" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">v3.x</span><span class="cf-date">Upcoming</span><span class="cf-current-badge">Upcoming</span></header>
-      <p class="cf-entry-lead">The design hook now works in GitHub Copilot, so direct edits get the same post-edit design feedback that Claude Code, Codex, and Cursor already provide.</p>
+      <p class="cf-entry-lead">The next release extends Impeccable across more of your workflow: the design hook now runs in GitHub Copilot, and project context understands monorepos.</p>
       <ul class="cf-items">
         <li><strong>Design hooks for GitHub Copilot.</strong> Installing the skill adds a <code>.github/hooks/impeccable.json</code> hook that runs the detector after Copilot edits a UI file and feeds the findings back as a focused design reminder. It covers both the Copilot CLI and the cloud agent, and recognizes every edit path Copilot uses, including <code>apply_patch</code>.</li>
+        <li><strong>Monorepo-aware context.</strong> Open the repo root and Impeccable resolves <code>PRODUCT.md</code> and <code>DESIGN.md</code> per app: each child app uses its own context files and falls back to the root files for anything it does not define. <code>/impeccable live</code> detects multiple apps, asks which one to work on, and then runs and stores live state inside that app.</li>
       </ul>
     </article>
 
