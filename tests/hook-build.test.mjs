@@ -85,7 +85,7 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.version, 1);
     assert.equal(Object.keys(manifest.hooks).length, 1);
     assert.equal(entry.type, 'command');
-    assert.equal(entry.matcher, 'edit|create');
+    assert.equal(entry.matcher, 'edit|create|apply_patch');
     assert.equal(entry.timeoutSec, 5);
     assert.equal(entry.timeout, undefined);
     assert.equal(entry.command, undefined);
@@ -163,7 +163,7 @@ describe('generated hook artifacts in repo', () => {
     const manifest = readJson('.github/hooks/impeccable.json');
     const entry = manifest.hooks.postToolUse[0];
 
-    assert.equal(entry.matcher, 'edit|create');
+    assert.equal(entry.matcher, 'edit|create|apply_patch');
     expectCommand(entry.bash, '.github/skills/impeccable/scripts/hook.mjs');
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/SKILL.md')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/hook.mjs')));

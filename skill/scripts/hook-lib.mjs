@@ -974,13 +974,13 @@ export function resolveHarness(env = {}, event = null) {
 
 // GitHub Copilot's postToolUse payload is
 //   { sessionId, timestamp, cwd, toolName, toolArgs, toolResult }
-// where `toolArgs` is a JSON *string* (double-encoded), e.g.
-//   "{\"path\":\"/abs/app.tsx\",\"old_str\":\"...\",\"new_str\":\"...\"}".
-// The file-editing tools are `edit` ({path, old_str, new_str}) and `create`
-// ({path, file_text}); both carry the touched file under `path`. Map that onto
-// the internal `{ tool_name, tool_input: { file_path }, cwd, session_id }` shape
-// the rest of the hook understands. The detector reads the file from disk after
-// the tool ran, so only the path (not the proposed content) is needed here.
+// mapped onto the internal `{ tool_name, tool_input, cwd, session_id }` shape.
+// `toolArgs` shape depends on the tool: the `edit`/`create`/`view` tools send a
+// JSON *string* (double-encoded) carrying the file under `path`, e.g.
+//   "{\"path\":\"/abs/app.tsx\",\"old_str\":\"...\",\"new_str\":\"...\"}",
+// while `apply_patch` sends a raw OpenAI-format patch string (handled below in
+// normalizeGitHubEvent). The detector reads the file from disk after the tool
+// ran, so only the path (not the proposed content) is needed here.
 export function parseGitHubToolArgs(toolArgs) {
   if (toolArgs && typeof toolArgs === 'object' && !Array.isArray(toolArgs)) return toolArgs;
   if (typeof toolArgs === 'string' && toolArgs.trim()) {
@@ -994,18 +994,61 @@ export function parseGitHubToolArgs(toolArgs) {
   return {};
 }
 
+// Copilot's `apply_patch` tool (used by interactive sessions and the cloud
+// agent) sends a raw OpenAI-format patch string in toolArgs, not JSON:
+//   *** Begin Patch
+//   *** Add File: /abs/app.css
+//   +body { ... }
+//   *** End Patch
+// The `view`/`edit`/`create` tools (seen in `copilot -p` runs) instead send a
+// JSON string with the path under `path`. Both must map onto the internal shape.
+const APPLY_PATCH_MARKER = /\*\*\* (?:Begin Patch|Add File:|Update File:|Delete File:)/;
+
+function looksLikeApplyPatch(rawArgs) {
+  return typeof rawArgs === 'string' && APPLY_PATCH_MARKER.test(rawArgs);
+}
+
+function applyPatchText(rawArgs) {
+  if (typeof rawArgs === 'string') {
+    if (APPLY_PATCH_MARKER.test(rawArgs)) return rawArgs;
+    // Defensive: a future Copilot build might JSON-wrap the patch.
+    const parsed = parseGitHubToolArgs(rawArgs);
+    return parsed.patch || parsed.input || parsed.command || '';
+  }
+  if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+    return rawArgs.patch || rawArgs.input || rawArgs.command || '';
+  }
+  return '';
+}
+
 function normalizeGitHubEvent(event, projectCwd) {
   const cwd = event.cwd || envProjectDir(projectCwd) || projectCwd;
   const sessionId = event.sessionId || event.session_id || 'unknown';
-  const args = parseGitHubToolArgs(event.toolArgs);
-  const filePath = args.path || args.file_path || args.filePath || args.target_file;
+  const toolName = event.toolName || event.tool_name || null;
   const toolInput = event.tool_input && typeof event.tool_input === 'object' ? { ...event.tool_input } : {};
-  if (typeof filePath === 'string' && filePath) toolInput.file_path = filePath;
+  const rawArgs = event.toolArgs;
+
+  let normalizedToolName = toolName;
+  if (toolName === 'apply_patch' || looksLikeApplyPatch(rawArgs)) {
+    // resolveTargetFiles() reads the touched paths from tool_input.command when
+    // tool_name is 'apply_patch', so normalize the name even if a future build
+    // sends the patch under a different tool label.
+    const patch = applyPatchText(rawArgs);
+    if (patch) {
+      toolInput.command = patch;
+      normalizedToolName = 'apply_patch';
+    }
+  } else {
+    const args = parseGitHubToolArgs(rawArgs);
+    const filePath = args.path || args.file_path || args.filePath || args.target_file;
+    if (typeof filePath === 'string' && filePath) toolInput.file_path = filePath;
+  }
+
   return {
     ...event,
     cwd,
     session_id: sessionId,
-    tool_name: event.toolName || event.tool_name || null,
+    tool_name: normalizedToolName,
     tool_input: toolInput,
   };
 }

@@ -569,7 +569,7 @@ describe('hook-admin.mjs', () => {
     const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
     assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
     const github = JSON.parse(fs.readFileSync(path.join(cwd, '.github', 'hooks', 'impeccable.json'), 'utf-8'));
-    assert.equal(github.hooks.postToolUse[0].matcher, 'edit|create');
+    assert.equal(github.hooks.postToolUse[0].matcher, 'edit|create|apply_patch');
     assert.match(github.hooks.postToolUse[0].bash, /\.github\/skills\/impeccable\/scripts\/hook\.mjs/);
   });
 
@@ -902,6 +902,30 @@ rounded:
     assert.ok(out.additionalContext.includes(ENVELOPE_PREFIX));
     assert.match(out.additionalContext, /Design hook findings requiring review/);
     assert.equal(out.hookSpecificOutput, undefined);
+  });
+
+  it('handles a GitHub Copilot apply_patch event end-to-end (interactive/cloud path)', async () => {
+    // The real bug the live test caught: interactive Copilot edits via
+    // apply_patch (raw patch string in toolArgs), which the matcher and runtime
+    // must both cover — not just the edit/create tools seen in `copilot -p`.
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const patch = [
+      '*** Begin Patch',
+      `*** Update File: ${file}`,
+      '+noop',
+      '*** End Patch',
+    ].join('\n');
+    const githubEvent = { sessionId: 'gh-ap', cwd, toolName: 'apply_patch', toolArgs: patch };
+
+    const r = await runHook({ stdinJson: JSON.stringify(githubEvent), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.audit.harness, 'github');
+    assert.equal(r.audit.tool, 'apply_patch');
+    assert.equal(r.audit.emitted, true);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.additionalContext.includes(ENVELOPE_PREFIX));
+    assert.match(out.additionalContext, /Design hook findings requiring review/);
   });
 
   it('emits a clean ack when the file has zero findings', async () => {
@@ -1416,6 +1440,24 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
     assert.equal(normalized.cwd, '/proj');
     assert.equal(normalized.tool_name, 'edit');
     assert.equal(normalized.tool_input.file_path, '/proj/src/App.tsx');
+  });
+
+  it('normalizes a GitHub apply_patch event: raw patch string -> tool_input.command', () => {
+    // Interactive Copilot and the cloud agent edit via apply_patch, whose
+    // toolArgs is a raw OpenAI-format patch string, not JSON.
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: /proj/src/Card.css',
+      "+body { font-family: 'Inter'; }",
+      '*** End Patch',
+    ].join('\n');
+    const normalized = normalizeHookEvent({
+      sessionId: 's-ap', cwd: '/proj', toolName: 'apply_patch', toolArgs: patch,
+    }, '/fallback', 'github');
+    assert.equal(normalized.tool_name, 'apply_patch');
+    assert.equal(normalized.tool_input.command, patch);
+    // resolveTargetFiles understands apply_patch via tool_input.command.
+    assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/src/Card.css']);
   });
 
   it('normalizes a GitHub create event and tolerates malformed toolArgs', () => {

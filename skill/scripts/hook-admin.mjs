@@ -123,7 +123,7 @@ const HOOK_MANIFEST_TARGETS = [
         postToolUse: [
           {
             type: 'command',
-            matcher: 'edit|create',
+            matcher: 'edit|create|apply_patch',
             bash: 'node "$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs"',
             timeoutSec: TIMEOUT_SECONDS,
           },

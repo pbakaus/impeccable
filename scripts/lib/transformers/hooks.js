@@ -112,9 +112,11 @@ export function buildCursorHooksManifest() {
 // each entry is flat (no nested `hooks` array), the command lives under `bash`
 // (with an optional `powershell` sibling), the timeout key is `timeoutSec`, and
 // `matcher` is a full-match regex (`^(?:PATTERN)$`) tested against the tool name.
-// Copilot's file-editing tools are `edit` ({path, old_str, new_str}) and
-// `create` ({path, file_text}), so the matcher targets those two. The same
-// manifest is honored by both the CLI and the cloud/app agent for the repo.
+// Copilot's file-editing tool names vary by surface (verified against CLI
+// 1.0.63): `copilot -p` runs use `edit` ({path, old_str, new_str}) and `create`
+// ({path, file_text}); interactive sessions and the cloud agent use
+// `apply_patch` (a raw OpenAI-format patch string). The matcher covers all
+// three. The same manifest is honored by both the CLI and the cloud/app agent.
 // https://docs.github.com/en/copilot/reference/hooks-reference
 export function buildGitHubHooksManifest() {
   return {
@@ -123,7 +125,7 @@ export function buildGitHubHooksManifest() {
       postToolUse: [
         {
           type: 'command',
-          matcher: 'edit|create',
+          matcher: 'edit|create|apply_patch',
           bash: `node "${GITHUB_PROJECT_HOOK}"`,
           timeoutSec: TIMEOUT_SECONDS,
         },
