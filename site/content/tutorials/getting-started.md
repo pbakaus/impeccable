@@ -48,7 +48,7 @@ Prefer a different setup? Claude Code users can install the plugin with `/plugin
 
 When a new version ships later, run `npx impeccable update` from the same project root. `npx impeccable check` tells you first whether you are behind, and plugin users update from the `/plugin` menu instead.
 
-On Claude Code, Codex, and Cursor, the installer can also add Impeccable's automatic design hook. See [Design hooks](/docs/hooks) for harness-specific behavior and approval steps.
+On Claude Code, GitHub Copilot, Codex, and Cursor, the installer can also add Impeccable's automatic design hook. See [Design hooks](/docs/hooks) for harness-specific behavior and approval steps.
 
 ## Step 2. Set up Impeccable for your project
 

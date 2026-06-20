@@ -275,12 +275,12 @@
 
 .slop-kinpaku .sub-page-lede code {
   font-family: var(--ks-mono);
-  font-size: 0.86em;
-  color: var(--ks-champagne);
-  background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
-  padding: 1px 7px;
-  border-radius: 2px;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border: 0;
+  padding: 0.14em 0.36em;
+  border-radius: var(--ks-code-radius);
 }
 
 .slop-kinpaku .sub-page-lede a {
@@ -386,6 +386,26 @@
   color: var(--ks-lacquer-deep);
 }
 
+.slop-kinpaku .slop-era-toggle--ink {
+  background: color-mix(in oklch, var(--ks-graphite), transparent 28%);
+  border-color: color-mix(in oklch, var(--ks-rule), var(--ks-text) 10%);
+}
+
+.slop-kinpaku .slop-era-toggle--ink .slop-era-tab {
+  padding: 8px 17px;
+  color: var(--ks-text-muted);
+}
+
+.slop-kinpaku .slop-era-toggle--ink .slop-era-tab:hover {
+  color: var(--ks-text);
+}
+
+.slop-kinpaku .slop-era-toggle--ink .slop-era-tab.is-active {
+  background: color-mix(in oklch, var(--ks-champagne), var(--ks-lacquer-raised) 16%);
+  color: var(--ks-lacquer);
+  box-shadow: inset 0 0 0 1px oklch(70% 0.12 188 / 0.18);
+}
+
 /* Browser frame mock around the iframe. Lacquer-deep shell with kinpaku
    chrome bar, matching the docs-kinpaku live-mode mock vocabulary. */
 .slop-kinpaku .visual-mode-preview {
@@ -393,7 +413,7 @@
   border: 1px solid var(--ks-rule);
   border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 24px 60px oklch(2% 0.004 95 / 0.55);
+  box-shadow: none;
 }
 
 .slop-kinpaku .visual-mode-preview-header {
@@ -497,11 +517,6 @@
   object-position: top;
   display: block;
   filter: saturate(1.05);
-  transition: transform 320ms var(--ks-ease);
-}
-
-.slop-kinpaku .gallery-card:hover .gallery-card-thumb img {
-  transform: scale(1.04);
 }
 
 .slop-kinpaku .gallery-card-body {
@@ -623,12 +638,12 @@
 
 .slop-kinpaku .anti-patterns-legend-body code {
   font-family: var(--ks-mono);
-  font-size: 0.86em;
-  color: var(--ks-champagne);
-  background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
-  padding: 1px 6px;
-  border-radius: 2px;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border: 0;
+  padding: 0.14em 0.36em;
+  border-radius: var(--ks-code-radius);
 }
 
 .slop-kinpaku .anti-patterns-legend-layers {
@@ -922,11 +937,11 @@
 .slop-kinpaku .visual-mode-method-name code {
   font-family: var(--ks-mono);
   font-size: 0.92em;
-  color: var(--ks-champagne);
-  background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
-  padding: 1px 8px;
-  border-radius: 2px;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border: 0;
+  padding: 0.14em 0.36em;
+  border-radius: var(--ks-code-radius);
 }
 
 .slop-kinpaku .visual-mode-method-desc {
@@ -938,12 +953,12 @@
 
 .slop-kinpaku .visual-mode-method-desc code {
   font-family: var(--ks-mono);
-  font-size: 0.86em;
-  color: var(--ks-champagne);
-  background: var(--ks-graphite-2);
-  border: 1px solid var(--ks-rule);
-  padding: 1px 6px;
-  border-radius: 2px;
+  font-size: 0.84em;
+  color: var(--ks-code-fg);
+  background: var(--ks-code-bg);
+  border: 0;
+  padding: 0.14em 0.36em;
+  border-radius: var(--ks-code-radius);
 }
 
 .slop-kinpaku .visual-mode-method-desc a {

@@ -2,7 +2,7 @@
  * CLI helper: find an element in source and wrap it in a variant container.
  *
  * Usage:
- *   npx impeccable wrap --id SESSION_ID --count N --query "hero-combined-left" [--file path]
+ *   node <scripts_path>/live-wrap.mjs --id SESSION_ID --count N --query "hero-combined-left" [--file path]
  *
  * Searches project files for the element matching the query (class name, ID, or
  * text snippet), wraps it with the variant scaffolding, and prints the file path

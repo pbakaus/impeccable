@@ -879,6 +879,7 @@ describe('CLI', () => {
     const { stdout, code } = run('--help');
     expect(code).toBe(0);
     expect(stdout).toContain('Usage:');
+    expect(stdout).toContain('--quiet');
   });
 
   test('detect subcommand is not treated as a scan target', () => {
@@ -904,6 +905,32 @@ describe('CLI', () => {
     const parsed = JSON.parse(stdout.trim());
     expect(parsed).toBeArray();
     expect(parsed.length).toBeGreaterThan(0);
+  });
+
+  test('--quiet suppresses text details and keeps the summary exit signal', () => {
+    const { stdout, stderr, code } = run('--quiet', path.join(FIXTURES, 'should-flag.html'));
+    expect(code).toBe(2);
+    expect(stdout).toBe('');
+    expect(stderr.trim()).toMatch(/^[1-9]\d* anti-patterns? found\.$/);
+    expect(stderr).not.toContain('side-tab');
+    expect(stderr).not.toContain('line ');
+  });
+
+  test('--quiet stays silent on clean files', () => {
+    const { stdout, stderr, code } = run('--quiet', path.join(FIXTURES, 'should-pass.html'));
+    expect(code).toBe(0);
+    expect(stdout).toBe('');
+    expect(stderr).toBe('');
+  });
+
+  test('--quiet does not affect JSON output', () => {
+    const { stdout, stderr, code } = run('--json', '--quiet', path.join(FIXTURES, 'should-flag.html'));
+    expect(code).toBe(2);
+    expect(stderr).toBe('');
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed).toBeArray();
+    expect(parsed.length).toBeGreaterThan(0);
+    expect(parsed.some(f => f.antipattern === 'side-tab')).toBe(true);
   });
 
   test('-json alias outputs valid JSON', () => {
@@ -1743,6 +1770,15 @@ describe('CLI -- dev server suggestion', () => {
     const { stderr } = run(path.join(FIXTURES, 'framework-next-tailwind'));
     expect(stderr).toContain('Next.js');
     expect(stderr).toContain('3000');
+  });
+
+  test('--quiet suppresses framework URL scan suggestions', () => {
+    const { stderr, code } = run('--quiet', path.join(FIXTURES, 'framework-next-tailwind'));
+    expect(code).toBe(2);
+    expect(stderr.trim()).toMatch(/^[1-9]\d* anti-patterns? found\.$/);
+    expect(stderr).not.toContain('Next.js');
+    expect(stderr).not.toContain('3000');
+    expect(stderr).not.toContain('Start the dev server');
   });
 
   test('suggests URL scan when Vite config found', () => {

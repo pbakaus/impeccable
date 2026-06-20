@@ -39,56 +39,50 @@ const startSteps = [
   {
     label: 'Install',
     command: 'npx impeccable install',
-    line: 'Run this from the project root, then reload your AI coding tool.',
+    line: 'Run from the project root, then reload your agent.',
   },
   {
     label: 'Set context',
     command: '/impeccable init',
-    line: 'Answer the short setup interview. Say yes when it offers DESIGN.md.',
+    line: 'Create PRODUCT.md and DESIGN.md.',
   },
   {
     label: 'Try it',
     command: '/impeccable polish the pricing page',
-    line: 'Pick any page or component that already exists.',
+    line: 'Point it at a real page.',
   },
 ];
 
 const choices = [
   {
-    need: 'Set up a project',
+    need: 'Start a project',
     command: '/impeccable init',
     href: '/docs/init',
-    line: 'Create PRODUCT.md and DESIGN.md.',
   },
   {
-    need: 'Improve an existing page',
+    need: 'Polish a page',
     command: '/impeccable polish',
     href: '/docs/polish',
-    line: 'Fix spacing, type, states, copy, and consistency.',
   },
   {
     need: 'Find design issues',
     command: '/impeccable critique',
     href: '/docs/critique',
-    line: 'Get the highest-priority design problems.',
   },
   {
-    need: 'Check implementation quality',
+    need: 'Check implementation',
     command: '/impeccable audit',
     href: '/docs/audit',
-    line: 'Check accessibility, responsiveness, performance, and detector findings.',
   },
   {
-    need: 'Point at UI in the browser',
+    need: 'Iterate in the browser',
     command: '/impeccable live',
     href: '/docs/live',
-    line: 'Pick an element, generate variants, accept one into source.',
   },
   {
     need: 'Build a new feature',
     command: '/impeccable craft',
     href: '/docs/craft',
-    line: 'Plan, build, and visually check the feature.',
   },
 ];
 
@@ -97,25 +91,21 @@ const manualTopics = [
     topic: 'Design Context',
     href: '/docs/context',
     label: 'PRODUCT.md + DESIGN.md',
-    line: 'What gets loaded, when it wins, and how the sidecar fits.',
   },
   {
     topic: 'Detector CLI',
     href: '/docs/detector',
     label: 'npx impeccable detect',
-    line: 'Run deterministic checks on files, folders, stdin, and URLs.',
   },
   {
     topic: 'Design hooks',
     href: '/docs/hooks',
     label: '/impeccable hooks',
-    line: 'Automatic detector feedback inside Claude Code, Codex, and Cursor.',
   },
   {
     topic: 'Config and ignores',
     href: '/docs/config',
     label: '.impeccable/config.json',
-    line: 'Shared exceptions, private overrides, and design-system toggles.',
   },
 ].filter(topic => referenceEntries.some(entry => `/docs/${entry.id}` === topic.href));
 
@@ -143,7 +133,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <section class="docs-start-rail" aria-labelledby="docs-start-h">
           <header class="docs-start-rail-head">
             <h1 class="docs-start-rail-title" id="docs-start-h">Start with <span>/impeccable</span></h1>
-            <p class="docs-start-rail-lede">Install, run setup, then try one command on an existing page.</p>
+            <p class="docs-start-rail-lede">Install, add context, then run one command.</p>
           </header>
 
           <div class="docs-start-rail-sequence">
@@ -173,7 +163,6 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
               <a class="docs-chooser-list-row" href={choice.href}>
                 <span class="docs-chooser-list-need">{choice.need}</span>
                 <span class="docs-chooser-list-command">{choice.command}</span>
-                <span class="docs-chooser-list-line">{choice.line}</span>
               </a>
             ))}
           </div>
@@ -182,7 +171,7 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <section class="docs-manual-section" aria-labelledby="docs-manual-h">
           <header class="docs-manual-head">
             <h2 class="docs-manual-title" id="docs-manual-h">Understand the system</h2>
-            <p class="docs-manual-sub">Commands are only one layer. These docs explain the files, checks, hooks, and config that make them behave consistently.</p>
+            <p class="docs-manual-sub">Context files, detector checks, hooks, and config.</p>
           </header>
 
           <div class="docs-chooser-list docs-manual-list">
@@ -190,7 +179,6 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
               <a class="docs-chooser-list-row" href={topic.href}>
                 <span class="docs-chooser-list-need">{topic.topic}</span>
                 <span class="docs-chooser-list-command">{topic.label}</span>
-                <span class="docs-chooser-list-line">{topic.line}</span>
               </a>
             ))}
           </div>
@@ -199,11 +187,11 @@ const chains: { id: string; a: string; b: string; arrow: string; line: string }[
         <!-- Live mode: visual iteration -->
         <section class="docs-live" aria-labelledby="docs-live-h">
           <div class="docs-live-copy">
-            <h2 class="docs-live-title" id="docs-live-h">Iterate where you can see it</h2>
-            <p class="docs-live-lede">Use Live Mode when an issue is easier to point at than describe. Pick an element, generate variants, accept one into source.</p>
+            <h2 class="docs-live-title" id="docs-live-h">Iterate in the browser</h2>
+            <p class="docs-live-lede">Pick UI, generate variants, accept one into source.</p>
             <p class="docs-live-cta">
               <a class="ks-button ks-button-primary" href="/docs/live">
-                Read the live docs
+                Live Mode docs
                 <span class="ks-button-arrow" aria-hidden="true">
                   <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M0 4h14M10 0l4 4-4 4"/></svg>
                 </span>

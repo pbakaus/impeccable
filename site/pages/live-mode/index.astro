@@ -17,8 +17,7 @@ import '../../styles/live-mode-kinpaku.css';
 
 <div class="live-mode-page">
   <header class="live-mode-page-header">
-    <p class="live-mode-page-eyebrow">New in v3.0 <span class="live-mode-page-eyebrow-badge">Beta</span></p>
-    <h1 class="live-mode-page-title">Live Mode</h1>
+    <h1 class="live-mode-page-title">Live Mode <span class="live-mode-page-title-badge">Beta</span></h1>
     <p class="live-mode-page-lede">Pick any element in the browser. Drop a comment or a stroke. Three production-quality variants swap in via your framework's HMR. Accept the one you want and it writes back to source.</p>
     <div class="live-mode-start" aria-label="Start live mode command">
       <span class="live-mode-start-prompt">$</span>
@@ -181,11 +180,11 @@ import '../../styles/live-mode-kinpaku.css';
         <span class="live-mode-stage-num">02 &middot; Generate</span>
         <h3 class="live-mode-stage-name">Three genuinely different takes</h3>
         <p class="live-mode-stage-desc">Variants anchor to different archetypes, not three riffs on color. Each one explores a different primary axis: hierarchy, typography, density, layout, or palette strategy.</p>
-        <div class="live-mode-stage-viz">
-          <div class="docs-viz-variants" style="width:100%;gap:4px">
-            <div class="docs-viz-variant docs-viz-variant--v1" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">No.04</span></div>
-            <div class="docs-viz-variant docs-viz-variant--v2 is-active" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">Dispatch</span></div>
-            <div class="docs-viz-variant docs-viz-variant--v3" style="min-height:44px;padding:6px"><span class="docs-viz-variant-kicker" style="font-size:8px">Field</span></div>
+        <div class="live-mode-stage-viz live-mode-stage-viz--rail">
+          <div class="viz-rail">
+            <div class="viz-rail-cell"><span>No.04</span><span class="viz-rail-mark"></span></div>
+            <div class="viz-rail-cell is-active"><span>Dispatch</span><span class="viz-rail-mark"></span></div>
+            <div class="viz-rail-cell"><span>Field</span><span class="viz-rail-mark"></span></div>
           </div>
         </div>
       </article>
@@ -226,14 +225,14 @@ import '../../styles/live-mode-kinpaku.css';
 
   <section class="live-mode-frameworks" aria-label="Supported frameworks">
     <span class="live-mode-frameworks-label">Supported dev servers</span>
-    <ul class="live-mode-frameworks-list">
-      <li>Vite</li>
-      <li>Next.js (incl. monorepos)</li>
-      <li>SvelteKit</li>
-      <li>Astro</li>
-      <li>Nuxt</li>
-      <li>Bun</li>
-      <li>Plain static HTML</li>
+    <ul class="live-mode-frameworks-list framework-list--matrix">
+      <li><small>bundler</small><strong>Vite</strong></li>
+      <li><small>apps</small><strong>Next.js</strong></li>
+      <li><small>apps</small><strong>SvelteKit</strong></li>
+      <li><small>pages</small><strong>Astro</strong></li>
+      <li><small>apps</small><strong>Nuxt</strong></li>
+      <li><small>runtime</small><strong>Bun</strong></li>
+      <li><small>static</small><strong>Plain HTML</strong></li>
     </ul>
   </section>
 </div>

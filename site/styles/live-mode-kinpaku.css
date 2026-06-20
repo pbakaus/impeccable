@@ -88,6 +88,10 @@
 }
 
 .live-mode-kinpaku .live-mode-page-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   font-family: var(--ks-font-display);
   font-style: normal;
   font-weight: var(--ks-type-display-weight);
@@ -97,6 +101,23 @@
   color: var(--ks-champagne);
   margin: 0 0 22px;
   text-wrap: balance;
+}
+
+.live-mode-kinpaku .live-mode-page-title-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 3px 9px;
+  border: 1px solid oklch(70% 0.12 188 / 0.4);
+  border-radius: 2px;
+  background: oklch(70% 0.12 188 / 0.10);
+  color: var(--ks-patina);
+  font-family: var(--ks-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .live-mode-kinpaku .live-mode-page-lede {
@@ -113,10 +134,11 @@
    without blocking the demo. */
 .live-mode-kinpaku .live-mode-page-alpha-note {
   margin: 14px 0 0;
-  padding: 0;
+  padding: 0 0 0 14px;
   background: transparent;
   border: 0;
   border-radius: 0;
+  box-shadow: inset 2px 0 0 var(--ks-kinpaku);
   font-size: 0.82rem;
   line-height: 1.5;
   color: var(--ks-text-muted);
@@ -305,8 +327,8 @@
 .live-mode-kinpaku .live-demo-card--v1 {
   background: var(--ks-lacquer-raised);
   border: 0;
-  border-top: 3px solid var(--ks-kinpaku);
   border-radius: 0;
+  box-shadow: inset 0 3px 0 var(--ks-kinpaku);
 }
 
 .live-mode-kinpaku .live-demo-card--v1 .live-demo-card-kicker {
@@ -368,8 +390,8 @@
 
 .live-mode-kinpaku .live-demo-card--v3 {
   background: oklch(11% 0.012 82);
-  border: 1px solid var(--ks-rule);
-  color: var(--ks-text);
+  border: 1px solid oklch(78% 0 0 / 0.16);
+  color: oklch(88% 0 0);
 }
 
 .live-mode-kinpaku .live-demo-card--v3 .live-demo-card-kicker {
@@ -380,7 +402,7 @@
   font-family: var(--ks-font);
   font-style: normal;
   font-weight: 600;
-  color: var(--ks-champagne);
+  color: oklch(91% 0 0);
 }
 
 .live-mode-kinpaku .live-demo-card--v3 h3 em {
@@ -540,34 +562,58 @@
   box-shadow: none;
 }
 
-/* Three-up variants strip (GENERATE card) — lacquer tiles, active gets
-   the kinpaku-tinted bg. */
-.live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant {
-  background: var(--ks-lacquer-raised);
+/* Generate card — measured rail with one clearly active take. The active
+   state uses solid kinpaku instead of a patina wash so it stays crisp in
+   light mode. */
+.live-mode-kinpaku .live-mode-stage-viz--rail {
+  background: var(--ks-lacquer-deep);
+}
+
+.live-mode-kinpaku .viz-rail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  width: 100%;
+  min-height: 62px;
   border: 1px solid var(--ks-rule);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--ks-lacquer-raised);
+}
+
+.live-mode-kinpaku .viz-rail-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
   color: var(--ks-text-muted);
-  box-shadow: none;
+  font-family: var(--ks-mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active {
-  background: oklch(78% 0.12 82 / 0.16);
-  border-color: var(--ks-kinpaku);
-  box-shadow: none;
+.live-mode-kinpaku .viz-rail-cell + .viz-rail-cell {
+  box-shadow: inset 1px 0 0 var(--ks-rule);
 }
 
-.live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant-kicker {
-  color: var(--ks-text-muted);
+.live-mode-kinpaku .viz-rail-cell.is-active {
+  background: var(--ks-kinpaku);
+  color: oklch(8% 0.006 95);
 }
 
-.live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active .docs-viz-variant-kicker {
-  color: var(--ks-kinpaku);
+.live-mode-kinpaku .viz-rail-mark {
+  width: 18px;
+  height: 2px;
+  background: currentColor;
 }
 
-/* Accept pill (ACCEPT card) — kinpaku gold ink on a subtle kinpaku wash. */
+/* Accept pill (ACCEPT card) — patina on lacquer, not a pale gold wash. */
 .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
-  background: oklch(78% 0.12 82 / 0.16);
-  border: 1px solid var(--ks-kinpaku);
-  color: var(--ks-kinpaku);
+  background: oklch(8% 0.006 95);
+  border: 1px solid oklch(70% 0.12 188 / 0.58);
+  color: oklch(82% 0.07 188);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.05);
 }
 
 
@@ -699,6 +745,38 @@
   background: var(--ks-graphite-2);
   border: 1px solid var(--ks-rule);
   border-radius: 2px;
+}
+
+.live-mode-kinpaku .framework-list--matrix {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--ks-rule);
+  border: 1px solid var(--ks-rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.live-mode-kinpaku .framework-list--matrix li {
+  display: grid;
+  gap: 4px;
+  min-height: 54px;
+  padding: 9px 10px;
+  background: var(--ks-lacquer-raised);
+  border: 0;
+  border-radius: 0;
+}
+
+.live-mode-kinpaku .framework-list--matrix small {
+  color: var(--ks-patina-deep);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.live-mode-kinpaku .framework-list--matrix strong {
+  color: var(--ks-champagne);
+  font-weight: 500;
 }
 
 

@@ -776,6 +776,17 @@ html.light .slop-kinpaku .slop-layer {
   border-color: var(--ks-rule);
 }
 
+html.light .slop-kinpaku .gallery-card:hover,
+html.light .slop-kinpaku .rule-card:hover {
+  background: var(--ks-lacquer-raised);
+  border-color: oklch(49% 0.08 188 / 0.34);
+}
+
+html.light .slop-kinpaku .gallery-card:hover .gallery-card-title,
+html.light .slop-kinpaku .rule-card:hover .rule-card-name {
+  color: var(--ks-champagne);
+}
+
 html.light .live-mode-kinpaku .live-mode-hero-panel,
 html.light .live-mode-kinpaku .live-mode-step {
   background: var(--ks-lacquer-raised);
@@ -1160,14 +1171,6 @@ html.light .changelog-faq-kinpaku {
   background: linear-gradient(180deg, var(--ks-lacquer), var(--ks-lacquer-deep));
 }
 
-html.light body.docs-kinpaku {
-  background: oklch(100% 0 0);
-}
-
-html.light body.docs-kinpaku .site-header {
-  background: oklch(100% 0 0 / 0.96);
-}
-
 html.light .skills-layout-page .skills-sidebar,
 html.light .skills-layout-page .skills-content {
   background: transparent;
@@ -1216,13 +1219,8 @@ html.light .docs-kinpaku .prose .docs-viz-flow-step + .docs-viz-flow-step::befor
   color: var(--docs-accent);
 }
 
-html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active .docs-viz-variant-kicker,
-html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
+html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-variant.is-active .docs-viz-variant-kicker {
   color: var(--ks-kinpaku-ink);
-}
-
-html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
-  border-color: var(--ks-kinpaku-deep);
 }
 
 /* Docs command demos — light surfaces (divider fix lives in docs-kinpaku.css) */
@@ -1271,7 +1269,7 @@ html.light .site-header-github-star {
 }
 
 html.light .slop-kinpaku .skills-sidebar {
-  background: var(--ks-lacquer-raised);
+  background: transparent;
   border-color: var(--ks-rule);
 }
 
@@ -1605,6 +1603,15 @@ html.light .slop-kinpaku .slop-catalog-lede a {
 html.light .slop-kinpaku .slop-catalog-lede a:hover {
   color: var(--ks-link-on-paper-hover);
   border-bottom-color: var(--ks-link-on-paper-hover);
+}
+
+html.light .slop-kinpaku :is(
+  .sub-page-lede,
+  .anti-patterns-legend-body,
+  .visual-mode-method-name,
+  .visual-mode-method-desc
+) code {
+  background: oklch(25% 0.02 95 / 0.08);
 }
 
 html.light .cf-items a,

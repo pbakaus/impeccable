@@ -20,7 +20,9 @@ function getState(tabId) {
 
 function updateBadge(tabId) {
   const state = tabState.get(tabId);
-  const count = state?.findings?.length || 0;
+  // Count total anti-pattern findings (an element may carry several), matching
+  // the popup and DevTools panel rather than the flagged-element count.
+  const count = state?.findings?.reduce((sum, f) => sum + (f.findings?.length || 0), 0) || 0;
   const text = count > 0 ? String(count) : '';
   chrome.action.setBadgeText({ text, tabId }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ color: '#d6336c', tabId }).catch(() => {});
@@ -58,7 +60,7 @@ async function buildScanConfig() {
 // engages with the extension (DevTools panel/sidebar opened, popup scan, etc).
 async function ensureContentScriptInjected(tabId) {
   const state = getState(tabId);
-  if (state.csInjected) return true;
+  if (state.csInjected) return { ok: true };
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -66,16 +68,29 @@ async function ensureContentScriptInjected(tabId) {
       injectImmediately: true,
     });
     state.csInjected = true;
-    return true;
+    return { ok: true };
   } catch (err) {
-    // Common cause: chrome:// pages, the web store, or other restricted URLs
-    return false;
+    // Common cause: chrome:// pages, the web store, the Chrome Web Store, or
+    // file:// pages when "Allow access to file URLs" is off. Keep the real
+    // error so the UI can explain what happened.
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
 async function sendScanToTab(tabId) {
-  const ok = await ensureContentScriptInjected(tabId);
-  if (!ok) return;
+  const { ok, error } = await ensureContentScriptInjected(tabId);
+  if (!ok) {
+    // Injection was blocked. Tell an open popup why so it can stop showing
+    // "Scanning..." and surface a hint. The popup may be closed, so ignore
+    // delivery failures.
+    let url = '';
+    try { url = (await chrome.tabs.get(tabId))?.url || ''; } catch { /* tab gone */ }
+    const message = url.startsWith('file:')
+      ? 'Can\u2019t scan local files. Enable \u201CAllow access to file URLs\u201D for Impeccable in chrome://extensions.'
+      : `Couldn\u2019t scan this page${error ? `: ${error}` : '.'}`;
+    chrome.runtime.sendMessage({ action: 'scan-failed', tabId, message }).catch(() => {});
+    return;
+  }
   const config = await buildScanConfig();
   chrome.tabs.sendMessage(tabId, { action: 'scan', config }).catch(() => {});
 }
