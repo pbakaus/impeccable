@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "matcher": "edit|create|apply_patch",
+        "bash": "node \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs\"",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

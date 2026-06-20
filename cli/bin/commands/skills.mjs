@@ -103,6 +103,12 @@ const PROVIDER_HOOK_ARTIFACTS = {
   '.agents': [
     { sourceProvider: '.codex', rel: 'hooks.json', destProvider: '.codex' },
   ],
+  // GitHub Copilot reads repo-level hooks from `.github/hooks/*.json`. Unlike
+  // Claude, this is a team-shared, committed file (not a machine-local override),
+  // so source and dest are the same path.
+  '.github': [
+    { sourceProvider: '.github', rel: 'hooks/impeccable.json', destProvider: '.github' },
+  ],
 };
 
 let pipedAnswers = null;
@@ -1072,6 +1078,12 @@ function hookArtifactsForProvider(bundleDir, root, provider) {
 }
 
 function hookScriptPathForProvider(skillRoot, provider) {
+  // `.github` is intentionally absent: its hook manifest (`.github/hooks/
+  // impeccable.json`) is a committed, team-shared file that the Copilot cloud
+  // agent and every teammate read, so the command must stay portable
+  // (`$(git rev-parse --show-toplevel)/.github/skills/...`). Rewriting it to a
+  // machine-local absolute skillRoot path would break those. GitHub skills are
+  // project-scoped (not a home-provider), so the project-relative path resolves.
   if (provider === '.cursor') {
     return join(skillRoot, provider, 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs');
   }
@@ -1160,7 +1172,10 @@ function valueHasImpeccableHookMarker(value) {
 
 function stripImpeccableHookEntry(entry) {
   if (!entry || typeof entry !== 'object') return entry;
-  if (valueHasImpeccableHookMarker(entry.command) || valueHasImpeccableHookMarker(entry.args)) {
+  // `command`/`args`: Claude/Codex/Cursor. `bash`/`powershell`: GitHub Copilot's
+  // flat entry shape, where the marker lives under the shell-command keys.
+  if (valueHasImpeccableHookMarker(entry.command) || valueHasImpeccableHookMarker(entry.args)
+    || valueHasImpeccableHookMarker(entry.bash) || valueHasImpeccableHookMarker(entry.powershell)) {
     return null;
   }
   if (!Array.isArray(entry.hooks)) return entry;

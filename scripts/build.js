@@ -23,6 +23,7 @@ import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
 import { createAllZips } from './lib/zip.js';
+import { collectPluginVersions } from './lib/validate-plugin-versions.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
@@ -110,6 +111,37 @@ function generateCounts(rootDir, skills, buildDir) {
 
   console.log(`✓ Generated counts: ${commandCount} commands, ${detectionCount} detection rules`);
   return errors;
+}
+
+/**
+ * Guard against plugin/skill version drift (issue #274). The pure comparison
+ * lives in ./lib/validate-plugin-versions.js (so it's unit-tested directly);
+ * this wrapper owns the console output and the error count the build gates on.
+ */
+function validatePluginVersions(rootDir) {
+  const { source, mismatches, errors } = collectPluginVersions(rootDir);
+  // No root manifest at all → nothing to check (source null with no errors).
+  if (source == null && errors.length === 0) return 0;
+
+  for (const { relPath, reason } of errors) {
+    console.error(`  ❌ ${relPath}: ${reason}`);
+  }
+  for (const { relPath, found, expected } of mismatches) {
+    console.error(
+      `  ❌ ${relPath}: version "${found}" disagrees with .claude-plugin/plugin.json "${expected}"`,
+    );
+  }
+
+  const total = errors.length + mismatches.length;
+  if (total > 0) {
+    console.error(
+      `\n❌ ${total} plugin/skill version problem(s). Bump every version together and run ` +
+      `\`bun run build:release\` to regenerate the ./plugin subtree (issue #274).`,
+    );
+  } else {
+    console.log(`✓ Plugin/skill versions agree: ${source}`);
+  }
+  return total;
 }
 
 function validateSkillFrontmatter(skills) {
@@ -766,6 +798,10 @@ async function build() {
   // Generate authoritative counts and validate references
   const countErrors = generateCounts(ROOT_DIR, skills, buildDir);
 
+  // Guard plugin/skill version drift: marketplace + ./plugin subtree must
+  // match root plugin.json so marketplace installs never ship a stale version.
+  const versionErrors = validatePluginVersions(ROOT_DIR);
+
   // Verify every hand-authored HTML page carries the shared site header
   const headerErrors = validateSiteHeader(ROOT_DIR);
 
@@ -779,7 +815,7 @@ async function build() {
   // that has no technical reading. Hardening repetition is intentionally allowed.
   const skillProseErrors = validateSkillProse(ROOT_DIR);
 
-  if (countErrors > 0 || headerErrors > 0 || themeErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
+  if (countErrors > 0 || versionErrors > 0 || headerErrors > 0 || themeErrors > 0 || proseErrors > 0 || skillProseErrors > 0) {
     process.exit(1);
   }
 

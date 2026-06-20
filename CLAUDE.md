@@ -222,9 +222,10 @@ There are three independently versioned components. Only bump the one(s) that ac
 - Bump when: CLI code changes (`cli/bin/`, `cli/engine/detect-antipatterns.mjs`, etc.)
 
 **Skills** (Claude Code plugin / skill definitions):
-- `.claude-plugin/plugin.json` → `version`
+- `.claude-plugin/plugin.json` → `version` (source of truth)
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
 - Bump when: skill content changes (`skill/`, reference files, command metadata, etc.)
+- After bumping, run `bun run build:release` so the committed `./plugin` subtree (`plugin/.claude-plugin/plugin.json` + `plugin/skills/impeccable/SKILL.md`) is regenerated to the new version. The build validator (`validatePluginVersions` in `scripts/build.js`) fails if `marketplace.json`, the `./plugin` manifest, or the bundled `SKILL.md` frontmatter disagree with `plugin.json` — this guards the marketplace install path against version drift (issue #274).
 
 **Chrome extension**:
 - `extension/manifest.json` → `version`

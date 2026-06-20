@@ -14,6 +14,7 @@ import {
   buildClaudePluginHooksManifest,
   buildCodexHooksManifest,
   buildCursorHooksManifest,
+  buildGitHubHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
 
@@ -75,10 +76,30 @@ describe('hook manifest builders', () => {
     assert.equal(beforeEdit.timeout, 5);
   });
 
+  it('builds GitHub Copilot repo-level hooks for the real detector hook', () => {
+    const manifest = buildGitHubHooksManifest();
+    const entry = manifest.hooks.postToolUse[0];
+
+    // GitHub's schema: flat entries (no nested `hooks`), lowercase event key,
+    // `bash`/`timeoutSec`, and a full-match `matcher` against the tool name.
+    assert.equal(manifest.version, 1);
+    assert.equal(Object.keys(manifest.hooks).length, 1);
+    assert.equal(entry.type, 'command');
+    assert.equal(entry.matcher, 'edit|create|apply_patch');
+    assert.equal(entry.timeoutSec, 5);
+    assert.equal(entry.timeout, undefined);
+    assert.equal(entry.command, undefined);
+    expectCommand(entry.bash, '.github/skills/impeccable/scripts/hook.mjs');
+    assert.ok(entry.bash.includes('git rev-parse --show-toplevel'));
+    assert.equal(manifest.hooks.PostToolUse, undefined);
+    assert.equal(manifest.hooks.preToolUse, undefined);
+  });
+
   it('routes supported hook builders and leaves other providers alone', () => {
     assert.ok(hooksJsonFor('claude'));
     assert.ok(hooksJsonFor('codex'));
     assert.ok(hooksJsonFor('cursor'));
+    assert.ok(hooksJsonFor('github'));
     assert.equal(hooksJsonFor('gemini'), null);
   });
 });
@@ -88,6 +109,7 @@ describe('generated hook artifacts in repo', () => {
     '.claude/settings.json',
     '.cursor/hooks.json',
     '.codex/hooks.json',
+    '.github/hooks/impeccable.json',
   ]) {
     it(`${rel} exists and is valid JSON`, () => {
       const abs = path.join(REPO_ROOT, rel);
@@ -100,6 +122,7 @@ describe('generated hook artifacts in repo', () => {
     assert.deepEqual(readJson('.claude/settings.json'), buildClaudeSettingsManifest());
     assert.deepEqual(readJson('.cursor/hooks.json'), buildCursorHooksManifest());
     assert.deepEqual(readJson('.codex/hooks.json'), buildCodexHooksManifest());
+    assert.deepEqual(readJson('.github/hooks/impeccable.json'), buildGitHubHooksManifest());
   });
 
   it('Claude project settings reference hook.mjs in .claude/skills', () => {
@@ -134,6 +157,18 @@ describe('generated hook artifacts in repo', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/hook-lib.mjs')));
     assert.ok(fs.existsSync(path.join(REPO_ROOT, '.agents/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+  });
+
+  it('GitHub Copilot repo hooks reference hook.mjs in the .github skill payload', () => {
+    const manifest = readJson('.github/hooks/impeccable.json');
+    const entry = manifest.hooks.postToolUse[0];
+
+    assert.equal(entry.matcher, 'edit|create|apply_patch');
+    expectCommand(entry.bash, '.github/skills/impeccable/scripts/hook.mjs');
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/SKILL.md')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/hook.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.github/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
   });
 
   it('does not generate probe scripts into provider skill payloads', () => {

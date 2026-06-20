@@ -280,6 +280,44 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('suppresses scroll anchoring via a stylesheet rule, not inline html/body style', () => {
+    // The scroll lock disables the browser's scroll-anchoring on the scroll
+    // root so it can't fight our manual scroll correction. Doing that by
+    // mutating `document.documentElement.style` / `document.body.style`
+    // inline makes React 19 report a hydration mismatch on the next
+    // Fast-Refresh re-render: <html>/<body> are server-rendered by frameworks
+    // like Next.js App Router, so a client-only inline `style` the server HTML
+    // never emitted trips "a tree hydrated but some attributes ... didn't
+    // match." That surfaced as a console.error and failed the
+    // nextjs-app-router live-e2e fixture's expectConsoleClean probe. The fix
+    // injects a <style> rule with the same computed effect instead.
+    assert.doesNotMatch(
+      SOURCE,
+      /document\.documentElement\.style\.overflowAnchor\s*=/,
+      'event=live_browser.scroll_anchor_hydration actor=browser operation=start_scroll_lock risk=react19_hydration_mismatch_on_next_app_router expected=stylesheet_rule actual=inline_style_on_html',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /document\.body\.style\.overflowAnchor\s*=/,
+      'scroll lock must not mutate <body> inline overflowAnchor — it desyncs server/client hydration on SSR frameworks',
+    );
+    assert.match(
+      SOURCE,
+      /const SCROLL_ANCHOR_LOCK_ID = 'impeccable-scroll-anchor-lock';/,
+      'the anchor-suppression style needs a stable id constant so it can be created and removed by id',
+    );
+    assert.match(
+      SOURCE,
+      /document\.getElementById\(SCROLL_ANCHOR_LOCK_ID\);[\s\S]{0,400}?createElement\('style'\)[\s\S]{0,400}?overflow-anchor:none[\s\S]{0,400}?\(document\.head \|\| document\.documentElement\)\.appendChild/,
+      'the scroll lock must suppress scroll anchoring with an injected <style> rule keyed by SCROLL_ANCHOR_LOCK_ID',
+    );
+    assert.match(
+      SOURCE,
+      /scrollLockAbort\.signal\.addEventListener\('abort', \(\) => \{\s*document\.getElementById\(SCROLL_ANCHOR_LOCK_ID\)\?\.remove\(\);/,
+      'stopping the scroll lock must remove the injected anchor-suppression <style> so it never outlives the session',
+    );
+  });
+
   it('global bar includes expandable page chat affordance', () => {
     assert.match(
       SOURCE,

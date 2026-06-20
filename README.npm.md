@@ -81,7 +81,7 @@ impeccable detect [options] [file-or-dir-or-url...]
 
 ## Part of Impeccable
 
-This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 23 commands for Claude, Cursor, Gemini, Codex, and more.
+This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 23 commands for Claude, Cursor, GitHub Copilot, Gemini, Codex, and more.
 
 ## License
 

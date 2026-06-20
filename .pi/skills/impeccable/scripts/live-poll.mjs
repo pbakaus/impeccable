@@ -2,11 +2,11 @@
  * CLI client for the live variant mode poll/reply protocol.
  *
  * Usage:
- *   npx impeccable poll                         # Block until browser event, print JSON
- *   npx impeccable poll --stream                # Experimental: keep polling; one JSON line per event
- *   npx impeccable poll --timeout=600000        # Custom timeout (ms); default is long-poll friendly
- *   npx impeccable poll --reply <id> done       # Reply "done" to event <id>
- *   npx impeccable poll --reply <id> error "msg" # Reply with error
+ *   node <scripts_path>/live-poll.mjs                         # Block until browser event, print JSON
+ *   node <scripts_path>/live-poll.mjs --stream                # Experimental: keep polling; one JSON line per event
+ *   node <scripts_path>/live-poll.mjs --timeout=600000        # Custom timeout (ms); default is long-poll friendly
+ *   node <scripts_path>/live-poll.mjs --reply <id> done       # Reply "done" to event <id>
+ *   node <scripts_path>/live-poll.mjs --reply <id> error "msg" # Reply with error
  */
 
 import { execFileSync } from 'node:child_process';
@@ -14,6 +14,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { completionAckForAcceptResult, completionTypeForAcceptResult } from './live/completion.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
+
+// Absolute path to a sibling script in this skill's scripts dir, so runtime
+// error hints print a directly-runnable command instead of a placeholder.
+const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
+const scriptCmd = (name) => `node "${path.join(SELF_DIR, name)}"`;
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
@@ -27,7 +32,7 @@ const EVENT_TYPES_NEEDING_AGENT_REPLY = new Set(['generate', 'steer', 'manual_ed
 function readServerInfo() {
   const record = readLiveServerInfo(process.cwd());
   if (!record) {
-    console.error('No running live server found. Start one with: npx impeccable live');
+    console.error(`No running live server found. Start one with: ${scriptCmd('live.mjs')}`);
     process.exit(1);
   }
   return record.info;
@@ -82,7 +87,7 @@ export function parseReplyArgs(args) {
 }
 
 function validateReplyArgs({ id, status }) {
-  const usage = "Usage: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]";
+  const usage = `Usage: ${scriptCmd('live-poll.mjs')} --reply <id> <status> [--file path] [--data '<json>'] [message]`;
   if (!id || id.startsWith('--')) {
     const err = new Error(`${usage}\nMissing event id after --reply.`);
     err.code = 'INVALID_REPLY_ARGS';
@@ -283,11 +288,11 @@ export async function runPollStream(base, token, {
 function handlePollError(err) {
   if (err.code === 'AUTH_FAILED') {
     console.error(err.message);
-    console.error('Try restarting: npx impeccable live stop && npx impeccable live');
+    console.error(`Try restarting: ${scriptCmd('live-server.mjs')} stop && ${scriptCmd('live.mjs')}`);
     process.exit(1);
   }
   if (err.cause?.code === 'ECONNREFUSED') {
-    console.error('Live server not running. Start one with: npx impeccable live');
+    console.error(`Live server not running. Start one with: ${scriptCmd('live.mjs')}`);
     process.exit(1);
   }
   if (err.code === 'ACK_TIMEOUT') {
@@ -331,7 +336,7 @@ Harness note:
   const info = readServerInfo();
   const base = `http://localhost:${info.port}`;
 
-  // Reply mode: npx impeccable poll --reply <id> <status> [--file path] [--data '<json>'] [message]
+  // Reply mode: node <scripts_path>/live-poll.mjs --reply <id> <status> [--file path] [--data '<json>'] [message]
   if (args.includes('--reply')) {
     let reply;
     try {
@@ -345,7 +350,7 @@ Harness note:
       await postReply(base, info.token, reply);
     } catch (err) {
       if (err.cause?.code === 'ECONNREFUSED') {
-        console.error('Live server not running. Start one with: npx impeccable live');
+        console.error(`Live server not running. Start one with: ${scriptCmd('live.mjs')}`);
       } else {
         console.error('Reply failed:', err.message);
       }

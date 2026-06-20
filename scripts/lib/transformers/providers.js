@@ -68,6 +68,9 @@ export const PROVIDERS = {
     displayName: 'GitHub Copilot',
     placeholderProvider: 'agents',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
+    emitHooks: 'github',
+    // GitHub Copilot discovers repo-level hooks under `.github/hooks/*.json`.
+    hooksManifestRel: 'hooks/impeccable.json',
   },
   kiro: {
     provider: 'kiro',

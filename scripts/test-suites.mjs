@@ -47,6 +47,7 @@ export const SUITES = {
           'tests/lib/transformers/providers.test.js',
           'tests/docs-integrity.test.js',
           'tests/skills-cli.test.js',
+          'tests/validate-plugin-versions.test.js',
         ],
       },
       {

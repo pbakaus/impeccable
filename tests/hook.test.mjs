@@ -537,7 +537,7 @@ describe('hook-admin.mjs', () => {
   it('hooks on accepts declined consent and installs missing provider manifests', () => {
     fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
     fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({ hook: { consent: 'declined', quiet: true } }));
-    for (const provider of ['.claude', '.agents', '.cursor']) {
+    for (const provider of ['.claude', '.agents', '.cursor', '.github']) {
       fs.mkdirSync(path.join(cwd, provider, 'skills', 'impeccable', 'scripts'), { recursive: true });
     }
     fs.mkdirSync(path.join(cwd, '.claude'), { recursive: true });
@@ -552,7 +552,7 @@ describe('hook-admin.mjs', () => {
 
     const out = runAdmin(['on']);
     assert.match(out, /Recorded local hook consent/);
-    assert.match(out, /Installed or repaired hook manifests for: \.claude, \.agents, \.cursor/);
+    assert.match(out, /Installed or repaired hook manifests for: \.claude, \.agents, \.cursor, \.github/);
 
     const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).hook;
     assert.equal(shared.enabled, true);
@@ -568,6 +568,9 @@ describe('hook-admin.mjs', () => {
     assert.match(codex, /\.agents\/skills\/impeccable\/scripts\/hook\.mjs/);
     const cursor = fs.readFileSync(path.join(cwd, '.cursor', 'hooks.json'), 'utf-8');
     assert.match(cursor, /\.cursor\/skills\/impeccable\/scripts\/hook-before-edit\.mjs/);
+    const github = JSON.parse(fs.readFileSync(path.join(cwd, '.github', 'hooks', 'impeccable.json'), 'utf-8'));
+    assert.equal(github.hooks.postToolUse[0].matcher, 'edit|create|apply_patch');
+    assert.match(github.hooks.postToolUse[0].bash, /\.github\/skills\/impeccable\/scripts\/hook\.mjs/);
   });
 
   it('ignore-rule overused-font requires explicit broad suppression', () => {
@@ -784,6 +787,13 @@ describe('payload()', () => {
     assert.equal(obj.additional_context, 'hello');
     assert.equal(obj.hookSpecificOutput, undefined);
   });
+
+  it('produces top-level additionalContext for GitHub Copilot', () => {
+    const obj = JSON.parse(payload('hello', 'PostToolUse', 'github'));
+    assert.equal(obj.additionalContext, 'hello');
+    assert.equal(obj.hookSpecificOutput, undefined);
+    assert.equal(obj.additional_context, undefined);
+  });
 });
 
 describe('runHook()', () => {
@@ -872,6 +882,50 @@ rounded:
     assert.match(r2.stdout, /side-tab:1/);
     assert.equal(r2.audit.emitted, true);
     assert.equal(r2.audit.kind, 'pending');
+  });
+
+  it('handles a GitHub Copilot edit event end-to-end and emits additionalContext', async () => {
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const githubEvent = {
+      sessionId: 'gh-1',
+      cwd,
+      toolName: 'edit',
+      toolArgs: JSON.stringify({ path: file, old_str: 'a', new_str: 'b' }),
+    };
+
+    const r = await runHook({ stdinJson: JSON.stringify(githubEvent), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.audit.harness, 'github');
+    assert.equal(r.audit.emitted, true);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.additionalContext.includes(ENVELOPE_PREFIX));
+    assert.match(out.additionalContext, /Design hook findings requiring review/);
+    assert.equal(out.hookSpecificOutput, undefined);
+  });
+
+  it('handles a GitHub Copilot apply_patch event end-to-end (interactive/cloud path)', async () => {
+    // The real bug the live test caught: interactive Copilot edits via
+    // apply_patch (raw patch string in toolArgs), which the matcher and runtime
+    // must both cover — not just the edit/create tools seen in `copilot -p`.
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const patch = [
+      '*** Begin Patch',
+      `*** Update File: ${file}`,
+      '+noop',
+      '*** End Patch',
+    ].join('\n');
+    const githubEvent = { sessionId: 'gh-ap', cwd, toolName: 'apply_patch', toolArgs: patch };
+
+    const r = await runHook({ stdinJson: JSON.stringify(githubEvent), env: {}, cwd, detector: det });
+    assert.equal(r.exitCode, 0);
+    assert.equal(r.audit.harness, 'github');
+    assert.equal(r.audit.tool, 'apply_patch');
+    assert.equal(r.audit.emitted, true);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.additionalContext.includes(ENVELOPE_PREFIX));
+    assert.match(out.additionalContext, /Design hook findings requiring review/);
   });
 
   it('emits a clean ack when the file has zero findings', async () => {
@@ -1365,6 +1419,79 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
     assert.equal(normalized.session_id, 'c1');
     assert.equal(normalized.cwd, '/proj');
     assert.equal(normalized.tool_input.file_path, 'src/App.jsx');
+  });
+
+  it('routes a GitHub Copilot postToolUse event (toolName/toolArgs) to the github harness', () => {
+    const event = { sessionId: 's1', cwd: '/proj', toolName: 'edit', toolArgs: '{"path":"src/App.tsx"}' };
+    assert.equal(resolveHarness({}, event), 'github');
+    assert.equal(resolveHarness({ IMPECCABLE_HOOK_HARNESS: 'github' }), 'github');
+    // A Claude/Codex event (tool_name/tool_input) must not be mistaken for github.
+    assert.equal(resolveHarness({}, { tool_name: 'Edit', tool_input: { file_path: 'a.tsx' } }), 'claude');
+  });
+
+  it('normalizes a GitHub edit event: JSON-string toolArgs.path -> tool_input.file_path', () => {
+    const normalized = normalizeHookEvent({
+      sessionId: 's1',
+      cwd: '/proj',
+      toolName: 'edit',
+      toolArgs: '{"path":"/proj/src/App.tsx","old_str":"a","new_str":"b"}',
+    }, '/fallback', 'github');
+    assert.equal(normalized.session_id, 's1');
+    assert.equal(normalized.cwd, '/proj');
+    assert.equal(normalized.tool_name, 'edit');
+    assert.equal(normalized.tool_input.file_path, '/proj/src/App.tsx');
+  });
+
+  it('normalizes a GitHub apply_patch event: raw patch string -> tool_input.command', () => {
+    // Interactive Copilot and the cloud agent edit via apply_patch, whose
+    // toolArgs is a raw OpenAI-format patch string, not JSON.
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: /proj/src/Card.css',
+      "+body { font-family: 'Inter'; }",
+      '*** End Patch',
+    ].join('\n');
+    const normalized = normalizeHookEvent({
+      sessionId: 's-ap', cwd: '/proj', toolName: 'apply_patch', toolArgs: patch,
+    }, '/fallback', 'github');
+    assert.equal(normalized.tool_name, 'apply_patch');
+    assert.equal(normalized.tool_input.command, patch);
+    // resolveTargetFiles understands apply_patch via tool_input.command.
+    assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/src/Card.css']);
+  });
+
+  it('does not misroute an edit whose content contains apply_patch markers', () => {
+    // An edit/create payload is JSON; its edited content may legitimately
+    // contain "*** Begin Patch" text (e.g. editing docs about apply_patch).
+    // That must still take the JSON path so `path` is extracted, not be
+    // mistaken for a raw apply_patch payload.
+    const normalized = normalizeHookEvent({
+      sessionId: 's-edit', cwd: '/proj', toolName: 'edit',
+      toolArgs: JSON.stringify({
+        path: '/proj/docs/patches.md',
+        old_str: 'old',
+        new_str: '*** Begin Patch\n*** Add File: x\n*** End Patch',
+      }),
+    }, '/fallback', 'github');
+    assert.equal(normalized.tool_name, 'edit');
+    assert.equal(normalized.tool_input.file_path, '/proj/docs/patches.md');
+    assert.equal(normalized.tool_input.command, undefined);
+    assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/docs/patches.md']);
+  });
+
+  it('normalizes a GitHub create event and tolerates malformed toolArgs', () => {
+    const created = normalizeHookEvent({
+      sessionId: 's2', cwd: '/proj', toolName: 'create',
+      toolArgs: '{"path":"/proj/styles.css","file_text":"body{}"}',
+    }, '/fallback', 'github');
+    assert.equal(created.tool_name, 'create');
+    assert.equal(created.tool_input.file_path, '/proj/styles.css');
+
+    const broken = normalizeHookEvent({
+      sessionId: 's3', cwd: '/proj', toolName: 'edit', toolArgs: 'not json{',
+    }, '/fallback', 'github');
+    assert.equal(broken.session_id, 's3');
+    assert.equal(broken.tool_input.file_path, undefined);
   });
 });
 
