@@ -585,6 +585,39 @@ describe('loadContext (monorepo project context)', () => {
     assert.doesNotMatch(res.stdout, /^NO_PRODUCT_MD:/);
   });
 
+  it('excludes negated workspace packages from the selection candidates', () => {
+    write('pnpm-workspace.yaml', 'packages:\n  - "packages/*"\n  - "!packages/internal"\n');
+    write('PRODUCT.md', '# Root product\n');
+    write('packages/web/src/App.jsx', 'export default null;\n');
+    write('packages/internal/src/App.jsx', 'export default null;\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    const selection = parseTargetSelection(res.stdout);
+    const paths = selection.targetCandidates.map((candidate) => candidate.path);
+    assert.ok(paths.includes('packages/web'), `expected packages/web in ${JSON.stringify(paths)}`);
+    assert.ok(!paths.includes('packages/internal'), `packages/internal should be excluded: ${JSON.stringify(paths)}`);
+  });
+
+  it('does not block on target selection when the monorepo has no child apps', () => {
+    write('package.json', JSON.stringify({ private: true, workspaces: ['.'] }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    assert.doesNotMatch(res.stdout, /TARGET_SELECTION_REQUIRED/);
+    assert.match(res.stdout, /# Root product/);
+  });
+
   it('lets --target . explicitly select the monorepo root', () => {
     writeMonorepo();
     const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', '.'], {
