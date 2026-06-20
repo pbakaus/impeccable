@@ -24,6 +24,7 @@ const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scr
 const CLAUDE_PLUGIN_HOOK = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
+const GITHUB_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs';
 
 export function buildClaudeSettingsManifest() {
   return {
@@ -106,6 +107,31 @@ export function buildCursorHooksManifest() {
   };
 }
 
+// GitHub Copilot reads project hooks from `.github/hooks/*.json`. Its schema
+// differs from Claude/Codex/Cursor: the event key is lowercase `postToolUse`,
+// each entry is flat (no nested `hooks` array), the command lives under `bash`
+// (with an optional `powershell` sibling), the timeout key is `timeoutSec`, and
+// `matcher` is a full-match regex (`^(?:PATTERN)$`) tested against the tool name.
+// Copilot's file-editing tools are `edit` ({path, old_str, new_str}) and
+// `create` ({path, file_text}), so the matcher targets those two. The same
+// manifest is honored by both the CLI and the cloud/app agent for the repo.
+// https://docs.github.com/en/copilot/reference/hooks-reference
+export function buildGitHubHooksManifest() {
+  return {
+    version: 1,
+    hooks: {
+      postToolUse: [
+        {
+          type: 'command',
+          matcher: 'edit|create',
+          bash: `node "${GITHUB_PROJECT_HOOK}"`,
+          timeoutSec: TIMEOUT_SECONDS,
+        },
+      ],
+    },
+  };
+}
+
 export function hooksJsonFor(provider) {
   switch (provider) {
     case 'claude':
@@ -114,6 +140,8 @@ export function hooksJsonFor(provider) {
       return buildCodexHooksManifest();
     case 'cursor':
       return buildCursorHooksManifest();
+    case 'github':
+      return buildGitHubHooksManifest();
     default:
       return null;
   }

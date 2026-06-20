@@ -959,13 +959,61 @@ export function resolveTargetFiles(event, projectCwd) {
 export function resolveHarness(env = {}, event = null) {
   const explicit = env?.IMPECCABLE_HOOK_HARNESS;
   if (explicit === 'cursor') return 'cursor';
+  if (explicit === 'github') return 'github';
   if (explicit === 'claude' || explicit === 'codex') return 'claude';
+  // GitHub Copilot's postToolUse event uses camelCase `toolName`/`toolArgs` and
+  // has no `tool_name`/`tool_input`. That shape is the discriminator.
+  if (event && typeof event === 'object'
+    && (typeof event.toolName === 'string' || event.toolArgs !== undefined)
+    && event.tool_name === undefined && event.tool_input === undefined) {
+    return 'github';
+  }
   if (typeof event?.conversation_id === 'string' && event.conversation_id) return 'cursor';
   return 'claude';
 }
 
+// GitHub Copilot's postToolUse payload is
+//   { sessionId, timestamp, cwd, toolName, toolArgs, toolResult }
+// where `toolArgs` is a JSON *string* (double-encoded), e.g.
+//   "{\"path\":\"/abs/app.tsx\",\"old_str\":\"...\",\"new_str\":\"...\"}".
+// The file-editing tools are `edit` ({path, old_str, new_str}) and `create`
+// ({path, file_text}); both carry the touched file under `path`. Map that onto
+// the internal `{ tool_name, tool_input: { file_path }, cwd, session_id }` shape
+// the rest of the hook understands. The detector reads the file from disk after
+// the tool ran, so only the path (not the proposed content) is needed here.
+export function parseGitHubToolArgs(toolArgs) {
+  if (toolArgs && typeof toolArgs === 'object' && !Array.isArray(toolArgs)) return toolArgs;
+  if (typeof toolArgs === 'string' && toolArgs.trim()) {
+    try {
+      const parsed = JSON.parse(toolArgs);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizeGitHubEvent(event, projectCwd) {
+  const cwd = event.cwd || envProjectDir(projectCwd) || projectCwd;
+  const sessionId = event.sessionId || event.session_id || 'unknown';
+  const args = parseGitHubToolArgs(event.toolArgs);
+  const filePath = args.path || args.file_path || args.filePath || args.target_file;
+  const toolInput = event.tool_input && typeof event.tool_input === 'object' ? { ...event.tool_input } : {};
+  if (typeof filePath === 'string' && filePath) toolInput.file_path = filePath;
+  return {
+    ...event,
+    cwd,
+    session_id: sessionId,
+    tool_name: event.toolName || event.tool_name || null,
+    tool_input: toolInput,
+  };
+}
+
 export function normalizeHookEvent(event, projectCwd, harness = 'claude') {
-  if (!event || typeof event !== 'object' || harness !== 'cursor') return event;
+  if (!event || typeof event !== 'object') return event;
+  if (harness === 'github') return normalizeGitHubEvent(event, projectCwd);
+  if (harness !== 'cursor') return event;
 
   const cwd = event.cwd
     || (Array.isArray(event.workspace_roots) && event.workspace_roots[0])
@@ -1519,6 +1567,11 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
 export function payload(text, eventName = 'PostToolUse', harness = 'claude') {
   if (harness === 'cursor') {
     return JSON.stringify({ additional_context: text });
+  }
+  // GitHub Copilot's postToolUse hook injects context via a top-level
+  // `additionalContext` string (alongside an optional `modifiedResult`).
+  if (harness === 'github') {
+    return JSON.stringify({ additionalContext: text });
   }
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: eventName, additionalContext: text },
