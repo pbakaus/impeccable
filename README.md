@@ -260,11 +260,12 @@ If you reach for one command often, pin it with `/impeccable pin audit` to get `
 
 ## Design hook
 
-On Claude Code, Codex, and Cursor, `npx impeccable install` and `npx impeccable update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector on direct UI file edits and surfaces findings back into the agent flow. Claude Code and Codex surface findings after the edit. Cursor blocks bad proposed writes before they land.
+On Claude Code, GitHub Copilot, Codex, and Cursor, `npx impeccable install` and `npx impeccable update` install a provider-native hook manifest along with the skill payload. The hook runs the Impeccable design detector on direct UI file edits and surfaces findings back into the agent flow. Claude Code, GitHub Copilot, and Codex surface findings after the edit. Cursor blocks bad proposed writes before they land.
 
 Installed hook surfaces:
 
 - Claude Code: `.claude/settings.local.json` (gitignored, machine-local) runs `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs`. A hook moved into the shared `settings.json` is honored in place.
+- GitHub Copilot: `.github/hooks/impeccable.json` (committed, shared by the Copilot CLI and the cloud agent) runs `.github/skills/impeccable/scripts/hook.mjs`. The Copilot CLI activates it once the file is on the repository's default branch and the folder is trusted.
 - Cursor: `.cursor/hooks.json` runs `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`.
 - Codex: `.codex/hooks.json` runs `.agents/skills/impeccable/scripts/hook.mjs`.
 
@@ -310,11 +311,11 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 
 - [Cursor](https://cursor.com)
 - [Claude Code](https://claude.ai/code)
-- [OpenCode](https://opencode.ai)
-- [Pi](https://pi.dev)
+- [GitHub Copilot](https://github.com/features/copilot)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
-- [VS Code Copilot](https://code.visualstudio.com)
+- [OpenCode](https://opencode.ai)
+- [Pi](https://pi.dev)
 - [Kiro](https://kiro.dev)
 - [Trae](https://trae.ai)
 - [Rovo Dev](https://www.atlassian.com/software/rovo)
