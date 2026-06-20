@@ -1460,6 +1460,25 @@ describe('resolveHarness() / normalizeHookEvent()', () => {
     assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/src/Card.css']);
   });
 
+  it('does not misroute an edit whose content contains apply_patch markers', () => {
+    // An edit/create payload is JSON; its edited content may legitimately
+    // contain "*** Begin Patch" text (e.g. editing docs about apply_patch).
+    // That must still take the JSON path so `path` is extracted, not be
+    // mistaken for a raw apply_patch payload.
+    const normalized = normalizeHookEvent({
+      sessionId: 's-edit', cwd: '/proj', toolName: 'edit',
+      toolArgs: JSON.stringify({
+        path: '/proj/docs/patches.md',
+        old_str: 'old',
+        new_str: '*** Begin Patch\n*** Add File: x\n*** End Patch',
+      }),
+    }, '/fallback', 'github');
+    assert.equal(normalized.tool_name, 'edit');
+    assert.equal(normalized.tool_input.file_path, '/proj/docs/patches.md');
+    assert.equal(normalized.tool_input.command, undefined);
+    assert.deepEqual(resolveTargetFiles(normalized, '/proj'), ['/proj/docs/patches.md']);
+  });
+
   it('normalizes a GitHub create event and tolerates malformed toolArgs', () => {
     const created = normalizeHookEvent({
       sessionId: 's2', cwd: '/proj', toolName: 'create',

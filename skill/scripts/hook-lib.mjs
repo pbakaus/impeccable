@@ -1005,7 +1005,17 @@ export function parseGitHubToolArgs(toolArgs) {
 const APPLY_PATCH_MARKER = /\*\*\* (?:Begin Patch|Add File:|Update File:|Delete File:)/;
 
 function looksLikeApplyPatch(rawArgs) {
-  return typeof rawArgs === 'string' && APPLY_PATCH_MARKER.test(rawArgs);
+  if (typeof rawArgs !== 'string' || !APPLY_PATCH_MARKER.test(rawArgs)) return false;
+  // Guard against an edit/create payload whose edited *content* happens to
+  // contain patch markers: that payload is a JSON object string, whereas a real
+  // apply_patch payload is a raw patch string that does not parse as JSON. Only
+  // treat non-JSON-object strings as apply_patch so edit events still get their
+  // `path` extracted.
+  try {
+    const parsed = JSON.parse(rawArgs);
+    if (parsed && typeof parsed === 'object') return false;
+  } catch { /* not JSON → genuine raw patch */ }
+  return true;
 }
 
 function applyPatchText(rawArgs) {

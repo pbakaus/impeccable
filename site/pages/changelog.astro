@@ -23,6 +23,14 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
+    <article id="next" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.x</span><span class="cf-date">Upcoming</span><span class="cf-current-badge">Upcoming</span></header>
+      <p class="cf-entry-lead">The design hook now works in GitHub Copilot, so direct edits get the same post-edit design feedback that Claude Code, Codex, and Cursor already provide.</p>
+      <ul class="cf-items">
+        <li><strong>Design hooks for GitHub Copilot.</strong> Installing the skill adds a <code>.github/hooks/impeccable.json</code> hook that runs the detector after Copilot edits a UI file and feeds the findings back as a focused design reminder. It covers both the Copilot CLI and the cloud agent, and recognizes every edit path Copilot uses, including <code>apply_patch</code>.</li>
+      </ul>
+    </article>
+
     <article id="v3.7.1" class="cf-entry cf-entry--current">
       <header class="cf-entry-head"><span class="cf-version">v3.7.1</span><span class="cf-date">June 16, 2026</span><span class="cf-current-badge">Current</span></header>
       <p class="cf-entry-lead">A packaging fix so the bundled detector runs everywhere.</p>

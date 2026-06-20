@@ -1078,6 +1078,12 @@ function hookArtifactsForProvider(bundleDir, root, provider) {
 }
 
 function hookScriptPathForProvider(skillRoot, provider) {
+  // `.github` is intentionally absent: its hook manifest (`.github/hooks/
+  // impeccable.json`) is a committed, team-shared file that the Copilot cloud
+  // agent and every teammate read, so the command must stay portable
+  // (`$(git rev-parse --show-toplevel)/.github/skills/...`). Rewriting it to a
+  // machine-local absolute skillRoot path would break those. GitHub skills are
+  // project-scoped (not a home-provider), so the project-relative path resolves.
   if (provider === '.cursor') {
     return join(skillRoot, provider, 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs');
   }
