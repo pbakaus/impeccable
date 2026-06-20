@@ -111,13 +111,6 @@ import '../styles/changelog-faq-kinpaku.css';
       </ul>
     </article>
 
-    <article id="cli-v3.0.4" class="cf-entry">
-      <header class="cf-entry-head"><span class="cf-version">CLI v3.0.4</span><span class="cf-date">June 19, 2026</span></header>
-      <ul class="cf-items">
-        <li><strong>Unknown commands now fail loudly.</strong> A mistyped or unrecognized subcommand such as <code>impeccable instal</code> used to be treated as a path to scan, printing a cryptic <code>Warning: cannot access instal</code> and exiting 0, so typos and stale cached versions read as if the command itself were broken. The CLI now prints <code>Unknown command</code> and points to <code>impeccable --help</code>, exiting non-zero. The <code>npx impeccable src/</code> detect shorthand still works for paths, URLs, and flags. Reported by <a href="https://github.com/Fuitad" target="_blank" rel="noopener">@Fuitad</a> in <a href="https://github.com/pbakaus/impeccable/issues/266" target="_blank" rel="noopener">#266</a>.</li>
-      </ul>
-    </article>
-
     <article id="cli-v3.0.3" class="cf-entry">
       <header class="cf-entry-head"><span class="cf-version">CLI v3.0.3</span><span class="cf-date">June 17, 2026</span></header>
       <ul class="cf-items">
