@@ -22,11 +22,17 @@
 import fs from 'fs';
 import path from 'path';
 
-/** Pull the `version:` value out of a SKILL.md leading frontmatter block. */
+/**
+ * Pull the `version:` value out of a SKILL.md leading frontmatter block.
+ * CRLF-tolerant (`\r?\n`) to match the shared parseFrontmatter in
+ * scripts/lib/utils.js — a bundle saved with CRLF line endings must not read
+ * as a null version and trip a false mismatch. `(.+)` stops at the line
+ * terminator (so a trailing `\r` is excluded), and `.trim()` mops up the rest.
+ */
 export function readSkillFrontmatterVersion(content) {
-  const fm = content.match(/^---\n([\s\S]*?)\n---/);
+  const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!fm) return null;
-  const line = fm[1].match(/^version:\s*(.+)$/m);
+  const line = fm[1].match(/^version:\s*(.+)/m);
   return line ? line[1].trim().replace(/^['"]|['"]$/g, '') : null;
 }
 

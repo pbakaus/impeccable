@@ -149,4 +149,29 @@ describe('readSkillFrontmatterVersion', () => {
   test('returns null when there is no frontmatter block', () => {
     expect(readSkillFrontmatterVersion('no frontmatter here')).toBeNull();
   });
+
+  test('reads a version from CRLF-encoded frontmatter', () => {
+    const crlf = '---\r\nname: impeccable\r\nversion: 3.7.1\r\nuser-invocable: true\r\n---\r\n\r\nBody.\r\n';
+    expect(readSkillFrontmatterVersion(crlf)).toBe('3.7.1');
+  });
+});
+
+describe('collectPluginVersions with CRLF line endings', () => {
+  let root;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-ver-crlf-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  test('a CRLF-saved SKILL.md at the right version is not a false mismatch', () => {
+    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1', subtreePlugin: '3.7.1', skill: '3.7.1' });
+    // Re-save the bundled SKILL.md with CRLF line endings.
+    const skillPath = path.join(root, 'plugin/skills/impeccable/SKILL.md');
+    fs.writeFileSync(skillPath, fs.readFileSync(skillPath, 'utf-8').replace(/\n/g, '\r\n'));
+    const { mismatches, errors } = collectPluginVersions(root);
+    expect(mismatches).toEqual([]);
+    expect(errors).toEqual([]);
+  });
 });
