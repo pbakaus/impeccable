@@ -135,11 +135,17 @@ export function resolveTargetSelection(cwd = process.cwd(), options = {}) {
   ) {
     return null;
   }
+  const targetCandidates = discoverTargetCandidates(project.repoRoot);
+  // No discoverable child apps (e.g. `workspaces: ["."]`, a root-only workspace,
+  // or a marker file with no apps/packages children): there is nothing to choose,
+  // so treat the repo root as the active project rather than blocking on an empty
+  // selection prompt that the user cannot answer.
+  if (targetCandidates.length === 0) return null;
   return {
     targetPath: null,
     projectRoot: project.projectRoot,
     repoRoot: project.repoRoot,
-    targetCandidates: discoverTargetCandidates(project.repoRoot),
+    targetCandidates,
   };
 }
 
@@ -211,6 +217,12 @@ function findMonorepoRoot(startDir) {
   const homeDir = path.resolve(os.homedir());
   while (true) {
     if (dir === homeDir) return null;
+    // isMonorepoRoot is checked before hasGitBoundary on purpose: a workspace
+    // root that also carries its own .git is still recognized. The trade-off is
+    // deliberate — a directory with a monorepo *marker* but no workspace patterns
+    // and no apps/packages children is not a monorepo root, so its .git stops
+    // traversal and a further-up root is not searched. The nested .git is treated
+    // as an independent project boundary, which is the intended isolation.
     if (isMonorepoRoot(dir)) return dir;
     if (hasGitBoundary(dir)) return null;
     const parent = path.dirname(dir);
@@ -245,7 +257,8 @@ function hasFallbackWorkspaceChildren(dir) {
 
 function discoverTargetCandidates(repoRoot) {
   const roots = new Map();
-  for (const pattern of readWorkspacePatterns(repoRoot)) {
+  const patterns = readWorkspacePatterns(repoRoot);
+  for (const pattern of patterns) {
     for (const root of discoverRootsForPattern(repoRoot, pattern)) {
       roots.set(path.relative(repoRoot, root).split(path.sep).join('/'), root);
     }
@@ -268,6 +281,10 @@ function discoverTargetCandidates(repoRoot) {
   }
   return [...roots.entries()]
     .filter(([rel]) => rel && !rel.startsWith('..'))
+    // Honor negated workspace patterns (e.g. "!packages/internal"). resolveWorkspaceProjectRoot
+    // sends an excluded package back to the repo root, so an excluded folder must not appear as a
+    // selectable target — choosing it would silently resolve to the root instead.
+    .filter(([rel]) => !isExcludedByWorkspacePattern(rel.split('/').filter(Boolean), patterns))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([rel, root]) => {
       const targetExample = findTargetExample(repoRoot, root);
@@ -290,6 +307,12 @@ function resolveCandidateContextSummary(repoRoot, projectRoot, targetPath) {
   };
 }
 
+// Selection candidates surface one of four statuses: 'child' (a canonical
+// PRODUCT.md/DESIGN.md directly in the app root), 'inherited' (resolved from the
+// repo root in a monorepo), 'missing' (no file found), and 'fallback'. 'fallback'
+// intentionally covers two non-canonical locations: a file inside the project
+// root but in a subdirectory (FALLBACK_DIRS, e.g. `.agents/context/`), and a file
+// outside both the project and repo roots (IMPECCABLE_CONTEXT_DIR override).
 function contextSourceStatus(filePath, repoRoot, projectRoot) {
   if (!filePath) return 'missing';
   const absPath = path.resolve(filePath);
