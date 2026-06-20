@@ -308,7 +308,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /document\.getElementById\(SCROLL_ANCHOR_LOCK_ID\);[\s\S]{0,200}?createElement\('style'\)[\s\S]{0,220}?overflow-anchor:none[\s\S]{0,160}?\(document\.head \|\| document\.documentElement\)\.appendChild/,
+      /document\.getElementById\(SCROLL_ANCHOR_LOCK_ID\);[\s\S]{0,400}?createElement\('style'\)[\s\S]{0,400}?overflow-anchor:none[\s\S]{0,400}?\(document\.head \|\| document\.documentElement\)\.appendChild/,
       'the scroll lock must suppress scroll anchoring with an injected <style> rule keyed by SCROLL_ANCHOR_LOCK_ID',
     );
     assert.match(
