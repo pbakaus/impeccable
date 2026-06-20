@@ -18,7 +18,7 @@ import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 // Absolute path to a sibling script in this skill's scripts dir, so runtime
 // error hints print a directly-runnable command instead of a placeholder.
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
-const scriptCmd = (name) => `node ${path.join(SELF_DIR, name)}`;
+const scriptCmd = (name) => `node "${path.join(SELF_DIR, name)}"`;
 
 // Node's built-in fetch (undici under the hood) enforces a 300s headers
 // timeout that can't be lowered per-request. We cap each request below
