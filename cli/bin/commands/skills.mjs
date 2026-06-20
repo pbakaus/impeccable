@@ -23,9 +23,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.agent', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev'];
 const PROVIDER_ALIASES = {
   agents: '.agents',
+  antigravity: '.agent',
   claude: '.claude',
   'claude-code': '.claude',
   codex: '.agents',
@@ -44,6 +45,7 @@ const PROVIDER_ALIASES = {
 };
 
 const PROVIDER_DISPLAY = {
+  '.agent': { name: 'Antigravity', input: 'antigravity' },
   '.agents': { name: 'Codex CLI', input: 'codex' },
   '.claude': { name: 'Claude Code', input: 'claude' },
   '.cursor': { name: 'Cursor', input: 'cursor' },
@@ -57,7 +59,7 @@ const PROVIDER_DISPLAY = {
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
 };
-const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev'];
+const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'antigravity'];
 
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
@@ -67,6 +69,11 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.codex', provider: '.agents' },
   { home: '.cursor', provider: '.cursor' },
   { home: '.gemini', provider: '.gemini' },
+  // Antigravity nests under ~/.gemini too, so any of these also trips the
+  // .gemini hint above (harmless double-detection -- both get pre-selected).
+  { home: '.gemini/antigravity', provider: '.agent' },
+  { home: '.gemini/antigravity-cli', provider: '.agent' },
+  { home: '.gemini/antigravity-ide', provider: '.agent' },
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
   { home: '.qoder', provider: '.qoder' },
@@ -513,7 +520,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/');
+    .replace(/\.(claude|cursor|agents|agent|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {

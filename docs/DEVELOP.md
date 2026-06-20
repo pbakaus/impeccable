@@ -165,6 +165,7 @@ The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, g
 - [OpenCode Skills](https://opencode.ai/docs/skills/)
 - [Pi Skills](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md)
 - [Qoder Skills](https://docs.qoder.com/extensions/skills)
+- [Antigravity Skills](https://antigravity.google/docs/skills)
 
 ## Repository Structure
 

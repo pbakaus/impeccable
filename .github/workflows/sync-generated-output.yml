@@ -21,6 +21,7 @@ concurrency:
 
 env:
   GENERATED_PATHS: >-
+    .agent
     .agents
     .claude
     .cursor

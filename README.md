@@ -124,7 +124,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, or `rovo-dev`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `antigravity`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -234,6 +234,11 @@ cp -r dist/qoder/.qoder your-project/
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
 
+**Antigravity:**
+```bash
+cp -r dist/antigravity/.agent your-project/
+```
+
 ## Usage
 
 Once installed, every command runs through the single `/impeccable` skill:
@@ -319,6 +324,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Trae](https://trae.ai)
 - [Rovo Dev](https://www.atlassian.com/software/rovo)
 - [Qoder](https://qoder.com)
+- [Antigravity](https://antigravity.google)
 
 ## Community & Ecosystem
 

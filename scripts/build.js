@@ -501,6 +501,7 @@ This folder contains skills for all supported tools:
   .gemini/    -> Gemini CLI
   .codex/     -> Codex custom agents (Codex skills use .agents/)
   .agents/    -> Codex CLI
+  .agent/     -> Antigravity
   .github/    -> GitHub Copilot
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
@@ -510,6 +511,7 @@ This folder contains skills for all supported tools:
 
 To install, copy the relevant folder(s) into your project root.
 For Codex, repo and user skill installs come from .agents/skills.
+For Antigravity, skills come from .agent/skills/.
 These are hidden folders (dotfiles). Press Cmd+Shift+. in Finder to see them.
 `);
 
