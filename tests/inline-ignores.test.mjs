@@ -55,6 +55,11 @@ describe('parseInlineIgnores', () => {
     expect([...parseInlineIgnores('{# impeccable-disable overused-font #}').file]).toEqual(['overused-font']);
   });
 
+  test('directive keyword is case-insensitive (fast-path matches the regex)', () => {
+    expect([...parseInlineIgnores('// Impeccable-Disable overused-font').file]).toEqual(['overused-font']);
+    expect([...parseInlineIgnores('/* IMPECCABLE-DISABLE-LINE side-tab */').line.get(1)]).toEqual(['side-tab']);
+  });
+
   test('no directive present is a cheap no-op', () => {
     const d = parseInlineIgnores('.a { color: red }');
     expect(d.file.size).toBe(0);

@@ -36,8 +36,8 @@ const DIRECTIVE_RE = /impeccable-(disable-next-line|disable-line|disable)\b[ \t]
 
 // Trailing comment closers, so `*/`, `*/}`, `-->`, `*}`, `#}`, `%>`, `}}` don't
 // leak into the rule list. Anchored to end-of-line; the leading `\s*` mops up the
-// space before the closer.
-const TRAILING_CLOSER_RE = /\s*(?:\*\/\}?|--+>|-->|\*\}|#\}|%>|\}\})\s*$/;
+// space before the closer. `--+>` covers `-->` and any longer dash run.
+const TRAILING_CLOSER_RE = /\s*(?:\*\/\}?|--+>|\*\}|#\}|%>|\}\})\s*$/;
 
 function normalizeRule(token) {
   return String(token || '').trim().toLowerCase();
@@ -49,8 +49,9 @@ function normalizeRule(token) {
 // are unambiguous separators.
 function parseRuleList(remainder) {
   let text = String(remainder || '').replace(TRAILING_CLOSER_RE, '').trim();
-  const sep = text.match(/^(.*?)(?:\s*(?:--+|:)\s*.*)?$/s);
-  if (sep) text = sep[1];
+  // Cut off a human reason at the first `--` (eslint) or `:` (biome) separator.
+  const reasonSep = text.match(/\s*(?:--+|:)\s*/);
+  if (reasonSep) text = text.slice(0, reasonSep.index);
   const tokens = text.split(/[\s,]+/).map(normalizeRule).filter(Boolean);
   if (tokens.length === 0 || tokens.includes('*')) return ['*'];
   return tokens;
@@ -84,7 +85,8 @@ function parseInlineIgnores(content) {
   const result = { file: new Set(), line: new Map(), nextLine: new Map() };
   const text = typeof content === 'string' ? content : '';
   // Cheap bail-out: the substring must be present for any directive to exist.
-  if (text.indexOf('impeccable-disable') === -1) return result;
+  // Case-insensitive to match DIRECTIVE_RE's `i` flag (e.g. `Impeccable-Disable`).
+  if (!/impeccable-disable/i.test(text)) return result;
 
   const lines = text.split(/\r\n|\r|\n/);
   for (let i = 0; i < lines.length; i++) {
