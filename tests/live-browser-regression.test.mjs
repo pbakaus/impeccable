@@ -559,15 +559,37 @@ describe('live-browser.js regression guards', () => {
       /function syncPageInteractionCursor\(\)[\s\S]{0,420}?cursorForInsertAxis/,
       'insert picking cursor follows row/column axis',
     );
-    assert.match(
+    // The pick / insert cursor must be driven by an injected <style>, never by a
+    // class or inline style on <html>. <html>/<body> are server-rendered by
+    // frameworks like Next.js App Router, so a client-only attribute the server
+    // HTML never emitted trips React 19's "a tree hydrated but some attributes
+    // ... didn't match" on the next Fast-Refresh re-render — surfacing as a
+    // console.error that fails the nextjs-app-router live-e2e expectConsoleClean
+    // probe. Same fix shape as the scroll-anchor lock above.
+    assert.doesNotMatch(
       SOURCE,
-      /function ensurePickCursorStyle\(\)[\s\S]{0,420}?cursor: crosshair !important/,
-      'pick mode injects a crosshair cursor that wins over page pointer styles',
+      /document\.documentElement\.classList\.(?:add|remove|toggle)\(/,
+      'event=live_browser.pick_cursor_hydration actor=browser operation=sync_page_interaction_cursor risk=react19_hydration_mismatch_on_next_app_router expected=stylesheet_rule actual=class_on_html',
     );
     assert.match(
       SOURCE,
-      /document\.documentElement\.classList\.add\(PICK_CURSOR_CLASS\)/,
-      'pick mode toggles a document-level class for the crosshair cursor',
+      /const PICK_CURSOR_STYLE_ID = PREFIX \+ '-pick-cursor-style';/,
+      'the pick-cursor style needs a stable id constant so it can be created and removed by id',
+    );
+    assert.match(
+      SOURCE,
+      /function setPageInteractionCursor\(cursor\)[\s\S]{0,700}?cursor: ' \+ cursor \+ ' !important/,
+      'pick / insert cursor is applied through the injected <style> textContent, keyed by PICK_CURSOR_STYLE_ID',
+    );
+    assert.match(
+      SOURCE,
+      /cursor = 'crosshair'/,
+      'pick mode uses a crosshair cursor that wins over page pointer styles',
+    );
+    assert.match(
+      SOURCE,
+      /document\.getElementById\(PICK_CURSOR_STYLE_ID\)\?\.remove\(\)/,
+      'exiting live mode removes the injected pick-cursor <style> so it never outlives the session',
     );
     assert.match(SOURCE, /function hitSiblingInsertGap\(/, 'insert mode detects gaps between siblings');
     assert.match(SOURCE, /function resolveInsertHover\(/, 'insert hover resolves axis-aware boundaries');

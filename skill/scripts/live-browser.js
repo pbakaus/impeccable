@@ -57,7 +57,7 @@
   const Z = { highlight: 100001, bar: 100005, picker: 100007, toast: 100010 };
   const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'; // ease-out-quint
   const PREFIX = 'impeccable-live';
-  const PICK_CURSOR_CLASS = PREFIX + '-pick-cursor';
+  const PICK_CURSOR_STYLE_ID = PREFIX + '-pick-cursor-style';
   const MANUAL_APPLY_STATE_TTL_MS = 15 * 60 * 1000;
   const sessionState = window.__IMPECCABLE_LIVE_SESSION__?.createLiveBrowserSessionState({
     prefix: PREFIX,
@@ -1916,45 +1916,45 @@
     syncPageInteractionCursor();
   }
 
-  let pageInteractionCursorActive = false;
-
-  function ensurePickCursorStyle() {
-    if (document.getElementById(PREFIX + '-pick-cursor-style')) return;
-    const style = document.createElement('style');
-    style.id = PREFIX + '-pick-cursor-style';
+  /**
+   * Drive the page-level pick / insert cursor through the textContent of one
+   * injected <style>, never by mutating <html> (className or inline style).
+   * Frameworks that server-render the <html>/<body> roots (Next.js App Router)
+   * report a React 19 hydration mismatch when the client adds an attribute the
+   * server HTML never emitted, so a `class`/inline `style` toggled on
+   * `document.documentElement` trips "a tree hydrated but some attributes ...
+   * didn't match" on the next Fast-Refresh re-render. Keying the cursor off a
+   * stable-id <style> keeps the effect off the hydrated host elements (same
+   * shape as the scroll-anchor lock). A falsy cursor clears the rule.
+   */
+  function setPageInteractionCursor(cursor) {
+    let style = document.getElementById(PICK_CURSOR_STYLE_ID);
+    if (!cursor) {
+      if (style) style.textContent = '';
+      return;
+    }
+    if (!style) {
+      style = document.createElement('style');
+      style.id = PICK_CURSOR_STYLE_ID;
+      // Styles the host page, not the chrome - inside the adapter's shadow UI
+      // root (uiAppendStyle's target) these selectors would match nothing.
+      (document.head || document.documentElement).appendChild(style);
+    }
     style.textContent =
-      'html.' + PICK_CURSOR_CLASS + ' * { cursor: crosshair !important; }\n'
-      + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"],\n'
-      + 'html.' + PICK_CURSOR_CLASS + ' [id^="' + PREFIX + '"] * { cursor: revert !important; }';
-    // Styles the host page, not the chrome - inside the adapter's shadow UI
-    // root (uiAppendStyle's target) these selectors would match nothing.
-    document.head.appendChild(style);
+      '* { cursor: ' + cursor + ' !important; }\n'
+      + '[id^="' + PREFIX + '"],\n'
+      + '[id^="' + PREFIX + '"] * { cursor: revert !important; }';
   }
 
   /** Page-level cursor while pick or insert mode is targeting page elements. */
   function syncPageInteractionCursor() {
-    const pickCursor = state === 'PICKING' && pickActive && !insertActive;
-    let axisCursor = '';
-    if (state === 'PICKING' && insertActive) {
-      axisCursor = insertHoverAnchor ? cursorForInsertAxis(insertHoverAxis || 'column') : '';
+    let cursor = '';
+    if (state === 'PICKING' && pickActive && !insertActive) {
+      cursor = 'crosshair';
+    } else if (state === 'PICKING' && insertActive && insertHoverAnchor) {
+      cursor = cursorForInsertAxis(insertHoverAxis || 'column');
     }
-
-    if (pickCursor) {
-      ensurePickCursorStyle();
-      document.documentElement.classList.add(PICK_CURSOR_CLASS);
-      document.documentElement.style.cursor = '';
-      pageInteractionCursorActive = true;
-      return;
-    }
-
-    document.documentElement.classList.remove(PICK_CURSOR_CLASS);
-    if (axisCursor) {
-      document.documentElement.style.cursor = axisCursor;
-      pageInteractionCursorActive = true;
-    } else if (pageInteractionCursorActive) {
-      document.documentElement.style.cursor = '';
-      pageInteractionCursorActive = false;
-    }
+    setPageInteractionCursor(cursor);
   }
 
   /**
@@ -9983,7 +9983,7 @@ void main() {
     // Remove detection overlays
     window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
     setLiveState('IDLE');
-    document.getElementById(PREFIX + '-pick-cursor-style')?.remove();
+    document.getElementById(PICK_CURSOR_STYLE_ID)?.remove();
     window.__IMPECCABLE_LIVE_INIT__ = false;
     console.log('[impeccable] Live mode exited.');
   }
