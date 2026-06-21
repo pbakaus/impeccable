@@ -132,6 +132,14 @@ describe('detectText honors inline directives', () => {
     expect(raw.some((f) => f.antipattern === 'overused-font')).toBe(true);
   });
 
+  test('line keys align with detector line numbers on CRLF endings', () => {
+    // detectText numbers lines with split('\n'); parseInlineIgnores must match.
+    const content = '.a { font-family: Inter; }\r\n.b { font-family: Roboto; } /* impeccable-disable-line overused-font */';
+    const out = detectText(content, 'a.css', opts);
+    const fonts = out.filter((f) => f.antipattern === 'overused-font').map((f) => f.line);
+    expect(fonts).toEqual([1]); // Inter on line 1 stays; Roboto on line 2 is waived
+  });
+
   test('a directive for one rule leaves other findings intact', () => {
     const content = '.a { font-family: Inter; } /* impeccable-disable-line side-tab */';
     const out = detectText(content, 'a.css', opts);

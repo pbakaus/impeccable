@@ -88,7 +88,11 @@ function parseInlineIgnores(content) {
   // Case-insensitive to match DIRECTIVE_RE's `i` flag (e.g. `Impeccable-Disable`).
   if (!/impeccable-disable/i.test(text)) return result;
 
-  const lines = text.split(/\r\n|\r|\n/);
+  // Split on `\n` only, exactly as detectText numbers lines, so directive line
+  // keys line up with finding `line` values (incl. on `\r`-only line endings).
+  // The directive regex excludes `\r`, so a trailing `\r` on `\r\n` files is
+  // never captured into the rule list.
+  const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     DIRECTIVE_RE.lastIndex = 0;
     let m;
