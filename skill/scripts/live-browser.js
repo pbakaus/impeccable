@@ -1916,8 +1916,6 @@
     syncPageInteractionCursor();
   }
 
-  let pageInteractionCursorActive = false;
-
   /**
    * Drive the page-level pick / insert cursor through the textContent of one
    * injected <style>, never by mutating <html> (className or inline style).
@@ -1933,7 +1931,6 @@
     let style = document.getElementById(PICK_CURSOR_STYLE_ID);
     if (!cursor) {
       if (style) style.textContent = '';
-      pageInteractionCursorActive = false;
       return;
     }
     if (!style) {
@@ -1947,7 +1944,6 @@
       '* { cursor: ' + cursor + ' !important; }\n'
       + '[id^="' + PREFIX + '"],\n'
       + '[id^="' + PREFIX + '"] * { cursor: revert !important; }';
-    pageInteractionCursorActive = true;
   }
 
   /** Page-level cursor while pick or insert mode is targeting page elements. */
