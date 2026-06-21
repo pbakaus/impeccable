@@ -658,8 +658,9 @@ describe('renderTemplate()', () => {
     assert.match(text, /not automatically a defect/);
     assert.match(text, /literal or domain-appropriate motion/);
     assert.match(text, /Do not change intentional design just to satisfy the hook/);
-    assert.match(text, /Persist hook ignores only after the user explicitly confirms/);
-    assert.match(text, /Do not add source comments such as `impeccable: ignore`/);
+    assert.match(text, /Suppress a finding only after the user explicitly confirms it is intentional/);
+    assert.match(text, /do not silence a real finding with an inline ignore comment/);
+    assert.match(text, /inline `impeccable-disable <rule>` comment only when the waiver must travel with a file/);
     assert.match(text, /ignore-value \.\.\. --shared/);
     assert.match(text, /ignore-rule overused-font --all-values/);
     assert.match(text, /\/impeccable hooks ignore-file Card\.tsx/);
@@ -937,8 +938,8 @@ rounded:
     const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
     assert.equal(r.exitCode, 0);
     assert.ok(r.stdout.includes(ENVELOPE_PREFIX));
-    assert.match(r.stdout, /No anti-patterns/);
-    assert.match(r.stdout, /typography hierarchy, spacing rhythm, and color contrast/);
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.match(r.stdout, /keep following the project design system and the impeccable skill guidance/);
     assert.equal(r.audit.emitted, true);
     assert.equal(r.audit.kind, 'clean');
   });
@@ -1080,7 +1081,7 @@ rounded:
       cwd,
       detector: det,
     });
-    assert.match(withoutDesign.stdout, /No anti-patterns/);
+    assert.match(withoutDesign.stdout, /No deterministic design-quality issues found/);
     assert.doesNotMatch(withoutDesign.stdout, /design-system-font/);
 
     writeDesignMd();
@@ -1110,7 +1111,7 @@ rounded:
       detector: designAwareDetector(),
     });
 
-    assert.match(r.stdout, /No anti-patterns/);
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
     assert.doesNotMatch(r.stdout, /design-system-font/);
   });
 
@@ -1133,7 +1134,7 @@ rounded:
       detector: designAwareDetector(),
     });
 
-    assert.match(r.stdout, /No anti-patterns/);
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
     assert.doesNotMatch(r.stdout, /design-system-font/);
   });
 
@@ -1153,7 +1154,7 @@ rounded:
       detector: det,
     });
 
-    assert.match(r.stdout, /No anti-patterns/);
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
     assert.match(r.stdout, /DESIGN\.md is newer than \.impeccable\/design\.json/);
     assert.match(r.stdout, /\/impeccable document/);
   });
@@ -1288,8 +1289,27 @@ rounded:
       detector: { detectHtml, detectText },
     });
     assert.match(r.stdout, /Design hook findings requiring review/);
-    assert.doesNotMatch(r.stdout, /No anti-patterns/);
+    assert.doesNotMatch(r.stdout, /No deterministic design-quality issues found/);
     assert.ok(r.audit.findings > 0);
+  });
+
+  it('honors an inline impeccable-disable comment so the hook scans the file clean', async () => {
+    // The hook runs the same engine as `npx impeccable detect`, so an in-file
+    // waiver suppresses hook findings exactly like a config ignore would.
+    const flagged = writeFixture('src/Flagged.tsx', 'const css = "font-family: Inter";');
+    const flaggedRun = await runHook({
+      stdinJson: JSON.stringify(eventFor(flagged)), env: {}, cwd, detector: { detectHtml, detectText },
+    });
+    assert.match(flaggedRun.stdout, /Design hook findings requiring review/);
+    assert.ok(flaggedRun.audit.findings > 0);
+
+    const waived = writeFixture('src/Waived.tsx',
+      'const css = "font-family: Inter"; // impeccable-disable-line overused-font');
+    const waivedRun = await runHook({
+      stdinJson: JSON.stringify(eventFor(waived)), env: {}, cwd, detector: { detectHtml, detectText },
+    });
+    assert.match(waivedRun.stdout, /No deterministic design-quality issues found/);
+    assert.equal(waivedRun.audit.findings, 0);
   });
 
   it('malformed stdin → silent skip', async () => {
@@ -1340,8 +1360,8 @@ describe('ALLOWED_EXTS', () => {
 describe('renderCleanAck() / renderPendingAck()', () => {
   it('renderCleanAck stays short and ends with the steer line', () => {
     const text = renderCleanAck('/x/src/App.jsx', { cwd: '/x' });
-    assert.match(text, /^\[impeccable@1\] Design hook scanned src\/App\.jsx\. No anti-patterns\./);
-    assert.match(text, /typography hierarchy, spacing rhythm, and color contrast/);
+    assert.match(text, /^\[impeccable@1\] Design hook scanned src\/App\.jsx\. No deterministic design-quality issues found\./);
+    assert.match(text, /keep following the project design system and the impeccable skill guidance/);
     // Budget guard: should fit comfortably under a single context-message
     // injection (~200 chars). Hard upper bound 240 chars.
     assert.ok(text.length < 240, `clean ack too long: ${text.length} chars`);

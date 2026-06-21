@@ -1301,12 +1301,12 @@ export function setDetectorForTesting(impl) {
 // session" so the model knows it's a re-mind, not a new finding.
 // ────────────────────────────────────────────────────────────────────────
 
-const STEER_LINE = 'Keep typography hierarchy, spacing rhythm, and color contrast intentional on the next change.';
+const STEER_LINE = 'That does not mean the design is good: keep following the project design system and the impeccable skill guidance.';
 
 export function renderCleanAck(filePath, opts = {}) {
   const cwd = opts.cwd || process.cwd();
   const display = relativize(filePath, cwd);
-  return `${ENVELOPE_PREFIX} Design hook scanned ${display}. No anti-patterns. ${STEER_LINE}`;
+  return `${ENVELOPE_PREFIX} Design hook scanned ${display}. No deterministic design-quality issues found. ${STEER_LINE}`;
 }
 
 export function renderPendingAck(filePath, knownFindings, opts = {}) {
@@ -1362,7 +1362,7 @@ function directiveFooter(display, opts = {}) {
     '',
     'Use context judgment before editing. A finding is not automatically a defect; literal or domain-appropriate motion, intentional demos or fixtures, documentation of bad design, and user-confirmed choices can be valid as-is.',
     '',
-    `Do not change intentional design just to satisfy the hook. Do not add source comments such as \`impeccable: ignore\`; those pollute the code and do not suppress hook findings. Persist hook ignores only after the user explicitly confirms the finding is intentional. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
+    `Do not change intentional design just to satisfy the hook, and do not silence a real finding with an inline ignore comment to skip fixing it. Suppress a finding only after the user explicitly confirms it is intentional. Prefer a config ignore (one reviewable place, the commands below); reach for an inline \`impeccable-disable <rule>\` comment only when the waiver must travel with a file that leaves the repo, such as an exported or standalone document. Prefer the narrowest persisted exception: run the exact \`/impeccable hooks ignore-value ... --shared\` command shown next to a value-specific finding. For \`overused-font\`, use \`ignore-value\` for a specific font and use \`/impeccable hooks ignore-rule overused-font --all-values\` only when the user asks to ignore overused fonts generally. For file-specific findings without an ignore-value command, ${fileIgnoreGuidance}; use \`/impeccable hooks ignore-rule <id>\` only when the user asks to suppress the whole non-value-specific rule. Run /impeccable audit for the full pass.`,
   ].join('\n');
 }
 
