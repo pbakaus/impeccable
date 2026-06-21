@@ -34,6 +34,7 @@ import {
 } from './fixtures.mjs';
 
 const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
+const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this workspace';
 const PRIMER_PROMPT =
   'Take a quick look at the project. What register is this? Run the impeccable context loader once if you need to.';
 
@@ -392,6 +393,92 @@ for (const modelId of resolveModelList()) {
           ranUpdate.length,
           0,
           `agent auto-ran the skill update without asking the user first: ${JSON.stringify(ranUpdate, null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 10: scoped command with no PRODUCT.md proceeds without forcing init', async () => {
+      // The counterpart to scenario 1. There, a from-scratch `craft` with no
+      // context correctly diverts into init. Here a *scoped* command against
+      // existing code must NOT: the code is the context. Missing PRODUCT.md is
+      // a suggestion to run init, never a blocker on the requested work.
+      const workspace = prepareWorkspace({
+        files: {
+          'index.html': MINIMAL_LANDING_HTML,
+        },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable polish index.html',
+          maxSteps: 6,
+        });
+        logTrace('S10', 'scoped-no-product', modelId, trace, { textSample: text.slice(0, 400) });
+        // Boot still runs.
+        assert.ok(
+          bashCommandsMatching(trace, 'context.mjs').length >= 1,
+          `expected agent to run context.mjs at least once.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        // It must load the scoped command's own reference and get on with it.
+        assert.ok(
+          fileLoaded(trace, 'polish.md'),
+          `agent should load polish.md and proceed with the scoped command.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        // The core property: a scoped command on existing code must not divert
+        // into init just because PRODUCT.md is absent.
+        const initLoaded =
+          readsMatching(trace, 'init.md').length > 0 ||
+          bashCommandsMatching(trace, 'init.md').length > 0;
+        assert.equal(
+          initLoaded,
+          false,
+          `scoped /impeccable polish on existing code should not divert into init.md when PRODUCT.md is missing.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 11: shape with no PRODUCT.md still diverts into init', async () => {
+      // `shape` is a from-scratch build flow, like `craft` (scenario 1): with
+      // no captured context it must still divert into init before planning.
+      // This pins the third member of the init/craft/shape guard, so a future
+      // edit that drops `shape` from the list is caught here.
+      const workspace = prepareWorkspace({ files: {} });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: SHAPE_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S11', 'shape-no-context', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          bashCommandsMatching(trace, 'context.mjs').length >= 1,
+          `expected agent to run context.mjs at least once.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        const initLoaded =
+          readsMatching(trace, 'init.md').length > 0 ||
+          bashCommandsMatching(trace, 'init.md').length > 0;
+        assert.ok(
+          initLoaded,
+          `from-scratch /impeccable shape should divert into init.md when PRODUCT.md is missing.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        // Like craft, it must not barrel into writing implementation files first.
+        const wroteHtml = trace.writePaths.some((p) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(p));
+        assert.equal(
+          wroteHtml,
+          false,
+          `agent should not write implementation files before resolving missing PRODUCT.md.\n` +
+            `wrote: ${trace.writePaths.join(', ')}`,
         );
       } finally {
         cleanupWorkspace(workspace);
