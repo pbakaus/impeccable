@@ -78,7 +78,13 @@ npx impeccable ignores add-value overused-font Inter --reason "Brand font"
 npx impeccable ignores add-file "src/legacy/**"
 ```
 
-Use [Config and ignores](/docs/config) for the full ignore workflow.
+For a waiver that should travel with one file instead of living in the repo config, drop an inline comment in the file itself:
+
+```html
+<!-- impeccable-disable overused-font: exported brand doc -->
+```
+
+Use [Config and ignores](/docs/config) for the full ignore workflow, including the line-scoped `impeccable-disable-line` and `impeccable-disable-next-line` forms.
 
 ## Details when the default path is not enough
 
@@ -96,6 +102,7 @@ Use [Config and ignores](/docs/config) for the full ignore workflow.
     <p>By default, <code>detect</code> reads <code>.impeccable/config.json</code> and <code>.impeccable/config.local.json</code>.</p>
     <p>It respects <code>detector.ignoreRules</code>, <code>detector.ignoreFiles</code>, <code>detector.ignoreValues</code>, and <code>detector.designSystem.enabled</code>.</p>
     <p>It does not respect <code>hook.enabled</code>; manual scans still run when the automatic hook is disabled.</p>
+    <p>In-file <code>impeccable-disable*</code> comments are honored too, so a waiver can travel with a file. <code>--no-inline-ignores</code> skips just those; <code>--no-config</code> skips config and inline ignores together.</p>
     <p>Use <code>--no-config</code> only when you want a raw detector run with no project config, no detector ignores, and no <code>DESIGN.md</code> context.</p>
   </div>
 </details>

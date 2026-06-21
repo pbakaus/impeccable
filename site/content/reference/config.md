@@ -70,6 +70,28 @@ npx impeccable ignores add-value design-system-color "*" --file "src/demo.css"
 
 That keeps one intentionally experimental file from teaching the whole project that every undocumented color is acceptable.
 
+## Inline ignore comments
+
+Config ignores live in `.impeccable/config.json`, which is the right home for repo-wide policy. They do not follow a file out of the repo, though. When a waiver belongs to one file and needs to travel with it (a generated or exported standalone document, an emailed HTML file, a snippet scanned out of context), put the waiver in the file itself:
+
+```html
+<!-- impeccable-disable overused-font: exported brand doc, font is first-party -->
+```
+
+The directive is comment-syntax-agnostic, so the same marker works in `//`, `/* */`, `<!-- -->`, `#`, and `{/* */}` comments across HTML, CSS, JSX, TSX, Vue, and Svelte. Three scopes are available:
+
+```css
+/* impeccable-disable overused-font */            /* whole file */
+.brand { font-family: Inter }  /* impeccable-disable-line overused-font */
+/* impeccable-disable-next-line bounce-easing */
+```
+
+List one or more rule ids, comma-separated, or omit them (or use `*`) for every rule. A reason after `:` or `--` is optional and recommended; it is for the diff, and the scanner discards it. Like config ignores, a matched directive suppresses the finding.
+
+Static HTML findings have no line number, so only whole-file `impeccable-disable` applies to them. That is the standalone-document case this exists for. The line-scoped forms apply to CSS, JSX, TSX, Vue, and Svelte, where findings carry a line.
+
+Inline directives apply by default. `--no-inline-ignores` turns them off for one run while keeping config ignores; `--no-config` turns off config and inline ignores together.
+
 ## Details when the default path is not enough
 
 <details class="docs-prose-details">

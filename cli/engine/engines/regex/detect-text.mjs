@@ -2,6 +2,7 @@ import { GENERIC_FONTS } from '../../shared/constants.mjs';
 import { isNeutralColor } from '../../shared/color.mjs';
 import { checkSourceDesignSystem } from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
+import { applyInlineIgnores } from '../../shared/inline-ignores.mjs';
 import { finding } from '../../findings.mjs';
 import { filterByProviders } from '../../registry/antipatterns.mjs';
 import { profileFindings, profileStep } from '../../profile/profiler.mjs';
@@ -549,7 +550,10 @@ function detectText(content, filePath, options = {}) {
     }
   }
 
-  return filterByProviders(deduped, options?.providers);
+  const byProvider = filterByProviders(deduped, options?.providers);
+  // Inline `impeccable-disable*` waivers travel with the file; honor them unless
+  // explicitly bypassed (`--no-config` / `--no-inline-ignores`).
+  return options?.inlineIgnores === false ? byProvider : applyInlineIgnores(byProvider, content);
 }
 
 export {

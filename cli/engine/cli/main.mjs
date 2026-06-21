@@ -93,7 +93,9 @@ Options:
   --quiet             In text mode, only print the final findings count
   --gpt               Also report GPT-specific provider tells (off by default)
   --gemini            Also report Gemini-specific provider tells (off by default)
-  --no-config         Do not apply project config, detector ignores, or DESIGN.md
+  --no-config         Do not apply project config, detector ignores, inline
+                      ignore comments, or DESIGN.md
+  --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
   --help              Show this help message
 
@@ -101,6 +103,14 @@ Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
   settings: detector.ignoreRules, detector.ignoreFiles, detector.ignoreValues,
   and detector.designSystem.enabled.
+
+Inline ignores:
+  In-file comments waive a finding where it lives and travel with the file:
+    <!-- impeccable-disable overused-font -- exported brand doc -->
+    .brand { font-family: Inter } /* impeccable-disable-line overused-font */
+    // impeccable-disable-next-line bounce-easing: intentional bounce
+  impeccable-disable applies to the whole file; -line / -next-line are scoped.
+  List one or more rule ids (comma-separated), or omit them / use * for all.
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -143,7 +153,12 @@ async function detectCli() {
   if (args.includes('--gemini')) providers.push('gemini');
   const designSystemEnabled = configEnabled && !args.includes('--no-design-system') && detectionConfig.designSystem?.enabled !== false;
   const designSystem = designSystemEnabled ? loadDesignSystemForCwd(process.cwd()) : null;
-  const scanOptions = designSystem ? { providers, designSystem } : { providers };
+  // Inline `impeccable-disable*` waivers are part of the scanned file, so they
+  // apply by default. `--no-config` (raw scan) and the dedicated
+  // `--no-inline-ignores` both turn them off.
+  const inlineIgnoresEnabled = configEnabled && !args.includes('--no-inline-ignores');
+  const scanOptions = { providers, inlineIgnores: inlineIgnoresEnabled };
+  if (designSystem) scanOptions.designSystem = designSystem;
   const targets = args.filter(a => !a.startsWith('--'));
 
   if (helpMode) { printUsage(); process.exit(0); }

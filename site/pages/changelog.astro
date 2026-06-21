@@ -29,6 +29,7 @@ import '../styles/changelog-faq-kinpaku.css';
       <ul class="cf-items">
         <li><strong>Design hooks for GitHub Copilot.</strong> Installing the skill adds a <code>.github/hooks/impeccable.json</code> hook that runs the detector after Copilot edits a UI file and feeds the findings back as a focused design reminder. It covers both the Copilot CLI and the cloud agent, and recognizes every edit path Copilot uses, including <code>apply_patch</code>.</li>
         <li><strong>Monorepo-aware context.</strong> Open the repo root and Impeccable resolves <code>PRODUCT.md</code> and <code>DESIGN.md</code> per app: each child app uses its own context files and falls back to the root files for anything it does not define. <code>/impeccable live</code> detects multiple apps, asks which one to work on, and then runs and stores live state inside that app.</li>
+        <li><strong>Inline ignore comments.</strong> Waive a detector finding with an in-file comment that travels with the file, for exported or standalone documents where <code>.impeccable/config.json</code> is not present. <code>impeccable-disable &lt;rule&gt;</code> covers the whole file; <code>impeccable-disable-line</code> and <code>impeccable-disable-next-line</code> scope to one line. The marker works in any comment syntax, takes an optional reason, and is bypassed with <code>--no-inline-ignores</code>.</li>
       </ul>
     </article>
 
