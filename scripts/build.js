@@ -31,26 +31,29 @@ import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
  * Generate authoritative counts from source data and write to site/public/js/generated/counts.js.
  * Also validates that key HTML files reference the correct numbers.
  */
-function generateCounts(rootDir, skills, buildDir) {
-  // Count active commands. After the v3.0 consolidation, commands are sub-commands
-  // of /impeccable. Count them from the command router table in SKILL.md.
+// Count active commands. After the v3.0 consolidation, commands are sub-commands
+// of /impeccable, counted from the command router table in SKILL.md. Shared by
+// generateCounts (count validation) and the APM manifest description so the two
+// never disagree.
+function countActiveCommands(skills) {
   const impeccableSkill = skills.find(s => s.name === 'impeccable');
-  let commandCount;
   if (impeccableSkill) {
     // Count lines in the command table that start with | `...` | — tolerant
     // of argument hints inside the backticks (e.g. `craft [feature]`) and of
     // multi-word commands (e.g. `pin <command>`).
     const routerMatches = impeccableSkill.body.match(/^\| `[^`]+` \|/gm);
-    commandCount = routerMatches ? routerMatches.length : 0;
-  } else {
-    // Fallback: count user-invocable skills
-    const activeCommands = skills.filter(s => {
-      if (!s.userInvocable) return false;
-      const content = fs.readFileSync(s.filePath, 'utf-8');
-      return !content.includes('DEPRECATED');
-    });
-    commandCount = activeCommands.length;
+    return routerMatches ? routerMatches.length : 0;
   }
+  // Fallback: count non-deprecated user-invocable skills
+  return skills.filter(s => {
+    if (!s.userInvocable) return false;
+    const content = fs.readFileSync(s.filePath, 'utf-8');
+    return !content.includes('DEPRECATED');
+  }).length;
+}
+
+function generateCounts(rootDir, skills, buildDir) {
+  const commandCount = countActiveCommands(skills);
 
   // Count detection rules from the detector registry.
   const detectionCount = new Set(ANTIPATTERNS.map(rule => rule.id)).size;
@@ -793,8 +796,10 @@ async function build() {
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
 
     // Build the APM package source at ./.apm/ + root apm.yml so consumers can
-    // run `apm install pbakaus/impeccable`. Use the agents (Codex) variant for
-    // a provider-neutral SKILL.md; skill-only — no nested agents/ or hooks/.
+    // run `apm install pbakaus/impeccable`. Ship the agents (Codex) variant: APM
+    // always writes a converged `.agents/skills/` copy, so the variant's baked
+    // `.agents/skills/impeccable/scripts/...` paths resolve no matter which
+    // harness reads the deployed SKILL.md. Skill-only — no nested hooks/.
     const apmRoot = path.join(ROOT_DIR, '.apm');
     const apmSkillsDir = path.join(apmRoot, 'skills');
     const apmSkillDest = path.join(apmSkillsDir, 'impeccable');
@@ -806,21 +811,28 @@ async function build() {
       copyDirSync(apmSkillSrc, apmSkillDest);
       const nestedAgents = path.join(apmSkillDest, 'agents');
       if (fs.existsSync(nestedAgents)) fs.rmSync(nestedAgents, { recursive: true });
+
+      // Write the manifest only once the skill tree exists, so a missing source
+      // never leaves a valid-looking apm.yml with no `.apm/skills/impeccable/`.
+      // Interpolate the command count from the router table (same source as
+      // generateCounts) so the description can't drift when commands change.
+      const commandCount = countActiveCommands(skills);
+      const apmManifest = [
+        'name: impeccable',
+        `version: ${skillsVersion}`,
+        `description: Design fluency for frontend development. 1 skill, ${commandCount} commands, curated anti-pattern detection.`,
+        'author: pbakaus',
+        'dependencies:',
+        '  apm: []',
+        '  mcp: []',
+        '',
+      ].join('\n');
+      fs.writeFileSync(path.join(ROOT_DIR, 'apm.yml'), apmManifest);
+
+      console.log('📦 Built APM package source at ./.apm/ and apm.yml');
+    } else {
+      console.warn('⚠️  Skipped APM package build: agents variant skill not found at', apmSkillSrc);
     }
-
-    const apmManifest = [
-      'name: impeccable',
-      `version: ${skillsVersion}`,
-      'description: Design fluency for frontend development. 1 skill, 23 commands, curated anti-pattern detection.',
-      'author: pbakaus',
-      'dependencies:',
-      '  apm: []',
-      '  mcp: []',
-      '',
-    ].join('\n');
-    fs.writeFileSync(path.join(ROOT_DIR, 'apm.yml'), apmManifest);
-
-    console.log('📦 Built APM package source at ./.apm/ and apm.yml');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }
