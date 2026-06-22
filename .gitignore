@@ -105,10 +105,14 @@ site/public/_routes.json
 site/public/js/detect-antipatterns-browser.js
 site/public/js/generated/
 
+# APM consumer cache (never commit; apm install writes this locally).
+apm_modules/
+
 # Note: harness skill directories (.claude/skills/, .cursor/skills/, etc.)
-# are intentionally tracked. npx skills reads them from this repo at install
-# time, and they enable clean submodule use. Run `bun run build` to refresh
-# them after editing skill/.
+# and the APM package source (.apm/, apm.yml) are intentionally tracked.
+# npx skills reads harness dirs from this repo at install time; apm install
+# reads .apm/ + apm.yml. Run `bun run build:release` to refresh after
+# editing skill/.
 #
 # Codex CLI consumes `.agents/skills/`; the asset-producer subagent ships
 # nested inside that skill (agents/*.toml), auto-discovered on install.

@@ -234,6 +234,18 @@ cp -r dist/qoder/.qoder your-project/
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
 
+### Option 5: APM (Agent Package Manager)
+
+If your project already uses [APM](https://microsoft.github.io/apm/), install Impeccable from the repo package:
+
+```bash
+apm install pbakaus/impeccable
+```
+
+APM deploys the skill to `.github/skills/impeccable/` by default and pins the commit in `apm.lock.yaml`. To fan out to Claude Code, Cursor, or OpenCode as well, run `apm runtime setup claude`, `apm runtime setup cursor`, or `apm runtime setup opencode` once, then rerun `apm install`.
+
+To refresh after a version bump, rerun `apm install` or update the pin in `apm.yml` (for example `pbakaus/impeccable#v3.8.0`).
+
 ## Usage
 
 Once installed, every command runs through the single `/impeccable` skill:

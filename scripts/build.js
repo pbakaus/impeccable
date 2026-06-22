@@ -791,6 +791,36 @@ async function build() {
     );
 
     console.log('📦 Built Claude Code plugin subtree at ./plugin/');
+
+    // Build the APM package source at ./.apm/ + root apm.yml so consumers can
+    // run `apm install pbakaus/impeccable`. Use the agents (Codex) variant for
+    // a provider-neutral SKILL.md; skill-only — no nested agents/ or hooks/.
+    const apmRoot = path.join(ROOT_DIR, '.apm');
+    const apmSkillsDir = path.join(apmRoot, 'skills');
+    const apmSkillDest = path.join(apmSkillsDir, 'impeccable');
+    const apmSkillSrc = path.join(DIST_DIR, 'agents', '.agents', 'skills', 'impeccable');
+
+    if (fs.existsSync(apmSkillsDir)) fs.rmSync(apmSkillsDir, { recursive: true });
+    if (fs.existsSync(apmSkillSrc)) {
+      fs.mkdirSync(apmSkillsDir, { recursive: true });
+      copyDirSync(apmSkillSrc, apmSkillDest);
+      const nestedAgents = path.join(apmSkillDest, 'agents');
+      if (fs.existsSync(nestedAgents)) fs.rmSync(nestedAgents, { recursive: true });
+    }
+
+    const apmManifest = [
+      'name: impeccable',
+      `version: ${skillsVersion}`,
+      'description: Design fluency for frontend development. 1 skill, 23 commands, curated anti-pattern detection.',
+      'author: pbakaus',
+      'dependencies:',
+      '  apm: []',
+      '  mcp: []',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(ROOT_DIR, 'apm.yml'), apmManifest);
+
+    console.log('📦 Built APM package source at ./.apm/ and apm.yml');
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }

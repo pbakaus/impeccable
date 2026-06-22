@@ -22,6 +22,7 @@ concurrency:
 env:
   GENERATED_PATHS: >-
     .agents
+    .apm
     .claude
     .cursor
     .gemini
@@ -33,6 +34,7 @@ env:
     .rovodev
     .trae
     .trae-cn
+    apm.yml
     plugin
 
 jobs:
