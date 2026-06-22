@@ -26,7 +26,7 @@ jobs:
       live_svelte_adapter_deepseek: ${{ steps.plan.outputs.live_svelte_adapter_deepseek }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -46,7 +46,7 @@ jobs:
     needs: changes
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -117,7 +117,7 @@ jobs:
     if: needs.changes.outputs.cli_remote_e2e == 'true'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -151,7 +151,7 @@ jobs:
             fixtures: vite8-react-css-modules,vite8-react-insert,vite8-react-plain
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -225,7 +225,7 @@ jobs:
             fixtures: vite8-react-tailwindv3,vite8-react-tailwindv4,vite8-react-ts,vite8-react-tsx-repeated-aside,vite8-react-unocss,vite8-react-vanilla-extract
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -291,7 +291,7 @@ jobs:
 
       - name: Checkout repository
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -355,7 +355,7 @@ jobs:
 
       - name: Checkout repository
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
@@ -409,7 +409,7 @@ jobs:
       GOOGLE_CLOUD_API_KEY: ${{ secrets.GOOGLE_CLOUD_API_KEY }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
