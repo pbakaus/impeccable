@@ -242,9 +242,11 @@ If your project already uses [APM](https://microsoft.github.io/apm/), install Im
 apm install pbakaus/impeccable
 ```
 
-APM copies the skill (no symlink) into its converged `.agents/skills/impeccable/` directory and pins the commit in `apm.lock.yaml`, so `git clone && apm install` reproduces it byte-for-byte. The bundled helper scripts (setup, hooks, live mode) are baked for that converged path, so they resolve out of the box. The `--legacy-skill-paths` mode deploys to per-client folders (`.claude/skills/`, `.cursor/skills/`, …) without the converged copy, which the bundled-script paths are not aligned to.
+APM puts the skill in `.agents/skills/impeccable/` and records the exact version in `apm.lock.yaml`, so anyone who clones the repo and runs `apm install` gets the same files. It copies the skill instead of symlinking it, so the bundled scripts (setup, hooks, live mode) work right away.
 
-To refresh after a version bump, rerun `apm install` or update the pin in `apm.yml` (for example `pbakaus/impeccable#v3.8.0`).
+`--legacy-skill-paths` is the one exception: it puts the skill in per-tool folders (`.claude/skills/`, `.cursor/skills/`) and skips the `.agents/` copy, so the bundled scripts can't find their helpers there.
+
+To update later, rerun `apm install`, or pin a version in `apm.yml` (for example `pbakaus/impeccable#v3.8.0`).
 
 ## Usage
 
