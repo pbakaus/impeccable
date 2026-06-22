@@ -153,6 +153,7 @@
   let scrollLockRaf = null;
   let scrollLockAbort = null;
   const SCROLL_ANCHOR_LOCK_ID = 'impeccable-scroll-anchor-lock';
+  const VARIANT_STATE_STYLE_ID = 'impeccable-variant-state';
 
   // Dedicated key for scroll position - SEPARATE from LS_KEY so that
   // saveSession's state updates don't clobber a carefully-captured scrollY.
@@ -3035,16 +3036,16 @@
   function applyParamValue(variantEl, param, value) {
     if (!variantEl) return;
     const attr = 'data-p-' + param.id;
-    if (param.kind === 'range') {
-      variantEl.style.setProperty('--p-' + param.id, String(value));
-    } else if (param.kind === 'toggle') {
+    if (param.kind === 'toggle') {
       const on = !!value;
-      variantEl.style.setProperty('--p-' + param.id, on ? '1' : '0');
       if (on) variantEl.setAttribute(attr, 'on');
       else variantEl.removeAttribute(attr);
     } else if (param.kind === 'steps') {
       variantEl.setAttribute(attr, String(value));
     }
+    // range/toggle --p-* custom properties are driven through the injected
+    // variant-state stylesheet so we never mutate inline style on SSR'd divs.
+    updateVariantStateStylesheet(currentSessionId, visibleVariant);
   }
 
   function applyParamDefaults(variantEl, params) {
@@ -4706,6 +4707,7 @@
       paramsCurrentValues = {};
       tuneOpen = false;
       hideParamsPanel();
+      removeVariantStateStylesheet();
       return;
     }
     const variantEl = getVisibleVariantEl();
@@ -4771,20 +4773,7 @@
 
   function isVariantShown(el) {
     if (!el) return false;
-    if (el.hidden) return false;
-    if (el.style?.display === 'none') return false;
-    return true;
-  }
-
-  function setVariantShown(el, shown) {
-    if (!el) return;
-    if (shown) {
-      el.removeAttribute('hidden');
-      el.style.display = '';
-    } else {
-      el.setAttribute('hidden', '');
-      el.style.display = 'none';
-    }
+    return getComputedStyle(el).display !== 'none';
   }
 
   function scheduleCyclingBarSync(sessionId, variantNum) {
@@ -4823,11 +4812,7 @@
     }
     const wrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
     if (!wrapper) return false;
-    for (const child of wrapper.children) {
-      const v = child.dataset ? child.dataset.impeccableVariant : null;
-      if (!v) continue;
-      setVariantShown(child, v === String(num));
-    }
+    updateVariantStateStylesheet(sessionId, num);
     // Unconditional refresh - covers first-reveal (no-op if state isn't
     // CYCLING yet, the subsequent CYCLING transition triggers its own
     // refresh) and every cycle step.
@@ -5492,6 +5477,7 @@
     if (pendingSvelteComponentRetryObserver) { pendingSvelteComponentRetryObserver.disconnect(); pendingSvelteComponentRetryObserver = null; }
     if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearSession();
     clearHandled();
     resetSessionFileMeta();
@@ -5808,6 +5794,31 @@
 
   // Hold window.scrollY at a fixed value across DOM mutations inside the
   // session's wrapper (HMR patches, variant inserts, cycle swaps).
+  function updateVariantStateStylesheet(sessionId, num) {
+    if (!sessionId || !num) return;
+    let styleEl = document.getElementById(VARIANT_STATE_STYLE_ID);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = VARIANT_STATE_STYLE_ID;
+      (document.head || document.documentElement).appendChild(styleEl);
+    }
+    const base = '[data-impeccable-variants="' + sessionId + '"] > [data-impeccable-variant';
+    let css = base + ']:not([data-impeccable-variant="' + num + '"]) { display: none !important; }\n';
+    // Force-show the visible variant (overrides source inline display:none on
+    // v2/v3) plus its range/toggle custom properties from paramsCurrentValues.
+    let decls = 'display: block !important;';
+    for (const [id, val] of Object.entries(paramsCurrentValues || {})) {
+      if (typeof val === 'number') decls += ' --p-' + id + ': ' + val + ';';
+      else if (typeof val === 'boolean') decls += ' --p-' + id + ': ' + (val ? '1' : '0') + ';';
+    }
+    css += base + '="' + num + '"] { ' + decls + ' }\n';
+    styleEl.textContent = css;
+  }
+
+  function removeVariantStateStylesheet() {
+    document.getElementById(VARIANT_STATE_STYLE_ID)?.remove();
+  }
+
   function startScrollLock(sessionId, initialTargetY) {
     stopScrollLock();
     scrollLockTargetY = typeof initialTargetY === 'number' && isFinite(initialTargetY)
@@ -7636,6 +7647,7 @@ void main() {
     stopScrollTracking();
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearScrollY();
     clearSession();
     resetSessionFileMeta();
@@ -7897,6 +7909,7 @@ void main() {
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
     if (pendingVariantAnchorRetryObserver) { pendingVariantAnchorRetryObserver.disconnect(); pendingVariantAnchorRetryObserver = null; }
     stopScrollLock();
+    removeVariantStateStylesheet();
     clearScrollY();
     finalizeInsertSession();
     clearSession();
@@ -9984,6 +9997,7 @@ void main() {
     window.postMessage({ source: 'impeccable-command', action: 'remove' }, '*');
     setLiveState('IDLE');
     document.getElementById(PICK_CURSOR_STYLE_ID)?.remove();
+    removeVariantStateStylesheet();
     window.__IMPECCABLE_LIVE_INIT__ = false;
     console.log('[impeccable] Live mode exited.');
   }
