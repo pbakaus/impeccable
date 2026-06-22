@@ -4707,7 +4707,6 @@
       paramsCurrentValues = {};
       tuneOpen = false;
       hideParamsPanel();
-      removeVariantStateStylesheet();
       return;
     }
     const variantEl = getVisibleVariantEl();
@@ -4716,6 +4715,7 @@
       paramsCurrentValues = {};
       tuneOpen = false;
       hideParamsPanel();
+      if (currentSessionId && visibleVariant) updateVariantStateStylesheet(currentSessionId, visibleVariant);
       return;
     }
     applyParamDefaults(variantEl, params);
@@ -5829,7 +5829,7 @@
   }
 
   function updateVariantStateStylesheet(sessionId, num) {
-    if (!sessionId || !num) return;
+    if (!sessionId || num == null || num < 1) return;
 
     let styleEl = document.getElementById(VARIANT_STATE_STYLE_ID);
     if (!styleEl) {

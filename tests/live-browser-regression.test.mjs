@@ -355,6 +355,16 @@ describe('live-browser.js regression guards', () => {
       /function removeVariantStateStylesheet\(\)[\s\S]{0,120}?document\.getElementById\(VARIANT_STATE_STYLE_ID\)\?\.remove\(\)/,
       'leaving CYCLING or tearing down live mode must remove the injected variant-state <style>',
     );
+    assert.doesNotMatch(
+      SOURCE,
+      /function refreshParamsPanel\(\)[\s\S]{0,220}?if \(state !== 'CYCLING'\)[\s\S]{0,220}?removeVariantStateStylesheet\(\)/,
+      'refreshParamsPanel must not strip the variant-state sheet during GENERATING first-reveal',
+    );
+    assert.match(
+      SOURCE,
+      /function refreshParamsPanel\(\)[\s\S]{0,600}?if \(!variantEl \|\| params\.length === 0\)[\s\S]{0,220}?updateVariantStateStylesheet\(currentSessionId, visibleVariant\)/,
+      'paramless variant switches must re-sync the variant-state sheet to clear stale --p-* params',
+    );
     assert.match(
       SOURCE,
       /function isVariantShown\(el\)[\s\S]{0,120}?getComputedStyle\(el\)\.display/,
