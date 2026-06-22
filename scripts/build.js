@@ -831,6 +831,11 @@ async function build() {
 
       console.log('📦 Built APM package source at ./.apm/ and apm.yml');
     } else {
+      // Source missing: tear down any stale `.apm/` + `apm.yml` so we never
+      // leave a manifest pointing at a skill tree that no longer exists.
+      if (fs.existsSync(apmRoot)) fs.rmSync(apmRoot, { recursive: true });
+      const staleManifest = path.join(ROOT_DIR, 'apm.yml');
+      if (fs.existsSync(staleManifest)) fs.rmSync(staleManifest);
       console.warn('⚠️  Skipped APM package build: agents variant skill not found at', apmSkillSrc);
     }
   } else {
