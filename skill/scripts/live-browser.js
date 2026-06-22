@@ -5792,33 +5792,70 @@
     return variantDiv;
   }
 
-  // Hold window.scrollY at a fixed value across DOM mutations inside the
-  // session's wrapper (HMR patches, variant inserts, cycle swaps).
+  // Variant visibility and range/toggle params are expressed through ONE
+  // injected stylesheet, never inline attributes on the variant divs. Those
+  // divs are scaffolded into page source, so SSR frameworks (Next.js App
+  // Router) server-render them; toggling their `hidden` / inline `style` /
+  // `--p-*` client-side trips a React 19 hydration mismatch on the next
+  // Fast-Refresh re-render — the same failure mode the scroll-anchor (#276)
+  // and pick-cursor (#286) fixes address. A stylesheet rule has the same
+  // computed effect without mutating any hydrated element's attributes.
+  // (steps params keep driving `data-p-*` attributes, matching scoped CSS.)
+  const VARIANT_HIDE_DECL = 'display: none !important;';
+  const VARIANT_SHOW_DECL = 'display: block !important;';
+
+  // Build a direct-child variant selector for a session. With `num`, targets a
+  // single variant (`… > [data-impeccable-variant="N"]`); without it, targets
+  // every variant via the bare `[data-impeccable-variant]` attribute.
+  function variantStateSelector(sessionId, num) {
+    const wrapper = '[data-impeccable-variants="' + sessionId + '"]';
+    const variant = num == null
+      ? '[data-impeccable-variant]'
+      : '[data-impeccable-variant="' + num + '"]';
+    return wrapper + ' > ' + variant;
+  }
+
+  // Serialize the visible variant's knob values into `--p-<id>` custom-property
+  // declarations. Only range (number) and toggle (boolean) values become a
+  // custom property; steps params drive `data-p-*` attributes instead.
+  function variantParamDecls(values) {
+    return Object.entries(values || {})
+      .map(([id, val]) => {
+        if (typeof val === 'number') return ' --p-' + id + ': ' + val + ';';
+        if (typeof val === 'boolean') return ' --p-' + id + ': ' + (val ? '1' : '0') + ';';
+        return '';
+      })
+      .join('');
+  }
+
   function updateVariantStateStylesheet(sessionId, num) {
     if (!sessionId || !num) return;
+
     let styleEl = document.getElementById(VARIANT_STATE_STYLE_ID);
     if (!styleEl) {
       styleEl = document.createElement('style');
       styleEl.id = VARIANT_STATE_STYLE_ID;
       (document.head || document.documentElement).appendChild(styleEl);
     }
-    const base = '[data-impeccable-variants="' + sessionId + '"] > [data-impeccable-variant';
-    let css = base + ']:not([data-impeccable-variant="' + num + '"]) { display: none !important; }\n';
-    // Force-show the visible variant (overrides source inline display:none on
-    // v2/v3) plus its range/toggle custom properties from paramsCurrentValues.
-    let decls = 'display: block !important;';
-    for (const [id, val] of Object.entries(paramsCurrentValues || {})) {
-      if (typeof val === 'number') decls += ' --p-' + id + ': ' + val + ';';
-      else if (typeof val === 'boolean') decls += ' --p-' + id + ': ' + (val ? '1' : '0') + ';';
-    }
-    css += base + '="' + num + '"] { ' + decls + ' }\n';
-    styleEl.textContent = css;
+
+    // Hide every variant except the visible one (incl. the SSR'd "original").
+    const hideOthers = variantStateSelector(sessionId)
+      + ':not([data-impeccable-variant="' + num + '"]) { ' + VARIANT_HIDE_DECL + ' }';
+
+    // Force-show the visible variant (beats the source inline display:none on
+    // v2/v3) and apply its knob values as custom properties.
+    const showVisible = variantStateSelector(sessionId, num)
+      + ' { ' + VARIANT_SHOW_DECL + variantParamDecls(paramsCurrentValues) + ' }';
+
+    styleEl.textContent = hideOthers + '\n' + showVisible + '\n';
   }
 
   function removeVariantStateStylesheet() {
     document.getElementById(VARIANT_STATE_STYLE_ID)?.remove();
   }
 
+  // Hold window.scrollY at a fixed value across DOM mutations inside the
+  // session's wrapper (HMR patches, variant inserts, cycle swaps).
   function startScrollLock(sessionId, initialTargetY) {
     stopScrollLock();
     scrollLockTargetY = typeof initialTargetY === 'number' && isFinite(initialTargetY)

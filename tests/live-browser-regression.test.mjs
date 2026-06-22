@@ -342,7 +342,12 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function updateVariantStateStylesheet\(sessionId, num\)[\s\S]{0,700}?createElement\('style'\)[\s\S]{0,400}?display: none !important/,
+      /const VARIANT_HIDE_DECL = 'display: none !important;';/,
+      'the hidden-variant rule should be a named constant for readability',
+    );
+    assert.match(
+      SOURCE,
+      /function updateVariantStateStylesheet\(sessionId, num\)[\s\S]{0,500}?createElement\('style'\)[\s\S]{0,500}?VARIANT_HIDE_DECL/,
       'variant cycling must hide non-visible variants with an injected <style> rule keyed by VARIANT_STATE_STYLE_ID',
     );
     assert.match(
@@ -671,7 +676,7 @@ describe('live-browser.js regression guards', () => {
     );
     assert.match(
       SOURCE,
-      /function updateVariantStateStylesheet\(sessionId, num\)[\s\S]{0,900}?display: none !important/,
+      /function updateVariantStateStylesheet\(sessionId, num\)[\s\S]{0,900}?VARIANT_HIDE_DECL/,
       'variant cycling must hide non-visible variants via injected stylesheet, not hidden/style.display on SSR divs',
     );
     assert.match(
