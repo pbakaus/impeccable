@@ -3043,6 +3043,16 @@
     } else if (param.kind === 'steps') {
       variantEl.setAttribute(attr, String(value));
     }
+    // Svelte component variants are client-mounted into
+    // [data-impeccable-component-mount] with no [data-impeccable-variant="N"]
+    // wrapper for the state stylesheet to target, and the element is not SSR'd,
+    // so there is no React hydration to mismatch. Drive range/toggle --p-* inline
+    // on the mounted element so scoped preview CSS resolves them.
+    if (svelteComponentSession?.sessionId === currentSessionId) {
+      if (param.kind === 'range') variantEl.style.setProperty('--p-' + param.id, String(value));
+      else if (param.kind === 'toggle') variantEl.style.setProperty('--p-' + param.id, value ? '1' : '0');
+      return;
+    }
     // range/toggle --p-* custom properties are driven through the injected
     // variant-state stylesheet so we never mutate inline style on SSR'd divs.
     updateVariantStateStylesheet(currentSessionId, visibleVariant);

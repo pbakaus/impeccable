@@ -330,10 +330,15 @@ describe('live-browser.js regression guards', () => {
       /function setVariantShown\(/,
       'event=live_browser.variant_visibility_hydration actor=browser operation=show_variant_in_dom risk=react19_hydration_mismatch_on_next_app_router expected=stylesheet_rule actual=hidden_and_inline_display_on_variant_div',
     );
-    assert.doesNotMatch(
+    assert.match(
       SOURCE,
-      /variantEl\.style\.setProperty\('--p-'/,
-      'range/toggle --p-* params must not mutate inline style on server-rendered variant divs',
+      /if \(svelteComponentSession\?\.sessionId === currentSessionId\)[\s\S]{0,280}?variantEl\.style\.setProperty\('--p-'/,
+      'client-mounted Svelte component variants drive --p-* inline (no SSR div, no hydration), unlike server-rendered variant divs',
+    );
+    assert.match(
+      SOURCE,
+      /function applyParamValue\([\s\S]{0,1200}?svelteComponentSession\?\.sessionId === currentSessionId[\s\S]{0,400}?return;[\s\S]{0,400}?updateVariantStateStylesheet\(currentSessionId, visibleVariant\)/,
+      'applyParamValue must short-circuit the Svelte inline path before the SSR stylesheet path',
     );
     assert.match(
       SOURCE,
