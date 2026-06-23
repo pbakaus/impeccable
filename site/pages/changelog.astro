@@ -23,8 +23,17 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
-    <article id="v3.8.0" class="cf-entry cf-entry--current">
-      <header class="cf-entry-head"><span class="cf-version">v3.8.0</span><span class="cf-date">June 22, 2026</span><span class="cf-current-badge">Current</span></header>
+    <article id="v3.9.0" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.9.0</span><span class="cf-date">June 24, 2026</span><span class="cf-current-badge">Current</span></header>
+      <p class="cf-entry-lead">Impeccable now knows whether you are building for the web or for native mobile, and applies the right platform conventions.</p>
+      <ul class="cf-items">
+        <li><strong>A platform axis: web, iOS, Android, or adaptive.</strong> Set <code>## Platform</code> in <code>PRODUCT.md</code> and the skill loads the matching native rulebook on top of your register: Apple Human Interface Guidelines for iOS, Material Design 3 for Android, both for a cross-platform app that adapts per OS. Web stays the default, so existing projects are untouched.</li>
+        <li><strong>Native design that earns familiarity.</strong> On native, platform conformance is the bar for structure, interaction, and accessibility; brand lives in the expressive layer the platform gives you. <code>/impeccable init</code> asks the platform question right after register, and audit, layout, animate, and adapt now speak in platform terms when the target is native.</li>
+      </ul>
+    </article>
+
+    <article id="v3.8.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.8.0</span><span class="cf-date">June 22, 2026</span></header>
       <p class="cf-entry-lead">Impeccable reaches across more of your workflow: the design hook now runs in GitHub Copilot, and project context understands monorepos.</p>
       <ul class="cf-items">
         <li><strong>Design hooks for GitHub Copilot.</strong> Installing the skill adds a <code>.github/hooks/impeccable.json</code> hook that runs the detector after Copilot edits a UI file and feeds the findings back as a focused design reminder. It covers both the Copilot CLI and the cloud agent, and recognizes every edit path Copilot uses, including <code>apply_patch</code>.</li>

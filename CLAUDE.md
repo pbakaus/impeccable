@@ -25,6 +25,23 @@ Sub-command reference files add a short `## Register` section near the top *only
 
 **a11y lives in `audit.md`**, not in SKILL.md, `brand.md`, or `product.md`. Models over-cautious themselves into safe, underdesigned output when reminded about accessibility at design time. The audit command is the dedicated place for that check.
 
+### Platform (web / ios / android / adaptive)
+
+A second axis, **orthogonal to register**. Register answers "does design IS or SERVES the product"; platform answers "what's the delivery target and which native conventions apply":
+
+- **web** — a website or web app (including responsive mobile web). The default. No extra rulebook: the General rules in SKILL.md and the register reference cover it; `reference/web.md` is a thin pointer that says so.
+- **ios** — a native iOS / iPadOS app. Loads `reference/ios.md` (Apple HIG distilled) on top of the register reference.
+- **android** — a native Android app. Loads `reference/android.md` (Material Design 3 distilled) on top of the register reference.
+- **adaptive** — a cross-platform app shipping both iOS and Android from one codebase (Flutter, React Native, KMP) that adapts per OS. Loads **both** `reference/ios.md` and `reference/android.md`. A Flutter/RN app that uses one look on both platforms (Material-everywhere is the Flutter default) is not adaptive; it takes that single platform's value.
+
+PRODUCT.md carries a `## Platform` section with a bare value (`web` / `ios` / `android` / `adaptive`). It's parsed by `extractPlatform()` in `skill/scripts/context.mjs` (mirroring `extractRegister()`); a **missing field defaults to `web`** so legacy projects are unaffected. A line that names both native targets (e.g. `ios, android`) is also read as `adaptive`. `context.mjs` appends a NEXT STEP directive to read the native reference(s) when the value is `ios`, `android`, or `adaptive` (both). `init` (Step 3) asks platform right after register.
+
+`ios.md` and `android.md` are distilled from the MIT-licensed [ehmo/platform-design-skills](https://github.com/ehmo/platform-design-skills); attribution is in `NOTICE.md`.
+
+Sub-command reference files add a short `## Platform` section *only where guidance diverges for native*. Don't restate the platform files — link instead. Sub-commands carrying one today: `adapt`, `audit`, `animate`, `layout`.
+
+**Live mode and the `detect` CLI are web-only.** They operate on a browser / HTML, so SKILL.md's routing skips them for any native (`ios` / `android` / `adaptive`) project.
+
 ## CSS
 
 Plain hand-written CSS, no Tailwind. Imported into Astro pages/layouts via frontmatter `import` statements; Vite resolves `@import` chains automatically.

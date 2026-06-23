@@ -700,12 +700,40 @@ export function extractRegister(product) {
   if (!product) return null;
   const lines = product.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+Register\b/i.test(lines[i].trim())) {
+    if (/^##\s+Register\s*$/i.test(lines[i].trim())) {
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim();
         if (!next) continue;
         const word = next.toLowerCase();
         if (word === 'brand' || word === 'product') return word;
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Pull the platform (`web`, `ios`, `android`, or `adaptive`) out of PRODUCT.md
+ * by looking for a `## Platform` section and reading the first non-empty line
+ * that follows it. `adaptive` is for cross-platform apps (Flutter, React
+ * Native) that ship both iOS and Android from one codebase; a line that names
+ * both targets (e.g. `ios, android`) is also read as `adaptive`. Returns null
+ * when the file is legacy / platform-less, which the skill treats as `web`
+ * (the default the general rules already assume).
+ */
+export function extractPlatform(product) {
+  if (!product) return null;
+  const lines = product.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Platform\s*$/i.test(lines[i].trim())) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        if (!next) continue;
+        const value = next.toLowerCase();
+        if (value === 'web' || value === 'ios' || value === 'android' || value === 'adaptive') return value;
+        // A cross-platform line naming both native targets = adaptive.
+        if (/\bios\b/.test(value) && /\bandroid\b/.test(value)) return 'adaptive';
         return null;
       }
     }
@@ -884,6 +912,16 @@ async function cli() {
     ? `NEXT STEP: This project's register is \`${register}\`. You MUST now read \`reference/${register}.md\` before producing any design output.`
     : `NEXT STEP: You MUST now read the matching register reference (\`reference/brand.md\` or \`reference/product.md\`) before producing any design output. Pick based on PRODUCT.md above.`;
   parts.push(next);
+  const platform = extractPlatform(ctx.product);
+  const nativeRefs =
+    platform === 'adaptive' ? ['ios', 'android'] : platform === 'ios' || platform === 'android' ? [platform] : [];
+  if (nativeRefs.length) {
+    const refList = nativeRefs.map(p => `\`reference/${p}.md\``).join(' and ');
+    const label = platform === 'adaptive' ? '`adaptive` (both iOS and Android)' : `\`${platform}\``;
+    parts.push(
+      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions (this is on top of the register reference above).`,
+    );
+  }
   if (updateDirective) parts.push(updateDirective);
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
 }

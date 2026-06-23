@@ -10,6 +10,10 @@ Brand: motion is part of the voice; one well-rehearsed entrance beats scattered 
 
 Product: 150–250 ms on most transitions. Motion conveys state: feedback, reveal, loading, transitions between views. No page-load choreography; users are in a task and won't wait for it.
 
+## Platform
+
+Native (`ios` / `android` / `adaptive`): motion mirrors the system, not web habits. Match platform navigation transitions and honor the OS Reduce Motion setting. See [ios.md](ios.md) (system transitions) and [android.md](android.md) (Material motion patterns: container transform, shared-axis, fade-through); `adaptive` follows each OS's motion.
+
 ---
 
 ## Assess Animation Opportunities

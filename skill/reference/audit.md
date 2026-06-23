@@ -2,6 +2,10 @@ Run systematic **technical** quality checks and generate a comprehensive report.
 
 This is a code-level audit, not a design critique. Check what's measurable and verifiable in the implementation.
 
+## Platform
+
+The dimensions below are written for web. For native (`ios` / `android` / `adaptive`), translate them to platform terms: accessibility is **VoiceOver / TalkBack** correctness (labels, roles, reading order, Dynamic Type / scalable text reflow), not WCAG contrast-and-ARIA by rote; touch targets are 44 pt (iOS) / 48 dp (Android); appearance must cover Dark Mode / dark theme. The bundled `detect.mjs` rule engine is web-only; don't run it against native code. See [ios.md](ios.md) and [android.md](android.md) (`adaptive` audits against both).
+
 ## Diagnostic Scan
 
 Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the criteria below.
