@@ -26,6 +26,7 @@ import {
 } from '../cli/bin/commands/skills.mjs';
 
 const CLI = join(import.meta.dir, '..', 'cli', 'bin', 'cli.js');
+const PIN_SCRIPT = join(import.meta.dir, '..', 'skill', 'scripts', 'pin.mjs');
 
 function run(args, opts = {}) {
   return execSync(`node ${CLI} ${args}`, {
@@ -79,6 +80,7 @@ function createFakeUniversalBundle(root, providers = ['.claude', '.agents', '.cu
       '---',
       '',
       `Local deterministic bundle for ${provider}.`,
+      `Run node ${provider}/skills/impeccable/scripts/context.mjs.`,
     ].join('\n'));
     writeFileSync(join(skillDir, 'scripts', 'context.mjs'), 'console.log("local bundle context");\n');
   }
@@ -1065,6 +1067,93 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(skills).not.toContain('i-impeccable');
 
     rmSync(tmp, { recursive: true, force: true });
+  }, 15000);
+});
+describe('provider install root behavior', () => {
+  const projectInstallCases = [
+    { provider: '.omp', alias: 'omp', expectedPath: ['.omp', 'skills'], initHint: '/impeccable init', scriptPath: '.omp/skills/impeccable/scripts/context.mjs' },
+    { provider: '.claude', alias: 'claude', expectedPath: ['.claude', 'skills'], initHint: '/impeccable init', scriptPath: '.claude/skills/impeccable/scripts/context.mjs' },
+  ];
+  for (const { provider, alias, expectedPath, initHint, scriptPath } of projectInstallCases) {
+    test(`project install writes ${provider} skills to ${expectedPath.join('/')}`, () => {
+      const tmp = mkdtempSync(join(tmpdir(), `imp-test-project-${provider.replace(/^\./, '')}-`));
+      execSync('git init', { cwd: tmp });
+      const bundleRoot = createFakeUniversalBundle(tmp, [provider]);
+
+      const output = run(`install -y --providers=${alias} --no-hooks`, {
+        cwd: tmp,
+        env: { ...process.env, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      });
+
+      const skillFile = join(tmp, ...expectedPath, 'impeccable', 'SKILL.md');
+      expect(output).toContain(`Installed impeccable into: ${provider} (project)`);
+      expect(output).toContain(initHint);
+      expect(existsSync(skillFile)).toBe(true);
+      const skillContent = readFileSync(skillFile, 'utf8');
+      expect(skillContent).toContain(`Local deterministic bundle for ${provider}.`);
+      expect(skillContent).toContain(`node ${scriptPath}`);
+
+      rmSync(tmp, { recursive: true, force: true });
+    }, 15000);
+  }
+
+  const globalInstallCases = [
+    { provider: '.omp', alias: 'omp', harnessRel: ['.omp', 'agent'], expectedPath: ['.omp', 'agent', 'skills'], initHint: '/impeccable init', scriptPath: '$HOME/.omp/agent/skills/impeccable/scripts/context.mjs' },
+    { provider: '.claude', alias: 'claude', harnessRel: ['.claude'], expectedPath: ['.claude', 'skills'], initHint: '/impeccable init', scriptPath: '.claude/skills/impeccable/scripts/context.mjs' },
+  ];
+  for (const { provider, alias, harnessRel, expectedPath, initHint, scriptPath } of globalInstallCases) {
+    test(`global install writes ${provider} skills to ${expectedPath.join('/')}`, () => {
+      const tmp = mkdtempSync(join(tmpdir(), `imp-test-global-${provider.replace(/^\./, '')}-`));
+      const home = mkdtempSync(join(tmpdir(), `imp-home-${provider.replace(/^\./, '')}-`));
+      execSync('git init', { cwd: tmp });
+      mkdirSync(join(home, ...harnessRel), { recursive: true });
+      const bundleRoot = createFakeUniversalBundle(tmp, [provider]);
+
+      const output = run(`install -y --providers=${alias} --global --no-hooks`, {
+        cwd: tmp,
+        env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      });
+
+      const skillFile = join(home, ...expectedPath, 'impeccable', 'SKILL.md');
+      expect(output).toContain(`Installed impeccable into: ${provider} (global)`);
+      expect(output).toContain(initHint);
+      expect(existsSync(skillFile)).toBe(true);
+      expect(readFileSync(skillFile, 'utf8')).toContain(`node ${scriptPath}`);
+      expect(existsSync(join(tmp, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
+
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }, 15000);
+  }
+
+});
+
+describe('skill pin shortcuts', () => {
+  test('uses harness-specific command prefix for every supported harness', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-pin-prefix-'));
+    execSync('git init', { cwd: tmp });
+
+    const providers = [
+      '.claude', '.cursor', '.gemini', '.codex', '.agents', '.github',
+      '.trae', '.trae-cn', '.pi', '.qoder', '.opencode', '.kiro', '.rovodev', '.omp',
+    ];
+    createFakeSkills(tmp, ['impeccable'], providers);
+
+    execSync(`node ${PIN_SCRIPT} pin audit`, { cwd: tmp });
+
+    try {
+      for (const harness of providers) {
+        const shortcutPath = join(tmp, harness, 'skills', 'audit', 'SKILL.md');
+        const content = readFileSync(shortcutPath, 'utf8');
+        const prefix = harness === '.omp' ? '/skill:' : ['.codex', '.agents'].includes(harness) ? '$' : '/';
+        expect(content).toContain(`${prefix}impeccable audit`);
+        if (prefix !== '/') {
+          expect(content).not.toContain('/impeccable audit');
+        }
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   }, 15000);
 });
 

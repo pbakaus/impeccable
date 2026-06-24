@@ -21,9 +21,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // All known harness directories
 const HARNESS_DIRS = [
-  '.claude', '.cursor', '.gemini', '.codex', '.agents',
-  '.trae', '.trae-cn', '.pi', '.opencode', '.kiro', '.rovodev',
+  '.claude', '.cursor', '.gemini', '.codex', '.agents', '.github',
+  '.trae', '.trae-cn', '.pi', '.qoder', '.opencode', '.kiro', '.rovodev', '.omp',
 ];
+// Local command prefix overrides per harness. Installed skills cannot rely on
+// repo scripts/lib/utils.js, so pin.mjs owns this map directly.
+const COMMAND_PREFIX_BY_HARNESS = {
+  '.claude': '/',
+  '.cursor': '/',
+  '.gemini': '/',
+  '.codex': '$',
+  '.agents': '$',
+  '.github': '/',
+  '.trae': '/',
+  '.trae-cn': '/',
+  '.pi': '/',
+  '.qoder': '/',
+  '.opencode': '/',
+  '.kiro': '/',
+  '.rovodev': '/',
+  '.omp': '/skill:',
+};
 
 // Valid sub-command names
 const VALID_COMMANDS = [
@@ -83,12 +101,17 @@ function loadCommandMetadata() {
   }
   return {};
 }
+function commandPrefixForSkillsDir(skillsDir) {
+  const normalized = skillsDir.replace(/\\/g, '/');
+  const harness = HARNESS_DIRS.find(dir => normalized.endsWith(`${dir}/skills`));
+  return COMMAND_PREFIX_BY_HARNESS[harness] || '/';
+}
 
 /**
  * Generate a pinned skill's SKILL.md content.
  */
-function generatePinnedSkill(command, metadata) {
-  const desc = metadata[command]?.description || `Shortcut for /impeccable ${command}.`;
+function generatePinnedSkill(command, metadata, commandPrefix = '/') {
+  const desc = metadata[command]?.description || `Shortcut for ${commandPrefix}impeccable ${command}.`;
   const hint = metadata[command]?.argumentHint || '[target]';
 
   return `---
@@ -100,9 +123,9 @@ user-invocable: true
 
 ${PIN_MARKER}
 
-This is a pinned shortcut for \`{{command_prefix}}impeccable ${command}\`.
+This is a pinned shortcut for \`${commandPrefix}impeccable ${command}\`.
 
-Invoke {{command_prefix}}impeccable ${command}, passing along any arguments provided here, and follow its instructions.
+Invoke ${commandPrefix}impeccable ${command}, passing along any arguments provided here, and follow its instructions.
 `;
 }
 
@@ -118,7 +141,6 @@ function pin(command, projectRoot) {
     return false;
   }
 
-  const content = generatePinnedSkill(command, metadata);
   let created = 0;
 
   for (const skillsDir of harnessDirs) {
@@ -135,6 +157,7 @@ function pin(command, projectRoot) {
       }
     }
 
+    const content = generatePinnedSkill(command, metadata, commandPrefixForSkillsDir(skillsDir));
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), content, 'utf-8');
     console.log(`  + ${skillDir}`);

@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.omp'];
 const PROVIDER_ALIASES = {
   agents: '.agents',
   claude: '.claude',
@@ -34,6 +34,7 @@ const PROVIDER_ALIASES = {
   gemini: '.gemini',
   github: '.github',
   kiro: '.kiro',
+  omp: '.omp',
   opencode: '.opencode',
   pi: '.pi',
   qoder: '.qoder',
@@ -50,6 +51,7 @@ const PROVIDER_DISPLAY = {
   '.gemini': { name: 'Gemini CLI', input: 'gemini' },
   '.github': { name: 'GitHub Copilot', input: 'github' },
   '.kiro': { name: 'Kiro', input: 'kiro' },
+  '.omp': { name: 'OMP', input: 'omp' },
   '.opencode': { name: 'OpenCode', input: 'opencode' },
   '.pi': { name: 'Project Indigo', input: 'pi' },
   '.qoder': { name: 'Qoder', input: 'qoder' },
@@ -57,7 +59,7 @@ const PROVIDER_DISPLAY = {
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
 };
-const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev'];
+const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'omp'];
 
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
@@ -71,6 +73,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.opencode', provider: '.opencode' },
   { home: '.qoder', provider: '.qoder' },
   { home: '.rovodev', provider: '.rovodev' },
+  { home: '.omp/agent', provider: '.omp', skillsHome: '.omp/agent' },
 ];
 
 // Last-resort default when nothing is detected: Claude Code + the universal
@@ -415,9 +418,9 @@ async function showHelp() {
 /**
  * Read the skills version from the impeccable SKILL.md frontmatter.
  */
-function getSkillsVersion(root) {
+function getSkillsVersion(root, scope = 'project') {
   for (const d of PROVIDER_DIRS) {
-    const skillMd = join(root, d, 'skills', 'impeccable', 'SKILL.md');
+    const skillMd = join(providerSkillsRoot(root, d, scope), 'impeccable', 'SKILL.md');
     if (!existsSync(skillMd)) continue;
     const content = readFileSync(skillMd, 'utf-8');
     const match = content.match(/^version:\s*(.+)$/m);
@@ -518,8 +521,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  * releases still refresh installed files.
  */
 function normalizeForHash(content) {
-  return content
-    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/');
+  return content.replace(/(?:\$HOME\/\.omp\/agent|\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|omp))\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {
@@ -535,10 +537,10 @@ function hashSkillFile(filePath) {
  * per unique real path. The first provider that maps to a real path
  * wins (so the bundle uses that provider's build).
  */
-function deduplicateProviders(root, providers) {
+function deduplicateProviders(root, providers, scope = 'project') {
   const seen = new Map(); // realPath -> { provider, localSkillsDir }
   for (const provider of providers) {
-    const skillsDir = join(root, provider, 'skills');
+    const skillsDir = providerSkillsRoot(root, provider, scope);
     if (!existsSync(skillsDir)) continue;
     const real = realpathSync(skillsDir);
     if (!seen.has(real)) {
@@ -556,8 +558,8 @@ function deduplicateProviders(root, providers) {
  * SKILL.md, so script-only fixes and removed files are detected.
  * Returns true if every bundle skill matches the local copy.
  */
-function isUpToDate(root, providers, bundleDir) {
-  const unique = deduplicateProviders(root, providers);
+function isUpToDate(root, providers, bundleDir, scope = 'project') {
+  const unique = deduplicateProviders(root, providers, scope);
   if (unique.length === 0) return false;
 
   for (const { provider, localSkillsDir } of unique) {
@@ -621,9 +623,9 @@ async function check() {
 // ─── skills install ───────────────────────────────────────────────────────────
 
 // Check if impeccable skills are already present in any provider folder
-function isAlreadyInstalled(root) {
+function isAlreadyInstalled(root, scope = 'project') {
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
+    const skillsDir = providerSkillsRoot(root, d, scope);
     if (!existsSync(skillsDir)) continue;
     try {
       const entries = readdirSync(skillsDir);
@@ -678,10 +680,10 @@ function isRealSkillDir(skillsDir, name) {
  * by name -- never touches third-party skills that happen to start with `i-`.
  * Returns the number of skills migrated.
  */
-function migrateUnprefixImpeccable(root) {
+function migrateUnprefixImpeccable(root, scope = 'project') {
   let migrated = 0;
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
+    const skillsDir = providerSkillsRoot(root, d, scope);
     if (!existsSync(skillsDir)) continue;
     let entries;
     try { entries = readdirSync(skillsDir); } catch { continue; }
@@ -772,9 +774,23 @@ function uniquePaths(paths) {
   return [...new Set(paths)];
 }
 
+function providerSkillsRoot(root, provider, scope = 'project') { return join(root, (scope === 'user' && GLOBAL_HARNESS_HINTS.find(h => h.provider === provider)?.skillsHome) || provider, 'skills'); }
+
+function rewriteInstalledSkillPaths(skillDir, provider) {
+  const skillsHome = GLOBAL_HARNESS_HINTS.find(h => h.provider === provider)?.skillsHome;
+  if (!skillsHome) return;
+  for (const relPath of listSkillTreeFiles(skillDir)) {
+    if (!relPath.endsWith('.md')) continue;
+    const filePath = join(skillDir, ...relPath.split('/'));
+    const content = readFileSync(filePath, 'utf-8');
+    const next = content.replaceAll(`${provider}/skills/`, `$HOME/${skillsHome}/skills/`);
+    if (next !== content) writeFileSync(filePath, next);
+  }
+}
+
 function userSkillProbePaths(home, harnessDir, provider) {
   return uniquePaths([
-    join(home, provider, 'skills'),
+    providerSkillsRoot(home, provider, 'user'),
     join(home, harnessDir, 'skills'),
   ]);
 }
@@ -804,7 +820,7 @@ function collectInstallDetections(root, home = homedir()) {
       scope: 'user',
       foundPath,
       installRoot: home,
-      installPath: join(home, provider, 'skills'),
+      installPath: providerSkillsRoot(home, provider, 'user'),
       skillProbePaths,
       hasRealSkills: skillProbePaths.some(hasRealSkillEntries),
       reason: 'user harness folder',
@@ -834,12 +850,12 @@ function defaultDetectedProviders(detections) {
  *  3. Otherwise, infer from globally installed harnesses (~/.claude, ~/.codex).
  *  4. Otherwise, a sensible default (.claude + .agents).
  */
-function resolveInstallTargets(root, providersValue) {
+function resolveInstallTargets(root, providersValue, home = process.env.HOME || homedir()) {
   if (providersValue) {
     return parseProviderList(providersValue).providers;
   }
 
-  const detected = defaultDetectedProviders(collectInstallDetections(root));
+  const detected = defaultDetectedProviders(collectInstallDetections(root, home));
   if (detected.length > 0) return detected;
 
   return [...DEFAULT_TARGETS];
@@ -1015,12 +1031,12 @@ async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
  * into the project. Writes real directories (copy, never symlink) so every
  * harness keeps the build that was compiled for it. Returns skills written.
  */
-function copyProviderSkills(bundleDir, root, targets) {
+function copyProviderSkills(bundleDir, root, targets, { scope = 'project' } = {}) {
   let written = 0;
   for (const provider of targets) {
     const srcDir = join(bundleDir, provider, 'skills');
     if (existsSync(srcDir)) {
-      const localSkillsDir = join(root, provider, 'skills');
+      const localSkillsDir = providerSkillsRoot(root, provider, scope);
       // A previous `npx skills` install may have left this provider's skills dir
       // as a symlink to another provider's canonical copy. Drop the link so we
       // write a real, provider-specific directory instead of writing through it.
@@ -1033,6 +1049,7 @@ function copyProviderSkills(bundleDir, root, targets) {
         const dest = join(localSkillsDir, skill.name);
         rmSync(dest, { recursive: true, force: true });
         copyDirSync(src, dest);
+        if (scope === 'user') rewriteInstalledSkillPaths(dest, provider);
         written++;
       }
     }
@@ -1040,8 +1057,8 @@ function copyProviderSkills(bundleDir, root, targets) {
   return written;
 }
 
-function refreshProviderSkills(bundleDir, root, providers) {
-  const unique = deduplicateProviders(root, providers);
+function refreshProviderSkills(bundleDir, root, providers, { scope = 'project' } = {}) {
+  const unique = deduplicateProviders(root, providers, scope);
   let updated = 0;
   for (const { provider, localSkillsDir } of unique) {
     const srcDir = join(bundleDir, provider, 'skills');
@@ -1054,6 +1071,7 @@ function refreshProviderSkills(bundleDir, root, providers) {
       const dest = join(localSkillsDir, skill.name);
       if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
       copyDirSync(src, dest);
+      if (scope === 'user') rewriteInstalledSkillPaths(dest, provider);
       updated++;
     }
   }
@@ -1500,13 +1518,13 @@ async function install(flags) {
   }
 
   const { targets, installRoot, hookRoot, scope } = plan;
-  const existing = isAlreadyInstalled(installRoot);
+  const existing = isAlreadyInstalled(installRoot, scope);
 
   if (existing && !force) {
     console.log(`Impeccable skills are already installed (found in ${existing}/).`);
-    const installedTargets = findInstalledProviders(installRoot);
+    const installedTargets = findInstalledProviders(installRoot, scope);
     const selectedInstalledTargets = targets.filter(provider => installedTargets.includes(provider));
-    const linkedTargets = findLinkedProviders(installRoot, selectedInstalledTargets);
+    const linkedTargets = findLinkedProviders(installRoot, selectedInstalledTargets, scope);
     const copyTargets = selectedInstalledTargets.filter(provider => !linkedTargets.includes(provider));
     const hookTargets = selectedInstalledTargets;
     const wantHooks = installHooks && await decideHookInstall(hookRoot, hookTargets, { yes });
@@ -1533,10 +1551,10 @@ async function install(flags) {
         }
       }
 
-      if (!updateCheckSkipped && copyTargets.length > 0 && !isUpToDate(installRoot, copyTargets, bundleDir)) {
-        migrateUnprefixImpeccable(installRoot);
-        updated = refreshProviderSkills(bundleDir, installRoot, copyTargets);
-        const v = getSkillsVersion(installRoot);
+      if (!updateCheckSkipped && copyTargets.length > 0 && !isUpToDate(installRoot, copyTargets, bundleDir, scope)) {
+        migrateUnprefixImpeccable(installRoot, scope);
+        updated = refreshProviderSkills(bundleDir, installRoot, copyTargets, { scope });
+        const v = getSkillsVersion(installRoot, scope);
         console.log(`Updated ${updated} skill(s)${v ? ` to v${v}` : ''}.`);
       }
 
@@ -1549,7 +1567,7 @@ async function install(flags) {
         console.log('Existing skills were left unchanged.');
         console.log('Run with --force to reinstall.\n');
       } else if (updated === 0 && writtenHookTargets.length === 0) {
-        const v = getSkillsVersion(installRoot);
+        const v = getSkillsVersion(installRoot, scope);
         console.log(`Skills are up to date${v ? ` (v${v})` : ''}.`);
         console.log('Run with --force to reinstall.\n');
       } else {
@@ -1588,12 +1606,12 @@ async function install(flags) {
 
   // Retire any old `i-`-prefixed install so the fresh copy lands on the
   // canonical `impeccable` dir instead of orphaning the prefixed one.
-  migrateUnprefixImpeccable(installRoot);
+  migrateUnprefixImpeccable(installRoot, scope);
 
   let written = 0;
   let hookTargets = [];
   try {
-    written = copyProviderSkills(bundleDir, installRoot, targets);
+    written = copyProviderSkills(bundleDir, installRoot, targets, { scope });
     hookTargets = wantHooks ? copyProviderHooks(bundleDir, hookRoot, targets, { force, skillRoot: installRoot }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
@@ -1623,10 +1641,10 @@ function findProjectRoot() {
   return process.cwd();
 }
 
-function findInstalledProviders(root) {
+function findInstalledProviders(root, scope = 'project') {
   const found = [];
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
+    const skillsDir = providerSkillsRoot(root, d, scope);
     if (!existsSync(skillsDir)) continue;
     try {
       const entries = readdirSync(skillsDir);
@@ -1636,9 +1654,9 @@ function findInstalledProviders(root) {
   return found;
 }
 
-function findLinkedProviders(root, providers) {
+function findLinkedProviders(root, providers, scope = 'project') {
   return providers.filter(provider => {
-    const skillDir = join(root, provider, 'skills', 'impeccable');
+    const skillDir = join(providerSkillsRoot(root, provider, scope), 'impeccable');
     try {
       return lstatSync(skillDir).isSymbolicLink();
     } catch {
@@ -1806,6 +1824,7 @@ export {
   linkProviderSkills,
   mergeHookManifests,
   migrateUnprefixImpeccable,
+  normalizeForHash,
   resolveInstallTargets,
   resolveLinkSource,
 };

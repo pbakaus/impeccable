@@ -122,4 +122,11 @@ export const PROVIDERS = {
     displayName: 'Rovo Dev',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  omp: {
+    provider: 'omp',
+    providerTags: ['omp'],
+    configDir: '.omp',
+    displayName: 'OMP',
+    frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
 };

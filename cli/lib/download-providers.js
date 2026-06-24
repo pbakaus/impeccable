@@ -6,6 +6,7 @@ export const FILE_DOWNLOAD_PROVIDER_CONFIG_DIRS = Object.freeze({
   agents: '.agents',
   github: '.github',
   kiro: '.kiro',
+  omp: '.omp',
   opencode: '.opencode',
   pi: '.pi',
   qoder: '.qoder',

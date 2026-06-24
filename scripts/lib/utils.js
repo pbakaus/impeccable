@@ -627,8 +627,15 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
+  },
+  omp: {
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/skill:'
   }
 };
+
 
 export const PROVIDER_BLOCK_TAGS = new Set([
   'agents',
@@ -639,6 +646,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'gemini',
   'github',
   'kiro',
+  'omp',
   'opencode',
   'pi',
   'qoder',
@@ -744,8 +752,8 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
     const sorted = [...allSkillNames].sort((a, b) => b.length - a.length);
     for (const name of sorted) {
       result = result.replace(
-        new RegExp(`\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
-        cmdPrefix
+        new RegExp(`(^|[^a-zA-Z0-9_.-])\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
+        `$1${cmdPrefix}`
       );
     }
   }
