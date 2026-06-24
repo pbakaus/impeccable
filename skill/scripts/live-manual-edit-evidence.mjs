@@ -64,7 +64,7 @@ export function buildManualEditEvidence({ cwd = process.cwd(), pageUrl = null } 
     ops,
     context: {
       cwd,
-      bufferPath: path.relative(cwd, getBufferPath(cwd)),
+      bufferPath: projectRelative(cwd, getBufferPath(cwd)),
       totalEntries: entries.length,
       totalOps: opCount,
     },
@@ -157,7 +157,7 @@ function analyzeSourceHint(op, cwd) {
   const hint = normalizeSourceHint(op.sourceHint);
   if (!hint.file) return null;
   const file = path.resolve(cwd, hint.file);
-  const relativeFile = path.relative(cwd, file);
+  const relativeFile = projectRelative(cwd, file);
   if (!isPathInsideOrEqual(cwd, file)) {
     return { ...hint, status: 'outside_cwd', relativeFile: hint.file };
   }
@@ -254,7 +254,7 @@ function maybeAddSearchFile(file, cwd, seenFiles, out) {
   if (isGeneratedFile(file, { cwd })) return;
   let content;
   try { content = fs.readFileSync(file, 'utf-8'); } catch { return; }
-  out.push({ file, relativeFile: path.relative(cwd, file), content, lines: content.split('\n') });
+  out.push({ file, relativeFile: projectRelative(cwd, file), content, lines: content.split('\n') });
 }
 
 function findLiteralMatches(searchFiles, needle, { max }) {
@@ -342,6 +342,10 @@ function matchForIndex(file, index, kind, needle) {
 function isPathInsideOrEqual(cwd, file) {
   const rel = path.relative(path.resolve(cwd), path.resolve(file));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function projectRelative(cwd, file) {
+  return path.relative(cwd, file).split(path.sep).join('/');
 }
 
 function normalizeText(value) {

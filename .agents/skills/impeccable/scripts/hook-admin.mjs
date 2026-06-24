@@ -269,15 +269,20 @@ function ignoreValueEntryKey(entry) {
   return `${entry.rule}\0${entry.value}\0${files}`;
 }
 
+function relativePathForDisplay(cwd, filePath, fallback = filePath) {
+  const rel = path.relative(cwd, filePath) || fallback;
+  return rel.split(path.sep).join('/');
+}
+
 function statusReport(cwd) {
   const shared = readRawConfigFile(getConfigPath(cwd));
   const local = readRawConfigFile(getLocalConfigPath(cwd));
   const cfg = readConfig(cwd);
   const envKill = process.env.IMPECCABLE_HOOK_DISABLED;
   const envState = envKill ? `IMPECCABLE_HOOK_DISABLED=${envKill}` : 'unset';
-  const cfgPath = path.relative(cwd, getConfigPath(cwd)) || '.impeccable/config.json';
-  const localPath = path.relative(cwd, getLocalConfigPath(cwd)) || '.impeccable/config.local.json';
-  const cachePath = path.relative(cwd, getCachePath(cwd)) || '.impeccable/hook.cache.json';
+  const cfgPath = relativePathForDisplay(cwd, getConfigPath(cwd), '.impeccable/config.json');
+  const localPath = relativePathForDisplay(cwd, getLocalConfigPath(cwd), '.impeccable/config.local.json');
+  const cachePath = relativePathForDisplay(cwd, getCachePath(cwd), '.impeccable/hook.cache.json');
   const fileState = (info, relPath, absent) => {
     if (info.malformed) return `${relPath} (malformed; ignored)`;
     if (info.exists) return relPath;

@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -24,6 +24,23 @@ import {
 let cwd;
 beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'imp-critique-')); });
 afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+
+function canCreateFileSymlink() {
+  const tmp = mkdtempSync(join(tmpdir(), 'imp-critique-symlink-cap-'));
+  try {
+    const target = join(tmp, 'target.mjs');
+    const link = join(tmp, 'link.mjs');
+    writeFileSync(target, 'export default 1;\n');
+    symlinkSync(target, link, 'file');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+const itSymlink = canCreateFileSymlink() ? it : it.skip;
 
 describe('slugFromTarget', () => {
   it('kebabs a relative file path', () => {
@@ -173,7 +190,7 @@ describe('CLI entry point', () => {
     assert.match(r.stderr, /no stable slug/);
   });
 
-  it('runs when invoked through a symlinked harness path', () => {
+  itSymlink('runs when invoked through a symlinked harness path', () => {
     const linkedScript = join(cwd, 'linked-critique-storage.mjs');
     symlinkSync(SCRIPT, linkedScript);
 

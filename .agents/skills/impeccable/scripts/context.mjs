@@ -903,13 +903,14 @@ function pathExistsForTarget(cwd, targetPath) {
 
 function buildResolvedContextDirective(ctx, options, { targetExists = null } = {}) {
   const targetPath = hasTargetOption(options) ? options.targetPath : null;
+  const portableContextPath = (value) => typeof value === 'string' ? value.split(path.sep).join('/') : value;
   return `RESOLVED_CONTEXT:\n${JSON.stringify({
     targetPath,
     ...(targetPath ? { targetExists } : {}),
     projectRoot: ctx.projectRoot,
     repoRoot: ctx.repoRoot,
-    productPath: ctx.productPath,
-    designPath: ctx.designPath,
+    productPath: portableContextPath(ctx.productPath),
+    designPath: portableContextPath(ctx.designPath),
   }, null, 2)}`;
 }
 

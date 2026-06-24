@@ -10,7 +10,7 @@
  * gracefully when impeccable.style is unreachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, lstatSync, realpathSync, readlinkSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -28,11 +28,31 @@ import {
 const CLI = join(import.meta.dir, '..', 'cli', 'bin', 'cli.js');
 
 function run(args, opts = {}) {
-  return execSync(`node ${CLI} ${args}`, {
+  const argv = typeof args === 'string' && args.trim()
+    ? args.trim().split(/\s+/)
+    : [];
+  return execFileSync(process.execPath, [CLI, ...argv], {
     encoding: 'utf8',
     timeout: 60000,
     ...opts,
   });
+}
+
+function envWithHome(home, extra = {}) {
+  return { ...process.env, HOME: home, USERPROFILE: home, ...extra };
+}
+
+function canCreateDirSymlink() {
+  const tmp = mkdtempSync(join(tmpdir(), 'imp-test-symlink-cap-'));
+  try {
+    mkdirSync(join(tmp, 'target'));
+    symlinkSync('target', join(tmp, 'link'), 'dir');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 /** Create a fake skill installation in a temp dir */
@@ -133,6 +153,7 @@ if (WANT_CLI_REMOTE_E2E) {
   } catch {}
 }
 const describeRemote = (WANT_CLI_REMOTE_E2E && bundleReachable) ? describe : describe.skip;
+const describeSymlink = canCreateDirSymlink() ? describe : describe.skip;
 
 describe('skills install: already-installed detection', () => {
   test('detects impeccable sentinel and bails', () => {
@@ -292,7 +313,7 @@ describe('skills install: already-installed detection', () => {
 
 // ─── Submodule/link installs ────────────────────────────────────────────────
 
-describe('skills link: submodule installs', () => {
+describeSymlink('skills link: submodule installs', () => {
   test('creates relative skill symlinks from dist/universal', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-link-'));
     execSync('git init', { cwd: tmp });
@@ -519,7 +540,7 @@ describe('skills install/update: local universal bundle e2e', () => {
 
     const output = run('install -y --providers=claude --no-hooks', {
       cwd: tmp,
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Installed impeccable into: .claude (project)');
@@ -596,7 +617,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: '\nproject\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Detected harnesses:');
@@ -622,7 +643,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: '2\nclaude,codex\nproject\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Install target: [1] Detected only (claude)  [2] Customize [1]:');
@@ -647,7 +668,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: '\n\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Installed impeccable into: .claude, .agents, .cursor, .gemini (project)');
@@ -673,7 +694,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: '\n\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Installed impeccable into: .claude, .agents, .cursor, .gemini (global)');
@@ -698,7 +719,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: '\n\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Codex CLI');
@@ -719,7 +740,7 @@ describe('skills install/update: local universal bundle e2e', () => {
     const output = run('skills install --no-hooks', {
       cwd: tmp,
       input: 'claude,codex\nproject\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('No harnesses detected');
@@ -740,7 +761,7 @@ describe('skills install/update: local universal bundle e2e', () => {
 
     const output = run('skills install -y --providers=claude,codex,cursor --scope=global', {
       cwd: tmp,
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+      env: envWithHome(home, { IMPECCABLE_BUNDLE_PATH: bundleRoot }),
     });
 
     expect(output).toContain('Installed impeccable into: .claude, .agents, .cursor (global)');
@@ -748,9 +769,13 @@ describe('skills install/update: local universal bundle e2e', () => {
       expect(existsSync(join(home, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
       expect(existsSync(join(tmp, provider, 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
     }
-    expect(readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8')).toContain(join(home, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
-    expect(readFileSync(join(tmp, '.codex', 'hooks.json'), 'utf8')).toContain(join(home, '.agents', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
-    expect(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8')).toContain(join(home, '.cursor', 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs'));
+    const claudeHooks = JSON.parse(readFileSync(join(tmp, '.claude', 'settings.local.json'), 'utf8'));
+    const codexHooks = JSON.parse(readFileSync(join(tmp, '.codex', 'hooks.json'), 'utf8'));
+    const cursorHooks = JSON.parse(readFileSync(join(tmp, '.cursor', 'hooks.json'), 'utf8'));
+    const normalizeCommand = (command) => command.replace(/\\\\/g, '\\');
+    expect(normalizeCommand(claudeHooks.hooks.PostToolUse[0].hooks[0].command)).toContain(join(home, '.claude', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
+    expect(normalizeCommand(codexHooks.hooks.PostToolUse[0].hooks[0].command)).toContain(join(home, '.agents', 'skills', 'impeccable', 'scripts', 'hook.mjs'));
+    expect(normalizeCommand(cursorHooks.hooks.preToolUse[0].command)).toContain(join(home, '.cursor', 'skills', 'impeccable', 'scripts', 'hook-before-edit.mjs'));
 
     rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

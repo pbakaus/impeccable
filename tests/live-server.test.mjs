@@ -5,7 +5,7 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync as nodeRmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, execSync, spawn } from 'node:child_process';
@@ -19,6 +19,19 @@ import {
 const REPO_ROOT = process.cwd();
 const SERVER_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-server.mjs');
 const COMPLETE_SCRIPT = join(REPO_ROOT, 'skill/scripts/live-complete.mjs');
+
+function rmSync(target, opts) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    try {
+      nodeRmSync(target, opts);
+      return;
+    } catch (err) {
+      if (!['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(err?.code) || attempt === 39) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helper: start/stop server for integration tests
 // ---------------------------------------------------------------------------

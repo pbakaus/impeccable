@@ -1,4 +1,8 @@
 {
+  "auto": {
+    "description": "Plain-English design router. Chooses the right primary command, adds supporting commands when the work spans multiple design disciplines, and proceeds without making the user memorize command names. Use when the user describes an outcome, asks what to do, says the UI feels wrong, or mixes concerns like layout, type, color, copy, responsiveness, polish, and production readiness.",
+    "argumentHint": "[request]"
+  },
   "craft": {
     "description": "Full confirmed-brief-then-build flow. Runs multi-round shape discovery first, resolves visual probe and north-star mock gates when available, then builds and visually iterates. Use when building a new feature end-to-end.",
     "argumentHint": "[feature description]"

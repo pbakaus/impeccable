@@ -47,6 +47,7 @@ const EXCLUDED_SKILLS = new Set([
 export const SKILL_CATEGORIES = {
   // CREATE - build something new
   impeccable: 'create',
+  auto: 'create',
   craft: 'create',
   shape: 'create',
   // EVALUATE - review and assess
@@ -107,6 +108,7 @@ export const CATEGORY_DESCRIPTIONS = {
  */
 export const COMMAND_RELATIONSHIPS = {
   // Create
+  auto: { leadsTo: ['craft', 'critique', 'audit', 'polish', 'harden'] },
   craft: { combinesWith: ['shape'] },
   shape: { combinesWith: ['craft'] },
   // Evaluate (these are the "diagnostics" that lead to fixes)

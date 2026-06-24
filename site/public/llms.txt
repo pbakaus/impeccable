@@ -1,6 +1,6 @@
 # Impeccable
 
-> Impeccable is an open-source design skill, CLI, browser extension, and website for improving AI-generated frontend design with 23 commands, live browser iteration, and deterministic anti-pattern detection.
+> Impeccable is an open-source design skill, CLI, browser extension, and website for improving AI-generated frontend design with 24 commands, live browser iteration, and deterministic anti-pattern detection.
 
 Use the website pages below as the current public documentation. Use the GitHub repository when you need source code, implementation details, tests, or release history. The fastest install path is `npx impeccable install` from a project root.
 
@@ -23,6 +23,7 @@ Use the website pages below as the current public documentation. Use the GitHub 
 ## Command Reference
 
 - [impeccable](https://impeccable.style/docs/impeccable): Main command for recommendations, freeform design work, and loading the full design guide.
+- [auto](https://impeccable.style/docs/auto): Plain-English router that chooses the right workflow and supporting commands.
 - [init](https://impeccable.style/docs/init): Set up design context with `PRODUCT.md`, optional `DESIGN.md`, Live Mode configuration, and next-command recommendations.
 - [craft](https://impeccable.style/docs/craft): Shape, build, and visually iterate a new feature end to end.
 - [shape](https://impeccable.style/docs/shape): Run a discovery interview and produce a design brief before code.

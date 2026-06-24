@@ -1098,8 +1098,9 @@ rounded:
       const { stdout, code } = runIn(dir, '--json', 'src');
       expect(code).toBe(2);
       const findings = JSON.parse(stdout.trim());
-      expect(findings.some(f => f.file.endsWith('src/main.css'))).toBe(false);
-      expect(findings.some(f => f.file.endsWith('src/other.css'))).toBe(true);
+      const files = findings.map(f => f.file.split(path.sep).join('/'));
+      expect(files.some(file => file.endsWith('src/main.css'))).toBe(false);
+      expect(files.some(file => file.endsWith('src/other.css'))).toBe(true);
     });
   });
 

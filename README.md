@@ -1,6 +1,6 @@
 # Impeccable
 
-Design guidance for AI coding agents. 1 skill, 23 commands, live browser iteration, and 44 deterministic detector rules for AI-generated frontend design.
+Design guidance for AI coding agents. 1 skill, 24 commands, live browser iteration, and 44 deterministic detector rules for AI-generated frontend design.
 
 > **Quick start:** From your project root, run `npx impeccable install`, then run `/impeccable init` inside your AI coding tool. Full docs: [impeccable.style](https://impeccable.style).
 
@@ -12,7 +12,7 @@ Every model trained on the same SaaS templates. Skip the guidance and you get th
 
 Impeccable adds:
 - **One setup flow.** `/impeccable init` writes `PRODUCT.md` and offers `DESIGN.md`, so later commands know the audience, brand/product lane, voice, anti-references, colors, type, and components.
-- **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
+- **24 commands.** A shared design vocabulary with your AI: `auto`, `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
 - **44 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
 ## What's Included
@@ -33,12 +33,13 @@ Start every new project with:
 
 `init` asks whether the surface is brand (marketing, landing, portfolio) or product (app UI, dashboard, tool), then writes design context that every later command reads.
 
-### 23 Commands
+### 24 Commands
 
 All commands are accessed through `/impeccable`:
 
 | Command | What it does |
 |---------|--------------|
+| `/impeccable auto` | Choose the right workflow from a plain-English request |
 | `/impeccable craft` | Full shape-then-build flow with visual iteration |
 | `/impeccable init` | One-time setup: gather design context, write PRODUCT.md and DESIGN.md, configure live mode, recommend next steps |
 | `/impeccable document` | Generate root DESIGN.md from existing project code |
@@ -68,6 +69,7 @@ Use `/impeccable pin <command>` to create standalone shortcuts (e.g., `pin audit
 #### Usage Examples
 
 ```
+/impeccable auto make this dashboard easier to scan
 /impeccable audit blog           # Audit blog hub + post pages
 /impeccable critique landing     # UX design review
 /impeccable polish settings      # Final pass before shipping
@@ -78,6 +80,8 @@ Or use `/impeccable` directly with a description:
 ```
 /impeccable redo this hero section
 ```
+
+When you do not know which command fits, use `auto` or plain English. Impeccable picks a primary command, loads only the supporting references it needs, and proceeds without making you memorize the catalog.
 
 ### Anti-Patterns
 
@@ -239,6 +243,7 @@ cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 Once installed, every command runs through the single `/impeccable` skill:
 
 ```
+/impeccable auto         # Pick the workflow for a plain-English request
 /impeccable audit        # Find issues
 /impeccable polish       # Final cleanup
 /impeccable distill      # Remove complexity
@@ -250,6 +255,7 @@ Type `/impeccable` alone to see the full command list.
 Most commands accept an optional argument to focus on a specific area:
 
 ```
+/impeccable auto make the checkout feel trustworthy
 /impeccable audit the header
 /impeccable polish the checkout form
 ```

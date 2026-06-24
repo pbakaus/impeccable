@@ -839,7 +839,7 @@ function normalizeProjectFile(file, cwd = process.cwd()) {
   const absolute = path.isAbsolute(file) ? file : path.resolve(cwd, file);
   const relative = path.relative(cwd, absolute);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
-  return relative;
+  return relative.split(path.sep).join('/');
 }
 
 export function rollbackApplySnapshot(
@@ -928,7 +928,9 @@ export function summarizeManualLogFile(file, cwd = process.cwd()) {
   if (!file || typeof file !== 'string') return undefined;
   if (!path.isAbsolute(file)) return file;
   const relative = path.relative(cwd, file);
-  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : file;
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative)
+    ? relative.split(path.sep).join('/')
+    : file;
 }
 
 export function compactManualLogText(value, max = 200) {

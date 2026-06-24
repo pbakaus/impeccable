@@ -89,7 +89,7 @@ function renderDesktopLayout(container, commands) {
     };
     // Preferred order within each category (unlisted commands append at end)
     const categoryCommandOrder = {
-        'create': ['impeccable', 'craft', 'shape'],
+        'create': ['impeccable', 'auto', 'craft', 'shape'],
         'evaluate': ['critique', 'audit'],
         'refine': ['typeset', 'layout', 'colorize', 'animate', 'delight', 'bolder', 'quieter', 'overdrive'],
         'simplify': ['distill', 'clarify', 'adapt'],

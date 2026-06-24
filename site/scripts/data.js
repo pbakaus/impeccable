@@ -68,6 +68,7 @@ export const skillReferenceDomains = [
 
 export const commandProcessSteps = {
   'impeccable': ['Direct', 'Design', 'Build', 'Refine'],
+  'auto': ['Read', 'Route', 'Load', 'Act'],
   'craft': ['Shape', 'Reference', 'Build', 'Iterate'],
   'shape': ['Interview', 'Synthesize', 'Brief', 'Confirm'],
   'overdrive': ['Assess', 'Choose', 'Build', 'Polish'],
@@ -96,6 +97,7 @@ export const commandProcessSteps = {
 export const commandCategories = {
   // CREATE - build something new
   'impeccable': 'create',
+  'auto': 'create',
   'craft': 'create',
   'shape': 'create',
   // EVALUATE - review and assess
@@ -137,6 +139,7 @@ export const skillRelationships = {
 
 export const commandRelationships = {
   'impeccable': { flow: 'Create: Freeform design with full design intelligence' },
+  'auto': { leadsTo: ['craft', 'critique', 'audit', 'polish', 'harden'], flow: 'Create: Plain-English workflow routing' },
   'craft': { flow: 'Create: Full shape-then-build flow with visual iteration' },
   'shape': { flow: 'Create: Plan UX and UI through structured discovery' },
   'critique': { leadsTo: ['polish', 'distill', 'bolder', 'quieter', 'typeset', 'layout'], flow: 'Evaluate: UX and design review with scoring' },

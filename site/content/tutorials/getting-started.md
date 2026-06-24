@@ -16,13 +16,13 @@ You will end this tutorial with Impeccable installed, design context saved, and 
 
 ## How Impeccable works
 
-Impeccable installs as a single agent skill called `impeccable`. You access all 23 commands through it:
+Impeccable installs as a single agent skill called `impeccable`. You access all 24 commands through it:
 
 ```
 /impeccable <command> <target>
 ```
 
-For example: `/impeccable polish the pricing page`, or `/impeccable audit the checkout`. Type `/impeccable` alone to see the full list.
+For example: `/impeccable auto make this page feel more trustworthy`, `/impeccable polish the pricing page`, or `/impeccable audit the checkout`. Type `/impeccable` alone to see the full list.
 
 If you use a command often, pin it with `/impeccable pin <command>` to create a standalone shortcut (for example, `/impeccable pin audit` gives you `/audit` directly).
 
@@ -31,7 +31,7 @@ If you only remember one sequence, make it this:
 ```
 npx impeccable install
 /impeccable init
-/impeccable polish the page you care about
+/impeccable auto improve the page you care about
 ```
 
 ## Step 1. Install
@@ -117,6 +117,7 @@ Review the diff. If something does not feel right, ask the model to explain the 
 ## What to try next
 
 - [Iterate visually with Live Mode](/tutorials/iterate-live) opens a browser picker on your dev server, generates three production-quality variants per element, and writes the accepted one back to source.
+- `/impeccable auto make this feel ready to ship` chooses the right route when you know the outcome but not the command name.
 - `/impeccable critique the landing page` runs a full design review with scoring, persona tests, and automated detection. It is the best way to find what to fix next.
 - `/impeccable audit the checkout` runs accessibility, performance, theming, responsive, and anti-pattern checks against the implementation. Useful before shipping.
 - `npx impeccable detect src/` runs the deterministic detector directly from the terminal. See [Detector CLI](/docs/detector).

@@ -29,6 +29,7 @@ for (const cat of CATEGORY_ORDER) {
 }
 
 const session = [
+  { slug: 'auto', verb: 'Route' },
   { slug: 'shape', verb: 'Plan' },
   { slug: 'craft', verb: 'Build' },
   { slug: 'critique', verb: 'Review' },
@@ -48,12 +49,17 @@ const startSteps = [
   },
   {
     label: 'Try it',
-    command: '/impeccable polish the pricing page',
-    line: 'Point it at a real page.',
+    command: '/impeccable auto improve the pricing page',
+    line: 'Describe the outcome and let it choose.',
   },
 ];
 
 const choices = [
+  {
+    need: 'Choose for me',
+    command: '/impeccable auto',
+    href: '/docs/auto',
+  },
   {
     need: 'Start a project',
     command: '/impeccable init',
