@@ -73,6 +73,7 @@ export const SKILL_CATEGORIES = {
   // SYSTEM - setup and tooling
   init: 'system',
   document: 'system',
+  'document-copy': 'system',
   extract: 'system',
   live: 'system',
 };
@@ -131,8 +132,9 @@ export const COMMAND_RELATIONSHIPS = {
   harden: { combinesWith: ['optimize'] },
   onboard: { combinesWith: ['clarify', 'delight'] },
   // System
-  init: { combinesWith: ['document'] },
-  document: { combinesWith: ['init', 'extract'] },
+  init: { combinesWith: ['document', 'document-copy'] },
+  document: { combinesWith: ['init', 'extract', 'document-copy'] },
+  'document-copy': { combinesWith: ['init', 'document'] },
   extract: { combinesWith: ['document'] },
   live: {},
 };

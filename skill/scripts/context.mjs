@@ -92,20 +92,15 @@ export function loadContext(cwd = process.cwd(), options = {}) {
 function resolveContext(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const project = resolveProject(absCwd, options);
-  const projectContextDir = resolveLocalContextDir(project.projectRoot);
-  const rootContextDir = project.isMonorepo && project.repoRoot !== project.projectRoot
-    ? resolveLocalContextDir(project.repoRoot)
-    : null;
+  let productPath = resolveContextFileInTree(project.projectRoot, PRODUCT_NAMES);
+  let designPath = resolveContextFileInTree(project.projectRoot, DESIGN_NAMES);
+  let copyPath = resolveContextFileInTree(project.projectRoot, COPY_NAMES);
 
-  let productPath =
-    (projectContextDir ? firstExisting(projectContextDir, PRODUCT_NAMES) : null)
-    || (rootContextDir ? firstExisting(rootContextDir, PRODUCT_NAMES) : null);
-  let designPath =
-    (projectContextDir ? firstExisting(projectContextDir, DESIGN_NAMES) : null)
-    || (rootContextDir ? firstExisting(rootContextDir, DESIGN_NAMES) : null);
-  let copyPath =
-    (projectContextDir ? firstExisting(projectContextDir, COPY_NAMES) : null)
-    || (rootContextDir ? firstExisting(rootContextDir, COPY_NAMES) : null);
+  if (project.isMonorepo && project.repoRoot !== project.projectRoot) {
+    productPath = productPath || resolveContextFileInTree(project.repoRoot, PRODUCT_NAMES);
+    designPath = designPath || resolveContextFileInTree(project.repoRoot, DESIGN_NAMES);
+    copyPath = copyPath || resolveContextFileInTree(project.repoRoot, COPY_NAMES);
+  }
 
   let envContextDir = null;
   if (!productPath && !designPath && !copyPath) {
@@ -204,6 +199,16 @@ function resolveLocalContextDir(root) {
     if (firstExisting(candidate, CONTEXT_FILE_NAMES)) {
       return candidate;
     }
+  }
+  return null;
+}
+
+function resolveContextFileInTree(root, fileNames) {
+  const found = firstExisting(root, fileNames);
+  if (found) return found;
+  for (const rel of FALLBACK_DIRS) {
+    const hit = firstExisting(path.resolve(root, rel), fileNames);
+    if (hit) return hit;
   }
   return null;
 }

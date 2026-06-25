@@ -146,6 +146,18 @@ describe('loadContext', () => {
     assert.equal(ctx.copyPath, 'COPY.md');
   });
 
+  it('finds PRODUCT.md in fallback dirs when only COPY.md is at the root', () => {
+    write('COPY.md', '# copy at root\n');
+    write('.agents/context/PRODUCT.md', '# product in agents\n');
+    const ctx = loadContext(scratch);
+    assert.equal(ctx.hasProduct, true);
+    assert.equal(ctx.hasCopy, true);
+    assert.match(ctx.product, /product in agents/);
+    assert.match(ctx.copy, /copy at root/);
+    assert.equal(ctx.productPath, path.join('.agents', 'context', 'PRODUCT.md'));
+    assert.equal(ctx.copyPath, 'COPY.md');
+  });
+
   it('reads from .agents/context/ when the root is clean', () => {
     write('.agents/context/PRODUCT.md', '# product in agents\n');
     write('.agents/context/DESIGN.md', '# design in agents\n');
