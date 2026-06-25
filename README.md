@@ -133,11 +133,27 @@ git submodule update --remote .impeccable
 npx impeccable link --source=.impeccable --providers=claude,cursor
 ```
 
-### Option 3: Download from Website
+### Option 3: Plugin install
+
+**Claude Code:**
+```bash
+/plugin marketplace add pbakaus/impeccable
+```
+
+> Claude Code only. After adding the marketplace, open `/plugin` and install Impeccable from the list.
+
+**Grok Build:**
+```bash
+grok plugin install pbakaus/impeccable --trust
+```
+
+> Grok Build only. Then run `/impeccable init` in a Grok session.
+
+### Option 4: Download from Website
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 4: Copy from Repository
+### Option 5: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -234,27 +250,6 @@ cp -r dist/qoder/.qoder your-project/
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
 
-**Grok Build:**
-
-```bash
-# Recommended: install as a Grok plugin (skills + hooks)
-grok plugin install pbakaus/impeccable --trust
-```
-
-Grok also reads Claude Code and Codex skill paths through its compatibility layer, so these work without a separate `.grok/` build:
-
-```bash
-# Via Claude Code compat (~/.claude/skills/)
-npx impeccable install --providers=claude
-
-# Via Codex/agents compat (~/.agents/skills/)
-npx impeccable install --providers=codex
-```
-
-After install, run `/impeccable init` in a Grok session. Verify with `grok inspect`. Project hooks from Claude or Cursor compat require `/hooks-trust` (or launch with `--trust`) before they run.
-
-> [Grok Build docs](https://x.ai/cli) — skills live in `.grok/skills/` or plugins; Grok scans `.claude/skills/`, `.agents/skills/`, and `.cursor/skills/` by default.
-
 ## Usage
 
 Once installed, every command runs through the single `/impeccable` skill:
@@ -337,6 +332,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [GitHub Copilot](https://github.com/features/copilot)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
+- [Grok Build](https://x.ai/cli)
 - [OpenCode](https://opencode.ai)
 - [Pi](https://pi.dev)
 - [Kiro](https://kiro.dev)
