@@ -103,7 +103,7 @@ From the root of your project, run:
 npx impeccable install
 ```
 
-This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
 
 To refresh an existing install, run:
 
@@ -233,6 +233,27 @@ cp -r dist/qoder/.qoder your-project/
 # Or global (applies to all projects)
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
 ```
+
+**Grok Build:**
+
+```bash
+# Recommended: install as a Grok plugin (skills + hooks)
+grok plugin install pbakaus/impeccable --trust
+```
+
+Grok also reads Claude Code and Codex skill paths through its compatibility layer, so these work without a separate `.grok/` build:
+
+```bash
+# Via Claude Code compat (~/.claude/skills/)
+npx impeccable install --providers=claude
+
+# Via Codex/agents compat (~/.agents/skills/)
+npx impeccable install --providers=codex
+```
+
+After install, run `/impeccable init` in a Grok session. Verify with `grok inspect`. Project hooks from Claude or Cursor compat require `/hooks-trust` (or launch with `--trust`) before they run.
+
+> [Grok Build docs](https://x.ai/cli) — skills live in `.grok/skills/` or plugins; Grok scans `.claude/skills/`, `.agents/skills/`, and `.cursor/skills/` by default.
 
 ## Usage
 
