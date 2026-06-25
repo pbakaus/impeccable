@@ -121,7 +121,7 @@ function main() {
         const suffix = key.split('@').slice(1).join('@');
         keySuffixes.set(suffix, (keySuffixes.get(suffix) || 0) + 1);
       }
-      if (value.includes('{') && (value.includes('plural') || value.includes('#'))) icuCount++;
+      if (value.includes('{') && value.includes('plural')) icuCount++;
 
       const cat = categorizeKey(key);
       categories[cat] = (categories[cat] || 0) + 1;

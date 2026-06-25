@@ -78,6 +78,24 @@ describe('scan-copy.mjs', () => {
     assert.equal(data.stats.totalKeys, 3);
   });
 
+  it('does not count hashtag template strings as ICU plurals', () => {
+    const localeDir = path.join(scratch, 'locales');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({
+        'user.created': 'User #{username} created',
+        'achievement.rank': 'Top #{rank} achievement',
+        'items.count': '{count, plural, one {# item} other {# items}}',
+      }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.icuStrings, 1);
+  });
+
   it('does not classify email/detail/paid keys as ai', () => {
     const localeDir = path.join(scratch, 'locales');
     fs.mkdirSync(localeDir, { recursive: true });

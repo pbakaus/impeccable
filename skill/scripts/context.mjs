@@ -315,13 +315,13 @@ function discoverTargetCandidates(repoRoot) {
 function resolveCandidateContextSummary(repoRoot, projectRoot, targetPath) {
   const ctx = resolveContext(repoRoot, { targetPath });
   return {
-        productStatus: contextSourceStatus(ctx.productPath, repoRoot, projectRoot),
-        productPath: contextSourcePath(ctx.productPath, repoRoot),
-        designStatus: contextSourceStatus(ctx.designPath, repoRoot, projectRoot),
-        designPath: contextSourcePath(ctx.designPath, repoRoot),
-        copyStatus: contextSourceStatus(ctx.copyPath, repoRoot, projectRoot),
-        copyPath: contextSourcePath(ctx.copyPath, repoRoot),
-      };
+    productStatus: contextSourceStatus(ctx.productPath, repoRoot, projectRoot),
+    productPath: contextSourcePath(ctx.productPath, repoRoot),
+    designStatus: contextSourceStatus(ctx.designPath, repoRoot, projectRoot),
+    designPath: contextSourcePath(ctx.designPath, repoRoot),
+    copyStatus: contextSourceStatus(ctx.copyPath, repoRoot, projectRoot),
+    copyPath: contextSourcePath(ctx.copyPath, repoRoot),
+  };
 }
 
 // Selection candidates surface one of four statuses: 'child' (a canonical
