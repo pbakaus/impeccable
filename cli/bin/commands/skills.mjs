@@ -1011,6 +1011,32 @@ async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
 }
 
 /**
+ * Whether `localSkillsDir` is a symlink that points at ANOTHER in-project
+ * provider's skills dir (e.g. `.claude/skills -> ../.agents/skills`, the shape a
+ * prior `npx skills` install can leave behind). Only these get dropped so each
+ * provider can receive its own compiled variant. A symlink to anywhere else -
+ * notably a user's external shared skills dir (`~/.claude/skills ->
+ * ~/.config/agents/skills`) - is preserved and written through. See issue #295.
+ */
+function isInProjectProviderLink(localSkillsDir, root, provider) {
+  let real;
+  try {
+    if (!lstatSync(localSkillsDir).isSymbolicLink()) return false;
+    real = realpathSync(localSkillsDir);
+  } catch {
+    return false; // missing or dangling link: not an in-project provider link
+  }
+  for (const other of PROVIDER_DIRS) {
+    if (other === provider) continue;
+    const otherSkills = join(root, other, 'skills');
+    try {
+      if (existsSync(otherSkills) && realpathSync(otherSkills) === real) return true;
+    } catch {}
+  }
+  return false;
+}
+
+/**
  * Copy each target provider's compiled skill variant from an extracted bundle
  * into the project. Writes real directories (copy, never symlink) so every
  * harness keeps the build that was compiled for it. Returns skills written.
@@ -1022,10 +1048,12 @@ function copyProviderSkills(bundleDir, root, targets) {
     if (existsSync(srcDir)) {
       const localSkillsDir = join(root, provider, 'skills');
       // A previous `npx skills` install may have left this provider's skills dir
-      // as a symlink to another provider's canonical copy. Drop the link so we
-      // write a real, provider-specific directory instead of writing through it.
+      // as a symlink to ANOTHER in-project provider's canonical copy. Drop only
+      // that link so we write a real, provider-specific directory. A user's
+      // external shared-skills symlink (e.g. ~/.claude/skills ->
+      // ~/.config/agents/skills) is preserved and written through. See #295.
       try {
-        if (lstatSync(localSkillsDir).isSymbolicLink()) unlinkSync(localSkillsDir);
+        if (isInProjectProviderLink(localSkillsDir, root, provider)) unlinkSync(localSkillsDir);
       } catch {}
       for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
         if (!skill.isDirectory()) continue;
