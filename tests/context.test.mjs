@@ -769,6 +769,81 @@ describe('loadContext (monorepo project context)', () => {
   });
 });
 
+describe('loadContext (impeccable contextRoots config)', () => {
+  function writeSkinsConfig(extra = {}) {
+    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'], ...extra }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+  }
+
+  it('treats a config-declared context root as a monorepo with no package-manager files', () => {
+    writeSkinsConfig();
+    write('docs/design/skins/neon-seoul/DESIGN.md', '# Neon Seoul design\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'docs/design/skins/neon-seoul' });
+    assert.equal(ctx.isMonorepo, true);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'docs', 'design', 'skins', 'neon-seoul'));
+    assert.equal(ctx.repoRoot, scratch);
+    // The skin uses its own DESIGN.md and inherits the root PRODUCT.md per file.
+    assert.match(ctx.design, /Neon Seoul design/);
+    assert.match(ctx.product, /Root product/);
+    assert.equal(ctx.designPath, path.join('docs', 'design', 'skins', 'neon-seoul', 'DESIGN.md'));
+    assert.equal(ctx.productPath, 'PRODUCT.md');
+  });
+
+  it('resolves a config-declared child from cwd inside the folder', () => {
+    writeSkinsConfig();
+    write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
+
+    const skinDir = path.join(scratch, 'docs', 'design', 'skins', 'marble');
+    const ctx = loadContext(skinDir);
+    assert.equal(ctx.isMonorepo, true);
+    assert.equal(ctx.projectRoot, skinDir);
+    assert.match(ctx.design, /Marble design/);
+    assert.match(ctx.product, /Root product/);
+  });
+
+  it('extends shared contextRoots with config.local.json', () => {
+    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'] }, null, 2));
+    write('.impeccable/config.local.json', JSON.stringify({ contextRoots: ['experiments/*'] }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('experiments/wip/DESIGN.md', '# WIP design\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'experiments/wip' });
+    assert.equal(ctx.projectRoot, path.join(scratch, 'experiments', 'wip'));
+    assert.match(ctx.design, /WIP design/);
+    assert.match(ctx.product, /Root product/);
+  });
+
+  it('does not treat an .impeccable config without contextRoots as a monorepo', () => {
+    write('.impeccable/config.json', JSON.stringify({ hook: { consent: 'accepted' } }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('docs/design/skins/marble/DESIGN.md', '# Marble design\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'docs/design/skins/marble' });
+    assert.equal(ctx.isMonorepo, false);
+  });
+
+  it('asks for app selection from a config-declared monorepo root', () => {
+    write('.impeccable/config.json', JSON.stringify({ contextRoots: ['docs/design/skins/*'] }, null, 2));
+    write('PRODUCT.md', '# Root product\n');
+    write('DESIGN.md', '# Root design\n');
+    write('docs/design/skins/neon-seoul/DESIGN.md', '# Neon Seoul\n');
+    write('docs/design/skins/marble/DESIGN.md', '# Marble\n');
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], {
+      cwd: scratch,
+      encoding: 'utf8',
+      env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' },
+    });
+    assert.equal(res.status, 0);
+    const selection = parseTargetSelection(res.stdout);
+    const paths = selection.targetCandidates.map((candidate) => candidate.path).sort();
+    assert.deepEqual(paths, ['docs/design/skins/marble', 'docs/design/skins/neon-seoul']);
+  });
+});
+
 describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
   it('reads from the override path when defaults are empty', () => {
     write('design/PRODUCT.md', '# overridden product\n');

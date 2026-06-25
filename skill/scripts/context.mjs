@@ -13,7 +13,9 @@
  *      canonical context files in an ordinary repo (issue #376).
  *   2. Active project .agents/context/ then docs/
  *   3. Repo root context, using the same order, as a per-file fallback
- *      whenever the active project is nested below it
+ *      whenever the active project is nested below it (a repo counts as a
+ *      monorepo when a package manager declares workspaces, or
+ *      `.impeccable/config.json` declares `contextRoots`)
  *   4. $IMPECCABLE_CONTEXT_DIR (absolute or cwd-relative) — power-user
  *      escape hatch, only consulted when defaults are empty
  *   5. Active project root as a "nothing found" default
@@ -560,10 +562,23 @@ function workspacePatternMatchesRel(pattern, relSegments) {
 
 function readWorkspacePatterns(repoRoot) {
   return [
+    ...readImpeccableContextRoots(repoRoot),
     ...readPackageWorkspaces(repoRoot),
     ...readPnpmWorkspaces(repoRoot),
     ...readLernaWorkspaces(repoRoot),
   ].filter(Boolean);
+}
+
+function readImpeccableContextRoots(repoRoot) {
+  const patterns = [];
+  for (const name of ['config.json', 'config.local.json']) {
+    const cfg = readJson(path.join(repoRoot, '.impeccable', name));
+    if (!Array.isArray(cfg?.contextRoots)) continue;
+    for (const entry of cfg.contextRoots) {
+      if (typeof entry === 'string' && entry.trim()) patterns.push(entry.trim());
+    }
+  }
+  return patterns;
 }
 
 function readPackageWorkspaces(repoRoot) {
