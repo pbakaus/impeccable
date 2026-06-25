@@ -54,4 +54,51 @@ describe('scan-copy.mjs', () => {
     assert.equal(data.stats.localeFiles, 0);
     assert.equal(data.stats.totalKeys, 0);
   });
+
+  it('scans nested locale json (i18next-style catalogs)', () => {
+    const localeDir = path.join(scratch, 'locales');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({
+        common: {
+          save: 'Save',
+          cancel: 'Cancel',
+        },
+        errors: {
+          network: 'Network error',
+        },
+      }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.localeFiles, 1);
+    assert.equal(data.stats.totalKeys, 3);
+  });
+
+  it('does not classify email/detail/paid keys as ai', () => {
+    const localeDir = path.join(scratch, 'locales');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({
+        'user.email': 'Email',
+        'order.detail': 'Details',
+        'invoice.paid': 'Paid',
+        'feature.ai.summary': 'AI summary',
+      }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.byCategory.ai, 1);
+    const aiKeys = (data.samples.ai || []).map((s) => s.key);
+    assert.ok(aiKeys.includes('feature.ai.summary'));
+    assert.ok(!aiKeys.includes('user.email'));
+    assert.ok(!aiKeys.includes('order.detail'));
+    assert.ok(!aiKeys.includes('invoice.paid'));
+  });
 });

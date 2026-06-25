@@ -43,6 +43,20 @@ function walk(dir, files = [], parentName = '') {
   return files;
 }
 
+function keyTokens(key) {
+  return key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function isAiKey(key) {
+  const k = key.toLowerCase();
+  if (k.includes('suggest') || k.includes('generated')) return true;
+  return keyTokens(key).includes('ai');
+}
+
 function categorizeKey(key) {
   const k = key.toLowerCase();
   if (k.includes('error') || k.endsWith('.error')) return 'errors';
@@ -54,8 +68,21 @@ function categorizeKey(key) {
   if (k.includes('submit') || k.includes('cancel') || k === 'ok' || k.includes('button')) return 'buttons';
   if (k.includes('title') || k.includes('heading')) return 'headings';
   if (k.includes('aria')) return 'aria';
-  if (k.includes('ai') || k.includes('suggest') || k.includes('generated')) return 'ai';
+  if (isAiKey(key)) return 'ai';
   return 'other';
+}
+
+function collectStringEntries(obj, prefix = '') {
+  const entries = [];
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === 'string') {
+      entries.push([fullKey, value]);
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      entries.push(...collectStringEntries(value, fullKey));
+    }
+  }
+  return entries;
 }
 
 function topValues(map, n = 15) {
@@ -85,8 +112,7 @@ function main() {
       continue;
     }
 
-    for (const [key, value] of Object.entries(json)) {
-      if (typeof value !== 'string') continue;
+    for (const [key, value] of collectStringEntries(json)) {
       keyCount++;
       valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
 
