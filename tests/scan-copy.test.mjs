@@ -119,4 +119,42 @@ describe('scan-copy.mjs', () => {
     assert.ok(!aiKeys.includes('order.detail'));
     assert.ok(!aiKeys.includes('invoice.paid'));
   });
+
+  it('does not classify suggestion keys as ai', () => {
+    const localeDir = path.join(scratch, 'locales');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({
+        'form.suggestion.label': 'Suggestion',
+        'search.suggestions.title': 'Suggestions',
+        'copilot.suggest.action': 'Suggest with AI',
+      }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.byCategory.ai, 1);
+    const aiKeys = (data.samples.ai || []).map((s) => s.key);
+    assert.ok(aiKeys.includes('copilot.suggest.action'));
+    assert.ok(!aiKeys.includes('form.suggestion.label'));
+    assert.ok(!aiKeys.includes('search.suggestions.title'));
+  });
+
+  it('ignores typescript locale modules (json-only scanner)', () => {
+    const localeDir = path.join(scratch, 'locales');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, 'messages.en.ts'), "export default { title: 'App' };");
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({ 'app.title': 'Taskflow' }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.localeFiles, 1);
+    assert.equal(data.stats.totalKeys, 1);
+  });
 });

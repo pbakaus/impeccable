@@ -10,7 +10,7 @@ import path from 'node:path';
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
 
 const LOCALE_FILE_RE =
-  /^(text\.[a-z]{2}(-[A-Z]{2})?\.json|messages\.(en|en-US)\.(json|ts)|en\.json|en-US\.json)$/i;
+  /^(text\.[a-z]{2}(-[A-Z]{2})?\.json|messages\.(en|en-US)\.json|en\.json|en-US\.json)$/i;
 
 function parseArgs(argv) {
   let target = process.cwd();
@@ -52,9 +52,8 @@ function keyTokens(key) {
 }
 
 function isAiKey(key) {
-  const k = key.toLowerCase();
-  if (k.includes('suggest') || k.includes('generated')) return true;
-  return keyTokens(key).includes('ai');
+  const tokens = keyTokens(key);
+  return tokens.includes('ai') || tokens.includes('suggest') || tokens.includes('generated');
 }
 
 function categorizeKey(key) {
