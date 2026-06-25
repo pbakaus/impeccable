@@ -1,5 +1,5 @@
 /**
- * Tests for the shared context loader (PRODUCT.md / DESIGN.md resolver).
+ * Tests for the shared context loader (PRODUCT.md / DESIGN.md / COPY.md resolver).
  * Run with: node --test tests/load-context.test.mjs
  *
  * Covers the resolution order:
@@ -128,11 +128,22 @@ describe('loadContext', () => {
     const ctx = loadContext(scratch);
     assert.equal(ctx.hasProduct, true);
     assert.equal(ctx.hasDesign, true);
+    assert.equal(ctx.hasCopy, false);
     assert.match(ctx.product, /product content/);
     assert.match(ctx.design, /design content/);
     assert.equal(ctx.productPath, 'PRODUCT.md');
     assert.equal(ctx.designPath, 'DESIGN.md');
     assert.equal(ctx.contextDir, scratch);
+  });
+
+  it('reads COPY.md from the root alongside PRODUCT.md', () => {
+    write('PRODUCT.md', '# product content\n');
+    write('COPY.md', '# copy content\n');
+    const ctx = loadContext(scratch);
+    assert.equal(ctx.hasProduct, true);
+    assert.equal(ctx.hasCopy, true);
+    assert.match(ctx.copy, /copy content/);
+    assert.equal(ctx.copyPath, 'COPY.md');
   });
 
   it('reads from .agents/context/ when the root is clean', () => {
@@ -761,6 +772,16 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /\n---\n/);
     assert.match(res.stdout, /# DESIGN\.md\n\n# Acme design/);
     assert.match(res.stdout, /NEXT STEP:/);
+  });
+
+  it('includes COPY.md when present', async () => {
+    write('PRODUCT.md', '# Acme product\n');
+    write('COPY.md', '# Acme copy\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /# COPY\.md\n\n# Acme copy/);
+    assert.match(res.stdout, /"copyPath": "COPY\.md"/);
   });
 
   it('reads from a fallback dir when cwd is clean', async () => {

@@ -11,6 +11,10 @@
     "description": "Generate a DESIGN.md file that captures the current visual design system. Auto-extracts colors, typography, spacing, radii, and component patterns from the codebase, then asks the user to confirm descriptive language for atmosphere and color character. Follows the Google Stitch DESIGN.md format so the file is tool-compatible. Use when you need a visual design spec an AI agent can follow to stay on-brand.",
     "argumentHint": ""
   },
+  "document-copy": {
+    "description": "Generate a COPY.md experience language system: voice, journey playbooks, microcopy patterns, and i18n rules. Scans locale files for evidence, interviews for experience promise and personas, then writes a structured COPY.md that complements PRODUCT.md and DESIGN.md. Use when you need UX writing guidance agents can follow across journeys — not a string inventory.",
+    "argumentHint": ""
+  },
   "extract": {
     "description": "Pull reusable patterns, components, and design tokens into the design system. Identifies repeated patterns and consolidates them. Use when you have drift across the codebase and want to bring things back to a consistent system.",
     "argumentHint": "[target]"

@@ -4,13 +4,14 @@ The setup command for a project. One codebase crawl feeds everything it writes:
 
 - **PRODUCT.md** (strategic): root project file for register, target users, product purpose, brand personality, anti-references, strategic design principles. Answers "who/what/why".
 - **DESIGN.md** (visual): root project file for visual theme, color palette, typography, components, layout. Follows the [DESIGN.md format spec](https://raw.githubusercontent.com/google-labs-code/design.md/main/docs/spec.md). Answers "how it looks".
+- **COPY.md** (experience language): root project file for voice, journey playbooks, microcopy patterns, terminology, and i18n rules. Answers "how it reads across journeys".
 - **`.impeccable/live/config.json`** (live mode): pre-configured so `{{command_prefix}}impeccable live` boots straight into variant mode with no first-time detour.
 
-It closes by pointing the user at the best command to run next. Every other impeccable command reads PRODUCT.md and DESIGN.md before doing any work.
+It closes by pointing the user at the best command to run next. Every other impeccable command reads PRODUCT.md, DESIGN.md, and COPY.md (when present) before doing any work.
 
 ## Step 1: Load current state
 
-Check what already exists. PRODUCT.md and DESIGN.md live at the project root, or under `.agents/context/` or `docs/` (case-insensitive). Read whichever are present with your native file tool. Also note whether `.impeccable/live/config.json` already exists (Step 6 leaves it untouched if so).
+Check what already exists. PRODUCT.md, DESIGN.md, and COPY.md live at the project root, or under `.agents/context/` or `docs/` (case-insensitive). Read whichever are present with your native file tool. Also note whether `.impeccable/live/config.json` already exists (Step 6 leaves it untouched if so).
 
 Decision tree:
 - **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md), then decide on DESIGN.md based on whether there's code to analyze.
@@ -135,6 +136,15 @@ If the user agrees, delegate to `/impeccable document` (it auto-detects scan vs 
 
 If the user prefers to skip, mention they can run `/impeccable document` any time later.
 
+Offer `/impeccable document-copy` when the project has UI strings or i18n files (or after PRODUCT.md is written for pre-implementation seed mode):
+
+- **Strings exist**: "I can generate a COPY.md that captures your experience language — voice, journeys, and microcopy patterns — so agents stay on-voice. Want to do that now?"
+- **Pre-implementation**: "I can seed a starter COPY.md from a short interview about experience promise and personas. Re-run once there's code. Want to do that now?"
+
+If the user agrees, delegate to `/impeccable document-copy`. Load its reference and follow that flow.
+
+If the user prefers to skip, mention they can run `/impeccable document-copy` any time later.
+
 ## Step 6: Configure live mode (when code exists)
 
 If the project has code with HTML entries and a dev server (the same "code exists" condition that puts `/impeccable document` in scan mode), pre-configure live mode now. You already identified the framework and the served HTML entry in Step 2, so this is nearly free, and it spares the user the first-time setup detour when they later run `/impeccable live`.
@@ -155,9 +165,9 @@ Writing the config file is harmless and needs no consent; only the CSP **source-
 
 Summarize tersely:
 - Register captured (brand / product)
-- What was written (PRODUCT.md, DESIGN.md, live config, or a subset)
+- What was written (PRODUCT.md, DESIGN.md, COPY.md, live config, or a subset)
 - The 3-5 strategic principles from PRODUCT.md that will guide future work
-- If DESIGN.md or live config is pending, one line on how to set it up later
+- If DESIGN.md, COPY.md, or live config is pending, one line on how to set it up later
 
 Then recommend the **best commands to run next**, drawn from what your Step 2 crawl already surfaced. Do not run a fresh analysis here; surface observations you already have. Tailor to register and to what you saw, offer the 2-4 most relevant (not a menu dump), and give the exact command to type. Group by intent:
 

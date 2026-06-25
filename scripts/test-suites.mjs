@@ -61,6 +61,7 @@ export const SUITES = {
           'tests/hook-build.test.mjs',
           'tests/hook.test.mjs',
           'tests/impeccable-paths.test.mjs',
+          'tests/scan-copy.test.mjs',
           'tests/target-args.test.mjs',
           'tests/shiki-theme.test.mjs',
           'tests/test-suites.test.mjs',

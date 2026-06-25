@@ -15,7 +15,7 @@ Designs and iterates production-grade frontend interfaces. Real working code, co
 
 You MUST do these steps before proceeding:
 
-1. Run `node {{scripts_path}}/context.mjs` once per session. If the request names or implies a file, route, or app inside a monorepo, infer the concrete path and run `node {{scripts_path}}/context.mjs --target <path>` instead. If you've already seen its output in this conversation, do not re-run it. The script either prints the project's PRODUCT.md (and DESIGN.md when present) as a markdown block, or tells you it's missing. Follow whatever it prints. **If it reports `NO_PRODUCT_MD`, stop and follow `reference/init.md` before doing anything else.** If the output ends with an `UPDATE_AVAILABLE` directive, follow it (ask the user once about updating, then continue). It never blocks the current task.
+1. Run `node {{scripts_path}}/context.mjs` once per session. If the request names or implies a file, route, or app inside a monorepo, infer the concrete path and run `node {{scripts_path}}/context.mjs --target <path>` instead. If you've already seen its output in this conversation, do not re-run it. The script either prints the project's PRODUCT.md (and DESIGN.md / COPY.md when present) as a markdown block, or tells you it's missing. Follow whatever it prints. **If it reports `NO_PRODUCT_MD`, stop and follow `reference/init.md` before doing anything else.** If the output ends with an `UPDATE_AVAILABLE` directive, follow it (ask the user once about updating, then continue). It never blocks the current task.
 2. If the user invoked a sub-command (`craft`, `shape`, `audit`, `polish`, ...), you MUST read `reference/<command>.md` next. Non-optional. The reference defines the command's flow; without it you will skip steps the user expects.
 3. Familiarize yourself with any existing design system, conventions, and components in the code. Read at least one project file (CSS / tokens / theme / a representative component or page). **Required even when you've loaded a sub-command reference in step 2.** Don't reinvent the wheel; use what's there when it works, branch out when the UX wins.
 4. Read the matching register reference. **This is non-optional; skipping it produces generic output.** If the project is marketing, a landing page, a campaign, long-form content, or a portfolio (design IS the product), read `reference/brand.md`. If it is app UI, admin, a dashboard, or a tool (design SERVES the product), read `reference/product.md`. Pick by first match: (1) task cue ("landing page" vs "dashboard"); (2) surface in focus (the page, file, or route being worked on); (3) `register` field in PRODUCT.md.
@@ -125,6 +125,7 @@ If someone could look at this interface and say "AI made that" without doubt, it
 | `shape [feature]` | Build | Plan UX/UI before writing code | [reference/shape.md](reference/shape.md) |
 | `init` | Build | Set up project context: PRODUCT.md, DESIGN.md, live config, next steps | [reference/init.md](reference/init.md) |
 | `document` | Build | Generate DESIGN.md from existing project code | [reference/document.md](reference/document.md) |
+| `document-copy` | Build | Generate COPY.md experience language system from repo + interview | [reference/document-copy.md](reference/document-copy.md) |
 | `extract [target]` | Build | Pull reusable tokens and components into design system | [reference/extract.md](reference/extract.md) |
 | `critique [target]` | Evaluate | UX design review with heuristic scoring | [reference/critique.md](reference/critique.md) |
 | `audit [target]` | Evaluate | Technical quality checks (a11y, perf, responsive) | [reference/audit.md](reference/audit.md) |
@@ -153,6 +154,7 @@ Plus three management commands: `pin <command>`, `unpin <command>`, and `hooks <
 
    Reason over the signals; there is no score to obey:
    - `setup.hasDesign` false while `setup.hasCode` true → `document` (capture the visual system).
+   - `setup.hasCopy` false while `setup.hasCode` true → `document-copy` (capture the experience language).
    - `critique.latest` is `null` → the project has never been critiqued; for a set-up project with a real surface, offering `/impeccable critique <surface>` is a strong default.
    - `critique.latest` with a low `score` or non-zero `p0` / `p1` → `polish` (it reads that snapshot as its backlog), or re-run `critique` if the snapshot looks stale.
    - `git.changedFiles` pointing at one surface → scope `audit` or `polish` to those files specifically, naming them.

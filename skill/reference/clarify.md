@@ -1,5 +1,7 @@
 > **Additional context needed**: audience technical level and users' mental state in context.
 
+If `COPY.md` exists (bundled in `context.mjs` output), read it first. Align rewrites with the experience promise, persona voice, journey playbooks, and decision trees documented there. When COPY.md and PRODUCT.md disagree on voice, COPY.md wins for microcopy; PRODUCT.md wins for strategic positioning.
+
 Find the unclear, confusing, or poorly written interface text and rewrite it. Vague copy creates support tickets and abandonment; specific copy gets users through the task.
 
 
