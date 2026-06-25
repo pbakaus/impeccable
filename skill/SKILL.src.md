@@ -5,6 +5,7 @@ argument-hint: "[{{command_hint}}] [target]"
 user-invocable: true
 allowed-tools:
   - Bash(npx impeccable *)
+  - Bash(node {{scripts_path}}/*)
 license: Apache 2.0
 ---
 
