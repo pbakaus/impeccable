@@ -1019,19 +1019,23 @@ async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
  * ~/.config/agents/skills`) - is preserved and written through. See issue #295.
  */
 function isInProjectProviderLink(localSkillsDir, root, provider) {
-  let real;
+  let target;
   try {
     if (!lstatSync(localSkillsDir).isSymbolicLink()) return false;
-    real = realpathSync(localSkillsDir);
+    target = readlinkSync(localSkillsDir);
   } catch {
-    return false; // missing or dangling link: not an in-project provider link
+    return false; // not a symlink, or unreadable
   }
+  // Resolve the link's TARGET lexically against the link's own directory. We
+  // deliberately do NOT realpathSync the target:
+  //   * it lets a not-yet-created in-project target still match, so a dangling
+  //     `.claude/skills -> ../.agents/skills` is still dropped;
+  //   * it compares the ACTUAL target, not a shared realpath, so two providers
+  //     pointing at the SAME external dir are never misread as in-project.
+  const resolvedTarget = resolve(dirname(localSkillsDir), target);
   for (const other of PROVIDER_DIRS) {
     if (other === provider) continue;
-    const otherSkills = join(root, other, 'skills');
-    try {
-      if (existsSync(otherSkills) && realpathSync(otherSkills) === real) return true;
-    } catch {}
+    if (resolvedTarget === join(root, other, 'skills')) return true;
   }
   return false;
 }
