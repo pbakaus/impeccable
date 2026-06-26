@@ -470,23 +470,29 @@ const BUILD_OPTIONS = parseBuildOptions();
 /**
  * Build VS Code extension structure at dist/vscode/.
  *
- * The factory transformer emits skill files under dist/vscode/.vscode-ext/skills/.
- * This function assembles the packageable extension layout on top:
+ * The factory transformer emits skill files under dist/vscode/.github/skills/
+ * (configDir = '.github' so {{scripts_path}} inside SKILL.md bakes in as
+ * .github/skills/impeccable/scripts, matching the layout the install command
+ * materializes in the user's workspace). This function assembles the
+ * packageable extension layout on top:
  *   dist/vscode/
  *     package.json       (VS Code extension manifest)
- *     extension.js       (activation entrypoint)
- *     skills/            (skill content, copied from .vscode-ext/skills/)
+ *     extension.js       (activation entrypoint + install helper)
+ *     skills/            (skill content, copied from .github/skills/)
  *     LICENSE
  *     README.md
- *     .vscodeignore
+ *     .vscodeignore      (excludes .github/ staging from the VSIX)
  *
  * API note: VS Code 1.95 does not expose a first-class "registerChatSkill" API
  * for injecting a SKILL.md into Copilot Chat context from an extension. The
  * closest available path is vscode.chat.createChatParticipant (available since
  * 1.90) for a full interactive participant, which is Phase 3 scope. For Phase 1
  * (Marketplace presence + skill delivery), extension.js exposes a command that
- * copies the bundled skill content into the workspace's
- * .github/copilot-instructions.md, which GitHub Copilot Chat reads automatically.
+ * copies the bundled skill tree (SKILL.md + reference/ + scripts/) into the
+ * workspace at .github/skills/impeccable/ and writes the SKILL.md content into
+ * .github/copilot-instructions.md, which Copilot Chat reads automatically.
+ * Materializing the full tree (not just SKILL.md) is required because the
+ * skill references node scripts and reference/*.md siblings by relative path.
  */
 function buildVSCodeExtension(distDir, rootDir, skills, skillsVersion) {
   const vscodeDir = path.join(distDir, 'vscode');
@@ -525,8 +531,9 @@ function buildVSCodeExtension(distDir, rootDir, skills, skillsVersion) {
     JSON.stringify(packageJson, null, 2) + '\n',
   );
 
-  // Copy skills from .vscode-ext/skills/ to skills/ at the extension root
-  const skillsSrc = path.join(vscodeDir, '.vscode-ext', 'skills');
+  // Copy skills from .github/skills/ (factory staging) to skills/ at the
+  // extension root so the install command can find them under skills/impeccable/.
+  const skillsSrc = path.join(vscodeDir, '.github', 'skills');
   const skillsDest = path.join(vscodeDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
     if (fs.existsSync(skillsDest)) fs.rmSync(skillsDest, { recursive: true });
@@ -538,42 +545,76 @@ function buildVSCodeExtension(distDir, rootDir, skills, skillsVersion) {
   const extensionJs = `// SPDX-License-Identifier: Apache-2.0
 // Impeccable VS Code Extension — Phase 1 (skill delivery)
 //
-// API choice: VS Code 1.95 does not expose a first-class registerChatSkill API
-// that injects a SKILL.md into Copilot Chat context automatically. The full
-// chat-participant path (vscode.chat.createChatParticipant) is Phase 3 scope.
-// For Phase 1, the command below copies the bundled SKILL.md into the
-// workspace's .github/copilot-instructions.md, which GitHub Copilot Chat
-// reads automatically without further configuration.
+// API choice: VS Code does not expose a first-class API for an extension to
+// register a chat skill that Copilot Chat consumes directly. The convention
+// Copilot Chat honors is .github/copilot-instructions.md. On invoking the
+// install command we materialize the bundled skill tree (SKILL.md + reference/
+// + scripts/) into the workspace at .github/skills/impeccable/ and write
+// .github/copilot-instructions.md with the SKILL.md content so Copilot Chat
+// picks it up automatically. The full tree (not just SKILL.md) is required
+// because the skill text references node scripts and reference/*.md siblings
+// by paths that are only valid once those files exist on disk.
 
 'use strict';
 
-const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 
-function activate(context) {
-  const skillPath = path.join(context.extensionPath, 'skills', 'impeccable', 'SKILL.md');
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dest, entry.name);
+    if (entry.isDirectory()) copyDirSync(s, d);
+    else if (entry.isFile()) fs.copyFileSync(s, d);
+  }
+}
 
+/**
+ * Install the bundled Impeccable skill into a workspace.
+ *
+ * Pure file-system logic with no vscode-API dependency so it can be unit-tested
+ * directly against a tmpdir. The activate() wrapper below adds the vscode UI
+ * affordances (workspace lookup, user-facing messages).
+ *
+ * @param {string} extensionPath - root of the installed extension (i.e. the
+ *   directory containing skills/impeccable/SKILL.md). Typically
+ *   vscode.ExtensionContext.extensionPath.
+ * @param {string} workspaceRoot - absolute path of the target workspace folder.
+ */
+function installSkill(extensionPath, workspaceRoot) {
+  const bundleSrc = path.join(extensionPath, 'skills', 'impeccable');
+  if (!fs.existsSync(bundleSrc)) {
+    throw new Error(\`bundled skill not found at \${bundleSrc}\`);
+  }
+  const githubDir = path.join(workspaceRoot, '.github');
+  const skillDest = path.join(githubDir, 'skills', 'impeccable');
+  const instructionsPath = path.join(githubDir, 'copilot-instructions.md');
+
+  fs.mkdirSync(path.dirname(skillDest), { recursive: true });
+  if (fs.existsSync(skillDest)) fs.rmSync(skillDest, { recursive: true });
+  copyDirSync(bundleSrc, skillDest);
+
+  const skillContent = fs.readFileSync(path.join(skillDest, 'SKILL.md'), 'utf-8');
+  fs.writeFileSync(instructionsPath, skillContent);
+}
+
+function activate(context) {
+  const vscode = require('vscode');
   const disposable = vscode.commands.registerCommand('impeccable.installSkill', async () => {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      vscode.window.showErrorMessage('Impeccable: No workspace folder open.');
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+      vscode.window.showErrorMessage('Impeccable: no workspace folder open.');
       return;
     }
-    const workspaceRoot = workspaceFolders[0].uri.fsPath;
-    const githubDir = path.join(workspaceRoot, '.github');
-    const instructionsPath = path.join(githubDir, 'copilot-instructions.md');
-
     try {
-      fs.mkdirSync(githubDir, { recursive: true });
-      const skillContent = fs.readFileSync(skillPath, 'utf-8');
-      fs.writeFileSync(instructionsPath, skillContent);
+      installSkill(context.extensionPath, folders[0].uri.fsPath);
       vscode.window.showInformationMessage(
-        'Impeccable: Skill installed to .github/copilot-instructions.md'
+        'Impeccable: skill installed to .github/skills/impeccable/ and .github/copilot-instructions.md'
       );
     } catch (err) {
       vscode.window.showErrorMessage(
-        \`Impeccable: Failed to install skill: \${err.message}. Check that the workspace directory is writable.\`
+        \`Impeccable: failed to install skill: \${err.message}. Check that the workspace directory is writable.\`
       );
     }
   });
@@ -583,7 +624,7 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+module.exports = { activate, deactivate, installSkill };
 `;
   fs.writeFileSync(path.join(vscodeDir, 'extension.js'), extensionJs);
 
@@ -607,8 +648,10 @@ After installing the extension, run the command palette command:
 
 **Impeccable: Install Skill to Workspace**
 
-This copies the Impeccable skill file into \`.github/copilot-instructions.md\`
-in your current workspace, where GitHub Copilot Chat picks it up automatically.
+This installs the Impeccable skill tree (SKILL.md, reference/, scripts/)
+into \`.github/skills/impeccable/\` in your current workspace and writes
+the skill content to \`.github/copilot-instructions.md\` so GitHub Copilot
+Chat picks it up automatically.
 
 ## Commands
 
@@ -634,8 +677,11 @@ Apache 2.0. See [LICENSE](LICENSE).
 `;
   fs.writeFileSync(path.join(vscodeDir, 'README.md'), readmeMd);
 
-  // .vscodeignore — exclude build-internal files from the packaged VSIX
-  const vscodeignore = `.vscode-ext/**
+  // .vscodeignore — exclude build-internal files from the packaged VSIX.
+  // .github/ is the factory staging directory whose contents are already
+  // copied into skills/ at the extension root; shipping it twice would just
+  // bloat the VSIX.
+  const vscodeignore = `.github/**
 node_modules/**
 .gitignore
 *.vsix
@@ -656,9 +702,11 @@ function assembleUniversal(distDir) {
     fs.rmSync(universalDir, { recursive: true, force: true });
   }
 
-  // VS Code extension ships as a self-contained package in dist/vscode/; its
-  // .vscode-ext/ harness folder is intentionally excluded from the universal
-  // bundle, which is meant for direct workspace installs via dotfile folders.
+  // VS Code extension ships as a self-contained package in dist/vscode/; it
+  // is intentionally excluded from the universal bundle (which is meant for
+  // direct workspace installs via dotfile folders) via its buildVSCodeExtension
+  // flag rather than by configDir name, since its configDir is `.github` and
+  // would otherwise overlap with the github provider's bundle here.
   const providerConfigs = Object.values(PROVIDERS).filter(config => !config.buildVSCodeExtension);
 
   for (const { provider, configDir } of providerConfigs) {
@@ -860,10 +908,13 @@ async function build() {
     // Copy all provider outputs to project root for direct GitHub installs and
     // submodule users. `.codex/` is intentionally excluded: Codex no longer
     // consumes that layout; keep generated Codex bundles under dist/ only.
-    // `.vscode-ext/` is excluded: the VS Code extension ships as a self-contained
-    // package in dist/vscode/, not as a dotfile harness in the repo root.
+    // The VS Code extension is also excluded (buildVSCodeExtension flag): it
+    // ships as a self-contained package in dist/vscode/, not as a dotfile
+    // harness in the repo root. Excluding by flag rather than configDir name
+    // matters because vscode's configDir is `.github`, which collides with
+    // the github provider's tracked harness output if synced.
     const syncConfigs = Object.values(PROVIDERS).filter(
-      ({ configDir }) => configDir !== '.codex' && configDir !== '.vscode-ext'
+      (config) => config.configDir !== '.codex' && !config.buildVSCodeExtension
     );
 
     for (const { provider, configDir } of syncConfigs) {
