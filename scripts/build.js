@@ -489,8 +489,9 @@ const BUILD_OPTIONS = parseBuildOptions();
  * 1.90) for a full interactive participant, which is Phase 3 scope. For Phase 1
  * (Marketplace presence + skill delivery), extension.js exposes a command that
  * copies the bundled skill tree (SKILL.md + reference/ + scripts/) into the
- * workspace at .github/skills/impeccable/ and writes the SKILL.md content into
- * .github/copilot-instructions.md, which Copilot Chat reads automatically.
+ * workspace at .github/skills/impeccable/ and merges the SKILL.md content into
+ * a managed block in .github/copilot-instructions.md (preserving any existing
+ * user-authored content), which Copilot Chat reads automatically.
  * Materializing the full tree (not just SKILL.md) is required because the
  * skill references node scripts and reference/*.md siblings by relative path.
  */
@@ -549,25 +550,68 @@ function buildVSCodeExtension(distDir, rootDir, skills, skillsVersion) {
 // register a chat skill that Copilot Chat consumes directly. The convention
 // Copilot Chat honors is .github/copilot-instructions.md. On invoking the
 // install command we materialize the bundled skill tree (SKILL.md + reference/
-// + scripts/) into the workspace at .github/skills/impeccable/ and write
-// .github/copilot-instructions.md with the SKILL.md content so Copilot Chat
-// picks it up automatically. The full tree (not just SKILL.md) is required
-// because the skill text references node scripts and reference/*.md siblings
-// by paths that are only valid once those files exist on disk.
+// + scripts/) into the workspace at .github/skills/impeccable/ and write the
+// SKILL.md content into a managed block in .github/copilot-instructions.md so
+// Copilot Chat picks it up automatically. The full tree (not just SKILL.md) is
+// required because the skill text references node scripts and reference/*.md
+// siblings by paths that are only valid once those files exist on disk.
+//
+// All file I/O uses fs.promises so the extension host event loop is never
+// blocked. The copilot-instructions.md write preserves any pre-existing
+// user-authored content: the skill is wrapped in IMPECCABLE markers and only
+// that managed block is replaced on re-install.
 
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
+const fsp = require('fs').promises;
 
-function copyDirSync(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+const IMPECCABLE_BEGIN = '<!-- IMPECCABLE:BEGIN (managed by the Impeccable VS Code extension; edits inside this block are overwritten on re-install) -->';
+const IMPECCABLE_END = '<!-- IMPECCABLE:END -->';
+
+async function copyDir(src, dest) {
+  await fsp.mkdir(dest, { recursive: true });
+  for (const entry of await fsp.readdir(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name);
     const d = path.join(dest, entry.name);
-    if (entry.isDirectory()) copyDirSync(s, d);
-    else if (entry.isFile()) fs.copyFileSync(s, d);
+    if (entry.isDirectory()) await copyDir(s, d);
+    else if (entry.isFile()) await fsp.copyFile(s, d);
   }
+}
+
+async function pathExists(p) {
+  try {
+    await fsp.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Merge the Impeccable skill block into an existing copilot-instructions.md
+ * body without destroying user-authored content.
+ *
+ * - No existing file: returns just the managed block.
+ * - Existing file with a prior Impeccable block: replaces only that block.
+ * - Existing file without a block: appends the block, preserving prior content.
+ *
+ * Pure string logic, exported for unit testing.
+ */
+function mergeInstructions(existing, skillContent) {
+  const block = \`\${IMPECCABLE_BEGIN}\\n\${skillContent.trim()}\\n\${IMPECCABLE_END}\`;
+  if (!existing || existing.trim() === '') {
+    return block + '\\n';
+  }
+  const begin = existing.indexOf(IMPECCABLE_BEGIN);
+  const end = existing.indexOf(IMPECCABLE_END);
+  if (begin !== -1 && end !== -1 && end > begin) {
+    const before = existing.slice(0, begin);
+    const after = existing.slice(end + IMPECCABLE_END.length);
+    return before + block + after;
+  }
+  const trimmed = existing.replace(/\\s+$/, '');
+  return \`\${trimmed}\\n\\n\${block}\\n\`;
 }
 
 /**
@@ -582,21 +626,24 @@ function copyDirSync(src, dest) {
  *   vscode.ExtensionContext.extensionPath.
  * @param {string} workspaceRoot - absolute path of the target workspace folder.
  */
-function installSkill(extensionPath, workspaceRoot) {
+async function installSkill(extensionPath, workspaceRoot) {
   const bundleSrc = path.join(extensionPath, 'skills', 'impeccable');
-  if (!fs.existsSync(bundleSrc)) {
+  if (!(await pathExists(bundleSrc))) {
     throw new Error(\`bundled skill not found at \${bundleSrc}\`);
   }
   const githubDir = path.join(workspaceRoot, '.github');
   const skillDest = path.join(githubDir, 'skills', 'impeccable');
   const instructionsPath = path.join(githubDir, 'copilot-instructions.md');
 
-  fs.mkdirSync(path.dirname(skillDest), { recursive: true });
-  if (fs.existsSync(skillDest)) fs.rmSync(skillDest, { recursive: true });
-  copyDirSync(bundleSrc, skillDest);
+  await fsp.mkdir(path.dirname(skillDest), { recursive: true });
+  if (await pathExists(skillDest)) await fsp.rm(skillDest, { recursive: true });
+  await copyDir(bundleSrc, skillDest);
 
-  const skillContent = fs.readFileSync(path.join(skillDest, 'SKILL.md'), 'utf-8');
-  fs.writeFileSync(instructionsPath, skillContent);
+  const skillContent = await fsp.readFile(path.join(skillDest, 'SKILL.md'), 'utf-8');
+  const existing = (await pathExists(instructionsPath))
+    ? await fsp.readFile(instructionsPath, 'utf-8')
+    : '';
+  await fsp.writeFile(instructionsPath, mergeInstructions(existing, skillContent));
 }
 
 function activate(context) {
@@ -608,7 +655,7 @@ function activate(context) {
       return;
     }
     try {
-      installSkill(context.extensionPath, folders[0].uri.fsPath);
+      await installSkill(context.extensionPath, folders[0].uri.fsPath);
       vscode.window.showInformationMessage(
         'Impeccable: skill installed to .github/skills/impeccable/ and .github/copilot-instructions.md'
       );
@@ -624,7 +671,7 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, installSkill };
+module.exports = { activate, deactivate, installSkill, mergeInstructions };
 `;
   fs.writeFileSync(path.join(vscodeDir, 'extension.js'), extensionJs);
 
@@ -649,8 +696,9 @@ After installing the extension, run the command palette command:
 **Impeccable: Install Skill to Workspace**
 
 This installs the Impeccable skill tree (SKILL.md, reference/, scripts/)
-into \`.github/skills/impeccable/\` in your current workspace and writes
-the skill content to \`.github/copilot-instructions.md\` so GitHub Copilot
+into \`.github/skills/impeccable/\` in your current workspace and adds the
+skill content to a managed block in \`.github/copilot-instructions.md\`
+(preserving any instructions you already have there) so GitHub Copilot
 Chat picks it up automatically.
 
 ## Commands

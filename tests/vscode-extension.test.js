@@ -3,16 +3,31 @@
  * Integration tests for the VS Code extension output in dist/vscode/.
  *
  * These tests assert on the generated extension package layout produced by
- * buildVSCodeExtension() in scripts/build.js. They require `bun run build`
- * (or `bun run build:extension:vscode`) to have been run first.
+ * buildVSCodeExtension() in scripts/build.js. The suite is order-independent:
+ * if dist/vscode/ has not been built yet (e.g. CI runs test:core before the
+ * Build step on a clean checkout), beforeAll builds it once.
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 const ROOT = process.cwd();
 const VSCODE_DIST = path.join(ROOT, 'dist', 'vscode');
+
+beforeAll(() => {
+  // dist/ is gitignored, so on a clean checkout the extension package does not
+  // exist yet. CI runs `bun run test:core` before the `Build` step, so these
+  // tests must build their own fixture rather than assume a prior build.
+  // Guarded so a local run after `bun run build` is a no-op.
+  if (!fs.existsSync(path.join(VSCODE_DIST, 'extension.js'))) {
+    execFileSync('bun', ['run', 'scripts/build.js', '--skip-root-sync'], {
+      cwd: ROOT,
+      stdio: 'inherit',
+    });
+  }
+});
 
 describe('VS Code extension output (dist/vscode/)', () => {
   test('dist/vscode/ exists after build', () => {
@@ -74,9 +89,9 @@ describe('VS Code extension output (dist/vscode/)', () => {
 
   test('package.json engines.vscode targets ^1.95.0 or later', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(VSCODE_DIST, 'package.json'), 'utf-8'));
-    // Must be a caret-pinned VS Code version (^1.X.Y) with minor >= 95
-    // Pattern: ^1. followed by two-digit minor 95-99 or three-digit minor 100+
-    const VSCODE_ENGINES_MIN_1_95 = /^\^1\.(9[5-9]|\d{3,})\./;
+    // Must be a caret-pinned VS Code version at 1.95.0 or later (or any 2.x+).
+    // Accepts ^1.95.0, ^1.100.0, ^2.0.0, etc.; rejects ^1.90.0, ^0.x.x.
+    const VSCODE_ENGINES_MIN_1_95 = /^\^(?:1\.(9[5-9]|\d{3,})|[2-9]\d*)\./;
     expect(pkg.engines?.vscode).toMatch(VSCODE_ENGINES_MIN_1_95);
   });
 
@@ -104,19 +119,22 @@ describe('VS Code extension output (dist/vscode/)', () => {
 describe('VS Code extension install command (installSkill helper)', () => {
   // Load the built extension.js. require('vscode') is lazy inside activate(),
   // so loading the module without a vscode stub is safe; we only exercise the
-  // pure-fs installSkill helper here.
+  // pure-fs installSkill / mergeInstructions helpers here.
   const extPath = path.join(VSCODE_DIST, 'extension.js');
+  const IMPECCABLE_BEGIN = '<!-- IMPECCABLE:BEGIN';
+  const IMPECCABLE_END = '<!-- IMPECCABLE:END -->';
 
-  test('extension.js exports installSkill', () => {
+  test('extension.js exports installSkill and mergeInstructions', () => {
     const ext = require(extPath);
     expect(typeof ext.installSkill).toBe('function');
+    expect(typeof ext.mergeInstructions).toBe('function');
   });
 
-  test('installSkill materializes SKILL.md + reference/ + scripts/ in the workspace .github/ tree', () => {
+  test('installSkill materializes SKILL.md + reference/ + scripts/ in the workspace .github/ tree', async () => {
     const ext = require(extPath);
     const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-install-'));
     try {
-      ext.installSkill(VSCODE_DIST, tmpWorkspace);
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
 
       const skillRoot = path.join(tmpWorkspace, '.github', 'skills', 'impeccable');
       expect(fs.existsSync(path.join(skillRoot, 'SKILL.md'))).toBe(true);
@@ -139,11 +157,11 @@ describe('VS Code extension install command (installSkill helper)', () => {
     }
   });
 
-  test('installSkill writes .github/copilot-instructions.md mirroring SKILL.md content', () => {
+  test('installSkill writes a managed Impeccable block into .github/copilot-instructions.md', async () => {
     const ext = require(extPath);
     const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-install-'));
     try {
-      ext.installSkill(VSCODE_DIST, tmpWorkspace);
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
 
       const instructionsPath = path.join(tmpWorkspace, '.github', 'copilot-instructions.md');
       expect(fs.existsSync(instructionsPath)).toBe(true);
@@ -151,15 +169,78 @@ describe('VS Code extension install command (installSkill helper)', () => {
       const skillContent = fs.readFileSync(
         path.join(tmpWorkspace, '.github', 'skills', 'impeccable', 'SKILL.md'),
         'utf-8',
-      );
+      ).trim();
       const instructionsContent = fs.readFileSync(instructionsPath, 'utf-8');
-      expect(instructionsContent).toBe(skillContent);
+      expect(instructionsContent).toContain(IMPECCABLE_BEGIN);
+      expect(instructionsContent).toContain(IMPECCABLE_END);
+      expect(instructionsContent).toContain(skillContent);
     } finally {
       fs.rmSync(tmpWorkspace, { recursive: true, force: true });
     }
   });
 
-  test('installSkill replaces any prior install rather than merging', () => {
+  test('installSkill preserves pre-existing user-authored copilot-instructions.md content', async () => {
+    const ext = require(extPath);
+    const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-install-'));
+    try {
+      const instructionsPath = path.join(tmpWorkspace, '.github', 'copilot-instructions.md');
+      fs.mkdirSync(path.dirname(instructionsPath), { recursive: true });
+      const userContent = '# My project rules\n\nAlways use tabs. Never delete this line.\n';
+      fs.writeFileSync(instructionsPath, userContent);
+
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
+
+      const after = fs.readFileSync(instructionsPath, 'utf-8');
+      // User content survives, and the managed block is appended after it.
+      expect(after).toContain('Always use tabs. Never delete this line.');
+      expect(after).toContain(IMPECCABLE_BEGIN);
+      expect(after.indexOf('Always use tabs')).toBeLessThan(after.indexOf(IMPECCABLE_BEGIN));
+    } finally {
+      fs.rmSync(tmpWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  test('installSkill is idempotent: re-install replaces the managed block without duplicating it', async () => {
+    const ext = require(extPath);
+    const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-install-'));
+    try {
+      const instructionsPath = path.join(tmpWorkspace, '.github', 'copilot-instructions.md');
+      fs.mkdirSync(path.dirname(instructionsPath), { recursive: true });
+      fs.writeFileSync(instructionsPath, '# Keep me\n');
+
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
+
+      const after = fs.readFileSync(instructionsPath, 'utf-8');
+      const beginCount = after.split(IMPECCABLE_BEGIN).length - 1;
+      const endCount = after.split(IMPECCABLE_END).length - 1;
+      expect(beginCount).toBe(1);
+      expect(endCount).toBe(1);
+      expect(after).toContain('# Keep me');
+    } finally {
+      fs.rmSync(tmpWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  test('mergeInstructions handles empty, blockless, and prior-block inputs', () => {
+    const ext = require(extPath);
+    const skill = 'SKILL BODY';
+
+    const fromEmpty = ext.mergeInstructions('', skill);
+    expect(fromEmpty).toContain(IMPECCABLE_BEGIN);
+    expect(fromEmpty).toContain('SKILL BODY');
+
+    const fromUser = ext.mergeInstructions('user stuff\n', skill);
+    expect(fromUser.indexOf('user stuff')).toBeLessThan(fromUser.indexOf(IMPECCABLE_BEGIN));
+
+    const reMerged = ext.mergeInstructions(fromUser, 'NEW BODY');
+    expect(reMerged).toContain('user stuff');
+    expect(reMerged).toContain('NEW BODY');
+    expect(reMerged).not.toContain('SKILL BODY');
+    expect(reMerged.split(IMPECCABLE_END).length - 1).toBe(1);
+  });
+
+  test('installSkill replaces any prior skill-tree install rather than merging', async () => {
     const ext = require(extPath);
     const tmpWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-vscode-install-'));
     try {
@@ -168,7 +249,7 @@ describe('VS Code extension install command (installSkill helper)', () => {
       fs.mkdirSync(path.dirname(staleFile), { recursive: true });
       fs.writeFileSync(staleFile, 'stale');
 
-      ext.installSkill(VSCODE_DIST, tmpWorkspace);
+      await ext.installSkill(VSCODE_DIST, tmpWorkspace);
 
       expect(fs.existsSync(staleFile)).toBe(false);
       expect(fs.existsSync(path.join(tmpWorkspace, '.github', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
