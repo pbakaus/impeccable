@@ -683,6 +683,283 @@
   color: var(--card-prompt-update);
 }
 
+/* "Install via [impeccable] [marketplace] [skills.sh]" — the method selector
+   that replaces the static "Install" label. Compact inline tabs that reuse the
+   design-system ks-tab selected-state language (kinpaku text + underline on the
+   active tab) beside the mono "Install via" cap. Baseline alignment so the tab
+   text sits on the same line as the "INSTALL VIA" label; the tabs are
+   inline-block (not flex) so their text baseline is what the row aligns to, and
+   marks ride along via vertical-align without dragging the baseline. */
+.downloads-rebuild-tabs {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.downloads-rebuild-tabs-label {
+  font-family: var(--ks-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--card-prompt);
+  margin-right: 2px;
+}
+.downloads-rebuild-tab {
+  display: inline-block;
+  border: 0;
+  background: transparent;
+  padding: 2px 0 4px;
+  font-family: var(--ks-mono);
+  font-size: 0.84rem;
+  line-height: 1;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 160ms var(--ks-ease), border-color 160ms var(--ks-ease);
+}
+.downloads-rebuild-tab:hover { color: var(--ks-champagne); }
+
+/* Brand mark flags the marketplace tab as Claude-tied. Dimmed until the tab is
+   active so it reads as a quiet qualifier, not a CTA. vertical-align:middle
+   keeps it centered on the text without shifting the text baseline the row
+   aligns to. */
+.downloads-rebuild-tab-logo {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 5px;
+  vertical-align: middle;
+  opacity: 0.7;
+  transition: opacity 160ms var(--ks-ease);
+}
+svg.downloads-rebuild-tab-logo {
+  fill: var(--ks-champagne);
+}
+.downloads-rebuild-tab:hover .downloads-rebuild-tab-logo,
+.downloads-rebuild-tab[aria-selected="true"] .downloads-rebuild-tab-logo {
+  opacity: 1;
+}
+
+/* Persistent "Recommended" cue on the impeccable tab — a small gold star, the
+   conventional best/featured glyph. Stays visible even when another method is
+   selected, so the blessed path is always legible, and reads in a fraction of
+   the width the spelled-out word needed. Accessible name lives on the SVG. */
+.downloads-rebuild-tab-rec {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-left: 5px;
+  vertical-align: middle;
+  fill: var(--ks-kinpaku);
+  opacity: 0.9;
+}
+.downloads-rebuild-tab[aria-selected="true"] {
+  color: var(--ks-kinpaku);
+  border-bottom-color: var(--ks-kinpaku);
+}
+.downloads-rebuild-tab:focus-visible {
+  outline: 2px solid var(--ks-kinpaku);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Per-method explainer under the install box — carries the "what you give up"
+   note for the skills.sh path and the Claude-Code-only caveat for marketplace. */
+.downloads-rebuild-method-note {
+  margin: 9px 0 0;
+  max-width: 60ch;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+.home-kinpaku .downloads-rebuild-method-note code {
+  font-family: var(--ks-mono);
+  font-size: 0.9em;
+  color: var(--card-fg-muted);
+}
+.downloads-rebuild-method-note strong {
+  color: var(--ks-kinpaku);
+  font-weight: 600;
+  cursor: help;
+}
+
+/* Marketplace updates from a menu, not a shell command, so its Update slot is
+   quiet guidance text rather than a runnable box. */
+.downloads-rebuild-update-menu {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--card-fg-muted);
+  padding: 4px 0;
+}
+.home-kinpaku .downloads-rebuild-update-menu code {
+  font-family: var(--ks-mono);
+  color: var(--card-prompt-update);
+}
+
+/* Copilot is built in, so it isn't a tab — it's a quiet one-line aside right
+   under the method tabs, there to catch Copilot users BEFORE they copy an
+   install command they don't need. Deliberately NOT boxed: a bordered notice
+   competed with the real command boxes. Plain muted text + small glyph reads as
+   a footnote, not a step. */
+.downloads-rebuild-copilot-note {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 6px 0 18px;
+  max-width: 62ch;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+.downloads-rebuild-copilot-note-logo {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  transform: translateY(1px);
+  fill: currentColor;
+  opacity: 0.85;
+}
+.home-kinpaku .downloads-rebuild-copilot-note strong {
+  color: var(--ks-champagne);
+  font-weight: 600;
+}
+
+/* "Why one command, many builds" — a collapsed disclosure that visualizes the
+   impeccable source fanning out into a build tailored per harness. The branch
+   lines draw themselves in when the section opens; the targets fade up behind
+   them, staggered, so the eye follows source → target. */
+.downloads-rebuild-branch {
+  margin: 16px 0 0;
+}
+.downloads-rebuild-branch-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.82rem;
+  color: var(--ks-text-muted);
+  transition: color 160ms var(--ks-ease);
+}
+.downloads-rebuild-branch-summary::-webkit-details-marker { display: none; }
+.downloads-rebuild-branch-summary:hover { color: var(--ks-champagne); }
+.downloads-rebuild-branch[open] > .downloads-rebuild-branch-summary {
+  color: var(--card-fg-strong);
+  margin-bottom: 14px;
+}
+.downloads-rebuild-branch-arrow {
+  flex: none;
+  transition: transform 180ms var(--ks-ease);
+}
+.downloads-rebuild-branch[open] > .downloads-rebuild-branch-summary .downloads-rebuild-branch-arrow {
+  transform: rotate(90deg);
+}
+
+.downloads-rebuild-branch-diagram {
+  display: block;
+  width: 100%;
+  max-width: 430px;
+  height: auto;
+  font-family: var(--ks-mono);
+}
+
+/* Connectors: hidden (fully dashed-out) until the section opens, then each
+   draws from the source node to its target. */
+.downloads-rebuild-branch-line {
+  fill: none;
+  stroke: color-mix(in oklch, var(--ks-kinpaku) 55%, transparent);
+  stroke-width: 1.3;
+  stroke-dasharray: 230;
+  stroke-dashoffset: 230;
+}
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line {
+  animation: branch-draw 620ms var(--ks-ease) forwards;
+}
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line:nth-of-type(1) { animation-delay: 60ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line:nth-of-type(2) { animation-delay: 130ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line:nth-of-type(3) { animation-delay: 200ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line:nth-of-type(4) { animation-delay: 270ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-line:nth-of-type(5) { animation-delay: 340ms; }
+
+.downloads-rebuild-branch-root-box {
+  fill: color-mix(in oklch, var(--ks-kinpaku) 9%, transparent);
+  stroke: var(--ks-kinpaku);
+  stroke-width: 1.2;
+}
+.downloads-rebuild-branch-root-text {
+  fill: var(--ks-kinpaku);
+  font-size: 13px;
+  font-weight: 500;
+}
+.downloads-rebuild-branch-dot {
+  fill: var(--ks-kinpaku);
+}
+.downloads-rebuild-branch-name {
+  fill: var(--ks-champagne);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.downloads-rebuild-branch-tags {
+  fill: var(--ks-text-muted);
+  font-size: 8.6px;
+  letter-spacing: 0.01em;
+}
+/* The model-specific slop rules are the headline of this diagram, so the rows
+   that carry them light up gold while the plumbing tags stay muted. */
+.downloads-rebuild-branch-tags--slop {
+  fill: var(--ks-kinpaku);
+  font-weight: 600;
+}
+
+/* Targets fade up behind the drawing lines, staggered to match. */
+.downloads-rebuild-branch-target {
+  opacity: 0;
+  transform: translateX(-5px);
+}
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target {
+  animation: branch-rise 460ms var(--ks-ease) forwards;
+}
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target:nth-of-type(1) { animation-delay: 220ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target:nth-of-type(2) { animation-delay: 290ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target:nth-of-type(3) { animation-delay: 360ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target:nth-of-type(4) { animation-delay: 430ms; }
+.downloads-rebuild-branch[open] .downloads-rebuild-branch-target:nth-of-type(5) { animation-delay: 500ms; }
+
+.downloads-rebuild-branch-caption {
+  margin: 12px 0 0;
+  max-width: 56ch;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ks-text-muted);
+}
+.home-kinpaku .downloads-rebuild-branch-caption code {
+  font-family: var(--ks-mono);
+  font-size: 0.9em;
+  color: var(--card-fg-muted);
+}
+
+@keyframes branch-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes branch-rise {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Reduced motion: skip the draw/rise, show the finished diagram immediately. */
+@media (prefers-reduced-motion: reduce) {
+  .downloads-rebuild-branch[open] .downloads-rebuild-branch-line {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .downloads-rebuild-branch[open] .downloads-rebuild-branch-target {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Install command is THE primary CTA of the Get Started section. A full
    kinpaku hairline frame + gold prompt glyph + left-aligned mono make it read
    as a runnable terminal line, not a decorative chip. Copy button nests on the

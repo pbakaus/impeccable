@@ -1124,9 +1124,49 @@ html.light .docs-kinpaku {
 .docs-kinpaku .prose > * + pre,
 .docs-kinpaku .prose > blockquote + *,
 .docs-kinpaku .prose > * + blockquote,
+.docs-kinpaku .prose > .docs-note + *,
+.docs-kinpaku .prose > * + .docs-note,
 .docs-kinpaku .prose > hr + *,
 .docs-kinpaku .prose > * + hr {
   margin-top: 1.4em;
+}
+
+/* Note / callout block for prose docs (e.g. the GitHub Copilot built-in
+   aside under Step 1). Full hairline frame + faint gold-tinted ground so it
+   reads as an aside without a one-sided accent stripe (the side-tab tell the
+   detector flags). The gold icon carries the accent. */
+.docs-kinpaku .prose .docs-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: color-mix(in oklch, var(--ks-kinpaku) 6%, var(--ks-lacquer-raised));
+  border: 1px solid var(--ks-rule);
+  border-radius: 4px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ks-text);
+}
+.docs-kinpaku .prose .docs-note-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--ks-kinpaku);
+}
+.docs-kinpaku .prose .docs-note-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+.docs-kinpaku .prose .docs-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.docs-kinpaku .prose .docs-note-text strong {
+  color: var(--ks-champagne);
+  font-weight: 600;
 }
 
 .docs-kinpaku .prose h1,

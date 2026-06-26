@@ -235,7 +235,7 @@ export function createTransformer(config) {
       skillBody = skillBody.replace(/\{\{scripts_path\}\}/g, scriptsPath);
       if (bodyTransform) skillBody = bodyTransform(skillBody, skill);
 
-      const content = `${frontmatter}\n\n${skillBody}`;
+      const content = `${frontmatter}\n\n${skillBody}`.replace(/\{\{scripts_path\}\}/g, scriptsPath);
       writeFile(path.join(skillDir, 'SKILL.md'), content);
 
       if (writeOpenAIMetadata) {

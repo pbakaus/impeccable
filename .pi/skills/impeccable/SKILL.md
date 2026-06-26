@@ -5,6 +5,7 @@ version: 3.8.0
 license: Apache 2.0
 allowed-tools:
   - Bash(npx impeccable *)
+  - Bash(node .pi/skills/impeccable/scripts/*)
 ---
 
 Designs and iterates production-grade frontend interfaces. Real working code, committed design choices, exceptional craft.

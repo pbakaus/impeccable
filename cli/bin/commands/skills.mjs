@@ -1011,6 +1011,36 @@ async function chooseInstallPlan(projectRoot, flags, { yes } = {}) {
 }
 
 /**
+ * Whether `localSkillsDir` is a symlink that points at ANOTHER in-project
+ * provider's skills dir (e.g. `.claude/skills -> ../.agents/skills`, the shape a
+ * prior `npx skills` install can leave behind). Only these get dropped so each
+ * provider can receive its own compiled variant. A symlink to anywhere else -
+ * notably a user's external shared skills dir (`~/.claude/skills ->
+ * ~/.config/agents/skills`) - is preserved and written through. See issue #295.
+ */
+function isInProjectProviderLink(localSkillsDir, root, provider) {
+  let target;
+  try {
+    if (!lstatSync(localSkillsDir).isSymbolicLink()) return false;
+    target = readlinkSync(localSkillsDir);
+  } catch {
+    return false; // not a symlink, or unreadable
+  }
+  // Resolve the link's TARGET lexically against the link's own directory. We
+  // deliberately do NOT realpathSync the target:
+  //   * it lets a not-yet-created in-project target still match, so a dangling
+  //     `.claude/skills -> ../.agents/skills` is still dropped;
+  //   * it compares the ACTUAL target, not a shared realpath, so two providers
+  //     pointing at the SAME external dir are never misread as in-project.
+  const resolvedTarget = resolve(dirname(localSkillsDir), target);
+  for (const other of PROVIDER_DIRS) {
+    if (other === provider) continue;
+    if (resolvedTarget === join(root, other, 'skills')) return true;
+  }
+  return false;
+}
+
+/**
  * Copy each target provider's compiled skill variant from an extracted bundle
  * into the project. Writes real directories (copy, never symlink) so every
  * harness keeps the build that was compiled for it. Returns skills written.
@@ -1022,10 +1052,12 @@ function copyProviderSkills(bundleDir, root, targets) {
     if (existsSync(srcDir)) {
       const localSkillsDir = join(root, provider, 'skills');
       // A previous `npx skills` install may have left this provider's skills dir
-      // as a symlink to another provider's canonical copy. Drop the link so we
-      // write a real, provider-specific directory instead of writing through it.
+      // as a symlink to ANOTHER in-project provider's canonical copy. Drop only
+      // that link so we write a real, provider-specific directory. A user's
+      // external shared-skills symlink (e.g. ~/.claude/skills ->
+      // ~/.config/agents/skills) is preserved and written through. See #295.
       try {
-        if (lstatSync(localSkillsDir).isSymbolicLink()) unlinkSync(localSkillsDir);
+        if (isInProjectProviderLink(localSkillsDir, root, provider)) unlinkSync(localSkillsDir);
       } catch {}
       for (const skill of readdirSync(srcDir, { withFileTypes: true })) {
         if (!skill.isDirectory()) continue;
