@@ -29,7 +29,7 @@ export const SUITES = {
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|shiki-theme|skills-cli|target-args|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|hook|hook-build|impeccable-paths|shiki-theme|skills-cli|target-args|test-suites|vscode-extension|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -48,6 +48,7 @@ export const SUITES = {
           'tests/docs-integrity.test.js',
           'tests/skills-cli.test.js',
           'tests/validate-plugin-versions.test.js',
+          'tests/vscode-extension.test.js',
         ],
       },
       {

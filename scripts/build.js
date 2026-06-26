@@ -468,6 +468,184 @@ const BUILD_OPTIONS = parseBuildOptions();
 // buildStaticSite (Bun HTML bundler) removed — now handled by Astro.
 
 /**
+ * Build VS Code extension structure at dist/vscode/.
+ *
+ * The factory transformer emits skill files under dist/vscode/.vscode-ext/skills/.
+ * This function assembles the packageable extension layout on top:
+ *   dist/vscode/
+ *     package.json       (VS Code extension manifest)
+ *     extension.js       (activation entrypoint)
+ *     skills/            (skill content, copied from .vscode-ext/skills/)
+ *     LICENSE
+ *     README.md
+ *     .vscodeignore
+ *
+ * API note: VS Code 1.95 does not expose a first-class "registerChatSkill" API
+ * for injecting a SKILL.md into Copilot Chat context from an extension. The
+ * closest available path is vscode.chat.createChatParticipant (available since
+ * 1.90) for a full interactive participant, which is Phase 3 scope. For Phase 1
+ * (Marketplace presence + skill delivery), extension.js exposes a command that
+ * copies the bundled skill content into the workspace's
+ * .github/copilot-instructions.md, which GitHub Copilot Chat reads automatically.
+ */
+function buildVSCodeExtension(distDir, rootDir, skills, skillsVersion) {
+  const vscodeDir = path.join(distDir, 'vscode');
+
+  const impeccableSkill = skills.find(s => s.name === 'impeccable');
+  const description = impeccableSkill?.description ||
+    'Design fluency for AI coding agents. Anti-pattern detection and 23 design commands.';
+
+  // package.json — VS Code extension manifest
+  const packageJson = {
+    name: 'impeccable',
+    displayName: 'Impeccable',
+    description,
+    version: skillsVersion || '0.0.1',
+    publisher: 'pbakaus',
+    engines: { vscode: '^1.95.0' },
+    categories: ['Chat', 'AI'],
+    license: 'Apache-2.0',
+    repository: {
+      type: 'git',
+      url: 'https://github.com/pbakaus/impeccable',
+    },
+    main: './extension.js',
+    activationEvents: ['onStartupFinished'],
+    contributes: {
+      commands: [
+        {
+          command: 'impeccable.installSkill',
+          title: 'Impeccable: Install Skill to Workspace',
+        },
+      ],
+    },
+  };
+  fs.writeFileSync(
+    path.join(vscodeDir, 'package.json'),
+    JSON.stringify(packageJson, null, 2) + '\n',
+  );
+
+  // Copy skills from .vscode-ext/skills/ to skills/ at the extension root
+  const skillsSrc = path.join(vscodeDir, '.vscode-ext', 'skills');
+  const skillsDest = path.join(vscodeDir, 'skills');
+  if (fs.existsSync(skillsSrc)) {
+    if (fs.existsSync(skillsDest)) fs.rmSync(skillsDest, { recursive: true });
+    copyDirSync(skillsSrc, skillsDest);
+  }
+
+  // extension.js — minimal CommonJS activation entrypoint
+  // API choice documented in the JSDoc above this function.
+  const extensionJs = `// SPDX-License-Identifier: Apache-2.0
+// Impeccable VS Code Extension — Phase 1 (skill delivery)
+//
+// API choice: VS Code 1.95 does not expose a first-class registerChatSkill API
+// that injects a SKILL.md into Copilot Chat context automatically. The full
+// chat-participant path (vscode.chat.createChatParticipant) is Phase 3 scope.
+// For Phase 1, the command below copies the bundled SKILL.md into the
+// workspace's .github/copilot-instructions.md, which GitHub Copilot Chat
+// reads automatically without further configuration.
+
+'use strict';
+
+const vscode = require('vscode');
+const path = require('path');
+const fs = require('fs');
+
+function activate(context) {
+  const skillPath = path.join(context.extensionPath, 'skills', 'impeccable', 'SKILL.md');
+
+  const disposable = vscode.commands.registerCommand('impeccable.installSkill', async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      vscode.window.showErrorMessage('Impeccable: No workspace folder open.');
+      return;
+    }
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    const githubDir = path.join(workspaceRoot, '.github');
+    const instructionsPath = path.join(githubDir, 'copilot-instructions.md');
+
+    try {
+      fs.mkdirSync(githubDir, { recursive: true });
+      const skillContent = fs.readFileSync(skillPath, 'utf-8');
+      fs.writeFileSync(instructionsPath, skillContent);
+      vscode.window.showInformationMessage(
+        'Impeccable: Skill installed to .github/copilot-instructions.md'
+      );
+    } catch (err) {
+      vscode.window.showErrorMessage(
+        \`Impeccable: Failed to install skill: \${err.message}. Check that the workspace directory is writable.\`
+      );
+    }
+  });
+
+  context.subscriptions.push(disposable);
+}
+
+function deactivate() {}
+
+module.exports = { activate, deactivate };
+`;
+  fs.writeFileSync(path.join(vscodeDir, 'extension.js'), extensionJs);
+
+  // LICENSE — copy from repo root
+  const licenseSrc = path.join(rootDir, 'LICENSE');
+  if (fs.existsSync(licenseSrc)) {
+    fs.copyFileSync(licenseSrc, path.join(vscodeDir, 'LICENSE'));
+  }
+
+  // README.md — short Marketplace-facing readme
+  const readmeMd = `# Impeccable
+
+Design fluency for AI coding agents in VS Code.
+
+Impeccable bundles 23 design commands and a visual anti-pattern detector for
+GitHub Copilot Chat and other AI coding assistants.
+
+## Getting started
+
+After installing the extension, run the command palette command:
+
+**Impeccable: Install Skill to Workspace**
+
+This copies the Impeccable skill file into \`.github/copilot-instructions.md\`
+in your current workspace, where GitHub Copilot Chat picks it up automatically.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| \`/impeccable polish\` | Visual quality pass |
+| \`/impeccable audit\` | Accessibility and quality checks |
+| \`/impeccable critique\` | Design critique |
+| \`/impeccable bolder\` | Make the design more distinctive |
+| \`/impeccable quieter\` | Reduce visual noise |
+
+See the [full command list](https://impeccable.style/docs) for all 23 commands.
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE).
+
+## Links
+
+- [impeccable.style](https://impeccable.style)
+- [GitHub](https://github.com/pbakaus/impeccable)
+- [Issue tracker](https://github.com/pbakaus/impeccable/issues)
+`;
+  fs.writeFileSync(path.join(vscodeDir, 'README.md'), readmeMd);
+
+  // .vscodeignore — exclude build-internal files from the packaged VSIX
+  const vscodeignore = `.vscode-ext/**
+node_modules/**
+.gitignore
+*.vsix
+`;
+  fs.writeFileSync(path.join(vscodeDir, '.vscodeignore'), vscodeignore);
+
+  console.log('✓ VS Code: assembled dist/vscode/ extension package');
+}
+
+/**
  * Assemble universal directory from all provider outputs
  */
 function assembleUniversal(distDir) {
@@ -478,7 +656,10 @@ function assembleUniversal(distDir) {
     fs.rmSync(universalDir, { recursive: true, force: true });
   }
 
-  const providerConfigs = Object.values(PROVIDERS);
+  // VS Code extension ships as a self-contained package in dist/vscode/; its
+  // .vscode-ext/ harness folder is intentionally excluded from the universal
+  // bundle, which is meant for direct workspace installs via dotfile folders.
+  const providerConfigs = Object.values(PROVIDERS).filter(config => !config.buildVSCodeExtension);
 
   for (const { provider, configDir } of providerConfigs) {
     const src = path.join(distDir, provider, configDir);
@@ -658,6 +839,9 @@ async function build() {
     transform(skills, DIST_DIR, { skillsVersion });
   }
 
+  // Assemble VS Code extension package from the generated skill files
+  buildVSCodeExtension(DIST_DIR, ROOT_DIR, skills, skillsVersion);
+
   // Assemble universal directory
   assembleUniversal(DIST_DIR);
 
@@ -676,7 +860,11 @@ async function build() {
     // Copy all provider outputs to project root for direct GitHub installs and
     // submodule users. `.codex/` is intentionally excluded: Codex no longer
     // consumes that layout; keep generated Codex bundles under dist/ only.
-    const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex');
+    // `.vscode-ext/` is excluded: the VS Code extension ships as a self-contained
+    // package in dist/vscode/, not as a dotfile harness in the repo root.
+    const syncConfigs = Object.values(PROVIDERS).filter(
+      ({ configDir }) => configDir !== '.codex' && configDir !== '.vscode-ext'
+    );
 
     for (const { provider, configDir } of syncConfigs) {
       const skillsSrc = path.join(DIST_DIR, provider, configDir, 'skills');

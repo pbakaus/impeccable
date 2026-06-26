@@ -47,6 +47,7 @@
     "build:release": "bun run build:skills:release && bun run build:site && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
     "build:extension": "node scripts/build-extension.js",
+    "build:extension:vscode": "bun run scripts/build.js --skip-root-sync",
     "clean": "rm -rf dist build",
     "rebuild": "bun run clean && bun run build",
     "rebuild:release": "bun run clean && bun run build:release",

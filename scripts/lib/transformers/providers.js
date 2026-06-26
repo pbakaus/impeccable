@@ -122,4 +122,16 @@ export const PROVIDERS = {
     displayName: 'Rovo Dev',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  vscode: {
+    provider: 'vscode',
+    providerTags: ['github', 'agents'],
+    configDir: '.vscode-ext',
+    displayName: 'VS Code',
+    placeholderProvider: 'agents',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
+    // buildVSCodeExtension in build.js assembles the final extension structure
+    // (package.json, extension.js, README.md, etc.) from the skill files generated
+    // here under .vscode-ext/skills/.
+    buildVSCodeExtension: true,
+  },
 };
