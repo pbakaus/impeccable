@@ -24,6 +24,7 @@ assignees: ''
 - [ ] Kiro
 - [ ] OpenCode
 - [ ] Qoder
+- [ ] Antigravity
 - [ ] All providers
 
 ## Alternatives considered

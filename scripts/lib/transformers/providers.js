@@ -122,4 +122,17 @@ export const PROVIDERS = {
     displayName: 'Rovo Dev',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  'antigravity': {
+    provider: 'antigravity',
+    providerTags: ['antigravity'],
+    // .agent/skills/ (legacy path) rather than .agents/skills/ (Antigravity's
+    // current default), since the latter is already Codex-flavored content
+    // owned by the `agents` provider below. No agentFormat: Antigravity
+    // Workflows don't map onto a tool-isolated subagent dispatch. See
+    // docs/HARNESSES.md (Skill Directory Structure, Native Subagent
+    // Directory Structure) for the full rationale.
+    configDir: '.agent',
+    displayName: 'Antigravity',
+    frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
 };

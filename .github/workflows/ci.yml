@@ -85,7 +85,7 @@ jobs:
         run: bun run build:browser
 
       - name: Build
-        run: bun run build
+        run: bun run build:release
 
       - name: Build extension
         if: needs.changes.outputs.detector == 'true'
@@ -99,7 +99,13 @@ jobs:
         run: npx --yes web-ext@8 lint --source-dir dist/extension-firefox
 
       - name: Verify generated tracked outputs
-        run: git diff --exit-code -- .agents .claude .cursor .gemini .github/skills plugin cli/engine/detect-antipatterns-browser.js extension/detector
+        # Path list must match GENERATED_PATHS in sync-generated-output.yml,
+        # plus the two non-skill build artifacts checked here only.
+        run: >-
+          git diff --exit-code --
+          .agent .agents .claude .cursor .gemini .github/skills
+          .kiro .opencode .pi .qoder .rovodev .trae .trae-cn plugin
+          cli/engine/detect-antipatterns-browser.js extension/detector
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

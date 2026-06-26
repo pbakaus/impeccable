@@ -20,7 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Keep in sync with the path list in ci.yml's "Verify generated tracked
+  # outputs" step.
   GENERATED_PATHS: >-
+    .agent
     .agents
     .claude
     .cursor
