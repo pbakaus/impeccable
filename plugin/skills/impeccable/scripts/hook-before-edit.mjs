@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   ALLOWED_EXTS,
@@ -471,9 +472,11 @@ async function main() {
 
 export { proposedFilePath, shellHereDocContent };
 
-main().catch((err) => {
-  if (process.env.IMPECCABLE_HOOK_DEBUG) {
-    process.stderr.write(`[impeccable-hook-before-edit] ${err}\n`);
-  }
-  done({ permission: 'allow' });
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    if (process.env.IMPECCABLE_HOOK_DEBUG) {
+      process.stderr.write(`[impeccable-hook-before-edit] ${err}\n`);
+    }
+    done({ permission: 'allow' });
+  });
+}

@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   ALLOWED_EXTS,
@@ -78,6 +79,7 @@ function proposedFilePath(event, cwd) {
     ? raw
     : shellWriteDestination(shellCommand(input));
   if (typeof candidate !== 'string' || !candidate.trim()) return '';
+  if (/[<>"]/.test(candidate)) return '';
   return path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
 }
 
@@ -468,9 +470,13 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  if (process.env.IMPECCABLE_HOOK_DEBUG) {
-    process.stderr.write(`[impeccable-hook-before-edit] ${err}\n`);
-  }
-  done({ permission: 'allow' });
-});
+export { proposedFilePath, shellHereDocContent };
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    if (process.env.IMPECCABLE_HOOK_DEBUG) {
+      process.stderr.write(`[impeccable-hook-before-edit] ${err}\n`);
+    }
+    done({ permission: 'allow' });
+  });
+}
