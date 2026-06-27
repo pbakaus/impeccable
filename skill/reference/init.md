@@ -60,7 +60,7 @@ If the repo is empty or the user's brief is sparse, run a short interview before
 
 ### Minimum viable interview
 
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
+Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, positioning, brand personality, anti-references, and accessibility needs (plus conversion & proof for the brand register) unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
 
 ### Register (ask first; it shapes everything below)
 
@@ -73,14 +73,25 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
 - What job are they trying to get done?
+- If more than one kind of user is plausible, confirm a primary and secondary audience; don't manufacture a split that isn't there.
+- If the surface speaks to a different audience than the people who use the product, ask the user to name both.
 - For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency)
 - For product: what workflow are they in? What's the primary task on any given screen?
+
+### Positioning
+- In one line, what does this do that nothing else does? The single strategic claim every screen reinforces.
 
 ### Brand & Personality
 - How would you describe the brand personality in 3 words?
 - Reference sites or apps that capture the right feel? What specifically about them?
   - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
 - What should this explicitly NOT look like? Any anti-references?
+
+### Conversion & proof (brand register only)
+- What's the primary CTA, and the secondary fallback?
+- The one line a visitor should remember after 10 seconds.
+- Belief ladder: what must the visitor believe, in order, before taking the primary CTA?
+- What proof is on hand? Testimonials, case studies, press, client/partner logos that already exist. Reference media by path or link; supplied files go under `.impeccable/assets/proof/`.
 
 ### Accessibility & Inclusion
 - Specific accessibility requirements? (WCAG level, known user needs)
@@ -102,10 +113,16 @@ Synthesize into a strategic document:
 product
 
 ## Users
-[Who they are, their context, the job to be done]
+[Who they are, their context, the job to be done. Primary audience; a secondary audience or a surface-vs-user split only when they apply.]
 
 ## Product Purpose
 [What this product does, why it exists, what success looks like]
+
+## Positioning
+[The single strategic claim every screen reinforces. Not a visual rule, not an anti-reference.]
+
+## Proof & conversion
+[Brand register only; omit for the product register. Belief ladder, primary and secondary CTA, the line a visitor remembers after 10 seconds, and proof on hand (testimonials, case studies, press, logos) referenced by path or link.]
 
 ## Brand Personality
 [Voice, tone, 3-word personality, emotional goals]
