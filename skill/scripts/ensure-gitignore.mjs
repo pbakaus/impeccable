@@ -26,35 +26,70 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 export const GITIGNORE_MARKER_OPEN = '# impeccable-ignore-start';
 export const GITIGNORE_MARKER_CLOSE = '# impeccable-ignore-end';
 
+// Patterns are intentionally UNANCHORED (no leading slash). In a monorepo the
+// active project (and therefore .impeccable/) lives under a nested workspace
+// path like apps/web/, while .gitignore is written at the repo root. Anchored
+// patterns would only match a root-level .impeccable and miss the nested one.
+// Unanchored patterns match at any depth, matching the convention already used
+// by HOOK_LOCAL_IGNORE_PATTERNS (hook-lib.mjs) and LIVE_IGNORE_PATTERNS
+// (live-inject.mjs). .impeccable is a reserved skill dir name, so matching it
+// at any depth is safe.
 export const GITIGNORE_PATTERNS = Object.freeze([
   '# Ephemeral output, runtime state, and per-dev overrides.',
+  '# Unanchored: .impeccable may sit at the repo root or under a nested',
+  '# workspace (apps/web/.impeccable/...); anchored patterns would miss it.',
   '# Shared artifacts stay tracked: config.json, live/config.json,',
   '# design.json, critique/*.md.',
-  '/.impeccable/config.local.json',
-  '/.impeccable/hook.cache.json',
-  '/.impeccable/hook.pending.json',
-  '/.impeccable/*.png',
-  '/.impeccable/live/server.json',
-  '/.impeccable/live/sessions/',
-  '/.impeccable/live/previews/',
-  '/.impeccable/live/annotations/',
-  '/.impeccable/live/cache/',
-  '/.impeccable/live/manual-edit-apply-transaction.json',
-  '/.impeccable/live/manual-edit-events.jsonl',
-  '/.impeccable/live/manual-edit-evidence/',
-  '/.impeccable/live/pending-manual-edits.json',
-  '/.impeccable/live/deferred-svelte-component-accepts.json',
-  '/.impeccable/live/*.png',
+  '.impeccable/config.local.json',
+  '.impeccable/hook.cache.json',
+  '.impeccable/hook.pending.json',
+  '.impeccable/*.png',
+  '.impeccable/live/server.json',
+  '.impeccable/live/sessions/',
+  '.impeccable/live/previews/',
+  '.impeccable/live/annotations/',
+  '.impeccable/live/cache/',
+  '.impeccable/live/manual-edit-apply-transaction.json',
+  '.impeccable/live/manual-edit-events.jsonl',
+  '.impeccable/live/manual-edit-evidence/',
+  '.impeccable/live/pending-manual-edits.json',
+  '.impeccable/live/deferred-svelte-component-accepts.json',
+  '.impeccable/live/*.png',
 ]);
 
-const TRACKED_ARTIFACTS = Object.freeze([
-  '.impeccable/config.json',
-  '.impeccable/live/config.json',
-  '.impeccable/design.json',
+// Paths inside .impeccable/ that are shared project artifacts and must STAY
+// tracked. Expressed relative to the .impeccable directory so they apply
+// whether .impeccable is at the repo root or nested under a workspace.
+const SHARED_ARTIFACT_RELS = Object.freeze([
+  'config.json',
+  'live/config.json',
+  'design.json',
+]);
+
+// Exact (non-glob) ephemeral paths inside .impeccable/, relative to .impeccable.
+// Mirrors the ignore patterns above; keep in sync if patterns change.
+const EPHEMERAL_EXACT_RELS = Object.freeze([
+  'config.local.json',
+  'hook.cache.json',
+  'hook.pending.json',
+  'live/server.json',
+  'live/manual-edit-apply-transaction.json',
+  'live/manual-edit-events.jsonl',
+  'live/pending-manual-edits.json',
+  'live/deferred-svelte-component-accepts.json',
+]);
+
+const EPHEMERAL_DIR_PREFIXES = Object.freeze([
+  'live/sessions/',
+  'live/previews/',
+  'live/annotations/',
+  'live/cache/',
+  'live/manual-edit-evidence/',
 ]);
 
 /**
@@ -85,18 +120,75 @@ function markerRegex() {
 }
 
 /**
- * Paths that are currently tracked in git but would be covered by our block.
- * Returned so the caller (agent) can warn the user that adding the block will
- * NOT retroactively untrack an already-committed file — `git rm --cached` is
- * needed for that.
+ * Read the set of git-tracked files via `git ls-files -z`. Returns null when git
+ * is unavailable or the dir is not a git repo (status != 0), so callers never
+ * mistake a disk-present-but-untracked file for a committed one.
  */
-function detectTrackedArtifacts(repoRoot) {
-  const out = [];
-  for (const rel of TRACKED_ARTIFACTS) {
-    const abs = path.join(repoRoot, rel);
-    if (fs.existsSync(abs)) out.push(rel);
+function gitTrackedFiles(repoRoot) {
+  try {
+    const res = spawnSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf-8' });
+    if (res.error) return null;
+    if (typeof res.status === 'number' && res.status !== 0) return null;
+    return res.stdout.split('\0').filter(Boolean);
+  } catch {
+    return null;
   }
-  return out;
+}
+
+/**
+ * Given a repo-root-relative path, return the portion UNDER the nearest
+ * .impeccable/ directory, or null if the path is not inside one. Works whether
+ * .impeccable is at the repo root (e.g. ".impeccable/design.json") or nested in
+ * a monorepo workspace (e.g. "apps/web/.impeccable/design.json" -> "design.json").
+ */
+function relWithinImpeccable(repoRelPath) {
+  const parts = repoRelPath.split('/');
+  const idx = parts.indexOf('.impeccable');
+  if (idx === -1) return null;
+  const rel = parts.slice(idx + 1).join('/');
+  return rel === '' ? null : rel;
+}
+
+function isSharedArtifact(rel) {
+  return SHARED_ARTIFACT_RELS.includes(rel) || rel.startsWith('critique/');
+}
+
+function isEphemeral(rel) {
+  if (rel.endsWith('.png')) return true;
+  if (EPHEMERAL_EXACT_RELS.includes(rel)) return true;
+  return EPHEMERAL_DIR_PREFIXES.some((prefix) => rel.startsWith(prefix));
+}
+
+/**
+ * Classify the git-tracked files that live inside any .impeccable/ directory.
+ *
+ * Returns { gitAvailable, tracked, needsUntrack }:
+ *   - gitAvailable: false when `git ls-files` could not run (no git / not a
+ *     repo); in that case both lists are empty and the caller should not claim
+ *     anything about tracking.
+ *   - tracked: shared artifacts (config.json, live/config.json, design.json,
+ *     critique/*.md) that are confirmed committed and will stay tracked.
+ *   - needsUntrack: ephemeral files (screenshots, config.local.json, runtime
+ *     state under live/) that are already committed and now match the ignore
+ *     block. These are the `git rm --cached <path>` candidates.
+ *
+ * Paths in both lists are repo-root-relative (e.g. "apps/web/.impeccable/foo.png").
+ */
+export function analyzeTracked(repoRoot) {
+  const files = gitTrackedFiles(repoRoot);
+  if (files === null) return { gitAvailable: false, tracked: [], needsUntrack: [] };
+  const tracked = [];
+  const needsUntrack = [];
+  for (const repoRel of files) {
+    const rel = relWithinImpeccable(repoRel);
+    if (!rel) continue;
+    if (isSharedArtifact(rel)) {
+      tracked.push(repoRel);
+    } else if (isEphemeral(rel)) {
+      needsUntrack.push(repoRel);
+    }
+  }
+  return { gitAvailable: true, tracked, needsUntrack };
 }
 
 /**
@@ -181,18 +273,17 @@ Modes:
   --check      Report whether the block is present and current
 
 Output (JSON):
-  default: { ok, file, changed, mode, patterns }
-  --check: { ok, file, present, stale, patterns, tracked }`);
+  default: { ok, file, changed, mode, patterns, gitAvailable, tracked, needsUntrack }
+  --check: { ok, file, present, stale, patterns, gitAvailable, tracked, needsUntrack }`);
     process.exit(0);
   }
 
+  const analysis = analyzeTracked(resolveRepoRoot(process.cwd()));
   if (args.includes('--check')) {
     const result = checkImpeccableGitignore(process.cwd());
-    const tracked = detectTrackedArtifacts(resolveRepoRoot(process.cwd()));
-    console.log(JSON.stringify({ ...result, tracked }, null, 2));
+    console.log(JSON.stringify({ ...result, ...analysis }, null, 2));
   } else {
     const result = ensureImpeccableGitignore(process.cwd());
-    const tracked = detectTrackedArtifacts(resolveRepoRoot(process.cwd()));
-    console.log(JSON.stringify({ ...result, tracked }, null, 2));
+    console.log(JSON.stringify({ ...result, ...analysis }, null, 2));
   }
 }

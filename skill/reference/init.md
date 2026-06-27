@@ -162,7 +162,7 @@ Run `node {{scripts_path}}/ensure-gitignore.mjs`. It is idempotent: it writes on
 - `.impeccable/design.json`: shared design spec
 - `.impeccable/critique/*.md`: review reports
 
-The script prints a `tracked` list of shared artifacts that already exist and are git-tracked. **Adding a `.gitignore` rule does not untrack a file that is already committed.** If any ephemeral path (a stray screenshot, `config.local.json`) was committed earlier and now matches the new block, tell the user and offer `git rm --cached <path>` to stop tracking it without deleting the working copy. Otherwise just report that the ignore block is in place. This step needs no consent: writing `.gitignore` is harmless, reversible, and the block is clearly marked as owned by Impeccable.
+The script also prints two lists derived from `git ls-files`: `tracked` (shared artifacts that are confirmed committed and will stay tracked), and `needsUntrack` (ephemeral files like screenshots or `config.local.json` that were committed earlier and now match the new block). **Adding a `.gitignore` rule does not untrack a file that is already committed.** For each path in `needsUntrack`, offer `git rm --cached <path>` to stop tracking it without deleting the working copy. If `needsUntrack` is empty, just report that the ignore block is in place and nothing needs untracking. This step needs no consent: writing `.gitignore` is harmless, reversible, and the block is clearly marked as owned by Impeccable.
 
 Skip silently (and say nothing) for non-git projects; there is no `.gitignore` to write.
 
