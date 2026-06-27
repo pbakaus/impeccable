@@ -78,7 +78,7 @@ function proposedFilePath(event, cwd) {
     ? raw
     : shellWriteDestination(shellCommand(input));
   if (typeof candidate !== 'string' || !candidate.trim()) return '';
-  if (/[<>"']/.test(candidate)) return '';
+  if (/[<>"]/.test(candidate)) return '';
   return path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
 }
 
@@ -271,11 +271,9 @@ function shellHereDocContent(command) {
   const marker = markerMatch[1];
   const start = (markerMatch.index || 0) + markerMatch[0].length;
   const rest = command.slice(start);
-  const needle = `\n${marker}`;
-  const idx = rest.indexOf(needle);
-  if (idx === -1) return '';
-  const bodyEnd = idx > 0 && rest[idx - 1] === '\r' ? idx - 1 : idx;
-  return rest.slice(0, bodyEnd);
+  const endRe = new RegExp(`\\r?\\n${escapeRegExp(marker)}(?:\\r?\\n|$)`);
+  const end = rest.search(endRe);
+  return end >= 0 ? rest.slice(0, end) : '';
 }
 
 function shellPythonWriteContent(command) {
@@ -470,6 +468,8 @@ async function main() {
     durationMs: Date.now() - started,
   });
 }
+
+export { proposedFilePath, shellHereDocContent };
 
 main().catch((err) => {
   if (process.env.IMPECCABLE_HOOK_DEBUG) {
