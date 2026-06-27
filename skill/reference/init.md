@@ -41,7 +41,7 @@ Also form a **register hypothesis** from what you find:
 
 Register is a hypothesis at this point, not a decision; Step 3 confirms it.
 
-Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 8 turns these into concrete recommendations without re-analyzing.
+Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 7 turns these into concrete recommendations without re-analyzing.
 
 ## Step 3: Ask strategic questions (for PRODUCT.md)
 
@@ -151,22 +151,7 @@ Otherwise:
 
 Writing the config file is harmless and needs no consent; only the CSP **source-file patch** requires a yes.
 
-## Step 7: Keep ephemeral Impeccable output out of git
-
-If the project is a git repo (a `.git` entry exists at or above the project root), seed the shared, committed `.gitignore` so screenshots, runtime state, and per-dev overrides never pollute `git status` or get committed by accident. This is team-wide hygiene: every clone benefits, and it covers artifacts (critique/polish PNGs, live sessions) that the runtime `.git/info/exclude` writers in the hook and live mode do not reach and only add lazily on first run.
-
-Run `node {{scripts_path}}/ensure-gitignore.mjs`. It is idempotent: it writes one marked block (between `# impeccable-ignore-start` / `# impeccable-ignore-end`) to the repo-root `.gitignore`, preserving everything else in the file. The block ignores only ephemeral and machine-local paths under `.impeccable/` (for example `*.png`, `live/sessions/`, `live/previews/`, `config.local.json`, `hook.cache.json`); shared artifacts stay tracked:
-
-- `.impeccable/config.json`: unified shared config
-- `.impeccable/live/config.json`: framework wiring (Step 6)
-- `.impeccable/design.json`: shared design spec
-- `.impeccable/critique/*.md`: review reports
-
-The script also prints two lists derived from `git ls-files`: `tracked` (shared artifacts that are confirmed committed and will stay tracked), and `needsUntrack` (ephemeral files like screenshots or `config.local.json` that were committed earlier and now match the new block). **Adding a `.gitignore` rule does not untrack a file that is already committed.** For each path in `needsUntrack`, offer `git rm --cached <path>` to stop tracking it without deleting the working copy. If `needsUntrack` is empty, just report that the ignore block is in place and nothing needs untracking. This step needs no consent: writing `.gitignore` is harmless, reversible, and the block is clearly marked as owned by Impeccable.
-
-Skip silently (and say nothing) for non-git projects; there is no `.gitignore` to write.
-
-## Step 8: Recommend starting points, then wrap up
+## Step 7: Recommend starting points, then wrap up
 
 Summarize tersely:
 - Register captured (brand / product)
