@@ -64,6 +64,24 @@ const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout 
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
 
 // ---------------------------------------------------------------------------
+// Translations (i18n)
+// ---------------------------------------------------------------------------
+
+function loadTranslations() {
+  const projectDir = process.cwd();
+  const translationsPath = path.join(projectDir, 'live_translations.json');
+  try {
+    if (fs.existsSync(translationsPath)) {
+      const content = fs.readFileSync(translationsPath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.warn(`Warning: Could not load translations from ${translationsPath}:`, err.message);
+  }
+  return {};
+}
+
+// ---------------------------------------------------------------------------
 // Port detection
 // ---------------------------------------------------------------------------
 
@@ -413,6 +431,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
         token: state.token,
         port: state.port,
         vocabulary: LIVE_COMMANDS,
+        translations: loadTranslations(),
         parts,
       });
       res.writeHead(200, {

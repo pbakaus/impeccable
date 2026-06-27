@@ -32,13 +32,17 @@ export function readLiveBrowserScriptParts(parts, readFile = (filePath) => fs.re
   }));
 }
 
-export function assembleLiveBrowserScript({ token, port, vocabulary, parts }) {
+export function assembleLiveBrowserScript({ token, port, vocabulary, translations, parts }) {
   const prelude =
     `window.__IMPECCABLE_TOKEN__ = '${token}';\n` +
     `window.__IMPECCABLE_PORT__ = ${port};\n` +
     // Canonical command vocabulary (values + labels + icons). live-browser.js
     // builds its action picker from this instead of an inline copy.
-    `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(vocabulary)};\n`;
+    `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(vocabulary)};\n` +
+    // UI translations for i18n support
+    `window.__IMPECCABLE_TRANSLATIONS__ = ${JSON.stringify(translations || {})};\n` +
+    // Translation helper: returns translated string or falls back to key
+    `window.__IMPECCABLE_T__ = function(key) { return (window.__IMPECCABLE_TRANSLATIONS__ && window.__IMPECCABLE_TRANSLATIONS__[key]) || key; };\n`;
 
   const body = parts.map((part) => {
     const file = part.file || path.basename(part.path || '');
