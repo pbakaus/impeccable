@@ -25,20 +25,25 @@ function parseArgs(argv) {
   return { target, sampleLimit };
 }
 
-function isLocaleFile(name, parentDir) {
+function hasLocaleAncestor(ancestorDirs) {
+  return ancestorDirs.some((d) => d === 'locales' || d === 'text');
+}
+
+function isLocaleFile(name, ancestorDirs) {
   if (LOCALE_FILE_RE.test(name)) return true;
+  const parentDir = ancestorDirs.at(-1) ?? '';
   if (parentDir === 'text' && /^[a-z]{2}(-[A-Z]{2})?\.json$/.test(name)) return true;
-  if (parentDir === 'locales' && name.endsWith('.json')) return true;
+  if (hasLocaleAncestor(ancestorDirs) && name.endsWith('.json')) return true;
   return false;
 }
 
-function walk(dir, files = [], parentName = '') {
+function walk(dir, files = [], ancestorDirs = []) {
   if (!fs.existsSync(dir)) return files;
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
     if (IGNORE.has(ent.name)) continue;
     const p = path.join(dir, ent.name);
-    if (ent.isDirectory()) walk(p, files, ent.name);
-    else if (isLocaleFile(ent.name, parentName)) files.push(p);
+    if (ent.isDirectory()) walk(p, files, [...ancestorDirs, ent.name]);
+    else if (isLocaleFile(ent.name, ancestorDirs)) files.push(p);
   }
   return files;
 }

@@ -142,6 +142,34 @@ describe('scan-copy.mjs', () => {
     assert.ok(!aiKeys.includes('search.suggestions.title'));
   });
 
+  it('scans nested locale subdirectories (locales/en/*.json)', () => {
+    const enDir = path.join(scratch, 'locales', 'en');
+    fs.mkdirSync(enDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(enDir, 'common.json'),
+      JSON.stringify({
+        'app.title': 'Taskflow',
+        'button.save': 'Save',
+      }),
+    );
+
+    const enUsDir = path.join(scratch, 'locales', 'en-US');
+    fs.mkdirSync(enUsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(enUsDir, 'translation.json'),
+      JSON.stringify({
+        'nav.home': 'Home',
+        'nav.settings': 'Settings',
+      }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.localeFiles, 2);
+    assert.equal(data.stats.totalKeys, 4);
+  });
+
   it('ignores typescript locale modules (json-only scanner)', () => {
     const localeDir = path.join(scratch, 'locales');
     fs.mkdirSync(localeDir, { recursive: true });
