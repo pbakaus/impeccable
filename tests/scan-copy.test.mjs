@@ -170,6 +170,29 @@ describe('scan-copy.mjs', () => {
     assert.equal(data.stats.totalKeys, 4);
   });
 
+  it('scans flat locale code json outside locales/ (i18n/de.json not just en)', () => {
+    const i18nDir = path.join(scratch, 'i18n');
+    fs.mkdirSync(i18nDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(i18nDir, 'en.json'),
+      JSON.stringify({ 'app.title': 'Taskflow' }),
+    );
+    fs.writeFileSync(
+      path.join(i18nDir, 'de.json'),
+      JSON.stringify({ 'app.title': 'Aufgaben' }),
+    );
+    fs.writeFileSync(
+      path.join(i18nDir, 'fr-CA.json'),
+      JSON.stringify({ 'app.title': 'Flux de tâches' }),
+    );
+
+    const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', scratch], { encoding: 'utf8' });
+    assert.equal(res.status, 0);
+    const data = JSON.parse(res.stdout);
+    assert.equal(data.stats.localeFiles, 3);
+    assert.equal(data.stats.totalKeys, 3);
+  });
+
   it('ignores typescript locale modules (json-only scanner)', () => {
     const localeDir = path.join(scratch, 'locales');
     fs.mkdirSync(localeDir, { recursive: true });

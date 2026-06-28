@@ -9,8 +9,11 @@ import path from 'node:path';
 
 const IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
 
-const LOCALE_FILE_RE =
-  /^(text\.[a-z]{2}(-[A-Z]{2})?\.json|messages\.(en|en-US)\.json|en\.json|en-US\.json)$/i;
+const LOCALE_CODE_RE = '[a-z]{2}(-[A-Z]{2})?';
+const LOCALE_FILE_RE = new RegExp(
+  `^(text\\.${LOCALE_CODE_RE}\\.json|messages\\.${LOCALE_CODE_RE}\\.json|${LOCALE_CODE_RE}\\.json)$`,
+  'i',
+);
 
 function parseArgs(argv) {
   let target = process.cwd();
