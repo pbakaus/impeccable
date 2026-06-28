@@ -45,7 +45,7 @@ Note what you've learned and what remains unclear. Also note any rough edges wor
 
 ## Step 3: Ask strategic questions (for PRODUCT.md)
 
-{{ask_instruction}} Ask only about what you couldn't infer from the codebase.
+{{ask_instruction}} Ask about anything the codebase doesn't answer with strong, explicit evidence.
 
 ### Interview mode, not confirmation mode
 
