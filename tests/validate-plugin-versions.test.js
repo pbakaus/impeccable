@@ -42,10 +42,10 @@ function writeFixture(root, { plugin, marketplace, subtreePlugin, skill, cursorM
     write('.cursor-plugin/marketplace.json', JSON.stringify({ plugins: [{ name: 'impeccable', version: cursorMarketplace }] }, null, 2));
   }
   if (cursorSubtreePlugin !== undefined) {
-    write('plugin-cursor/.cursor-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: cursorSubtreePlugin }, null, 2));
+    write('.cursor-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: cursorSubtreePlugin }, null, 2));
   }
   if (cursorSkill !== undefined) {
-    write('plugin-cursor/skills/impeccable/SKILL.md', skillMd(cursorSkill));
+    write('.cursor/skills/impeccable/SKILL.md', skillMd(cursorSkill));
   }
 }
 
@@ -99,7 +99,7 @@ describe('collectPluginVersions', () => {
     ]);
   });
 
-  test('flags drifted native Cursor plugin files (marketplace, subtree, skill)', () => {
+  test('flags drifted native Cursor plugin files (marketplace, manifest, skill)', () => {
     writeFixture(root, {
       plugin: '3.8.0',
       marketplace: '3.8.0',
@@ -112,8 +112,8 @@ describe('collectPluginVersions', () => {
     const { mismatches } = collectPluginVersions(root);
     expect(mismatches.map((m) => m.relPath)).toEqual([
       '.cursor-plugin/marketplace.json',
-      'plugin-cursor/.cursor-plugin/plugin.json',
-      'plugin-cursor/skills/impeccable/SKILL.md',
+      '.cursor-plugin/plugin.json',
+      '.cursor/skills/impeccable/SKILL.md',
     ]);
   });
 

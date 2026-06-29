@@ -11,14 +11,11 @@
  * 2. Claude Code plugin package (the marketplace / `/plugin install` path):
  *      - `plugin/hooks/hooks.json`              (${CLAUDE_PLUGIN_ROOT}-relative)
  *
- * 3. Cursor plugin package (the Customize / Cursor marketplace path):
- *      - `plugin-cursor/hooks/hooks.json`       (plugin-root-relative)
- *
- * The plugin variants resolve the hook script relative to the installed plugin
- * root rather than assuming a project `.claude/skills/` or `.cursor/skills/`
- * layout, so they stay correct wherever the harness unpacks the plugin. Cursor
- * has no `${CLAUDE_PLUGIN_ROOT}` equivalent; its plugin hooks run from the
- * plugin root, so a plugin-root-relative path is the portable form.
+ * The Claude plugin variant resolves the hook script relative to the installed
+ * plugin root rather than assuming a project `.claude/skills/` layout. Cursor
+ * uses the same `.cursor/hooks.json` manifest for both project installs and the
+ * native plugin (`.cursor-plugin/plugin.json` points at it); hook commands stay
+ * `.cursor/skills/`-relative against the canonical harness tree.
  */
 
 export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook.mjs';
@@ -29,7 +26,6 @@ const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scr
 const CLAUDE_PLUGIN_HOOK = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
-const CURSOR_PLUGIN_BEFORE_EDIT_SCRIPT = 'skills/impeccable/scripts/hook-before-edit.mjs';
 const GITHUB_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs';
 
 export function buildClaudeSettingsManifest() {
@@ -106,25 +102,6 @@ export function buildCursorHooksManifest() {
       preToolUse: [
         {
           command: `node "${CURSOR_BEFORE_EDIT_SCRIPT}"`,
-          timeout: TIMEOUT_SECONDS,
-        },
-      ],
-    },
-  };
-}
-
-// Plugin-packaged variant of the Cursor hook. Cursor auto-discovers a plugin's
-// `hooks/hooks.json` and runs its commands from the plugin root, so the command
-// resolves the pre-write gate relative to the plugin payload's bundled skill
-// (`skills/impeccable/scripts/...`) rather than a project `.cursor/skills/`
-// layout. Same blocking preToolUse behavior as the project-local manifest.
-export function buildCursorPluginHooksManifest() {
-  return {
-    version: 1,
-    hooks: {
-      preToolUse: [
-        {
-          command: `node "${CURSOR_PLUGIN_BEFORE_EDIT_SCRIPT}"`,
           timeout: TIMEOUT_SECONDS,
         },
       ],

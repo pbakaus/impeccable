@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "impeccable",
-      "source": "./plugin-cursor",
+      "source": "./",
       "description": "Design fluency for frontend development. 1 skill with 23 commands (/impeccable polish, /impeccable audit, /impeccable critique, etc.) and curated anti-pattern detection.",
       "version": "3.8.0",
       "category": "design",
