@@ -11,7 +11,7 @@
  * output is always valid JSON.
  *
  * Signals:
- *   - setup:     PRODUCT.md / DESIGN.md presence, register, whether code exists
+ *   - setup:     PRODUCT.md / DESIGN.md / COPY.md presence, register, whether code exists
  *   - critique:  the latest cached critique score (.impeccable/critique)
  *   - git:       branch + files changed vs the default branch (a scope hint)
  *   - devServer: whether a local dev server answers on a common port (gates live)
@@ -195,6 +195,8 @@ export async function gatherSignals(cwd = process.cwd()) {
       productPath: ctx.productPath,
       hasDesign: ctx.hasDesign,
       designPath: ctx.designPath,
+      hasCopy: ctx.hasCopy,
+      copyPath: ctx.copyPath,
       hasCode: hasCode(cwd),
       register: extractRegister(ctx.product),
     },

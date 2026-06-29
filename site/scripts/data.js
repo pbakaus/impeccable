@@ -89,6 +89,7 @@ export const commandProcessSteps = {
   'onboard': ['Identify', 'Design', 'Guide', 'Measure'],
   'init': ['Explore', 'Interview', 'Configure', 'Recommend'],
   'document': ['Scan', 'Extract', 'Describe', 'Write'],
+  'document-copy': ['Scan', 'Interview', 'Map', 'Write'],
   'extract': ['Identify', 'Abstract', 'Migrate', 'Document'],
   'live': ['Start', 'Select', 'Generate', 'Accept']
 };
@@ -122,6 +123,7 @@ export const commandCategories = {
   // SYSTEM - setup and tooling
   'init': 'system',
   'document': 'system',
+  'document-copy': 'system',
   'extract': 'system',
   'live': 'system'
 };

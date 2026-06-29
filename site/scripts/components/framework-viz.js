@@ -47,6 +47,7 @@ const commandSymbols = {
 	'onboard': 'On',
 	'init': 'In',
 	'document': 'Dc',
+	'document-copy': 'Cp',
 	'extract': 'Ex',
 	'live': 'Li'
 };
@@ -58,7 +59,7 @@ const commandNumbers = {
 	'delight': 10, 'bolder': 11, 'quieter': 12, 'overdrive': 13,
 	'distill': 14, 'clarify': 15, 'adapt': 16,
 	'polish': 17, 'optimize': 18, 'harden': 19, 'onboard': 20,
-	'init': 21, 'document': 22, 'extract': 23, 'live': 24
+	'init': 21, 'document': 22, 'document-copy': 23, 'extract': 24, 'live': 25
 };
 
 // After the v3.0 consolidation, all commands except the root "impeccable" are

@@ -1,11 +1,11 @@
 /**
- * Context loader: prints PRODUCT.md (and DESIGN.md if present) as one
+ * Context loader: prints PRODUCT.md (and DESIGN.md / COPY.md when present) as one
  * markdown block on stdout, or exits with empty stdout when no PRODUCT.md
  * is found anywhere. The skill keys off "empty stdout" to branch into the
  * init flow.
  *
  * Path resolution (first match wins):
- *   1. Active project root, if PRODUCT.md or DESIGN.md is there
+ *   1. Active project root, if PRODUCT.md, DESIGN.md, or COPY.md is there
  *   2. Active project .agents/context/ then docs/
  *   3. Monorepo root context, using the same order, as a per-file fallback
  *   4. $IMPECCABLE_CONTEXT_DIR (absolute or cwd-relative) — power-user
@@ -24,6 +24,8 @@ import { parseTargetOptions } from './lib/target-args.mjs';
 
 const PRODUCT_NAMES = ['PRODUCT.md', 'Product.md', 'product.md'];
 const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
+const COPY_NAMES = ['COPY.md', 'Copy.md', 'copy.md'];
+const CONTEXT_FILE_NAMES = [...PRODUCT_NAMES, ...DESIGN_NAMES, ...COPY_NAMES];
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
 const MONOREPO_MARKER_FILES = ['pnpm-workspace.yaml', 'turbo.json', 'nx.json', 'lerna.json'];
 const MONOREPO_FALLBACK_PROJECT_DIRS = ['apps', 'packages'];
@@ -63,8 +65,10 @@ export function loadContext(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const productPath = resolved.productPath;
   const designPath = resolved.designPath;
+  const copyPath = resolved.copyPath;
   const product = productPath ? safeRead(productPath) : null;
   const design = designPath ? safeRead(designPath) : null;
+  const copy = copyPath ? safeRead(copyPath) : null;
   return {
     hasProduct: !!product,
     product,
@@ -72,9 +76,13 @@ export function loadContext(cwd = process.cwd(), options = {}) {
     hasDesign: !!design,
     design,
     designPath: designPath ? path.relative(absCwd, designPath) : null,
+    hasCopy: !!copy,
+    copy,
+    copyPath: copyPath ? path.relative(absCwd, copyPath) : null,
     contextDir: resolved.contextDir,
     productContextDir: productPath ? path.dirname(productPath) : null,
     designContextDir: designPath ? path.dirname(designPath) : null,
+    copyContextDir: copyPath ? path.dirname(copyPath) : null,
     projectRoot: resolved.projectRoot,
     repoRoot: resolved.repoRoot,
     isMonorepo: resolved.isMonorepo,
@@ -84,24 +92,23 @@ export function loadContext(cwd = process.cwd(), options = {}) {
 function resolveContext(cwd = process.cwd(), options = {}) {
   const absCwd = path.resolve(cwd);
   const project = resolveProject(absCwd, options);
-  const projectContextDir = resolveLocalContextDir(project.projectRoot);
-  const rootContextDir = project.isMonorepo && project.repoRoot !== project.projectRoot
-    ? resolveLocalContextDir(project.repoRoot)
-    : null;
+  let productPath = resolveContextFileInTree(project.projectRoot, PRODUCT_NAMES);
+  let designPath = resolveContextFileInTree(project.projectRoot, DESIGN_NAMES);
+  let copyPath = resolveContextFileInTree(project.projectRoot, COPY_NAMES);
 
-  let productPath =
-    (projectContextDir ? firstExisting(projectContextDir, PRODUCT_NAMES) : null)
-    || (rootContextDir ? firstExisting(rootContextDir, PRODUCT_NAMES) : null);
-  let designPath =
-    (projectContextDir ? firstExisting(projectContextDir, DESIGN_NAMES) : null)
-    || (rootContextDir ? firstExisting(rootContextDir, DESIGN_NAMES) : null);
+  if (project.isMonorepo && project.repoRoot !== project.projectRoot) {
+    productPath = productPath || resolveContextFileInTree(project.repoRoot, PRODUCT_NAMES);
+    designPath = designPath || resolveContextFileInTree(project.repoRoot, DESIGN_NAMES);
+    copyPath = copyPath || resolveContextFileInTree(project.repoRoot, COPY_NAMES);
+  }
 
   let envContextDir = null;
-  if (!productPath && !designPath) {
+  if (!productPath && !designPath && !copyPath) {
     envContextDir = resolveEnvContextDir(absCwd);
     if (envContextDir) {
       productPath = firstExisting(envContextDir, PRODUCT_NAMES);
       designPath = firstExisting(envContextDir, DESIGN_NAMES);
+      copyPath = firstExisting(envContextDir, COPY_NAMES);
     }
   }
 
@@ -110,9 +117,12 @@ function resolveContext(cwd = process.cwd(), options = {}) {
       ? path.dirname(productPath)
       : designPath
         ? path.dirname(designPath)
-        : envContextDir || project.projectRoot,
+        : copyPath
+          ? path.dirname(copyPath)
+          : envContextDir || project.projectRoot,
     productPath,
     designPath,
+    copyPath,
     projectRoot: project.projectRoot,
     repoRoot: project.repoRoot,
     isMonorepo: project.isMonorepo,
@@ -181,14 +191,24 @@ function isPathInside(candidate, root) {
 }
 
 function resolveLocalContextDir(root) {
-  if (firstExisting(root, [...PRODUCT_NAMES, ...DESIGN_NAMES])) {
+  if (firstExisting(root, CONTEXT_FILE_NAMES)) {
     return root;
   }
   for (const rel of FALLBACK_DIRS) {
     const candidate = path.resolve(root, rel);
-    if (firstExisting(candidate, [...PRODUCT_NAMES, ...DESIGN_NAMES])) {
+    if (firstExisting(candidate, CONTEXT_FILE_NAMES)) {
       return candidate;
     }
+  }
+  return null;
+}
+
+function resolveContextFileInTree(root, fileNames) {
+  const found = firstExisting(root, fileNames);
+  if (found) return found;
+  for (const rel of FALLBACK_DIRS) {
+    const hit = firstExisting(path.resolve(root, rel), fileNames);
+    if (hit) return hit;
   }
   return null;
 }
@@ -304,6 +324,8 @@ function resolveCandidateContextSummary(repoRoot, projectRoot, targetPath) {
     productPath: contextSourcePath(ctx.productPath, repoRoot),
     designStatus: contextSourceStatus(ctx.designPath, repoRoot, projectRoot),
     designPath: contextSourcePath(ctx.designPath, repoRoot),
+    copyStatus: contextSourceStatus(ctx.copyPath, repoRoot, projectRoot),
+    copyPath: contextSourcePath(ctx.copyPath, repoRoot),
   };
 }
 
@@ -405,7 +427,7 @@ function walkDirs(root, visit) {
 function isCandidateProjectRoot(dir) {
   return !!(
     fs.existsSync(path.join(dir, 'package.json'))
-    || firstExisting(dir, [...PRODUCT_NAMES, ...DESIGN_NAMES])
+    || firstExisting(dir, CONTEXT_FILE_NAMES)
     || fs.existsSync(path.join(dir, 'src'))
     || fs.existsSync(path.join(dir, 'app'))
     || fs.existsSync(path.join(dir, 'pages'))
@@ -473,7 +495,7 @@ function nearestProjectLikeRoot(repoRoot, targetDir) {
   const stop = path.resolve(repoRoot);
   while (dir && dir !== stop) {
     if (
-      firstExisting(dir, [...PRODUCT_NAMES, ...DESIGN_NAMES])
+      firstExisting(dir, CONTEXT_FILE_NAMES)
       || fs.existsSync(path.join(dir, 'package.json'))
     ) {
       return dir;
@@ -875,6 +897,9 @@ async function cli() {
   if (ctx.hasDesign) {
     parts.push(`# DESIGN.md\n\n${ctx.design.trim()}`);
   }
+  if (ctx.hasCopy) {
+    parts.push(`# COPY.md\n\n${ctx.copy.trim()}`);
+  }
   parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
   if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
     parts.push(buildMissingTargetDirective());
@@ -910,6 +935,7 @@ function buildResolvedContextDirective(ctx, options, { targetExists = null } = {
     repoRoot: ctx.repoRoot,
     productPath: ctx.productPath,
     designPath: ctx.designPath,
+    copyPath: ctx.copyPath,
   }, null, 2)}`;
 }
 
@@ -936,7 +962,7 @@ function buildMissingTargetDirective() {
 function buildTargetSelectionDirective(selection) {
   return (
     `TARGET_SELECTION_REQUIRED:\n${JSON.stringify(selection, null, 2)}\n\n` +
-    'Show each app with its productStatus/productPath and designStatus/designPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. ' +
+    'Show each app with its productStatus/productPath, designStatus/designPath, and copyStatus/copyPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. ' +
     'Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. ' +
     'Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path.'
   );
