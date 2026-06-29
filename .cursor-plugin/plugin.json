@@ -18,5 +18,8 @@
     "skills",
     "hooks",
     "anti-patterns"
-  ]
+  ],
+  "skills": "./.cursor/skills/",
+  "agents": "./.claude/agents/",
+  "hooks": "./.cursor/hooks.json"
 }
