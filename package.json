@@ -93,7 +93,7 @@
     "@ai-sdk/google": "^3.0.75",
     "@ai-sdk/openai": "^3.0.53",
     "@anthropic-ai/claude-agent-sdk": "^0.3.165",
-    "@anthropic-ai/sdk": "^0.105.0",
+    "@anthropic-ai/sdk": "^0.107.0",
     "@google/genai": "^2.8.0",
     "@paper-design/shaders": "^0.0.76",
     "ai": "^6.0.168",
