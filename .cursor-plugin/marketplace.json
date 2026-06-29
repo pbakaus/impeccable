@@ -1,0 +1,28 @@
+{
+  "name": "impeccable",
+  "owner": {
+    "name": "Paul Bakaus",
+    "email": "paul@paulbakaus.com"
+  },
+  "metadata": {
+    "description": "Design fluency for AI harnesses. 1 skill, 23 commands, and curated anti-patterns for impeccable frontend design."
+  },
+  "plugins": [
+    {
+      "name": "impeccable",
+      "source": "./plugin-cursor",
+      "description": "Design fluency for frontend development. 1 skill with 23 commands (/impeccable polish, /impeccable audit, /impeccable critique, etc.) and curated anti-pattern detection.",
+      "version": "3.8.0",
+      "category": "design",
+      "homepage": "https://impeccable.style",
+      "tags": [
+        "design",
+        "frontend",
+        "ui",
+        "ux",
+        "skills",
+        "hooks"
+      ]
+    }
+  ]
+}

@@ -20,7 +20,7 @@ function skillMd(version) {
   return `---\nname: impeccable\nversion: ${version}\nuser-invocable: true\n---\n\nBody.\n`;
 }
 
-function writeFixture(root, { plugin, marketplace, subtreePlugin, skill } = {}) {
+function writeFixture(root, { plugin, marketplace, subtreePlugin, skill, cursorMarketplace, cursorSubtreePlugin, cursorSkill } = {}) {
   const write = (rel, contents) => {
     const abs = path.join(root, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -37,6 +37,15 @@ function writeFixture(root, { plugin, marketplace, subtreePlugin, skill } = {}) 
   }
   if (skill !== undefined) {
     write('plugin/skills/impeccable/SKILL.md', skillMd(skill));
+  }
+  if (cursorMarketplace !== undefined) {
+    write('.cursor-plugin/marketplace.json', JSON.stringify({ plugins: [{ name: 'impeccable', version: cursorMarketplace }] }, null, 2));
+  }
+  if (cursorSubtreePlugin !== undefined) {
+    write('plugin-cursor/.cursor-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: cursorSubtreePlugin }, null, 2));
+  }
+  if (cursorSkill !== undefined) {
+    write('plugin-cursor/skills/impeccable/SKILL.md', skillMd(cursorSkill));
   }
 }
 
@@ -88,6 +97,36 @@ describe('collectPluginVersions', () => {
       'plugin/.claude-plugin/plugin.json',
       'plugin/skills/impeccable/SKILL.md',
     ]);
+  });
+
+  test('flags drifted native Cursor plugin files (marketplace, subtree, skill)', () => {
+    writeFixture(root, {
+      plugin: '3.8.0',
+      marketplace: '3.8.0',
+      subtreePlugin: '3.8.0',
+      skill: '3.8.0',
+      cursorMarketplace: '3.1.1',
+      cursorSubtreePlugin: '3.5.0',
+      cursorSkill: '3.1.1',
+    });
+    const { mismatches } = collectPluginVersions(root);
+    expect(mismatches.map((m) => m.relPath)).toEqual([
+      '.cursor-plugin/marketplace.json',
+      'plugin-cursor/.cursor-plugin/plugin.json',
+      'plugin-cursor/skills/impeccable/SKILL.md',
+    ]);
+  });
+
+  test('no mismatches when Cursor plugin files agree with root', () => {
+    writeFixture(root, {
+      plugin: '3.8.0',
+      cursorMarketplace: '3.8.0',
+      cursorSubtreePlugin: '3.8.0',
+      cursorSkill: '3.8.0',
+    });
+    const { mismatches, errors } = collectPluginVersions(root);
+    expect(mismatches).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
   test('skips files that do not exist instead of throwing', () => {

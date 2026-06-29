@@ -15,6 +15,9 @@
  *     subtree fails loudly instead of merging a drift window onto main.
  *   - `plugin/skills/impeccable/SKILL.md` frontmatter version — generated;
  *     same rationale.
+ *   - `.cursor-plugin/marketplace.json`, `plugin-cursor/.cursor-plugin/plugin.json`,
+ *     and `plugin-cursor/skills/impeccable/SKILL.md` — the native Cursor plugin
+ *     subtree, generated from the same root source of truth.
  *
  * The collector is pure (filesystem-in, data-out) so it can be unit-tested
  * against fixtures; build.js owns the logging and the non-zero exit.
@@ -98,6 +101,22 @@ export function collectPluginVersions(rootDir) {
     },
     {
       relPath: 'plugin/skills/impeccable/SKILL.md',
+      read: (raw) => readSkillFrontmatterVersion(raw),
+    },
+    // Native Cursor plugin subtree: same source-of-truth rule as the Claude
+    // subtree. Cursor installs from `./plugin-cursor` (and the repo-root
+    // `.cursor-plugin/marketplace.json` registers it), so a version bump that
+    // forgets to regenerate must fail loudly instead of shipping stale content.
+    {
+      relPath: '.cursor-plugin/marketplace.json',
+      read: (raw) => JSON.parse(raw).plugins?.[0]?.version,
+    },
+    {
+      relPath: 'plugin-cursor/.cursor-plugin/plugin.json',
+      read: (raw) => JSON.parse(raw).version,
+    },
+    {
+      relPath: 'plugin-cursor/skills/impeccable/SKILL.md',
       read: (raw) => readSkillFrontmatterVersion(raw),
     },
   ];

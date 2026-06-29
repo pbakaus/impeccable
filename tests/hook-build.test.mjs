@@ -14,6 +14,7 @@ import {
   buildClaudePluginHooksManifest,
   buildCodexHooksManifest,
   buildCursorHooksManifest,
+  buildCursorPluginHooksManifest,
   buildGitHubHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
@@ -73,6 +74,22 @@ describe('hook manifest builders', () => {
     assert.equal(manifest.hooks.stop, undefined);
     assert.equal(manifest.hooks.sessionStart, undefined);
     expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
+    assert.equal(beforeEdit.timeout, 5);
+  });
+
+  it('builds the Cursor plugin pre-write hook via plugin-root paths', () => {
+    const manifest = buildCursorPluginHooksManifest();
+    const beforeEdit = manifest.hooks.preToolUse[0];
+
+    assert.equal(manifest.version, 1);
+    assert.equal(Object.keys(manifest.hooks).length, 1);
+    assert.equal(manifest.hooks.afterFileEdit, undefined);
+    assert.equal(manifest.hooks.stop, undefined);
+    // Plugin-root-relative (no project `.cursor/skills/` prefix), since Cursor
+    // runs plugin hooks from the plugin root.
+    expectCommand(beforeEdit.command, 'skills/impeccable/scripts/hook-before-edit.mjs');
+    assert.ok(!beforeEdit.command.includes('.cursor/skills/'),
+      `plugin hook must not use a project .cursor/skills path: ${beforeEdit.command}`);
     assert.equal(beforeEdit.timeout, 5);
   });
 
@@ -211,12 +228,48 @@ describe('generated hook artifacts in repo', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook-lib.mjs')));
   });
 
+  it('packages the native Cursor plugin with manifest, skill, agent, and pre-write hook', () => {
+    const manifestPath = path.join(REPO_ROOT, 'plugin-cursor/.cursor-plugin/plugin.json');
+    assert.ok(fs.existsSync(manifestPath),
+      'plugin-cursor/.cursor-plugin/plugin.json missing - did you forget bun run build:release?');
+
+    // Manifest: Cursor only requires `name`; it must not carry the Claude
+    // `skills` path override (Cursor auto-discovers skills/).
+    const manifest = readJson('plugin-cursor/.cursor-plugin/plugin.json');
+    assert.equal(manifest.name, 'impeccable');
+    assert.equal(manifest.skills, undefined,
+      'Cursor manifest must not carry the Claude-only skills path override');
+    assert.equal(typeof manifest.version, 'string');
+
+    // Hook: plugin-root-relative pre-write blocking gate that matches the builder.
+    const hookManifest = readJson('plugin-cursor/hooks/hooks.json');
+    assert.deepEqual(hookManifest, buildCursorPluginHooksManifest());
+    const beforeEdit = hookManifest.hooks.preToolUse[0];
+    expectCommand(beforeEdit.command, 'skills/impeccable/scripts/hook-before-edit.mjs');
+    assert.ok(!beforeEdit.command.includes('.cursor/skills/'),
+      `Cursor plugin hook must use a plugin-root path: ${beforeEdit.command}`);
+
+    // Payload: the bundled skill, the pre-write runtime, the detector, and at
+    // least one harness-agnostic agent must ship inside the plugin.
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-cursor/skills/impeccable/SKILL.md')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-cursor/skills/impeccable/scripts/hook-before-edit.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-cursor/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-cursor/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin-cursor/agents/impeccable-manual-edit-applier.md')));
+
+    // Repo-root Cursor marketplace manifest registers the plugin from ./plugin-cursor.
+    const marketplace = readJson('.cursor-plugin/marketplace.json');
+    assert.equal(marketplace.plugins[0].source, './plugin-cursor');
+    assert.equal(marketplace.plugins[0].version, manifest.version);
+  });
+
   it('generated hook runtime can import the bundled detector', async () => {
     for (const scriptDir of [
       '.claude/skills/impeccable/scripts',
       '.cursor/skills/impeccable/scripts',
       '.agents/skills/impeccable/scripts',
       'plugin/skills/impeccable/scripts',
+      'plugin-cursor/skills/impeccable/scripts',
     ]) {
       const abs = path.join(REPO_ROOT, scriptDir);
       assert.ok(fs.existsSync(path.join(abs, 'detector', 'detect-antipatterns.mjs')),
