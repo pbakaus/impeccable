@@ -50,6 +50,7 @@ The trace is the source of truth, not the model's free-form reply.
 | 7 | same fixture; prompt is `/impeccable audit` | loads `reference/audit.md` |
 | 8 | PRODUCT.md + DESIGN.md + a SvelteKit scaffold (`src/app.css`, components, `+page.svelte`); prompt is `/impeccable polish src/routes/+page.svelte` | reads at least one project code file (CSS / component / page) — not just the skill's reference files |
 | 9 | PRODUCT.md + `index.html` + a seeded update cache with a newer version (`skillVersion` copy-mode so `context.mjs` has a `SKILL.md` to version-check against); prompt is `/impeccable polish index.html` | `context.mjs` runs and its output carries the `UPDATE_AVAILABLE` directive (proven via captured bash output); the agent does **not** auto-run `npx impeccable update` (it must ask first) |
+| 10 | PRODUCT.md with `## Register: product` + `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `context.mjs` runs and emits a NEXT STEP pointing at `reference/ios.md` (proven via captured bash output); agent loads `reference/ios.md` (Setup step 5, native conventions on top of the register reference) |
 
 Scenario 9 passed on all three current-lineup providers (`claude-sonnet-4-6`,
 `gpt-5.5`, `gemini-3.1-flash-lite`) on 2026-05-28.

@@ -16,6 +16,7 @@ Decision tree:
 - **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md), then decide on DESIGN.md based on whether there's code to analyze.
 - **PRODUCT.md exists, DESIGN.md missing**: skip to Step 5 and offer to run `/impeccable document` for DESIGN.md.
 - **PRODUCT.md exists but has no `## Register` section (legacy)**: add it. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field.
+- **PRODUCT.md exists but has no `## Platform` section (legacy)**: add it the same way. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field. A missing field defaults to `web`, so only add it when the project is native (`ios` / `android` / `adaptive`) or when the user wants it explicit.
 - **Both exist**: {{ask_instruction}} Ask which file to refresh. Skip the one the user doesn't want changed.
 - **Just DESIGN.md exists (unusual)**: do Steps 2-4 to produce PRODUCT.md.
 
@@ -41,6 +42,13 @@ Also form a **register hypothesis** from what you find:
 
 Register is a hypothesis at this point, not a decision; Step 3 confirms it.
 
+Also form a **platform hypothesis**:
+
+- Native signals: React Native / Expo (`react-native`, `expo`), Flutter (`pubspec.yaml`, `flutter`), SwiftUI / UIKit (`.swift`, `.xcodeproj`, an `ios/` app target), Jetpack Compose / Android (`build.gradle`, an `android/` app module, `AndroidManifest.xml`). An `ios/` and/or `android/` directory that is a real app target, not just a Capacitor/Cordova wrapper around a website.
+- Web signals (the default): a web framework (Vite, Next, Nuxt, SvelteKit, Astro), an HTML entry, a CSS/Tailwind setup, no native app target.
+
+Platform values are `web` / `ios` / `android` / `adaptive` (a cross-platform app that ships both iOS and Android from one codebase and adapts per OS: Flutter, React Native, KMP). "Mobile web" (a responsive site) is still `web`. Like register, platform is a hypothesis here; Step 3 confirms it.
+
 Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 7 turns these into concrete recommendations without re-analyzing.
 
 ## Step 3: Ask strategic questions (for PRODUCT.md)
@@ -55,12 +63,12 @@ If the repo is empty or the user's brief is sparse, run a short interview before
 - Ask **2-3 questions per round**, then wait for answers.
 - Use inferred answers as hypotheses or options, not as finished facts.
 - Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
-- Round 1 should establish register, users/purpose, and desired outcome.
+- Round 1 should establish register, platform, users/purpose, and desired outcome.
 - Round 2 should establish brand personality or references, anti-references, and accessibility needs.
 
 ### Minimum viable interview
 
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
+Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, **platform confirmation** (`web` / `ios` / `android` / `adaptive`), users and purpose, brand personality, anti-references, and accessibility needs unless each answer is directly discoverable from repo context. Never let the template's default `web` stand unconfirmed for a native or cross-platform repo. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
 
 ### Register (ask first; it shapes everything below)
 
@@ -69,6 +77,12 @@ Every design task is either **brand** (marketing, landing, campaign, long-form c
 If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [brand / product] surface. Does that match your intent, or should we treat it differently?"*
 
 If the signal is genuinely split (e.g. a product with a big marketing landing), {{ask_instruction}} Ask which register describes the **primary** surface. The register can be overridden per task later, but PRODUCT.md carries one default.
+
+### Platform (ask right after register)
+
+Every project targets **web** (a website or web app, including responsive mobile web), **ios** (a native iOS / iPadOS app), **android** (a native Android app), or **adaptive** (a cross-platform app that ships both iOS and Android from one codebase: Flutter, React Native, KMP). Platform is orthogonal to register and shapes which native conventions apply: Apple HIG for `ios`, Material Design for `android`, **both** for `adaptive`; `web` has none beyond the General rules.
+
+If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [web / ios / android / adaptive] project. Does that match?"* For a cross-platform app (Flutter, React Native), decide by the **design language the app actually renders**, not the toolchain: if it uses one platform's look on both (Material-everywhere is the Flutter default), write that platform (`android`); if it genuinely adapts per OS (Cupertino on iOS, Material on Android), write `adaptive` so both references load. When in doubt, it's `web`.
 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
@@ -101,6 +115,10 @@ Synthesize into a strategic document:
 
 product
 
+## Platform
+
+web
+
 ## Users
 [Who they are, their context, the job to be done]
 
@@ -120,7 +138,7 @@ product
 [WCAG level, known user needs, considerations]
 ```
 
-Register is either `brand` or `product` as a bare value. No prose, no commentary.
+Register is either `brand` or `product` as a bare value. No prose, no commentary. Platform is `web`, `ios`, `android`, or `adaptive`, also a bare value; omit the section only on legacy files you're leaving untouched, otherwise write `web` explicitly.
 
 Write to `PROJECT_ROOT/PRODUCT.md`. If `.impeccable.md` existed, the loader already renamed it; merge into that content rather than starting from scratch.
 
@@ -154,16 +172,16 @@ Writing the config file is harmless and needs no consent; only the CSP **source-
 ## Step 7: Recommend starting points, then wrap up
 
 Summarize tersely:
-- Register captured (brand / product)
+- Register captured (brand / product) and platform captured (web / ios / android / adaptive)
 - What was written (PRODUCT.md, DESIGN.md, live config, or a subset)
 - The 3-5 strategic principles from PRODUCT.md that will guide future work
 - If DESIGN.md or live config is pending, one line on how to set it up later
 
-Then recommend the **best commands to run next**, drawn from what your Step 2 crawl already surfaced. Do not run a fresh analysis here; surface observations you already have. Tailor to register and to what you saw, offer the 2-4 most relevant (not a menu dump), and give the exact command to type. Group by intent:
+Then recommend the **best commands to run next**, drawn from what your Step 2 crawl already surfaced. Do not run a fresh analysis here; surface observations you already have. Tailor to register **and platform**, offer the 2-4 most relevant (not a menu dump), and give the exact command to type. Group by intent:
 
 - **Build something new**: `/impeccable craft <feature>` (shape, then build end-to-end) or `/impeccable shape <feature>` (plan first). Lead with this for empty or early-stage projects.
 - **Improve what's there**: name the specific surface. `/impeccable critique <page>` for a scored UX review; `/impeccable audit <area>` for a11y / perf / responsive checks; `/impeccable polish <component>` for a pre-ship pass. When the crawl flagged a specific weakness, point the matching command at it: thin hierarchy or spacing → `layout`, flat or gray palette → `colorize`, missing error / empty states → `harden` or `onboard`, dull or unclear copy → `clarify`.
-- **Iterate visually**: `/impeccable live` (configured in Step 6) to pick elements in the browser and generate variants in place.
+- **Iterate visually** (web only): `/impeccable live` (configured in Step 6) to pick elements in the browser and generate variants in place. **Skip this group for native projects** (platform `ios` / `android` / `adaptive`): live mode drives a browser and doesn't apply to native app code.
 
 The full command menu is one bare `/impeccable` away; keep this list short and pointed.
 

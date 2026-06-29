@@ -28,6 +28,7 @@ import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from '.
 import {
   PRODUCT_MD_SAMPLE,
   PRODUCT_MD_SAMPLE_NO_REGISTER,
+  PRODUCT_MD_SAMPLE_IOS,
   DESIGN_MD_SAMPLE,
   MINIMAL_LANDING_HTML,
   SVELTE_PROJECT_FILES,
@@ -392,6 +393,46 @@ for (const modelId of resolveModelList()) {
           ranUpdate.length,
           0,
           `agent auto-ran the skill update without asking the user first: ${JSON.stringify(ranUpdate, null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 10: native iOS project (agent loads ios.md on top of register)', async () => {
+      // PRODUCT.md sets `## Platform` to `ios`. context.mjs emits a NEXT STEP
+      // directive to read reference/ios.md for native conventions. Setup step 5
+      // requires it on top of the register reference. The detector / live mode
+      // are web-only, so the only platform-specific obligation is loading the
+      // native reference — that's what this asserts.
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable craft a tide detail screen for the project in this workspace',
+          maxSteps: 6,
+        });
+        logTrace('S10', 'native-ios', modelId, trace, { textSample: text.slice(0, 400) });
+        const loadCalls = bashCommandsMatching(trace, 'context.mjs');
+        assert.ok(
+          loadCalls.length >= 1,
+          `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        // Proof the native directive actually entered the agent's view.
+        assert.ok(
+          trace.bashOutputs.some((o) => /reference\/ios\.md/.test(o)),
+          `context.mjs should have emitted a NEXT STEP pointing at reference/ios.md (platform is ios).\n` +
+            `bashOutputs: ${JSON.stringify(trace.bashOutputs, null, 2)}`,
+        );
+        // The core property: the agent loads ios.md (Setup step 5).
+        assert.ok(
+          fileLoaded(trace, 'ios.md'),
+          `agent should load ios.md when PRODUCT.md platform is ios.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
