@@ -5,6 +5,7 @@
 
 export const SKILL_CATEGORIES: Record<string, string> = {
   impeccable: 'create',
+  auto: 'create',
   craft: 'create',
   shape: 'create',
   critique: 'evaluate',
@@ -55,6 +56,7 @@ export const COMMAND_RELATIONSHIPS: Record<string, {
   pairs?: string;
   combinesWith?: string[];
 }> = {
+  auto: { leadsTo: ['craft', 'critique', 'audit', 'polish', 'harden'] },
   craft: { combinesWith: ['shape'] },
   shape: { combinesWith: ['craft'] },
   audit: { leadsTo: ['harden', 'optimize', 'adapt', 'clarify'] },

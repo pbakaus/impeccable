@@ -228,7 +228,7 @@ function normalizeProjectSourcePath(cwd, file, opts = {}) {
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
   if (opts.requireExists && !fs.existsSync(absolute)) return null;
   if (isGeneratedFile(absolute, { cwd })) return null;
-  return relative;
+  return relative.split(path.sep).join('/');
 }
 
 function normalizeRelativeFile(cwd, file) {
@@ -624,7 +624,7 @@ function scanRollbackDir(dir, cwd, out, seenDirs, seenFiles, depth) {
     seenFiles.add(realFile);
     const relative = path.relative(cwd, absolute);
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
-    out.push(relative);
+    out.push(relative.split(path.sep).join('/'));
   }
 }
 

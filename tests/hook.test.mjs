@@ -1385,34 +1385,36 @@ describe('renderCleanAck() / renderPendingAck()', () => {
 
 describe('parseApplyPatchPaths()', () => {
   it('extracts absolute and relative paths from patch bodies', () => {
-    const cwd = '/proj';
+    const cwd = path.resolve('/proj');
     const rel = parseApplyPatchPaths('*** Update File: src/App.jsx\n', cwd);
-    assert.deepEqual(rel, ['/proj/src/App.jsx']);
+    assert.deepEqual(rel, [path.join(cwd, 'src', 'App.jsx')]);
     const abs = parseApplyPatchPaths('*** Add File: /tmp/x.css\n*** Update File: src/y.html\n', cwd);
-    assert.deepEqual(abs, ['/tmp/x.css', '/proj/src/y.html']);
+    assert.deepEqual(abs, ['/tmp/x.css', path.join(cwd, 'src', 'y.html')]);
   });
 });
 
 describe('resolveTargetFiles()', () => {
   it('uses file_path when present and falls back to apply_patch command', () => {
-    assert.deepEqual(resolveTargetFiles({ tool_input: { file_path: '/a/b.tsx' } }, '/proj'), ['/a/b.tsx']);
+    const cwd = path.resolve('/proj');
+    assert.deepEqual(resolveTargetFiles({ tool_input: { file_path: '/a/b.tsx' } }, cwd), ['/a/b.tsx']);
     assert.deepEqual(
-      resolveTargetFiles({ tool_name: 'apply_patch', tool_input: { command: '*** Update File: src/x.css\n' } }, '/proj'),
-      ['/proj/src/x.css'],
+      resolveTargetFiles({ tool_name: 'apply_patch', tool_input: { command: '*** Update File: src/x.css\n' } }, cwd),
+      [path.join(cwd, 'src', 'x.css')],
     );
-    assert.deepEqual(resolveTargetFiles({ tool_name: 'Bash', tool_input: { command: 'echo hi' } }, '/proj'), []);
+    assert.deepEqual(resolveTargetFiles({ tool_name: 'Bash', tool_input: { command: 'echo hi' } }, cwd), []);
   });
 
   it('includes every apply_patch file even when file_path is also present', () => {
+    const cwd = path.resolve('/proj');
     assert.deepEqual(
       resolveTargetFiles({
         tool_name: 'apply_patch',
         tool_input: {
-          file_path: '/proj/src/App.jsx',
+          file_path: path.join(cwd, 'src', 'App.jsx'),
           command: '*** Update File: src/App.jsx\n*** Update File: src/styles.css\n',
         },
-      }, '/proj'),
-      ['/proj/src/App.jsx', '/proj/src/styles.css'],
+      }, cwd),
+      [path.join(cwd, 'src', 'App.jsx'), path.join(cwd, 'src', 'styles.css')],
     );
   });
 

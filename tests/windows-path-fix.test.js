@@ -40,6 +40,11 @@ describe('Windows path doubling fix (#95)', () => {
 
   test('fileURLToPath handles POSIX file URLs correctly', () => {
     const posixUrl = new URL('file:///home/user/cli/engine/detect-antipatterns.mjs');
+    if (process.platform === 'win32') {
+      expect(() => fileURLToPath(posixUrl)).toThrow(/absolute path/i);
+      return;
+    }
+
     const resolved = fileURLToPath(posixUrl);
     expect(resolved).toBe('/home/user/cli/engine/detect-antipatterns.mjs');
   });

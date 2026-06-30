@@ -762,10 +762,14 @@ function providerPromptOptions() {
   });
 }
 
-function formatPathForDisplay(path, home = homedir()) {
-  if (path === home) return '~';
-  if (path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`;
-  return path;
+function formatPathForDisplay(inputPath, home = homedir()) {
+  const normalizedPath = inputPath.split(sep).join('/');
+  const normalizedHome = home.split(sep).join('/');
+  if (normalizedPath === normalizedHome) return '~';
+  if (normalizedPath.startsWith(`${normalizedHome}/`)) {
+    return `~/${normalizedPath.slice(normalizedHome.length + 1)}`;
+  }
+  return inputPath;
 }
 
 function uniquePaths(paths) {

@@ -239,7 +239,8 @@ function validateProse(rootDir) {
   };
 
   const scan = (absPath, rel) => {
-    if (excludedPrefixes.some(p => rel === p || rel.startsWith(p + '/'))) return;
+    const normalizedRel = rel.split(path.sep).join('/');
+    if (excludedPrefixes.some(p => normalizedRel === p || normalizedRel.startsWith(p + '/'))) return;
     const stat = fs.statSync(absPath);
     if (stat.isDirectory()) {
       for (const entry of fs.readdirSync(absPath)) {

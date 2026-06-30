@@ -26,6 +26,7 @@ const categoryLabels = {
 
 const commandSymbols = {
 	'impeccable': 'Im',
+	'auto': 'At',
 	'craft': 'Cf',
 	'shape': 'Sh',
 	'critique': 'Cr',
@@ -52,13 +53,13 @@ const commandSymbols = {
 };
 
 const commandNumbers = {
-	'impeccable': 1, 'craft': 2, 'shape': 3,
-	'critique': 4, 'audit': 5,
-	'typeset': 6, 'layout': 7, 'colorize': 8, 'animate': 9,
-	'delight': 10, 'bolder': 11, 'quieter': 12, 'overdrive': 13,
-	'distill': 14, 'clarify': 15, 'adapt': 16,
-	'polish': 17, 'optimize': 18, 'harden': 19, 'onboard': 20,
-	'init': 21, 'document': 22, 'extract': 23, 'live': 24
+	'impeccable': 1, 'auto': 2, 'craft': 3, 'shape': 4,
+	'critique': 5, 'audit': 6,
+	'typeset': 7, 'layout': 8, 'colorize': 9, 'animate': 10,
+	'delight': 11, 'bolder': 12, 'quieter': 13, 'overdrive': 14,
+	'distill': 15, 'clarify': 16, 'adapt': 17,
+	'polish': 18, 'optimize': 19, 'harden': 20, 'onboard': 21,
+	'init': 22, 'document': 23, 'extract': 24, 'live': 25
 };
 
 // After the v3.0 consolidation, all commands except the root "impeccable" are

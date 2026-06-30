@@ -63,7 +63,7 @@ Pick any element on your running dev server. Drop a comment or stroke. Get three
 
 ## Pin commands back as shortcuts
 
-v3.0 consolidated 18 standalone skills into a single `/impeccable` with 23 commands. If you miss the short form of a command, pin it back:
+v3.0 consolidated 18 standalone skills into a single `/impeccable` with 24 commands. If you miss the short form of a command, pin it back:
 
 ```
 /impeccable pin critique

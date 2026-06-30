@@ -61,6 +61,36 @@ export function renderCommandDemo(commandId) {
         </div>
       `;
     }
+    // auto routes plain-English requests to the right specialist flow
+    if (commandId === 'auto') {
+      return `
+        <div class="demo-container">
+          <div class="demo-viewport" style="padding: var(--spacing-lg); font-size: 13px; line-height: 1.6;">
+            <div style="display: flex; flex-direction: column; gap: 16px; color: var(--color-ash);">
+              <div style="font-size: 14px; color: var(--color-text); font-weight: 600;">Plain English to routed workflow</div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; gap: 8px; align-items: baseline;">
+                    <code style="font-size: 12px; color: var(--spread-accent, var(--color-accent)); font-weight: 600;">/impeccable auto</code>
+                    <span style="opacity: 0.4; font-size: 11px;">make this dashboard easier to scan</span>
+                  </div>
+                  <span style="opacity: 0.8;">Reads project context, dirty files, and detector signals, then picks one primary command instead of showing a menu.</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <span style="color: var(--spread-accent, var(--color-accent)); font-weight: 600; font-size: 12px;">Route</span>
+                  <span style="opacity: 0.8;">Primary: <code style="font-size: 11px;">layout</code>. Support: <code style="font-size: 11px;">typeset</code>, <code style="font-size: 11px;">clarify</code>. Reason: scanability is hierarchy, density, and wording.</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <span style="color: var(--spread-accent, var(--color-accent)); font-weight: 600; font-size: 12px;">Action</span>
+                  <span style="opacity: 0.8;">Loads only those references and proceeds with the selected workflow. The user never has to name the command.</span>
+                </div>
+              </div>
+              <div style="font-size: 12px; opacity: 0.5; margin-top: 2px; font-style: italic;">Best when you know the desired outcome but not the command name.</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     // craft is the full end-to-end flow, show the four stages
     if (commandId === 'craft') {
       return `
