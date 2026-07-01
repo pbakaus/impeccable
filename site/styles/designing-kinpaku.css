@@ -976,8 +976,13 @@
   cursor: pointer;
 }
 .designing-kinpaku .docs-viz-live-ctx-discard {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 28px;
   color: var(--ks-muted);
-  padding: 4px 6px;
+  padding: 0;
+  line-height: 1;
 }
 .designing-kinpaku .docs-viz-live-ctx-accept {
   background: var(--ks-kinpaku);
@@ -995,7 +1000,7 @@
   width: 1px;
   height: 14px;
   background: var(--ks-rule);
-  margin: 0 4px;
+  margin: 0 0 0 4px;
 }
 /* Global picker bar — mirrors the real Impeccable live bar: carved-tile mark,
    Pick/Insert/Detect/DESIGN.md controls, exit. Lacquer-deep fill + 1.5px gold
