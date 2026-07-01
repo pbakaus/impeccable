@@ -27,7 +27,7 @@ const COMPONENTS = {
     artifacts: ['dist/universal.zip'],
     postReleaseHint: null,
     tweetHeader: (v) => `Impeccable v${v} is out.`,
-    tweetCta: 'Install / update: npx skills add pbakaus/impeccable',
+    tweetCta: 'Install / update: npx impeccable install',
   },
   cli: {
     manifest: 'package.json',
