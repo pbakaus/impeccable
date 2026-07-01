@@ -1532,8 +1532,8 @@
 }
 .designing-kinpaku .designing-avoid li {
   display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 14px;
+  grid-template-columns: 20px 1fr;
+  gap: 12px;
   padding: 22px 0;
   background: transparent;
   border: 0;
@@ -1544,11 +1544,18 @@
   border-bottom: 0;
 }
 .designing-kinpaku .designing-avoid-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: oklch(58% 0.15 35 / 0.1);
+  border-radius: 50%;
   color: var(--ks-vermilion);
   font-family: var(--ks-mono);
-  font-size: 1.2rem;
-  line-height: 1.4;
-  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
 }
 .designing-kinpaku .designing-avoid-title {
   display: block;
