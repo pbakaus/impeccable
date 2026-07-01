@@ -55,7 +55,7 @@ If the repo is empty or the user's brief is sparse, run a short interview before
 - Ask **2-3 questions per round**, then wait for answers.
 - Use inferred answers as hypotheses or options, not as finished facts.
 - Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
-- Round 1 should establish register, users/purpose, and desired outcome.
+- Round 1 should establish register, users/purpose, positioning, and desired outcome.
 - Round 2 should establish brand personality or references, anti-references, and accessibility needs.
 
 ### Minimum viable interview
@@ -91,7 +91,7 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 - What's the primary CTA, and the secondary fallback?
 - The one line a visitor should remember after 10 seconds.
 - Belief ladder: what must the visitor believe, in order, before taking the primary CTA?
-- What proof is on hand? Testimonials, case studies, press, client/partner logos that already exist. Reference media by path or link; supplied files go under `.impeccable/assets/proof/`.
+- What proof is on hand? Ask the user to hand over any testimonials, case studies, press, or client/partner logos they already have. If you can receive files directly, collect them; otherwise create `.impeccable/assets/proof/` and ask the user to add files there. Reference supplied files by path; record text proof inline.
 
 ### Accessibility & Inclusion
 - Specific accessibility requirements? (WCAG level, known user needs)
@@ -122,7 +122,11 @@ product
 [The single strategic claim every screen reinforces. Not a visual rule, not an anti-reference.]
 
 ## Proof & conversion
-[Brand register only; omit for the product register. Belief ladder, primary and secondary CTA, the line a visitor remembers after 10 seconds, and proof on hand (testimonials, case studies, press, logos) referenced by path or link.]
+[Brand register only]
+- Primary and secondary CTA: [...]
+- The line a visitor remembers after 10 seconds: [...]
+- Belief ladder: [...]
+- Proof on hand: [testimonials, case studies, press, or logos, referenced by path]
 
 ## Brand Personality
 [Voice, tone, 3-word personality, emotional goals]
