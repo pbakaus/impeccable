@@ -7928,7 +7928,7 @@ void main() {
     const barTopFromBottom = barRect && barRect.height > 0
       ? Math.max(16, window.innerHeight - barRect.top + 12)
       : 16;
-    toastEl = el('div', {
+    const currentToast = el('div', {
       position: 'fixed', bottom: barTopFromBottom + 'px', left: '50%',
       transform: 'translateX(-50%) translateY(8px)',
       background: C.ink, color: C.white,
@@ -7938,19 +7938,24 @@ void main() {
       transition: 'opacity 0.25s ' + EASE + ', transform 0.25s ' + EASE,
       pointerEvents: 'none', maxWidth: '420px', textAlign: 'center',
     });
-    toastEl.id = PREFIX + '-toast';
-    toastEl.textContent = message;
-    uiAppend(toastEl);
+    toastEl = currentToast;
+    currentToast.id = PREFIX + '-toast';
+    currentToast.textContent = message;
+    uiAppend(currentToast);
     requestAnimationFrame(() => {
-      toastEl.style.opacity = '1';
-      toastEl.style.transform = 'translateX(-50%) translateY(0)';
+      if (toastEl !== currentToast) return;
+      currentToast.style.opacity = '1';
+      currentToast.style.transform = 'translateX(-50%) translateY(0)';
     });
     setTimeout(() => {
-      if (toastEl) {
-        toastEl.style.opacity = '0';
-        toastEl.style.transform = 'translateX(-50%) translateY(8px)';
-        setTimeout(() => { if (toastEl) { toastEl.remove(); toastEl = null; } }, 250);
-      }
+      if (toastEl !== currentToast) return;
+      currentToast.style.opacity = '0';
+      currentToast.style.transform = 'translateX(-50%) translateY(8px)';
+      setTimeout(() => {
+        if (toastEl !== currentToast) return;
+        currentToast.remove();
+        toastEl = null;
+      }, 250);
     }, duration);
   }
 

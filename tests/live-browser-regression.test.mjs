@@ -528,6 +528,34 @@ describe('live-browser.js regression guards', () => {
     );
   });
 
+  it('toast enter and dismiss timers only touch the current toast element', () => {
+    assert.match(
+      SOURCE,
+      /function showToast\(message, duration\)[\s\S]{0,1200}?const currentToast = el\('div'/,
+      'showToast must capture the created toast in a local so delayed callbacks cannot dereference or remove a stale global toastEl',
+    );
+    assert.match(
+      SOURCE,
+      /requestAnimationFrame\(\(\) => \{[\s\S]{0,80}?if \(toastEl !== currentToast\) return;[\s\S]{0,120}?currentToast\.style\.opacity = '1';/,
+      'toast enter rAF must no-op when dismissToast or a newer toast replaced toastEl before the frame fires',
+    );
+    assert.match(
+      SOURCE,
+      /setTimeout\(\(\) => \{[\s\S]{0,80}?if \(toastEl !== currentToast\) return;[\s\S]{0,120}?currentToast\.style\.opacity = '0';/,
+      'toast auto-dismiss timer must not animate a newer toast created after this timer was scheduled',
+    );
+    assert.match(
+      SOURCE,
+      /setTimeout\(\(\) => \{[\s\S]{0,80}?if \(toastEl !== currentToast\) return;[\s\S]{0,80}?currentToast\.remove\(\);[\s\S]{0,80}?toastEl = null;/,
+      'toast removal timer must only remove and clear the same toast it scheduled',
+    );
+    assert.doesNotMatch(
+      SOURCE,
+      /requestAnimationFrame\(\(\) => \{\s*toastEl\.style/,
+      'toast enter rAF must not read toastEl.style directly after dismissToast can null it',
+    );
+  });
+
   it('insert mode UI and generate payload guards', () => {
     assert.match(SOURCE, /function toggleInsert\(\)/, 'global bar must expose insert toggle');
     assert.match(SOURCE, /PREFIX \+ '-insert-toggle'/, 'insert toggle needs stable id');
