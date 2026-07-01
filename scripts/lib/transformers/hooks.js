@@ -11,9 +11,11 @@
  * 2. Claude Code plugin package (the marketplace / `/plugin install` path):
  *      - `plugin/hooks/hooks.json`              (${CLAUDE_PLUGIN_ROOT}-relative)
  *
- * The plugin variant resolves the hook script relative to the installed plugin
- * root rather than assuming a `.claude/skills/impeccable/` layout, so it stays
- * correct wherever Claude Code unpacks the plugin.
+ * The Claude plugin variant resolves the hook script relative to the installed
+ * plugin root rather than assuming a project `.claude/skills/` layout. Cursor
+ * uses the same `.cursor/hooks.json` manifest for both project installs and the
+ * native plugin (`.cursor-plugin/plugin.json` points at it); hook commands stay
+ * `.cursor/skills/`-relative against the canonical harness tree.
  */
 
 export const IMPECCABLE_HOOK_COMMAND_MARKER = 'skills/impeccable/scripts/hook.mjs';

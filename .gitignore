@@ -108,6 +108,9 @@ site/public/_routes.json
 site/public/js/detect-antipatterns-browser.js
 site/public/js/generated/
 
+# Per-developer Cursor workspace settings (enabled plugins, etc.), not shared.
+.cursor/settings.json
+
 # Note: harness skill directories (.claude/skills/, .cursor/skills/, etc.)
 # are intentionally tracked. npx skills reads them from this repo at install
 # time, and they enable clean submodule use. Run `bun run build` to refresh

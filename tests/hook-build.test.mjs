@@ -212,6 +212,35 @@ describe('generated hook artifacts in repo', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts/hook-lib.mjs')));
   });
 
+  it('packages the native Cursor plugin manifest against canonical harness paths', () => {
+    const manifestPath = path.join(REPO_ROOT, '.cursor-plugin/plugin.json');
+    assert.ok(fs.existsSync(manifestPath),
+      '.cursor-plugin/plugin.json missing - did you forget bun run build:release?');
+
+    const manifest = readJson('.cursor-plugin/plugin.json');
+    assert.equal(manifest.name, 'impeccable');
+    assert.equal(manifest.skills, './.cursor/skills/');
+    assert.equal(manifest.agents, './.claude/agents/');
+    assert.equal(manifest.hooks, './.cursor/hooks.json');
+    assert.equal(typeof manifest.version, 'string');
+
+    // Hook manifest is the same pre-write gate synced to `.cursor/hooks.json`.
+    assert.deepEqual(readJson('.cursor/hooks.json'), buildCursorHooksManifest());
+    const beforeEdit = readJson('.cursor/hooks.json').hooks.preToolUse[0];
+    expectCommand(beforeEdit.command, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs');
+
+    // Canonical harness payload — no duplicate plugin-cursor subtree.
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/SKILL.md')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-before-edit.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/hook-lib.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.cursor/skills/impeccable/scripts/detector/detect-antipatterns.mjs')));
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, '.claude/agents/impeccable-manual-edit-applier.md')));
+
+    const marketplace = readJson('.cursor-plugin/marketplace.json');
+    assert.equal(marketplace.plugins[0].source, './');
+    assert.equal(marketplace.plugins[0].version, manifest.version);
+  });
+
   it('generated hook runtime can import the bundled detector', async () => {
     for (const scriptDir of [
       '.claude/skills/impeccable/scripts',
