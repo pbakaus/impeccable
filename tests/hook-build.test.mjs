@@ -197,6 +197,9 @@ describe('generated hook artifacts in repo', () => {
 
     const manifest = readJson('plugin/hooks/hooks.json');
     assert.deepEqual(manifest, buildClaudePluginHooksManifest());
+    // Codex loads bundled plugin hooks from this same file and rejects any
+    // top-level field other than `hooks` (issue #330).
+    assert.equal(manifest.description, undefined);
 
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
     assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write|MultiEdit');

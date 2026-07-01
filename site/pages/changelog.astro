@@ -23,8 +23,16 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
-    <article id="v3.9.0" class="cf-entry cf-entry--current">
-      <header class="cf-entry-head"><span class="cf-version">v3.9.0</span><span class="cf-date">July 1, 2026</span><span class="cf-current-badge">Current</span></header>
+    <article id="v3.9.1" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.9.1</span><span class="cf-date">July 1, 2026</span><span class="cf-current-badge">Current</span></header>
+      <p class="cf-entry-lead">A packaging fix so the design hook loads in Codex.</p>
+      <ul class="cf-items">
+        <li><strong>Codex loads the plugin design hook again.</strong> The plugin-packaged hook manifest carried a top-level <code>description</code> field that Codex's strict hook parser rejected, so the post-edit design check failed to register. That field is gone from the plugin artifact, and the hook now loads cleanly on Codex while staying identical for Claude Code.</li>
+      </ul>
+    </article>
+
+    <article id="v3.9.0" class="cf-entry">
+      <header class="cf-entry-head"><span class="cf-version">v3.9.0</span><span class="cf-date">July 1, 2026</span></header>
       <p class="cf-entry-lead">A new anti-slop rule for Codex-style grid backgrounds, a bolder pass that respects your design system, and critique that stays independent across more harnesses.</p>
       <ul class="cf-items">
         <li><strong>Decorative grid backgrounds are now a named tell.</strong> Impeccable refuses the two-axis CSS grid overlay built from hairline gradient lines and a repeating <code>background-size</code>, the pattern Codex reaches for on almost any empty surface. Actual canvases, maps, blueprints, and measurement tools still get their grid; everything else gets real product structure or a plain surface.</li>

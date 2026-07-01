@@ -47,13 +47,14 @@ export function buildClaudeSettingsManifest() {
   };
 }
 
-// Plugin-packaged variant of the Claude hook. Same schema as the settings.json
-// manifest (Claude Code reads an identical `hooks` object from a plugin's
-// `hooks/hooks.json`), but the command resolves relative to ${CLAUDE_PLUGIN_ROOT}
-// so it does not depend on the skill being copied into `.claude/skills/`.
+// Plugin-packaged variant of the Claude hook. Claude Code reads the `hooks`
+// object from a plugin's `hooks/hooks.json`, and the command resolves relative
+// to ${CLAUDE_PLUGIN_ROOT} so it does not depend on the skill being copied into
+// `.claude/skills/`. No top-level `description`: Codex also loads bundled plugin
+// hooks from `hooks/hooks.json` and its strict parser rejects any field other
+// than `hooks`, failing the whole manifest (issue #330).
 export function buildClaudePluginHooksManifest() {
   return {
-    description: 'Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.',
     hooks: {
       PostToolUse: [
         {
