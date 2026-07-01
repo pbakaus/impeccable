@@ -1185,18 +1185,23 @@ function checkHtmlPatterns(html) {
 
   // --- Provider tells (gated): two-axis grid-line background (Codex/GPT) ---
   // The Codex grid tell is two hairline `linear-gradient(... <color> 1px,
-  // transparent 1px)` layers (one per axis) plus a repeating `background-size`
-  // cell. Count hairline stops WITHIN a single background value: two is the
-  // grid; one is a legitimate ruled line, and unrelated single-axis rules on
-  // separate elements must not add up across the page. Colors like
-  // `oklch(96% 0.012 82 / 0.055)` carry nested parens, so match the stop
-  // directly rather than parsing whole gradient layers.
+  // transparent 1px)` layers (one per axis) tiled by a repeating
+  // `background-size` cell. Both signals must co-occur in the SAME style block
+  // (a CSS rule body or one inline `style="..."`): two hairline stops WITHOUT a
+  // tiling background-size is a fixed crosshair, not a grid, and a single
+  // hairline is a legitimate ruled line. Scoping to one block also stops
+  // unrelated single-axis rules on separate elements from adding up across the
+  // page. Colors like `oklch(96% 0.012 82 / 0.055)` carry nested parens, so
+  // match the hairline stop directly rather than parsing whole gradient layers.
   {
-    const bgDeclRe = /background(?:-image)?\s*:\s*([^;{}"]*)/gi;
-    let bm;
-    while ((bm = bgDeclRe.exec(html)) !== null) {
-      const hairlines = bm[1].match(/\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi);
-      if (hairlines && hairlines.length >= 2) {
+    const hairlineRe = /\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi;
+    const gridSizeRe = /background-size\s*:[^;{}"']*\b\d{1,3}px\b/i;
+    const blockRe = /\{([^{}]*)\}|style\s*=\s*"([^"]*)"|style\s*=\s*'([^']*)'/gi;
+    let blk;
+    while ((blk = blockRe.exec(html)) !== null) {
+      const block = blk[1] || blk[2] || blk[3] || '';
+      const hairlines = block.match(hairlineRe);
+      if (hairlines && hairlines.length >= 2 && gridSizeRe.test(block)) {
         findings.push({ id: 'codex-grid-background', snippet: 'two-axis grid-line gradient background' });
         break;
       }
