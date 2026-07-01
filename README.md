@@ -103,7 +103,7 @@ From the root of your project, run:
 npx impeccable install
 ```
 
-This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, and every other supported tool. Reload your harness afterward.
+This shows the harness folders it detected (for example `~/.claude`, `~/.codex`, or project-local `.cursor`), lets you keep the detected set or customize providers, then asks whether to install into the current project or globally. Use `--providers=claude,codex,cursor` and `--scope=project|global` to skip those choices in scripts. On Claude Code, Cursor, and Codex, it also installs the provider-native hook manifest for the current project. Works with Cursor, Claude Code, Gemini CLI, Codex CLI, Grok Build, and every other supported tool. Reload your harness afterward.
 
 To refresh an existing install, run:
 
@@ -133,11 +133,27 @@ git submodule update --remote .impeccable
 npx impeccable link --source=.impeccable --providers=claude,cursor
 ```
 
-### Option 3: Download from Website
+### Option 3: Plugin install
+
+**Claude Code:**
+```bash
+/plugin marketplace add pbakaus/impeccable
+```
+
+> Claude Code only. After adding the marketplace, open `/plugin` and install Impeccable from the list.
+
+**Grok Build:**
+```bash
+grok plugin install pbakaus/impeccable --trust
+```
+
+> Grok Build only. Then run `/impeccable init` in a Grok session.
+
+### Option 4: Download from Website
 
 Visit [impeccable.style](https://impeccable.style), download the ZIP for your tool, and extract to your project.
 
-### Option 4: Copy from Repository
+### Option 5: Copy from Repository
 
 **Cursor:**
 ```bash
@@ -356,6 +372,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [GitHub Copilot](https://github.com/features/copilot)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)
+- [Grok Build](https://x.ai/cli)
 - [OpenCode](https://opencode.ai)
 - [Pi](https://pi.dev)
 - [Kiro](https://kiro.dev)
