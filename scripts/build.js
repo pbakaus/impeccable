@@ -10,6 +10,7 @@
  * - Codex: dist/codex/ only (OpenAI-metadata bundle; not synced to repo root)
  * - Agents: .agents/skills/ (Codex repo/user installs)
  * - GitHub: .github/skills/ (GitHub Copilot)
+ * - OMP: .omp/skills/
  *
  * Also assembles a universal ZIP containing all providers,
  * and builds Tailwind CSS for production deployment.
@@ -503,6 +504,7 @@ This folder contains skills for all supported tools:
   .agents/    -> Codex CLI
   .github/    -> GitHub Copilot
   .kiro/      -> Kiro
+  .omp/       -> OMP
   .opencode/  -> OpenCode
   .pi/        -> Pi
   .trae-cn/   -> Trae China

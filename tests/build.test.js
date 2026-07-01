@@ -49,7 +49,6 @@ describe('build orchestration', () => {
     transformGeminiSpy.mockRestore();
     transformCodexSpy.mockRestore();
   });
-
   test('should call all transformers with correct arguments', () => {
     const skills = [
       { name: 'skill1', description: 'Skill 1', license: 'MIT', body: 'Skill body 1' }
@@ -160,6 +159,7 @@ This is a test skill body.`;
 
     // Verify Codex outputs
     expect(fs.existsSync(path.join(DIST_DIR, 'codex/.codex/skills/test-skill/SKILL.md'))).toBe(true);
+
   });
 
   test('integration: emits native subagent files for Codex and Claude Code', () => {
@@ -317,11 +317,13 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformers.transformAgents(skills, DIST_DIR, patterns);
     transformers.transformGitHub(skills, DIST_DIR, patterns);
     transformers.transformKiro(skills, DIST_DIR, patterns);
+    transformers.transformOmp(skills, DIST_DIR, patterns);
 
     // Verify outputs
     expect(fs.existsSync(path.join(DIST_DIR, 'agents/.agents/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'github/.github/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'kiro/.kiro/skills'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'omp/.omp/skills'))).toBe(true);
   });
 });
 
