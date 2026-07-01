@@ -573,6 +573,26 @@ function checkHtmlPatterns(html) {
     findings.push({ id: 'repeating-stripes-gradient', snippet: 'repeating-gradient decorative stripes' });
   }
 
+  // --- Provider tells (gated): two-axis grid-line background (Codex/GPT) ---
+  // The Codex grid tell is two hairline `linear-gradient(... <color> 1px,
+  // transparent 1px)` layers (one per axis) plus a repeating `background-size`
+  // cell. Count hairline stops WITHIN a single background value: two is the
+  // grid; one is a legitimate ruled line, and unrelated single-axis rules on
+  // separate elements must not add up across the page. Colors like
+  // `oklch(96% 0.012 82 / 0.055)` carry nested parens, so match the stop
+  // directly rather than parsing whole gradient layers.
+  {
+    const bgDeclRe = /background(?:-image)?\s*:\s*([^;{}"]*)/gi;
+    let bm;
+    while ((bm = bgDeclRe.exec(html)) !== null) {
+      const hairlines = bm[1].match(/\b\d{1,3}px\s*,\s*transparent\s+\d{1,3}px/gi);
+      if (hairlines && hairlines.length >= 2) {
+        findings.push({ id: 'codex-grid-background', snippet: 'two-axis grid-line gradient background' });
+        break;
+      }
+    }
+  }
+
   // --- Provider tells (gated): "X theater" framing copy (GPT) ---
   // Lives here (regex-on-HTML) rather than in the text-content analyzers so it
   // runs in the bundled browser path too, not just the CLI/static path.

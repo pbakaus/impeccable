@@ -377,6 +377,17 @@ const ANTIPATTERNS = [
     skillGuideline: 'repeating-gradient decorative stripes',
   },
   {
+    id: 'codex-grid-background',
+    category: 'slop',
+    severity: 'advisory',
+    gated: 'gpt',
+    name: 'Decorative grid-line background',
+    description:
+      'A two-axis grid drawn with hairline linear-gradient layers ("1px, transparent 1px" on both axes) is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.',
+    skillSection: 'Visual Details',
+    skillGuideline: 'two-axis grid-line gradient background',
+  },
+  {
     id: 'theater-slop-phrase',
     category: 'slop',
     severity: 'advisory',

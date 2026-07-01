@@ -744,7 +744,7 @@ describe('detectHtml — cream-palette', () => {
 });
 
 describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
-  const GPT_IDS = ['gpt-thin-border-wide-shadow', 'repeating-stripes-gradient', 'theater-slop-phrase'];
+  const GPT_IDS = ['gpt-thin-border-wide-shadow', 'repeating-stripes-gradient', 'codex-grid-background', 'theater-slop-phrase'];
 
   it('gpt-tells: gated OFF by default — none of the GPT idioms surface', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'gpt-tells.html'));
@@ -756,7 +756,7 @@ describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
     }
   });
 
-  it('gpt-tells: with providers:[gpt], flag column triggers all three, pass column adds none', async () => {
+  it('gpt-tells: with providers:[gpt], each flag case triggers once, pass column adds none', async () => {
     const f = await detectHtml(path.join(FIXTURES, 'gpt-tells.html'), { providers: ['gpt'] });
     for (const id of GPT_IDS) {
       assert.equal(
