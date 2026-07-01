@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Label Line Height — Should Flag vs Should Pass</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #fafafa; padding: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1280px; margin: 0 auto; }
+    .col h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px; }
+    .case { margin-bottom: 16px; padding: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; }
+    .case-label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; font-style: italic; }
+
+    /* ── FLAG ── */
+    .flag-button { font-size: 12px; line-height: 28px; }
+    .flag-role-button { font-size: 13px; line-height: 24px; }
+    .flag-badge { font-size: 10px; line-height: 20px; }
+    .flag-label { font-size: 12px; line-height: 24px; }
+    .flag-chip { font-size: 11px; line-height: 20px; }
+
+    /* ── PASS ── */
+    .pass-button { font-size: 12px; line-height: 14px; }
+    .pass-large-font { font-size: 14px; line-height: 28px; }
+    .pass-paragraph { font-size: 12px; line-height: 28px; }
+    .pass-badge { font-size: 12px; line-height: 20px; }
+    .pass-label { font-size: 13px; line-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col" data-col="flag">
+      <h2>Should flag</h2>
+      
+      <div class="case">
+        <span class="case-label">Button 12px / 28px</span>
+        <button class="flag-button">"Button 12px / 28px"</button>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Role Button 13px / 24px</span>
+        <div role="button" class="flag-role-button">"Role Button 13px / 24px"</div>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Badge 10px / 20px</span>
+        <span class="badge flag-badge">"Badge 10px / 20px"</span>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Label 12px / 24px</span>
+        <label class="flag-label">"Label 12px / 24px"</label>
+      </div>
+
+      <div class="case">
+        <span class="case-label">Chip 11px / 20px</span>
+        <span class="chip flag-chip">"Chip 11px / 20px"</span>
+      </div>
+    </div>
+
+    <div class="col" data-col="pass">
+      <h2>Should pass</h2>
+      
+      <div class="case">
+        <span class="case-label">Button tight line-height</span>
+        <button class="pass-button">"Button tight line-height"</button>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Font size above 13px</span>
+        <div role="button" class="pass-large-font">"Font size above 13px"</div>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Not a UI label</span>
+        <p class="pass-paragraph">"Not a UI label"</p>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Badge ratio <= 1.7</span>
+        <span class="badge pass-badge">"Badge ratio <= 1.7"</span>
+      </div>
+      
+      <div class="case">
+        <span class="case-label">Label ratio <= 1.7</span>
+        <label class="pass-label">"Label ratio <= 1.7"</label>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

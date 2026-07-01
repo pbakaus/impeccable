@@ -780,3 +780,37 @@ describe('detectHtml — gated provider tells (--gpt / --gemini)', () => {
     );
   });
 });
+
+describe('detectHtml — label-line-height', () => {
+  const SHOULD_FLAG = [
+    'Button 12px / 28px',
+    'Role Button 13px / 24px',
+    'Badge 10px / 20px',
+    'Label 12px / 24px',
+    'Chip 11px / 20px',
+  ];
+  const SHOULD_PASS = [
+    'Button tight line-height',
+    'Font size above 13px',
+    'Not a UI label',
+    'Badge ratio <= 1.7',
+    'Label ratio <= 1.7',
+  ];
+
+  it('label-line-height: flags only the should-flag column', async () => {
+    const f = await detectHtml(path.join(FIXTURES, 'label-line-height.html'));
+    const flagged = new Set();
+    for (const r of f) {
+      if (r.antipattern !== 'label-line-height') continue;
+      const m = (r.snippet || '').match(/"([^"]+)"/);
+      if (m) flagged.add(m[1]);
+    }
+
+    for (const text of SHOULD_FLAG) {
+      assert.ok(flagged.has(text), `expected "${text}" to be flagged as label-line-height`);
+    }
+    for (const text of SHOULD_PASS) {
+      assert.ok(!flagged.has(text), `"${text}" should NOT be flagged as label-line-height`);
+    }
+  });
+});
