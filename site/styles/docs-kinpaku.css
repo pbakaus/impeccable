@@ -429,9 +429,9 @@ html.light .docs-kinpaku {
 }
 
 .docs-kinpaku .docs-start-rail-steps--number-gutter .docs-start-rail-step {
-  grid-template-columns: minmax(34px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr);
   grid-template-rows: auto auto auto;
-  column-gap: 16px;
+  column-gap: 12px;
   row-gap: 9px;
   padding: 18px 20px 20px;
 }
