@@ -252,11 +252,11 @@
   margin: 0 0 18px;
 }
 
-/* Hero h1 follows the Weight-Inversion Rule: display scale at weight 300. */
+/* Hero h1 uses the kit display scale with the requested heavier weight. */
 .slop-kinpaku .sub-page-title {
   font-family: var(--ks-font-display);
   font-style: normal;
-  font-weight: var(--ks-type-display-weight);
+  font-weight: 700;
   font-size: var(--ks-type-display-size);
   line-height: var(--ks-type-display-line);
   letter-spacing: var(--ks-type-display-track);

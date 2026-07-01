@@ -94,7 +94,7 @@
   gap: 12px;
   font-family: var(--ks-font-display);
   font-style: normal;
-  font-weight: var(--ks-type-display-weight);
+  font-weight: 700;
   font-size: var(--ks-type-display-size);
   line-height: var(--ks-type-display-line);
   letter-spacing: var(--ks-type-display-track);
