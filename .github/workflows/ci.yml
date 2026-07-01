@@ -164,7 +164,7 @@ jobs:
           bun-version: latest
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
@@ -172,7 +172,7 @@ jobs:
             ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
@@ -238,7 +238,7 @@ jobs:
           bun-version: latest
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
@@ -246,7 +246,7 @@ jobs:
             ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
@@ -307,7 +307,7 @@ jobs:
 
       - name: Cache fixture npm downloads
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
@@ -316,7 +316,7 @@ jobs:
 
       - name: Cache Playwright Chromium
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
@@ -371,7 +371,7 @@ jobs:
 
       - name: Cache fixture npm downloads
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
@@ -380,7 +380,7 @@ jobs:
 
       - name: Cache Playwright Chromium
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
