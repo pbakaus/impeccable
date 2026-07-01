@@ -91,7 +91,7 @@ The skill includes explicit guidance on what to avoid:
 
 ## See It In Action
 
-Visit [impeccable.style](https://impeccable.style#casestudies) to see before/after case studies of real projects transformed with Impeccable commands.
+Visit [the Neo Mirai case study](https://impeccable.style/cases/neo-mirai) to see a before/after case study of a real project transformed with Impeccable commands.
 
 ## Installation
 
