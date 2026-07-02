@@ -122,4 +122,21 @@ export const PROVIDERS = {
     displayName: 'Rovo Dev',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  vscode: {
+    provider: 'vscode',
+    providerTags: ['github', 'agents'],
+    // configDir is .github so {{scripts_path}} bakes in as
+    // .github/skills/impeccable/scripts, matching the layout the extension's
+    // install command materializes in the user's workspace. The staged tree
+    // lives at dist/vscode/.github/ during the build and is excluded from the
+    // packaged VSIX via .vscodeignore.
+    configDir: '.github',
+    displayName: 'VS Code',
+    placeholderProvider: 'agents',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
+    // buildVSCodeExtension in build.js assembles the final extension structure
+    // (package.json, extension.js, README.md, etc.) from the skill files generated
+    // here under .github/skills/.
+    buildVSCodeExtension: true,
+  },
 };
