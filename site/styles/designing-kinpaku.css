@@ -183,13 +183,13 @@
   display: none;
 }
 
-/* H1 reads via the kit's display tokens — same scale and weight as the
-   homepage hero so the two pages share one display voice. The page's
+/* H1 reads via the kit's display tokens — same scale and family as the
+   homepage hero while carrying the requested 700 weight. The page's
    earlier letter-spacing: 0.02em was slightly looser than the production
    hero (-0.01em); unifying via --ks-type-display-track fixes the drift. */
 .designing-kinpaku .designing-page-title {
   font-family: var(--ks-font-display);
-  font-weight: var(--ks-type-display-weight);
+  font-weight: 700;
   font-size: var(--ks-type-display-size);
   line-height: var(--ks-type-display-line);
   letter-spacing: var(--ks-type-display-track);
