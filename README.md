@@ -15,6 +15,10 @@ Impeccable adds:
 - **23 commands.** A shared design vocabulary with your AI: `polish`, `audit`, `critique`, `distill`, `animate`, `bolder`, `quieter`, and more.
 - **45 deterministic detector rules** plus LLM-only critique checks. The CLI and browser extension run the deterministic rules with no LLM and no API key.
 
+## Remote MCP Bridge
+
+Agents that cannot install local skill folders can use the optional source-backed MCP bridge in [`impeccable-mcp/`](impeccable-mcp/). It exposes Impeccable's real skill entrypoint, command references, detector, and checkpoints over a remote MCP server. The bridge is read-only: it does not install skills, run provider-native hooks, or edit client workspaces.
+
 ## What's Included
 
 ### The Skill: impeccable

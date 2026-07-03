@@ -14,6 +14,23 @@ This package lives inside the Impeccable repo and reads the authoritative source
 
 It exposes read-only MCP tools over `/mcp` and a Railway health endpoint at `/health`.
 
+## Authentication
+
+Authentication is controlled by the server operator. Set `IMPECCABLE_MCP_KEYS` to a comma-separated list of allowed keys:
+
+```bash
+IMPECCABLE_MCP_KEYS="$(openssl rand -base64 32)"
+```
+
+Clients can send either header:
+
+```text
+x-impeccable-mcp-key: <key>
+Authorization: Bearer <key>
+```
+
+If `IMPECCABLE_MCP_KEYS` is not set, the MCP endpoint is open. Hosted deployments should set at least one key and rotate it by replacing the environment variable.
+
 ## Tools
 
 - `impeccable_start`

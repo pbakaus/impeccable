@@ -10,8 +10,8 @@ impeccable-mcp
 
 Deployment settings:
 
-- GitHub repo: `MattMagg/impeccable`
-- Branch: `feat/impeccable-mcp`
+- GitHub repo: the Impeccable repo or your fork
+- Branch: the branch containing `impeccable-mcp/`
 - Root directory: repo root
 - Build command: `cd impeccable-mcp && npm ci && npm run build`
 - Start command: `cd impeccable-mcp && npm start`
@@ -23,6 +23,14 @@ Variables:
 NODE_ENV=production
 IMPECCABLE_MCP_KEYS=<generated secret>
 ```
+
+Generate a key locally before setting the Railway variable:
+
+```bash
+openssl rand -base64 32
+```
+
+Use the generated value as either `x-impeccable-mcp-key` or `Authorization: Bearer <key>` in compatible MCP clients. To rotate keys, replace `IMPECCABLE_MCP_KEYS` and redeploy.
 
 Optional:
 

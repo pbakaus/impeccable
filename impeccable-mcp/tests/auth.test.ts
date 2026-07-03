@@ -20,4 +20,11 @@ describe('MCP key auth', () => {
     expect(isAuthorized({ 'x-impeccable-mcp-key': 'alpha' })).toBe(true);
     expect(isAuthorized({ 'x-impeccable-mcp-key': 'wrong' })).toBe(false);
   });
+
+  it('also accepts authorization bearer tokens', () => {
+    process.env.IMPECCABLE_MCP_KEYS = 'alpha,beta';
+    expect(isAuthorized({ authorization: 'Bearer beta' })).toBe(true);
+    expect(isAuthorized({ Authorization: 'Bearer beta' })).toBe(true);
+    expect(isAuthorized({ authorization: 'Bearer wrong' })).toBe(false);
+  });
 });

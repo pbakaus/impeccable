@@ -18,6 +18,14 @@ If `IMPECCABLE_MCP_KEYS` is configured, send:
 x-impeccable-mcp-key: <key>
 ```
 
+Clients that prefer standard bearer auth can send the same key as:
+
+```text
+Authorization: Bearer <key>
+```
+
+Keys are issued by whoever operates the hosted MCP server. For self-hosting, generate a key with `openssl rand -base64 32`, set it in `IMPECCABLE_MCP_KEYS`, and give that value only to trusted client configurations. The server does not provide public account signup, key issuance, or revocation APIs.
+
 Start with read tools only. The MVP does not expose write tools and does not edit client workspace files.
 
 The MCP server is a bridge to the real Impeccable skill entrypoint. It does not install local skill folders or run provider-native hooks inside the client.
