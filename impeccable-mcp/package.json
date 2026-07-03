@@ -1,0 +1,28 @@
+{
+  "name": "@impeccable/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.1.0",
+    "helmet": "^8.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}
