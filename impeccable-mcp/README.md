@@ -2,6 +2,8 @@
 
 Source-backed remote MCP server for the real upstream Impeccable skill system.
 
+The MCP server is a bridge to Impeccable's real skill entrypoint and references. It does not install local skill folders, run provider-native hooks automatically, or edit client workspace files.
+
 This package lives inside the Impeccable repo and reads the authoritative source files from the repo checkout:
 
 - `skill/SKILL.src.md`
@@ -14,6 +16,7 @@ It exposes read-only MCP tools over `/mcp` and a Railway health endpoint at `/he
 
 ## Tools
 
+- `impeccable_start`
 - `impeccable_manifest`
 - `impeccable_skill_markdown`
 - `impeccable_workflow`
@@ -21,6 +24,8 @@ It exposes read-only MCP tools over `/mcp` and a Railway health endpoint at `/he
 - `impeccable_detect_markup`
 - `search`
 - `fetch`
+
+Call `impeccable_start` first. It routes a natural-language UI request to the real skill entrypoint, command reference, register reference, and next MCP bridge calls.
 
 ## Local Verification
 

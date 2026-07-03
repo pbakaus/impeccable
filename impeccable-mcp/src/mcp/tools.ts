@@ -3,9 +3,10 @@ import { runCheckpoint } from '../impeccable/checkpoint.js';
 import { detectMarkup } from '../impeccable/detect.js';
 import { buildAgentSkillMarkdown } from '../impeccable/flatten-skill.js';
 import { readImpeccableSource, sourcePath } from '../impeccable/source.js';
-import { buildWorkflowPacket } from '../impeccable/workflows.js';
+import { buildEntryPacket, buildWorkflowPacket } from '../impeccable/workflows.js';
 
 export const toolNames = [
+  'impeccable_start',
   'impeccable_manifest',
   'impeccable_skill_markdown',
   'impeccable_workflow',
@@ -90,6 +91,25 @@ export async function fetchSource(id: string) {
 }
 
 export function registerImpeccableTools(server: ToolRegistrar): void {
+  server.registerTool(
+    'impeccable_start',
+    {
+      title: 'Start Impeccable',
+      description: 'Use this first when applying Impeccable through MCP. It routes a UI/design request to the real Impeccable skill entrypoint, command reference, register reference, and next bridge calls. This server is read-only and does not edit client workspace files.',
+      inputSchema: z.object({
+        request: z.string(),
+        target: z.string().optional(),
+        surfaceType: z.enum(['product', 'brand', 'unknown']).default('unknown'),
+        clientCapabilities: z.array(z.enum(['skills', 'resources', 'prompts', 'tools', 'local_files', 'image_generation', 'hooks'])).optional(),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => {
+      const snapshot = await readImpeccableSource();
+      return toolResponse(buildEntryPacket(snapshot, args as never));
+    },
+  );
+
   server.registerTool(
     'impeccable_manifest',
     {

@@ -17,6 +17,7 @@ function textResource(uri: URL, text: string, mimeType = 'text/markdown') {
 }
 
 export const resourceUris = [
+  'impeccable://source/entrypoint',
   'impeccable://source/skill',
   'impeccable://source/harnesses',
   'impeccable://source/commands',
@@ -26,6 +27,23 @@ export const resourceUris = [
 
 export function registerImpeccableResources(server: ResourceRegistrar): void {
   if (typeof server.registerResource !== 'function') return;
+
+  server.registerResource(
+    'source-entrypoint',
+    'impeccable://source/entrypoint',
+    { title: 'Impeccable MCP Entrypoint', mimeType: 'text/markdown' },
+    async (uri) =>
+      textResource(
+        uri,
+        [
+          '# Impeccable MCP Entrypoint',
+          '',
+          'Call `impeccable_start` first. It routes a natural-language UI request to the real Impeccable skill entrypoint, command reference, register reference, and next MCP bridge calls.',
+          '',
+          'The real local skill chain is `SKILL.md` -> `context.mjs` -> command reference -> product/brand register -> implementation and verification.',
+        ].join('\n'),
+      ),
+  );
 
   server.registerResource(
     'source-skill',

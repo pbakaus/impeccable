@@ -9,8 +9,9 @@ describe('Agent skill markdown generator', () => {
     expect(markdown).toContain('description:');
     expect(markdown).toContain('@Impeccable');
     expect(markdown).toContain('cannot include `scripts/`, `reference/`, `assets/`');
-    expect(markdown).toContain('before_generation');
-    expect(markdown).toContain('after_generation');
+    expect(markdown).toContain('Call `impeccable_start` first');
+    expect(markdown).toContain('bridge to the real Impeccable skill entrypoint');
+    expect(markdown).toContain('impeccable_detect_markup');
     expect(markdown).toContain('before_final');
     expect(markdown).not.toContain('{{scripts_path}}');
     expect(markdown).not.toContain('{{command_prefix}}');
