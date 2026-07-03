@@ -18,3 +18,5 @@ Generated or served outputs:
 - `/health` source metadata
 
 Every tool output that gives workflow guidance should include source commit or source path evidence when practical. Runtime code must resolve the source root from `IMPECCABLE_SOURCE_ROOT` or by walking up from the package location; it must not hard-code a local user path.
+
+Railway deployments should upload the repo root and build/start `impeccable-mcp/` from there. Deploying only the package directory omits the authoritative Impeccable source files and breaks the source contract.

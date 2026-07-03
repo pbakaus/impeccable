@@ -12,9 +12,9 @@ Deployment settings:
 
 - GitHub repo: `MattMagg/impeccable`
 - Branch: `feat/impeccable-mcp`
-- Root directory: `impeccable-mcp`
-- Build command: `npm ci && npm run build`
-- Start command: `npm start`
+- Root directory: repo root
+- Build command: `cd impeccable-mcp && npm ci && npm run build`
+- Start command: `cd impeccable-mcp && npm start`
 - Healthcheck path: `/health`
 
 Variables:
@@ -31,6 +31,7 @@ IMPECCABLE_SOURCE_ROOT=/app
 ```
 
 Only set `IMPECCABLE_SOURCE_ROOT` if Railway's build layout prevents automatic source-root discovery.
+Do not deploy only the `impeccable-mcp/` directory: the server reads source-backed Impeccable files from the repo root.
 
 Verification:
 

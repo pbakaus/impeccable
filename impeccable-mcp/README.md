@@ -37,3 +37,5 @@ IMPECCABLE_MCP_KEYS=local-dev-key npm start
 ```
 
 Set `IMPECCABLE_SOURCE_ROOT` only when the deployed package cannot resolve the parent Impeccable repo automatically.
+
+For Railway, deploy from the repo root using the root `railway.json`; the MCP runtime needs the parent Impeccable source tree.
