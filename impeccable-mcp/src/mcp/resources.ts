@@ -55,6 +55,10 @@ export function registerImpeccableResources(server: ResourceRegistrar): void {
     'generic-client-connector-setup',
     'impeccable://generic-client/connector-setup',
     { title: 'Impeccable MCP Connector Setup', mimeType: 'text/markdown' },
-    async (uri) => textResource(uri, 'Connect to the hosted `/mcp` endpoint and provide `x-impeccable-mcp-key` when configured.'),
+    async (uri) =>
+      textResource(
+        uri,
+        'Connect to the hosted `/mcp` endpoint and provide `x-impeccable-mcp-key` when configured. If a client sends MCP POST requests to the origin instead, root POST is also supported.',
+      ),
   );
 }

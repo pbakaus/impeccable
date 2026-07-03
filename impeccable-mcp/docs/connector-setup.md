@@ -6,6 +6,12 @@ Connect any compatible remote MCP client to:
 https://<railway-domain>/mcp
 ```
 
+If a connector UI strips the path or sends MCP requests to the origin, the hosted server also accepts MCP `POST` requests at:
+
+```text
+https://<railway-domain>
+```
+
 If `IMPECCABLE_MCP_KEYS` is configured, send:
 
 ```text

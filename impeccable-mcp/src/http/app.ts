@@ -20,7 +20,7 @@ export function createApp() {
     }
   });
 
-  app.post('/mcp', requireMcpKey, async (req, res, next) => {
+  app.post(['/', '/mcp'], requireMcpKey, async (req, res, next) => {
     const server = createMcpServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
