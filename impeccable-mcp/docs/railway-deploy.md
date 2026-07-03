@@ -2,6 +2,8 @@
 
 Create a new Railway project only after local verification is clean.
 
+For agent-led setup, follow [`agent-setup.md`](agent-setup.md) first. This file only lists the Railway-specific deployment settings.
+
 Expected project name:
 
 ```text

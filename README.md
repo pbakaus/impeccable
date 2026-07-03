@@ -17,7 +17,7 @@ Impeccable adds:
 
 ## Remote MCP Bridge
 
-Agents that cannot install local skill folders can use the optional source-backed MCP bridge in [`impeccable-mcp/`](impeccable-mcp/). It exposes Impeccable's real skill entrypoint, command references, detector, and checkpoints over a remote MCP server. The bridge is read-only: it does not install skills, run provider-native hooks, or edit client workspaces.
+Agents that cannot install local skill folders can use the optional source-backed MCP bridge in [`impeccable-mcp/`](impeccable-mcp/). It exposes Impeccable's real skill entrypoint, command references, detector, and checkpoints over a remote MCP server. The bridge is read-only: it does not install skills, run provider-native hooks, or edit client workspaces. For agent-led setup, use [`impeccable-mcp/docs/agent-setup.md`](impeccable-mcp/docs/agent-setup.md).
 
 ## What's Included
 

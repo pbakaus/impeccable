@@ -14,6 +14,8 @@ This package lives inside the Impeccable repo and reads the authoritative source
 
 It exposes read-only MCP tools over `/mcp` and a Railway health endpoint at `/health`.
 
+If an agent is doing setup on behalf of a user, start with [`docs/agent-setup.md`](docs/agent-setup.md). It is written as an execution playbook for deploying, configuring auth, connecting a client, and verifying the bridge.
+
 ## Authentication
 
 Authentication is controlled by the server operator. Set `IMPECCABLE_MCP_KEYS` to a comma-separated list of allowed keys:
@@ -61,3 +63,10 @@ IMPECCABLE_MCP_KEYS=local-dev-key npm start
 Set `IMPECCABLE_SOURCE_ROOT` only when the deployed package cannot resolve the parent Impeccable repo automatically.
 
 For Railway, deploy from the repo root using the root `railway.json`; the MCP runtime needs the parent Impeccable source tree.
+
+See also:
+
+- [`docs/agent-setup.md`](docs/agent-setup.md): agent-oriented setup flow
+- [`docs/connector-setup.md`](docs/connector-setup.md): client connection details
+- [`docs/railway-deploy.md`](docs/railway-deploy.md): Railway deployment settings
+- [`docs/source-contract.md`](docs/source-contract.md): source-of-truth boundaries
