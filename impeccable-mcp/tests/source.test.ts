@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
-import { clearImpeccableSourceCache, readImpeccableSource, resolveImpeccableRepoRoot } from '../src/impeccable/source.js';
+import {
+  clearImpeccableSourceCache,
+  deploymentCommitFromEnv,
+  readImpeccableSource,
+  resolveImpeccableRepoRoot,
+} from '../src/impeccable/source.js';
 
 describe('Impeccable source reader', () => {
   it('resolves the parent Impeccable repo root', async () => {
@@ -28,5 +33,19 @@ describe('Impeccable source reader', () => {
     const first = await readImpeccableSource();
     const second = await readImpeccableSource();
     expect(second).toBe(first);
+  });
+
+  it('uses a deployment-provided commit when git metadata is unavailable', () => {
+    const original = process.env.RAILWAY_GIT_COMMIT_SHA;
+    process.env.RAILWAY_GIT_COMMIT_SHA = 'a'.repeat(40);
+    try {
+      expect(deploymentCommitFromEnv()).toBe('a'.repeat(40));
+    } finally {
+      if (original === undefined) {
+        delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      } else {
+        process.env.RAILWAY_GIT_COMMIT_SHA = original;
+      }
+    }
   });
 });

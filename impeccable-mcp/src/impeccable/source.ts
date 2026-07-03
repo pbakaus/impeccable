@@ -89,8 +89,18 @@ async function readCommit(repoRoot: string): Promise<string> {
     const { stdout } = await execFileAsync('git', ['-C', repoRoot, 'rev-parse', 'HEAD']);
     return stdout.trim();
   } catch {
-    return 'unknown';
+    return deploymentCommitFromEnv() ?? 'unknown';
   }
+}
+
+export function deploymentCommitFromEnv(): string | undefined {
+  const candidates = [
+    process.env.IMPECCABLE_SOURCE_COMMIT,
+    process.env.RAILWAY_GIT_COMMIT_SHA,
+    process.env.SOURCE_VERSION,
+    process.env.GIT_COMMIT_SHA,
+  ];
+  return candidates.find((candidate) => candidate && /^[a-f0-9]{40}$/i.test(candidate));
 }
 
 async function readReferences(repoRoot: string): Promise<Record<string, string>> {
