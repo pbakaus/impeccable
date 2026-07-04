@@ -52,15 +52,15 @@ Note what you've learned and what remains unclear. Also note any rough edges wor
 If the repo is empty or the user's brief is sparse, run a short interview before proposing PRODUCT.md. Do **not** turn a one-sentence request into a complete inferred PRODUCT.md and ask for blanket confirmation.
 
 - Use the harness's structured question tool when one exists. Otherwise, ask directly in chat and stop.
-- Ask **2-3 questions per round**, then wait for answers.
+- Ask in focused rounds and wait for answers between them. Keep **one topic per question**; add rounds rather than fold several topics into one either-or choice.
 - Use inferred answers as hypotheses or options, not as finished facts.
 - Complete at least one real user-answer round before drafting PRODUCT.md, unless every required answer is directly discoverable from repo docs.
-- Round 1 should establish register, users/purpose, positioning, and desired outcome.
-- Round 2 should establish brand personality or references, anti-references, and accessibility needs.
+- Round 1 should establish register, users, purpose, positioning, and desired outcome.
+- Round 2 should establish brand personality or references, anti-references, and accessibility needs, plus conversion & proof for the brand register.
 
 ### Minimum viable interview
 
-Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users and purpose, positioning, brand personality, anti-references, and accessibility needs (plus conversion & proof for the brand register) unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
+Ask enough to complete PRODUCT.md. At minimum, cover register confirmation, users, purpose, positioning, brand personality, anti-references, and accessibility needs (plus conversion & proof for the brand register) unless each answer is directly discoverable from repo context. After at least one interview round, you may propose inferred answers, but the user must confirm them before you write PRODUCT.md. Never synthesize PRODUCT.md from the original task prompt alone.
 
 ### Register (ask first; it shapes everything below)
 
@@ -73,6 +73,7 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
 - What job are they trying to get done?
+- What is this for, and what does success look like? Ask even when repo docs state a purpose; confirm, don't transcribe.
 - If more than one kind of user is plausible, confirm a primary and secondary audience; don't manufacture a split that isn't there.
 - If the surface speaks to a different audience than the people who use the product, ask the user to name both.
 - For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency)
@@ -84,11 +85,12 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Brand & Personality
 - How would you describe the brand personality in 3 words?
 - Reference sites or apps that capture the right feel? What specifically about them?
-  - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
+  - If the answer names a category rather than a specific site or brand, follow up once: which 1-2 named references, and what specifically to borrow from each. Don't write the reference field from a category alone.
 - What should this explicitly NOT look like? Any anti-references?
 
 ### Conversion & proof (brand register only)
-- What's the primary CTA, and the secondary fallback?
+- What's the primary CTA?
+- What's the secondary fallback, for visitors not ready for the primary?
 - The one line a visitor should remember after 10 seconds.
 - Belief ladder: what must the visitor believe, in order, before taking the primary CTA?
 - What proof is on hand? Ask the user to hand over any testimonials, case studies, press, or client/partner logos they already have. If you can receive files directly, collect them; otherwise create `.impeccable/assets/proof/` and ask the user to add files there. Reference supplied files by path; record text proof inline.
@@ -101,7 +103,7 @@ Skip questions where the answer is already clear. **Do NOT ask about colors, fon
 
 ## Step 4: Write PRODUCT.md
 
-Write PRODUCT.md only after the user has confirmed the strategic answers from Step 3. If an inferred answer is uncertain or unconfirmed, ask before writing.
+Write PRODUCT.md only after the user has confirmed the strategic answers from Step 3. If an inferred answer is uncertain or unconfirmed, ask before writing. Confirmed means what the user actually said yes to; do not pad a confirmed answer with extras they never picked (additional anti-references, audiences, roadmap claims, a WCAG level), whether drawn from the crawl, another answer, or your own option text. If an extra belongs in the doc, ask about it first.
 
 Synthesize into a strategic document:
 
@@ -121,7 +123,7 @@ product
 ## Positioning
 [The single strategic claim every screen reinforces. Not a visual rule, not an anti-reference.]
 
-## Proof & conversion
+## Conversion & proof
 [Brand register only]
 - Primary and secondary CTA: [...]
 - The line a visitor remembers after 10 seconds: [...]
