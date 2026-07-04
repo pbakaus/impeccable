@@ -79,7 +79,7 @@ Notes:
 | GitHub Copilot | `.github/skills/` | `.agents/skills/`, `.claude/skills/` |
 | Kiro | `.kiro/skills/` | - |
 | OpenCode | `.opencode/skills/` | `.agents/skills/`, `.claude/skills/` |
-| Pi | `.pi/skills/` | `.agents/skills/` |
+| Pi | `.pi/skills/` (project), `~/.pi/agent/skills/` (global) | `.agents/skills/` |
 | Qoder | `.qoder/skills/` | `~/.qoder/skills/` (user-level) |
 | Trae China | `.trae-cn/skills/` | TBD |
 | Trae International | `.trae/skills/` | TBD |

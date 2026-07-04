@@ -59,6 +59,13 @@ const PROVIDER_DISPLAY = {
 };
 const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev'];
 
+// Providers whose GLOBAL (home) skills dir is not `<provider>/skills`.
+// Pi discovers global skills from ~/.pi/agent/skills/; project scope
+// stays .pi/skills/. See issue #327.
+const HOME_SKILLS_DIR_OVERRIDES = {
+  '.pi': join('.pi', 'agent', 'skills'),
+};
+
 // When a project has no harness folder yet, infer the target from globally
 // installed harnesses (~/.claude, ~/.codex, ...). Codex reads skills from
 // .agents/skills, so ~/.codex maps to the .agents bundle variant.
@@ -69,6 +76,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.gemini', provider: '.gemini' },
   { home: '.kiro', provider: '.kiro' },
   { home: '.opencode', provider: '.opencode' },
+  { home: '.pi', provider: '.pi' },
   { home: '.qoder', provider: '.qoder' },
   { home: '.rovodev', provider: '.rovodev' },
 ];
@@ -110,6 +118,24 @@ const PROVIDER_HOOK_ARTIFACTS = {
     { sourceProvider: '.github', rel: 'hooks/impeccable.json', destProvider: '.github' },
   ],
 };
+
+function userProviderSkillsDir(home, provider) {
+  if (HOME_SKILLS_DIR_OVERRIDES[provider]) return join(home, HOME_SKILLS_DIR_OVERRIDES[provider]);
+  return join(home, provider, 'skills');
+}
+
+function providerSkillsDir(root, provider) {
+  if (root === homedir()) return userProviderSkillsDir(root, provider);
+  return join(root, provider, 'skills');
+}
+
+function providerSkillsDirCandidates(root, provider) {
+  return [...new Set([
+    providerSkillsDir(root, provider),
+    join(root, provider, 'skills'),
+    userProviderSkillsDir(root, provider),
+  ])];
+}
 
 let pipedAnswers = null;
 class PromptAbortError extends Error {
@@ -417,11 +443,13 @@ async function showHelp() {
  */
 function getSkillsVersion(root) {
   for (const d of PROVIDER_DIRS) {
-    const skillMd = join(root, d, 'skills', 'impeccable', 'SKILL.md');
-    if (!existsSync(skillMd)) continue;
-    const content = readFileSync(skillMd, 'utf-8');
-    const match = content.match(/^version:\s*(.+)$/m);
-    if (match) return match[1].trim().replace(/^["']|["']$/g, '');
+    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
+      const skillMd = join(skillsDir, 'impeccable', 'SKILL.md');
+      if (!existsSync(skillMd)) continue;
+      const content = readFileSync(skillMd, 'utf-8');
+      const match = content.match(/^version:\s*(.+)$/m);
+      if (match) return match[1].trim().replace(/^["']|["']$/g, '');
+    }
   }
   return null;
 }
@@ -538,11 +566,13 @@ function hashSkillFile(filePath) {
 function deduplicateProviders(root, providers) {
   const seen = new Map(); // realPath -> { provider, localSkillsDir }
   for (const provider of providers) {
-    const skillsDir = join(root, provider, 'skills');
-    if (!existsSync(skillsDir)) continue;
-    const real = realpathSync(skillsDir);
-    if (!seen.has(real)) {
-      seen.set(real, { provider, localSkillsDir: skillsDir });
+    for (const skillsDir of providerSkillsDirCandidates(root, provider)) {
+      if (!existsSync(skillsDir)) continue;
+      const real = realpathSync(skillsDir);
+      if (!seen.has(real)) {
+        seen.set(real, { provider, localSkillsDir: skillsDir });
+      }
+      break;
     }
   }
   return [...seen.values()];
@@ -623,18 +653,19 @@ async function check() {
 // Check if impeccable skills are already present in any provider folder
 function isAlreadyInstalled(root) {
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
-    if (!existsSync(skillsDir)) continue;
-    try {
-      const entries = readdirSync(skillsDir);
-      // Look for 'impeccable' skill (or prefixed variant, or legacy 'teach-impeccable')
-      if (entries.some(e =>
-        e === 'impeccable' || e.endsWith('-impeccable') ||
-        e === 'teach-impeccable' || e.endsWith('-teach-impeccable')
-      )) {
-        return d;
-      }
-    } catch {}
+    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
+      if (!existsSync(skillsDir)) continue;
+      try {
+        const entries = readdirSync(skillsDir);
+        // Look for 'impeccable' skill (or prefixed variant, or legacy 'teach-impeccable')
+        if (entries.some(e =>
+          e === 'impeccable' || e.endsWith('-impeccable') ||
+          e === 'teach-impeccable' || e.endsWith('-teach-impeccable')
+        )) {
+          return d;
+        }
+      } catch {}
+    }
   }
   return null;
 }
@@ -681,23 +712,24 @@ function isRealSkillDir(skillsDir, name) {
 function migrateUnprefixImpeccable(root) {
   let migrated = 0;
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
-    if (!existsSync(skillsDir)) continue;
-    let entries;
-    try { entries = readdirSync(skillsDir); } catch { continue; }
-    for (const name of entries) {
-      // A prefixed impeccable skill is `<prefix>impeccable`, not the canonical
-      // `impeccable` and not an unrelated legacy skill name.
-      if (name === 'impeccable' || name === 'teach-impeccable') continue;
-      if (!name.endsWith('-impeccable')) continue;
-      if (!isRealSkillDir(skillsDir, name)) continue;
+    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
+      if (!existsSync(skillsDir)) continue;
+      let entries;
+      try { entries = readdirSync(skillsDir); } catch { continue; }
+      for (const name of entries) {
+        // A prefixed impeccable skill is `<prefix>impeccable`, not the canonical
+        // `impeccable` and not an unrelated legacy skill name.
+        if (name === 'impeccable' || name === 'teach-impeccable') continue;
+        if (!name.endsWith('-impeccable')) continue;
+        if (!isRealSkillDir(skillsDir, name)) continue;
 
-      const dest = join(skillsDir, 'impeccable');
-      try {
-        rmSync(dest, { recursive: true, force: true });
-        renameSync(join(skillsDir, name), dest);
-        migrated++;
-      } catch {}
+        const dest = join(skillsDir, 'impeccable');
+        try {
+          rmSync(dest, { recursive: true, force: true });
+          renameSync(join(skillsDir, name), dest);
+          migrated++;
+        } catch {}
+      }
     }
   }
   return migrated;
@@ -774,7 +806,7 @@ function uniquePaths(paths) {
 
 function userSkillProbePaths(home, harnessDir, provider) {
   return uniquePaths([
-    join(home, provider, 'skills'),
+    userProviderSkillsDir(home, provider),
     join(home, harnessDir, 'skills'),
   ]);
 }
@@ -789,8 +821,8 @@ function collectInstallDetections(root, home = homedir()) {
       scope: 'project',
       foundPath,
       installRoot: root,
-      installPath: join(root, provider, 'skills'),
-      hasRealSkills: hasRealSkillEntries(join(root, provider, 'skills')),
+      installPath: providerSkillsDir(root, provider),
+      hasRealSkills: hasRealSkillEntries(providerSkillsDir(root, provider)),
       reason: 'project harness folder',
     });
   }
@@ -804,7 +836,7 @@ function collectInstallDetections(root, home = homedir()) {
       scope: 'user',
       foundPath,
       installRoot: home,
-      installPath: join(home, provider, 'skills'),
+      installPath: userProviderSkillsDir(home, provider),
       skillProbePaths,
       hasRealSkills: skillProbePaths.some(hasRealSkillEntries),
       reason: 'user harness folder',
@@ -1045,12 +1077,14 @@ function isInProjectProviderLink(localSkillsDir, root, provider) {
  * into the project. Writes real directories (copy, never symlink) so every
  * harness keeps the build that was compiled for it. Returns skills written.
  */
-function copyProviderSkills(bundleDir, root, targets) {
+function copyProviderSkills(bundleDir, root, targets, { scope } = {}) {
   let written = 0;
   for (const provider of targets) {
     const srcDir = join(bundleDir, provider, 'skills');
     if (existsSync(srcDir)) {
-      const localSkillsDir = join(root, provider, 'skills');
+      const localSkillsDir = scope === 'user'
+        ? userProviderSkillsDir(root, provider)
+        : join(root, provider, 'skills');
       // A previous `npx skills` install may have left this provider's skills dir
       // as a symlink to ANOTHER in-project provider's canonical copy. Drop only
       // that link so we write a real, provider-specific directory. A user's
@@ -1625,7 +1659,7 @@ async function install(flags) {
   let written = 0;
   let hookTargets = [];
   try {
-    written = copyProviderSkills(bundleDir, installRoot, targets);
+    written = copyProviderSkills(bundleDir, installRoot, targets, { scope });
     hookTargets = wantHooks ? copyProviderHooks(bundleDir, hookRoot, targets, { force, skillRoot: installRoot }) : [];
   } catch (e) {
     rmSync(bundleDir, { recursive: true, force: true });
@@ -1658,24 +1692,29 @@ function findProjectRoot() {
 function findInstalledProviders(root) {
   const found = [];
   for (const d of PROVIDER_DIRS) {
-    const skillsDir = join(root, d, 'skills');
-    if (!existsSync(skillsDir)) continue;
-    try {
-      const entries = readdirSync(skillsDir);
-      if (entries.some(name => isSkillDir(skillsDir, name))) found.push(d);
-    } catch {}
+    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
+      if (!existsSync(skillsDir)) continue;
+      try {
+        const entries = readdirSync(skillsDir);
+        if (entries.some(name => isSkillDir(skillsDir, name))) {
+          found.push(d);
+          break;
+        }
+      } catch {}
+    }
   }
   return found;
 }
 
 function findLinkedProviders(root, providers) {
   return providers.filter(provider => {
-    const skillDir = join(root, provider, 'skills', 'impeccable');
-    try {
-      return lstatSync(skillDir).isSymbolicLink();
-    } catch {
-      return false;
+    for (const skillsDir of providerSkillsDirCandidates(root, provider)) {
+      const skillDir = join(skillsDir, 'impeccable');
+      try {
+        if (lstatSync(skillDir).isSymbolicLink()) return true;
+      } catch {}
     }
+    return false;
   });
 }
 
