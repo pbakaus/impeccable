@@ -94,7 +94,7 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 - What's the primary CTA?
 - What's the secondary fallback, for visitors not ready for the primary?
 - The one line a visitor should remember after 10 seconds.
-- Belief ladder: what must the visitor believe, in order, before taking the primary CTA?
+- What must the visitor believe, in order, before taking the primary CTA? (The template's belief ladder.)
 - What proof is on hand? Ask the user to hand over any testimonials, case studies, press, or client/partner logos they already have. If you can receive files directly, collect them; otherwise create `.impeccable/assets/proof/` and ask the user to add files there. Reference supplied files by path; record text proof inline.
 
 ### Accessibility & Inclusion
