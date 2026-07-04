@@ -124,17 +124,22 @@ function userProviderSkillsDir(home, provider) {
   return join(home, provider, 'skills');
 }
 
-function providerSkillsDir(root, provider) {
-  if (root === homedir()) return userProviderSkillsDir(root, provider);
-  return join(root, provider, 'skills');
+// Every layout a provider's installed skills can live in under `root`. The
+// standard `<provider>/skills` always applies; when `root` is the home dir,
+// an overridden provider (Pi) keeps its global skills elsewhere, and a repo
+// rooted at ~ may still hold the project layout, so both are candidates.
+// Read paths scan every existing candidate; installs write to exactly one
+// layout, chosen by the explicit scope passed to copyProviderSkills.
+function providerSkillsDirCandidates(root, provider) {
+  const dirs = [join(root, provider, 'skills')];
+  if (root === homedir() && HOME_SKILLS_DIR_OVERRIDES[provider]) {
+    dirs.unshift(userProviderSkillsDir(root, provider));
+  }
+  return dirs;
 }
 
-function providerSkillsDirCandidates(root, provider) {
-  return [...new Set([
-    providerSkillsDir(root, provider),
-    join(root, provider, 'skills'),
-    userProviderSkillsDir(root, provider),
-  ])];
+function existingSkillsDirs(root, provider) {
+  return providerSkillsDirCandidates(root, provider).filter(existsSync);
 }
 
 let pipedAnswers = null;
@@ -566,13 +571,11 @@ function hashSkillFile(filePath) {
 function deduplicateProviders(root, providers) {
   const seen = new Map(); // realPath -> { provider, localSkillsDir }
   for (const provider of providers) {
-    for (const skillsDir of providerSkillsDirCandidates(root, provider)) {
-      if (!existsSync(skillsDir)) continue;
-      const real = realpathSync(skillsDir);
-      if (!seen.has(real)) {
-        seen.set(real, { provider, localSkillsDir: skillsDir });
-      }
-      break;
+    const [skillsDir] = existingSkillsDirs(root, provider);
+    if (!skillsDir) continue;
+    const real = realpathSync(skillsDir);
+    if (!seen.has(real)) {
+      seen.set(real, { provider, localSkillsDir: skillsDir });
     }
   }
   return [...seen.values()];
@@ -653,8 +656,7 @@ async function check() {
 // Check if impeccable skills are already present in any provider folder
 function isAlreadyInstalled(root) {
   for (const d of PROVIDER_DIRS) {
-    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
-      if (!existsSync(skillsDir)) continue;
+    for (const skillsDir of existingSkillsDirs(root, d)) {
       try {
         const entries = readdirSync(skillsDir);
         // Look for 'impeccable' skill (or prefixed variant, or legacy 'teach-impeccable')
@@ -712,8 +714,7 @@ function isRealSkillDir(skillsDir, name) {
 function migrateUnprefixImpeccable(root) {
   let migrated = 0;
   for (const d of PROVIDER_DIRS) {
-    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
-      if (!existsSync(skillsDir)) continue;
+    for (const skillsDir of existingSkillsDirs(root, d)) {
       let entries;
       try { entries = readdirSync(skillsDir); } catch { continue; }
       for (const name of entries) {
@@ -821,8 +822,8 @@ function collectInstallDetections(root, home = homedir()) {
       scope: 'project',
       foundPath,
       installRoot: root,
-      installPath: providerSkillsDir(root, provider),
-      hasRealSkills: hasRealSkillEntries(providerSkillsDir(root, provider)),
+      installPath: join(root, provider, 'skills'),
+      hasRealSkills: hasRealSkillEntries(join(root, provider, 'skills')),
       reason: 'project harness folder',
     });
   }
@@ -1076,6 +1077,8 @@ function isInProjectProviderLink(localSkillsDir, root, provider) {
  * Copy each target provider's compiled skill variant from an extracted bundle
  * into the project. Writes real directories (copy, never symlink) so every
  * harness keeps the build that was compiled for it. Returns skills written.
+ * `scope: 'user'` writes to the provider's global skills layout (see
+ * HOME_SKILLS_DIR_OVERRIDES); anything else writes `<provider>/skills`.
  */
 function copyProviderSkills(bundleDir, root, targets, { scope } = {}) {
   let written = 0;
@@ -1692,8 +1695,7 @@ function findProjectRoot() {
 function findInstalledProviders(root) {
   const found = [];
   for (const d of PROVIDER_DIRS) {
-    for (const skillsDir of providerSkillsDirCandidates(root, d)) {
-      if (!existsSync(skillsDir)) continue;
+    for (const skillsDir of existingSkillsDirs(root, d)) {
       try {
         const entries = readdirSync(skillsDir);
         if (entries.some(name => isSkillDir(skillsDir, name))) {

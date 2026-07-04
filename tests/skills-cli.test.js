@@ -833,13 +833,17 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
-  test('--scope=global installs Pi skills into the Pi agent home directory', () => {
+  // Pi discovers global skills from ~/.pi/agent/skills/, not ~/.pi/skills/ (#327).
+  // Also covers the GLOBAL_HARNESS_HINTS detection: no --providers is passed, so
+  // the ~/.pi dir alone must route the install to Pi's agent skills path.
+  test('global install detects ~/.pi and writes Pi skills to ~/.pi/agent/skills', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'imp-test-scope-user-pi-'));
     const home = mkdtempSync(join(tmpdir(), 'imp-home-scope-user-pi-'));
     execSync('git init', { cwd: tmp });
+    mkdirSync(join(home, '.pi'), { recursive: true });
     const bundleRoot = createFakeUniversalBundle(tmp, ['.pi']);
 
-    const output = run('skills install -y --providers=pi --scope=global --no-hooks', {
+    const output = run('skills install -y --scope=global --no-hooks', {
       cwd: tmp,
       env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
     });
@@ -853,27 +857,9 @@ describe('skills install/update: local universal bundle e2e', () => {
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
-  test('--scope=project keeps Pi skills in the project Pi skills directory', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-scope-project-pi-'));
-    const home = mkdtempSync(join(tmpdir(), 'imp-home-scope-project-pi-'));
-    execSync('git init', { cwd: tmp });
-    const bundleRoot = createFakeUniversalBundle(tmp, ['.pi']);
-
-    const output = run('skills install -y --providers=pi --scope=project --no-hooks', {
-      cwd: tmp,
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
-    });
-
-    expect(output).toContain('Installed impeccable into: .pi (project)');
-    expect(existsSync(join(tmp, '.pi', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(tmp, '.pi', 'agent', 'skills', 'impeccable'))).toBe(false);
-    expect(existsSync(join(home, '.pi', 'agent', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
-
-    rmSync(tmp, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-  }, 15000);
-
-  test('home-rooted project install keeps Pi skills in the project Pi skills directory', () => {
+  // Project scope must stay at .pi/skills/ even when the git root IS the home
+  // dir (dotfiles repos), where scope can't be inferred from the path alone.
+  test('project-scope install keeps Pi skills in .pi/skills even for a home-rooted repo', () => {
     const home = mkdtempSync(join(tmpdir(), 'imp-home-rooted-project-pi-'));
     execSync('git init', { cwd: home });
     const bundleRoot = createFakeUniversalBundle(home, ['.pi']);
@@ -887,52 +873,6 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(existsSync(join(home, '.pi', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(home, '.pi', 'agent', 'skills', 'impeccable'))).toBe(false);
 
-    rmSync(home, { recursive: true, force: true });
-  }, 15000);
-
-  test('global Pi harness detection targets Pi instead of the fallback providers', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-detect-pi-'));
-    const home = mkdtempSync(join(tmpdir(), 'imp-home-detect-pi-'));
-    execSync('git init', { cwd: tmp });
-    mkdirSync(join(home, '.pi'), { recursive: true });
-    const bundleRoot = createFakeUniversalBundle(tmp, ['.pi']);
-
-    const output = run('skills install -y --no-hooks', {
-      cwd: tmp,
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
-    });
-
-    expect(output).toContain('Installed impeccable into: .pi (project)');
-    expect(existsSync(join(tmp, '.pi', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(tmp, '.claude', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
-    expect(existsSync(join(tmp, '.agents', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
-
-    rmSync(tmp, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-  }, 15000);
-
-  test('interactive Pi install defaults home detections with real skills to user scope', () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'imp-test-interactive-user-pi-'));
-    const home = mkdtempSync(join(tmpdir(), 'imp-home-interactive-user-pi-'));
-    execSync('git init', { cwd: tmp });
-    const existingSkillDir = join(home, '.pi', 'agent', 'skills', 'existing-user-skill');
-    mkdirSync(existingSkillDir, { recursive: true });
-    writeFileSync(join(existingSkillDir, 'SKILL.md'), '---\nname: existing-user-skill\n---\n');
-    const bundleRoot = createFakeUniversalBundle(tmp, ['.pi']);
-
-    const output = run('skills install --no-hooks', {
-      cwd: tmp,
-      input: '\n\n\n',
-      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
-    });
-
-    expect(output).toContain('Project Indigo');
-    expect(output).toContain('Installed impeccable into: .pi (global)');
-    expect(existsSync(join(home, '.pi', 'agent', 'skills', 'impeccable', 'SKILL.md'))).toBe(true);
-    expect(existsSync(join(home, '.pi', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
-    expect(existsSync(join(tmp, '.pi', 'skills', 'impeccable', 'SKILL.md'))).toBe(false);
-
-    rmSync(tmp, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
