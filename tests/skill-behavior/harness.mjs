@@ -249,7 +249,7 @@ export function makeTools(workspace, extraEnv = {}) {
  * Run one scenario turn against a model.
  *
  * `priorMessages` lets multi-turn scenarios chain context from a previous
- * call (append `result.response.messages` between turns).
+ * call (append the SDK's response messages between turns).
  */
 export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {} }) {
   const { tools, trace } = makeTools(workspace, env);
@@ -269,7 +269,8 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
   } catch (err) {
     return { trace, error: String(err), text: '', responseMessages: messages, finishReason: 'error' };
   }
-  const responseMessages = [...messages, ...(result.response?.messages ?? [])];
+  const generatedResponseMessages = result.responseMessages ?? result.response?.messages ?? [];
+  const responseMessages = [...messages, ...generatedResponseMessages];
   return {
     trace,
     text: result.text ?? '',
