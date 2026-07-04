@@ -85,7 +85,7 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Brand & Personality
 - How would you describe the brand personality in 3 words?
 - Reference sites or apps that capture the right feel? What specifically about them?
-  - If the answer names a category rather than a specific site or brand, follow up once: which 1-2 named references, and what specifically to borrow from each. Don't write the reference field from a category alone.
+  - Push for specific named references with the *specific* thing about them that fits this brand, not generic "modern" adjectives or category-bucket lanes.
 - What should this explicitly NOT look like? Any anti-references?
 
 ### Conversion & proof (brand register only)
