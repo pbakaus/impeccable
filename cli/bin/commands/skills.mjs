@@ -124,6 +124,18 @@ function userProviderSkillsDir(home, provider) {
   return join(home, provider, 'skills');
 }
 
+// Compare via realpath: the project root comes from process.cwd() (symlinks
+// resolved) while homedir() reflects $HOME verbatim, so a home dir reached
+// through a symlink (e.g. /tmp -> /private/tmp) would fail a string compare.
+function isHomeDir(root) {
+  if (root === homedir()) return true;
+  try {
+    return realpathSync(root) === realpathSync(homedir());
+  } catch {
+    return false;
+  }
+}
+
 // Every layout a provider's installed skills can live in under `root`.
 // `scope` narrows the answer when the caller knows which install it is
 // acting on: 'user' means the provider's global layout, 'project' means
@@ -136,7 +148,7 @@ function userProviderSkillsDir(home, provider) {
 function providerSkillsDirCandidates(root, provider, scope) {
   if (scope === 'user') return [userProviderSkillsDir(root, provider)];
   const dirs = [join(root, provider, 'skills')];
-  if (scope !== 'project' && root === homedir() && HOME_SKILLS_DIR_OVERRIDES[provider]) {
+  if (scope !== 'project' && HOME_SKILLS_DIR_OVERRIDES[provider] && isHomeDir(root)) {
     dirs.unshift(userProviderSkillsDir(root, provider));
   }
   return dirs;
@@ -575,11 +587,14 @@ function hashSkillFile(filePath) {
 function deduplicateProviders(root, providers, scope) {
   const seen = new Map(); // realPath -> { provider, localSkillsDir }
   for (const provider of providers) {
-    const [skillsDir] = existingSkillsDirs(root, provider, scope);
-    if (!skillsDir) continue;
-    const real = realpathSync(skillsDir);
-    if (!seen.has(real)) {
-      seen.set(real, { provider, localSkillsDir: skillsDir });
+    // A provider can hold real installs in more than one layout (a home-rooted
+    // repo may carry both ~/.pi/agent/skills and ~/.pi/skills). Keep each as
+    // its own entry so update/check touch every tree, not just the first.
+    for (const skillsDir of existingSkillsDirs(root, provider, scope)) {
+      const real = realpathSync(skillsDir);
+      if (!seen.has(real)) {
+        seen.set(real, { provider, localSkillsDir: skillsDir });
+      }
     }
   }
   return [...seen.values()];

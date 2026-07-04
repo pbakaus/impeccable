@@ -878,6 +878,15 @@ describe('skills install/update: local universal bundle e2e', () => {
     expect(readFileSync(join(home, '.pi', 'agent', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('name: impeccable');
     expect(readFileSync(join(home, '.pi', 'agent', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).not.toContain('Local deterministic bundle');
 
+    // An unscoped update from the same root must refresh BOTH Pi trees, not
+    // just the first layout it finds.
+    run('skills update -y --no-hooks', {
+      cwd: home,
+      env: { ...process.env, HOME: home, IMPECCABLE_BUNDLE_PATH: bundleRoot },
+    });
+    expect(readFileSync(join(home, '.pi', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('Local deterministic bundle');
+    expect(readFileSync(join(home, '.pi', 'agent', 'skills', 'impeccable', 'SKILL.md'), 'utf8')).toContain('Local deterministic bundle');
+
     rmSync(home, { recursive: true, force: true });
   }, 15000);
 
