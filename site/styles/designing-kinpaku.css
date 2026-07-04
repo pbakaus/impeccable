@@ -33,6 +33,8 @@
      per-page remap. Only the --ks-muted alias (still read by name here) and
      the page shell remain. */
   --ks-muted: var(--ks-text-muted);
+  --designing-phase-nav-top: 95px;
+  --designing-phase-anchor-offset: 149px;
 
   background:
     linear-gradient(180deg, oklch(7% 0.006 95), oklch(4% 0.004 95));
@@ -455,7 +457,7 @@
 
 .designing-kinpaku .designing-phasenav {
   position: sticky;
-  top: 95px; /* sits directly under the sticky .site-header (95px, z 100) */
+  top: var(--designing-phase-nav-top); /* sits directly under the sticky .site-header */
   z-index: 40; /* above page content, below the header */
   display: flex;
   justify-content: center;
@@ -495,8 +497,12 @@
 }
 
 @media (max-width: 600px) {
+  .designing-kinpaku {
+    --designing-phase-nav-top: 70px;
+    --designing-phase-anchor-offset: 116px;
+  }
+
   .designing-kinpaku .designing-phasenav {
-    top: 70px;
     gap: 0.7rem;
     padding: 12px 14px;
   }
@@ -513,9 +519,11 @@
 }
 
 /* Anchor jumps (compass nodes + phase nav) must clear the sticky header +
-   nav. The base .designing-phase scroll-margin (80px) is too short here. */
+   nav. The base .designing-phase scroll-margin (80px) is too short here.
+   Keep this tied to the sticky nav breakpoint values so #start lands after
+   the nav has pinned instead of stopping in the nav's in-flow position. */
 .designing-kinpaku .designing-loop-track .designing-phase {
-  scroll-margin-top: 152px;
+  scroll-margin-top: var(--designing-phase-anchor-offset);
 }
 
 /* One deliberate, consistent break between the loop spine and the context
