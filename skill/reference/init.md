@@ -74,7 +74,8 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
 - What job are they trying to get done?
-- What is this for, and what does success look like? Ask even when repo docs state a purpose; confirm, don't transcribe.
+- What is this for? A purpose stated in README or docs is a hypothesis, not strong evidence; confirm it, don't transcribe it.
+- What does success look like?
 - If more than one kind of user is plausible, confirm a primary and secondary audience; don't manufacture a split that isn't there. An audience implied by another answer (a success metric, a CTA) is still unconfirmed; ask before writing it as secondary.
 - If the surface speaks to a different audience than the people who use the product, ask the user to name both.
 - For brand: what emotions should the interface evoke? (confidence, delight, calm, urgency) Ask this standalone; don't fold emotions into the success question.
@@ -125,7 +126,7 @@ product
 [The single strategic claim every screen reinforces. Not a visual rule, not an anti-reference.]
 
 ## Conversion & proof
-[Brand register only]
+[Brand register only. Product register: omit this section entirely, heading included.]
 - Primary and secondary CTA: [...]
 - The line a visitor remembers after 10 seconds: [...]
 - Belief ladder: [...]
