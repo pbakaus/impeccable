@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { loadDesignSystemForCwd } from '../design-system.mjs';
+import { RULE_SCOPES, filterByScopes } from '../registry/antipatterns.mjs';
 import { createBrowserDetector, detectUrl } from '../engines/browser/detect-url.mjs';
 import { detectHtml } from '../engines/static-html/detect-html.mjs';
 import { detectText } from '../engines/regex/detect-text.mjs';
@@ -93,6 +94,8 @@ Options:
   --quiet             In text mode, only print the final findings count
   --gpt               Also report GPT-specific provider tells (off by default)
   --gemini            Also report Gemini-specific provider tells (off by default)
+  --scope <name>      Only report rules in the given design domain
+                      (type, layout). Comma-separated.
   --no-config         Do not apply project config, detector ignores, inline
                       ignore comments, or DESIGN.md
   --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
@@ -151,6 +154,25 @@ async function detectCli() {
   const providers = [];
   if (args.includes('--gpt')) providers.push('gpt');
   if (args.includes('--gemini')) providers.push('gemini');
+  const scopes = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--scope' && args[i + 1] && !args[i + 1].startsWith('--')) {
+      scopes.push(...args[i + 1].split(',').map(s => s.trim()).filter(Boolean));
+      args.splice(i, 2);
+      i -= 1;
+    } else if (args[i].startsWith('--scope=')) {
+      scopes.push(...args[i].slice('--scope='.length).split(',').map(s => s.trim()).filter(Boolean));
+      args.splice(i, 1);
+      i -= 1;
+    }
+  }
+  const unknownScopes = scopes.filter(s => !RULE_SCOPES.has(s));
+  if (unknownScopes.length > 0) {
+    process.stderr.write(
+      `Error: unknown --scope value(s): ${unknownScopes.join(', ')}. Valid scopes: ${[...RULE_SCOPES].join(', ')}\n`,
+    );
+    process.exit(1);
+  }
   const designSystemEnabled = configEnabled && !args.includes('--no-design-system') && detectionConfig.designSystem?.enabled !== false;
   const designSystem = designSystemEnabled ? loadDesignSystemForCwd(process.cwd()) : null;
   // Inline `impeccable-disable*` waivers are part of the scanned file, so they
@@ -276,6 +298,7 @@ async function detectCli() {
   }
 
   allFindings = filterDetectionFindings(allFindings, detectionConfig);
+  allFindings = filterByScopes(allFindings, scopes);
 
   if (allFindings.length > 0) {
     if (jsonMode) process.stdout.write(formatFindings(allFindings, true) + '\n');

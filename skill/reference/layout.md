@@ -10,6 +10,22 @@ Product: predictable grids, consistent densities, familiar navigation patterns. 
 
 ---
 
+## Mechanical pre-scan (required)
+
+Run the bundled detector scoped to layout before any visual judgment:
+
+```bash
+node {{scripts_path}}/detect.mjs --json --scope layout [target files or dirs]
+```
+
+A missing `node` on PATH is not permission to skip: hunt for a runtime (`command -v node`, nvm or Homebrew paths, the harness's own bundled node) and run it by full path. If none exists, stop and ask the user to install Node; do **not** substitute grep or proceed to the assessment unscanned.
+
+Fix every finding, or list it as a deliberate exception for the user to accept. The detector abstains on arbitrary Tailwind spacing (`gap-[13px]`, `p-[7px]`) and ad-hoc `z-index` stacks, so when the project documents a spacing scale, grep `gap-\[`, `p[trblxy]?-\[`, `m[trblxy]?-\[`, `z-\[` and judge those hits against it yourself.
+
+Do **not** conclude the layout is good because the scan is clean; a monotone grid with uniform spacing passes every rule. The scan is the floor; run the full assessment below regardless.
+
+---
+
 ## Assess Current Layout
 
 Analyze what's weak about the current spatial design:
@@ -137,6 +153,8 @@ Create a systematic plan:
 - **Breathing room**: Does the layout feel comfortable, not cramped or wasteful?
 - **Consistency**: Is the spacing system applied uniformly?
 - **Responsiveness**: Does the layout adapt gracefully across screen sizes?
+
+Answer each item above by citing the file, selector, or value that satisfies it; never a bare yes. Then re-run the pre-scan and fix until the count of unresolved items and unaccepted findings is zero.
 
 When the rhythm and hierarchy land, hand off to `{{command_prefix}}impeccable polish` for the final pass.
 

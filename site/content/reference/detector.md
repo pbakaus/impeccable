@@ -54,7 +54,7 @@ That makes CI usage straightforward: fail the job on `2`, then decide whether to
 
 ## DESIGN.md awareness
 
-When a local `DESIGN.md` exists, `detect` loads it by default and enables design-system checks for fonts, literal colors, and border radii. The generated `.impeccable/design.json` sidecar gives those checks richer token and ramp data.
+When a local `DESIGN.md` exists, `detect` loads it by default and enables design-system checks for fonts, literal colors, border radii, and literal font sizes documented in the typography ramp. The generated `.impeccable/design.json` sidecar gives those checks richer token and ramp data.
 
 If the design file is stale, refresh it:
 
@@ -66,6 +66,13 @@ If you need one scan without design-system checks:
 
 ```bash
 npx impeccable detect --no-design-system src/
+```
+
+To narrow a scan to one design domain (for example before a typeset or layout pass):
+
+```bash
+npx impeccable detect --scope type src/
+npx impeccable detect --scope layout src/
 ```
 
 ## Managing intentional findings

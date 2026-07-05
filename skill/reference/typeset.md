@@ -10,6 +10,22 @@ Product: system fonts and familiar sans stacks are legitimate here. One well-tun
 
 ---
 
+## Mechanical pre-scan (required)
+
+Run the bundled detector scoped to type before any visual judgment:
+
+```bash
+node {{scripts_path}}/detect.mjs --json --scope type [target files or dirs]
+```
+
+A missing `node` on PATH is not permission to skip: hunt for a runtime (`command -v node`, nvm or Homebrew paths, the harness's own bundled node) and run it by full path. If none exists, stop and ask the user to install Node; do **not** substitute grep or proceed to the assessment unscanned.
+
+Fix every finding, or list it as a deliberate exception for the user to accept. The scan checks literal font sizes against the **DESIGN.md** ramp but abstains on `em`, `%`, `clamp()`, and line-heights, so grep `font-size\s*:`, `fontSize`, `text-\[`, `leading-\[` and judge those hits against the spec yourself.
+
+Do **not** conclude the type is good because the scan is clean; a generic font stack at a flat scale passes every rule. The scan is the floor; run the full assessment below regardless.
+
+---
+
 ## Assess Current Typography
 
 Analyze what's weak or generic about the current type:
@@ -108,6 +124,8 @@ Build a clear type scale:
 - **Personality**: Does the typography reflect the brand?
 - **Performance**: Are web fonts loading efficiently without layout shift?
 - **Accessibility**: Does text meet WCAG contrast ratios? Is it zoomable to 200%?
+
+Answer each item above by citing the file, selector, or value that satisfies it; never a bare yes. Then re-run the pre-scan and fix until the count of unresolved items and unaccepted findings is zero.
 
 When the type carries the hierarchy on its own, hand off to `{{command_prefix}}impeccable polish` for the final pass.
 
