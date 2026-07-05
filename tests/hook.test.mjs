@@ -28,6 +28,7 @@ import {
   readConfig,
   readCache,
   persistCache,
+  resolveCacheCwd,
   bumpEditCount,
   rememberFindings,
   dedupeAgainstCache,
@@ -1323,6 +1324,132 @@ rounded:
       env: {}, cwd,
     });
     assert.equal(r.audit.skipped, 'file-missing');
+  });
+});
+
+describe('runHook() — cache write gating (issues #344, #305)', () => {
+  // The hook must be a no-op on disk in projects that never earned an
+  // `.impeccable/` footprint: skipped files never dirty the cache, and a
+  // dirty cache is only persisted when there are fresh findings or the
+  // project already opted in (an `.impeccable/` dir exists).
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function eventFor(file, sessionId = 'gate-sid') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function write(rel, body, base = cwd) {
+    const abs = path.join(base, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('non-UI edit (.md) does not create .impeccable/', async () => {
+    const file = write('notes/todo.md', '# notes');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.equal(r.audit.skipped, 'extension');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('clean UI edit in a project with no footprint does not create .impeccable/, still acks', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('detector-missing path does not create .impeccable/', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: {},
+    });
+    assert.equal(r.audit.skipped, 'detector-missing');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('fresh findings create the cache, and dedup works on the next run', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const first = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /Design hook findings requiring review/);
+    assert.ok(fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), 'cache should exist');
+
+    const second = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.doesNotMatch(second.stdout, /Design hook findings requiring review/);
+    assert.match(second.stdout, /flagged earlier this session/);
+  });
+
+  it('clean UI edit in an opted-in project (existing .impeccable/) still persists editCount', async () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const file = write('src/Card.tsx', 'noop');
+    await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: fakeDetector([]) });
+
+    const cache = readCache(cwd);
+    assert.equal(cache.sessions['gate-sid'].files[file].editCount, 1);
+  });
+
+  it('umbrella launch keys the cache to the edited file\'s project root', async () => {
+    // cwd is the umbrella: no .git / package.json / .impeccable of its own.
+    write('app/package.json', '{"name":"child"}');
+    const file = write('app/src/Card.tsx', 'noop');
+    const child = path.join(cwd, 'app');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.match(r.stdout, /Design hook findings requiring review/);
+    assert.equal(r.audit.cwd, child);
+    assert.ok(fs.existsSync(path.join(child, '.impeccable', 'hook.cache.json')), 'cache should land in the child project');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'umbrella root should stay clean');
+  });
+});
+
+describe('resolveCacheCwd()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('keeps the session cwd when it already looks like a project root', () => {
+    for (const marker of ['.git', '.impeccable']) {
+      const dir = path.join(cwd, `root-${marker}`);
+      fs.mkdirSync(path.join(dir, marker), { recursive: true });
+      const file = path.join(dir, 'nested', 'app', 'src', 'Card.tsx');
+      assert.equal(resolveCacheCwd(file, dir), dir);
+    }
+    const pkgDir = path.join(cwd, 'root-pkg');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
+    assert.equal(resolveCacheCwd(path.join(pkgDir, 'src', 'Card.tsx'), pkgDir), pkgDir);
+  });
+
+  it('climbs to the nearest marker root when the session cwd is a bare umbrella', () => {
+    const child = path.join(cwd, 'app');
+    fs.mkdirSync(path.join(child, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(child, 'package.json'), '{}');
+    assert.equal(resolveCacheCwd(path.join(child, 'src', 'Card.tsx'), cwd), child);
+  });
+
+  it('falls back to the session cwd when no marker is found or the path is unsafe', () => {
+    const file = path.join(cwd, 'app', 'src', 'Card.tsx');
+    assert.equal(resolveCacheCwd(file, cwd), cwd);
+    assert.equal(resolveCacheCwd('', cwd), cwd);
+    assert.equal(resolveCacheCwd(`${cwd}/../etc/Card.tsx`, cwd), cwd);
   });
 });
 

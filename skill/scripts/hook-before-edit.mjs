@@ -27,6 +27,7 @@ import {
   readCache,
   readConfig,
   renderTemplate,
+  resolveCacheCwd,
   resolveProjectCwd,
   truthy,
   writeAuditLog,
@@ -379,9 +380,12 @@ async function main() {
     return allow({ skipped: 'stdin-empty' });
   }
 
-  const cwd = resolveProjectCwd(event);
+  const sessionCwd = resolveProjectCwd(event);
   const started = Date.now();
-  const filePath = proposedFilePath(event, cwd);
+  const filePath = proposedFilePath(event, sessionCwd);
+  // Re-key config/cache to the edited file's project root when the session
+  // was launched from a non-project umbrella directory (issue #305).
+  const cwd = resolveCacheCwd(filePath, sessionCwd);
   const audit = {
     harness: 'cursor',
     cwd,
