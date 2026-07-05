@@ -444,7 +444,7 @@ async function assertSelectedElementChrome(page) {
       highlightVisible: highlight?.style.display !== 'none',
       hasInput: Boolean(input),
       hasCount: /×\d+/.test(bar?.textContent || ''),
-      hasGo: /Go/.test(bar?.textContent || ''),
+      hasGenerateButton: [...(bar?.querySelectorAll('button') || [])].some((button) => button.getAttribute('aria-label') === 'Generate variants'),
     };
   });
   assert.equal(result.hasBar, true);
@@ -455,7 +455,7 @@ async function assertSelectedElementChrome(page) {
   assert.equal(result.highlightVisible, true);
   assert.equal(result.hasInput, true);
   assert.equal(result.hasCount, true);
-  assert.equal(result.hasGo, true);
+  assert.equal(result.hasGenerateButton, true);
 }
 
 async function selectAction(page, label) {
