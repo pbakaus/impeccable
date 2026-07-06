@@ -224,7 +224,7 @@ function registerReferences(surfaceType: EntryInput['surfaceType']): RegisterRef
 }
 
 function supportsCapability(input: EntryInput, capability: ClientCapability): boolean {
-  return input.clientCapabilities === undefined || input.clientCapabilities.includes(capability);
+  return input.clientCapabilities?.includes(capability) ?? false;
 }
 
 function entrypoint(snapshot: ImpeccableSourceSnapshot, input: EntryInput) {

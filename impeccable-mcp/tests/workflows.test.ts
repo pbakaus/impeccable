@@ -27,6 +27,7 @@ describe('workflow packets', () => {
     const packet = buildEntryPacket(await readImpeccableSource(), {
       request: 'Design a brand landing page',
       surfaceType: 'brand',
+      clientCapabilities: ['tools', 'resources'],
     });
     expect(packet.status).toBe('ok');
     if (packet.status !== 'ok') throw new Error('expected ok packet');
@@ -39,6 +40,7 @@ describe('workflow packets', () => {
     const packet = buildEntryPacket(await readImpeccableSource(), {
       request: 'Design a dashboard',
       surfaceType: 'unknown',
+      clientCapabilities: ['tools', 'resources'],
     });
     expect(packet.status).toBe('ok');
     if (packet.status !== 'ok') throw new Error('expected ok packet');
@@ -78,6 +80,7 @@ describe('workflow packets', () => {
       request: 'Fix the layout',
       target: 'src/App.tsx; echo bad',
       surfaceType: 'product',
+      clientCapabilities: ['tools'],
     });
     expect(packet.status).toBe('ok');
     if (packet.status !== 'ok') throw new Error('expected ok packet');
@@ -96,6 +99,17 @@ describe('workflow packets', () => {
     expect(packet.sequence.join('\n')).not.toContain('Fetch reference:layout');
   });
 
+  it('does not assume omitted capabilities can fetch source or read resources', async () => {
+    const packet = buildEntryPacket(await readImpeccableSource(), {
+      request: 'Fix the layout',
+      surfaceType: 'product',
+    });
+    expect(packet.status).toBe('ok');
+    if (packet.status !== 'ok') throw new Error('expected ok packet');
+    expect(packet.nextTool).toBe('impeccable_workflow');
+    expect(packet.sequence.join('\n')).not.toContain('Fetch reference:layout');
+  });
+
   it('returns a source-backed route prompt when a command cannot be inferred', async () => {
     const packet = buildEntryPacket(await readImpeccableSource(), {
       request: 'Help with this surface',
@@ -107,6 +121,7 @@ describe('workflow packets', () => {
     expect(packet.availableCommands).not.toContain('brand');
     expect(packet.availableCommands).not.toContain('product');
     expect(packet.entrypoint.firstExecutableStep).toContain('context.mjs');
+    expect(packet.sequence.join('\n')).not.toContain('impeccable://source/skill');
   });
 
   it.each(['shape', 'critique', 'audit', 'polish'])('builds source-backed packet for %s', async (command) => {

@@ -16,7 +16,9 @@ export type CheckpointResult = {
   nextTools: string[];
 };
 
-function highSeverityFindings(input: CheckpointInput): Array<{ severity?: string; ruleId?: string; message?: string }> {
+const blockingSeverities = new Set(['P0', 'P1', 'BLOCKING', 'CRITICAL', 'MAJOR', 'HIGH']);
+
+function blockingFindings(input: CheckpointInput): Array<{ severity?: string; ruleId?: string; message?: string }> {
   const acknowledged = new Set(input.acknowledgedFindings ?? []);
   return (input.detectorFindings ?? []).filter((finding) => {
     const severity = String(finding.severity ?? '')
@@ -24,7 +26,7 @@ function highSeverityFindings(input: CheckpointInput): Array<{ severity?: string
       .toUpperCase()
       .replace(/[-\s]+/g, '_');
     const key = finding.ruleId ?? finding.message ?? '';
-    return ['P0', 'P1', 'P2', 'CRITICAL', 'MAJOR', 'HIGH', 'MEDIUM', 'ERROR', 'WARNING', 'WARN', 'ADVISORY'].includes(severity) && !acknowledged.has(key);
+    return blockingSeverities.has(severity) && !acknowledged.has(key);
   });
 }
 
@@ -43,7 +45,7 @@ export function runCheckpoint(input: CheckpointInput): CheckpointResult {
   }
 
   if (input.phase === 'after_generation') {
-    const findings = highSeverityFindings(input);
+    const findings = blockingFindings(input);
     return {
       phase: input.phase,
       status: findings.length ? 'needs_revision' : 'ready',
@@ -54,7 +56,7 @@ export function runCheckpoint(input: CheckpointInput): CheckpointResult {
     };
   }
 
-  const remaining = highSeverityFindings(input);
+  const remaining = blockingFindings(input);
   return {
     phase: input.phase,
     status: remaining.length ? 'blocked' : 'ready',

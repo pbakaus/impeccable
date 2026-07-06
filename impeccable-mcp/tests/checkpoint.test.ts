@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runCheckpoint } from '../src/impeccable/checkpoint.js';
 
 describe('checkpoint bridge', () => {
-  it.each(['warning', 'advisory', 'P2'])('treats detector severity %s as actionable', (severity) => {
+  it.each(['P0', 'P1', 'critical', 'major', 'high'])('treats detector severity %s as blocking', (severity) => {
     const result = runCheckpoint({
       phase: 'after_generation',
       detectorFindings: [{ severity, ruleId: 'side-tab', message: 'Avoid side tabs.' }],
@@ -11,10 +11,18 @@ describe('checkpoint bridge', () => {
     expect(result.requiredActions[0]).toContain('side-tab');
   });
 
-  it('blocks final response on unacknowledged detector findings', () => {
+  it.each(['warning', 'advisory', 'P2', 'medium'])('does not block final response on %s findings', (severity) => {
     const result = runCheckpoint({
       phase: 'before_final',
-      detectorFindings: [{ severity: 'advisory', ruleId: 'low-contrast', message: 'Contrast is too low.' }],
+      detectorFindings: [{ severity, ruleId: 'low-contrast', message: 'Contrast is too low.' }],
+    });
+    expect(result.status).toBe('ready');
+  });
+
+  it('blocks final response on unacknowledged P0/P1 findings', () => {
+    const result = runCheckpoint({
+      phase: 'before_final',
+      detectorFindings: [{ severity: 'P1', ruleId: 'low-contrast', message: 'Contrast is too low.' }],
     });
     expect(result.status).toBe('blocked');
   });
@@ -22,7 +30,7 @@ describe('checkpoint bridge', () => {
   it('keeps acknowledged detector findings excluded', () => {
     const result = runCheckpoint({
       phase: 'before_final',
-      detectorFindings: [{ severity: 'warning', ruleId: 'side-tab', message: 'Avoid side tabs.' }],
+      detectorFindings: [{ severity: 'P1', ruleId: 'side-tab', message: 'Avoid side tabs.' }],
       acknowledgedFindings: ['side-tab'],
     });
     expect(result.status).toBe('ready');
