@@ -6,9 +6,18 @@ export type WorkflowInput = {
   surfaceType: 'product' | 'brand' | 'unknown';
   brief: string;
   currentState?: string;
+  clientCapabilities?: ClientCapability[];
 };
 
-export type ClientCapability = 'skills' | 'resources' | 'prompts' | 'tools' | 'local_files' | 'image_generation' | 'hooks';
+export type ClientCapability =
+  | 'skills'
+  | 'resources'
+  | 'prompts'
+  | 'tools'
+  | 'local_files'
+  | 'image_generation'
+  | 'hooks'
+  | 'browser';
 
 export type EntryInput = {
   request: string;
@@ -69,6 +78,13 @@ export type WorkflowPacket =
       status: 'unknown_command';
       command: string;
       availableCommands: string[];
+    }
+  | {
+      status: 'unsupported_command';
+      command: string;
+      reason: string;
+      availableCommands: string[];
+      recommendedCommand: string;
     };
 
 function firstParagraph(markdown: string): string {
@@ -95,8 +111,23 @@ const commandHints: Record<string, string[]> = {
   extract: ['extract', 'tokens', 'component system', 'reusable'],
   harden: ['harden', 'production-ready', 'edge case', 'overflow', 'i18n', 'error state'],
   init: ['init', 'setup project', 'product.md', 'initialize'],
-  layout: ['layout', 'spacing', 'rhythm', 'alignment', 'composition', 'visual hierarchy', 'crowded'],
-  live: ['live', 'variant', 'browser iteration', 'hot-swap'],
+  layout: [
+    'layout',
+    'spacing',
+    'rhythm',
+    'alignment',
+    'composition',
+    'visual hierarchy',
+    'crowded',
+    'split',
+    'rail',
+    'detail',
+    'two-panel',
+    'ledger',
+    'accordion',
+    'table',
+  ],
+  live: ['live', 'browser iteration', 'hot-swap', 'hmr', 'dev server'],
   onboard: ['onboard', 'first-run', 'empty state', 'activation', 'getting started'],
   optimize: ['optimize', 'slow', 'laggy', 'janky', 'bundle', 'load time', 'faster'],
   overdrive: ['overdrive', 'wow', 'extraordinary', 'shader', 'physics', 'go all-out'],
@@ -114,15 +145,30 @@ function includesPhrase(haystack: string, phrase: string): boolean {
   return haystack.includes(` ${phrase.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `);
 }
 
-function availableCommands(snapshot: ImpeccableSourceSnapshot): string[] {
+function hasClientCapabilities(
+  input: { clientCapabilities?: ClientCapability[] } | undefined,
+  capabilities: ClientCapability[],
+): boolean {
+  const advertised = input?.clientCapabilities ?? [];
+  return capabilities.every((capability) => advertised.includes(capability));
+}
+
+function commandSupported(command: string, input?: { clientCapabilities?: ClientCapability[] }): boolean {
+  if (command !== 'live') return true;
+  return hasClientCapabilities(input, ['local_files', 'browser']);
+}
+
+function availableCommands(snapshot: ImpeccableSourceSnapshot, input?: { clientCapabilities?: ClientCapability[] }): string[] {
   return Object.keys(snapshot.commandMetadata)
     .filter((command) => Object.prototype.hasOwnProperty.call(snapshot.references, command))
+    .filter((command) => commandSupported(command, input))
     .sort();
 }
 
-function routeCommand(snapshot: ImpeccableSourceSnapshot, request: string): { command?: string; reason: string } {
+function routeCommand(snapshot: ImpeccableSourceSnapshot, input: EntryInput): { command?: string; reason: string } {
+  const request = input.request;
   const normalized = normalizedWords(request);
-  const commands = availableCommands(snapshot);
+  const commands = availableCommands(snapshot, input);
   for (const command of commands) {
     if (includesPhrase(normalized, command)) return { command, reason: `The request explicitly names the ${command} command.` };
   }
@@ -190,7 +236,7 @@ function entrypoint(snapshot: ImpeccableSourceSnapshot, input: EntryInput) {
 }
 
 export function buildEntryPacket(snapshot: ImpeccableSourceSnapshot, input: EntryInput): EntryPacket {
-  const route = routeCommand(snapshot, input.request);
+  const route = routeCommand(snapshot, input);
   const source = { commit: snapshot.commit, packageVersion: snapshot.packageVersion };
   const canFetchSource = supportsCapability(input, 'tools');
   const limits = [
@@ -204,7 +250,7 @@ export function buildEntryPacket(snapshot: ImpeccableSourceSnapshot, input: Entr
       status: 'needs_command',
       source,
       entrypoint: entrypoint(snapshot, input),
-      availableCommands: availableCommands(snapshot),
+      availableCommands: availableCommands(snapshot, input),
       sequence: [
         'Call impeccable_start again with a clearer UI request or explicit command.',
         supportsCapability(input, 'resources')
@@ -255,11 +301,21 @@ export function buildEntryPacket(snapshot: ImpeccableSourceSnapshot, input: Entr
 export function buildWorkflowPacket(snapshot: ImpeccableSourceSnapshot, input: WorkflowInput): WorkflowPacket {
   const command = input.command.trim().toLowerCase();
   const reference = snapshot.references[command];
-  if (!reference || !availableCommands(snapshot).includes(command)) {
+  if (!reference || !Object.prototype.hasOwnProperty.call(snapshot.commandMetadata, command)) {
     return {
       status: 'unknown_command',
       command,
-      availableCommands: availableCommands(snapshot),
+      availableCommands: availableCommands(snapshot, input),
+    };
+  }
+
+  if (!commandSupported(command, input)) {
+    return {
+      status: 'unsupported_command',
+      command,
+      reason: 'live requires local files and browser control; use layout, shape, craft, polish, critique, or audit for remote-only clients.',
+      availableCommands: availableCommands(snapshot, input),
+      recommendedCommand: 'layout',
     };
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { serverInstructions } from '../src/mcp/server.js';
-import { manifest, searchSource, toolNames } from '../src/mcp/tools.js';
+import { fetchSource, manifest, searchSource, toolNames } from '../src/mcp/tools.js';
 import { resourceUris } from '../src/mcp/resources.js';
 import { promptNames, registerImpeccablePrompts } from '../src/mcp/prompts.js';
 
@@ -22,6 +22,8 @@ describe('MCP tool contract', () => {
     expect(serverInstructions.slice(0, 512)).toContain('Call impeccable_start first');
     expect(serverInstructions).toContain('bridge to the real Impeccable skill');
     expect(serverInstructions).toContain('read-only');
+    expect(serverInstructions).toContain('Do not use the live workflow unless the client can operate local files and browser/dev-server state.');
+    expect(serverInstructions).toContain('Use compact fetch output by default; request format="full" only when the complete source is required.');
   });
 
   it('returns source-backed manifest and search results', async () => {
@@ -30,6 +32,23 @@ describe('MCP tool contract', () => {
     expect(data.commands).toContain('shape');
     const results = await searchSource('shape');
     expect(results.some((result) => result.id === 'reference:shape')).toBe(true);
+  });
+
+  it('returns compact fetch output by default for large references', async () => {
+    const result = await fetchSource('reference:live');
+    expect(result.id).toBe('reference:live');
+    expect(result.format).toBe('compact');
+    expect(result.truncated).toBe(true);
+    expect(result.text.length).toBeLessThanOrEqual(12_200);
+    expect(result.fullTextAvailable).toBe('Call fetch with format="full" for the complete source document.');
+  });
+
+  it('returns full fetch output when explicitly requested', async () => {
+    const result = await fetchSource('reference:live', { format: 'full' });
+    expect(result.id).toBe('reference:live');
+    expect(result.format).toBe('full');
+    expect(result.truncated).toBe(false);
+    expect(result.text.length).toBeGreaterThan(12_000);
   });
 
   it('declares expected resource URIs', () => {

@@ -31,6 +31,23 @@ function toolResponse(structuredContent: unknown, text?: string) {
   };
 }
 
+type FetchFormat = 'compact' | 'full';
+
+type FetchOptions = {
+  format?: FetchFormat;
+  maxCharacters?: number;
+};
+
+const DEFAULT_FETCH_MAX_CHARACTERS = 12_000;
+
+function compactSourceText(text: string, maxCharacters: number): { text: string; truncated: boolean } {
+  if (text.length <= maxCharacters) return { text, truncated: false };
+  return {
+    text: `${text.slice(0, maxCharacters).trimEnd()}\n\n[Truncated. Call fetch with format="full" for the complete source document.]`,
+    truncated: true,
+  };
+}
+
 export async function manifest() {
   const snapshot = await readImpeccableSource();
   return {
@@ -77,15 +94,28 @@ export async function searchSource(query: string) {
     }));
 }
 
-export async function fetchSource(id: string) {
+export async function fetchSource(id: string, options: FetchOptions = {}) {
   const snapshot = await readImpeccableSource();
-  if (id === 'skill') return { id, text: snapshot.skillMarkdown };
-  if (id === 'harnesses') return { id, text: snapshot.harnessesMarkdown };
-  if (id === 'agent-skill') return { id, text: buildAgentSkillMarkdown(snapshot) };
-  if (id.startsWith('reference:')) {
+  const format = options.format ?? 'compact';
+  const maxCharacters = options.maxCharacters ?? DEFAULT_FETCH_MAX_CHARACTERS;
+  let text: string | undefined;
+  if (id === 'skill') text = snapshot.skillMarkdown;
+  if (id === 'harnesses') text = snapshot.harnessesMarkdown;
+  if (id === 'agent-skill') text = buildAgentSkillMarkdown(snapshot);
+  if (!text && id.startsWith('reference:')) {
     const command = id.slice('reference:'.length);
-    const text = snapshot.references[command];
-    if (text) return { id, text };
+    text = snapshot.references[command];
+  }
+  if (text && format === 'full') return { id, format, text, truncated: false };
+  if (text) {
+    const compact = compactSourceText(text, maxCharacters);
+    return {
+      id,
+      format,
+      text: compact.text,
+      truncated: compact.truncated,
+      fullTextAvailable: compact.truncated ? 'Call fetch with format="full" for the complete source document.' : undefined,
+    };
   }
   throw new Error(`Unknown Impeccable source document id: ${id}`);
 }
@@ -100,7 +130,7 @@ export function registerImpeccableTools(server: ToolRegistrar): void {
         request: z.string(),
         target: z.string().optional(),
         surfaceType: z.enum(['product', 'brand', 'unknown']).default('unknown'),
-        clientCapabilities: z.array(z.enum(['skills', 'resources', 'prompts', 'tools', 'local_files', 'image_generation', 'hooks'])).optional(),
+        clientCapabilities: z.array(z.enum(['skills', 'resources', 'prompts', 'tools', 'local_files', 'image_generation', 'hooks', 'browser'])).optional(),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -146,6 +176,7 @@ export function registerImpeccableTools(server: ToolRegistrar): void {
         surfaceType: z.enum(['product', 'brand', 'unknown']).default('unknown'),
         brief: z.string(),
         currentState: z.string().optional(),
+        clientCapabilities: z.array(z.enum(['skills', 'resources', 'prompts', 'tools', 'local_files', 'image_generation', 'hooks', 'browser'])).optional(),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -211,9 +242,16 @@ export function registerImpeccableTools(server: ToolRegistrar): void {
     {
       title: 'Fetch Impeccable Source',
       description: 'Use this when you need to fetch a specific source-backed Impeccable document by id from search results. This server is read-only and does not edit client workspace files.',
-      inputSchema: z.object({ id: z.string() }),
+      inputSchema: z.object({
+        id: z.string(),
+        format: z.enum(['compact', 'full']).default('compact'),
+        maxCharacters: z.number().int().positive().max(60_000).optional(),
+      }),
       annotations: { readOnlyHint: true },
     },
-    async (args) => toolResponse(await fetchSource(String(args.id ?? ''))),
+    async (args) => toolResponse(await fetchSource(String(args.id ?? ''), {
+      format: args.format === 'full' ? 'full' : 'compact',
+      maxCharacters: typeof args.maxCharacters === 'number' ? args.maxCharacters : undefined,
+    })),
   );
 }

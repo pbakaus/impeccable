@@ -49,6 +49,30 @@ describe('workflow packets', () => {
     expect(packet.sequence).toContain('Fetch reference:brand for register guidance.');
   });
 
+  it('routes remote visual variant requests away from live when local runtime capabilities are absent', async () => {
+    const packet = buildEntryPacket(await readImpeccableSource(), {
+      request: 'Create a third visual variant with a two-panel rail/detail split for this purchases table',
+      surfaceType: 'product',
+      clientCapabilities: ['tools', 'resources'],
+    });
+    expect(packet.status).toBe('ok');
+    if (packet.status !== 'ok') throw new Error('expected ok packet');
+    expect(packet.routing.command).toBe('layout');
+    expect(packet.routing.command).not.toBe('live');
+    expect(packet.sequence.join('\n')).not.toContain('live.mjs');
+  });
+
+  it('allows live routing only for clients with local runtime support', async () => {
+    const packet = buildEntryPacket(await readImpeccableSource(), {
+      request: 'Use live variant mode to hot-swap browser alternatives',
+      surfaceType: 'product',
+      clientCapabilities: ['tools', 'resources', 'local_files', 'browser'],
+    });
+    expect(packet.status).toBe('ok');
+    if (packet.status !== 'ok') throw new Error('expected ok packet');
+    expect(packet.routing.command).toBe('live');
+  });
+
   it('quotes target arguments in executable guidance', async () => {
     const packet = buildEntryPacket(await readImpeccableSource(), {
       request: 'Fix the layout',
@@ -113,5 +137,32 @@ describe('workflow packets', () => {
     if (packet.status !== 'unknown_command') throw new Error('expected unknown command');
     expect(packet.availableCommands).toContain('shape');
     expect(packet.availableCommands).not.toContain('brand');
+  });
+
+  it('rejects direct live workflow calls without local runtime support', async () => {
+    const packet = buildWorkflowPacket(await readImpeccableSource(), {
+      command: 'live',
+      surfaceType: 'product',
+      brief: 'Generate a third rail/detail split variant',
+      currentState: 'Remote agent platform without browser HMR control.',
+      clientCapabilities: ['tools', 'resources'],
+    });
+    expect(packet.status).toBe('unsupported_command');
+    if (packet.status !== 'unsupported_command') throw new Error('expected unsupported command');
+    expect(packet.reason).toContain('live requires local files and browser control');
+    expect(packet.availableCommands).toContain('layout');
+    expect(packet.availableCommands).not.toContain('live');
+  });
+
+  it('allows direct live workflow calls when local runtime support is advertised', async () => {
+    const packet = buildWorkflowPacket(await readImpeccableSource(), {
+      command: 'live',
+      surfaceType: 'product',
+      brief: 'Use live mode against a dev server',
+      clientCapabilities: ['tools', 'resources', 'local_files', 'browser'],
+    });
+    expect(packet.status).toBe('ok');
+    if (packet.status !== 'ok') throw new Error('expected ok packet');
+    expect(packet.command).toBe('live');
   });
 });

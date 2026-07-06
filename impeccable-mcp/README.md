@@ -46,6 +46,10 @@ If `IMPECCABLE_MCP_KEYS` is not set, the MCP endpoint is open. Hosted deployment
 
 Call `impeccable_start` first. It routes a natural-language UI request to the real skill entrypoint, command reference, register reference, and next MCP bridge calls.
 
+`impeccable_start` and `impeccable_workflow` are capability-aware. The `live` command is only returned when a client advertises local file and browser capability, because upstream live mode depends on a local app server, browser interaction, and HMR/polling loops. Remote-only clients should use commands such as `layout`, `shape`, `craft`, `polish`, `critique`, or `audit`.
+
+`fetch` returns compact source text by default so constrained agent platforms do not receive oversized reference documents. Pass `format: "full"` only when the complete source document is required.
+
 ## Local Verification
 
 ```bash
