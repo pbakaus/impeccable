@@ -11,6 +11,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -333,6 +334,22 @@ function isInsideProject(filePath, cwd) {
   }
 }
 
+// The static HTML engine reads its input from disk, but preToolUse only has
+// the proposed content. Stage it in a temp file so html-engine targets get the
+// same DOM-structural rules pre-write that runHook applies post-edit.
+async function detectProposedHtml(detector, content, filePath, scanOptions) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-pre-'));
+  const tmpFile = path.join(dir, path.basename(filePath));
+  try {
+    fs.writeFileSync(tmpFile, content);
+    const findings = await detector.detectHtml(tmpFile, scanOptions);
+    // Findings carry the temp path; remap so file-scoped ignores still match.
+    return (findings || []).map((f) => (f && typeof f === 'object' ? { ...f, file: filePath } : f));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function cursorBlockMessage(findings, filePath, config, cwd) {
   const rendered = renderTemplate(findings, filePath, config, { cwd });
   const blocked = rendered.replace(
@@ -423,9 +440,16 @@ async function main() {
   }
   const scanOptions = designSystemOptions(config, detector, cwd);
 
+  // Mirror runHook's engine routing so template issues the HTML engine catches
+  // post-edit cannot slip past the pre-write gate.
+  const useHtmlEngine = configuredExt
+    ? configuredExt.engine === 'html'
+    : (ext === '.html' || ext === '.htm');
   let findings = [];
   try {
-    findings = await detector.detectText(content, filePath, scanOptions);
+    findings = useHtmlEngine && typeof detector.detectHtml === 'function'
+      ? await detectProposedHtml(detector, content, filePath, scanOptions)
+      : await detector.detectText(content, filePath, scanOptions);
   } catch {
     return allow({ ...audit, error: 'detector-threw', durationMs: Date.now() - started });
   }

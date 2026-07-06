@@ -2046,6 +2046,36 @@ describe('Cursor hook scripts', () => {
     assert.match(payload.user_message, /side-tab/);
   });
 
+  it('preToolUse routes configured html-engine templates through the HTML engine (issue #316)', () => {
+    // oversized-h1 is only detectable by the static HTML engine (detectText has
+    // no such rule), so a denial here proves the proposed content went through
+    // detectHtml rather than the old always-detectText path.
+    const filePath = path.join(cwd, 'resources/views/hero.blade.php');
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php' }] },
+    }));
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: '<style>h1 { font-size: 84px; }</style>\n<h1>This is a very long headline that keeps going on and on for a while</h1>',
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /oversized-h1/);
+  });
+
   it('preToolUse denies shell heredoc writes that bypass the Write tool', () => {
     const filePath = path.join(cwd, 'src/ShellCard.html');
     const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
