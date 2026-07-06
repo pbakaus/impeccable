@@ -518,6 +518,12 @@
   scroll-margin-top: 152px;
 }
 
+@media (max-width: 600px) {
+  .designing-kinpaku .designing-loop-track .designing-phase {
+    scroll-margin-top: 116px;
+  }
+}
+
 /* One deliberate, consistent break between the loop spine and the context
    tail (replaces the old maintain->appendix adjacency that fired unevenly). */
 .designing-kinpaku .designing-loop-track + .designing-phase--appendix {

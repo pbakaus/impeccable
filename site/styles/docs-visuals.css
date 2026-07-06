@@ -1873,12 +1873,22 @@
   justify-self: center;
 }
 
-.designing-loop-wheel-svg {
+.designing-loop-wheel-svg,
+.designing-loop-wheel-dot-svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+.designing-loop-wheel-svg {
+  z-index: 2;
+}
+
+.designing-loop-wheel-dot-svg {
+  z-index: 3;
+  pointer-events: none;
 }
 
 .designing-loop-wheel-ring {
@@ -1917,6 +1927,7 @@
 
 .designing-loop-wheel-arrow {
   position: absolute;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1940,6 +1951,7 @@
 
 .designing-loop-wheel-center {
   position: absolute;
+  z-index: 4;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
