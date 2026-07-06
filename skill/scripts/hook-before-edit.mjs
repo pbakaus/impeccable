@@ -22,6 +22,7 @@ import {
   designSystemOptions,
   filterFindings,
   loadDetector,
+  matchConfiguredExtension,
   matchesAnyGlob,
   persistCache,
   readCache,
@@ -394,9 +395,13 @@ async function main() {
   if (SENSITIVE_PATH.test(filePath)) return allow({ ...audit, skipped: 'sensitive', durationMs: Date.now() - started });
   if (GENERATED_PATH.test(filePath)) return allow({ ...audit, skipped: 'generated', durationMs: Date.now() - started });
 
+  // Config is read before the extension gate so `detector.extensions` entries
+  // (e.g. `.blade.php` template files, issue #316) can widen it.
+  const config = readConfig(cwd);
   const ext = path.extname(filePath).toLowerCase();
-  audit.ext = ext;
-  if (!ALLOWED_EXTS.has(ext)) return allow({ ...audit, skipped: 'extension', durationMs: Date.now() - started });
+  const configuredExt = matchConfiguredExtension(filePath, config.extensions);
+  audit.ext = configuredExt ? configuredExt.ext : ext;
+  if (!ALLOWED_EXTS.has(ext) && !configuredExt) return allow({ ...audit, skipped: 'extension', durationMs: Date.now() - started });
 
   const contentResult = proposedContent(event, cwd, filePath);
   if (contentResult && typeof contentResult === 'object' && contentResult.skipped) {
@@ -405,7 +410,6 @@ async function main() {
   const content = typeof contentResult === 'string' ? contentResult : '';
   if (!content) return allow({ ...audit, skipped: 'no-proposed-content', durationMs: Date.now() - started });
 
-  const config = readConfig(cwd);
   if (config.enabled === false) return allow({ ...audit, skipped: 'config-disabled', durationMs: Date.now() - started });
 
   const rel = relativePath(filePath, cwd);

@@ -36,6 +36,7 @@ import {
   renderCleanAck,
   renderPendingAck,
   shouldEmitAckForFile,
+  matchConfiguredExtension,
   matchesAnyGlob,
   writeAuditLog,
   suppressionNotice,
@@ -218,6 +219,49 @@ describe('readConfig()', () => {
     assert.equal(cfg.enabled, false);
     assert.deepEqual(cfg.ignoreRules, ['side-tab']);
     assert.equal(cfg.limits.maxFindings, 3);
+  });
+
+  it('parses detector.extensions entries and defaults engine to html', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      detector: {
+        extensions: [
+          { ext: '.blade.php' },
+          { ext: '.html.erb', engine: 'html' },
+          { ext: '.d.ts.hbs', engine: 'text' },
+          'twig',
+          { ext: '' },
+          { engine: 'html' },
+          42,
+        ],
+      },
+    }));
+    const cfg = readConfig(cwd);
+    assert.deepEqual(cfg.extensions, [
+      { ext: '.blade.php', engine: 'html' },
+      { ext: '.html.erb', engine: 'html' },
+      { ext: '.d.ts.hbs', engine: 'text' },
+      { ext: '.twig', engine: 'html' },
+    ]);
+  });
+
+  it('lets local-config detector.extensions override the shared engine per ext', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php', engine: 'html' }] },
+    }));
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php', engine: 'text' }, { ext: '.twig' }] },
+    }));
+    const cfg = readConfig(cwd);
+    assert.deepEqual(cfg.extensions, [
+      { ext: '.blade.php', engine: 'text' },
+      { ext: '.twig', engine: 'html' },
+    ]);
+  });
+
+  it('defaults detector.extensions to an empty list', () => {
+    assert.deepEqual(readConfig(cwd).extensions, []);
   });
 
   it('parses the new quiet and auditLog fields from the unified config', () => {
@@ -1355,6 +1399,56 @@ describe('ALLOWED_EXTS', () => {
       assert.equal(shouldEmitAckForFile(`/x/src/tool${ext}`), false);
     }
   });
+
+  it('acks configured html-engine extensions but not text-engine ones', () => {
+    const config = {
+      extensions: [
+        { ext: '.blade.php', engine: 'html' },
+        { ext: '.d.ts.hbs', engine: 'text' },
+      ],
+    };
+    assert.equal(shouldEmitAckForFile('/x/views/card.blade.php', config), true);
+    assert.equal(shouldEmitAckForFile('/x/templates/types.d.ts.hbs', config), false);
+    assert.equal(shouldEmitAckForFile('/x/views/card.blade.php'), false);
+  });
+});
+
+describe('matchConfiguredExtension()', () => {
+  const extensions = [
+    { ext: '.blade.php', engine: 'html' },
+    { ext: '.html.erb', engine: 'html' },
+    { ext: '.twig', engine: 'html' },
+  ];
+
+  it('matches double extensions against the end of the filename', () => {
+    assert.deepEqual(
+      matchConfiguredExtension('/app/resources/views/Card.blade.php', extensions),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('app/views/users/show.html.erb', extensions),
+      { ext: '.html.erb', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/templates/base.twig', extensions),
+      { ext: '.twig', engine: 'html' },
+    );
+  });
+
+  it('is case-insensitive on the filename', () => {
+    assert.ok(matchConfiguredExtension('/views/Card.BLADE.PHP', extensions));
+  });
+
+  it('does not match unrelated files or bare dotfile-like names', () => {
+    assert.equal(matchConfiguredExtension('/app/Http/Controller.php', extensions), null);
+    assert.equal(matchConfiguredExtension('/views/.blade.php', extensions), null);
+    assert.equal(matchConfiguredExtension('/src/Card.tsx', extensions), null);
+  });
+
+  it('returns null for empty or missing config', () => {
+    assert.equal(matchConfiguredExtension('/views/card.blade.php', []), null);
+    assert.equal(matchConfiguredExtension('/views/card.blade.php', undefined), null);
+  });
 });
 
 describe('renderCleanAck() / renderPendingAck()', () => {
@@ -1773,6 +1867,91 @@ describe('runHook() — events without file_path', () => {
   });
 });
 
+describe('runHook() — configured template extensions (issue #316)', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function eventFor(file) {
+    return {
+      session_id: 'sid-ext',
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function writeFixture(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  function writeExtensionsConfig(extensions) {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ detector: { extensions } }));
+  }
+
+  function recordingDetector(findings = []) {
+    const calls = { html: [], text: [] };
+    return {
+      calls,
+      detectHtml: (filePath) => { calls.html.push(filePath); return findings; },
+      detectText: (_content, filePath) => { calls.text.push(filePath); return findings; },
+    };
+  }
+
+  it('skips .blade.php with no config — the issue #316 repro', async () => {
+    const file = writeFixture('resources/views/card.blade.php', '<div class="bg-gradient-to-r">Hi</div>');
+    const det = recordingDetector([finding('gradient-text', 1)]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.skipped, 'extension');
+    assert.equal(det.calls.html.length + det.calls.text.length, 0);
+  });
+
+  it('scans a configured .blade.php through the html engine and emits findings', async () => {
+    writeExtensionsConfig([{ ext: '.blade.php' }]);
+    const file = writeFixture('resources/views/card.blade.php', '<div class="bg-gradient-to-r">Hi</div>');
+    const det = recordingDetector([finding('gradient-text', 1, { name: 'Gradient text' })]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /Design hook findings requiring review/);
+    assert.match(r.stdout, /gradient-text/);
+    assert.equal(r.audit.emitted, true);
+    assert.equal(r.audit.ext, '.blade.php');
+    assert.deepEqual(det.calls.html, [file]);
+    assert.deepEqual(det.calls.text, []);
+  });
+
+  it('routes an engine:text entry through detectText instead', async () => {
+    writeExtensionsConfig([{ ext: '.blade.php', engine: 'text' }]);
+    const file = writeFixture('resources/views/card.blade.php', '<div>Hi</div>');
+    const det = recordingDetector([finding('side-tab', 1)]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /side-tab/);
+    assert.deepEqual(det.calls.text, [file]);
+    assert.deepEqual(det.calls.html, []);
+  });
+
+  it('emits a clean ack for configured html-engine files, stays quiet for text-engine ones', async () => {
+    writeExtensionsConfig([
+      { ext: '.blade.php' },
+      { ext: '.d.ts.hbs', engine: 'text' },
+    ]);
+    const blade = writeFixture('resources/views/clean.blade.php', '<div>Hi</div>');
+    const rBlade = await runHook({ stdinJson: JSON.stringify(eventFor(blade)), env: {}, cwd, detector: recordingDetector([]) });
+    assert.match(rBlade.stdout, /No deterministic design-quality issues found/);
+    assert.equal(rBlade.audit.kind, 'clean');
+
+    const hbs = writeFixture('templates/types.d.ts.hbs', 'export type X = {{name}};');
+    const rHbs = await runHook({ stdinJson: JSON.stringify(eventFor(hbs)), env: {}, cwd, detector: recordingDetector([]) });
+    assert.equal(rHbs.stdout, '');
+    assert.equal(rHbs.audit.skipped, 'non-ui-ack');
+  });
+});
+
 describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
@@ -1831,6 +2010,40 @@ describe('Cursor hook scripts', () => {
     });
 
     assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+  });
+
+  it('preToolUse gates configured template extensions (issue #316)', () => {
+    const filePath = path.join(cwd, 'resources/views/card.blade.php');
+    const content = `
+      <style>
+        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+      </style>
+      <div class="card">Hello</div>
+    `;
+    const run = () => execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: { file_path: filePath, content },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    // Without config the file is invisible to the gate: allowed untouched.
+    assert.equal(JSON.parse(run()).permission, 'allow');
+
+    // With a detector.extensions entry the same proposed write is scanned and denied.
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php' }] },
+    }));
+    const payload = JSON.parse(run());
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /card\.blade\.php/);
+    assert.match(payload.user_message, /side-tab/);
   });
 
   it('preToolUse denies shell heredoc writes that bypass the Write tool', () => {
