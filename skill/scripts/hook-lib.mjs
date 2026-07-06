@@ -230,10 +230,16 @@ export function matchConfiguredExtension(filePath, extensions) {
   if (!Array.isArray(extensions) || extensions.length === 0) return null;
   const name = path.basename(String(filePath || '')).toLowerCase();
   if (!name) return null;
+  // The longest matching suffix wins, so `.blade.php` beats a broader `.php`
+  // entry regardless of config order.
+  let best = null;
   for (const entry of normalizeExtensionEntries(extensions)) {
-    if (name.length > entry.ext.length && name.endsWith(entry.ext)) return entry;
+    if (name.length > entry.ext.length && name.endsWith(entry.ext)
+      && (!best || entry.ext.length > best.ext.length)) {
+      best = entry;
+    }
   }
-  return null;
+  return best;
 }
 
 function applyConfigSource(config, raw) {

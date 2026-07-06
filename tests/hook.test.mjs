@@ -1439,6 +1439,25 @@ describe('matchConfiguredExtension()', () => {
     assert.ok(matchConfiguredExtension('/views/Card.BLADE.PHP', extensions));
   });
 
+  it('prefers the longest matching suffix regardless of config order', () => {
+    const overlapping = [
+      { ext: '.php', engine: 'text' },
+      { ext: '.blade.php', engine: 'html' },
+    ];
+    assert.deepEqual(
+      matchConfiguredExtension('/views/card.blade.php', overlapping),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/views/card.blade.php', overlapping.slice().reverse()),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/app/Controller.php', overlapping),
+      { ext: '.php', engine: 'text' },
+    );
+  });
+
   it('does not match unrelated files or bare dotfile-like names', () => {
     assert.equal(matchConfiguredExtension('/app/Http/Controller.php', extensions), null);
     assert.equal(matchConfiguredExtension('/views/.blade.php', extensions), null);
