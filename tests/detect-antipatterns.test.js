@@ -12,6 +12,7 @@ import {
 } from '../cli/engine/detect-antipatterns.mjs';
 import {
   checkElementTextOverflowDOM,
+  checkPageTypography,
   isScreenReaderOnlyTextStyle,
 } from '../cli/engine/rules/checks.mjs';
 
@@ -46,6 +47,34 @@ async function withStaticFixture(files, callback) {
 
 function findingIds(findings) {
   return findings.map(f => f.antipattern);
+}
+
+function pageWithGoogleFonts(href) {
+  return [
+    '<!DOCTYPE html><html><head>',
+    `<link href="${href}" rel="stylesheet">`,
+    '</head><body>',
+    ...Array.from({ length: 22 }, (_, i) => `<p>Sample content row ${i + 1}</p>`),
+    '</body></html>',
+  ].join('\n');
+}
+
+function pageTypographyForGoogleFonts(href) {
+  const html = pageWithGoogleFonts(href);
+  const doc = {
+    styleSheets: [],
+    documentElement: { outerHTML: html },
+    querySelectorAll(selector) {
+      if (selector === '*') return Array.from({ length: 24 }, () => ({}));
+      return [];
+    },
+  };
+  const win = {
+    getComputedStyle() {
+      return { fontSize: '16px' };
+    },
+  };
+  return checkPageTypography(doc, win);
 }
 
 
@@ -198,6 +227,30 @@ describe('detectText — overused fonts', () => {
   test('does not flag distinctive fonts', () => {
     const f = detectText("body { font-family: 'Karla', sans-serif; }", 'test.css');
     expect(f.filter(r => r.antipattern === 'overused-font')).toHaveLength(0);
+  });
+
+  test('detects overused Google Fonts css2 family after first family param', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Inter:wght@400;500;600&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.some(r => r.antipattern === 'overused-font' && /Inter/i.test(r.snippet))).toBe(true);
+  });
+
+  test('does not flag single-font for combined Google Fonts css2 families', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Jost:wght@300;400;500&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.filter(r => r.antipattern === 'single-font')).toHaveLength(0);
+  });
+
+  test('keeps legacy Google Fonts css pipe-separated families multi-font', () => {
+    const page = pageWithGoogleFonts('https://fonts.googleapis.com/css?family=Cormorant+Garamond|Jost&display=swap');
+    const f = detectText(page, 'index.html');
+    expect(f.filter(r => r.antipattern === 'single-font')).toHaveLength(0);
+  });
+
+  test('page typography parses repeated Google Fonts css2 family params', () => {
+    const f = pageTypographyForGoogleFonts('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300&family=Inter:wght@400;500;600&display=swap');
+    expect(f.some(r => r.id === 'overused-font' && /inter/i.test(r.snippet))).toBe(true);
+    expect(f.filter(r => r.id === 'single-font')).toHaveLength(0);
   });
 });
 

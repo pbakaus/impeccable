@@ -628,6 +628,36 @@ function colorToHex(c) {
   return '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
+// --- cli/engine/shared/fonts.mjs ---
+const GOOGLE_FONTS_URL_RE = /fonts\.googleapis\.com\/css2?\?[^"'\s)<>]*/gi;
+
+function normalizeGoogleFontFamilyParam(value) {
+  return String(value || '')
+    .split('|')
+    .map(part => part.split(':')[0].trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function extractGoogleFontFamilies(text) {
+  const families = [];
+  if (!text) return families;
+
+  GOOGLE_FONTS_URL_RE.lastIndex = 0;
+  let urlMatch;
+  while ((urlMatch = GOOGLE_FONTS_URL_RE.exec(text)) !== null) {
+    const url = urlMatch[0];
+    const queryStart = url.indexOf('?');
+    if (queryStart === -1) continue;
+
+    const params = new URLSearchParams(url.slice(queryStart + 1).replace(/&amp;/g, '&'));
+    for (const value of params.getAll('family')) {
+      families.push(...normalizeGoogleFontFamilyParam(value));
+    }
+  }
+
+  return families;
+}
+
 // --- cli/engine/rules/checks.mjs ---
 const DETECTOR_IS_BROWSER = typeof window !== 'undefined';
 
@@ -2682,14 +2712,9 @@ function checkPageTypography(doc, win) {
 
   // Check Google Fonts links in HTML
   const html = doc.documentElement?.outerHTML || '';
-  const gfRe = /fonts\.googleapis\.com\/css2?\?family=([^&"'\s]+)/gi;
-  let m;
-  while ((m = gfRe.exec(html)) !== null) {
-    const families = m[1].split('|').map(f => f.split(':')[0].replace(/\+/g, ' ').toLowerCase());
-    for (const f of families) {
-      fonts.add(f);
-      if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
-    }
+  for (const f of extractGoogleFontFamilies(html)) {
+    fonts.add(f);
+    if (OVERUSED_FONTS.has(f)) overusedFound.add(f);
   }
 
   // Also parse raw HTML/style content for font-family (jsdom may not expose all via CSSOM)
