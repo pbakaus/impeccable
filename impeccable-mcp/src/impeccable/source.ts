@@ -86,7 +86,7 @@ async function readJson<T>(filePath: string): Promise<T> {
 
 async function readCommit(repoRoot: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('git', ['-C', repoRoot, 'rev-parse', 'HEAD']);
+    const { stdout } = await execFileAsync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { timeout: 5_000 });
     return stdout.trim();
   } catch {
     return deploymentCommitFromEnv() ?? 'unknown';

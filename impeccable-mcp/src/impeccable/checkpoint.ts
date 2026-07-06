@@ -19,9 +19,12 @@ export type CheckpointResult = {
 function highSeverityFindings(input: CheckpointInput): Array<{ severity?: string; ruleId?: string; message?: string }> {
   const acknowledged = new Set(input.acknowledgedFindings ?? []);
   return (input.detectorFindings ?? []).filter((finding) => {
-    const severity = String(finding.severity ?? '').toUpperCase();
+    const severity = String(finding.severity ?? '')
+      .trim()
+      .toUpperCase()
+      .replace(/[-\s]+/g, '_');
     const key = finding.ruleId ?? finding.message ?? '';
-    return ['P0', 'P1', 'CRITICAL', 'MAJOR'].includes(severity) && !acknowledged.has(key);
+    return ['P0', 'P1', 'P2', 'CRITICAL', 'MAJOR', 'HIGH', 'MEDIUM', 'ERROR', 'WARNING', 'WARN', 'ADVISORY'].includes(severity) && !acknowledged.has(key);
   });
 }
 

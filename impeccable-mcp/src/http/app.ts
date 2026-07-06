@@ -47,6 +47,13 @@ async function handleMcpRequest(req: express.Request, res: express.Response, nex
   }
 }
 
+function responseStatus(error: unknown): number {
+  const status = (error as { status?: unknown; statusCode?: unknown } | undefined)?.status;
+  const statusCode = (error as { status?: unknown; statusCode?: unknown } | undefined)?.statusCode;
+  const candidate = typeof status === 'number' ? status : typeof statusCode === 'number' ? statusCode : undefined;
+  return candidate && candidate >= 400 && candidate < 500 ? candidate : 500;
+}
+
 export function createApp() {
   const app = express();
   app.use(helmet());
@@ -64,8 +71,11 @@ export function createApp() {
   app.post(['/', '/mcp'], requireMcpKey, handleMcpRequest);
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error(error);
-    if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
+    if (!res.headersSent) {
+      const status = responseStatus(error);
+      if (status === 500) console.error(error);
+      res.status(status).json({ error: status === 500 ? 'internal_error' : 'bad_request' });
+    }
   });
 
   return app;

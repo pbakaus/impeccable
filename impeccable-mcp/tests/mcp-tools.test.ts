@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { serverInstructions } from '../src/mcp/server.js';
 import { manifest, searchSource, toolNames } from '../src/mcp/tools.js';
 import { resourceUris } from '../src/mcp/resources.js';
-import { promptNames } from '../src/mcp/prompts.js';
+import { promptNames, registerImpeccablePrompts } from '../src/mcp/prompts.js';
 
 describe('MCP tool contract', () => {
   it('declares expected read-only tool names', () => {
@@ -40,5 +40,28 @@ describe('MCP tool contract', () => {
 
   it('declares expected prompts', () => {
     expect(promptNames).toEqual(['use-impeccable']);
+  });
+
+  it('registers prompt args as a raw Zod shape', () => {
+    let registered:
+      | {
+          name: string;
+          config: Record<string, unknown>;
+          handler: (args: Record<string, unknown>) => unknown;
+        }
+      | undefined;
+
+    registerImpeccablePrompts({
+      registerPrompt(name, config, handler) {
+        registered = { name, config, handler };
+      },
+    });
+
+    expect(registered?.name).toBe('use-impeccable');
+    expect(registered?.config.argsSchema).toHaveProperty('request');
+    expect(registered?.config.argsSchema).toHaveProperty('target');
+    const response = registered?.handler({ request: 'Build a dashboard', target: 'src/App.tsx' });
+    expect(JSON.stringify(response)).toContain('Request: Build a dashboard');
+    expect(JSON.stringify(response)).toContain('Target: src/App.tsx');
   });
 });

@@ -18,10 +18,10 @@ export function registerImpeccablePrompts(server: PromptRegistrar): void {
     {
       title: 'Use Impeccable',
       description: 'Start an Impeccable-backed UI workflow through the MCP bridge.',
-      argsSchema: z.object({
+      argsSchema: {
         request: z.string().describe('The UI/design request to route through Impeccable.'),
         target: z.string().optional().describe('Optional file, route, component, or surface target.'),
-      }),
+      },
     },
     (args) => ({
       messages: [

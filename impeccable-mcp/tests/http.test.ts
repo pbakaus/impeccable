@@ -36,4 +36,17 @@ describe('HTTP MCP routes', () => {
     const mcp = await fetch(`${baseUrl}/mcp`);
     expect(mcp.status).toBe(401);
   });
+
+  it('preserves malformed JSON as a client error', async () => {
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-impeccable-mcp-key': 'test-key',
+      },
+      body: '{',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'bad_request' });
+  });
 });
