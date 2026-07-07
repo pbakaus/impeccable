@@ -53,6 +53,24 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       expect(content).toContain(`See ${expected}.`);
     });
 
+    test('should replace {{command_prefix}} placeholder correctly', () => {
+      const skills = [{ name: 'test', description: 'Test', body: 'Use {{command_prefix}}test.' }];
+      transform(skills, TEST_DIR);
+      const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
+      const expected = PROVIDER_PLACEHOLDERS[config.placeholderProvider || config.provider].command_prefix;
+      expect(content).toContain(`Use ${expected}test.`);
+    });
+
+    if ((PROVIDER_PLACEHOLDERS[config.placeholderProvider || config.provider].command_prefix || '/') !== '/') {
+      test('should rewrite hard-coded /impeccable command references to provider prefix', () => {
+        const skills = [{ name: 'impeccable', description: 'Test', body: 'Run /impeccable audit.' }];
+        transform(skills, TEST_DIR);
+        const content = fs.readFileSync(skillPath(config, 'impeccable'), 'utf-8');
+        const prefix = PROVIDER_PLACEHOLDERS[config.placeholderProvider || config.provider].command_prefix;
+        expect(content).toContain(`Run ${prefix}impeccable audit.`);
+      });
+    }
+
     test('should copy reference files', () => {
       const skills = [{
         name: 'test',
