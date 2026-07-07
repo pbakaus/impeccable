@@ -1462,6 +1462,34 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
     assert.ok(fs.existsSync(path.join(child, '.impeccable', 'hook.cache.json')), 'cache should land in the child project');
     assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'umbrella root should stay clean');
   });
+
+  it('CLAUDE_PROJECT_DIR pins the cache to the monorepo root, not a nested package', async () => {
+    // cwd (the session/tool-call cwd) is a package nested under the real
+    // monorepo root and has its own package.json, so it "looks like" a
+    // project root on its own and would otherwise short-circuit
+    // resolveCacheCwd() at cwd itself (see resolveCacheCwd()'s own describe
+    // block for the same case at the unit level). CLAUDE_PROJECT_DIR — a
+    // distinct directory — must still win.
+    const monorepoRoot = mkTmp();
+    write('package.json', '{"name":"nested-package"}');
+    const file = write('src/Card.tsx', 'noop');
+    const before = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = monorepoRoot;
+    try {
+      const r = await runHook({
+        stdinJson: JSON.stringify(eventFor(file)),
+        env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
+      });
+      assert.match(r.stdout, /Design hook findings requiring review/);
+      assert.equal(r.audit.cwd, monorepoRoot);
+      assert.ok(fs.existsSync(path.join(monorepoRoot, '.impeccable', 'hook.cache.json')), 'cache should land at CLAUDE_PROJECT_DIR');
+      assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'nested package should stay clean');
+    } finally {
+      if (before === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = before;
+      fs.rmSync(monorepoRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('resolveCacheCwd()', () => {
@@ -1494,6 +1522,34 @@ describe('resolveCacheCwd()', () => {
     assert.equal(resolveCacheCwd(file, cwd), cwd);
     assert.equal(resolveCacheCwd('', cwd), cwd);
     assert.equal(resolveCacheCwd(`${cwd}/../etc/Card.tsx`, cwd), cwd);
+  });
+
+  it('prefers CLAUDE_PROJECT_DIR / CURSOR_PROJECT_DIR over the session cwd, even when the session cwd already looks like a project root', () => {
+    const pkgDir = path.join(cwd, 'pkg');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
+    const file = path.join(pkgDir, 'src', 'Card.tsx');
+    const root = path.join(cwd, 'root');
+
+    const beforeClaude = process.env.CLAUDE_PROJECT_DIR;
+    const beforeCursor = process.env.CURSOR_PROJECT_DIR;
+    try {
+      delete process.env.CURSOR_PROJECT_DIR;
+      process.env.CLAUDE_PROJECT_DIR = root;
+      assert.equal(resolveCacheCwd(file, pkgDir), root, 'CLAUDE_PROJECT_DIR should win over a package.json-bearing session cwd');
+
+      delete process.env.CLAUDE_PROJECT_DIR;
+      process.env.CURSOR_PROJECT_DIR = root;
+      assert.equal(resolveCacheCwd(file, pkgDir), root, 'CURSOR_PROJECT_DIR should win when CLAUDE_PROJECT_DIR is unset');
+
+      process.env.CLAUDE_PROJECT_DIR = root;
+      assert.equal(resolveCacheCwd(file, pkgDir), root, 'CLAUDE_PROJECT_DIR should take precedence when both are set');
+    } finally {
+      if (beforeClaude === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = beforeClaude;
+      if (beforeCursor === undefined) delete process.env.CURSOR_PROJECT_DIR;
+      else process.env.CURSOR_PROJECT_DIR = beforeCursor;
+    }
   });
 });
 

@@ -143,14 +143,21 @@ function looksLikeProjectRoot(dir) {
   });
 }
 
-// Where `.impeccable/` (cache + config) lives for this event. Normally the
-// session cwd, untouched. But when the agent was launched from an umbrella
-// directory that is not itself a project (no .git, package.json, or
-// .impeccable), key to the edited file's nearest project root instead, so a
-// multi-project launch dir doesn't accumulate a shared cross-project cache
-// (issue #305). Climbing stops at the home dir, falling back to the session
-// cwd when no marker is found.
+// Where `.impeccable/` (cache + config) lives for this event. When the
+// harness tells us the project root directly (CLAUDE_PROJECT_DIR,
+// CURSOR_PROJECT_DIR), trust it outright — it's authoritative even when the
+// session cwd is itself a marker-bearing directory, which matters in
+// monorepos where a package nested under the real project root has its own
+// package.json and would otherwise look like a project root in its own
+// right. Otherwise, key to the session cwd, untouched. But when the agent
+// was launched from an umbrella directory that is not itself a project (no
+// .git, package.json, or .impeccable), key to the edited file's nearest
+// project root instead, so a multi-project launch dir doesn't accumulate a
+// shared cross-project cache (issue #305). Climbing stops at the home dir,
+// falling back to the session cwd when no marker is found.
 export function resolveCacheCwd(primaryFile, sessionCwd) {
+  const envRoot = envProjectDir(null);
+  if (typeof envRoot === 'string' && envRoot) return path.resolve(envRoot);
   const base = path.resolve(sessionCwd || process.cwd());
   if (!primaryFile || typeof primaryFile !== 'string' || hasPathTraversal(primaryFile)) return base;
   if (looksLikeProjectRoot(base)) return base;
@@ -1172,6 +1179,9 @@ export function normalizeHookEvent(event, projectCwd, harness = 'claude') {
 }
 
 function envProjectDir(fallback) {
+  if (typeof process.env.CLAUDE_PROJECT_DIR === 'string' && process.env.CLAUDE_PROJECT_DIR) {
+    return process.env.CLAUDE_PROJECT_DIR;
+  }
   if (typeof process.env.CURSOR_PROJECT_DIR === 'string' && process.env.CURSOR_PROJECT_DIR) {
     return process.env.CURSOR_PROJECT_DIR;
   }
