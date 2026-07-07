@@ -144,20 +144,28 @@ function looksLikeProjectRoot(dir) {
 }
 
 // Where `.impeccable/` (cache + config) lives for this event. When the
-// harness tells us the project root directly (CLAUDE_PROJECT_DIR,
-// CURSOR_PROJECT_DIR), trust it outright — it's authoritative even when the
-// session cwd is itself a marker-bearing directory, which matters in
-// monorepos where a package nested under the real project root has its own
-// package.json and would otherwise look like a project root in its own
-// right. Otherwise, key to the session cwd, untouched. But when the agent
-// was launched from an umbrella directory that is not itself a project (no
-// .git, package.json, or .impeccable), key to the edited file's nearest
-// project root instead, so a multi-project launch dir doesn't accumulate a
-// shared cross-project cache (issue #305). Climbing stops at the home dir,
-// falling back to the session cwd when no marker is found.
+// harness names the project root directly (CLAUDE_PROJECT_DIR,
+// CURSOR_PROJECT_DIR) *and* that directory looks like a real project root,
+// trust it outright — it wins even when the session cwd is itself a
+// marker-bearing directory, which matters in monorepos where a package
+// nested under the real project root has its own package.json and would
+// otherwise look like a project root in its own right (issue #351). The
+// looksLikeProjectRoot gate matters because Claude Code sets
+// CLAUDE_PROJECT_DIR on every hook invocation to the *launch* dir: when that
+// launch dir is a bare umbrella (no .git/package.json/.impeccable), trusting
+// it blindly would scatter the cache back into the umbrella — the exact
+// regression #305 fixed. Otherwise, key to the session cwd, untouched. But
+// when the agent was launched from an umbrella directory that is not itself a
+// project, key to the edited file's nearest project root instead, so a
+// multi-project launch dir doesn't accumulate a shared cross-project cache
+// (issue #305). Climbing stops at the home dir, falling back to the session
+// cwd when no marker is found.
 export function resolveCacheCwd(primaryFile, sessionCwd) {
   const envRoot = envProjectDir(null);
-  if (typeof envRoot === 'string' && envRoot) return path.resolve(envRoot);
+  if (typeof envRoot === 'string' && envRoot) {
+    const resolvedEnvRoot = path.resolve(envRoot);
+    if (looksLikeProjectRoot(resolvedEnvRoot)) return resolvedEnvRoot;
+  }
   const base = path.resolve(sessionCwd || process.cwd());
   if (!primaryFile || typeof primaryFile !== 'string' || hasPathTraversal(primaryFile)) return base;
   if (looksLikeProjectRoot(base)) return base;

@@ -1469,8 +1469,9 @@ describe('runHook() — cache write gating (issues #344, #305)', () => {
     // project root on its own and would otherwise short-circuit
     // resolveCacheCwd() at cwd itself (see resolveCacheCwd()'s own describe
     // block for the same case at the unit level). CLAUDE_PROJECT_DIR — a
-    // distinct directory — must still win.
+    // distinct, marker-bearing directory — must still win.
     const monorepoRoot = mkTmp();
+    fs.writeFileSync(path.join(monorepoRoot, 'package.json'), '{"name":"monorepo"}');
     write('package.json', '{"name":"nested-package"}');
     const file = write('src/Card.tsx', 'noop');
     const before = process.env.CLAUDE_PROJECT_DIR;
@@ -1529,7 +1530,13 @@ describe('resolveCacheCwd()', () => {
     fs.mkdirSync(pkgDir, { recursive: true });
     fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
     const file = path.join(pkgDir, 'src', 'Card.tsx');
+    // The env-projected root is trusted only when it looks like a real project
+    // root — Claude Code sets CLAUDE_PROJECT_DIR to the launch dir on every
+    // hook, so a marker-bearing gate keeps a bare-umbrella launch dir from
+    // scattering the cache (issue #305). Give it a marker here.
     const root = path.join(cwd, 'root');
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), '{}');
 
     const beforeClaude = process.env.CLAUDE_PROJECT_DIR;
     const beforeCursor = process.env.CURSOR_PROJECT_DIR;
@@ -1544,6 +1551,31 @@ describe('resolveCacheCwd()', () => {
 
       process.env.CLAUDE_PROJECT_DIR = root;
       assert.equal(resolveCacheCwd(file, pkgDir), root, 'CLAUDE_PROJECT_DIR should take precedence when both are set');
+    } finally {
+      if (beforeClaude === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = beforeClaude;
+      if (beforeCursor === undefined) delete process.env.CURSOR_PROJECT_DIR;
+      else process.env.CURSOR_PROJECT_DIR = beforeCursor;
+    }
+  });
+
+  it('ignores a marker-less env project dir so an umbrella launch dir still climbs (issue #305)', () => {
+    // Claude Code sets CLAUDE_PROJECT_DIR to the launch dir on every hook. When
+    // that launch dir is a bare umbrella (no .git/package.json/.impeccable),
+    // trusting it would scatter the cache there; instead we must fall through
+    // to the edited file's nearest marker root.
+    const umbrella = path.join(cwd, 'umbrella');
+    const child = path.join(umbrella, 'app');
+    fs.mkdirSync(path.join(child, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(child, 'package.json'), '{}');
+    const file = path.join(child, 'src', 'Card.tsx');
+
+    const beforeClaude = process.env.CLAUDE_PROJECT_DIR;
+    const beforeCursor = process.env.CURSOR_PROJECT_DIR;
+    try {
+      delete process.env.CURSOR_PROJECT_DIR;
+      process.env.CLAUDE_PROJECT_DIR = umbrella;
+      assert.equal(resolveCacheCwd(file, umbrella), child, 'a marker-less CLAUDE_PROJECT_DIR must not short-circuit the climb');
     } finally {
       if (beforeClaude === undefined) delete process.env.CLAUDE_PROJECT_DIR;
       else process.env.CLAUDE_PROJECT_DIR = beforeClaude;
