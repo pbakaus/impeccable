@@ -9,6 +9,7 @@
  *   ENVELOPE_PREFIX, ALLOWED_EXTS, ACK_EXTS, SENSITIVE_PATH, GENERATED_PATH, TRUTHY
  *   truthy(value)
  *   readConfig(cwd) / DEFAULT_CONFIG / getConfigPath(cwd) / getLocalConfigPath(cwd)
+ *   resolveProjectPlatform(cwd) / isNativePlatform(platform)
  *   normalizeIgnoreValue(value)
  *   readCache(cwd) / persistCache(cwd, cache) / resolveCacheCwd(primaryFile, sessionCwd)
  *   bumpEditCount(cache, sessionId, filePath) -> number
@@ -39,6 +40,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { extractPlatform, loadContext } from './context.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,6 +170,26 @@ export function resolveCacheCwd(primaryFile, sessionCwd) {
     if (parent === dir) return base;
     dir = parent;
   }
+}
+
+// The detector's rules are web rules (HTML/CSS shapes), but a React Native or
+// Flutter project is made of the exact extensions the hook watches (.tsx, .ts,
+// .js), so without this gate every native screen edit would draw web-shaped
+// findings that contradict the native platform references. PRODUCT.md's
+// `## Platform` field decides: `ios` / `android` / `adaptive` projects skip
+// the scan entirely. Resolution goes through loadContext so the hook reads the
+// same PRODUCT.md the skill does (alternate context dirs, monorepo fallback).
+export function resolveProjectPlatform(cwd) {
+  try {
+    const ctx = loadContext(cwd);
+    return extractPlatform(ctx && ctx.product);
+  } catch {
+    return null;
+  }
+}
+
+export function isNativePlatform(platform) {
+  return platform === 'ios' || platform === 'android' || platform === 'adaptive';
 }
 
 export function readConfig(cwd) {
@@ -1507,6 +1529,11 @@ export async function runHook({ stdinJson, env = {}, cwd = process.cwd(), now = 
     const config = readConfig(projectCwd);
     if (config.enabled === false) {
       return result({ skipped: 'config-disabled', durationMs: Date.now() - started });
+    }
+
+    const platform = resolveProjectPlatform(projectCwd);
+    if (isNativePlatform(platform)) {
+      return result({ skipped: 'native-platform', platform, durationMs: Date.now() - started });
     }
 
     const cache = readCache(projectCwd);

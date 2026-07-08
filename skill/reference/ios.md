@@ -34,7 +34,7 @@ expressive layer (type, color, motion, content), not from breaking the conventio
 
 ## Typography
 
-- **Dynamic Type, not fixed sizes.** Use the system text styles (Large Title, Title, Headline, Body, Caption, etc.) so text scales with the user's accessibility setting. Hard-coded point sizes that ignore Dynamic Type are an accessibility failure. <!-- rule:ios-typo-dynamic-type -->
+- **Dynamic Type, not fixed sizes.** Use the system text styles (Large Title, Title, Headline, Body, Caption, etc.) so text scales with the user's preferred reading size. Hard-coded point sizes that ignore Dynamic Type break a platform guarantee fluent users rely on. <!-- rule:ios-typo-dynamic-type -->
 - **San Francisco is the system face.** SF Pro / SF Compact carry UI text by default; they're tuned for legibility at every size and ship optical sizes automatically. A custom brand face can appear, but body, labels, and controls should stay on the system font unless the brand register truly requires otherwise. <!-- rule:ios-typo-system-font -->
 - **Don't ship below 11 pt** for any legible text; Body is 17 pt by default for a reason. <!-- rule:ios-typo-minimum-size -->
 

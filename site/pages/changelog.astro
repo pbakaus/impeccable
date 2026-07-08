@@ -23,18 +23,8 @@ import '../styles/changelog-faq-kinpaku.css';
       <button type="button" class="cf-filter-btn" data-cf-filter="all" aria-pressed="false">All</button>
     </div>
 
-    <article id="v3.10.0" class="cf-entry cf-entry--current">
-      <header class="cf-entry-head"><span class="cf-version">v3.10.0</span><span class="cf-date">July 8, 2026</span><span class="cf-current-badge">Current</span></header>
-      <p class="cf-entry-lead">Impeccable now knows whether you are building for the web or for native mobile, and applies the right platform conventions.</p>
-      <ul class="cf-items">
-        <li><strong>A platform axis: web, iOS, Android, or adaptive.</strong> Set <code>## Platform</code> in <code>PRODUCT.md</code> and the skill loads the matching native rulebook on top of your register: Apple Human Interface Guidelines for iOS, Material Design 3 for Android, both for a cross-platform app that adapts per OS. Web stays the default, so existing projects are untouched.</li>
-        <li><strong>Native design that earns familiarity.</strong> On native, platform conformance is the bar for structure, interaction, and accessibility; brand lives in the expressive layer the platform gives you. <code>/impeccable init</code> asks the platform question right after register, and audit, layout, animate, and adapt now speak in platform terms when the target is native.</li>
-        <li><strong>Web tools step aside on native projects.</strong> The design hook and the bundled detector recognize a native platform and skip their web rules instead of flagging native code, and a typo in the platform field gets called out rather than silently treated as web.</li>
-      </ul>
-    </article>
-
-    <article id="v3.9.1" class="cf-entry">
-      <header class="cf-entry-head"><span class="cf-version">v3.9.1</span><span class="cf-date">July 1, 2026</span></header>
+    <article id="v3.9.1" class="cf-entry cf-entry--current">
+      <header class="cf-entry-head"><span class="cf-version">v3.9.1</span><span class="cf-date">July 1, 2026</span><span class="cf-current-badge">Current</span></header>
       <p class="cf-entry-lead">A packaging fix so the design hook loads in Codex.</p>
       <ul class="cf-items">
         <li><strong>Codex loads the plugin design hook again.</strong> The plugin-packaged hook manifest carried a top-level <code>description</code> field that Codex's strict hook parser rejected, so the post-edit design check failed to register. That field is gone from the plugin artifact, and the hook now loads cleanly on Codex while staying identical for Claude Code.</li>

@@ -694,25 +694,34 @@ function escapeRegExp(value) {
 }
 
 /**
+ * Read the first non-empty line under a bare `## <heading>` section of
+ * PRODUCT.md (e.g. `## Register`, `## Platform`). Returns null when the
+ * section is absent. The heading match is exact (`\s*$`) so near-miss
+ * headings like `## Register guidelines` don't shadow the real field.
+ */
+export function extractSectionValue(product, heading) {
+  if (!product) return null;
+  const headingRe = new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'i');
+  const lines = product.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i].trim())) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        if (next) return next;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Pull the register (`brand` or `product`) out of PRODUCT.md by looking
  * for a `## Register` section and reading the first non-empty line that
  * follows it. Returns null when the file is legacy / register-less.
  */
 export function extractRegister(product) {
-  if (!product) return null;
-  const lines = product.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+Register\s*$/i.test(lines[i].trim())) {
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (!next) continue;
-        const word = next.toLowerCase();
-        if (word === 'brand' || word === 'product') return word;
-        return null;
-      }
-    }
-  }
-  return null;
+  const word = (extractSectionValue(product, 'Register') || '').toLowerCase();
+  return word === 'brand' || word === 'product' ? word : null;
 }
 
 /**
@@ -725,21 +734,11 @@ export function extractRegister(product) {
  * (the default the general rules already assume).
  */
 export function extractPlatform(product) {
-  if (!product) return null;
-  const lines = product.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+Platform\s*$/i.test(lines[i].trim())) {
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (!next) continue;
-        const value = next.toLowerCase();
-        if (value === 'web' || value === 'ios' || value === 'android' || value === 'adaptive') return value;
-        // A cross-platform line naming both native targets = adaptive.
-        if (/\bios\b/.test(value) && /\bandroid\b/.test(value)) return 'adaptive';
-        return null;
-      }
-    }
-  }
+  const value = (extractSectionValue(product, 'Platform') || '').toLowerCase();
+  if (!value) return null;
+  if (value === 'web' || value === 'ios' || value === 'android' || value === 'adaptive') return value;
+  // A cross-platform line naming both native targets = adaptive.
+  if (/\bios\b/.test(value) && /\bandroid\b/.test(value)) return 'adaptive';
   return null;
 }
 
@@ -926,6 +925,16 @@ async function cli() {
     parts.push(
       `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions (this is on top of the register reference above).`,
     );
+  } else if (!platform) {
+    // A `## Platform` section that names something we don't recognize (a
+    // toolchain like `flutter`, a typo) would otherwise silently fall back to
+    // web — the wrong default exactly when the user tried to say "native".
+    const rawPlatform = extractSectionValue(ctx.product, 'Platform');
+    if (rawPlatform) {
+      parts.push(
+        `WARNING: PRODUCT.md's \`## Platform\` value \`${rawPlatform}\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`,
+      );
+    }
   }
   if (updateDirective) parts.push(updateDirective);
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');

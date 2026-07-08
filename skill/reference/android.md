@@ -20,6 +20,11 @@ a bottom-only navigation copied from iPhone, a back arrow that ignores the syste
 and dialogs shaped like Cupertino. Material Design 3 is the rulebook; follow its components and let the
 brand express through Material's theming, not by discarding it.
 
+One caveat for Material-everywhere cross-platform apps (the Flutter default, platform value `android`):
+if the app also ships to iPhones, iOS's system constraints still apply on that hardware even though the
+design language is Material. Respect the safe-area insets, honor Reduce Motion, and don't swallow the
+edge-swipe back gesture; those are OS guarantees, not Material style choices.
+
 ## Layout & structure
 
 - **Material navigation, matched to size.** Navigation bar (bottom, 3–5 destinations) on compact width; navigation rail or drawer on larger/expanded width. Don't ship a phone bottom-bar untouched on a tablet. <!-- rule:android-layout-adaptive-nav -->

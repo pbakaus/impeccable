@@ -22,6 +22,7 @@ import {
   appendDesignSystemNote,
   designSystemOptions,
   filterFindings,
+  isNativePlatform,
   loadDetector,
   matchConfiguredExtension,
   matchesAnyGlob,
@@ -31,6 +32,7 @@ import {
   renderTemplate,
   resolveCacheCwd,
   resolveProjectCwd,
+  resolveProjectPlatform,
   truthy,
   writeAuditLog,
 } from './hook-lib.mjs';
@@ -432,6 +434,12 @@ async function main() {
   if (!content) return allow({ ...audit, skipped: 'no-proposed-content', durationMs: Date.now() - started });
 
   if (config.enabled === false) return allow({ ...audit, skipped: 'config-disabled', durationMs: Date.now() - started });
+
+  // Web rule engine, native project: stand aside (see resolveProjectPlatform).
+  const platform = resolveProjectPlatform(cwd);
+  if (isNativePlatform(platform)) {
+    return allow({ ...audit, skipped: 'native-platform', platform, durationMs: Date.now() - started });
+  }
 
   const rel = relativePath(filePath, cwd);
   if (matchesAnyGlob(rel, config.ignoreFiles) || matchesAnyGlob(filePath, config.ignoreFiles)) {

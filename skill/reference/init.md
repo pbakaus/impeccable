@@ -84,6 +84,8 @@ Every project targets **web** (a website or web app, including responsive mobile
 
 If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [web / ios / android / adaptive] project. Does that match?"* For a cross-platform app (Flutter, React Native), decide by the **design language the app actually renders**, not the toolchain: if it uses one platform's look on both (Material-everywhere is the Flutter default), write that platform (`android`); if it genuinely adapts per OS (Cupertino on iOS, Material on Android), write `adaptive` so both references load. When in doubt, it's `web`.
 
+A repo that ships **both a website and a native app** (e.g. marketing site + RN app in one monorepo) can't be captured by one value: give each app its own PRODUCT.md with its own `## Platform` (the monorepo context resolution already reads per-app files, falling back to the root), and keep the root PRODUCT.md on the primary surface's platform.
+
 ### Users & Purpose
 - Who uses this? What's their context when using it?
 - What job are they trying to get done?
@@ -154,6 +156,8 @@ If the user agrees, delegate to `/impeccable document` (it auto-detects scan vs 
 If the user prefers to skip, mention they can run `/impeccable document` any time later.
 
 ## Step 6: Configure live mode (when code exists)
+
+**Skip this step entirely when the platform is native** (`ios` / `android` / `adaptive`): live mode drives a browser overlay and has nothing to attach to in a native app. Don't write a live config just because a hybrid wrapper or an Expo web target technically serves HTML.
 
 If the project has code with HTML entries and a dev server (the same "code exists" condition that puts `/impeccable document` in scan mode), pre-configure live mode now. You already identified the framework and the served HTML entry in Step 2, so this is nearly free, and it spares the user the first-time setup detour when they later run `/impeccable live`.
 

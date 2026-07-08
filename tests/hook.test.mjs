@@ -51,6 +51,8 @@ import {
   runHook,
   payload,
   extractFindingIgnoreValue,
+  resolveProjectPlatform,
+  isNativePlatform,
 } from '../skill/scripts/hook-lib.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
@@ -1116,6 +1118,29 @@ rounded:
     assert.equal(r.audit.skipped, 'config-disabled');
   });
 
+  it('skips the scan when PRODUCT.md declares a native platform', async () => {
+    // The web rule engine has no business flagging React Native screens; the
+    // hook watches .tsx/.ts/.js, which is exactly what a native project is
+    // made of, so the platform field gates the whole scan.
+    for (const platform of ['ios', 'android', 'adaptive']) {
+      writeFixture('PRODUCT.md', `# App\n\n## Register\n\nproduct\n\n## Platform\n\n${platform}\n`);
+      const file = writeFixture('src/Card.tsx', 'noop');
+      const det = fakeDetector([finding('side-tab', 1)]);
+      const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, `native-${platform}`)), env: {}, cwd, detector: det });
+      assert.equal(r.stdout, '', `expected silence for platform ${platform}`);
+      assert.equal(r.audit.skipped, 'native-platform');
+      assert.equal(r.audit.platform, platform);
+    }
+  });
+
+  it('still scans when PRODUCT.md declares web (or has no platform field)', async () => {
+    writeFixture('PRODUCT.md', '# App\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, 'web-platform')), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /Side-tab/);
+  });
+
   it('only unlocks design-system detector findings when DESIGN.md exists', async () => {
     const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
     const det = designAwareDetector();
@@ -2098,6 +2123,31 @@ describe('runHook() — configured template extensions (issue #316)', () => {
   });
 });
 
+describe('resolveProjectPlatform() / isNativePlatform()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('reads the platform from PRODUCT.md via the same resolution the skill uses', () => {
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    assert.equal(resolveProjectPlatform(cwd), 'ios');
+  });
+
+  it('returns null when PRODUCT.md is absent or platform-less', () => {
+    assert.equal(resolveProjectPlatform(cwd), null);
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\nno platform field\n');
+    assert.equal(resolveProjectPlatform(cwd), null);
+  });
+
+  it('isNativePlatform is true only for ios / android / adaptive', () => {
+    assert.equal(isNativePlatform('ios'), true);
+    assert.equal(isNativePlatform('android'), true);
+    assert.equal(isNativePlatform('adaptive'), true);
+    assert.equal(isNativePlatform('web'), false);
+    assert.equal(isNativePlatform(null), false);
+  });
+});
+
 describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
@@ -2137,6 +2187,33 @@ describe('Cursor hook scripts', () => {
     assert.equal(entries[0].event, 'preToolUse');
     assert.equal(entries[0].blocked, true);
     assert.equal(entries[0].blockedFindings, 1);
+  });
+
+  it('preToolUse allows writes with findings when the project platform is native', () => {
+    // Same slop content the deny test blocks, but the project declares a
+    // native platform, so the web rule engine must stand aside.
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: path.join(cwd, 'src/Card.html'),
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
   });
 
   it('preToolUse allows clean proposed writes', () => {

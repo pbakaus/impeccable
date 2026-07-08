@@ -859,6 +859,28 @@ describe('context.mjs CLI', () => {
     assert.equal(res.stdout.includes('This project targets'), false);
     assert.equal(res.stdout.includes('reference/ios.md'), false);
   });
+
+  it('appends a native platform directive for an android project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /This project targets `android`\./);
+    assert.match(res.stdout, /read `reference\/android\.md`/);
+  });
+
+  it('warns on an unrecognized platform value instead of silently defaulting to web', async () => {
+    // The likeliest misconfiguration is a toolchain name where the target
+    // belongs. Silent fallback to web would give web guidance to the exact
+    // projects that tried to declare themselves native.
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nflutter\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /WARNING: PRODUCT\.md's `## Platform` value `flutter` is not recognized/);
+    assert.match(res.stdout, /treating the project as `web`/);
+    assert.equal(res.stdout.includes('This project targets'), false);
+  });
 });
 
 describe('context.mjs update check', () => {
