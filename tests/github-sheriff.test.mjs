@@ -56,6 +56,51 @@ describe('github sheriff', () => {
 
     assert.equal(plan.shouldWarn, true);
     assert.equal(plan.shouldClose, false);
+    assert.match(plan.warningComment, /2026-07-09/);
+    assert.doesNotMatch(plan.warningComment, /2026-07-04/);
+  });
+
+  it('uses the stale label as durable proof that a warning already happened', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      labels: ['waiting on contributor', 'stale'],
+      comments: [
+        comment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix the review feedback.'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.shouldWarn, false);
+    assert.equal(plan.shouldClose, true);
+  });
+
+  it('does not treat non-action maintainer comments as contributor blockers', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-01T00:00:00Z',
+      latestCommitAt: '2026-07-01T01:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      comments: [
+        comment('pbakaus', '2026-07-02T00:00:00Z', 'LGTM, merging after CI.'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.equal(plan.readyToMerge, true);
+    assert.deepEqual(plan.labelsToAdd, ['ready to merge']);
+  });
+
+  it('still treats actionable maintainer comments as contributor blockers', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-04T00:00:00Z',
+      latestCommitAt: '2026-07-04T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-07-05T00:00:00Z', 'Could you add a focused test for this?'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, ['waiting on contributor']);
   });
 
   it('moves back to maintainer review after the contributor responds', () => {
@@ -88,6 +133,30 @@ describe('github sheriff', () => {
 
     assert.equal(plan.contributorActionRequired, true);
     assert.deepEqual(plan.labelsToAdd, []);
+  });
+
+  it('preserves a waiting label when the label event is outside the fetched timeline window', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-04T00:00:00Z',
+      updatedAt: '2026-07-03T00:00:00Z',
+      latestCommitAt: '2026-07-02T00:00:00Z',
+      labels: ['waiting on contributor'],
+      labelEvents: [],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, []);
+    assert.deepEqual(plan.labelsToRemove, []);
+  });
+
+  it('allows a zero-day warning window for manual dry runs', () => {
+    const parsed = parseArgs([
+      '--warning-days', '0',
+      '--close-days', '0',
+    ]);
+
+    assert.equal(parsed.warningDays, 0);
+    assert.equal(parsed.closeDays, 0);
   });
 
   it('clears a waiting label once the contributor acts after it was applied', () => {
@@ -127,6 +196,9 @@ describe('github sheriff', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-20T00:00:00Z',
       labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'pbakaus', '2026-06-21T12:00:00Z'),
+      ],
       reviewThreads: [
         {
           isResolved: false,

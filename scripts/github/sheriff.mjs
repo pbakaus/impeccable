@@ -42,6 +42,15 @@ const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
 const REVIEW_MAINTAINER_STATES = new Set(['CHANGES_REQUESTED', 'COMMENTED']);
 const FAILING_STATUS_STATES = new Set(['ERROR', 'FAILURE']);
+const MAINTAINER_REQUEST_PATTERNS = [
+  /\?/,
+  /\bplease\b/,
+  /\b(can|could|would|will)\s+you\b/,
+  /\bdo you mind\b/,
+  /\bneeds?\s+(to|changes?|tests?|work|updates?|cleanup|a|an|some|the)\b/,
+  /\bmust\b/,
+  /\b(fix|address|resolve|rebase|update|change|add|remove|split|clarify|explain|respond|answer)\b/,
+];
 
 const PR_QUERY = `
 query($owner: String!, $name: String!, $after: String) {
@@ -131,6 +140,7 @@ export function evaluatePullRequest(pr, options = {}) {
     pr.latestCommitAt,
     ...commentsBy(pr.comments, author).map((comment) => comment.createdAt),
     ...reviewsBy(pr.reviews, author).map((review) => review.submittedAt),
+    ...reviewThreadCommentsBy(pr.reviewThreads, author).map((comment) => comment.createdAt),
   ]);
   const latestMaintainerAskAt = latestMaintainerAsk(pr, maintainers);
   const latestBlockingReviewAt = latestDate((pr.reviews || [])
@@ -168,8 +178,9 @@ export function evaluatePullRequest(pr, options = {}) {
   }
 
   const waitingLabelAt = latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent');
-  if (labels.has('waiting on contributor') && waitingLabelAt && !isAfter(latestContributorAt, waitingLabelAt)) {
-    blockers.push({ kind: 'manual-waiting', at: waitingLabelAt });
+  const waitingLabelReferenceAt = waitingLabelAt || pr.updatedAt;
+  if (labels.has('waiting on contributor') && !isAfter(latestContributorAt, waitingLabelReferenceAt)) {
+    blockers.push({ kind: 'manual-waiting', at: waitingLabelReferenceAt });
   }
 
   const contributorActionRequired = blockers.length > 0;
@@ -195,7 +206,7 @@ export function evaluatePullRequest(pr, options = {}) {
   const staleEligible = contributorActionRequired && daysOpen >= warningDays;
   if (staleEligible) desiredLabels.add('stale');
 
-  const warningAlreadyPosted = hasMarker(pr.comments, WARNING_MARKER);
+  const warningAlreadyPosted = labels.has('stale') || hasMarker(pr.comments, WARNING_MARKER);
   const closeAlreadyPosted = hasMarker(pr.comments, CLOSE_MARKER);
   const exemptFromClose = [...labels].some((label) => exemptLabels.has(label));
   const regularContributor = regularContributors.has(author);
@@ -225,7 +236,7 @@ export function evaluatePullRequest(pr, options = {}) {
     labelsToRemove,
     shouldWarn,
     shouldClose,
-    warningComment: shouldWarn ? staleWarningComment(pr, { daysOpen, closeDays }) : '',
+    warningComment: shouldWarn ? staleWarningComment(pr, { daysOpen, closeDays, now }) : '',
     closeComment: shouldClose ? staleCloseComment(pr, { daysOpen }) : '',
   };
 }
@@ -267,8 +278,12 @@ export function normalizePullRequest(node) {
   };
 }
 
-export function staleWarningComment(pr, { daysOpen, closeDays }) {
-  const closeDate = formatDate(addDays(toDate(pr.createdAt), closeDays));
+export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() }) {
+  const scheduledCloseAt = addDays(toDate(pr.createdAt), closeDays);
+  const earliestNewWarningCloseAt = addDays(toDate(now), 1);
+  const closeDate = formatDate(scheduledCloseAt > earliestNewWarningCloseAt
+    ? scheduledCloseAt
+    : earliestNewWarningCloseAt);
   return [
     WARNING_MARKER,
     `Thanks for the PR. Impeccable is moving quickly, and this PR is currently waiting on contributor action.`,
@@ -345,7 +360,7 @@ export function parseArgs(argv) {
   }
 
   if (!Number.isFinite(options.warningDays) || options.warningDays < 0) {
-    throw new Error('--warning-days must be a positive number.');
+    throw new Error('--warning-days must be a non-negative number.');
   }
   if (!Number.isFinite(options.closeDays) || options.closeDays < options.warningDays) {
     throw new Error('--close-days must be at least --warning-days.');
@@ -359,12 +374,20 @@ function latestMaintainerAsk(pr, maintainers) {
   return latestDate([
     ...(pr.comments || [])
       .filter((comment) => maintainers.has(normalizeLogin(comment.authorLogin)))
+      .filter((comment) => isMaintainerActionRequest(comment.body))
       .map((comment) => comment.createdAt),
     ...(pr.reviews || [])
       .filter((review) => maintainers.has(normalizeLogin(review.authorLogin)))
       .filter((review) => REVIEW_MAINTAINER_STATES.has(review.state))
+      .filter((review) => review.state === 'CHANGES_REQUESTED' || isMaintainerActionRequest(review.body))
       .map((review) => review.submittedAt),
   ]);
+}
+
+function isMaintainerActionRequest(body) {
+  const text = String(body || '').toLowerCase();
+  if (!text || text.includes(WARNING_MARKER) || text.includes(CLOSE_MARKER)) return false;
+  return MAINTAINER_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function unresolvedThreadsNeedingContributor(threads, author) {
@@ -518,6 +541,10 @@ function commentsBy(comments = [], login) {
 
 function reviewsBy(reviews = [], login) {
   return reviews.filter((review) => normalizeLogin(review.authorLogin) === login);
+}
+
+function reviewThreadCommentsBy(threads = [], login) {
+  return threads.flatMap((thread) => commentsBy(thread.comments, login));
 }
 
 function hasMarker(comments = [], marker) {

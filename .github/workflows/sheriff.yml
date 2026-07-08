@@ -2,7 +2,7 @@ name: PR Sheriff
 
 on:
   schedule:
-    # Daily UTC morning pass. The script uses an aggressive 7/14 day window:
+    # Daily UTC afternoon pass. The script uses an aggressive 7/14 day window:
     # warn contributor-blocked PRs after 7 days open, close after 14.
     - cron: "17 15 * * *"
   workflow_dispatch:
@@ -13,6 +13,8 @@ on:
         default: false
 
 permissions:
+  actions: read
+  checks: read
   contents: read
   issues: write
   pull-requests: write
