@@ -29,3 +29,7 @@ assignees: ''
 ## Additional context
 
 <!-- Paste relevant command output, screenshots, or config snippets here. -->
+
+## Willing to work on a fix?
+
+<!-- If yes, say so here. Unless you are pbakaus or abdulwahabone, please wait for maintainer approval before opening a PR. -->
