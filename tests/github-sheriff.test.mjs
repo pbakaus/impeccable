@@ -227,6 +227,26 @@ describe('github sheriff', () => {
     assert.deepEqual(plan.labelsToRemove, ['waiting on contributor']);
   });
 
+  it('does not treat a non-author head commit as contributor activity', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-04T00:00:00Z',
+      latestCommitAt: '2026-07-04T00:00:00Z',
+      latestCommitAuthorLogin: 'github-actions[bot]',
+      latestCommitCommitterLogin: 'web-flow',
+      labels: ['waiting on contributor'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'pbakaus', '2026-07-02T00:00:00Z'),
+      ],
+      comments: [
+        comment('pbakaus', '2026-07-02T00:00:00Z', '/sheriff wait'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, []);
+    assert.deepEqual(plan.labelsToRemove, []);
+  });
+
   it('treats unresolved threads as contributor-blocked when the latest thread comment is not from the author', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-07-01T00:00:00Z',
@@ -430,6 +450,8 @@ function pr(overrides = {}) {
     reviewThreads: [],
     labelEvents: [],
     latestCommitAt: '2026-07-01T01:00:00Z',
+    latestCommitAuthorLogin: 'contrib',
+    latestCommitCommitterLogin: 'contrib',
     statusState: null,
     mergeable: 'MERGEABLE',
     ...overrides,

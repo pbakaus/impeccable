@@ -79,6 +79,8 @@ query($owner: String!, $name: String!, $after: String) {
             commit {
               authoredDate
               committedDate
+              author { user { login } }
+              committer { user { login } }
               statusCheckRollup { state }
             }
           }
@@ -127,8 +129,9 @@ export function evaluatePullRequest(pr, options = {}) {
   const labels = new Set(pr.labels || []);
   const author = normalizeLogin(pr.authorLogin || pr.author?.login || '');
   const daysOpen = Math.floor((now.getTime() - toDate(pr.createdAt).getTime()) / DAY_MS);
+  const latestContributorCommitAt = latestCommitBelongsToAuthor(pr, author) ? pr.latestCommitAt : null;
   const latestContributorAt = latestDate([
-    pr.latestCommitAt,
+    latestContributorCommitAt,
     ...commentsBy(pr.comments, author).map((comment) => comment.createdAt),
     ...reviewsBy(pr.reviews, author).map((review) => review.submittedAt),
     ...reviewThreadCommentsBy(pr.reviewThreads, author).map((comment) => comment.createdAt),
@@ -254,6 +257,8 @@ export function normalizePullRequest(node) {
       body: review.body || '',
     })),
     latestCommitAt: latestCommit?.committedDate || latestCommit?.authoredDate || null,
+    latestCommitAuthorLogin: latestCommit?.author?.user?.login || '',
+    latestCommitCommitterLogin: latestCommit?.committer?.user?.login || '',
     statusState: latestCommit?.statusCheckRollup?.state || null,
     reviewThreads: (node.reviewThreads?.nodes || []).map((thread) => ({
       isResolved: thread.isResolved,
@@ -586,6 +591,14 @@ function commentsBy(comments = [], login) {
 
 function reviewsBy(reviews = [], login) {
   return reviews.filter((review) => normalizeLogin(review.authorLogin) === login);
+}
+
+function latestCommitBelongsToAuthor(pr, author) {
+  if (!pr.latestCommitAt || !author) return false;
+  return [
+    pr.latestCommitAuthorLogin,
+    pr.latestCommitCommitterLogin,
+  ].map(normalizeLogin).filter(Boolean).includes(author);
 }
 
 function reviewThreadCommentsBy(threads = [], login) {
