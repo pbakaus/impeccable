@@ -169,9 +169,8 @@ export function evaluatePullRequest(pr, options = {}) {
   }
 
   const waitingLabelAt = latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent');
-  const waitingLabelReferenceAt = waitingLabelAt || pr.updatedAt;
-  if (labels.has('waiting on contributor') && !isAfter(latestContributorAt, waitingLabelReferenceAt)) {
-    blockers.push({ kind: 'manual-waiting', at: waitingLabelReferenceAt });
+  if (labels.has('waiting on contributor') && waitingLabelAt && !isAfter(latestContributorAt, waitingLabelAt)) {
+    blockers.push({ kind: 'manual-waiting', at: waitingLabelAt });
   }
 
   const contributorActionRequired = blockers.length > 0;
@@ -269,6 +268,41 @@ export function normalizePullRequest(node) {
   };
 }
 
+export function mergeIssueLabelEvents(pr, events = []) {
+  const labelEvents = pr.labelEvents || [];
+  const existingKeys = new Set(labelEvents.map((event) => [
+    event.type,
+    event.label,
+    event.actorLogin,
+    event.createdAt,
+  ].join('\0')));
+
+  for (const event of events) {
+    const type = issueEventType(event.event);
+    const label = event.label?.name;
+    if (!type || !label || !event.created_at) continue;
+
+    const normalized = {
+      type,
+      label,
+      actorLogin: event.actor?.login || '',
+      createdAt: event.created_at,
+    };
+    const key = [
+      normalized.type,
+      normalized.label,
+      normalized.actorLogin,
+      normalized.createdAt,
+    ].join('\0');
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+    labelEvents.push(normalized);
+  }
+
+  pr.labelEvents = labelEvents;
+  return pr;
+}
+
 export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() }) {
   const scheduledCloseAt = addDays(toDate(pr.createdAt), closeDays);
   const earliestNewWarningCloseAt = addDays(toDate(now), 1);
@@ -306,6 +340,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const prs = fetchOpenPullRequests(repo).map(normalizePullRequest);
+  hydrateMissingWaitingLabelEvents(repo, prs);
   const plans = prs.map((pr) => evaluatePullRequest(pr, options));
 
   for (const plan of plans) {
@@ -396,13 +431,31 @@ function unresolvedThreadsNeedingContributor(threads, author) {
 }
 
 function applyPlan(repo, plan, options) {
+  if (plan.shouldWarn) postComment(repo, plan.number, plan.warningComment, options);
   for (const label of plan.labelsToRemove) removeLabel(repo, plan.number, label, options);
   if (plan.labelsToAdd.length > 0) addLabels(repo, plan.number, plan.labelsToAdd, options);
-  if (plan.shouldWarn) postComment(repo, plan.number, plan.warningComment, options);
   if (plan.shouldClose) {
     postComment(repo, plan.number, plan.closeComment, options);
     closePullRequest(repo, plan.number, options);
   }
+}
+
+function hydrateMissingWaitingLabelEvents(repo, prs) {
+  for (const pr of prs) {
+    if (!(pr.labels || []).includes('waiting on contributor')) continue;
+    if (latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent')) continue;
+    mergeIssueLabelEvents(pr, fetchIssueEvents(repo, pr.number));
+  }
+}
+
+function fetchIssueEvents(repo, number) {
+  const pages = runGhJson([
+    'api',
+    '--paginate',
+    '--slurp',
+    `repos/${repo}/issues/${number}/events?per_page=100`,
+  ]);
+  return Array.isArray(pages) ? pages.flat() : [];
 }
 
 function fetchOpenPullRequests(repo) {
@@ -545,6 +598,12 @@ function latestLabelEventAt(events, label, type) {
   return latestDate(events
     .filter((event) => event.type === type && event.label === label)
     .map((event) => event.createdAt));
+}
+
+function issueEventType(event) {
+  if (event === 'labeled') return 'LabeledEvent';
+  if (event === 'unlabeled') return 'UnlabeledEvent';
+  return null;
 }
 
 function latestDate(values) {

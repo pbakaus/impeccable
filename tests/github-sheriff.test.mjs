@@ -5,6 +5,7 @@ import {
   CLOSE_MARKER,
   WARNING_MARKER,
   evaluatePullRequest,
+  mergeIssueLabelEvents,
   parseArgs,
 } from '../scripts/github/sheriff.mjs';
 
@@ -34,6 +35,9 @@ describe('github sheriff', () => {
       createdAt: '2026-06-20T00:00:00Z',
       latestCommitAt: '2026-06-20T01:00:00Z',
       labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'pbakaus', '2026-06-21T00:00:00Z'),
+      ],
       comments: [
         comment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix the review feedback.'),
         comment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
@@ -65,6 +69,9 @@ describe('github sheriff', () => {
       createdAt: '2026-06-20T00:00:00Z',
       latestCommitAt: '2026-06-20T01:00:00Z',
       labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'pbakaus', '2026-06-21T00:00:00Z'),
+      ],
       comments: [
         comment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix the review feedback.'),
       ],
@@ -161,18 +168,38 @@ describe('github sheriff', () => {
     assert.deepEqual(plan.labelsToAdd, []);
   });
 
-  it('preserves a waiting label when the label event is outside the fetched timeline window', () => {
-    const plan = evaluatePullRequest(pr({
+  it('preserves a waiting label when the label event is hydrated from issue events', () => {
+    const source = pr({
       createdAt: '2026-07-04T00:00:00Z',
       updatedAt: '2026-07-03T00:00:00Z',
       latestCommitAt: '2026-07-02T00:00:00Z',
       labels: ['waiting on contributor'],
       labelEvents: [],
-    }), { now: NOW });
+    });
+    mergeIssueLabelEvents(source, [
+      issueEvent('labeled', 'waiting on contributor', 'pbakaus', '2026-07-03T00:00:00Z'),
+    ]);
+
+    const plan = evaluatePullRequest(source, { now: NOW });
 
     assert.equal(plan.contributorActionRequired, true);
     assert.deepEqual(plan.labelsToAdd, []);
     assert.deepEqual(plan.labelsToRemove, []);
+  });
+
+  it('does not pin a waiting label when no label timestamp is available', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-01T00:00:00Z',
+      updatedAt: '2026-07-04T00:00:00Z',
+      latestCommitAt: '2026-07-04T00:00:00Z',
+      labels: ['waiting on contributor', 'stale'],
+      labelEvents: [],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.deepEqual(plan.labelsToAdd, ['needs maintainer review']);
+    assert.deepEqual(plan.labelsToRemove, ['stale', 'waiting on contributor']);
+    assert.equal(plan.shouldClose, false);
   });
 
   it('allows a zero-day warning window for manual dry runs', () => {
@@ -366,4 +393,13 @@ function comment(authorLogin, createdAt, body) {
 
 function labelEvent(type, label, actorLogin, createdAt) {
   return { type, label, actorLogin, createdAt };
+}
+
+function issueEvent(event, label, actorLogin, createdAt) {
+  return {
+    event,
+    label: { name: label },
+    actor: { login: actorLogin },
+    created_at: createdAt,
+  };
 }
