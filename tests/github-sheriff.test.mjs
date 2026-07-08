@@ -16,7 +16,7 @@ describe('github sheriff', () => {
       createdAt: '2026-06-30T00:00:00Z',
       latestCommitAt: '2026-06-30T01:00:00Z',
       comments: [
-        comment('pbakaus', '2026-07-03T00:00:00Z', 'Could you address this?'),
+        comment('pbakaus', '2026-07-03T00:00:00Z', '/sheriff wait'),
       ],
     }), { now: NOW });
 
@@ -50,7 +50,7 @@ describe('github sheriff', () => {
       createdAt: '2026-06-20T00:00:00Z',
       latestCommitAt: '2026-06-20T01:00:00Z',
       comments: [
-        comment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix the review feedback.'),
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
       ],
     }), { now: NOW });
 
@@ -74,33 +74,59 @@ describe('github sheriff', () => {
     assert.equal(plan.shouldClose, true);
   });
 
-  it('does not treat non-action maintainer comments as contributor blockers', () => {
+  it('does not infer contributor blockers from maintainer prose', () => {
+    for (const body of [
+      'LGTM, merging after CI.',
+      'Thanks for the update!',
+      "I'll review this change tomorrow.",
+      'Could you add a focused test for this?',
+    ]) {
+      const plan = evaluatePullRequest(pr({
+        createdAt: '2026-07-01T00:00:00Z',
+        latestCommitAt: '2026-07-01T01:00:00Z',
+        statusState: 'SUCCESS',
+        mergeable: 'MERGEABLE',
+        comments: [
+          comment('pbakaus', '2026-07-02T00:00:00Z', body),
+        ],
+      }), { now: NOW });
+
+      assert.equal(plan.contributorActionRequired, false, body);
+      assert.equal(plan.readyToMerge, true, body);
+      assert.deepEqual(plan.labelsToAdd, ['ready to merge'], body);
+    }
+  });
+
+  it('treats explicit maintainer wait commands as contributor blockers', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-04T00:00:00Z',
+      latestCommitAt: '2026-07-04T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-07-05T00:00:00Z', [
+          'This needs a maintainer-controlled wait state.',
+          '/sheriff wait',
+        ].join('\n')),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, ['waiting on contributor']);
+  });
+
+  it('ignores sheriff wait commands from non-maintainers', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-07-01T00:00:00Z',
       latestCommitAt: '2026-07-01T01:00:00Z',
       statusState: 'SUCCESS',
       mergeable: 'MERGEABLE',
       comments: [
-        comment('pbakaus', '2026-07-02T00:00:00Z', 'LGTM, merging after CI.'),
+        comment('contrib', '2026-07-02T00:00:00Z', '/sheriff wait'),
       ],
     }), { now: NOW });
 
     assert.equal(plan.contributorActionRequired, false);
     assert.equal(plan.readyToMerge, true);
     assert.deepEqual(plan.labelsToAdd, ['ready to merge']);
-  });
-
-  it('still treats actionable maintainer comments as contributor blockers', () => {
-    const plan = evaluatePullRequest(pr({
-      createdAt: '2026-07-04T00:00:00Z',
-      latestCommitAt: '2026-07-04T01:00:00Z',
-      comments: [
-        comment('pbakaus', '2026-07-05T00:00:00Z', 'Could you add a focused test for this?'),
-      ],
-    }), { now: NOW });
-
-    assert.equal(plan.contributorActionRequired, true);
-    assert.deepEqual(plan.labelsToAdd, ['waiting on contributor']);
   });
 
   it('moves back to maintainer review after the contributor responds', () => {
@@ -275,7 +301,7 @@ describe('github sheriff', () => {
       createdAt: '2026-06-20T00:00:00Z',
       latestCommitAt: '2026-06-20T01:00:00Z',
       comments: [
-        comment('pbakaus', '2026-06-21T00:00:00Z', 'Please update this.'),
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
       ],
     }), { now: NOW });
 
@@ -287,7 +313,7 @@ describe('github sheriff', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-20T00:00:00Z',
       comments: [
-        comment('pbakaus', '2026-06-21T00:00:00Z', 'Please update this.'),
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
         comment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
         comment('github-actions[bot]', '2026-07-04T00:00:00Z', CLOSE_MARKER),
       ],

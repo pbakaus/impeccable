@@ -40,17 +40,8 @@ const DEFAULT_REGULAR_CONTRIBUTORS = ['pbakaus', 'abdulwahabone'];
 const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
 
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
-const REVIEW_MAINTAINER_STATES = new Set(['CHANGES_REQUESTED', 'COMMENTED']);
 const FAILING_STATUS_STATES = new Set(['ERROR', 'FAILURE']);
-const MAINTAINER_REQUEST_PATTERNS = [
-  /\?/,
-  /\bplease\b/,
-  /\b(can|could|would|will)\s+you\b/,
-  /\bdo you mind\b/,
-  /\bneeds?\s+(to|changes?|tests?|work|updates?|cleanup|a|an|some|the)\b/,
-  /\bmust\b/,
-  /\b(fix|address|resolve|rebase|update|change|add|remove|split|clarify|explain|respond|answer)\b/,
-];
+const SHERIFF_WAIT_COMMAND = /^\/sheriff\s+wait\s*$/i;
 
 const PR_QUERY = `
 query($owner: String!, $name: String!, $after: String) {
@@ -142,7 +133,7 @@ export function evaluatePullRequest(pr, options = {}) {
     ...reviewsBy(pr.reviews, author).map((review) => review.submittedAt),
     ...reviewThreadCommentsBy(pr.reviewThreads, author).map((comment) => comment.createdAt),
   ]);
-  const latestMaintainerAskAt = latestMaintainerAsk(pr, maintainers);
+  const latestMaintainerWaitAt = latestMaintainerWaitCommand(pr, maintainers);
   const latestBlockingReviewAt = latestDate((pr.reviews || [])
     .filter((review) => REVIEW_BLOCKING_STATES.has(review.state))
     .map((review) => review.submittedAt));
@@ -173,8 +164,8 @@ export function evaluatePullRequest(pr, options = {}) {
     });
   }
 
-  if (latestMaintainerAskAt && !isAfter(latestContributorAt, latestMaintainerAskAt)) {
-    blockers.push({ kind: 'maintainer-ask', at: latestMaintainerAskAt });
+  if (latestMaintainerWaitAt && !isAfter(latestContributorAt, latestMaintainerWaitAt)) {
+    blockers.push({ kind: 'sheriff-wait', at: latestMaintainerWaitAt });
   }
 
   const waitingLabelAt = latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent');
@@ -288,7 +279,7 @@ export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() 
     WARNING_MARKER,
     `Thanks for the PR. Impeccable is moving quickly, and this PR is currently waiting on contributor action.`,
     '',
-    `It has been open for ${daysOpen} days. Please address the outstanding review feedback, CI failure, merge conflict, draft state, or maintainer question. PRs that are still waiting on contributor action after ${closeDays} days open are closed automatically.`,
+    `It has been open for ${daysOpen} days. Please address the outstanding review feedback, CI failure, merge conflict, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days open are closed automatically.`,
     '',
     `If nothing changes, this PR may be closed on or after ${closeDate}. Happy to reopen when it is ready to continue.`,
   ].join('\n');
@@ -370,24 +361,23 @@ export function parseArgs(argv) {
   return options;
 }
 
-function latestMaintainerAsk(pr, maintainers) {
+function latestMaintainerWaitCommand(pr, maintainers) {
   return latestDate([
     ...(pr.comments || [])
       .filter((comment) => maintainers.has(normalizeLogin(comment.authorLogin)))
-      .filter((comment) => isMaintainerActionRequest(comment.body))
+      .filter((comment) => hasSheriffWaitCommand(comment.body))
       .map((comment) => comment.createdAt),
     ...(pr.reviews || [])
       .filter((review) => maintainers.has(normalizeLogin(review.authorLogin)))
-      .filter((review) => REVIEW_MAINTAINER_STATES.has(review.state))
-      .filter((review) => review.state === 'CHANGES_REQUESTED' || isMaintainerActionRequest(review.body))
+      .filter((review) => hasSheriffWaitCommand(review.body))
       .map((review) => review.submittedAt),
   ]);
 }
 
-function isMaintainerActionRequest(body) {
-  const text = String(body || '').toLowerCase();
-  if (!text || text.includes(WARNING_MARKER) || text.includes(CLOSE_MARKER)) return false;
-  return MAINTAINER_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+function hasSheriffWaitCommand(body) {
+  return String(body || '')
+    .split(/\r?\n/)
+    .some((line) => SHERIFF_WAIT_COMMAND.test(line.trim()));
 }
 
 function unresolvedThreadsNeedingContributor(threads, author) {
@@ -641,7 +631,7 @@ Options:
   --repo owner/name               repository to inspect (defaults to GITHUB_REPOSITORY)
   --warning-days n                warn waiting PRs after n days open (default: 7)
   --close-days n                  close waiting PRs after n days open (default: 14)
-  --maintainers a,b               maintainer logins whose comments put the ball with the contributor
+  --maintainers a,b               maintainer logins allowed to use /sheriff wait
   --regular-contributors a,b      contributors exempt from auto-close unless --auto-close-regulars is set
   --auto-close-regulars           also auto-close regular contributor PRs
   --no-label-ensure               skip creating/updating sheriff labels
