@@ -766,6 +766,14 @@ describe('extractPlatform', () => {
     assert.equal(extractPlatform('## Platform\n\n\nios\n'), 'ios');
   });
 
+  it('treats an empty section followed by another heading as absent', () => {
+    // An empty `## Platform` must not swallow the next heading as its value
+    // (which would surface a nonsense "value `## Product Purpose` is not
+    // recognized" warning from the CLI).
+    assert.equal(extractPlatform('## Platform\n\n## Product Purpose\n\nAn app.\n'), null);
+    assert.equal(extractRegister('## Register\n\n## Users\n\nAnglers.\n'), null);
+  });
+
   it('is independent of the register field', () => {
     const product = '# P\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n';
     assert.equal(extractRegister(product), 'product');
@@ -879,6 +887,15 @@ describe('context.mjs CLI', () => {
     assert.equal(res.status, 0);
     assert.match(res.stdout, /WARNING: PRODUCT\.md's `## Platform` value `flutter` is not recognized/);
     assert.match(res.stdout, /treating the project as `web`/);
+    assert.equal(res.stdout.includes('This project targets'), false);
+  });
+
+  it('emits no warning for an empty Platform section', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\n## Users\n\nAnglers.\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('WARNING: PRODUCT.md'), false);
     assert.equal(res.stdout.includes('This project targets'), false);
   });
 });

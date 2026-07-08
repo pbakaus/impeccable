@@ -707,6 +707,8 @@ export function extractSectionValue(product, heading) {
     if (headingRe.test(lines[i].trim())) {
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim();
+        // A new heading before any value means the section is empty.
+        if (/^#{1,6}\s/.test(next)) return null;
         if (next) return next;
       }
     }
