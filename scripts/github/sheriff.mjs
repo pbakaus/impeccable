@@ -134,9 +134,11 @@ export function evaluatePullRequest(pr, options = {}) {
     ...reviewThreadCommentsBy(pr.reviewThreads, author).map((comment) => comment.createdAt),
   ]);
   const latestMaintainerWaitAt = latestMaintainerWaitCommand(pr, maintainers);
-  const latestBlockingReviewAt = latestDate((pr.reviews || [])
-    .filter((review) => REVIEW_BLOCKING_STATES.has(review.state))
-    .map((review) => review.submittedAt));
+  const latestBlockingReviewAt = pr.reviewDecision === 'CHANGES_REQUESTED'
+    ? latestDate((pr.reviews || [])
+      .filter((review) => REVIEW_BLOCKING_STATES.has(review.state))
+      .map((review) => review.submittedAt))
+    : null;
   const unresolvedThreadBlockers = unresolvedThreadsNeedingContributor(pr.reviewThreads || [], author);
 
   const blockers = [];

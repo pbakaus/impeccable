@@ -300,6 +300,55 @@ describe('github sheriff', () => {
     assert.deepEqual(plan.labelsToAdd, ['needs maintainer review']);
   });
 
+  it('ignores stale changes-requested reviews after the current review decision clears', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-01T00:00:00Z',
+      latestCommitAt: '2026-07-01T01:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'APPROVED',
+      reviews: [
+        {
+          authorLogin: 'pbakaus',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-07-02T00:00:00Z',
+          body: 'Needs changes.',
+        },
+        {
+          authorLogin: 'pbakaus',
+          state: 'APPROVED',
+          submittedAt: '2026-07-03T00:00:00Z',
+          body: 'Looks good now.',
+        },
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.equal(plan.readyToMerge, true);
+    assert.deepEqual(plan.labelsToAdd, ['ready to merge']);
+  });
+
+  it('blocks current changes-requested reviews until the contributor responds', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-07-04T00:00:00Z',
+      latestCommitAt: '2026-07-01T01:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'CHANGES_REQUESTED',
+      reviews: [
+        {
+          authorLogin: 'pbakaus',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-07-02T00:00:00Z',
+          body: 'Needs changes.',
+        },
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, ['blocked: review threads', 'waiting on contributor']);
+  });
+
   it('keeps changes-requested PRs in maintainer review after the contributor pushes', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-07-01T00:00:00Z',
