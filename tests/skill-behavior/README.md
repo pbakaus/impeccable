@@ -50,6 +50,10 @@ The trace is the source of truth, not the model's free-form reply.
 | 7 | same fixture; prompt is `/impeccable audit` | loads `reference/audit.md` |
 | 8 | PRODUCT.md + DESIGN.md + a SvelteKit scaffold (`src/app.css`, components, `+page.svelte`); prompt is `/impeccable polish src/routes/+page.svelte` | reads at least one project code file (CSS / component / page) — not just the skill's reference files |
 | 9 | PRODUCT.md + `index.html` + a seeded update cache with a newer version (`skillVersion` copy-mode so `context.mjs` has a `SKILL.md` to version-check against); prompt is `/impeccable polish index.html` | `context.mjs` runs and its output carries the `UPDATE_AVAILABLE` directive (proven via captured bash output); the agent does **not** auto-run `npx impeccable update` (it must ask first) |
+| 10 | no PRODUCT.md + a minimal `index.html`; prompt is `/impeccable polish index.html` | runs `context.mjs`, loads `reference/polish.md`, and does **not** divert into `reference/init.md` |
+| 11 | empty workspace; prompt is `/impeccable shape ...` | runs `context.mjs`, diverts into `reference/init.md`, and does **not** start writing HTML/CSS |
+| 12 | empty workspace; prompt is natural-language build intent with no command word | runs `context.mjs`, diverts into `reference/init.md`, and does **not** start writing HTML/CSS |
+| 13 | empty workspace; prompt is `/impeccable teach` | runs `context.mjs` and diverts into `reference/init.md` because `teach` aliases `init` |
 
 Scenario 9 passed on all three current-lineup providers (`claude-sonnet-4-6`,
 `gpt-5.5`, `gemini-3.1-flash-lite`) on 2026-05-28.

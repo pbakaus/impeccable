@@ -2,8 +2,9 @@
  * Context loader: prints PRODUCT.md (and DESIGN.md if present) as one
  * markdown block on stdout, or prints a `NO_PRODUCT_MD:` message when no
  * PRODUCT.md is found anywhere. The skill keys off that message to branch:
- * from-scratch build commands (init / craft / shape) divert into the init
- * flow, while scoped commands proceed using the existing code as context.
+ * from-scratch build commands (init / teach / craft / shape) and clear
+ * build/shape intent divert into the init flow, while scoped commands proceed
+ * using the existing code as context.
  *
  * Path resolution (first match wins):
  *   1. Active project root, if PRODUCT.md or DESIGN.md is there
@@ -861,7 +862,8 @@ async function cli() {
     // — cheap models miss the empty case more often than the explicit one.
     const parts = [
       'NO_PRODUCT_MD: This project has no PRODUCT.md yet. ' +
-      'Follow SKILL.md Setup step 1: for `init`, `craft`, or `shape`, load ' +
+      'Follow SKILL.md Setup step 1: for `init`, `teach`, `craft`, `shape`, ' +
+      'or wording that clearly maps to a from-scratch build/shape flow, load ' +
       'reference/init.md and write PRODUCT.md first; for any other (scoped) ' +
       'command against existing code, proceed using the code as context and ' +
       'offer `/impeccable init` as a suggestion (do not block).',

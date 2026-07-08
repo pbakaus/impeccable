@@ -35,6 +35,8 @@ import {
 
 const CRAFT_PROMPT = '/impeccable craft a landing page for the project in this workspace';
 const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this workspace';
+const NATURAL_BUILD_PROMPT = 'Build a landing page for the project in this workspace.';
+const TEACH_PROMPT = '/impeccable teach';
 const PRIMER_PROMPT =
   'Take a quick look at the project. What register is this? Run the impeccable context loader once if you need to.';
 
@@ -479,6 +481,74 @@ for (const modelId of resolveModelList()) {
           false,
           `agent should not write implementation files before resolving missing PRODUCT.md.\n` +
             `wrote: ${trace.writePaths.join(', ')}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 12: intent-routed build with no PRODUCT.md still diverts into init', async () => {
+      // Setup runs before the routing table maps natural language like "build a
+      // landing page" to `craft`, so the NO_PRODUCT_MD guard itself must catch
+      // clearly-from-scratch build intent.
+      const workspace = prepareWorkspace({ files: {} });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: NATURAL_BUILD_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S12', 'natural-build-no-context', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          bashCommandsMatching(trace, 'context.mjs').length >= 1,
+          `expected agent to run context.mjs at least once.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        const initLoaded =
+          readsMatching(trace, 'init.md').length > 0 ||
+          bashCommandsMatching(trace, 'init.md').length > 0;
+        assert.ok(
+          initLoaded,
+          `natural-language build intent should divert into init.md when PRODUCT.md is missing.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        const wroteHtml = trace.writePaths.some((p) => /\.(html?|css|svelte|jsx?|tsx?)$/i.test(p));
+        assert.equal(
+          wroteHtml,
+          false,
+          `agent should not write implementation files before resolving missing PRODUCT.md.\n` +
+            `wrote: ${trace.writePaths.join(', ')}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    it('scenario 13: teach alias with no PRODUCT.md diverts into init', async () => {
+      // `teach` is a deprecated alias for `init`, so it belongs to the same
+      // missing-PRODUCT.md blocker path instead of the scoped-command path.
+      const workspace = prepareWorkspace({ files: {} });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: TEACH_PROMPT,
+          maxSteps: 6,
+        });
+        logTrace('S13', 'teach-no-context', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          bashCommandsMatching(trace, 'context.mjs').length >= 1,
+          `expected agent to run context.mjs at least once.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        const initLoaded =
+          readsMatching(trace, 'init.md').length > 0 ||
+          bashCommandsMatching(trace, 'init.md').length > 0;
+        assert.ok(
+          initLoaded,
+          `/impeccable teach should behave like init and load init.md when PRODUCT.md is missing.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
         cleanupWorkspace(workspace);
