@@ -4,7 +4,7 @@ This is a code-level audit, not a design critique. Check what's measurable and v
 
 ## Platform
 
-The dimensions below are written for web. For native (`ios` / `android` / `adaptive`), translate them to platform terms: accessibility is **VoiceOver / TalkBack** correctness (labels, roles, reading order, Dynamic Type / scalable text reflow), not WCAG contrast-and-ARIA by rote; touch targets are 44 pt (iOS) / 48 dp (Android); appearance must cover Dark Mode / dark theme. The bundled `detect.mjs` rule engine is web-only; don't run it against native code. See [ios.md](ios.md) and [android.md](android.md) (`adaptive` audits against both).
+The dimensions below are written for web. Native (`ios` / `android` / `adaptive`) audits translate: accessibility means **VoiceOver / TalkBack** correctness (labels, roles, reading order, Dynamic Type / scalable text reflow); touch targets are 44 pt (iOS) / 48 dp (Android); appearance covers Dark Mode / dark theme. `detect.mjs` is web-only; never run it against native code. See [ios.md](ios.md) / [android.md](android.md) (`adaptive` audits both).
 
 ## Diagnostic Scan
 

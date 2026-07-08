@@ -923,7 +923,7 @@ async function cli() {
     const refList = nativeRefs.map(p => `\`reference/${p}.md\``).join(' and ');
     const label = platform === 'adaptive' ? '`adaptive` (both iOS and Android)' : `\`${platform}\``;
     parts.push(
-      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions (this is on top of the register reference above).`,
+      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions, in addition to the register reference.`,
     );
   } else if (!platform) {
     // A `## Platform` section that names something we don't recognize (a

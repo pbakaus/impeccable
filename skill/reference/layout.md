@@ -10,7 +10,7 @@ Product: predictable grids, consistent densities, familiar navigation patterns. 
 
 ## Platform
 
-Native (`ios` / `android` / `adaptive`): structure follows platform navigation, not web layout. Use the standard nav models (iOS tab bar / navigation stack; Android navigation bar / rail / drawer), respect safe-area / window insets, and size touch targets to spec (44 pt iOS, 48 dp Android). See [ios.md](ios.md) and [android.md](android.md); `adaptive` lays out per OS.
+Native (`ios` / `android` / `adaptive`): structure follows platform navigation (iOS tab bar / navigation stack; Android navigation bar / rail / drawer), safe-area / window insets, and spec touch targets (44 pt iOS, 48 dp Android). See [ios.md](ios.md) and [android.md](android.md); `adaptive` lays out per OS.
 
 ---
 

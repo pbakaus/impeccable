@@ -4,7 +4,7 @@ Adapt an existing design to a different context: another screen size, device, pl
 
 ## Platform
 
-This reference is about **responsive web** (viewport, breakpoints, touch vs pointer, safe areas, responsive images): all of it is `web`, including mobile web. When the target is a **native** app (`ios` / `android` / `adaptive`), "adapt" means conforming to that platform's conventions, not just reflowing a layout. Load the native reference ([ios.md](ios.md) / [android.md](android.md); `adaptive` loads both) and adapt to its navigation model, controls, touch sizing, and accessibility model rather than porting web patterns across.
+Everything below is responsive web, mobile web included. Native targets (`ios` / `android` / `adaptive`): adapting means conforming to the platform's navigation model, controls, and touch sizing, never reflowing a web layout. Load [ios.md](ios.md) / [android.md](android.md) (`adaptive` loads both).
 
 ---
 

@@ -16,7 +16,7 @@ Decision tree:
 - **Neither file exists (empty project or no context yet)**: do Steps 2-4 (write PRODUCT.md), then decide on DESIGN.md based on whether there's code to analyze.
 - **PRODUCT.md exists, DESIGN.md missing**: skip to Step 5 and offer to run `/impeccable document` for DESIGN.md.
 - **PRODUCT.md exists but has no `## Register` section (legacy)**: add it. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field.
-- **PRODUCT.md exists but has no `## Platform` section (legacy)**: add it the same way. Infer a hypothesis from the codebase (see Step 2), confirm with the user, write the field. A missing field defaults to `web`, so only add it when the project is native (`ios` / `android` / `adaptive`) or when the user wants it explicit.
+- **PRODUCT.md exists but has no `## Platform` section (legacy)**: add it the same way, but only when the project is native (`ios` / `android` / `adaptive`) or the user wants it explicit; a missing field already means `web`.
 - **Both exist**: {{ask_instruction}} Ask which file to refresh. Skip the one the user doesn't want changed.
 - **Just DESIGN.md exists (unusual)**: do Steps 2-4 to produce PRODUCT.md.
 
@@ -47,7 +47,7 @@ Also form a **platform hypothesis**:
 - Native signals: React Native / Expo (`react-native`, `expo`), Flutter (`pubspec.yaml`, `flutter`), SwiftUI / UIKit (`.swift`, `.xcodeproj`, an `ios/` app target), Jetpack Compose / Android (`build.gradle`, an `android/` app module, `AndroidManifest.xml`). An `ios/` and/or `android/` directory that is a real app target, not just a Capacitor/Cordova wrapper around a website.
 - Web signals (the default): a web framework (Vite, Next, Nuxt, SvelteKit, Astro), an HTML entry, a CSS/Tailwind setup, no native app target.
 
-Platform values are `web` / `ios` / `android` / `adaptive` (a cross-platform app that ships both iOS and Android from one codebase and adapts per OS: Flutter, React Native, KMP). "Mobile web" (a responsive site) is still `web`. Like register, platform is a hypothesis here; Step 3 confirms it.
+Values: `web` / `ios` / `android` / `adaptive` (one codebase, ships both, adapts per OS). Mobile web is still `web`. Like register, this is a hypothesis; Step 3 confirms it.
 
 Note what you've learned and what remains unclear. Also note any rough edges worth a follow-up command (thin hierarchy, flat or gray palette, missing error/empty states, dull copy); Step 7 turns these into concrete recommendations without re-analyzing.
 
@@ -80,11 +80,11 @@ If the signal is genuinely split (e.g. a product with a big marketing landing), 
 
 ### Platform (ask right after register)
 
-Every project targets **web** (a website or web app, including responsive mobile web), **ios** (a native iOS / iPadOS app), **android** (a native Android app), or **adaptive** (a cross-platform app that ships both iOS and Android from one codebase: Flutter, React Native, KMP). Platform is orthogonal to register and shapes which native conventions apply: Apple HIG for `ios`, Material Design for `android`, **both** for `adaptive`; `web` has none beyond the General rules.
+Every project targets **web** (includes responsive mobile web), **ios**, **android**, or **adaptive** (one codebase, ships both, adapts per OS: Flutter, React Native, KMP). Platform picks the native rulebook: HIG for `ios`, Material 3 for `android`, both for `adaptive`, none for `web`.
 
-If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [web / ios / android / adaptive] project. Does that match?"* For a cross-platform app (Flutter, React Native), decide by the **design language the app actually renders**, not the toolchain: if it uses one platform's look on both (Material-everywhere is the Flutter default), write that platform (`android`); if it genuinely adapts per OS (Cupertino on iOS, Material on Android), write `adaptive` so both references load. When in doubt, it's `web`.
+If Step 2 produced a clear hypothesis, lead with it: *"From the codebase, this looks like a [web / ios / android / adaptive] project. Does that match?"* For cross-platform apps, decide by the **design language the app renders**, not the toolchain: one look on both platforms (Flutter's Material-everywhere default) takes that platform's value; genuine per-OS adaptation (Cupertino on iOS, Material on Android) is `adaptive`. When in doubt, `web`.
 
-A repo that ships **both a website and a native app** (e.g. marketing site + RN app in one monorepo) can't be captured by one value: give each app its own PRODUCT.md with its own `## Platform` (the monorepo context resolution already reads per-app files, falling back to the root), and keep the root PRODUCT.md on the primary surface's platform.
+A monorepo shipping both a website and a native app gets a PRODUCT.md per app, each with its own `## Platform`; the root PRODUCT.md carries the primary surface's platform.
 
 ### Users & Purpose
 - Who uses this? What's their context when using it?
@@ -157,7 +157,7 @@ If the user prefers to skip, mention they can run `/impeccable document` any tim
 
 ## Step 6: Configure live mode (when code exists)
 
-**Skip this step entirely when the platform is native** (`ios` / `android` / `adaptive`): live mode drives a browser overlay and has nothing to attach to in a native app. Don't write a live config just because a hybrid wrapper or an Expo web target technically serves HTML.
+**Skip this step when the platform is native** (`ios` / `android` / `adaptive`): live mode drives a browser overlay. A hybrid wrapper or Expo web target serving HTML doesn't change that.
 
 If the project has code with HTML entries and a dev server (the same "code exists" condition that puts `/impeccable document` in scan mode), pre-configure live mode now. You already identified the framework and the served HTML entry in Step 2, so this is nearly free, and it spares the user the first-time setup detour when they later run `/impeccable live`.
 
@@ -185,7 +185,7 @@ Then recommend the **best commands to run next**, drawn from what your Step 2 cr
 
 - **Build something new**: `/impeccable craft <feature>` (shape, then build end-to-end) or `/impeccable shape <feature>` (plan first). Lead with this for empty or early-stage projects.
 - **Improve what's there**: name the specific surface. `/impeccable critique <page>` for a scored UX review; `/impeccable audit <area>` for a11y / perf / responsive checks; `/impeccable polish <component>` for a pre-ship pass. When the crawl flagged a specific weakness, point the matching command at it: thin hierarchy or spacing → `layout`, flat or gray palette → `colorize`, missing error / empty states → `harden` or `onboard`, dull or unclear copy → `clarify`.
-- **Iterate visually** (web only): `/impeccable live` (configured in Step 6) to pick elements in the browser and generate variants in place. **Skip this group for native projects** (platform `ios` / `android` / `adaptive`): live mode drives a browser and doesn't apply to native app code.
+- **Iterate visually** (web only): `/impeccable live` (configured in Step 6) to pick elements in the browser and generate variants in place. **Skip this group for native platforms.**
 
 The full command menu is one bare `/impeccable` away; keep this list short and pointed.
 
