@@ -739,8 +739,15 @@ export function extractPlatform(product) {
   const value = (extractSectionValue(product, 'Platform') || '').toLowerCase();
   if (!value) return null;
   if (value === 'web' || value === 'ios' || value === 'android' || value === 'adaptive') return value;
-  // A cross-platform line naming both native targets = adaptive.
-  if (/\bios\b/.test(value) && /\bandroid\b/.test(value)) return 'adaptive';
+  // A short list naming both native targets (`ios, android`, `ios and
+  // android`) = adaptive. Only list separators and the two platform words may
+  // appear; anything else (prose, negations) is unrecognized and falls
+  // through to the CLI's WARNING path.
+  const tokens = value.split(/[\s,+&/]+/).filter(t => t && t !== 'and');
+  if (tokens.length >= 2 && tokens.every(t => t === 'ios' || t === 'android')
+    && tokens.includes('ios') && tokens.includes('android')) {
+    return 'adaptive';
+  }
   return null;
 }
 

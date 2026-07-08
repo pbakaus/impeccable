@@ -746,6 +746,14 @@ describe('extractPlatform', () => {
   it('reads a line naming both native targets as adaptive', () => {
     assert.equal(extractPlatform('## Platform\n\nios, android\n'), 'adaptive');
     assert.equal(extractPlatform('## Platform\n\nandroid and ios\n'), 'adaptive');
+    assert.equal(extractPlatform('## Platform\n\nios/android\n'), 'adaptive');
+  });
+
+  it('does not read prose mentioning both targets as adaptive', () => {
+    // Negations and explanations must fall through to the unrecognized-value
+    // warning, never silently classify as cross-platform native.
+    assert.equal(extractPlatform('## Platform\n\nweb only, not ios or android\n'), null);
+    assert.equal(extractPlatform('## Platform\n\nios first, android later this year\n'), null);
   });
 
   it('returns null for an unrecognized value', () => {
