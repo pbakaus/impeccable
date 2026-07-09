@@ -6,7 +6,7 @@
  *   node <scripts_path>/pin.mjs pin <command>
  *   node <scripts_path>/pin.mjs unpin <command>
  *
- * `pin audit` creates a lightweight /audit skill that redirects to /impeccable audit.
+ * `pin audit` creates a lightweight /audit skill that redirects to $impeccable audit.
  * `unpin audit` removes that shortcut.
  *
  * The script discovers harness directories (.claude/skills, .cursor/skills, etc.)
@@ -88,7 +88,7 @@ function loadCommandMetadata() {
  * Generate a pinned skill's SKILL.md content.
  */
 function generatePinnedSkill(command, metadata) {
-  const desc = metadata[command]?.description || `Shortcut for /impeccable ${command}.`;
+  const desc = metadata[command]?.description || `Shortcut for $impeccable ${command}.`;
   const hint = metadata[command]?.argumentHint || '[target]';
 
   return `---
@@ -100,9 +100,9 @@ user-invocable: true
 
 ${PIN_MARKER}
 
-This is a pinned shortcut for \`{{command_prefix}}impeccable ${command}\`.
+This is a pinned shortcut for \`$impeccable ${command}\`.
 
-Invoke {{command_prefix}}impeccable ${command}, passing along any arguments provided here, and follow its instructions.
+Invoke $impeccable ${command}, passing along any arguments provided here, and follow its instructions.
 `;
 }
 
@@ -177,7 +177,7 @@ function unpin(command, projectRoot) {
 
   if (removed > 0) {
     console.log(`\nUnpinned '${command}' from ${removed} location(s).`);
-    console.log(`Use /impeccable ${command} to access it.`);
+    console.log(`Use $impeccable ${command} to access it.`);
   } else {
     console.log(`No pinned '${command}' shortcut found.`);
   }

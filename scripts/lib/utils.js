@@ -739,12 +739,14 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
     .replace(/\{\{available_commands\}\}/g, commandList);
 
   // Replace `/skillname` invocations with the correct command prefix for this provider
-  // (e.g., `/normalize` → `$normalize` for Codex)
+  // (e.g., `/normalize` → `$normalize` for Codex). Require the slash to be
+  // outside a path or URL so `.github/hooks/impeccable.json` and
+  // `.codex/skills/impeccable` remain untouched.
   if (cmdPrefix !== '/' && allSkillNames.length > 0) {
     const sorted = [...allSkillNames].sort((a, b) => b.length - a.length);
     for (const name of sorted) {
       result = result.replace(
-        new RegExp(`\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
+        new RegExp(`(?<![a-zA-Z0-9_./-])\\/(?=${escapeRegex(name)}(?:[^a-zA-Z0-9_-]|$))`, 'g'),
         cmdPrefix
       );
     }

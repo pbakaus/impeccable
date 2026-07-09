@@ -20,7 +20,7 @@ function skillMd(version) {
   return `---\nname: impeccable\nversion: ${version}\nuser-invocable: true\n---\n\nBody.\n`;
 }
 
-function writeFixture(root, { plugin, marketplace, subtreePlugin, skill } = {}) {
+function writeFixture(root, { plugin, marketplace, subtreePlugin, codexPlugin, skill } = {}) {
   const write = (rel, contents) => {
     const abs = path.join(root, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -34,6 +34,9 @@ function writeFixture(root, { plugin, marketplace, subtreePlugin, skill } = {}) 
   }
   if (subtreePlugin !== undefined) {
     write('plugin/.claude-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: subtreePlugin, skills: './skills/' }, null, 2));
+  }
+  if (codexPlugin !== undefined) {
+    write('dist/openai/impeccable/.codex-plugin/plugin.json', JSON.stringify({ name: 'impeccable', version: codexPlugin, skills: './skills/' }, null, 2));
   }
   if (skill !== undefined) {
     write('plugin/skills/impeccable/SKILL.md', skillMd(skill));
@@ -50,7 +53,7 @@ describe('collectPluginVersions', () => {
   });
 
   test('no mismatches when every version agrees', () => {
-    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1', subtreePlugin: '3.7.1', skill: '3.7.1' });
+    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1', subtreePlugin: '3.7.1', codexPlugin: '3.7.1', skill: '3.7.1' });
     const { source, mismatches } = collectPluginVersions(root);
     expect(source).toBe('3.7.1');
     expect(mismatches).toEqual([]);
@@ -69,6 +72,14 @@ describe('collectPluginVersions', () => {
     const { mismatches } = collectPluginVersions(root);
     expect(mismatches).toEqual([
       { relPath: 'plugin/.claude-plugin/plugin.json', found: '3.6.0', expected: '3.7.1' },
+    ]);
+  });
+
+  test('flags a stale Codex plugin manifest', () => {
+    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1', subtreePlugin: '3.7.1', codexPlugin: '3.6.0', skill: '3.7.1' });
+    const { mismatches } = collectPluginVersions(root);
+    expect(mismatches).toEqual([
+      { relPath: 'dist/openai/impeccable/.codex-plugin/plugin.json', found: '3.6.0', expected: '3.7.1' },
     ]);
   });
 

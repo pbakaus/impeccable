@@ -100,9 +100,9 @@ user-invocable: true
 
 ${PIN_MARKER}
 
-This is a pinned shortcut for \`{{command_prefix}}impeccable ${command}\`.
+This is a pinned shortcut for \`/impeccable ${command}\`.
 
-Invoke {{command_prefix}}impeccable ${command}, passing along any arguments provided here, and follow its instructions.
+Invoke /impeccable ${command}, passing along any arguments provided here, and follow its instructions.
 `;
 }
 

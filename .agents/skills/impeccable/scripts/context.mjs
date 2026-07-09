@@ -902,7 +902,7 @@ async function cli() {
       'or wording that clearly maps to a from-scratch build/shape flow, load ' +
       'reference/init.md and write PRODUCT.md first; for any other (scoped) ' +
       'command against existing code, proceed using the code as context and ' +
-      'offer `/impeccable init` as a suggestion (do not block).',
+      'offer `$impeccable init` as a suggestion (do not block).',
     ];
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {

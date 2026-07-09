@@ -150,6 +150,38 @@ describe('createTransformer factory', () => {
     expect(ref1).toBe('Reference 1 content');
   });
 
+  test('should render provider command syntax in bundled scripts without rewriting paths', () => {
+    const config = {
+      ...baseConfig,
+      provider: 'codex',
+      placeholderProvider: 'codex',
+    };
+    const transform = createTransformer(config);
+    const skills = [{
+      name: 'impeccable',
+      description: 'Test',
+      body: 'Body',
+      scripts: [{
+        name: 'example.mjs',
+        content: [
+          'const command = "{{command_prefix}}impeccable polish";',
+          'const hint = "Run /impeccable audit";',
+          'const hook = ".github/hooks/impeccable.json";',
+        ].join('\n'),
+      }],
+    }];
+
+    transform(skills, TEST_DIR);
+
+    const script = fs.readFileSync(
+      path.join(TEST_DIR, 'codex/.test/skills/impeccable/scripts/example.mjs'),
+      'utf-8',
+    );
+    expect(script).toContain('"$impeccable polish"');
+    expect(script).toContain('"Run $impeccable audit"');
+    expect(script).toContain('".github/hooks/impeccable.json"');
+  });
+
   test('should clean existing directory before writing', () => {
     const transform = createTransformer(baseConfig);
     const existingDir = path.join(TEST_DIR, 'cursor/.test/skills/old');

@@ -654,4 +654,22 @@ describe('replacePlaceholders', () => {
     const result = replacePlaceholders('{{model}} {{config_file}}', 'unknown-provider');
     expect(result).toBe('the model .cursorrules');
   });
+
+  test('should replace Codex command invocations without rewriting paths', () => {
+    const source = [
+      'Run /impeccable audit.',
+      'Use `/impeccable polish` next.',
+      '.github/hooks/impeccable.json',
+      '.codex/skills/impeccable/scripts/context.mjs',
+      'https://example.com/impeccable',
+    ].join('\n');
+
+    const result = replacePlaceholders(source, 'codex', [], ['impeccable']);
+
+    expect(result).toContain('Run $impeccable audit.');
+    expect(result).toContain('Use `$impeccable polish` next.');
+    expect(result).toContain('.github/hooks/impeccable.json');
+    expect(result).toContain('.codex/skills/impeccable/scripts/context.mjs');
+    expect(result).toContain('https://example.com/impeccable');
+  });
 });

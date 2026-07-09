@@ -184,8 +184,9 @@ describe('generated hook artifacts in repo', () => {
       '.claude/hooks/hooks.json',
       '.agents/hooks',
       '.agents/plugins/marketplace.json',
+      'plugin/.codex-plugin',
+      'plugin/assets',
       'plugin-codex',
-      'plugin/.codex-plugin/plugin.json',
     ]) {
       assert.equal(fs.existsSync(path.join(REPO_ROOT, rel)), false, `${rel} should not exist`);
     }

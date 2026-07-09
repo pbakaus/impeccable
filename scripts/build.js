@@ -22,8 +22,9 @@ import { readSourceFiles, readPatterns, stashPerProjectArtifacts, restorePerProj
 import { generateApiData } from './lib/api-data.js';
 import { createTransformer, PROVIDERS } from './lib/transformers/index.js';
 import { hooksJsonFor, buildClaudePluginHooksManifest } from './lib/transformers/hooks.js';
-import { createAllZips } from './lib/zip.js';
+import { createAllZips, createProviderZip } from './lib/zip.js';
 import { collectPluginVersions } from './lib/validate-plugin-versions.js';
+import { stageOpenAIPlugin } from './lib/openai-plugin.js';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
 // Sub-page generation is now handled by Astro content collections.
 
@@ -748,6 +749,12 @@ async function build() {
     if (fs.existsSync(pluginSkillsDir)) fs.rmSync(pluginSkillsDir, { recursive: true });
     if (fs.existsSync(pluginAgentsDir)) fs.rmSync(pluginAgentsDir, { recursive: true });
     if (fs.existsSync(pluginHooksDir)) fs.rmSync(pluginHooksDir, { recursive: true });
+    // Clean up the short-lived mixed-provider subtree from early OpenAI plugin
+    // development. The canonical Codex preview now lives in dist/openai/.
+    for (const staleRel of ['.codex-plugin', 'assets']) {
+      const stalePath = path.join(pluginRoot, staleRel);
+      if (fs.existsSync(stalePath)) fs.rmSync(stalePath, { recursive: true });
+    }
 
     const rootManifest = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, '.claude-plugin/plugin.json'), 'utf-8'));
     const claudeAgentsSrc = path.join(DIST_DIR, 'claude-code', '.claude', 'agents');
@@ -797,6 +804,12 @@ async function build() {
   } else {
     console.log('📋 Skipped root harness and plugin sync (--skip-root-sync)');
   }
+
+  // The public OpenAI plugin is a Codex artifact, not a copy of the tracked
+  // Claude marketplace subtree. Build it on every source-first build so the
+  // upload ZIP and local preview directory cannot drift behind provider output.
+  const openAiPluginRoot = stageOpenAIPlugin(ROOT_DIR, DIST_DIR);
+  await createProviderZip(openAiPluginRoot, DIST_DIR, 'openai-plugin');
 
   // Generate authoritative counts and validate references
   const countErrors = generateCounts(ROOT_DIR, skills, buildDir);

@@ -11,6 +11,9 @@
  * 2. Claude Code plugin package (the marketplace / `/plugin install` path):
  *      - `plugin/hooks/hooks.json`              (${CLAUDE_PLUGIN_ROOT}-relative)
  *
+ * 3. OpenAI plugin package:
+ *      - `hooks/hooks.json`                     (${PLUGIN_ROOT}-relative)
+ *
  * The plugin variant resolves the hook script relative to the installed plugin
  * root rather than assuming a `.claude/skills/impeccable/` layout, so it stays
  * correct wherever Claude Code unpacks the plugin.
@@ -22,6 +25,7 @@ const TIMEOUT_SECONDS = 5;
 const STATUS_MESSAGE = 'Checking UI changes';
 const CLAUDE_PROJECT_HOOK = '${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs';
 const CLAUDE_PLUGIN_HOOK = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
+const CODEX_PLUGIN_HOOK = '${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs';
 const CODEX_PROJECT_HOOK = '.agents/skills/impeccable/scripts/hook.mjs';
 const CURSOR_BEFORE_EDIT_SCRIPT = '.cursor/skills/impeccable/scripts/hook-before-edit.mjs';
 const GITHUB_PROJECT_HOOK = '$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs';
@@ -63,6 +67,29 @@ export function buildClaudePluginHooksManifest() {
             {
               type: 'command',
               command: `node "${CLAUDE_PLUGIN_HOOK}"`,
+              timeout: TIMEOUT_SECONDS,
+              statusMessage: STATUS_MESSAGE,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+// OpenAI plugin-packaged variant. Codex exposes ${PLUGIN_ROOT} for resources
+// inside the installed plugin, so the public bundle can use the native path
+// instead of relying on its Claude compatibility alias.
+export function buildCodexPluginHooksManifest() {
+  return {
+    hooks: {
+      PostToolUse: [
+        {
+          matcher: 'Edit|Write|apply_patch',
+          hooks: [
+            {
+              type: 'command',
+              command: `node "${CODEX_PLUGIN_HOOK}"`,
               timeout: TIMEOUT_SECONDS,
               statusMessage: STATUS_MESSAGE,
             },
