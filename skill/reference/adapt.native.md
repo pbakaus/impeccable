@@ -1,6 +1,6 @@
 > **Additional context needed**: target platforms/devices and usage contexts.
 
-Adapt an existing **native** design (`ios` / `android` / `adaptive`) to a different context: another device class, orientation, platform, or origin. The trap is treating adaptation as scaling. The job is rethinking the experience for the new context, inside the platform conventions from the reference(s) loaded in Setup ([ios.md](ios.md) / [android.md](android.md)).
+Adapt an existing **native** design (`ios` / `android` / `adaptive`) to a different context: another device class, orientation, platform, or origin. The trap is treating adaptation as scaling. The job is rethinking the experience for the new context, inside the platform conventions of [ios.md](ios.md) / [android.md](android.md); read the target platform's reference before planning if Setup hasn't already.
 
 ## Assess Adaptation Challenge
 
