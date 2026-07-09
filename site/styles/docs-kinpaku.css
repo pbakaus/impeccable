@@ -1694,6 +1694,10 @@ html.light .docs-kinpaku .prose .code-block code {
   /* Doc.astro initSplitCompare uses skewAngle: 0 — vertical seam, not the
      angled default from sub-pages.css / main.css. */
   clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%);
+  background: var(--ks-lacquer-raised);
+}
+
+html.dark .docs-kinpaku .docs-command-demo .split-after {
   background: var(--ks-lacquer-deep);
 }
 
