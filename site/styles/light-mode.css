@@ -1244,7 +1244,7 @@ html.light .docs-kinpaku .docs-command-demo .split-before {
 }
 
 html.light .docs-kinpaku .docs-command-demo .split-after {
-  background: var(--ks-lacquer-raised);
+  background: oklch(4% 0.004 95);
 }
 
 html.light .docs-kinpaku .docs-command-demo .demo-caption {
