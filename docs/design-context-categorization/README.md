@@ -9,6 +9,7 @@ Source examples analyzed (local scratch runs, not tracked in this repo):
 
 ## Documents
 
+- [`WHAT.md`](./WHAT.md) — first draft of what we're building: a visual, browsable rendering of this categorization on the live site.
 - [`CONTENTS.md`](./CONTENTS.md) — what maps where, per category, with gaps and rationale.
 - [`CONTENTS-TABLE.md`](./CONTENTS-TABLE.md) — the same mapping as lean per-category Value / Derived from / Source tables, no prose.
 - [`MISSING.md`](./MISSING.md) — content gaps neither example run produces, regardless of category.
