@@ -145,24 +145,26 @@ export function evaluatePullRequest(pr, options = {}) {
   const unresolvedThreadBlockers = unresolvedThreadsNeedingContributor(pr.reviewThreads || [], author);
 
   const blockers = [];
+  const addBlocker = (blocker) => blockers.push({ contributorAction: false, ...blocker });
+  const addContributorBlocker = (blocker) => blockers.push({ contributorAction: true, ...blocker });
   if (pr.isDraft) {
-    blockers.push({ kind: 'draft' });
+    addContributorBlocker({ kind: 'draft' });
   }
 
   if (FAILING_STATUS_STATES.has(pr.statusState)) {
-    blockers.push({ kind: 'ci', label: 'blocked: ci', at: pr.latestCommitAt || pr.updatedAt });
+    addBlocker({ kind: 'ci', label: 'blocked: ci', at: pr.latestCommitAt || pr.updatedAt });
   }
 
   if (pr.mergeable === 'CONFLICTING') {
-    blockers.push({ kind: 'merge-conflicts', label: 'blocked: merge conflicts', at: pr.updatedAt });
+    addBlocker({ kind: 'merge-conflicts', label: 'blocked: merge conflicts', at: pr.updatedAt });
   }
 
   if (latestBlockingReviewAt && !isAfter(latestContributorAt, latestBlockingReviewAt)) {
-    blockers.push({ kind: 'changes-requested', label: 'blocked: review threads', at: latestBlockingReviewAt });
+    addContributorBlocker({ kind: 'changes-requested', label: 'blocked: review threads', at: latestBlockingReviewAt });
   }
 
   if (unresolvedThreadBlockers.length > 0) {
-    blockers.push({
+    addContributorBlocker({
       kind: 'review-threads',
       label: 'blocked: review threads',
       at: latestDate(unresolvedThreadBlockers.map((thread) => thread.latestCommentAt)),
@@ -170,15 +172,20 @@ export function evaluatePullRequest(pr, options = {}) {
   }
 
   if (latestMaintainerWaitAt && !isAfter(latestContributorAt, latestMaintainerWaitAt)) {
-    blockers.push({ kind: 'sheriff-wait', at: latestMaintainerWaitAt });
+    addContributorBlocker({ kind: 'sheriff-wait', at: latestMaintainerWaitAt });
   }
 
-  const waitingLabelAt = latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent');
+  const waitingLabelAt = latestMaintainerLabelEventAt(
+    pr.labelEvents || [],
+    'waiting on contributor',
+    'LabeledEvent',
+    maintainers,
+  );
   if (labels.has('waiting on contributor') && waitingLabelAt && !isAfter(latestContributorAt, waitingLabelAt)) {
-    blockers.push({ kind: 'manual-waiting', at: waitingLabelAt });
+    addContributorBlocker({ kind: 'manual-waiting', at: waitingLabelAt });
   }
 
-  const contributorActionRequired = blockers.length > 0;
+  const contributorActionRequired = blockers.some((blocker) => blocker.contributorAction);
   const unresolvedThreadCount = (pr.reviewThreads || []).filter((thread) => !thread.isResolved).length;
   const statusIsReady = pr.statusState === 'SUCCESS';
   const mergeableIsReady = pr.mergeable === 'MERGEABLE';
@@ -320,7 +327,7 @@ export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() 
     WARNING_MARKER,
     `Thanks for the PR. Impeccable is moving quickly, and this PR is currently waiting on contributor action.`,
     '',
-    `It has been open for ${daysOpen} days. Please address the outstanding review feedback, CI failure, merge conflict, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days open are closed automatically.`,
+    `It has been open for ${daysOpen} days. Please address the outstanding review feedback, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days open are closed automatically.`,
     '',
     `If nothing changes, this PR may be closed on or after ${closeDate}. Happy to reopen when it is ready to continue.`,
   ].join('\n');
@@ -612,6 +619,13 @@ function hasMarker(comments = [], marker) {
 function latestLabelEventAt(events, label, type) {
   return latestDate(events
     .filter((event) => event.type === type && event.label === label)
+    .map((event) => event.createdAt));
+}
+
+function latestMaintainerLabelEventAt(events, label, type, maintainers) {
+  return latestDate(events
+    .filter((event) => event.type === type && event.label === label)
+    .filter((event) => maintainers.has(normalizeLogin(event.actorLogin)))
     .map((event) => event.createdAt));
 }
 

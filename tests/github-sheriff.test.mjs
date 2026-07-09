@@ -288,14 +288,36 @@ describe('github sheriff', () => {
     assert.equal(plan.shouldClose, false);
   });
 
-  it('marks failing checks as waiting on contributor', () => {
+  it('marks failing checks as blocked without starting the contributor stale clock', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-07-01T00:00:00Z',
       statusState: 'FAILURE',
     }), { now: NOW });
 
-    assert.equal(plan.contributorActionRequired, true);
-    assert.ok(plan.desiredLabels.includes('blocked: ci'));
+    assert.equal(plan.contributorActionRequired, false);
+    assert.deepEqual(plan.labelsToAdd, ['blocked: ci', 'needs maintainer review']);
+    assert.equal(plan.shouldWarn, false);
+    assert.equal(plan.shouldClose, false);
+  });
+
+  it('does not warn or close PRs blocked only by merge conflicts', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      mergeable: 'CONFLICTING',
+      labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'github-actions[bot]', '2026-07-01T00:00:00Z'),
+      ],
+      comments: [
+        comment('github-actions[bot]', '2026-07-01T00:00:00Z', WARNING_MARKER),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.deepEqual(plan.labelsToAdd, ['blocked: merge conflicts', 'needs maintainer review']);
+    assert.deepEqual(plan.labelsToRemove, ['stale', 'waiting on contributor']);
+    assert.equal(plan.shouldWarn, false);
+    assert.equal(plan.shouldClose, false);
   });
 
   it('marks passing resolved PRs as ready to merge', () => {
