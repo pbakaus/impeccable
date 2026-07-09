@@ -1,6 +1,6 @@
 {
   "name": "impeccable",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "author": "Paul Bakaus",
   "description": "Design skills, commands, and anti-pattern detection for AI coding agents",
   "keywords": [
@@ -24,7 +24,7 @@
     "url": "git+https://github.com/pbakaus/impeccable.git"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22.12.0"
   },
   "type": "module",
   "bin": {

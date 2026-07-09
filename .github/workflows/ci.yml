@@ -41,9 +41,14 @@ jobs:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: node scripts/ci-test-plan.mjs
 
-  test:
+  test-matrix:
+    name: test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     needs: changes
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.12.0, 24]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -51,7 +56,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ matrix.node-version }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -104,12 +109,25 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: impeccable-dist
+          name: impeccable-dist-node-${{ matrix.node-version }}
           # Ship the packaged zips, not the unpacked Firefox staging tree.
           path: |
             dist/
             !dist/extension-firefox/
           retention-days: 7
+
+  test:
+    runs-on: ubuntu-latest
+    needs: test-matrix
+    if: always()
+    steps:
+      - name: Verify Node test matrix
+        run: |
+          if [ "${{ needs.test-matrix.result }}" != "success" ]; then
+            echo "test-matrix result: ${{ needs.test-matrix.result }}"
+            exit 1
+          fi
+          echo "test matrix passed"
 
   cli-remote-e2e:
     runs-on: ubuntu-latest
