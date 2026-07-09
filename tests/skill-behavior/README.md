@@ -55,6 +55,7 @@ The trace is the source of truth, not the model's free-form reply.
 | 12 | empty workspace; prompt is natural-language build intent with no command word | runs `context.mjs`, diverts into `reference/init.md`, and does **not** start writing HTML/CSS |
 | 13 | empty workspace; prompt is `/impeccable teach` | runs `context.mjs` and diverts into `reference/init.md` because `teach` aliases `init` |
 | 14 | PRODUCT.md with `## Register: product` + `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `context.mjs` runs and emits a NEXT STEP pointing at `reference/ios.md` (proven via captured bash output); agent loads `reference/ios.md` (Setup step 5, native conventions on top of the register reference) |
+| 15 | same iOS fixture; prompt is `/impeccable audit` | agent loads `reference/audit.native.md` (the Commands-table native variant, routed instead of `audit.md`) |
 
 Scenario 9 passed on all three current-lineup providers (`claude-sonnet-4-6`,
 `gpt-5.5`, `gemini-3.1-flash-lite`) on 2026-05-28.

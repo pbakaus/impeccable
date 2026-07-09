@@ -38,7 +38,7 @@ PRODUCT.md carries a `## Platform` section with a bare value (`web` / `ios` / `a
 
 `ios.md` and `android.md` are distilled from the MIT-licensed [ehmo/platform-design-skills](https://github.com/ehmo/platform-design-skills); attribution is in `NOTICE.md`.
 
-Sub-command reference files add a short `## Platform` section *only where guidance diverges for native*. Don't restate the platform files — link instead. Sub-commands carrying one today: `adapt`, `audit`, `animate`, `layout`.
+Where a command's native guidance diverges too much to share a file, it gets a **native variant**: `reference/<command>.native.md`, listed in SKILL.md's Commands table and routed **instead of** the web file when `setup.platform` is native (Setup step 2). One variant covers ios, android, and adaptive; per-OS specifics stay in the platform refs, which Setup loads regardless. Variants today: `audit.native.md`, `adapt.native.md` (their web files carry a one-line web-only guard that redirects stray native readers). `audit.native.md` mirrors `audit.md`'s report skeleton; change the skeleton in both together. Commands whose divergence the platform refs already cover (`animate`, `layout`) carry nothing extra; don't add in-file translation notes, they make native runs pay for web content.
 
 **Live mode, the `detect` CLI, and the design hook are web-only.** They operate on a browser / HTML rules, so SKILL.md's routing skips live and `detect.mjs` for any native (`ios` / `android` / `adaptive`) project, and the hook (`hook-lib.mjs` `resolveProjectPlatform` / `isNativePlatform`, also used by `hook-before-edit.mjs`) skips its scan when PRODUCT.md declares a native platform — a React Native project is made of exactly the `.tsx` / `.ts` / `.js` files the hook watches.
 
@@ -201,7 +201,7 @@ IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump 
 
 **Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
 
-**Fourteen scenarios:**
+**Fifteen scenarios:**
 1. empty workspace → agent loads `reference/init.md`
 2. PRODUCT.md only → loads `brand.md`
 3. PRODUCT.md + DESIGN.md → loads `brand.md` + consults the design system
@@ -216,6 +216,7 @@ IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior          # dump 
 12. natural-language build intent with no PRODUCT.md → diverts into `reference/init.md`
 13. `/impeccable teach` → diverts into `reference/init.md` (alias)
 14. PRODUCT.md with `## Platform: ios` → `context.mjs` emits the native NEXT STEP and the agent loads `reference/ios.md`
+15. same iOS fixture, `/impeccable audit` → agent loads `reference/audit.native.md` (route-instead variant)
 
 **Baseline.** The 21-22 / 24 baseline (with stable gpt scenario 6/7 failures) was measured on the old cheap tier (`claude-haiku-4-5` / `gpt-5.4-mini`). It needs re-measuring on the current `claude-sonnet-4-6` / `gpt-5.5` lineup; the production-tier models are expected to do better on the sub-command routing scenarios the old gpt tier failed. See `tests/skill-behavior/README.md`.
 

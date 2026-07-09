@@ -8,10 +8,6 @@ Brand: asymmetric compositions, fluid spacing with `clamp()`, intentional grid-b
 
 Product: predictable grids, consistent densities, familiar navigation patterns. Responsive behavior is structural (collapse sidebar, responsive table), not fluid typography. Consistency IS an affordance.
 
-## Platform
-
-Native (`ios` / `android` / `adaptive`): structure follows platform navigation (iOS tab bar / navigation stack; Android navigation bar / rail / drawer), safe-area / window insets, and spec touch targets (44 pt iOS, 48 dp Android). See [ios.md](ios.md) and [android.md](android.md); `adaptive` lays out per OS.
-
 ---
 
 ## Assess Current Layout

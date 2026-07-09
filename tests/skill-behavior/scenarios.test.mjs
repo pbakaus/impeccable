@@ -595,5 +595,38 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    it('scenario 15: native audit routes to the native command variant', async () => {
+      // The Commands table lists audit.native.md as the native variant and
+      // Setup step 2 says to read the variant INSTEAD of audit.md when the
+      // platform is native. This pins the route-instead behavior: a native
+      // audit must reach audit.native.md (reading audit.md first and then
+      // switching via its web-only guard is acceptable; never reaching the
+      // variant is the failure).
+      const workspace = prepareWorkspace({
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS },
+      });
+      try {
+        const { trace, text } = await runTurn({
+          workspace,
+          model,
+          userPrompt: '/impeccable audit the app in this workspace',
+          maxSteps: 6,
+        });
+        logTrace('S15', 'native-audit-variant', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(
+          bashCommandsMatching(trace, 'context.mjs').length >= 1,
+          `expected agent to run context.mjs at least once.\n` +
+            `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        assert.ok(
+          fileLoaded(trace, 'audit.native.md'),
+          `agent should load audit.native.md (not just audit.md) when the platform is ios.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
   });
 }
