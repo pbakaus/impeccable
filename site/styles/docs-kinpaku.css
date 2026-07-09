@@ -1458,7 +1458,6 @@ html.light .docs-kinpaku .prose .code-block code {
   white-space: nowrap;
 }
 
-
 @media (max-width: 760px) {
   .docs-kinpaku .prose table {
     display: block;
