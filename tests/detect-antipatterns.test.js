@@ -1057,6 +1057,19 @@ colors:
       const badScope = runIn(dir, '--scope', 'bogus', 'index.css');
       expect(badScope.code).toBe(1);
       expect(badScope.stderr).toContain('Valid scopes:');
+
+      // A bare --scope must fail instead of silently scanning unscoped.
+      const missingTrailing = runIn(dir, 'index.css', '--scope');
+      expect(missingTrailing.code).toBe(1);
+      expect(missingTrailing.stderr).toContain('--scope requires a value');
+
+      const missingBeforeFlag = runIn(dir, '--scope', '--json', 'index.css');
+      expect(missingBeforeFlag.code).toBe(1);
+      expect(missingBeforeFlag.stderr).toContain('--scope requires a value');
+
+      const emptyInline = runIn(dir, '--scope=', 'index.css');
+      expect(emptyInline.code).toBe(1);
+      expect(emptyInline.stderr).toContain('--scope requires a value');
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

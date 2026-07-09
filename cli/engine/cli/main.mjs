@@ -156,15 +156,23 @@ async function detectCli() {
   if (args.includes('--gemini')) providers.push('gemini');
   const scopes = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--scope' && args[i + 1] && !args[i + 1].startsWith('--')) {
-      scopes.push(...args[i + 1].split(',').map(s => s.trim()).filter(Boolean));
-      args.splice(i, 2);
-      i -= 1;
-    } else if (args[i].startsWith('--scope=')) {
-      scopes.push(...args[i].slice('--scope='.length).split(',').map(s => s.trim()).filter(Boolean));
-      args.splice(i, 1);
-      i -= 1;
+    if (args[i] !== '--scope' && !args[i].startsWith('--scope=')) continue;
+    const inline = args[i].startsWith('--scope=');
+    const value = inline ? args[i].slice('--scope='.length) : args[i + 1];
+    const parsed = (value && !value.startsWith('--'))
+      ? value.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    // A bare `--scope` would otherwise fall out of `targets` and scan unscoped;
+    // fail loudly so a mistyped pre-scan never runs the wrong rule set.
+    if (parsed.length === 0) {
+      process.stderr.write(
+        `Error: --scope requires a value. Valid scopes: ${[...RULE_SCOPES].join(', ')}\n`,
+      );
+      process.exit(1);
     }
+    scopes.push(...parsed);
+    args.splice(i, inline ? 1 : 2);
+    i -= 1;
   }
   const unknownScopes = scopes.filter(s => !RULE_SCOPES.has(s));
   if (unknownScopes.length > 0) {
