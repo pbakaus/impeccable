@@ -15,6 +15,7 @@ import {
   isAllowedColorRaw,
   isAllowedFont,
   isAllowedRadiusRaw,
+  isAllowedFontSizeRaw,
   loadDesignSystemForCwd,
   normalizeDesignSystem,
 } from '../cli/engine/design-system.mjs';
@@ -31,8 +32,9 @@ function sampleDesignSystem() {
   return normalizeDesignSystem({
     frontmatter: {
       typography: {
-        display: { fontFamily: 'Avenir Next, Georgia, serif' },
-        body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+        display: { fontFamily: 'Avenir Next, Georgia, serif', fontSize: 'clamp(2.5rem, 6vw, 4rem)' },
+        body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '16px' },
+        label: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '0.875rem' },
       },
       colors: {
         ink: '#241f1a',
@@ -96,6 +98,15 @@ describe('normalizeDesignSystem()', () => {
     assert.equal(isAllowedRadiusRaw('100px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('9999px', designSystem), true);
     assert.equal(isAllowedRadiusRaw('18px', designSystem), false);
+
+    assert.equal(isAllowedFontSizeRaw('16px', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('1rem', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('0.875rem', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('14px', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('12.5px', designSystem), false);
+    assert.equal(isAllowedFontSizeRaw('1.2em', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('clamp(1rem, 2vw, 2rem)', designSystem), true);
+    assert.equal(isAllowedFontSizeRaw('var(--text-body)', designSystem), true);
   });
 });
 
@@ -220,8 +231,49 @@ scale.style.cssText = 'font-family:' + MONO + '; font-size: 10px;';
 
     assert.deepEqual(
       findings.map((item) => item.ignoreValue),
-      ['#ff00aa', 'Poppins', '#cc00ff'],
+      ['10px', '#ff00aa', 'Poppins', '#cc00ff'],
     );
+  });
+
+  it('reports literal font sizes outside the DESIGN.md type ramp', () => {
+    const designSystem = sampleDesignSystem();
+    const source = `.off-ramp {
+  font-size: 12.5px;
+}
+const label = { fontSize: "11px" };
+const badge = { className: "text-[10px]" };
+/* font-size: 9px; */
+.on-ramp {
+  font-size: 1rem;
+}
+`;
+    const findings = checkSourceDesignSystem(source, '/tmp/sizes.css', { designSystem });
+    const fontSizeFindings = findings.filter((item) => item.antipattern === 'design-system-font-size');
+
+    assert.equal(fontSizeFindings.length, 3);
+    assert.deepEqual(
+      fontSizeFindings.map((item) => item.ignoreValue),
+      ['12.5px', '11px', '10px'],
+    );
+    assert.deepEqual(
+      fontSizeFindings.map((item) => item.line),
+      [2, 4, 5],
+    );
+  });
+
+  it('abstains on font-size checks when DESIGN.md has no literal ramp steps', () => {
+    const designSystem = normalizeDesignSystem({
+      frontmatter: {
+        typography: {
+          display: { fontFamily: 'Avenir Next, Georgia, serif', fontSize: 'clamp(2.5rem, 6vw, 4rem)' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: 'clamp(1rem, 2vw, 1.125rem)' },
+        },
+      },
+    });
+    assert.equal(designSystem.hasFontSizes, false);
+
+    const findings = checkSourceDesignSystem('.bad { font-size: 12.5px; }', '/tmp/clamp-only.css', { designSystem });
+    assert.equal(findings.some((item) => item.antipattern === 'design-system-font-size'), false);
   });
 });
 

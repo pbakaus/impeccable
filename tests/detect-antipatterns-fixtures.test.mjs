@@ -276,8 +276,9 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     const designSystem = normalizeDesignSystem({
       frontmatter: {
         typography: {
-          display: { fontFamily: 'Avenir Next, Georgia, serif' },
-          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif' },
+          display: { fontFamily: 'Avenir Next, Georgia, serif', fontSize: 'clamp(2.5rem, 6vw, 4rem)' },
+          body: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '16px' },
+          label: { fontFamily: 'IBM Plex Sans, Arial, sans-serif', fontSize: '14px' },
         },
         colors: {
           ink: '#241f1a',
@@ -315,6 +316,13 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
       designFindings.some((r) => r.antipattern === 'design-system-font' && /Google Fonts: Poppins/.test(r.snippet || '')),
       'expected source-level Google Fonts usage in HTML to be flagged',
     );
+    assert.ok(
+      designFindings.some((r) => r.antipattern === 'design-system-font-size' && /12\.5px/.test(r.snippet || '')),
+      'expected off-ramp literal font-size to be flagged',
+    );
+    assert.doesNotMatch(snippets, /1rem is off/, 'documented rem step must pass');
+    assert.doesNotMatch(snippets, /1\.2em is off/, 'relative em sizes are abstained on');
+    assert.doesNotMatch(snippets, /16px is off|14px is off/, 'on-ramp sizes must pass');
     assert.doesNotMatch(snippets, /Undocumented color #ff00aa/, 'source and computed color findings should not duplicate');
     assert.doesNotMatch(snippets, /font-family: Poppins/, 'source and computed font findings should not duplicate');
     assert.doesNotMatch(snippets, /border-radius: 18px is outside/, 'source and computed radius findings should not duplicate');
@@ -341,6 +349,8 @@ describe('detectHtml — static HTML/CSS fixtures', () => {
     }
     for (const label of [
       'Pass Display Font',
+      'Pass Rem Font Size',
+      'Pass Relative Font Size',
       'Pass Generic Font',
       'Pass Token Color',
       'Pass Alpha Color',
