@@ -1,8 +1,10 @@
 /**
  * Context loader: prints PRODUCT.md (and DESIGN.md if present) as one
- * markdown block on stdout, or exits with empty stdout when no PRODUCT.md
- * is found anywhere. The skill keys off "empty stdout" to branch into the
- * init flow.
+ * markdown block on stdout, or prints a `NO_PRODUCT_MD:` message when no
+ * PRODUCT.md is found anywhere. The skill keys off that message to branch:
+ * from-scratch build commands (init / teach / craft / shape) and clear
+ * build/shape intent divert into the init flow, while scoped commands proceed
+ * using the existing code as context.
  *
  * Path resolution (first match wins):
  *   1. Active project root, if PRODUCT.md or DESIGN.md is there
@@ -692,23 +694,59 @@ function escapeRegExp(value) {
 }
 
 /**
+ * Read the first non-empty line under a bare `## <heading>` section of
+ * PRODUCT.md (e.g. `## Register`, `## Platform`). Returns null when the
+ * section is absent. The heading match is exact (`\s*$`) so near-miss
+ * headings like `## Register guidelines` don't shadow the real field.
+ */
+export function extractSectionValue(product, heading) {
+  if (!product) return null;
+  const headingRe = new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'i');
+  const lines = product.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i].trim())) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        // A new heading before any value means the section is empty.
+        if (/^#{1,6}\s/.test(next)) return null;
+        if (next) return next;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Pull the register (`brand` or `product`) out of PRODUCT.md by looking
  * for a `## Register` section and reading the first non-empty line that
  * follows it. Returns null when the file is legacy / register-less.
  */
 export function extractRegister(product) {
-  if (!product) return null;
-  const lines = product.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (/^##\s+Register\b/i.test(lines[i].trim())) {
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (!next) continue;
-        const word = next.toLowerCase();
-        if (word === 'brand' || word === 'product') return word;
-        return null;
-      }
-    }
+  const word = (extractSectionValue(product, 'Register') || '').toLowerCase();
+  return word === 'brand' || word === 'product' ? word : null;
+}
+
+/**
+ * Pull the platform (`web`, `ios`, `android`, or `adaptive`) out of PRODUCT.md
+ * by looking for a `## Platform` section and reading the first non-empty line
+ * that follows it. `adaptive` is for cross-platform apps (Flutter, React
+ * Native) that ship both iOS and Android from one codebase; a line that names
+ * both targets (e.g. `ios, android`) is also read as `adaptive`. Returns null
+ * when the file is legacy / platform-less, which the skill treats as `web`
+ * (the default the general rules already assume).
+ */
+export function extractPlatform(product) {
+  const value = (extractSectionValue(product, 'Platform') || '').toLowerCase();
+  if (!value) return null;
+  if (value === 'web' || value === 'ios' || value === 'android' || value === 'adaptive') return value;
+  // A short list naming both native targets (`ios, android`, `ios and
+  // android`) = adaptive. Only list separators and the two platform words may
+  // appear; anything else (prose, negations) is unrecognized and falls
+  // through to the CLI's WARNING path.
+  const tokens = value.split(/[\s,+&/]+/).filter(t => t && t !== 'and');
+  if (tokens.length >= 2 && tokens.every(t => t === 'ios' || t === 'android')
+    && tokens.includes('ios') && tokens.includes('android')) {
+    return 'adaptive';
   }
   return null;
 }
@@ -860,8 +898,11 @@ async function cli() {
     // — cheap models miss the empty case more often than the explicit one.
     const parts = [
       'NO_PRODUCT_MD: This project has no PRODUCT.md yet. ' +
-      'Stop the current task, load reference/init.md, and follow its ' +
-      'instructions to write PRODUCT.md before resuming.',
+      'Follow SKILL.md Setup step 1: for `init`, `teach`, `craft`, `shape`, ' +
+      'or wording that clearly maps to a from-scratch build/shape flow, load ' +
+      'reference/init.md and write PRODUCT.md first; for any other (scoped) ' +
+      'command against existing code, proceed using the code as context and ' +
+      'offer `/impeccable init` as a suggestion (do not block).',
     ];
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -884,6 +925,26 @@ async function cli() {
     ? `NEXT STEP: This project's register is \`${register}\`. You MUST now read \`reference/${register}.md\` before producing any design output.`
     : `NEXT STEP: You MUST now read the matching register reference (\`reference/brand.md\` or \`reference/product.md\`) before producing any design output. Pick based on PRODUCT.md above.`;
   parts.push(next);
+  const platform = extractPlatform(ctx.product);
+  const nativeRefs =
+    platform === 'adaptive' ? ['ios', 'android'] : platform === 'ios' || platform === 'android' ? [platform] : [];
+  if (nativeRefs.length) {
+    const refList = nativeRefs.map(p => `\`reference/${p}.md\``).join(' and ');
+    const label = platform === 'adaptive' ? '`adaptive` (both iOS and Android)' : `\`${platform}\``;
+    parts.push(
+      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions, in addition to the register reference.`,
+    );
+  } else if (!platform) {
+    // A `## Platform` section that names something we don't recognize (a
+    // toolchain like `flutter`, a typo) would otherwise silently fall back to
+    // web — the wrong default exactly when the user tried to say "native".
+    const rawPlatform = extractSectionValue(ctx.product, 'Platform');
+    if (rawPlatform) {
+      parts.push(
+        `WARNING: PRODUCT.md's \`## Platform\` value \`${rawPlatform}\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`,
+      );
+    }
+  }
   if (updateDirective) parts.push(updateDirective);
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
 }

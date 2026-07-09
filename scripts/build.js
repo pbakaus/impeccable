@@ -239,7 +239,10 @@ function validateProse(rootDir) {
   };
 
   const scan = (absPath, rel) => {
-    if (excludedPrefixes.some(p => rel === p || rel.startsWith(p + '/'))) return;
+    // Normalize to POSIX separators so the forward-slash excludedPrefixes match
+    // on Windows, where path.join() produces backslash-separated rel paths.
+    const relPosix = rel.split(path.sep).join('/');
+    if (excludedPrefixes.some(p => relPosix === p || relPosix.startsWith(p + '/'))) return;
     const stat = fs.statSync(absPath);
     if (stat.isDirectory()) {
       for (const entry of fs.readdirSync(absPath)) {

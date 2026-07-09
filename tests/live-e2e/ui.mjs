@@ -699,7 +699,7 @@ export async function getVisibleVariant(page) {
         const wrapper = window.__impeccableLiveQuery('[data-impeccable-variants]');
         if (wrapper) {
           const variants = [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')];
-          const visible = variants.find((variant) => variant.style.display !== 'none');
+          const visible = variants.find((variant) => getComputedStyle(variant).display !== 'none');
           const idx = visible ? parseInt(visible.dataset.impeccableVariant || '0', 10) : 0;
           if (idx > 0) return idx;
         }

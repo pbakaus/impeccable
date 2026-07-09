@@ -28,6 +28,7 @@ import {
   readConfig,
   readCache,
   persistCache,
+  resolveCacheCwd,
   bumpEditCount,
   rememberFindings,
   dedupeAgainstCache,
@@ -36,6 +37,7 @@ import {
   renderCleanAck,
   renderPendingAck,
   shouldEmitAckForFile,
+  matchConfiguredExtension,
   matchesAnyGlob,
   writeAuditLog,
   suppressionNotice,
@@ -49,6 +51,8 @@ import {
   runHook,
   payload,
   extractFindingIgnoreValue,
+  resolveProjectPlatform,
+  isNativePlatform,
 } from '../skill/scripts/hook-lib.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
@@ -218,6 +222,49 @@ describe('readConfig()', () => {
     assert.equal(cfg.enabled, false);
     assert.deepEqual(cfg.ignoreRules, ['side-tab']);
     assert.equal(cfg.limits.maxFindings, 3);
+  });
+
+  it('parses detector.extensions entries and defaults engine to html', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      detector: {
+        extensions: [
+          { ext: '.blade.php' },
+          { ext: '.html.erb', engine: 'html' },
+          { ext: '.d.ts.hbs', engine: 'text' },
+          'twig',
+          { ext: '' },
+          { engine: 'html' },
+          42,
+        ],
+      },
+    }));
+    const cfg = readConfig(cwd);
+    assert.deepEqual(cfg.extensions, [
+      { ext: '.blade.php', engine: 'html' },
+      { ext: '.html.erb', engine: 'html' },
+      { ext: '.d.ts.hbs', engine: 'text' },
+      { ext: '.twig', engine: 'html' },
+    ]);
+  });
+
+  it('lets local-config detector.extensions override the shared engine per ext', () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php', engine: 'html' }] },
+    }));
+    fs.writeFileSync(getLocalConfigPath(cwd), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php', engine: 'text' }, { ext: '.twig' }] },
+    }));
+    const cfg = readConfig(cwd);
+    assert.deepEqual(cfg.extensions, [
+      { ext: '.blade.php', engine: 'text' },
+      { ext: '.twig', engine: 'html' },
+    ]);
+  });
+
+  it('defaults detector.extensions to an empty list', () => {
+    assert.deepEqual(readConfig(cwd).extensions, []);
   });
 
   it('parses the new quiet and auditLog fields from the unified config', () => {
@@ -1071,6 +1118,29 @@ rounded:
     assert.equal(r.audit.skipped, 'config-disabled');
   });
 
+  it('skips the scan when PRODUCT.md declares a native platform', async () => {
+    // The web rule engine has no business flagging React Native screens; the
+    // hook watches .tsx/.ts/.js, which is exactly what a native project is
+    // made of, so the platform field gates the whole scan.
+    for (const platform of ['ios', 'android', 'adaptive']) {
+      writeFixture('PRODUCT.md', `# App\n\n## Register\n\nproduct\n\n## Platform\n\n${platform}\n`);
+      const file = writeFixture('src/Card.tsx', 'noop');
+      const det = fakeDetector([finding('side-tab', 1)]);
+      const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, `native-${platform}`)), env: {}, cwd, detector: det });
+      assert.equal(r.stdout, '', `expected silence for platform ${platform}`);
+      assert.equal(r.audit.skipped, 'native-platform');
+      assert.equal(r.audit.platform, platform);
+    }
+  });
+
+  it('still scans when PRODUCT.md declares web (or has no platform field)', async () => {
+    writeFixture('PRODUCT.md', '# App\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    const file = writeFixture('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1, { name: 'Side-tab' })]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file, 'web-platform')), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /Side-tab/);
+  });
+
   it('only unlocks design-system detector findings when DESIGN.md exists', async () => {
     const file = writeFixture('src/Card.tsx', '.card { font-family: "Poppins", sans-serif; }');
     const det = designAwareDetector();
@@ -1326,6 +1396,132 @@ rounded:
   });
 });
 
+describe('runHook() — cache write gating (issues #344, #305)', () => {
+  // The hook must be a no-op on disk in projects that never earned an
+  // `.impeccable/` footprint: skipped files never dirty the cache, and a
+  // dirty cache is only persisted when there are fresh findings or the
+  // project already opted in (an `.impeccable/` dir exists).
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function eventFor(file, sessionId = 'gate-sid') {
+    return {
+      session_id: sessionId,
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function write(rel, body, base = cwd) {
+    const abs = path.join(base, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  it('non-UI edit (.md) does not create .impeccable/', async () => {
+    const file = write('notes/todo.md', '# notes');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.equal(r.audit.skipped, 'extension');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('clean UI edit in a project with no footprint does not create .impeccable/, still acks', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([]),
+    });
+    assert.match(r.stdout, /No deterministic design-quality issues found/);
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('detector-missing path does not create .impeccable/', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: {},
+    });
+    assert.equal(r.audit.skipped, 'detector-missing');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), '.impeccable should not exist');
+  });
+
+  it('fresh findings create the cache, and dedup works on the next run', async () => {
+    const file = write('src/Card.tsx', 'noop');
+    const det = fakeDetector([finding('side-tab', 1)]);
+    const first = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(first.stdout, /Design hook findings requiring review/);
+    assert.ok(fs.existsSync(path.join(cwd, '.impeccable', 'hook.cache.json')), 'cache should exist');
+
+    const second = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.doesNotMatch(second.stdout, /Design hook findings requiring review/);
+    assert.match(second.stdout, /flagged earlier this session/);
+  });
+
+  it('clean UI edit in an opted-in project (existing .impeccable/) still persists editCount', async () => {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    const file = write('src/Card.tsx', 'noop');
+    await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: fakeDetector([]) });
+
+    const cache = readCache(cwd);
+    assert.equal(cache.sessions['gate-sid'].files[file].editCount, 1);
+  });
+
+  it('umbrella launch keys the cache to the edited file\'s project root', async () => {
+    // cwd is the umbrella: no .git / package.json / .impeccable of its own.
+    write('app/package.json', '{"name":"child"}');
+    const file = write('app/src/Card.tsx', 'noop');
+    const child = path.join(cwd, 'app');
+    const r = await runHook({
+      stdinJson: JSON.stringify(eventFor(file)),
+      env: {}, cwd, detector: fakeDetector([finding('side-tab', 1)]),
+    });
+    assert.match(r.stdout, /Design hook findings requiring review/);
+    assert.equal(r.audit.cwd, child);
+    assert.ok(fs.existsSync(path.join(child, '.impeccable', 'hook.cache.json')), 'cache should land in the child project');
+    assert.ok(!fs.existsSync(path.join(cwd, '.impeccable')), 'umbrella root should stay clean');
+  });
+});
+
+describe('resolveCacheCwd()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('keeps the session cwd when it already looks like a project root', () => {
+    for (const marker of ['.git', '.impeccable']) {
+      const dir = path.join(cwd, `root-${marker}`);
+      fs.mkdirSync(path.join(dir, marker), { recursive: true });
+      const file = path.join(dir, 'nested', 'app', 'src', 'Card.tsx');
+      assert.equal(resolveCacheCwd(file, dir), dir);
+    }
+    const pkgDir = path.join(cwd, 'root-pkg');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
+    assert.equal(resolveCacheCwd(path.join(pkgDir, 'src', 'Card.tsx'), pkgDir), pkgDir);
+  });
+
+  it('climbs to the nearest marker root when the session cwd is a bare umbrella', () => {
+    const child = path.join(cwd, 'app');
+    fs.mkdirSync(path.join(child, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(child, 'package.json'), '{}');
+    assert.equal(resolveCacheCwd(path.join(child, 'src', 'Card.tsx'), cwd), child);
+  });
+
+  it('falls back to the session cwd when no marker is found or the path is unsafe', () => {
+    const file = path.join(cwd, 'app', 'src', 'Card.tsx');
+    assert.equal(resolveCacheCwd(file, cwd), cwd);
+    assert.equal(resolveCacheCwd('', cwd), cwd);
+    assert.equal(resolveCacheCwd(`${cwd}/../etc/Card.tsx`, cwd), cwd);
+  });
+});
+
 describe('suppressionNotice()', () => {
   it('starts with envelope and mentions /impeccable audit', () => {
     const text = suppressionNotice('src/Card.tsx');
@@ -1354,6 +1550,75 @@ describe('ALLOWED_EXTS', () => {
       assert.ok(!ACK_EXTS.has(ext), `unexpected ack extension: ${ext}`);
       assert.equal(shouldEmitAckForFile(`/x/src/tool${ext}`), false);
     }
+  });
+
+  it('acks configured html-engine extensions but not text-engine ones', () => {
+    const config = {
+      extensions: [
+        { ext: '.blade.php', engine: 'html' },
+        { ext: '.d.ts.hbs', engine: 'text' },
+      ],
+    };
+    assert.equal(shouldEmitAckForFile('/x/views/card.blade.php', config), true);
+    assert.equal(shouldEmitAckForFile('/x/templates/types.d.ts.hbs', config), false);
+    assert.equal(shouldEmitAckForFile('/x/views/card.blade.php'), false);
+  });
+});
+
+describe('matchConfiguredExtension()', () => {
+  const extensions = [
+    { ext: '.blade.php', engine: 'html' },
+    { ext: '.html.erb', engine: 'html' },
+    { ext: '.twig', engine: 'html' },
+  ];
+
+  it('matches double extensions against the end of the filename', () => {
+    assert.deepEqual(
+      matchConfiguredExtension('/app/resources/views/Card.blade.php', extensions),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('app/views/users/show.html.erb', extensions),
+      { ext: '.html.erb', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/templates/base.twig', extensions),
+      { ext: '.twig', engine: 'html' },
+    );
+  });
+
+  it('is case-insensitive on the filename', () => {
+    assert.ok(matchConfiguredExtension('/views/Card.BLADE.PHP', extensions));
+  });
+
+  it('prefers the longest matching suffix regardless of config order', () => {
+    const overlapping = [
+      { ext: '.php', engine: 'text' },
+      { ext: '.blade.php', engine: 'html' },
+    ];
+    assert.deepEqual(
+      matchConfiguredExtension('/views/card.blade.php', overlapping),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/views/card.blade.php', overlapping.slice().reverse()),
+      { ext: '.blade.php', engine: 'html' },
+    );
+    assert.deepEqual(
+      matchConfiguredExtension('/app/Controller.php', overlapping),
+      { ext: '.php', engine: 'text' },
+    );
+  });
+
+  it('does not match unrelated files or bare dotfile-like names', () => {
+    assert.equal(matchConfiguredExtension('/app/Http/Controller.php', extensions), null);
+    assert.equal(matchConfiguredExtension('/views/.blade.php', extensions), null);
+    assert.equal(matchConfiguredExtension('/src/Card.tsx', extensions), null);
+  });
+
+  it('returns null for empty or missing config', () => {
+    assert.equal(matchConfiguredExtension('/views/card.blade.php', []), null);
+    assert.equal(matchConfiguredExtension('/views/card.blade.php', undefined), null);
   });
 });
 
@@ -1773,6 +2038,116 @@ describe('runHook() — events without file_path', () => {
   });
 });
 
+describe('runHook() — configured template extensions (issue #316)', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  function eventFor(file) {
+    return {
+      session_id: 'sid-ext',
+      cwd,
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file },
+    };
+  }
+
+  function writeFixture(rel, body) {
+    const abs = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    return abs;
+  }
+
+  function writeExtensionsConfig(extensions) {
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(getConfigPath(cwd), JSON.stringify({ detector: { extensions } }));
+  }
+
+  function recordingDetector(findings = []) {
+    const calls = { html: [], text: [] };
+    return {
+      calls,
+      detectHtml: (filePath) => { calls.html.push(filePath); return findings; },
+      detectText: (_content, filePath) => { calls.text.push(filePath); return findings; },
+    };
+  }
+
+  it('skips .blade.php with no config — the issue #316 repro', async () => {
+    const file = writeFixture('resources/views/card.blade.php', '<div class="bg-gradient-to-r">Hi</div>');
+    const det = recordingDetector([finding('gradient-text', 1)]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.equal(r.stdout, '');
+    assert.equal(r.audit.skipped, 'extension');
+    assert.equal(det.calls.html.length + det.calls.text.length, 0);
+  });
+
+  it('scans a configured .blade.php through the html engine and emits findings', async () => {
+    writeExtensionsConfig([{ ext: '.blade.php' }]);
+    const file = writeFixture('resources/views/card.blade.php', '<div class="bg-gradient-to-r">Hi</div>');
+    const det = recordingDetector([finding('gradient-text', 1, { name: 'Gradient text' })]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /Design hook findings requiring review/);
+    assert.match(r.stdout, /gradient-text/);
+    assert.equal(r.audit.emitted, true);
+    assert.equal(r.audit.ext, '.blade.php');
+    assert.deepEqual(det.calls.html, [file]);
+    assert.deepEqual(det.calls.text, []);
+  });
+
+  it('routes an engine:text entry through detectText instead', async () => {
+    writeExtensionsConfig([{ ext: '.blade.php', engine: 'text' }]);
+    const file = writeFixture('resources/views/card.blade.php', '<div>Hi</div>');
+    const det = recordingDetector([finding('side-tab', 1)]);
+    const r = await runHook({ stdinJson: JSON.stringify(eventFor(file)), env: {}, cwd, detector: det });
+    assert.match(r.stdout, /side-tab/);
+    assert.deepEqual(det.calls.text, [file]);
+    assert.deepEqual(det.calls.html, []);
+  });
+
+  it('emits a clean ack for configured html-engine files, stays quiet for text-engine ones', async () => {
+    writeExtensionsConfig([
+      { ext: '.blade.php' },
+      { ext: '.d.ts.hbs', engine: 'text' },
+    ]);
+    const blade = writeFixture('resources/views/clean.blade.php', '<div>Hi</div>');
+    const rBlade = await runHook({ stdinJson: JSON.stringify(eventFor(blade)), env: {}, cwd, detector: recordingDetector([]) });
+    assert.match(rBlade.stdout, /No deterministic design-quality issues found/);
+    assert.equal(rBlade.audit.kind, 'clean');
+
+    const hbs = writeFixture('templates/types.d.ts.hbs', 'export type X = {{name}};');
+    const rHbs = await runHook({ stdinJson: JSON.stringify(eventFor(hbs)), env: {}, cwd, detector: recordingDetector([]) });
+    assert.equal(rHbs.stdout, '');
+    assert.equal(rHbs.audit.skipped, 'non-ui-ack');
+  });
+});
+
+describe('resolveProjectPlatform() / isNativePlatform()', () => {
+  let cwd;
+  beforeEach(() => { cwd = mkTmp(); });
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+  it('reads the platform from PRODUCT.md via the same resolution the skill uses', () => {
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    assert.equal(resolveProjectPlatform(cwd), 'ios');
+  });
+
+  it('returns null when PRODUCT.md is absent or platform-less', () => {
+    assert.equal(resolveProjectPlatform(cwd), null);
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\nno platform field\n');
+    assert.equal(resolveProjectPlatform(cwd), null);
+  });
+
+  it('isNativePlatform is true only for ios / android / adaptive', () => {
+    assert.equal(isNativePlatform('ios'), true);
+    assert.equal(isNativePlatform('android'), true);
+    assert.equal(isNativePlatform('adaptive'), true);
+    assert.equal(isNativePlatform('web'), false);
+    assert.equal(isNativePlatform(null), false);
+  });
+});
+
 describe('Cursor hook scripts', () => {
   let cwd;
   beforeEach(() => { cwd = mkTmp(); });
@@ -1814,6 +2189,33 @@ describe('Cursor hook scripts', () => {
     assert.equal(entries[0].blockedFindings, 1);
   });
 
+  it('preToolUse allows writes with findings when the project platform is native', () => {
+    // Same slop content the deny test blocks, but the project declares a
+    // native platform, so the web rule engine must stand aside.
+    fs.writeFileSync(path.join(cwd, 'PRODUCT.md'), '# App\n\n## Platform\n\nios\n');
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: path.join(cwd, 'src/Card.html'),
+          content: `
+            <style>
+              .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+            </style>
+            <div class="card">Hello</div>
+          `,
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+  });
+
   it('preToolUse allows clean proposed writes', () => {
     const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
       cwd: path.resolve('.'),
@@ -1831,6 +2233,70 @@ describe('Cursor hook scripts', () => {
     });
 
     assert.deepEqual(JSON.parse(out), { permission: 'allow' });
+  });
+
+  it('preToolUse gates configured template extensions (issue #316)', () => {
+    const filePath = path.join(cwd, 'resources/views/card.blade.php');
+    const content = `
+      <style>
+        .card { border-left: 4px solid #7c3aed; border-radius: 16px; }
+      </style>
+      <div class="card">Hello</div>
+    `;
+    const run = () => execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: { file_path: filePath, content },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    // Without config the file is invisible to the gate: allowed untouched.
+    assert.equal(JSON.parse(run()).permission, 'allow');
+
+    // With a detector.extensions entry the same proposed write is scanned and denied.
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php' }] },
+    }));
+    const payload = JSON.parse(run());
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /card\.blade\.php/);
+    assert.match(payload.user_message, /side-tab/);
+  });
+
+  it('preToolUse routes configured html-engine templates through the HTML engine (issue #316)', () => {
+    // oversized-h1 is only detectable by the static HTML engine (detectText has
+    // no such rule), so a denial here proves the proposed content went through
+    // detectHtml rather than the old always-detectText path.
+    const filePath = path.join(cwd, 'resources/views/hero.blade.php');
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { extensions: [{ ext: '.blade.php' }] },
+    }));
+
+    const out = execFileSync(process.execPath, [path.join('skill', 'scripts', 'hook-before-edit.mjs')], {
+      cwd: path.resolve('.'),
+      input: JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd,
+        tool_name: 'Write',
+        tool_input: {
+          file_path: filePath,
+          content: '<style>h1 { font-size: 84px; }</style>\n<h1>This is a very long headline that keeps going on and on for a while</h1>',
+        },
+      }),
+      env: { ...process.env, IMPECCABLE_HOOK_LOG: '' },
+      encoding: 'utf-8',
+    });
+
+    const payload = JSON.parse(out);
+    assert.equal(payload.permission, 'deny');
+    assert.match(payload.user_message, /oversized-h1/);
   });
 
   it('preToolUse denies shell heredoc writes that bypass the Write tool', () => {

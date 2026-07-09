@@ -1,5 +1,6 @@
-import { GENERIC_FONTS } from '../../shared/constants.mjs';
+import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
 import { isNeutralColor } from '../../shared/color.mjs';
+import { extractGoogleFontFamilies } from '../../shared/fonts.mjs';
 import { checkSourceDesignSystem } from '../../design-system.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { applyInlineIgnores } from '../../shared/inline-ignores.mjs';
@@ -36,6 +37,10 @@ function shouldRunPageAnalyzers(content, filePath) {
   if (!isFullPage(content)) return false;
   const ext = extFromFilePath(filePath);
   return !ext || PAGE_ANALYZER_EXTS.has(ext);
+}
+
+function firstOverusedGoogleFont(text) {
+  return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
 
 function isNeutralBorderColor(str) {
@@ -88,9 +93,12 @@ const REGEX_MATCHERS = [
   { id: 'overused-font', regex: /font-family\s*:\s*['"]?(Inter|Roboto|Open Sans|Lato|Montserrat|Arial|Helvetica|Fraunces|Geist Sans|Geist Mono|Geist|Mona Sans|Plus Jakarta Sans|Space Grotesk|Recoleta|Instrument Sans|Instrument Serif)\b/gi,
     test: () => true,
     fmt: (m) => m[0] },
-  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?family=(Inter|Roboto|Open\+Sans|Lato|Montserrat|Fraunces|Plus\+Jakarta\+Sans|Space\+Grotesk|Instrument\+Sans|Instrument\+Serif|Mona\+Sans|Geist)\b/gi,
-    test: () => true,
-    fmt: (m) => `Google Fonts: ${m[1].replace(/\+/g, ' ')}` },
+  { id: 'overused-font', regex: /fonts\.googleapis\.com\/css2?\?[^"'\s)<>]*/gi,
+    test: (m) => {
+      m.overusedGoogleFont = firstOverusedGoogleFont(m[0]);
+      return Boolean(m.overusedGoogleFont);
+    },
+    fmt: (m) => `Google Fonts: ${m.overusedGoogleFont || firstOverusedGoogleFont(m[0])}` },
   // --- Gradient text ---
   { id: 'gradient-text', regex: /background-clip\s*:\s*text|-webkit-background-clip\s*:\s*text/gi,
     test: (m, line) => /gradient/i.test(line),
@@ -170,10 +178,7 @@ const REGEX_ANALYZERS = [
         if (f && !GENERIC_FONTS.has(f)) fonts.add(f);
       }
     }
-    const gfRe = /fonts\.googleapis\.com\/css2?\?family=([^&"'\s]+)/gi;
-    while ((m = gfRe.exec(content)) !== null) {
-      for (const f of m[1].split('|').map(f => f.split(':')[0].replace(/\+/g, ' ').toLowerCase())) fonts.add(f);
-    }
+    for (const f of extractGoogleFontFamilies(content)) fonts.add(f);
     if (fonts.size !== 1 || content.split('\n').length < 20) return [];
     const name = [...fonts][0];
     const lines = content.split('\n');

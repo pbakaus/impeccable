@@ -199,6 +199,18 @@ describe('cli/lib/impeccable-config', () => {
     ]);
   });
 
+  test('filterDetectionFindings honors file-scoped wildcard ignores for non-value-bearing rules', () => {
+    const findings = [
+      { antipattern: 'side-tab', file: join(root, 'components', 'TopicCard.jsx'), line: 331, snippet: "borderLeft: '7px solid" },
+      { antipattern: 'side-tab', file: join(root, 'components', 'Other.jsx'), line: 12, snippet: "borderLeft: '7px solid" },
+    ];
+    const filtered = filterDetectionFindings(findings, {
+      ignoreRules: [],
+      ignoreValues: [{ rule: 'side-tab', value: '*', files: ['**/TopicCard.jsx'] }],
+    });
+    expect(filtered.map((f) => `${f.antipattern}:${f.line}`)).toEqual(['side-tab:12']);
+  });
+
   test('filterDetectionFindings matches equivalent design-system color values', () => {
     const findings = [
       { antipattern: 'design-system-color', file: join(root, 'src', 'rgb.css'), line: 1, ignoreValue: 'rgb(139, 92, 246)' },

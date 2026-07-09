@@ -55,6 +55,8 @@ import '../../styles/designing-kinpaku.css';
           <line class="designing-loop-wheel-tick designing-loop-wheel-tick--cardinal" x1="2.5" y1="50" x2="5.5" y2="50"/>
           <line class="designing-loop-wheel-tick" x1="8.7" y1="27" x2="11.4" y2="28"/>
           <line class="designing-loop-wheel-tick" x1="27" y1="8.7" x2="28" y2="11.4"/>
+        </svg>
+        <svg class="designing-loop-wheel-dot-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
           <!-- Clockwise-orbiting accent dot, animates with offset-path. -->
           <circle class="designing-loop-wheel-dot" cx="0" cy="0" r="2.2"/>
         </svg>
@@ -473,7 +475,7 @@ import '../../styles/designing-kinpaku.css';
 <script is:inline>
   // Phase scroll-spy: highlight the active loop phase in the sticky nav as
   // the reader scrolls. The active section is the one occupying the band just
-  // under the sticky header + nav (rootMargin clears ~150px at the top).
+  // under the sticky header + nav (rootMargin clears the anchor seam).
   (function initPhaseNav() {
     const nav = document.querySelector('.designing-phasenav');
     if (!nav || !('IntersectionObserver' in window)) return;
@@ -484,9 +486,20 @@ import '../../styles/designing-kinpaku.css';
       .map((a) => document.getElementById(a.getAttribute('href').slice(1)))
       .filter(Boolean);
     if (!sections.length) return;
+    const phaseIds = new Set(sections.map((s) => s.id));
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href^="#"]');
+      const id = a?.getAttribute('href')?.slice(1);
+      if (phaseIds.has(id)) setActive(id);
+    });
+    window.addEventListener('hashchange', () => {
+      const id = location.hash.slice(1);
+      if (phaseIds.has(id)) setActive(id);
+    });
+    const spyTop = matchMedia('(max-width: 600px)').matches ? 124 : 160;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((e) => { if (e.isIntersecting) setActive(e.target.id); });
-    }, { rootMargin: '-150px 0px -55% 0px', threshold: 0 });
+    }, { rootMargin: `-${spyTop}px 0px -55% 0px`, threshold: 0 });
     sections.forEach((s) => observer.observe(s));
   })();
 

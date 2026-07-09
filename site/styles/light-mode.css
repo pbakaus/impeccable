@@ -44,6 +44,10 @@
   display: block;
 }
 
+.theme-toggle .theme-toggle-icon--dark {
+  transform: translate(-1.5px, 1.5px);
+}
+
 /* Three-way switcher: show the icon for the active preference (auto / light /
    dark), not the resolved theme. Keyed on data-theme-pref so the icon reflects
    that "auto" is its own state rather than collapsing into whatever the OS picked. */

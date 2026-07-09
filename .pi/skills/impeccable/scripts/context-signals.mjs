@@ -21,7 +21,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { loadContext, extractRegister } from './context.mjs';
+import { loadContext, extractRegister, extractPlatform } from './context.mjs';
 import { getCritiqueDir } from './lib/impeccable-paths.mjs';
 
 /** Is there code here at all, or just context files / an empty repo? */
@@ -197,6 +197,7 @@ export async function gatherSignals(cwd = process.cwd()) {
       designPath: ctx.designPath,
       hasCode: hasCode(cwd),
       register: extractRegister(ctx.product),
+      platform: extractPlatform(ctx.product),
     },
     critique: { latest: latestCritique(cwd) },
     git,

@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir, resolveProjectRoot } from '../skill/scripts/context.mjs';
+import { loadContext, resolveContextDir, resolveProjectRoot, extractRegister, extractPlatform } from '../skill/scripts/context.mjs';
 
 import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
@@ -730,6 +730,65 @@ describe('loadContext (IMPECCABLE_CONTEXT_DIR escape hatch)', () => {
   });
 });
 
+describe('extractPlatform', () => {
+  it('returns null when the product is empty or platform-less', () => {
+    assert.equal(extractPlatform(null), null);
+    assert.equal(extractPlatform('# P\n\nno platform here\n'), null);
+  });
+
+  it('reads web / ios / android / adaptive case-insensitively', () => {
+    assert.equal(extractPlatform('## Platform\n\nweb\n'), 'web');
+    assert.equal(extractPlatform('## Platform\n\nios\n'), 'ios');
+    assert.equal(extractPlatform('## platform\n\nANDROID\n'), 'android');
+    assert.equal(extractPlatform('## Platform\n\nAdaptive\n'), 'adaptive');
+  });
+
+  it('reads a line naming both native targets as adaptive', () => {
+    assert.equal(extractPlatform('## Platform\n\nios, android\n'), 'adaptive');
+    assert.equal(extractPlatform('## Platform\n\nandroid and ios\n'), 'adaptive');
+    assert.equal(extractPlatform('## Platform\n\nios/android\n'), 'adaptive');
+  });
+
+  it('does not read prose mentioning both targets as adaptive', () => {
+    // Negations and explanations must fall through to the unrecognized-value
+    // warning, never silently classify as cross-platform native.
+    assert.equal(extractPlatform('## Platform\n\nweb only, not ios or android\n'), null);
+    assert.equal(extractPlatform('## Platform\n\nios first, android later this year\n'), null);
+  });
+
+  it('returns null for an unrecognized value', () => {
+    assert.equal(extractPlatform('## Platform\n\ndesktop\n'), null);
+    assert.equal(extractPlatform('## Platform\n\nflutter\n'), null);
+  });
+
+  it('ignores a near-miss heading and reads the real one', () => {
+    // `## Platform notes` must not be mistaken for the `## Platform` field.
+    const product = '## Platform notes\n\nsome prose here\n\n## Platform\n\nios\n';
+    assert.equal(extractPlatform(product), 'ios');
+    // Same precision for the register heading.
+    const reg = '## Register guidelines\n\nblah\n\n## Register\n\nbrand\n';
+    assert.equal(extractRegister(reg), 'brand');
+  });
+
+  it('reads the first non-empty line after the heading', () => {
+    assert.equal(extractPlatform('## Platform\n\n\nios\n'), 'ios');
+  });
+
+  it('treats an empty section followed by another heading as absent', () => {
+    // An empty `## Platform` must not swallow the next heading as its value
+    // (which would surface a nonsense "value `## Product Purpose` is not
+    // recognized" warning from the CLI).
+    assert.equal(extractPlatform('## Platform\n\n## Product Purpose\n\nAn app.\n'), null);
+    assert.equal(extractRegister('## Register\n\n## Users\n\nAnglers.\n'), null);
+  });
+
+  it('is independent of the register field', () => {
+    const product = '# P\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n';
+    assert.equal(extractRegister(product), 'product');
+    assert.equal(extractPlatform(product), 'android');
+  });
+});
+
 describe('context.mjs CLI', () => {
   it('emits NO_PRODUCT_MD directive when no PRODUCT.md is found', async () => {
     const { spawnSync } = await import('node:child_process');
@@ -788,6 +847,64 @@ describe('context.mjs CLI', () => {
     assert.equal(res.status, 0);
     assert.match(res.stdout, /NEXT STEP: You MUST now read the matching register reference/);
     assert.match(res.stdout, /reference\/brand\.md.*reference\/product\.md/);
+  });
+
+  it('appends a native platform directive for an ios project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nios\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /This project targets `ios`\./);
+    assert.match(res.stdout, /read `reference\/ios\.md`/);
+  });
+
+  it('appends both native directives for an adaptive project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nadaptive\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /targets `adaptive` \(both iOS and Android\)/);
+    assert.match(res.stdout, /reference\/ios\.md` and `reference\/android\.md`/);
+  });
+
+  it('appends no native platform directive for a web project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('This project targets'), false);
+    assert.equal(res.stdout.includes('reference/ios.md'), false);
+  });
+
+  it('appends a native platform directive for an android project', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /This project targets `android`\./);
+    assert.match(res.stdout, /read `reference\/android\.md`/);
+  });
+
+  it('warns on an unrecognized platform value instead of silently defaulting to web', async () => {
+    // The likeliest misconfiguration is a toolchain name where the target
+    // belongs. Silent fallback to web would give web guidance to the exact
+    // projects that tried to declare themselves native.
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nflutter\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /WARNING: PRODUCT\.md's `## Platform` value `flutter` is not recognized/);
+    assert.match(res.stdout, /treating the project as `web`/);
+    assert.equal(res.stdout.includes('This project targets'), false);
+  });
+
+  it('emits no warning for an empty Platform section', async () => {
+    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\n## Users\n\nAnglers.\n');
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.equal(res.stdout.includes('WARNING: PRODUCT.md'), false);
+    assert.equal(res.stdout.includes('This project targets'), false);
   });
 });
 

@@ -11,6 +11,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -21,13 +22,17 @@ import {
   appendDesignSystemNote,
   designSystemOptions,
   filterFindings,
+  isNativePlatform,
   loadDetector,
+  matchConfiguredExtension,
   matchesAnyGlob,
   persistCache,
   readCache,
   readConfig,
   renderTemplate,
+  resolveCacheCwd,
   resolveProjectCwd,
+  resolveProjectPlatform,
   truthy,
   writeAuditLog,
 } from './hook-lib.mjs';
@@ -332,6 +337,22 @@ function isInsideProject(filePath, cwd) {
   }
 }
 
+// The static HTML engine reads its input from disk, but preToolUse only has
+// the proposed content. Stage it in a temp file so html-engine targets get the
+// same DOM-structural rules pre-write that runHook applies post-edit.
+async function detectProposedHtml(detector, content, filePath, scanOptions) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-pre-'));
+  const tmpFile = path.join(dir, path.basename(filePath));
+  try {
+    fs.writeFileSync(tmpFile, content);
+    const findings = await detector.detectHtml(tmpFile, scanOptions);
+    // Findings carry the temp path; remap so file-scoped ignores still match.
+    return (findings || []).map((f) => (f && typeof f === 'object' ? { ...f, file: filePath } : f));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function cursorBlockMessage(findings, filePath, config, cwd) {
   const rendered = renderTemplate(findings, filePath, config, { cwd });
   const blocked = rendered.replace(
@@ -379,9 +400,12 @@ async function main() {
     return allow({ skipped: 'stdin-empty' });
   }
 
-  const cwd = resolveProjectCwd(event);
+  const sessionCwd = resolveProjectCwd(event);
   const started = Date.now();
-  const filePath = proposedFilePath(event, cwd);
+  const filePath = proposedFilePath(event, sessionCwd);
+  // Re-key config/cache to the edited file's project root when the session
+  // was launched from a non-project umbrella directory (issue #305).
+  const cwd = resolveCacheCwd(filePath, sessionCwd);
   const audit = {
     harness: 'cursor',
     cwd,
@@ -394,9 +418,13 @@ async function main() {
   if (SENSITIVE_PATH.test(filePath)) return allow({ ...audit, skipped: 'sensitive', durationMs: Date.now() - started });
   if (GENERATED_PATH.test(filePath)) return allow({ ...audit, skipped: 'generated', durationMs: Date.now() - started });
 
+  // Config is read before the extension gate so `detector.extensions` entries
+  // (e.g. `.blade.php` template files, issue #316) can widen it.
+  const config = readConfig(cwd);
   const ext = path.extname(filePath).toLowerCase();
-  audit.ext = ext;
-  if (!ALLOWED_EXTS.has(ext)) return allow({ ...audit, skipped: 'extension', durationMs: Date.now() - started });
+  const configuredExt = matchConfiguredExtension(filePath, config.extensions);
+  audit.ext = configuredExt ? configuredExt.ext : ext;
+  if (!ALLOWED_EXTS.has(ext) && !configuredExt) return allow({ ...audit, skipped: 'extension', durationMs: Date.now() - started });
 
   const contentResult = proposedContent(event, cwd, filePath);
   if (contentResult && typeof contentResult === 'object' && contentResult.skipped) {
@@ -405,8 +433,13 @@ async function main() {
   const content = typeof contentResult === 'string' ? contentResult : '';
   if (!content) return allow({ ...audit, skipped: 'no-proposed-content', durationMs: Date.now() - started });
 
-  const config = readConfig(cwd);
   if (config.enabled === false) return allow({ ...audit, skipped: 'config-disabled', durationMs: Date.now() - started });
+
+  // Web rule engine, native project: stand aside (see resolveProjectPlatform).
+  const platform = resolveProjectPlatform(cwd);
+  if (isNativePlatform(platform)) {
+    return allow({ ...audit, skipped: 'native-platform', platform, durationMs: Date.now() - started });
+  }
 
   const rel = relativePath(filePath, cwd);
   if (matchesAnyGlob(rel, config.ignoreFiles) || matchesAnyGlob(filePath, config.ignoreFiles)) {
@@ -419,9 +452,16 @@ async function main() {
   }
   const scanOptions = designSystemOptions(config, detector, cwd);
 
+  // Mirror runHook's engine routing so template issues the HTML engine catches
+  // post-edit cannot slip past the pre-write gate.
+  const useHtmlEngine = configuredExt
+    ? configuredExt.engine === 'html'
+    : (ext === '.html' || ext === '.htm');
   let findings = [];
   try {
-    findings = await detector.detectText(content, filePath, scanOptions);
+    findings = useHtmlEngine && typeof detector.detectHtml === 'function'
+      ? await detectProposedHtml(detector, content, filePath, scanOptions)
+      : await detector.detectText(content, filePath, scanOptions);
   } catch {
     return allow({ ...audit, error: 'detector-threw', durationMs: Date.now() - started });
   }

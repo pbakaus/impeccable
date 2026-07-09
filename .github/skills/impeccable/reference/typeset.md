@@ -10,9 +10,29 @@ Product: system fonts and familiar sans stacks are legitimate here. One well-tun
 
 ---
 
+## Two isolated assessments (required)
+
+Spawn two parallel sub-agents whenever a sub-agent/Task tool is exposed: one for the typography assessment, one for the mechanical pre-scan. If the harness needs explicit user permission for sub-agents, stop and ask before proceeding. Isolation is the point: detector output anchors visual judgment toward what the scan can see, so neither sub-agent gets the other's output. Each assessment runs in its own sub-agent; running either one in this context when a sub-agent tool exists is not permitted, even when it is faster; the fallback below is only for sessions with no sub-agent tool. Give each a self-contained prompt (target files, register, **DESIGN.md** content when present, and its instructions below); do not assume it can read this file.
+
+**Sub-agent A (typography assessment)**: give it the full [Assess Current Typography](#assess-current-typography) checklist below, verbatim, in its prompt. It works through every item and returns per-item findings citing file, selector, or value.
+
+**Sub-agent B (mechanical pre-scan)**: run the bundled detector scoped to type:
+
+```bash
+node .github/skills/impeccable/scripts/detect.mjs --json --scope type [target files or dirs]
+```
+
+A missing `node` on PATH is not permission to skip: hunt for a runtime (`command -v node`, nvm or Homebrew paths, the harness's own bundled node) and run it by full path. If none exists, halt the scan and report that Node must be installed (the parent relays this to the user); do **not** substitute grep for the detector or proceed unscanned. The scan checks literal font sizes against the **DESIGN.md** ramp but abstains on `em`, `%`, `clamp()`, and line-heights, so also grep `font-size\s*:`, `fontSize`, `text-\[`, `leading-\[` and judge those hits against the spec. Return the findings JSON plus the grep verdicts.
+
+**If no sub-agent tool is exposed (or the user declined)**: run both yourself, assessment first, pre-scan second, so the deterministic findings can't anchor the visual judgment. Keep that order even when the scan feels quicker to start with.
+
+**Synthesize** once both are done: merge into a single findings list, noting where they agree and what each caught alone. Fix every finding, or list it as a deliberate exception for the user to accept. A clean scan is a floor, not a verdict: a generic font stack at a flat scale passes every detector rule, which is exactly what the assessment exists to catch. State in your final summary which path ran (parallel sub-agents or single-context fallback).
+
+---
+
 ## Assess Current Typography
 
-Analyze what's weak or generic about the current type:
+This checklist is sub-agent A's brief (on the fallback path, work through it yourself before the pre-scan). Analyze what's weak or generic about the current type:
 
 1. **Font choices**:
    - Are we using invisible defaults? (Inter, Roboto, Arial, Open Sans, system defaults)
@@ -108,6 +128,8 @@ Build a clear type scale:
 - **Personality**: Does the typography reflect the brand?
 - **Performance**: Are web fonts loading efficiently without layout shift?
 - **Accessibility**: Does text meet WCAG contrast ratios? Is it zoomable to 200%?
+
+Answer each item above by citing the file, selector, or value that satisfies it; never a bare yes. Then re-run the pre-scan and fix until the count of unresolved items and unaccepted findings is zero.
 
 When the type carries the hierarchy on its own, hand off to `/impeccable polish` for the final pass.
 

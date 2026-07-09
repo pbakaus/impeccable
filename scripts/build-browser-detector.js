@@ -18,6 +18,7 @@ const MODULES = [
   'cli/engine/shared/constants.mjs',
   'cli/engine/registry/antipatterns.mjs',
   'cli/engine/shared/color.mjs',
+  'cli/engine/shared/fonts.mjs',
   'cli/engine/rules/checks.mjs',
   'cli/engine/browser/injected/index.mjs',
 ];
@@ -32,6 +33,7 @@ function browserSafeModule(relPath) {
     code = match[0];
   }
   code = code.replace(/^import[\s\S]*?;\n/gm, '');
+  code = code.replace(/^export\s+\{[^}]*\};\n?/gm, '');
   code = code.replace(/^export\s+\{[\s\S]*?^};\n?/gm, '');
   return `// --- ${relPath} ---\n${code.trim()}\n`;
 }
