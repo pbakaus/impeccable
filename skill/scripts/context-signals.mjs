@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Context-signals gatherer for the bare `{{command_prefix}}impeccable`
+ * Context-signals gatherer for the bare Impeccable invocation
  * (no-argument) path. Collects cheap, deterministic signals about the current
  * project and emits them as JSON.
  *

@@ -25,11 +25,11 @@ export const SUITES = {
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^scripts\/(?!benchmark-detector|build-browser-detector|build-extension)/,
-      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|hook|impeccable-paths|is-generated))/,
+      /^skill\/(SKILL\.src\.md|agents\/|reference\/|scripts\/(cleanup-deprecated|context|context-signals|critique-storage|design-parser|hook|impeccable-paths|is-generated|lib\/provider|pin))/,
       /^site\/(pages|content|components|layouts)\//,
       /^README(\.npm)?\.md$/,
       /^cli\/bin\//,
-      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|shiki-theme|skills-cli|target-args|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
+      /^tests\/(build|cleanup-deprecated|cli-ignores|context|context-signals|critique-storage|design-parser|docs-integrity|github-sheriff|hook|hook-build|impeccable-paths|openai-plugin|pin|shiki-theme|skills-cli|target-args|test-suites|windows-path-fix|zip)\.test\.(js|mjs)$/,
       /^tests\/lib\//,
     ],
     commands: [
@@ -63,6 +63,7 @@ export const SUITES = {
           'tests/hook.test.mjs',
           'tests/impeccable-paths.test.mjs',
           'tests/openai-plugin.test.mjs',
+          'tests/pin.test.mjs',
           'tests/target-args.test.mjs',
           'tests/shiki-theme.test.mjs',
           'tests/test-suites.test.mjs',

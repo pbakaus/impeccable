@@ -4,7 +4,6 @@ export function buildCodexPluginManifest(rootManifest) {
     version: rootManifest.version,
     description: 'Design and refine frontend interfaces with coding agents.',
     author: {
-      ...rootManifest.author,
       name: 'Renaissance Geek Inc',
       url: rootManifest.homepage,
     },

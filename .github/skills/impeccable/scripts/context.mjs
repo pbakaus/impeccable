@@ -23,6 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseTargetOptions } from './lib/target-args.mjs';
+import { IMPECCABLE_COMMAND } from './lib/provider.mjs';
 
 const PRODUCT_NAMES = ['PRODUCT.md', 'Product.md', 'product.md'];
 const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
@@ -902,7 +903,7 @@ async function cli() {
       'or wording that clearly maps to a from-scratch build/shape flow, load ' +
       'reference/init.md and write PRODUCT.md first; for any other (scoped) ' +
       'command against existing code, proceed using the code as context and ' +
-      'offer `/impeccable init` as a suggestion (do not block).',
+      `offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).`,
     ];
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {

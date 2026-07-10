@@ -80,6 +80,11 @@ describe('OpenAI plugin staging', () => {
     assert.ok(fs.existsSync(path.join(pluginRoot, 'assets/icon.png')));
 
     assert.equal(manifest.skills, './skills/');
+    assert.deepEqual(manifest.author, {
+      name: 'Renaissance Geek Inc',
+      url: 'https://impeccable.style',
+    });
+    assert.equal('email' in manifest.author, false);
     assert.equal(manifest.interface.shortDescription, 'Design and refine interfaces');
     assert.equal(manifest.interface.category, 'Creativity');
     assert.deepEqual(hooks, buildCodexPluginHooksManifest());

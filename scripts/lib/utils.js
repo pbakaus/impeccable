@@ -756,6 +756,22 @@ export function replacePlaceholders(content, provider, commandNames = [], allSki
 }
 
 /**
+ * Render the one explicit provider marker allowed in executable skill scripts.
+ *
+ * Do not run replacePlaceholders() across JavaScript source: slash-command
+ * heuristics can collide with regex literals and runtime paths. Scripts import
+ * their command prefix from lib/provider.mjs, whose declaration is replaced
+ * here by an exact string match.
+ */
+export function replaceScriptProviderMarker(content, provider) {
+  const placeholders = PROVIDER_PLACEHOLDERS[provider] || PROVIDER_PLACEHOLDERS.cursor;
+  const commandPrefix = placeholders.command_prefix || '/';
+  const marker = "export const IMPECCABLE_COMMAND_PREFIX = '/'; // @impeccable-provider-command-prefix";
+  const rendered = `export const IMPECCABLE_COMMAND_PREFIX = ${JSON.stringify(commandPrefix)};`;
+  return content.replace(marker, rendered);
+}
+
+/**
  * Decide whether a YAML scalar string value must be quoted to survive parsing.
  *
  * Plain (unquoted) YAML scalars cannot contain `: ` or ` #`, cannot start with

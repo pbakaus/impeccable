@@ -925,6 +925,9 @@ describe('context.mjs update check', () => {
     const targetArgsDest = path.join(path.dirname(skillScript), 'lib', 'target-args.mjs');
     fs.mkdirSync(path.dirname(targetArgsDest), { recursive: true });
     fs.copyFileSync(targetArgsSrc, targetArgsDest);
+    const providerSrc = path.join(path.dirname(SCRIPT_PATH), 'lib', 'provider.mjs');
+    const providerDest = path.join(path.dirname(skillScript), 'lib', 'provider.mjs');
+    fs.copyFileSync(providerSrc, providerDest);
     fs.writeFileSync(
       path.join(scratch, 'skill', 'SKILL.md'),
       `---\nname: impeccable\nversion: ${LOCAL_VERSION}\n---\n\nbody\n`,

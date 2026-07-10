@@ -32,10 +32,11 @@ export function readLiveBrowserScriptParts(parts, readFile = (filePath) => fs.re
   }));
 }
 
-export function assembleLiveBrowserScript({ token, port, vocabulary, parts }) {
+export function assembleLiveBrowserScript({ token, port, vocabulary, commandPrefix = '/', parts }) {
   const prelude =
     `window.__IMPECCABLE_TOKEN__ = '${token}';\n` +
     `window.__IMPECCABLE_PORT__ = ${port};\n` +
+    `window.__IMPECCABLE_COMMAND_PREFIX__ = ${JSON.stringify(commandPrefix)};\n` +
     // Canonical command vocabulary (values + labels + icons). live-browser.js
     // builds its action picker from this instead of an inline copy.
     `window.__IMPECCABLE_VOCAB__ = ${JSON.stringify(vocabulary)};\n`;
