@@ -38,6 +38,7 @@ export const CLOSE_MARKER = '<!-- impeccable-sheriff:auto-close -->';
 const DEFAULT_MAINTAINERS = ['pbakaus'];
 const DEFAULT_REGULAR_CONTRIBUTORS = ['pbakaus', 'abdulwahabone'];
 const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
+const DEFAULT_TRUSTED_MARKER_AUTHORS = ['github-actions', 'github-actions[bot]'];
 
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
 const FAILING_STATUS_STATES = new Set(['ERROR', 'FAILURE']);
@@ -59,6 +60,8 @@ query($owner: String!, $name: String!, $after: String) {
         reviewDecision
         author { login }
         labels(first: 50) { nodes { name } }
+        # This is only an initial seed; hydrateIssueComments() replaces it with
+        # the full paginated issue comment history before evaluation.
         comments(last: 50) {
           nodes {
             author { login }
@@ -97,7 +100,7 @@ query($owner: String!, $name: String!, $after: String) {
             }
           }
         }
-        timelineItems(last: 50, itemTypes: [LABELED_EVENT, UNLABELED_EVENT]) {
+        labelTimelineItems: timelineItems(last: 100, itemTypes: [LABELED_EVENT, UNLABELED_EVENT]) {
           nodes {
             __typename
             ... on LabeledEvent {
@@ -108,6 +111,19 @@ query($owner: String!, $name: String!, $after: String) {
             ... on UnlabeledEvent {
               createdAt
               label { name }
+              actor { login }
+            }
+          }
+        }
+        draftTimelineItems: timelineItems(last: 100, itemTypes: [CONVERT_TO_DRAFT_EVENT, READY_FOR_REVIEW_EVENT]) {
+          nodes {
+            __typename
+            ... on ConvertToDraftEvent {
+              createdAt
+              actor { login }
+            }
+            ... on ReadyForReviewEvent {
+              createdAt
               actor { login }
             }
           }
@@ -124,6 +140,7 @@ export function evaluatePullRequest(pr, options = {}) {
   const maintainers = loginSet(options.maintainers || DEFAULT_MAINTAINERS);
   const regularContributors = loginSet(options.regularContributors || DEFAULT_REGULAR_CONTRIBUTORS);
   const exemptLabels = new Set(options.exemptLabels || DEFAULT_EXEMPT_LABELS);
+  const trustedMarkerAuthors = loginSet(options.trustedMarkerAuthors || DEFAULT_TRUSTED_MARKER_AUTHORS);
   const autoCloseRegulars = options.autoCloseRegulars === true;
 
   const labels = new Set(pr.labels || []);
@@ -148,7 +165,7 @@ export function evaluatePullRequest(pr, options = {}) {
   const addBlocker = (blocker) => blockers.push({ contributorAction: false, ...blocker });
   const addContributorBlocker = (blocker) => blockers.push({ contributorAction: true, ...blocker });
   if (pr.isDraft) {
-    addContributorBlocker({ kind: 'draft' });
+    addContributorBlocker({ kind: 'draft', at: currentDraftStartedAt(pr) });
   }
 
   if (FAILING_STATUS_STATES.has(pr.statusState)) {
@@ -185,7 +202,13 @@ export function evaluatePullRequest(pr, options = {}) {
     addContributorBlocker({ kind: 'manual-waiting', at: waitingLabelAt });
   }
 
+  const contributorActionBlockerAt = latestDate(blockers
+    .filter((blocker) => blocker.contributorAction)
+    .map((blocker) => blocker.at || pr.createdAt));
   const contributorActionRequired = blockers.some((blocker) => blocker.contributorAction);
+  const waitingDays = contributorActionRequired && contributorActionBlockerAt
+    ? Math.floor((now.getTime() - contributorActionBlockerAt.getTime()) / DAY_MS)
+    : 0;
   const unresolvedThreadCount = (pr.reviewThreads || []).filter((thread) => !thread.isResolved).length;
   const statusIsReady = pr.statusState === 'SUCCESS';
   const mergeableIsReady = pr.mergeable === 'MERGEABLE';
@@ -205,16 +228,18 @@ export function evaluatePullRequest(pr, options = {}) {
     if (blocker.label) desiredLabels.add(blocker.label);
   }
 
-  const staleEligible = contributorActionRequired && daysOpen >= warningDays;
+  const staleEligible = contributorActionRequired && waitingDays >= warningDays;
   if (staleEligible) desiredLabels.add('stale');
 
-  const warningAlreadyPosted = labels.has('stale') || hasMarker(pr.comments, WARNING_MARKER);
-  const closeAlreadyPosted = hasMarker(pr.comments, CLOSE_MARKER);
+  const warningPostedAt = latestMarkerAt(pr.comments, WARNING_MARKER, trustedMarkerAuthors);
+  const warningAlreadyPosted = Boolean(warningPostedAt
+    && (!contributorActionBlockerAt || !isAfter(contributorActionBlockerAt, warningPostedAt)));
+  const closeAlreadyPosted = hasMarker(pr.comments, CLOSE_MARKER, trustedMarkerAuthors);
   const exemptFromClose = [...labels].some((label) => exemptLabels.has(label));
   const regularContributor = regularContributors.has(author);
   const shouldWarn = staleEligible && !warningAlreadyPosted;
   const shouldClose = contributorActionRequired
-    && daysOpen >= closeDays
+    && waitingDays >= closeDays
     && warningAlreadyPosted
     && !closeAlreadyPosted
     && !exemptFromClose
@@ -230,6 +255,7 @@ export function evaluatePullRequest(pr, options = {}) {
     title: pr.title,
     author,
     daysOpen,
+    waitingDays,
     contributorActionRequired,
     readyToMerge,
     blockers: blockers.map((blocker) => blocker.kind),
@@ -238,13 +264,16 @@ export function evaluatePullRequest(pr, options = {}) {
     labelsToRemove,
     shouldWarn,
     shouldClose,
-    warningComment: shouldWarn ? staleWarningComment(pr, { daysOpen, closeDays, now }) : '',
-    closeComment: shouldClose ? staleCloseComment(pr, { daysOpen }) : '',
+    warningComment: shouldWarn ? staleWarningComment(pr, { waitingDays, closeDays, contributorActionBlockerAt, now }) : '',
+    closeComment: shouldClose ? staleCloseComment(pr, { waitingDays }) : '',
   };
 }
 
 export function normalizePullRequest(node) {
   const latestCommit = node.commits?.nodes?.[0]?.commit || null;
+  const timelineNodes = node.timelineItems?.nodes || [];
+  const labelTimelineNodes = node.labelTimelineItems?.nodes || timelineNodes;
+  const draftTimelineNodes = node.draftTimelineItems?.nodes || timelineNodes;
   return {
     number: node.number,
     title: node.title,
@@ -271,11 +300,18 @@ export function normalizePullRequest(node) {
       isResolved: thread.isResolved,
       comments: (thread.comments?.nodes || []).map(normalizeComment),
     })),
-    labelEvents: (node.timelineItems?.nodes || [])
+    labelEvents: labelTimelineNodes
       .filter((event) => event.label?.name)
       .map((event) => ({
         type: event.__typename,
         label: event.label.name,
+        actorLogin: event.actor?.login || '',
+        createdAt: event.createdAt,
+      })),
+    draftEvents: draftTimelineNodes
+      .filter((event) => ['ConvertToDraftEvent', 'ReadyForReviewEvent'].includes(event.__typename))
+      .map((event) => ({
+        type: event.__typename,
         actorLogin: event.actor?.login || '',
         createdAt: event.createdAt,
       })),
@@ -317,8 +353,18 @@ export function mergeIssueLabelEvents(pr, events = []) {
   return pr;
 }
 
-export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() }) {
-  const scheduledCloseAt = addDays(toDate(pr.createdAt), closeDays);
+export function mergeIssueComments(pr, comments = []) {
+  pr.comments = comments.map(normalizeComment);
+  return pr;
+}
+
+export function staleWarningComment(pr, {
+  waitingDays,
+  closeDays,
+  contributorActionBlockerAt,
+  now = new Date(),
+}) {
+  const scheduledCloseAt = addDays(toDate(contributorActionBlockerAt || now), closeDays);
   const earliestNewWarningCloseAt = addDays(toDate(now), 1);
   const closeDate = formatDate(scheduledCloseAt > earliestNewWarningCloseAt
     ? scheduledCloseAt
@@ -327,16 +373,16 @@ export function staleWarningComment(pr, { daysOpen, closeDays, now = new Date() 
     WARNING_MARKER,
     `Thanks for the PR. Impeccable is moving quickly, and this PR is currently waiting on contributor action.`,
     '',
-    `It has been open for ${daysOpen} days. Please address the outstanding review feedback, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days open are closed automatically.`,
+    `It has been waiting for contributor action for ${waitingDays} days. Please address the outstanding review feedback, draft state, or explicit maintainer wait request. PRs that are still waiting on contributor action after ${closeDays} days are closed automatically.`,
     '',
     `If nothing changes, this PR may be closed on or after ${closeDate}. Happy to reopen when it is ready to continue.`,
   ].join('\n');
 }
 
-export function staleCloseComment(pr, { daysOpen }) {
+export function staleCloseComment(pr, { waitingDays }) {
   return [
     CLOSE_MARKER,
-    `Closing this because it has been open for ${daysOpen} days and is still waiting on contributor action.`,
+    `Closing this because it has been waiting on contributor action for ${waitingDays} days.`,
     '',
     'Please open a fresh PR, or ask for this one to be reopened, after the outstanding feedback is addressed.',
   ].join('\n');
@@ -354,6 +400,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const prs = fetchOpenPullRequests(repo).map(normalizePullRequest);
+  hydrateIssueComments(repo, prs);
   hydrateMissingWaitingLabelEvents(repo, prs);
   const plans = prs.map((pr) => evaluatePullRequest(pr, options));
 
@@ -423,6 +470,13 @@ function latestMaintainerWaitCommand(pr, maintainers) {
   ]);
 }
 
+function currentDraftStartedAt(pr) {
+  const latestTransition = [...(pr.draftEvents || [])]
+    .filter((event) => ['ConvertToDraftEvent', 'ReadyForReviewEvent'].includes(event.type))
+    .sort((a, b) => toDate(b.createdAt) - toDate(a.createdAt))[0];
+  return latestTransition?.createdAt || pr.createdAt;
+}
+
 function hasSheriffWaitCommand(body) {
   return String(body || '')
     .split(/\r?\n/)
@@ -460,6 +514,22 @@ function hydrateMissingWaitingLabelEvents(repo, prs) {
     if (latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent')) continue;
     mergeIssueLabelEvents(pr, fetchIssueEvents(repo, pr.number));
   }
+}
+
+function hydrateIssueComments(repo, prs) {
+  for (const pr of prs) {
+    mergeIssueComments(pr, fetchIssueComments(repo, pr.number));
+  }
+}
+
+function fetchIssueComments(repo, number) {
+  const pages = runGhJson([
+    'api',
+    '--paginate',
+    '--slurp',
+    `repos/${repo}/issues/${number}/comments?per_page=100`,
+  ]);
+  return Array.isArray(pages) ? pages.flat() : [];
 }
 
 function fetchIssueEvents(repo, number) {
@@ -586,8 +656,8 @@ function printPlan(plan, { apply }) {
 
 function normalizeComment(comment) {
   return {
-    authorLogin: comment.author?.login || '',
-    createdAt: comment.createdAt,
+    authorLogin: comment.authorLogin || comment.author?.login || comment.user?.login || '',
+    createdAt: comment.createdAt || comment.created_at,
     body: comment.body || '',
   };
 }
@@ -612,8 +682,20 @@ function reviewThreadCommentsBy(threads = [], login) {
   return threads.flatMap((thread) => commentsBy(thread.comments, login));
 }
 
-function hasMarker(comments = [], marker) {
-  return comments.some((comment) => typeof comment.body === 'string' && comment.body.includes(marker));
+function hasMarker(comments = [], marker, trustedAuthors = null) {
+  return comments.some((comment) => isTrustedMarkerComment(comment, marker, trustedAuthors));
+}
+
+function latestMarkerAt(comments = [], marker, trustedAuthors = null) {
+  return latestDate(comments
+    .filter((comment) => isTrustedMarkerComment(comment, marker, trustedAuthors))
+    .map((comment) => comment.createdAt));
+}
+
+function isTrustedMarkerComment(comment, marker, trustedAuthors) {
+  if (typeof comment?.body !== 'string' || !comment.body.includes(marker)) return false;
+  if (!trustedAuthors) return true;
+  return trustedAuthors.has(normalizeLogin(comment.authorLogin || comment.author?.login));
 }
 
 function latestLabelEventAt(events, label, type) {

@@ -5,29 +5,33 @@ import {
   CLOSE_MARKER,
   WARNING_MARKER,
   evaluatePullRequest,
+  mergeIssueComments,
   mergeIssueLabelEvents,
+  normalizePullRequest,
   parseArgs,
 } from '../scripts/github/sheriff.mjs';
 
 const NOW = '2026-07-08T00:00:00Z';
 
 describe('github sheriff', () => {
-  it('warns a contributor-blocked PR after one week open', () => {
+  it('warns a contributor-blocked PR after one week waiting on contributor action', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-30T00:00:00Z',
       latestCommitAt: '2026-06-30T01:00:00Z',
       comments: [
-        comment('pbakaus', '2026-07-03T00:00:00Z', '/sheriff wait'),
+        comment('pbakaus', '2026-07-01T00:00:00Z', '/sheriff wait'),
       ],
     }), { now: NOW });
 
     assert.equal(plan.contributorActionRequired, true);
     assert.equal(plan.daysOpen, 8);
+    assert.equal(plan.waitingDays, 7);
     assert.deepEqual(plan.labelsToAdd, ['stale', 'waiting on contributor']);
     assert.equal(plan.shouldWarn, true);
     assert.equal(plan.shouldClose, false);
     assert.match(plan.warningComment, /waiting on contributor action/);
-    assert.match(plan.warningComment, /2026-07-14/);
+    assert.match(plan.warningComment, /waiting for contributor action for 7 days/);
+    assert.match(plan.warningComment, /2026-07-15/);
   });
 
   it('closes a non-regular contributor PR that is still waiting after two weeks open', () => {
@@ -64,7 +68,7 @@ describe('github sheriff', () => {
     assert.doesNotMatch(plan.warningComment, /2026-07-04/);
   });
 
-  it('uses the stale label as durable proof that a warning already happened', () => {
+  it('does not treat a stale label without a current warning marker as proof of warning', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-20T00:00:00Z',
       latestCommitAt: '2026-06-20T01:00:00Z',
@@ -77,8 +81,64 @@ describe('github sheriff', () => {
       ],
     }), { now: NOW });
 
+    assert.equal(plan.shouldWarn, true);
+    assert.equal(plan.shouldClose, false);
+  });
+
+  it('ignores stale warning markers from untrusted commenters', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
+        comment('drive-by', '2026-06-27T00:00:00Z', WARNING_MARKER),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.shouldWarn, true);
+    assert.equal(plan.shouldClose, false);
+  });
+
+  it('ignores close markers from untrusted commenters', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
+        comment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
+        comment('drive-by', '2026-07-04T00:00:00Z', CLOSE_MARKER),
+      ],
+    }), { now: NOW });
+
     assert.equal(plan.shouldWarn, false);
     assert.equal(plan.shouldClose, true);
+  });
+
+  it('keeps old trusted warning markers after full issue comment hydration', () => {
+    const prUnderReview = pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'waiting on contributor', 'pbakaus', '2026-06-21T00:00:00Z'),
+      ],
+      comments: Array.from({ length: 50 }, (_, index) => (
+        comment('review-bot', `2026-06-28T00:${String(index).padStart(2, '0')}:00Z`, 'follow-up')
+      )),
+    });
+
+    const truncatedPlan = evaluatePullRequest(prUnderReview, { now: NOW });
+    mergeIssueComments(prUnderReview, [
+      restComment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix the review feedback.'),
+      restComment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
+      ...prUnderReview.comments,
+    ]);
+    const hydratedPlan = evaluatePullRequest(prUnderReview, { now: NOW });
+
+    assert.equal(truncatedPlan.shouldWarn, true);
+    assert.equal(truncatedPlan.shouldClose, false);
+    assert.equal(hydratedPlan.shouldWarn, false);
+    assert.equal(hydratedPlan.shouldClose, true);
   });
 
   it('does not infer contributor blockers from maintainer prose', () => {
@@ -320,6 +380,103 @@ describe('github sheriff', () => {
     assert.equal(plan.shouldClose, false);
   });
 
+  it('uses PR creation, not unrelated updates, for drafts opened as draft', () => {
+    const plan = evaluatePullRequest(pr({
+      isDraft: true,
+      createdAt: '2026-06-20T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.equal(plan.waitingDays, 18);
+    assert.deepEqual(plan.labelsToAdd, ['stale', 'waiting on contributor']);
+    assert.equal(plan.shouldWarn, true);
+  });
+
+  it('uses the latest convert-to-draft event for PRs converted back to draft', () => {
+    const plan = evaluatePullRequest(pr({
+      isDraft: true,
+      createdAt: '2026-06-20T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      draftEvents: [
+        draftEvent('ReadyForReviewEvent', '2026-06-22T00:00:00Z'),
+        draftEvent('ConvertToDraftEvent', '2026-07-06T00:00:00Z'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.equal(plan.waitingDays, 2);
+    assert.deepEqual(plan.labelsToAdd, ['waiting on contributor']);
+    assert.equal(plan.shouldWarn, false);
+  });
+
+  it('uses the latest ready-for-review event as a lower bound when the current draft conversion is missing', () => {
+    const plan = evaluatePullRequest(pr({
+      isDraft: true,
+      createdAt: '2026-06-20T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      draftEvents: [
+        draftEvent('ConvertToDraftEvent', '2026-06-22T00:00:00Z'),
+        draftEvent('ReadyForReviewEvent', '2026-07-06T00:00:00Z'),
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, true);
+    assert.equal(plan.waitingDays, 2);
+    assert.deepEqual(plan.labelsToAdd, ['waiting on contributor']);
+    assert.equal(plan.shouldWarn, false);
+  });
+
+  it('normalizes draft transitions from a dedicated timeline slice', () => {
+    const normalized = normalizePullRequest(graphqlPrNode({
+      isDraft: true,
+      createdAt: '2026-06-20T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      labelTimelineItems: {
+        nodes: [
+          {
+            __typename: 'LabeledEvent',
+            label: { name: 'waiting on contributor' },
+            actor: { login: 'pbakaus' },
+            createdAt: '2026-07-06T00:00:00Z',
+          },
+        ],
+      },
+      draftTimelineItems: {
+        nodes: [
+          {
+            __typename: 'ConvertToDraftEvent',
+            actor: { login: 'contrib' },
+            createdAt: '2026-07-06T00:00:00Z',
+          },
+        ],
+      },
+    }));
+
+    const plan = evaluatePullRequest(normalized, { now: NOW });
+
+    assert.deepEqual(normalized.labelEvents, [
+      {
+        type: 'LabeledEvent',
+        label: 'waiting on contributor',
+        actorLogin: 'pbakaus',
+        createdAt: '2026-07-06T00:00:00Z',
+      },
+    ]);
+    assert.deepEqual(normalized.draftEvents, [
+      {
+        type: 'ConvertToDraftEvent',
+        actorLogin: 'contrib',
+        createdAt: '2026-07-06T00:00:00Z',
+      },
+    ]);
+    assert.equal(plan.waitingDays, 2);
+    assert.equal(plan.shouldWarn, false);
+  });
+
   it('marks passing resolved PRs as ready to merge', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-07-01T00:00:00Z',
@@ -368,6 +525,56 @@ describe('github sheriff', () => {
     assert.equal(plan.contributorActionRequired, false);
     assert.equal(plan.readyToMerge, true);
     assert.deepEqual(plan.labelsToAdd, ['ready to merge']);
+  });
+
+  it('does not warn immediately when an old PR receives fresh requested changes', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-21T00:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'CHANGES_REQUESTED',
+      reviews: [
+        {
+          authorLogin: 'pbakaus',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-07-07T12:00:00Z',
+          body: 'Needs one follow-up.',
+        },
+      ],
+    }), { now: NOW });
+
+    assert.equal(plan.daysOpen, 18);
+    assert.equal(plan.waitingDays, 0);
+    assert.equal(plan.contributorActionRequired, true);
+    assert.deepEqual(plan.labelsToAdd, ['blocked: review threads', 'waiting on contributor']);
+    assert.equal(plan.shouldWarn, false);
+    assert.equal(plan.shouldClose, false);
+  });
+
+  it('requires a warning after the current blocker before closing', () => {
+    const plan = evaluatePullRequest(pr({
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-21T00:00:00Z',
+      statusState: 'SUCCESS',
+      mergeable: 'MERGEABLE',
+      reviewDecision: 'CHANGES_REQUESTED',
+      comments: [
+        comment('github-actions[bot]', '2026-06-30T00:00:00Z', WARNING_MARKER),
+      ],
+      reviews: [
+        {
+          authorLogin: 'pbakaus',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-07-07T00:00:00Z',
+          body: 'Needs one follow-up.',
+        },
+      ],
+    }), { now: '2026-07-15T00:00:00Z' });
+
+    assert.equal(plan.waitingDays, 8);
+    assert.equal(plan.shouldWarn, true);
+    assert.equal(plan.shouldClose, false);
   });
 
   it('blocks current changes-requested reviews until the contributor responds', () => {
@@ -471,6 +678,7 @@ function pr(overrides = {}) {
     reviews: [],
     reviewThreads: [],
     labelEvents: [],
+    draftEvents: [],
     latestCommitAt: '2026-07-01T01:00:00Z',
     latestCommitAuthorLogin: 'contrib',
     latestCommitCommitterLogin: 'contrib',
@@ -484,6 +692,10 @@ function comment(authorLogin, createdAt, body) {
   return { authorLogin, createdAt, body };
 }
 
+function restComment(login, createdAt, body) {
+  return { user: { login }, created_at: createdAt, body };
+}
+
 function labelEvent(type, label, actorLogin, createdAt) {
   return { type, label, actorLogin, createdAt };
 }
@@ -494,5 +706,31 @@ function issueEvent(event, label, actorLogin, createdAt) {
     label: { name: label },
     actor: { login: actorLogin },
     created_at: createdAt,
+  };
+}
+
+function draftEvent(type, createdAt, actorLogin = 'contrib') {
+  return { type, createdAt, actorLogin };
+}
+
+function graphqlPrNode(overrides = {}) {
+  return {
+    number: 123,
+    title: 'Test PR',
+    url: 'https://github.com/pbakaus/impeccable/pull/123',
+    isDraft: false,
+    createdAt: '2026-07-01T00:00:00Z',
+    updatedAt: '2026-07-01T00:00:00Z',
+    mergeable: 'MERGEABLE',
+    reviewDecision: null,
+    author: { login: 'contrib' },
+    labels: { nodes: [] },
+    comments: { nodes: [] },
+    reviews: { nodes: [] },
+    commits: { nodes: [] },
+    reviewThreads: { nodes: [] },
+    labelTimelineItems: { nodes: [] },
+    draftTimelineItems: { nodes: [] },
+    ...overrides,
   };
 }
