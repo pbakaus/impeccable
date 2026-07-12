@@ -1,8 +1,6 @@
 # Craft Flow: the collaborative build
 
-`craft` is the **supervised** way to build: the user gets guaranteed checkpoints (a confirmed direction, approved mocks where the harness generates them) before code exists, and a guided walkthrough after. A plain `$impeccable <build request>` builds the same thing directly, through the same design path (SKILL.md, the new-work gate, the craft floor), without pausing; invoke craft when the user wants to steer, not because building requires it.
-
-This file is the *orchestration* of that supervised build (when to pause, what to confirm, how to finish); the design thinking itself lives in SKILL.md and, for new identity work, [new-work.md](new-work.md). Rules stated there are not repeated here.
+This is the **supervised** build: the user gets guaranteed checkpoints (a confirmed direction, approved mocks where the harness generates them) before code exists, and a guided walkthrough after. This file is the *orchestration* of that build (when to pause, what to confirm, how to finish); the design thinking itself lives in SKILL.md and, for new identity work, [new-work.md](new-work.md). Rules stated there are not repeated here.
 
 Before writing code, you need: PRODUCT.md loaded, a confirmed design direction for this task (from `shape` or supplied by the user), and, when SKILL.md's new-work gate applies, [new-work.md](new-work.md) read.
 

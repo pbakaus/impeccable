@@ -52,7 +52,7 @@ Name the visitor's mode before designing; the page's grammar follows from it, an
 
 | Command | Category | Description | Reference |
 |---|---|---|---|
-| `craft [feature]` | Build | Shape, then build a feature end-to-end | [reference/craft.md](reference/craft.md) |
+| `craft [feature]` | Build | Build end-to-end with user checkpoints (confirmed direction, approved mocks) | [reference/craft.md](reference/craft.md) |
 | `shape [feature]` | Build | Plan UX/UI before writing code | [reference/shape.md](reference/shape.md) |
 | `init` | Build | Set up project context: PRODUCT.md, DESIGN.md, live config, next steps | [reference/init.md](reference/init.md) |
 | `document` | Build | Generate DESIGN.md from existing project code | [reference/document.md](reference/document.md) |
@@ -76,7 +76,7 @@ Name the visitor's mode before designing; the page's grammar follows from it, an
 | `optimize [target]` | Fix | Diagnose and fix UI performance | [reference/optimize.md](reference/optimize.md) |
 | `live` | Iterate | Visual variant mode: pick elements in the browser, generate alternatives | [reference/live.md](reference/live.md) |
 
-Routing: **no argument** → read [reference/routing.md](reference/routing.md) and present the context-aware menu (never auto-run a command). **First word matches a command** (or `pin` / `unpin` / `hooks`) → load its reference (native variant on native platforms) and follow it; everything after the command name is the target. **Intent clearly maps to one command** ("fix the spacing" → `layout`, "rewrite this error" → `clarify`) → same; if two fit, ask once. **Otherwise** → general design invocation: apply Setup and this file's guidance. `teach` is a deprecated alias for `init`. If setup diverted into `init` for a `craft`/`shape` request, finish init, refresh context, then resume the original command.
+Routing: **no argument** → read [reference/routing.md](reference/routing.md) and present the context-aware menu (never auto-run a command). **First word matches a command** (or `pin` / `unpin` / `hooks`) → load its reference (native variant on native platforms) and follow it; everything after the command name is the target. **Intent clearly maps to one command** ("fix the spacing" → `layout`, "rewrite this error" → `clarify`) → same; if two fit, ask once. **Otherwise** → general design invocation: apply Setup and this file's guidance, and build directly when the request is a build (the new-work gate and craft floor already govern it). Route a bare build request to `craft` only when the user names it or asks for a guided, checkpointed build. `teach` is a deprecated alias for `init`. If setup diverted into `init` for a `craft`/`shape` request, finish init, refresh context, then resume the original command.
 
 **Pin / Unpin:** `node .gemini/skills/impeccable/scripts/pin.mjs <pin|unpin> <command>` creates or removes a standalone `/<command>` shortcut. Report the script's result concisely; relay stderr verbatim on error.
 
