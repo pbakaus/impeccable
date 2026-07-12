@@ -461,7 +461,7 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /"targetPath": "apps\/dashboard\/src\/App\.jsx"/);
     assert.match(res.stdout, /"productPath": "apps\/dashboard\/PRODUCT\.md"/);
     assert.match(res.stdout, /"designPath": "DESIGN\.md"/);
-    assert.match(res.stdout, /NEXT STEP: This project's register is `product`\./);
+    assert.match(res.stdout, /REGISTER: `product`/);
   });
 
   it('asks for an app when the CLI runs from a monorepo root without selection', () => {
@@ -806,8 +806,10 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /# Acme/);
     assert.equal(res.stdout.includes('# DESIGN.md'), false);
-    // The NEXT STEP directive is always appended after `---`.
-    assert.match(res.stdout, /\n---\n\nNEXT STEP:/);
+    // Directives are appended after `---`; with no DESIGN.md the
+    // new-work gate directive fires.
+    assert.match(res.stdout, /\n---\n\n/);
+    assert.match(res.stdout, /NEW_WORK: PRODUCT\.md exists but no DESIGN\.md/);
   });
 
   it('concatenates PRODUCT.md and DESIGN.md with a --- separator', async () => {
@@ -819,7 +821,7 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /\n---\n/);
     assert.match(res.stdout, /# DESIGN\.md\n\n# Acme design/);
-    assert.match(res.stdout, /NEXT STEP:/);
+    assert.equal(res.stdout.includes('NEW_WORK:'), false);
   });
 
   it('reads from a fallback dir when cwd is clean', async () => {
@@ -836,8 +838,8 @@ describe('context.mjs CLI', () => {
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /NEXT STEP: This project's register is `brand`\./);
-    assert.match(res.stdout, /read `reference\/brand\.md`/);
+    assert.match(res.stdout, /REGISTER: `brand`/);
+    assert.match(res.stdout, /reference\/brand\.md/);
   });
 
   it('falls back to a generic register directive when no register field is present', async () => {
@@ -845,8 +847,8 @@ describe('context.mjs CLI', () => {
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /NEXT STEP: You MUST now read the matching register reference/);
-    assert.match(res.stdout, /reference\/brand\.md.*reference\/product\.md/);
+    assert.match(res.stdout, /NEW_WORK: PRODUCT\.md exists but no DESIGN\.md/);
+    assert.equal(res.stdout.includes('REGISTER:'), false);
   });
 
   it('appends a native platform directive for an ios project', async () => {

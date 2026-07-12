@@ -319,6 +319,7 @@
 
 .scenario-track .is-plain { background: var(--ks-kinpaku); }
 .scenario-track .is-annotated { background: var(--ks-patina); }
+.scenario-track .is-control { background: var(--ks-graphite-2); }
 
 .scenario-row output {
   color: var(--ks-champagne);

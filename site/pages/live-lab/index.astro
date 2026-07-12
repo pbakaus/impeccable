@@ -6,18 +6,24 @@ import '../../styles/sub-pages.css';
 import '../../styles/live-performance.css';
 
 const reports = 'reports' in benchmarkData ? benchmarkData.reports : [benchmarkData];
-const plain = reports.find(report => report.benchmark.scenario === 'plain' && report.benchmark.agent === 'fake') || reports[0];
-const annotated = reports.find(report => report.benchmark.scenario === 'annotated' && report.benchmark.agent === 'fake');
+const plainReports = reports.filter(report => report.benchmark.scenario === 'plain' && report.benchmark.agent === 'fake');
+const annotatedReports = reports.filter(report => report.benchmark.scenario === 'annotated' && report.benchmark.agent === 'fake');
+const baseline = plainReports[0] || reports[0];
+const plain = plainReports.at(-1) || baseline;
+const annotated = annotatedReports.at(-1);
 const metric = (name: string) => plain.summary.metrics[name]?.median || 0;
 const protocolFloor = metric('goToFirstVariantMs');
-const browserPreparation = metric('browserPreparationMs');
+const baselineFloor = baseline.summary.metrics.goToFirstVariantMs?.median || protocolFloor;
+const browserDispatch = metric('browserDispatchMs');
+const automationClick = metric('automationClickMs');
 const serverPickup = metric('serverPickupMs');
 const scaffold = metric('scaffoldMs');
 const writeAndRender = metric('writeMs') + metric('writeToFirstVariantMs');
-const overlapFloor = Math.max(0, protocolFloor - browserPreparation);
-const preparationShare = protocolFloor ? (browserPreparation / protocolFloor) * 100 : 0;
+const productFloor = Math.max(0, protocolFloor - automationClick);
+const improvement = baselineFloor ? Math.max(0, 1 - (protocolFloor / baselineFloor)) : 0;
 const annotatedFloor = annotated?.summary.metrics.goToFirstVariantMs?.median || 0;
-const maxScenarioFloor = Math.max(protocolFloor, annotatedFloor, 1);
+const maxScenarioFloor = Math.max(baselineFloor, protocolFloor, annotatedFloor, 1);
+const optimizedTapeWidth = Math.max(12, (protocolFloor / baselineFloor) * 952);
 const generatedDate = new Date(plain.generatedAt).toLocaleDateString('en-US', {
   month: 'short', day: 'numeric', year: 'numeric',
 });
@@ -29,8 +35,8 @@ const displayMs = (value: number) => {
 };
 
 const stageData = [
-  { name: 'Browser preparation', value: browserPreparation, tone: 'capture' },
-  { name: 'Server pickup', value: serverPickup, tone: 'pickup' },
+  { name: 'Playwright actionability', value: automationClick, tone: 'capture' },
+  { name: 'Live dispatch + pickup', value: browserDispatch + serverPickup, tone: 'pickup' },
   { name: 'Source scaffold', value: scaffold, tone: 'scaffold' },
   { name: 'Write + browser settle', value: writeAndRender, tone: 'render' },
 ];
@@ -63,15 +69,15 @@ const stageData = [
   <article
     class="live-performance"
     data-live-performance
-    data-protocol-floor={protocolFloor}
-    data-overlap-floor={overlapFloor}
+    data-protocol-floor={baselineFloor}
+    data-overlap-floor={productFloor}
   >
     <header class="live-performance-hero ks-section">
-      <p class="live-performance-kicker">Live latency lab · protocol baseline</p>
-      <h1>The wait starts<br /><span>before the model.</span></h1>
+      <p class="live-performance-kicker">Live latency lab · optimization result</p>
+      <h1>Capture left<br /><span>the critical path.</span></h1>
       <p class="live-performance-lede">
-        With generation removed, Go still takes {displayMs(protocolFloor)} to show the first variant.
-        {' '}{preparationShare.toFixed(1)}% of that time passes before the generate event leaves the browser.
+        The same model-free run fell from {displayMs(baselineFloor)} to {displayMs(protocolFloor)}, a{' '}
+        {(improvement * 100).toFixed(1)}% reduction. Live now starts the generate fetch in {displayMs(browserDispatch)} median.
       </p>
       <div class="live-performance-meta" aria-label="Benchmark context">
         <span>{plain.summary.count} warm runs</span>
@@ -85,7 +91,7 @@ const stageData = [
       <div class="live-performance-section-head">
         <div>
           <p class="live-performance-label">Click → first usable variant</p>
-          <h2 id="critical-path-title">The measured critical path</h2>
+          <h2 id="critical-path-title">The critical path moved</h2>
         </div>
         <p>Median values. Deterministic generation isolates Impeccable’s own floor.</p>
       </div>
@@ -93,25 +99,15 @@ const stageData = [
       <div class="latency-tape">
         <svg viewBox="0 0 1000 214" role="img" aria-labelledby="latency-title latency-desc">
           <title id="latency-title">Impeccable Live model-free latency timeline</title>
-          <desc id="latency-desc">A 916 millisecond timeline dominated by 828 milliseconds of browser preparation before the generate request.</desc>
-          <line class="latency-axis" x1="24" y1="112" x2="976" y2="112"></line>
-          <g class="latency-ticks" aria-hidden="true">
-            <line x1="24" y1="102" x2="24" y2="124"></line>
-            <line x1="284" y1="106" x2="284" y2="120"></line>
-            <line x1="544" y1="106" x2="544" y2="120"></line>
-            <line x1="804" y1="106" x2="804" y2="120"></line>
-            <line x1="976" y1="102" x2="976" y2="124"></line>
-          </g>
-          <rect class="latency-segment is-capture" x="24" y="88" width="860" height="48"></rect>
-          <rect class="latency-segment is-pickup" x="884" y="88" width="2" height="48"></rect>
-          <rect class="latency-segment is-scaffold" x="886" y="88" width="43" height="48"></rect>
-          <rect class="latency-segment is-render" x="929" y="88" width="47" height="48"></rect>
-          <text class="latency-major-label" x="44" y="75">Browser prepares capture</text>
-          <text class="latency-major-value" x="44" y="118">{displayMs(browserPreparation)}</text>
-          <text class="latency-remainder-label" x="974" y="166" text-anchor="end">everything after dispatch · {displayMs(overlapFloor)}</text>
-          <path class="latency-bracket" d="M884 148 V158 H976 V148"></path>
-          <text class="latency-axis-label" x="24" y="194">Go</text>
-          <text class="latency-axis-label" x="976" y="194" text-anchor="end">First variant</text>
+          <desc id="latency-desc">The same model-free benchmark improved from {displayMs(baselineFloor)} to {displayMs(protocolFloor)} median.</desc>
+          <text class="latency-major-label" x="24" y="42">Before · capture blocks dispatch</text>
+          <rect class="latency-segment is-capture" x="24" y="54" width="952" height="42"></rect>
+          <text class="latency-major-value" x="44" y="82">{displayMs(baselineFloor)}</text>
+          <text class="latency-major-label" x="24" y="128">After · dispatch precedes capture</text>
+          <rect class="latency-segment is-scaffold" x="24" y="140" width={optimizedTapeWidth} height="42"></rect>
+          <text class="latency-major-value" x="44" y="168">{displayMs(protocolFloor)}</text>
+          <path class="latency-bracket" d={`M${24 + optimizedTapeWidth} 184 V194 H976 V184`}></path>
+          <text class="latency-remainder-label" x="976" y="210" text-anchor="end">−{(improvement * 100).toFixed(1)}% · same fixture and deterministic agent</text>
         </svg>
       </div>
 
@@ -126,55 +122,60 @@ const stageData = [
       </ol>
 
       <div class="live-performance-finding" role="note">
-        <strong>Finding 01</strong>
-        <p>The browser captures the selected element for the generating shader even when no annotations need to reach the model. That capture blocks event dispatch.</p>
+        <strong>Result 01</strong>
+        <p>Unannotated requests wait only for the helper to accept the event. Shader capture continues off-path; annotated requests still capture and upload first because the screenshot is semantic input.</p>
       </div>
     </section>
 
     <section class="live-performance-section ks-section" aria-labelledby="paths-title">
       <div class="live-performance-section-head">
         <div>
-          <p class="live-performance-label">Capture paths</p>
-          <h2 id="paths-title">Annotation state changes the floor</h2>
+          <p class="live-performance-label">Before / after / control</p>
+          <h2 id="paths-title">The common path is decisively faster</h2>
         </div>
-        <p>The difference is repeatable enough to investigate, not yet explained enough to optimize against.</p>
+        <p>The annotated path remains a control: its screenshot must reach the agent before generation starts.</p>
       </div>
-      <div class="scenario-comparison" role="img" aria-label={`Plain path ${displayMs(protocolFloor)}; annotated path ${displayMs(annotatedFloor)}`}>
+      <div class="scenario-comparison" role="img" aria-label={`Baseline ${displayMs(baselineFloor)}; optimized plain path ${displayMs(protocolFloor)}; annotated control ${displayMs(annotatedFloor)}`}>
         <div class="scenario-row">
-          <div class="scenario-label"><strong>Plain pick</strong><span>No comments or strokes</span></div>
-          <div class="scenario-track"><span class="is-plain" style={`--scenario-width:${(protocolFloor / maxScenarioFloor) * 100}%`}></span></div>
+          <div class="scenario-label"><strong>Before</strong><span>Plain pick, capture first</span></div>
+          <div class="scenario-track"><span class="is-plain" style={`--scenario-width:${(baselineFloor / maxScenarioFloor) * 100}%`}></span></div>
+          <output>{displayMs(baselineFloor)}</output>
+        </div>
+        <div class="scenario-row">
+          <div class="scenario-label"><strong>After</strong><span>Plain pick, dispatch first</span></div>
+          <div class="scenario-track"><span class="is-annotated" style={`--scenario-width:${(protocolFloor / maxScenarioFloor) * 100}%`}></span></div>
           <output>{displayMs(protocolFloor)}</output>
         </div>
         <div class="scenario-row">
-          <div class="scenario-label"><strong>Annotated pick</strong><span>Pin + stroke + upload</span></div>
-          <div class="scenario-track"><span class="is-annotated" style={`--scenario-width:${(annotatedFloor / maxScenarioFloor) * 100}%`}></span></div>
+          <div class="scenario-label"><strong>Annotated control</strong><span>Pin + stroke + upload</span></div>
+          <div class="scenario-track"><span class="is-control" style={`--scenario-width:${(annotatedFloor / maxScenarioFloor) * 100}%`}></span></div>
           <output>{displayMs(annotatedFloor)}</output>
         </div>
       </div>
-      <p class="live-performance-caption">Protocol-only measurements: {plain.summary.count} plain runs, {annotated?.summary.count || 0} annotated runs. Browser and filesystem caches were warm.</p>
+      <p class="live-performance-caption">Median protocol measurements: {baseline.summary.count} before runs, {plain.summary.count} optimized runs, {annotated?.summary.count || 0} annotated controls. Browser and filesystem caches were warm.</p>
     </section>
 
     <section class="live-performance-section live-simulator-section ks-section" aria-labelledby="simulator-title">
       <div class="live-performance-section-head">
         <div>
           <p class="live-performance-label">Latency simulator</p>
-          <h2 id="simulator-title">Model speed does not erase fixed overhead</h2>
+          <h2 id="simulator-title">The gain survives slower models</h2>
         </div>
-        <p>Move the model time. The protocol floor stays put.</p>
+        <p>Move model time to compare the old floor with the optimized product-side estimate.</p>
       </div>
       <div class="live-simulator">
         <label for="model-latency">Model generates all variants <output data-model-value>15 s</output></label>
         <input id="model-latency" data-model-latency type="range" min="0" max="60000" step="500" value="15000" />
         <div class="simulator-results" aria-live="polite">
           <div>
-            <span>Current atomic path</span>
+            <span>Before optimization</span>
             <strong data-current-total>15.9 s</strong>
-            <small>model + measured protocol floor</small>
+            <small>model + measured baseline</small>
           </div>
           <div>
-            <span>Capture fully overlapped</span>
+            <span>Current optimized path</span>
             <strong data-overlap-total>15.1 s</strong>
-            <small>best-case projection, not a measured target</small>
+            <small>model + measured floor, excluding Playwright actionability</small>
           </div>
         </div>
       </div>

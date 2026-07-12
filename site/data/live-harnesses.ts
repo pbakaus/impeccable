@@ -39,11 +39,11 @@ export const harnessPaths = [
 export const liveExperiments = [
   {
     rank: 1,
-    title: 'Dispatch first, capture second',
-    evidence: 'The plain path spends 828 ms before the generate POST leaves the browser.',
-    move: 'For unannotated picks, post the event immediately and run shader capture in parallel. Keep annotated capture on the blocking path until the protocol can attach evidence later.',
-    expected: 'Removes up to 90% of the measured model-free floor on the common path.',
-    confidence: 'Measured',
+    title: 'Dispatch first, capture second — shipped',
+    evidence: 'Plain click-handler → generate fetch is now 2.2 ms median; end-to-end model-free latency fell from 916 ms to 414 ms.',
+    move: 'Unannotated picks wait for the helper to accept the event, then capture the shader off-path. Annotated picks still capture and upload before dispatch.',
+    expected: 'Delivered a 54.8% median reduction on the same fixture and deterministic agent.',
+    confidence: 'Measured + shipped',
   },
   {
     rank: 2,
@@ -111,4 +111,3 @@ export const currentHarnessProbe = {
   surfacedAutomatically: false,
   result: 'The sentinel appeared only after an explicit session read; no app terminal was attached.',
 };
-

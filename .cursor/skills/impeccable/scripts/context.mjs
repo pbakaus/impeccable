@@ -904,6 +904,10 @@ async function cli() {
       'reference/init.md and write PRODUCT.md first; for any other (scoped) ' +
       'command against existing code, proceed using the code as context and ' +
       `offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).`,
+      'NEW_WORK: No committed design context was found. If this task produces ' +
+      'new design (a build from scratch, or a redesign that discards the ' +
+      'current look), you MUST read reference/new-work.md before making any ' +
+      'design decision. Scoped fixes to existing code do not need it.',
     ];
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
@@ -922,10 +926,22 @@ async function cli() {
     parts.push(buildMissingTargetDirective());
   }
   const register = extractRegister(ctx.product);
-  const next = register
-    ? `NEXT STEP: This project's register is \`${register}\`. You MUST now read \`reference/${register}.md\` before producing any design output.`
-    : `NEXT STEP: You MUST now read the matching register reference (\`reference/brand.md\` or \`reference/product.md\`) before producing any design output. Pick based on PRODUCT.md above.`;
-  parts.push(next);
+  // The register field survives as a family hint (brand = Persuade/Experience,
+  // product = Operate/Read); SKILL.md's mode section carries the essentials
+  // inline, so no register-file read is mandated here. What IS mandated:
+  // the new-work playbook when no committed design system exists yet.
+  if (!ctx.hasDesign) {
+    parts.push(
+      'NEW_WORK: PRODUCT.md exists but no DESIGN.md was found. If the code ' +
+      'has no committed design system either (check the project files), and ' +
+      'this task produces new design or a redesign that discards the current ' +
+      'look, you MUST read reference/new-work.md before making any design ' +
+      'decision. Scoped fixes inside an existing design system do not need it.',
+    );
+  }
+  if (register) {
+    parts.push(`REGISTER: \`${register}\` (family hint: brand = Persuade/Experience surfaces, product = Operate/Read). Derive the visitor's mode per SKILL.md; \`reference/${register}.md\` has extended depth for substantial work.`);
+  }
   const platform = extractPlatform(ctx.product);
   const nativeRefs =
     platform === 'adaptive' ? ['ios', 'android'] : platform === 'ios' || platform === 'android' ? [platform] : [];
@@ -933,7 +949,7 @@ async function cli() {
     const refList = nativeRefs.map(p => `\`reference/${p}.md\``).join(' and ');
     const label = platform === 'adaptive' ? '`adaptive` (both iOS and Android)' : `\`${platform}\``;
     parts.push(
-      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions, in addition to the register reference.`,
+      `NEXT STEP: This project targets ${label}. Also read ${refList} for native conventions, in addition to SKILL.md's mode guidance.`,
     );
   } else if (!platform) {
     // A `## Platform` section that names something we don't recognize (a

@@ -5,8 +5,26 @@ import { join } from 'node:path';
 
 const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
+  it('dispatches plain generation before screenshot capture without bypassing annotated evidence', () => {
+    const dispatchIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('if (!hasAnnotations) await sendEvent(basePayload);');
+    const captureIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await captureElementToBlob');
+    assert.ok(dispatchIndex >= 0, 'plain generation should dispatch immediately');
+    assert.ok(captureIndex > dispatchIndex, 'plain generation dispatch must happen before capture begins');
+    assert.match(
+      CAPTURE_AND_EMIT_SOURCE,
+      /if \(blob && hasAnnotations\)[\s\S]*?\/annotation\?token=/,
+      'annotation screenshots should still upload before annotated generation dispatch',
+    );
+    assert.match(
+      CAPTURE_AND_EMIT_SOURCE,
+      /if \(hasAnnotations\) \{\s*sendEvent\(screenshotPath \? \{ \.\.\.basePayload, screenshotPath \} : basePayload\);\s*\}/,
+      'annotated generation should dispatch exactly after capture and upload resolve',
+    );
+  });
+
   it('saves copy edits to the staged buffer with rich AI context', () => {
     assert.doesNotMatch(
       SOURCE,

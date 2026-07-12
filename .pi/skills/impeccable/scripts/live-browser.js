@@ -7105,6 +7105,14 @@
   }
 
   async function captureAndEmit(el, basePayload, snapshot, rect) {
+    const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
+
+    // Plain requests do not send a screenshot to the agent, so capture is
+    // presentation-only. Wait only for the helper to accept the event before
+    // starting CPU-heavy capture; this yields the browser task and prevents
+    // rasterization from delaying the fetch itself.
+    if (!hasAnnotations) await sendEvent(basePayload);
+
     let screenshotPath;
     let blob;
     let paper;
@@ -7122,7 +7130,6 @@
     // are present. Without annotations the image is pure visual anchoring -
     // it biases the model toward the current rendering and works against the
     // three-distinct-directions brief.
-    const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
     if (blob && hasAnnotations) {
       try {
         const uploadRes = await fetch(
@@ -7140,7 +7147,11 @@
         console.warn('[impeccable] annotation upload failed:', err);
       }
     }
-    sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
+    // Annotated requests must wait for capture + upload because the screenshot
+    // is semantic input. Plain requests were already dispatched above.
+    if (hasAnnotations) {
+      sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
+    }
   }
 
   //

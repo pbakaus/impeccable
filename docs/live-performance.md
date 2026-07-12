@@ -1,4 +1,4 @@
-# Impeccable Live performance baseline
+# Impeccable Live performance baseline and first optimization
 
 ## Goal
 
@@ -8,30 +8,36 @@ Measure the latency Impeccable controls in the Pick → Go → first usable vari
 
 `bun run bench:live` reuses the Live runtime E2E fixture system. It stages a real framework project, starts the helper and framework dev servers, opens Chromium, drives the picker, and records monotonic boundaries for:
 
-1. Go → generate POST begins (`browserPreparationMs`)
-2. generate POST → agent poll receives the event (`serverPickupMs`)
-3. deterministic source scaffold (`scaffoldMs`)
-4. agent generation (`generationMs`)
-5. source write (`writeMs`)
-6. write → first variant in the DOM (`writeToFirstVariantMs`)
-7. first variant → all variants/cycling (`deliveryGapMs`)
+1. Playwright starts Go → generate POST begins (`browserPreparationMs`, includes automation actionability)
+2. browser Go handler → generate fetch begins (`browserDispatchMs`)
+3. Playwright actionability before the Go handler (`automationClickMs`)
+4. generate POST → agent poll receives the event (`serverPickupMs`)
+5. deterministic source scaffold (`scaffoldMs`)
+6. agent generation (`generationMs`)
+7. source write (`writeMs`)
+8. write → first variant in the DOM (`writeToFirstVariantMs`)
+9. first variant → all variants/cycling (`deliveryGapMs`)
 
 The deterministic agent measures Impeccable’s fixed floor. An LLM-backed run uses the same orchestration seam, but remains opt-in because it sends staged fixture source to an external provider.
 
-## Baseline, July 11 2026
+## Baseline and result, July 11 2026
 
 Fixture: `vite8-react-plain`. Browser: local headless Chromium. Three variants. Warm interaction loop.
 
-| Metric | Plain, median | Annotated, median |
-|---|---:|---:|
-| Go → first variant | 916 ms | 431 ms |
-| Browser preparation | 828 ms | 335 ms |
-| Server pickup | 0.8 ms | 0.4 ms |
-| Scaffold | 41 ms | 41 ms |
-| Write → first variant | 47 ms | 54 ms |
-| First → all variants | 1.3 ms | 1.3 ms |
+| Metric | Before, plain | After, plain | Annotated control |
+|---|---:|---:|---:|
+| Go → first variant | 916 ms | 414 ms | 423 ms |
+| Browser preparation, including Playwright | 828 ms | 312 ms | 350 ms |
+| Browser handler → generate fetch | — | 2.2 ms | 46.7 ms |
+| Playwright actionability | — | 309 ms | 303 ms |
+| Server pickup | 0.8 ms | 2.2 ms | 0.8 ms |
+| Scaffold | 41 ms | 54 ms | 43 ms |
+| Write → first variant | 47 ms | 44 ms | 28 ms |
+| First → all variants | 1.3 ms | 1.3 ms | 1.2 ms |
 
-The plain path spends 90.4% of its model-free latency before the generate request leaves the browser. `handleGo()` always calls `captureAndEmit()`, which captures the element for the generating shader even when there are no annotations to upload. The annotation-path difference needs a capture microbenchmark before changing branch logic.
+Dispatch-before-capture reduces the median model-free Pick → first-variant loop by **54.8%**, from 916 ms to 414 ms on the same fixture and deterministic agent. The refined in-browser probe shows that Live begins the plain generate fetch in **2.2 ms median**; most of the remaining 414 ms total is Playwright actionability, not product work. The product-side estimate after subtracting that automation delay is about **105 ms**.
+
+The annotated control still blocks on screenshot capture and upload by design. Its browser handler → fetch time is 46.7 ms median, and the E2E event retains comments, strokes, and `screenshotPath`.
 
 ## Harness evidence
 
@@ -44,7 +50,7 @@ The plain path spends 90.4% of its model-free latency before the generate reques
 
 ### 1. Dispatch first, capture second
 
-For unannotated picks, send `generate` immediately, then capture the shader texture concurrently. Preserve annotated capture as blocking until the protocol supports attaching screenshot evidence after event pickup. This targets the measured 828 ms plain-path bottleneck and does not touch generation quality.
+**Shipped.** Unannotated picks send `generate` and wait only for the helper to accept it, then continue shader capture off the critical path. Annotated capture remains blocking because the screenshot is semantic model input. This produced the 54.8% median reduction above without changing the agent payload or provider path.
 
 ### 2. Progressive variant delivery
 
@@ -95,6 +101,8 @@ Run a fast producer first and validate identity, copy preservation, param wiring
 
 Replace generic generating dots with truthful stage states from the journal: preparing capture, locating source, generating, previewing variant 1, and finishing alternatives. Never display fake percentage progress.
 
-## Follow-up goal
+## Completed goal
 
 Reduce the median plain Pick → first usable variant latency by at least 25% on the measured Vite/Chromium protocol baseline and materially reduce model-backed time-to-first-variant, while holding source validity, copy preservation, visual-quality acceptance, and Claude/Codex harness compatibility at or above baseline. Implement the unannotated dispatch-before-capture path first, then progressive delivery or a warm provider-specific producer only when their own benchmarks show a net win.
+
+Result: **54.8% median reduction** on the deterministic protocol benchmark. The next goal should target model-dominated sessions: progressively reveal the first valid variant, then benchmark a warm provider-specific producer only if it beats main-thread generation without reducing visual acceptance.
