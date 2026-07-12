@@ -839,7 +839,7 @@ describe('context.mjs CLI', () => {
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
     assert.match(res.stdout, /REGISTER: `brand`/);
-    assert.match(res.stdout, /reference\/brand\.md/);
+    assert.match(res.stdout, /Derive the visitor's mode per SKILL\.md/);
   });
 
   it('falls back to a generic register directive when no register field is present', async () => {

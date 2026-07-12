@@ -37,7 +37,7 @@ Build to this floor without announcing it. The design detector (the project hook
 
 ## Registers
 
-Name the visitor's mode before designing; the page's grammar follows from it, and most ruined pages are one mode wearing another mode's grammar. The brief and the surface decide the mode. PRODUCT.md's `register` field names the family (`brand` covers Persuade and Experience; `product` covers Operate and Read), and `reference/brand.md` / `reference/product.md` carry extended depth for the two families.
+Name the visitor's mode before designing; the page's grammar follows from it, and most ruined pages are one mode wearing another mode's grammar. The brief and the surface decide the mode; PRODUCT.md's `register` field survives only as a family hint (`brand` covers Persuade and Experience, `product` covers Operate and Read). Depth beyond the paragraphs below: [reference/new-work.md](reference/new-work.md) when inventing identity, [reference/operate.md](reference/operate.md) for substantial Operate and Read work.
 
 **Persuade** (landing pages, marketing, campaigns; design IS the product). The deliverable is an impression that stops the scroll, earns the click, converts. Spans every genre (tech, luxury, consumer); don't collapse them into one look. Briefs that imply imagery must ship real, verified imagery; a colored rectangle where a photo belongs reads as incomplete. New Persuade surfaces take their typeface procedure and reject list from [reference/new-work.md](reference/new-work.md).
 

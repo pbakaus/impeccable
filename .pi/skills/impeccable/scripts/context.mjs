@@ -940,7 +940,7 @@ async function cli() {
     );
   }
   if (register) {
-    parts.push(`REGISTER: \`${register}\` (family hint: brand = Persuade/Experience surfaces, product = Operate/Read). Derive the visitor's mode per SKILL.md; \`reference/${register}.md\` has extended depth for substantial work.`);
+    parts.push(`REGISTER: \`${register}\` (family hint: brand = Persuade/Experience surfaces, product = Operate/Read). Derive the visitor's mode per SKILL.md.`);
   }
   const platform = extractPlatform(ctx.product);
   const nativeRefs =

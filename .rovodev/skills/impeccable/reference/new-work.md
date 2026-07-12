@@ -24,6 +24,10 @@ Plan a compact token system in your reasoning: palette, type, layout concept in 
 
 Pick a color strategy before picking colors: Restrained (neutrals + one accent; the default when the visitor came to operate or read) / Committed (one saturated color carries 30-60% of the surface) / Full palette (3-4 named roles) / Drenched (the surface IS the color). Persuade and Experience surfaces have permission for the bolder strategies; take them when the brief allows. Dark vs. light is never a default: write one sentence of physical scene (who uses this, where, under what light, in what mood) and let it force the answer. The warm cream near-white body background is the saturated AI default; where the axis is free, pick a background that is a choice.
 
+- Name a real reference before picking a strategy; unnamed ambition becomes beige.
+- Palette IS voice: a calm brand and a restless brand should not share palette mechanics, and each new surface differentiates from the last.
+- When a cultural-symbol palette is the obvious pull, reach past it. Let the cultural reading come from typography, imagery, and copy, not the palette.
+
 ## Type and imagery for new Persuade and Experience surfaces
 
 Choose faces like objects from the brand's world; these training-data defaults mean you stopped looking: Fraunces, Playfair Display, Cormorant, Lora, Crimson, Newsreader, Syne, Space Grotesk, Space Mono, IBM Plex, Inter-as-display, DM Sans, DM Serif, Outfit, Plus Jakarta Sans, Instrument Sans. (For Operate and Read surfaces the opposite holds: system stacks and workhorse UI faces are legitimate and often correct.)
@@ -33,5 +37,11 @@ Imagery-implying briefs (food, travel, place, product, fashion) must ship real, 
 ## Calibration
 
 AI-generated interfaces cluster around a few looks regardless of subject: warm cream + high-contrast serif + terracotta accent; near-black + one neon accent (acid green, cyan) + glowing edges; broadsheet-editorial hairlines + italic display serif + small tracked mono labels. All are legitimate when the brief calls for them; the brief always wins. Where the brief leaves the aesthetic free, landing in one of them means your self-check failed. Same one tier deeper: if someone could guess your aesthetic from the category alone, or from category-plus-avoidance, rework until neither answer is obvious.
+
+**Name the aesthetic lane, then test it.** Before committing to moves, say which lane this is (a specimen page, minimal-cool tech, acid maximalism...). Then the inverse test: describe what you're about to build the way a competitor would describe theirs; if that sentence fits the modal page in the category, restart. Currently saturated lanes count as reflexes, not choices, when the brief doesn't require them; the flooded one right now is editorial-typographic (display serif, often italic, small mono labels, ruled separators, monochromatic restraint, no imagery).
+
+## Persuade and Experience moves
+
+Layout: asymmetric compositions and intentional grid breaks are on the table; fluid spacing with `clamp()` that breathes on larger viewports; for image-led briefs, full-bleed hero imagery with overlaid navigation is a canonical move, letting the photograph be the design. Permissions the Operate world doesn't get: ambitious first-load motion (one orchestrated page-load beats scattered micro-interactions; skipping entrance motion entirely is also a voice), single-purpose viewports (one dominant idea per fold, deliberate pacing), and art direction per section when the narrative demands it; consistency of voice beats consistency of treatment.
 
 Before finishing, verify against SKILL.md's craft floor and run the detector; a bold page that ships mechanical defects is not done.
