@@ -7,6 +7,7 @@ import { liveInitResult } from '../../data/live-init-result';
 import { liveControlResult } from '../../data/live-control-result';
 import { liveFrameworkResults } from '../../data/live-framework-results';
 import { liveProviderResult } from '../../data/live-provider-result';
+import { liveCodexWorkerResult } from '../../data/live-codex-worker-result';
 import { liveAnnotatedResult } from '../../data/live-annotated-result';
 import '../../styles/sub-pages.css';
 import '../../styles/live-performance.css';
@@ -61,6 +62,12 @@ const progressiveAllDelta = (
   - progressiveDeliveryResult.atomic.medianAllMs
 );
 const initGain = 1 - (liveInitResult.cold.medianMs / liveInitResult.baselineColdMedianMs);
+const providerColumns = [
+  { key: 'atomic', label: 'Atomic full' },
+  { key: 'progressiveFull', label: 'Progressive full' },
+  { key: 'progressiveCompact', label: 'Progressive compact' },
+  { key: 'parallelCompact', label: 'Parallel compact' },
+] as const;
 ---
 
 <Base
@@ -208,32 +215,30 @@ const initGain = 1 - (liveInitResult.cold.medianMs / liveInitResult.baselineCold
     <section class="live-performance-section ks-section" aria-labelledby="provider-title">
       <div class="live-performance-section-head">
         <div>
-          <p class="live-performance-label">Paid provider smoke matrix</p>
-          <h2 id="provider-title">Decompose the work, preserve the first answer</h2>
+          <p class="live-performance-label">Paid provider matrix · five runs per candidate</p>
+          <h2 id="provider-title">The right split depends on the provider</h2>
         </div>
-        <p>One strict-gated run per candidate. Brand, component, token, copy, source, and cleanup fidelity must all pass.</p>
+        <p>Sixty strict-gated runs. Brand, component, token, copy, source, and cleanup fidelity must all pass.</p>
       </div>
       <p class="table-scroll-hint" aria-hidden="true">Scroll horizontally to compare →</p>
       <div class="harness-table-wrap" tabindex="0" aria-label="Scrollable provider strategy comparison">
         <table class="harness-table">
           <caption class="sr-only">Paid Live generation strategy results by provider</caption>
-          <thead><tr><th>Provider</th><th>Atomic full</th><th>Progressive compact</th><th>Parallel compact</th></tr></thead>
+          <thead><tr><th>Provider</th>{providerColumns.map(column => <th>{column.label}</th>)}</tr></thead>
           <tbody>
             {liveProviderResult.providers.map(result => (
               <tr>
-                <td><strong>{result.provider}</strong><span>{result.model} · {result.effort}</span></td>
-                <td>
-                  <strong>{result.atomic.firstMs === null ? 'Rejected' : displayMs(result.atomic.firstMs)}</strong>
-                  <span>{result.atomic.passed ? 'quality gate passed' : ('reason' in result.atomic ? result.atomic.reason : 'quality gate failed')}</span>
-                </td>
-                <td>
-                  <strong>{displayMs(result.progressiveCompact.firstMs)} first</strong>
-                  <span>{displayMs(result.progressiveCompact.allMs)} all · gate passed</span>
-                </td>
-                <td>
-                  <strong>{displayMs(result.parallelCompact.firstMs)} first</strong>
-                  <span>{displayMs(result.parallelCompact.allMs)} all · gate passed</span>
-                </td>
+                <td><strong>{result.provider}</strong><span>{result.model} · {result.effort}</span><span>{result.recommendation}</span></td>
+                {providerColumns.map(column => {
+                  const candidate = result[column.key];
+                  return (
+                    <td>
+                      <strong>{candidate.firstMedianMs === null ? 'No valid run' : `${displayMs(candidate.firstMedianMs)} first`}</strong>
+                      <span>{candidate.passedRuns}/5 pass{candidate.firstP95Ms === null ? '' : ` · p95 ${displayMs(candidate.firstP95Ms)}`}</span>
+                      <span>{candidate.allMedianMs === null ? 'full set unavailable' : `${displayMs(candidate.allMedianMs)} all`}</span>
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -242,12 +247,11 @@ const initGain = 1 - (liveInitResult.cold.medianMs / liveInitResult.baselineCold
       <div class="live-performance-finding live-finding-card--quiet" role="note">
         <strong>Decision</strong>
         <p>
-          Use progressive compact as the safe default: it cut first-review latency 42–62% for Claude and GPT without weakening any gate. Parallel compact is an optional GPT/Gemini fast path when extra calls and cost are acceptable. Variant 1 and its CSS are carried byte-for-byte into deterministic local assembly; later calls may only add directions.
+          Codex/OpenAI defaults to progressive compact: 5/5 passed, it had the fastest first review, and it cost less than the other OpenAI splits. Anthropic also keeps progressive compact because it was the only 5/5 candidate. Gemini uses parallel compact; every other Gemini strategy failed the reliability gate. Unmeasured harnesses retain atomic delivery.
         </p>
       </div>
       <p class="live-performance-caption">
-        Provider matrix cost: ${liveProviderResult.cost.measuredLowerBoundUsd.toFixed(3)} lower bound. {liveProviderResult.cost.note}{' '}
-        The full-context progressive split was not run after external execution credits were exhausted; no result is inferred. Accept → clean Pick/build control passed in {displayMs(liveProviderResult.cleanupControl.acceptToCleanPickingMs)} with zero console errors or Live markers.
+        Provider matrix cost: ${liveProviderResult.totals.estimatedCostUsd.toFixed(2)} across {liveProviderResult.totals.apiCalls} calls, including {liveProviderResult.totals.retries} retries. {liveProviderResult.totals.passingRuns}/{liveProviderResult.totals.runs} runs passed the strict gate. Accept → clean Pick/build control passed in {displayMs(liveProviderResult.cleanupControl.acceptToCleanPickingMs)} with zero console errors or Live markers.
       </p>
     </section>
 
@@ -371,6 +375,12 @@ const initGain = 1 - (liveInitResult.cold.medianMs / liveInitResult.baselineCold
       <div class="live-performance-finding is-probe" role="note">
         <strong>Harness probe</strong>
         <p>{currentHarnessProbe.surface}: {currentHarnessProbe.result}</p>
+      </div>
+      <div class="live-performance-finding live-finding-card--quiet" role="note">
+        <strong>Dedicated Codex worker probe</strong>
+        <p>
+          {liveCodexWorkerResult.model} at {liveCodexWorkerResult.effort} effort started a dedicated turn in {displayMs(liveCodexWorkerResult.timings.wakeToTurnStartedMs)} and completed a trivial structured response in {displayMs(liveCodexWorkerResult.timings.trivialTurnCompletedMs)}. Cold app-server plus thread setup cost {displayMs(liveCodexWorkerResult.timings.coldHandshakeMs + liveCodexWorkerResult.timings.coldThreadStartMs)} and can be amortized. The safe path owns a separate Live thread; it never resumes the desktop task from a competing app-server.
+        </p>
       </div>
     </section>
 
