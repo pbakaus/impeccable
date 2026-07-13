@@ -60,6 +60,10 @@ export function getLiveServerPath(cwd = process.cwd(), options = {}) {
   return path.join(getLiveDir(cwd, options), 'server.json');
 }
 
+export function getLiveCodexWorkerStatePath(cwd = process.cwd(), options = {}) {
+  return path.join(getLiveDir(cwd, options), 'codex-worker.json');
+}
+
 export function getLegacyLiveServerPath(cwd = process.cwd(), options = {}) {
   return path.join(resolveProjectRoot(cwd, options), '.impeccable-live.json');
 }

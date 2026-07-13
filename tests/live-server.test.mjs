@@ -2048,6 +2048,59 @@ colors: {}
     assert.equal(data.type, 'timeout');
   });
 
+  it('/poll type filters keep dedicated worker and foreground control lanes disjoint', async () => {
+    await drainPolls(server);
+    const controlPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=steer,manual_edit_apply,carbonize_cleanup,exit`,
+    ).then((response) => response.json());
+    const workerPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=generate,accept,discard,prefetch`,
+    ).then((response) => response.json());
+
+    const steer = {
+      token: server.token,
+      type: 'steer',
+      id: 'aabbcc01',
+      pageUrl: '/',
+      message: 'Keep this on the foreground lane',
+    };
+    const generate = {
+      token: server.token,
+      type: 'generate',
+      id: 'aabbcc02',
+      action: 'impeccable',
+      count: 1,
+      pageUrl: '/',
+      element: { outerHTML: '<button id="lane-test">Book</button>', id: 'lane-test', tagName: 'BUTTON' },
+    };
+    for (const event of [steer, generate]) {
+      const response = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const [controlEvent, workerEvent] = await Promise.all([controlPoll, workerPoll]);
+    assert.equal(controlEvent.type, 'steer');
+    assert.equal(controlEvent.id, steer.id);
+    assert.equal(workerEvent.type, 'generate');
+    assert.equal(workerEvent.id, generate.id);
+
+    for (const reply of [
+      { id: steer.id, type: 'steer_done', message: 'Control lane handled it', sourceEventType: 'steer' },
+      { id: generate.id, type: 'done', sourceEventType: 'generate' },
+    ]) {
+      const response = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: server.token, ...reply }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
   it('/poll rejects invalid token', async () => {
     const res = await fetch(`http://localhost:${server.port}/poll?token=wrong&timeout=100`);
     assert.equal(res.status, 401);

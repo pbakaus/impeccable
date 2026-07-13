@@ -31,6 +31,7 @@ import {
 import { createLiveSessionStore } from './live/session-store.mjs';
 import { runGenerationPreflight } from './live/generation-preflight.mjs';
 import { validateEvent } from './live/event-validation.mjs';
+import { selectAvailablePendingEvent } from './live/poll-lanes.mjs';
 import { createManualEditRoutes } from './live/manual-edit-routes.mjs';
 import { LIVE_COMMANDS } from './live/vocabulary.mjs';
 import {
@@ -158,17 +159,8 @@ function restorePendingEventsFromStore() {
   }
 }
 
-function findAvailablePendingEvent(now = Date.now()) {
-  return state.pendingEvents
-    .filter((entry) => !(entry.leaseUntil && entry.leaseUntil > now))
-    .sort((a, b) => eventPriority(a.event) - eventPriority(b.event) || a.seq - b.seq)[0] || null;
-}
-
-function eventPriority(event = {}) {
-  if (event.type === 'accept' || event.type === 'discard' || event.type === 'exit') return 0;
-  if (event.type === 'manual_edit_apply' || event.type === 'steer') return 1;
-  if (event.type === 'generate') return 2;
-  return 3;
+function findAvailablePendingEvent(now = Date.now(), types = null) {
+  return selectAvailablePendingEvent(state.pendingEvents, { now, types });
 }
 
 function leaseEvent(entry, leaseMs) {
@@ -385,13 +377,21 @@ function scheduleLeaseFlush() {
 function flushPendingPolls() {
   let changed = false;
   while (state.pendingPolls.length > 0) {
-    const entry = findAvailablePendingEvent();
+    let pollIndex = -1;
+    let entry = null;
+    for (let index = 0; index < state.pendingPolls.length; index += 1) {
+      const candidate = findAvailablePendingEvent(Date.now(), state.pendingPolls[index].types);
+      if (!candidate) continue;
+      pollIndex = index;
+      entry = candidate;
+      break;
+    }
     if (!entry) {
       scheduleLeaseFlush();
       broadcastAgentPollingIfChanged();
       return;
     }
-    const poll = state.pendingPolls.shift();
+    const [poll] = state.pendingPolls.splice(pollIndex, 1);
     poll.resolve(leaseEvent(entry, poll.leaseMs));
     changed = true;
   }
@@ -855,6 +855,12 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
 // Agent poll endpoints (unchanged from WS version)
 // ---------------------------------------------------------------------------
 
+function parsePollTypes(value) {
+  if (!value) return null;
+  const types = String(value).split(',').map((type) => type.trim()).filter(Boolean);
+  return types.length > 0 ? new Set(types) : null;
+}
+
 function handlePollGet(req, res, url) {
   const token = url.searchParams.get('token');
   if (token !== state.token) {
@@ -865,13 +871,14 @@ function handlePollGet(req, res, url) {
   state.lastPollAt = Date.now();
   const timeout = parseInt(url.searchParams.get('timeout') || DEFAULT_POLL_TIMEOUT, 10);
   const leaseMs = parseInt(url.searchParams.get('leaseMs') || '30000', 10);
-  const available = findAvailablePendingEvent();
+  const types = parsePollTypes(url.searchParams.get('types'));
+  const available = findAvailablePendingEvent(Date.now(), types);
   if (available) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(leaseEvent(available, leaseMs)));
     return;
   }
-  const poll = { resolve, leaseMs };
+  const poll = { resolve, leaseMs, types };
   const timer = setTimeout(() => {
     const idx = state.pendingPolls.indexOf(poll);
     if (idx !== -1) state.pendingPolls.splice(idx, 1);
@@ -935,7 +942,10 @@ function inferSourceEventType(msg = {}, pendingEvents = state.pendingEvents) {
       .map((entry) => entry.event?.type),
   );
   if (msg.type === 'discarded' || msg.type === 'discard') return 'discard';
-  if (msg.type === 'complete') return pendingTypes.has('accept') ? 'accept' : (pendingTypes.has('generate') ? 'generate' : undefined);
+  if (msg.type === 'complete') {
+    if (pendingTypes.has('carbonize_cleanup')) return 'carbonize_cleanup';
+    return pendingTypes.has('accept') ? 'accept' : (pendingTypes.has('generate') ? 'generate' : undefined);
+  }
   if (msg.type === 'steer_done') return 'steer';
   // `agent_done` can be the automatic acknowledgement for a carbonize Accept.
   // New pollers send sourceEventType explicitly; default to generate only for

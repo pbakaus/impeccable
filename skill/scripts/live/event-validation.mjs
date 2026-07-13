@@ -131,6 +131,12 @@ export function validateEvent(msg) {
       if (msg.message.length > 4000) return 'steer: message too long';
       if (msg.pageUrl !== undefined && typeof msg.pageUrl !== 'string') return 'steer: pageUrl must be string';
       return null;
+    case 'carbonize_cleanup':
+      if (!isValidId(msg.id)) return 'carbonize_cleanup: missing or malformed id';
+      if (!isValidId(msg.sessionId)) return 'carbonize_cleanup: missing or malformed sessionId';
+      if (!msg.file || typeof msg.file !== 'string') return 'carbonize_cleanup: missing file';
+      if (!isValidVariantId(String(msg.variantId))) return 'carbonize_cleanup: missing or malformed variantId';
+      return null;
     default:
       return 'Unknown event type: ' + msg.type;
   }

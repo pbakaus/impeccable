@@ -48,6 +48,8 @@ describe('live reference authoring contract', () => {
     assert.doesNotMatch(liveMd, /IMPECCABLE_LIVE_COPY_AGENT|mock/);
     assert.match(liveMd, /"manual_edit_apply" → Handle Manual Edit Apply/);
     assert.match(liveMd, /## Handle `manual_edit_apply`/);
+    assert.match(liveMd, /live-poll\.mjs --types=steer,manual_edit_apply,carbonize_cleanup,exit/);
+    assert.match(liveMd, /Accept emits a foreground `carbonize_cleanup` control event/);
     assert.ok(
       liveMd.indexOf('## Handle `manual_edit_apply`') > liveMd.indexOf('## Handle `prefetch`'),
       'manual_edit_apply handler section must sit after prefetch in the dispatch order',

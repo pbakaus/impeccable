@@ -25,6 +25,7 @@ import { loadContext, resolveTargetSelection } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 import { resolveLiveTarget } from './live-target.mjs';
+import { resolveCodexWorkerConfig } from './live/codex-worker.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,7 @@ Prepare everything for live variant mode in a single command:
   - Starts (or reuses) the live server in the background
   - Injects the browser script tag
   - Reads PRODUCT.md / DESIGN.md for project context
+  - Optionally starts the experimental dedicated Codex worker when explicitly enabled
   - In monorepos, choose a child app first; --target <path> is the fallback/manual path
 
 On success, prints a JSON blob with:
@@ -129,6 +131,10 @@ The agent should then:
   const resolvedFiles = resolveFiles(activeCwd, checkResult.config);
   const drift = scanForDrift(activeCwd, resolvedFiles, checkResult.config);
 
+  // Experimental and off by default. A failed app-server startup never takes
+  // ownership of the poll queue; the foreground portable path remains active.
+  const codexWorker = ensureCodexWorker(activeCwd, checkResult.config);
+
   // 5. Emit everything the agent needs
   console.log(JSON.stringify({
     ok: true,
@@ -137,6 +143,7 @@ The agent should then:
     pageFiles: resolvedFiles,
     liveConfigPath: checkResult.path,
     configDrift: drift,
+    codexWorker,
     targetPath: outputTargetPath,
     projectRoot: ctx.projectRoot,
     repoRoot: ctx.repoRoot,
@@ -285,6 +292,40 @@ function ensureServerRunning(cwd = process.cwd()) {
   // Start a new server
   const out = runScript('live-server.mjs', ['--background'], { cwd });
   return safeParse(out);
+}
+
+function ensureCodexWorker(cwd, liveConfig) {
+  const config = resolveCodexWorkerConfig({ env: process.env, liveConfig });
+  if (!config.enabled) {
+    return { enabled: false, mode: 'foreground', experimental: true };
+  }
+  const out = runScript('live-codex-worker.mjs', ['--background'], { cwd });
+  const result = safeParse(out);
+  if (!result?.ok) {
+    const safeFallback = result?.fallback === 'foreground' && result?.terminated !== false;
+    return {
+      enabled: !safeFallback,
+      mode: safeFallback ? 'foreground' : 'startup-failed-stop-required',
+      experimental: true,
+      fallback: safeFallback,
+      error: result?.error || 'codex_worker_start_failed',
+      childPid: result?.childPid || null,
+      logPath: result?.logPath || null,
+    };
+  }
+  return {
+    enabled: true,
+    mode: 'dedicated-app-server',
+    experimental: true,
+    pid: result.pid,
+    threadId: result.threadId,
+    model: result.model,
+    effort: result.effort,
+    delivery: result.delivery,
+    foregroundTypes: ['steer', 'manual_edit_apply', 'carbonize_cleanup', 'exit'],
+    foregroundPoll: 'live-poll.mjs --types=steer,manual_edit_apply,carbonize_cleanup,exit',
+    logPath: result.logPath || null,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -307,6 +307,12 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
       next.pendingEvent = toPendingEvent(event);
       break;
+    case 'carbonize_cleanup':
+      next.phase = 'carbonize_cleanup_requested';
+      next.sourceFile = event.file ?? next.sourceFile;
+      next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
+      next.pendingEvent = toPendingEvent(event);
+      break;
     case 'steer_done':
       next.phase = 'steer_done';
       next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
