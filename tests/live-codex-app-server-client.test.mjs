@@ -304,19 +304,23 @@ describe('dedicated Codex worker threads', () => {
     await client.startDedicatedThread({ serviceName: 'impeccable_live_worker' });
 
     let startedTurnId = null;
+    const deliveredMessages = [];
     const result = await client.startTurn({
       threadId: 'worker',
       input: 'Reply exactly',
       model: 'gpt-5.3-codex-spark',
       effort: 'low',
       onStarted: (turnId) => { startedTurnId = turnId; },
+      onAgentMessage: async (message) => { deliveredMessages.push(message); },
     });
 
     assert.equal(startedTurnId, 'turn-1');
     assert.equal(result.turnId, 'turn-1');
     assert.equal(result.status, 'completed');
     assert.deepEqual(result.agentMessages, ['first fragment', 'final answer']);
+    assert.deepEqual(deliveredMessages, ['first fragment', 'final answer']);
     assert.equal(result.message, 'final answer');
+    assert.equal(result.firstAgentMessageMs >= 0, true);
     assert.equal(result.started.method, 'turn/started');
     assert.equal(result.durationMs > 0, true);
     await client.close();

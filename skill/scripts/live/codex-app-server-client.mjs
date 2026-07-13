@@ -371,7 +371,7 @@ export class CodexAppServerClient {
     }
   }
 
-  async startTurn({ threadId, input, timeoutMs = this.turnTimeoutMs, onStarted, ...params }) {
+  async startTurn({ threadId, input, timeoutMs = this.turnTimeoutMs, onStarted, onAgentMessage, ...params }) {
     this._requireDedicatedThread(threadId);
     const normalizedInput = typeof input === 'string'
       ? [{ type: 'text', text: input }]
@@ -385,6 +385,8 @@ export class CodexAppServerClient {
     let started = null;
     let completed = null;
     const agentMessages = [];
+    const agentMessageCallbacks = [];
+    let firstAgentMessageAt = null;
     const buffered = [];
     let completionResolve;
     let completionReject;
@@ -408,7 +410,16 @@ export class CodexAppServerClient {
       if (notification.method === 'item/completed'
         && notification.params?.item?.type === 'agentMessage'
         && typeof notification.params.item.text === 'string') {
-        agentMessages.push(notification.params.item.text);
+        const message = notification.params.item.text;
+        agentMessages.push(message);
+        if (firstAgentMessageAt == null) firstAgentMessageAt = notification.receivedAt ?? this.clock();
+        if (typeof onAgentMessage === 'function') {
+          agentMessageCallbacks.push(Promise.resolve().then(() => onAgentMessage(message, {
+            threadId,
+            turnId,
+            notification,
+          })));
+        }
       }
       if (notification.method === 'turn/completed') {
         completed = notification;
@@ -436,6 +447,7 @@ export class CodexAppServerClient {
       if (typeof onStarted === 'function') onStarted(turnId, result.turn);
       for (const notification of buffered.splice(0)) consider(notification);
       await completionPromise;
+      await Promise.all(agentMessageCallbacks);
       const completedAt = completed?.receivedAt ?? this.clock();
       return {
         threadId,
@@ -448,6 +460,8 @@ export class CodexAppServerClient {
         agentMessages,
         message: agentMessages.at(-1) || null,
         requestedAt,
+        firstAgentMessageAt,
+        firstAgentMessageMs: firstAgentMessageAt == null ? null : firstAgentMessageAt - requestedAt,
         completedAt,
         durationMs: completedAt - requestedAt,
       };

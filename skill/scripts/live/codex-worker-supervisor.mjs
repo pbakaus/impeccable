@@ -217,35 +217,48 @@ export class CodexLiveWorkerSupervisor {
       screenshotPath: event.screenshotPath,
       cwd: this.cwd,
     });
+    let publishedFromMessage = false;
+    let earlyCandidateError = null;
+    const publishCandidate = async (answer) => {
+      if (publishedFromMessage || this.isCanceled(event.id)) return;
+      try {
+        await this.publishPhase(this.base, this.token, {
+          eventId: event.id,
+          phase: phase === 'final' ? 'remaining_variants_validating' : 'first_variant_validating',
+          durationMs: Date.now() - phaseStartedAt,
+        });
+        applyCodexWorkerOutput({
+          output: answer,
+          prepared,
+          phase,
+          expectedVariants: Number(event.count || arrivedVariants),
+          cwd: this.cwd,
+          maxBytes: this.config.maxArtifactBytes,
+        });
+        if (this.isCanceled(event.id)) return;
+        const published = publishCodexWorkerPhase({ event, prepared, arrivedVariants, cwd: this.cwd });
+        await this.publishCheckpoint(this.base, this.token, {
+          event,
+          published,
+          scaffold: event.scaffold,
+          arrivedVariants,
+        });
+        publishedFromMessage = true;
+      } catch (error) {
+        earlyCandidateError = error;
+      }
+    };
     const result = await this.runTurnWithReconnect({
       input,
       outputSchema: CODEX_WORKER_OUTPUT_SCHEMA,
+      onAgentMessage: publishCandidate,
     });
     if (this.isCanceled(event.id)) return;
-    await this.publishPhase(this.base, this.token, {
-      eventId: event.id,
-      phase: phase === 'final' ? 'remaining_variants_validating' : 'first_variant_validating',
-      durationMs: Date.now() - phaseStartedAt,
-    });
-    applyCodexWorkerOutput({
-      output: result.answer,
-      prepared,
-      phase,
-      expectedVariants: Number(event.count || arrivedVariants),
-      cwd: this.cwd,
-      maxBytes: this.config.maxArtifactBytes,
-    });
-    if (this.isCanceled(event.id)) return;
-    const published = publishCodexWorkerPhase({ event, prepared, arrivedVariants, cwd: this.cwd });
-    await this.publishCheckpoint(this.base, this.token, {
-      event,
-      published,
-      scaffold: event.scaffold,
-      arrivedVariants,
-    });
+    if (!publishedFromMessage) await publishCandidate(result.answer);
+    if (!publishedFromMessage) throw earlyCandidateError || supervisorError('worker_output_not_published');
   }
 
-  async runTurnWithReconnect({ input, outputSchema }) {
+  async runTurnWithReconnect({ input, outputSchema, onAgentMessage }) {
     let firstError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -259,6 +272,7 @@ export class CodexLiveWorkerSupervisor {
           approvalPolicy: 'never',
           sandboxPolicy: { type: 'readOnly' },
           outputSchema,
+          onAgentMessage,
           onStarted: (turnId) => {
             if (!this.active) return;
             this.active.turnId = turnId;
