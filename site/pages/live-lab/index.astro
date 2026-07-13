@@ -474,7 +474,8 @@ const providerColumns = [
                 <div><dt>All variants</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.allVariantsMs)}</dd></div>
                 <div><dt>Accept → page ready</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.acceptToResetMs)}</dd></div>
                 <div><dt>Accept → next Go</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.acceptToNextGoDispatchMs)}</dd></div>
-                <div><dt>Cold worker ready</dt><dd>{displayMs(liveCodexWorkerResult.coldWorkerReadyMs)}</dd></div>
+                <div><dt>Live returns</dt><dd>{displayMs(liveCodexWorkerResult.prewarmReturnMs)}</dd></div>
+                <div><dt>Worker ready</dt><dd>{displayMs(liveCodexWorkerResult.coldWorkerReadyMs)}</dd></div>
                 <div><dt>Quality gate</dt><dd>{liveCodexWorkerResult.quality.passed}/{liveCodexWorkerResult.quality.runs}</dd></div>
               </dl>
               <p>Default in Codex; other harnesses keep the foreground path.</p>

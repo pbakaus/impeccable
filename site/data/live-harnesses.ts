@@ -41,7 +41,7 @@ export const liveExperiments = [
   {
     rank: 1,
     title: 'Run a dedicated Codex worker — shipped',
-    evidence: 'Matched full tasks reached usable output in 34.9 s warm app-server versus 64.6 s direct, with both paths passing 4/4. A production /bolder run showed variant 1 in 9.87 s.',
+    evidence: 'Matched full tasks reached usable output in 34.9 s warm app-server versus 64.6 s direct, with both paths passing 4/4. Live now returns from prewarm in 87 ms while the worker finishes initializing alongside page startup.',
     move: 'Keep one Live-owned app-server connection and isolated Sol/medium thread. Attach the skill, sub-command, project context, source neighborhood, and annotation image.',
     expected: 'Removes main-turn availability from generation without trading away brand fidelity.',
     confidence: 'Production browser + full-task gate',

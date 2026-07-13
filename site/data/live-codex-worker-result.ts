@@ -6,6 +6,7 @@ export const liveCodexWorkerResult = {
   effort: 'medium',
   profile: 'quality',
   defaultInCodex: true,
+  prewarmReturnMs: 87.26,
   coldWorkerReadyMs: 656.82,
   timings: {
     coldHandshakeMs: 36.83,
