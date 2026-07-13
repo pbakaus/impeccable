@@ -45,7 +45,11 @@ const fixtureName = String(args.fixture || 'vite8-react-plain');
 const iterations = positiveInt(args.iterations, 5);
 const agentMode = args.agent === 'codex' ? 'codex' : args.agent === 'llm' ? 'llm' : 'fake';
 const scenario = args.scenario === 'annotated' ? 'annotated' : 'plain';
-const delivery = agentMode === 'codex' || args.delivery === 'progressive' ? 'progressive' : 'atomic';
+const delivery = args.delivery === 'atomic'
+  ? 'atomic'
+  : agentMode === 'codex' || args.delivery === 'progressive'
+    ? 'progressive'
+    : 'atomic';
 const interactionMode = args.acceptFirst ? 'accept-first-then-next-go' : 'complete-then-discard';
 const simulatedTailMs = positiveInt(args.simulatedTailMs, 0);
 const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;
@@ -446,6 +450,7 @@ async function startCodexProductionWorker({ tmp, scriptsDir, log, trace }, optio
       IMPECCABLE_LIVE_CODEX_WORKER: '1',
       IMPECCABLE_LIVE_CODEX_PROFILE: String(options.profile || 'quality'),
       IMPECCABLE_LIVE_CODEX_EFFORT: String(options.effort || 'medium'),
+      IMPECCABLE_LIVE_CODEX_DELIVERY: options.delivery === 'atomic' ? 'atomic' : 'progressive',
       ...(options.model ? { IMPECCABLE_LIVE_CODEX_MODEL: String(options.model) } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],

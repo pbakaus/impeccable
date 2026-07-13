@@ -38,6 +38,9 @@ export function resolveCodexWorkerConfig({ env = process.env, liveConfig = {} } 
   const profile = nonEmpty(env.IMPECCABLE_LIVE_CODEX_PROFILE)
     || nonEmpty(configured.profile)
     || 'quality';
+  const requestedDelivery = nonEmpty(env.IMPECCABLE_LIVE_CODEX_DELIVERY)
+    || nonEmpty(configured.delivery)
+    || 'progressive';
   return {
     enabled,
     model: nonEmpty(env.IMPECCABLE_LIVE_CODEX_MODEL) || nonEmpty(configured.model) || null,
@@ -46,7 +49,7 @@ export function resolveCodexWorkerConfig({ env = process.env, liveConfig = {} } 
       || nonEmpty(configured.effort)
       || (profile === 'fast' ? 'low' : 'medium'),
     profile: profile === 'fast' ? 'fast' : 'quality',
-    delivery: configured.delivery === 'atomic' ? 'atomic' : 'progressive',
+    delivery: requestedDelivery === 'atomic' ? 'atomic' : 'progressive',
     maxArtifactBytes: positiveInteger(configured.maxArtifactBytes, 2_000_000),
   };
 }

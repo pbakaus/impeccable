@@ -45,6 +45,9 @@ describe('Codex Live worker configuration', () => {
     assert.equal(resolveCodexWorkerConfig({
       env: { CODEX_THREAD_ID: 'thread-1', IMPECCABLE_LIVE_CODEX_PROFILE: 'fast' },
     }).effort, 'low');
+    assert.equal(resolveCodexWorkerConfig({
+      env: { CODEX_THREAD_ID: 'thread-1', IMPECCABLE_LIVE_CODEX_DELIVERY: 'atomic' },
+    }).delivery, 'atomic');
     assert.equal(isCodexRuntime({ CLAUDE_CODE: '1' }), false);
     assert.equal(isCodexRuntime({ GEMINI_CLI: '1' }), false);
   });
