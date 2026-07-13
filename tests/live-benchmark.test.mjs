@@ -18,10 +18,12 @@ describe('live benchmark metrics', () => {
       '--accept-first',
       '--judge-rendered=true',
       '--worker-timeout-ms=25000',
+      '--accept-variant=2',
     ]), {
       acceptFirst: true,
       judgeRendered: 'true',
       workerTimeoutMs: '25000',
+      acceptVariant: '2',
     });
   });
 
@@ -33,7 +35,10 @@ describe('live benchmark metrics', () => {
         first_variant_generating: { at: 130 },
         first_variant_validating: { at: 210 },
         first_reviewable: { at: 240 },
-        remaining_variants_generating: { at: 245 },
+        second_variant_generating: { at: 245 },
+        second_variant_validating: { at: 300 },
+        second_reviewable: { at: 315 },
+        remaining_variants_generating: { at: 320 },
         remaining_variants_validating: { at: 400 },
         all_variants_ready: { at: 430 },
       },
@@ -41,7 +46,9 @@ describe('live benchmark metrics', () => {
     assert.equal(metrics.workerPickupToSourceReadyMs, 24);
     assert.equal(metrics.workerFirstGenerationToReviewableMs, 110);
     assert.equal(metrics.workerFirstValidationToReviewableMs, 30);
-    assert.equal(metrics.workerRemainingGenerationToReadyMs, 185);
+    assert.equal(metrics.workerSecondGenerationToReviewableMs, 70);
+    assert.equal(metrics.workerSecondValidationToReviewableMs, 15);
+    assert.equal(metrics.workerRemainingGenerationToReadyMs, 110);
     assert.equal(metrics.workerRemainingValidationToReadyMs, 30);
     assert.deepEqual(metrics.journalTimingErrors, []);
   });
@@ -120,6 +127,7 @@ describe('live benchmark metrics', () => {
       { name: 'agent.reply.start', at: 1142, id: 'abc' },
       { name: 'agent.reply.end', at: 1147, id: 'abc' },
       { name: 'browser.first_variant', at: 1200, iteration: 1 },
+      { name: 'browser.second_variant', at: 1200, iteration: 1 },
       { name: 'browser.all_variants', at: 1200, iteration: 1 },
     ];
 
@@ -130,6 +138,7 @@ describe('live benchmark metrics', () => {
       browserTiming: { goAt: 50, generateAt: 52.5 },
     });
     assert.equal(run.goToFirstVariantMs, 1094.5);
+    assert.equal(run.goToSecondVariantMs, 1094.5);
     assert.equal(run.browserPreparationMs, 8);
     assert.equal(run.browserDispatchMs, 2.5);
     assert.equal(run.automationClickMs, 5.5);

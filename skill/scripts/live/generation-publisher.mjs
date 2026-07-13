@@ -9,6 +9,21 @@ export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+export function reconcilePublishedSourceVariants({ current, candidate, priorArrived = 0 } = {}) {
+  let reconciled = String(candidate || '');
+  const stable = String(current || '');
+  for (let variant = 1; variant <= Number(priorArrived || 0); variant += 1) {
+    const stableBlock = extractVariantBlock(stable, variant);
+    const candidateBlock = extractVariantBlock(reconciled, variant);
+    if (!stableBlock || !candidateBlock) {
+      return failure('published_variant_missing', { variant });
+    }
+    const offset = reconciled.indexOf(candidateBlock);
+    reconciled = reconciled.slice(0, offset) + stableBlock + reconciled.slice(offset + candidateBlock.length);
+  }
+  return { ok: true, content: reconciled };
+}
+
 export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() } = {}) {
   if (!id) return failure('missing_session_id');
   if (!sourceFile) return failure('missing_file');

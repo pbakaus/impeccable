@@ -15,12 +15,17 @@ const METRIC_KEYS = [
   'writeToFirstVariantMs',
   'replyMs',
   'goToFirstVariantMs',
+  'goToSecondVariantMs',
   'goToAllVariantsMs',
+  'firstToSecondGapMs',
+  'secondToAllGapMs',
   'deliveryGapMs',
   'impeccableOverheadMs',
   'workerPickupToSourceReadyMs',
   'workerFirstGenerationToReviewableMs',
   'workerFirstValidationToReviewableMs',
+  'workerSecondGenerationToReviewableMs',
+  'workerSecondValidationToReviewableMs',
   'workerRemainingGenerationToReadyMs',
   'workerRemainingValidationToReadyMs',
   'acceptToResetMs',
@@ -107,6 +112,7 @@ export function buildInteractionRun(events, { iteration, scenario, goStartedAt, 
   const eventPost = events.find((event) => event.name === 'browser.generate_post' && forId(event));
   const mark = (name) => events.find((event) => event.name === name && event.iteration === iteration);
   const first = mark('browser.first_variant');
+  const second = mark('browser.second_variant');
   const all = mark('browser.all_variants');
   const writeEnd = events.find((event) => event.name === 'agent.write.end' && forId(event));
   const firstWriteEnd = events.find((event) => event.name === 'agent.first_variant.write.end' && forId(event));
@@ -121,6 +127,7 @@ export function buildInteractionRun(events, { iteration, scenario, goStartedAt, 
     ? eventPost.at - browserDispatchMs
     : goStartedAt;
   const measuredGoToFirstVariantMs = first ? roundMs(first.at - interactionStartedAt) : null;
+  const measuredGoToSecondVariantMs = second ? roundMs(second.at - interactionStartedAt) : null;
   const measuredGoToAllVariantsMs = all ? roundMs(all.at - interactionStartedAt) : null;
 
   return {
@@ -154,7 +161,10 @@ export function buildInteractionRun(events, { iteration, scenario, goStartedAt, 
       : null,
     replyMs: durationBetween(events, 'agent.reply.start', 'agent.reply.end', forId),
     goToFirstVariantMs: measuredGoToFirstVariantMs,
+    goToSecondVariantMs: measuredGoToSecondVariantMs,
     goToAllVariantsMs: measuredGoToAllVariantsMs,
+    firstToSecondGapMs: first && second ? roundMs(Math.max(0, second.at - first.at)) : null,
+    secondToAllGapMs: second && all ? roundMs(Math.max(0, all.at - second.at)) : null,
     deliveryGapMs: first && all ? roundMs(Math.max(0, all.at - first.at)) : null,
     impeccableOverheadMs: measuredGoToFirstVariantMs == null || generationToFirstMs == null
       ? null
@@ -178,6 +188,8 @@ export function deriveJournalGenerationMetrics(snapshot = {}) {
     workerPickupToSourceReadyMs: delta('picked_up', 'source_ready'),
     workerFirstGenerationToReviewableMs: delta('first_variant_generating', 'first_reviewable'),
     workerFirstValidationToReviewableMs: delta('first_variant_validating', 'first_reviewable'),
+    workerSecondGenerationToReviewableMs: delta('second_variant_generating', 'second_reviewable'),
+    workerSecondValidationToReviewableMs: delta('second_variant_validating', 'second_reviewable'),
     workerRemainingGenerationToReadyMs: delta('remaining_variants_generating', 'all_variants_ready'),
     workerRemainingValidationToReadyMs: delta('remaining_variants_validating', 'all_variants_ready'),
     journalTimingErrors: timingErrors,

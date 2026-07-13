@@ -51,7 +51,11 @@ const delivery = args.delivery === 'atomic'
   : agentMode === 'codex' || args.delivery === 'progressive'
     ? 'progressive'
     : 'atomic';
-const interactionMode = args.acceptFirst ? 'accept-first-then-next-go' : 'complete-then-discard';
+const acceptVariant = positiveInt(args.acceptVariant, args.acceptFirst ? 1 : 0);
+if (acceptVariant > 2) throw new Error('--accept-variant currently supports variant 1 or 2');
+const interactionMode = acceptVariant
+  ? `accept-variant-${acceptVariant}-then-next-go`
+  : 'complete-then-discard';
 const simulatedTailMs = positiveInt(args.simulatedTailMs, 0);
 const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;
 const artifactRoot = args.artifacts ? resolve(ROOT, String(args.artifacts)) : null;
@@ -61,7 +65,7 @@ const fixture = JSON.parse(await readFile(join(FIXTURES_DIR, fixtureName, 'fixtu
 if (!fixture.runtime) throw new Error(`fixture ${fixtureName} has no runtime configuration`);
 if (fixture.runtime.mode === 'insert') throw new Error('live benchmark currently measures replace-mode fixtures only');
 if (judgeRendered && !artifactRoot) throw new Error('--judge-rendered requires --artifacts=<directory>');
-if (judgeRendered && args.acceptFirst) throw new Error('--judge-rendered requires complete variants; omit --accept-first');
+if (judgeRendered && acceptVariant) throw new Error('--judge-rendered requires complete variants; omit --accept-first/--accept-variant');
 if (judgeRendered && fixture.renderedQuality?.remoteSafe !== true) {
   throw new Error(`fixture ${fixtureName} is not explicitly remote-safe for rendered judging`);
 }
@@ -158,20 +162,30 @@ try {
     const firstVariant = waitForFirstVariant(session.page).then(() => {
       recorder.mark('browser.first_variant', { iteration, scenario });
     });
+    const secondVariant = acceptVariant === 1
+      ? null
+      : waitForVariantCount(session.page, 2).then(() => {
+          recorder.mark('browser.second_variant', { iteration, scenario });
+        });
 
     await clickGo(session.page);
     recorder.mark('ui.generating_visible', { iteration, scenario });
     await firstVariant;
-    if (renderedArtifacts && args.acceptFirst) {
+    if (acceptVariant === 2) {
+      await secondVariant;
+      await ensureBenchmarkVariant(session.page, 2);
+    }
+    if (renderedArtifacts && acceptVariant) {
       renderedArtifacts.variants.push(await captureRenderedElement(session.page, {
-        filePath: join(runArtifactDir, 'variant-1.png'),
-        variantId: 1,
+        filePath: join(runArtifactDir, `variant-${acceptVariant}.png`),
+        variantId: acceptVariant,
         selector: renderedContext.captureSelector,
       }));
     }
     const browserTiming = await readBrowserTimingProbe(session.page);
-    if (!args.acceptFirst) {
+    if (!acceptVariant) {
       await waitForCycling(session.page, 3, { timeout: agentMode === 'fake' ? 30_000 : 240_000 });
+      await secondVariant;
       recorder.mark('browser.all_variants', { iteration, scenario });
       if (renderedArtifacts) {
         for (const variantId of [1, 2, 3]) {
@@ -212,9 +226,9 @@ try {
         runArtifactDir,
       });
     }
-    if (args.acceptFirst) {
+    if (acceptVariant) {
       const acceptStartedAt = performance.now();
-      await clickAccept(session.page, { expectedVariant: 1 });
+      await clickAccept(session.page, { expectedVariant: acceptVariant });
       await waitForReset(session.page);
       run.acceptToResetMs = roundMs(performance.now() - acceptStartedAt);
 
@@ -548,12 +562,17 @@ function createSplitProgressiveAgent(agent) {
 }
 
 async function waitForFirstVariant(page) {
-  const handle = await page.waitForFunction(() => {
+  await waitForVariantCount(page, 1);
+}
+
+async function waitForVariantCount(page, expectedCount) {
+  const handle = await page.waitForFunction((count) => {
     const activeGeneration = document.querySelector('[data-impeccable-variants]');
     if (!activeGeneration) return false;
-    const variants = [...activeGeneration.querySelectorAll('[data-impeccable-variant]')];
-    return variants.some((element) => element.getAttribute('data-impeccable-variant') !== 'original');
-  }, undefined, { timeout: 150_000 });
+    const debugCount = Number(window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.()?.arrivedVariants || 0);
+    const domCount = activeGeneration.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])').length;
+    return Math.max(debugCount, domCount) >= count;
+  }, expectedCount, { timeout: 240_000 });
   await handle.dispose();
 }
 

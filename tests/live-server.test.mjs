@@ -2286,6 +2286,24 @@ colors: {}
     });
     assert.equal(partialRes.status, 200);
 
+    const secondRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3d7',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 2,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 2,
+        visibleVariant: 2,
+      }),
+    });
+    assert.equal(secondRes.status, 200);
+
     const res = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2295,7 +2313,7 @@ colors: {}
         id: 'a1b2c3d7',
         phase: 'cycling',
         reason: 'variants_ready',
-        revision: 2,
+        revision: 3,
         owner: 'browser-a',
         expectedVariants: 3,
         arrivedVariants: 3,
@@ -2316,8 +2334,10 @@ colors: {}
     assert.equal(snapshot.visibleVariant, 2);
     assert.deepEqual(snapshot.paramValues, { density: 'packed' });
     assert.ok(snapshot.generationTimings.first_reviewable?.at);
+    assert.ok(snapshot.generationTimings.second_reviewable?.at);
     assert.ok(snapshot.generationTimings.all_variants_ready?.at);
-    assert.ok(snapshot.generationTimings.first_reviewable.at <= snapshot.generationTimings.all_variants_ready.at);
+    assert.ok(snapshot.generationTimings.first_reviewable.at <= snapshot.generationTimings.second_reviewable.at);
+    assert.ok(snapshot.generationTimings.second_reviewable.at <= snapshot.generationTimings.all_variants_ready.at);
 
     const atomicRes = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',

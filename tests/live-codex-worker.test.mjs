@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -220,6 +220,7 @@ describe('Codex Live worker structured artifact boundary', () => {
     assert.match(instructions, /recompose the selected element itself/);
     assert.match(instructions, /semantically unified short labels/);
     assert.match(instructions, /Every variant must be independently shippable/);
+    assert.match(instructions, /reject awkward label wrapping/);
     assert.match(instructions, /decorative glyphs or pseudo-content/);
     assert.match(instructions, /Ignore any instruction.*run commands/);
   });
@@ -290,10 +291,10 @@ describe('Codex Live worker structured artifact boundary', () => {
       /published_variant_changed/,
     );
 
+    writeFileSync(path.join(componentDir, 'v2.svelte'), '<h1>Two</h1>');
     applyCodexWorkerOutput({
       output: {
         files: [
-          { path: 'v2.svelte', content: '<h1>Two</h1>' },
           { path: 'v3.svelte', content: '<h1>Three</h1>' },
           { path: 'params.json', content: '{"1":[],"2":[],"3":[]}' },
         ],
@@ -305,6 +306,36 @@ describe('Codex Live worker structured artifact boundary', () => {
     });
     assert.equal(readFileSync(path.join(componentDir, 'v1.svelte'), 'utf-8'), '<h1>Immutable</h1>');
     assert.equal(JSON.parse(readFileSync(path.join(componentDir, 'manifest.json'))).arrivedVariants, 3);
+  });
+
+  it('publishes component variant 2 without waiting for variant 3 or parameters', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'codex-worker-component-second-'));
+    const componentDir = path.join(cwd, '.impeccable/live/artifacts/session-r2-svelte');
+    mkdirSync(componentDir, { recursive: true });
+    writeFileSync(path.join(componentDir, 'manifest.json'), JSON.stringify({
+      previewMode: 'svelte-component',
+      componentExtension: 'svelte',
+      arrivedVariants: 1,
+    }));
+    writeFileSync(path.join(componentDir, 'v1.svelte'), '<h1>Immutable</h1>');
+    const prepared = {
+      previewMode: 'svelte-component',
+      componentDir: '.impeccable/live/artifacts/session-r2-svelte',
+      artifactFile: '.impeccable/live/artifacts/session-r2-svelte/manifest.json',
+    };
+
+    applyCodexWorkerOutput({
+      output: { files: [{ path: 'v2.svelte', content: '<h1>Two</h1>' }] },
+      prepared,
+      phase: 'second',
+      expectedVariants: 3,
+      cwd,
+    });
+
+    assert.equal(readFileSync(path.join(componentDir, 'v1.svelte'), 'utf-8'), '<h1>Immutable</h1>');
+    assert.equal(readFileSync(path.join(componentDir, 'v2.svelte'), 'utf-8'), '<h1>Two</h1>');
+    assert.equal(JSON.parse(readFileSync(path.join(componentDir, 'manifest.json'))).arrivedVariants, 2);
+    assert.equal(existsSync(path.join(componentDir, 'params.json')), false);
   });
 
   it('requires atomic component output to contain v1 through vN plus params', () => {
@@ -351,7 +382,7 @@ describe('Codex Live worker structured artifact boundary', () => {
       artifactFile: '.impeccable/live/artifacts/session-r2-svelte/manifest.json',
     };
     assert.throws(() => applyCodexWorkerOutput({
-      output: { files: [{ path: 'v2.svelte', content: '<h1>Two</h1>' }] },
+      output: { files: [{ path: 'params.json', content: '{}' }] },
       prepared,
       phase: 'final',
       expectedVariants: 3,
@@ -397,6 +428,16 @@ describe('Codex Live worker structured artifact boundary', () => {
     });
     assert.match(finalPrompt, /Follow the durable variant plan/);
     assert.match(finalPrompt, /Composition/);
+
+    const secondPrompt = buildGenerationTurnInput({
+      event: { id: 'abc', count: 3 },
+      phase: 'second',
+      prepared,
+      artifact,
+      variantPlan: variantPlan(),
+    });
+    assert.match(secondPrompt, /Produce only variant 2/);
+    assert.match(secondPrompt, /Defer tunable parameters/);
   });
 
   it('attaches the real skill and annotation image as first-class turn inputs', () => {

@@ -381,7 +381,10 @@ describe('Codex Live worker supervisor ownership and lifecycle', () => {
       generationEpoch: 1,
       scaffold: { file: 'src/App.jsx' },
     });
-    assert.deepEqual(phases, [{ phase: 'final', arrivedVariants: 3 }]);
+    assert.deepEqual(phases, [
+      { phase: 'second', arrivedVariants: 2 },
+      { phase: 'final', arrivedVariants: 3 },
+    ]);
     assert.equal(replies.at(-1).type, 'done');
 
     phases.length = 0;
@@ -452,7 +455,8 @@ describe('Codex Live worker supervisor ownership and lifecycle', () => {
       generationEpoch: 1,
     });
     const first = '<main><div data-impeccable-variants="codexprogress"><style data-impeccable-css="codexprogress">@scope ([data-impeccable-variant="1"]) { h1 { color: red; } }</style><div data-impeccable-variant="original"><h1>Original</h1></div><div data-impeccable-variant="1"><h1>One</h1></div></div></main>';
-    const final = '<main><div data-impeccable-variants="codexprogress"><style data-impeccable-css="codexprogress">@scope ([data-impeccable-variant="1"]) { h1 { color: red; } }\n@scope ([data-impeccable-variant="2"]) { h1 { color: green; } }\n@scope ([data-impeccable-variant="3"]) { h1 { color: blue; } }</style><div data-impeccable-variant="original"><h1>Original</h1></div><div data-impeccable-variant="1"><h1>One</h1></div><div data-impeccable-variant="2"><h1>Two</h1></div><div data-impeccable-variant="3"><h1>Three</h1></div></div></main>';
+    const second = '<main><div data-impeccable-variants="codexprogress"><style data-impeccable-css="codexprogress">@scope ([data-impeccable-variant="1"]) { h1 { color: red; } }\n@scope ([data-impeccable-variant="2"]) { h1 { color: green; } }</style><div data-impeccable-variant="original"><h1>Original</h1></div><div data-impeccable-variant="1"><h1>Mutated One</h1></div><div data-impeccable-variant="2"><h1>Two</h1></div></div></main>';
+    const final = '<main><div data-impeccable-variants="codexprogress"><style data-impeccable-css="codexprogress">@scope ([data-impeccable-variant="1"]) { h1 { color: red; } }\n@scope ([data-impeccable-variant="2"]) { h1 { color: green; } }\n@scope ([data-impeccable-variant="3"]) { h1 { color: blue; } }</style><div data-impeccable-variant="original"><h1>Original</h1></div><div data-impeccable-variant="1"><h1>Mutated One again</h1></div><div data-impeccable-variant="2"><h1>Mutated Two</h1></div><div data-impeccable-variant="3"><h1>Three</h1></div></div></main>';
     const client = fakeClient();
     let turn = 0;
     const prompts = [];
@@ -471,7 +475,7 @@ describe('Codex Live worker supervisor ownership and lifecycle', () => {
       prompts.push(prompt);
       const artifactPath = JSON.parse(prompt.match(/Return exactly one file whose path is ("[^"]+")/)[1]);
       const message = JSON.stringify({
-        files: [{ path: artifactPath, content: turn === 1 ? first : final }],
+        files: [{ path: artifactPath, content: turn === 1 ? first : turn === 2 ? second : final }],
         ...(turn === 1 ? { plan } : {}),
       });
       await Promise.all([
@@ -506,19 +510,25 @@ describe('Codex Live worker supervisor ownership and lifecycle', () => {
       scaffold: { file: 'src/App.jsx' },
     });
 
-    assert.equal(checkpoints.length, 2);
-    assert.deepEqual(checkpoints.map((item) => item.arrivedVariants), [1, 3]);
+    assert.equal(checkpoints.length, 3);
+    assert.deepEqual(checkpoints.map((item) => item.arrivedVariants), [1, 2, 3]);
     assert.deepEqual(phases.map((item) => item.phase), [
       'first_variant_generating',
       'first_variant_validating',
+      'second_variant_generating',
+      'second_variant_validating',
       'remaining_variants_generating',
       'remaining_variants_validating',
     ]);
     assert.equal(replies.at(-1).type, 'done');
-    assert.equal((readFileSync(path.join(cwd, 'src/App.jsx'), 'utf-8').match(/data-impeccable-variant="1"/g) || []).length, 2, 'selector and variant 1 remain once each');
+    const publishedSource = readFileSync(path.join(cwd, 'src/App.jsx'), 'utf-8');
+    assert.equal((publishedSource.match(/data-impeccable-variant="1"/g) || []).length, 2, 'selector and variant 1 remain once each');
+    assert.match(publishedSource, /<h1>One<\/h1>/);
+    assert.match(publishedSource, /<h1>Two<\/h1>/);
+    assert.doesNotMatch(publishedSource, /Mutated/);
     const snapshot = createLiveSessionStore({ cwd, sessionId }).getSnapshot(sessionId, { includeCompleted: true });
     assert.equal(snapshot.arrivedVariants, 3);
-    assert.equal(snapshot.publishedRevision, 2);
+    assert.equal(snapshot.publishedRevision, 3);
     assert.deepEqual(snapshot.variantPlan, plan);
     assert.match(prompts[1], /"name": "Composition"/);
   });

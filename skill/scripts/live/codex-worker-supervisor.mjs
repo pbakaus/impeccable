@@ -9,6 +9,7 @@ import {
   selectQualityCodexModel,
 } from './codex-app-server-client.mjs';
 import { loadContext } from '../context.mjs';
+import { reconcilePublishedSourceVariants } from './generation-publisher.mjs';
 
 import {
   CODEX_WORKER_OWNER,
@@ -207,9 +208,17 @@ export class CodexLiveWorkerSupervisor {
       const expectedVariants = Number(event.count || 1);
       const snapshot = this.sessionStore.getSnapshot(event.id, { includeCompleted: true });
       const sameEpoch = Number(snapshot?.generationEpoch || 1) === Number(event.generationEpoch || 1);
-      const arrivedVariants = sameEpoch ? Number(snapshot?.arrivedVariants || 0) : 0;
+      let arrivedVariants = sameEpoch ? Number(snapshot?.arrivedVariants || 0) : 0;
       if (this.config.delivery === 'progressive' && expectedVariants > 1) {
-        if (arrivedVariants < 1) await this.runGenerationPhase(event, 'first', 1);
+        if (arrivedVariants < 1) {
+          await this.runGenerationPhase(event, 'first', 1);
+          arrivedVariants = 1;
+        }
+        if (this.isCanceled(event.id)) return;
+        if (expectedVariants > 2 && arrivedVariants < 2) {
+          await this.runGenerationPhase(event, 'second', 2);
+          arrivedVariants = 2;
+        }
         if (this.isCanceled(event.id)) return;
         if (arrivedVariants < expectedVariants) {
           await this.runGenerationPhase(event, 'final', expectedVariants);
@@ -288,7 +297,7 @@ export class CodexLiveWorkerSupervisor {
     const phaseStartedAt = Date.now();
     await this.publishPhase(this.base, this.token, {
       eventId: event.id,
-      phase: phase === 'final' ? 'remaining_variants_generating' : 'first_variant_generating',
+      phase: generationPhaseName(phase, 'generating'),
     });
     const prepared = prepareCodexWorkerPhase({
       id: event.id,
@@ -323,7 +332,7 @@ export class CodexLiveWorkerSupervisor {
         publicationPromise = (async () => {
           await this.publishPhase(this.base, this.token, {
             eventId: event.id,
-            phase: phase === 'final' ? 'remaining_variants_validating' : 'first_variant_validating',
+            phase: generationPhaseName(phase, 'validating'),
             durationMs: Date.now() - phaseStartedAt,
           });
           const applied = applyCodexWorkerOutput({
@@ -334,6 +343,16 @@ export class CodexLiveWorkerSupervisor {
             cwd: this.cwd,
             maxBytes: this.config.maxArtifactBytes,
           });
+          if (!prepared.previewMode && (phase === 'second' || phase === 'final')) {
+            const candidatePath = path.resolve(this.cwd, prepared.artifactFile);
+            const reconciled = reconcilePublishedSourceVariants({
+              current: artifact.content,
+              candidate: fs.readFileSync(candidatePath, 'utf-8'),
+              priorArrived: Math.max(1, arrivedVariants - 1),
+            });
+            if (!reconciled.ok) throw supervisorError(`reconcile_${reconciled.error}`);
+            fs.writeFileSync(candidatePath, reconciled.content, 'utf-8');
+          }
           if (applied.plan) {
             this.sessionStore.appendEvent({ type: 'variant_plan', id: event.id, plan: applied.plan });
           }
@@ -517,6 +536,12 @@ export class CodexLiveWorkerSupervisor {
     atomicWriteJson(this.statePath, state);
     return state;
   }
+}
+
+function generationPhaseName(phase, state) {
+  if (phase === 'first') return `first_variant_${state}`;
+  if (phase === 'second') return `second_variant_${state}`;
+  return `remaining_variants_${state}`;
 }
 
 function preferredEffort(model, requested) {

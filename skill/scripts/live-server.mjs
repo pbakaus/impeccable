@@ -251,6 +251,9 @@ function recordGenerationCheckpoint(event) {
   if (!generationPhaseAlreadyRecorded(event.id, 'first_reviewable')) {
     recordAgentPhase(event.id, 'first_reviewable', { ...details, at });
   }
+  if (arrived >= 2 && expected >= 3 && !generationPhaseAlreadyRecorded(event.id, 'second_reviewable')) {
+    recordAgentPhase(event.id, 'second_reviewable', { ...details, at });
+  }
   if (arrived >= expected && !generationPhaseAlreadyRecorded(event.id, 'all_variants_ready')) {
     recordAgentPhase(event.id, 'all_variants_ready', { ...details, at });
   }
