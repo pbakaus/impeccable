@@ -32,8 +32,7 @@ export { SCRIPTS_DIR, FIXTURES_DIR, REPO_ROOT };
 // Stage
 // ---------------------------------------------------------------------------
 
-export function stageFixture(name, fixture) {
-  const fixtureRoot = join(FIXTURES_DIR, name);
+export function stageFixture(name, fixture, { fixtureRoot = join(FIXTURES_DIR, name) } = {}) {
   const gitignore = readFileSync(join(fixtureRoot, 'gitignore.txt'), 'utf-8');
 
   const tmp = mkdtempSync(join(tmpdir(), 'impeccable-e2e-'));
@@ -216,6 +215,7 @@ export async function stopDevServer(child) {
  * @param {object} opts
  * @param {string} opts.name              fixture name
  * @param {object} opts.fixture           fixture.json contents
+ * @param {string=} opts.fixtureRoot      fixture directory; defaults to the public framework fixture tree
  * @param {import('playwright').Browser} opts.browser   shared browser instance
  * @param {object} opts.agent             VariantAgent (defaults to fake)
  * @param {object|function=} opts.wrapTarget live-wrap target or event mapper
@@ -228,6 +228,7 @@ export async function stopDevServer(child) {
 export async function bootFixtureSession({
   name,
   fixture,
+  fixtureRoot,
   browser,
   agent,
   wrapTarget,
@@ -244,7 +245,7 @@ export async function bootFixtureSession({
   const runtime = fixture.runtime;
   if (!runtime) throw new Error(`fixture ${name} has no runtime block`);
 
-  const tmp = stageFixture(name, fixture);
+  const tmp = stageFixture(name, fixture, { fixtureRoot });
   let live;
   let dev;
   let agentAbort;

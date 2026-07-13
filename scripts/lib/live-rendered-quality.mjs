@@ -28,7 +28,11 @@ export function buildRenderedJudgePrompt({ action, brief, safeContext = {}, vari
 }
 
 export function buildRenderedReviewContext({ fixture, fixtureConfig, action, brief } = {}) {
-  const configured = fixtureConfig?.renderedQuality || {};
+  // `evidenceCapture` is the neutral public contract used by external eval
+  // harnesses. `renderedQuality` remains the backwards-compatible local smoke
+  // judge configuration; it may carry rubric context that evidence bundles do
+  // not need or expose.
+  const configured = fixtureConfig?.evidenceCapture || fixtureConfig?.renderedQuality || {};
   const selectedAction = String(action || configured.action || 'impeccable');
   return {
     action: selectedAction,

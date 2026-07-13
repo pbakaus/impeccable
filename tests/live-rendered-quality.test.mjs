@@ -47,6 +47,26 @@ describe('Live rendered quality judge', () => {
     assert.equal(context.safeContext.componentRoles.ActionLink, 'Quiet outlined control');
   });
 
+  it('prefers rubric-free evidence capture settings for external harnesses', () => {
+    const context = buildRenderedReviewContext({
+      fixture: 'private-fixture',
+      fixtureConfig: {
+        runtime: { pickSelector: '.picked' },
+        evidenceCapture: {
+          captureSelector: '.selected-section',
+          action: 'bolder',
+        },
+        renderedQuality: {
+          captureSelector: '.public-smoke-only',
+          reviewFocus: 'Must not leak into the evidence contract.',
+        },
+      },
+    });
+    assert.equal(context.captureSelector, '.selected-section');
+    assert.equal(context.action, 'bolder');
+    assert.equal(context.safeContext.reviewFocus, '');
+  });
+
   it('requires every expected rendered variant to pass the strict score floor', () => {
     const result = parseRenderedJudgeResult(JSON.stringify({
       variants: [

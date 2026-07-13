@@ -32,6 +32,7 @@ import {
   deriveJournalGenerationMetrics,
   mergeBenchmarkReports,
   parseLiveBenchmarkArgs,
+  resolveLiveBenchmarkPaths,
 } from './lib/live-benchmark.mjs';
 import { loadBenchmarkEnv } from './lib/live-provider-benchmark.mjs';
 import {
@@ -42,7 +43,14 @@ import {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseLiveBenchmarkArgs(process.argv.slice(2));
-const fixtureName = String(args.fixture || 'vite8-react-plain');
+const {
+  fixtureName,
+  fixtureDir,
+  fixtureOrigin,
+  evidenceRoot,
+  artifactRoot,
+  outputPath,
+} = resolveLiveBenchmarkPaths(args, { root: ROOT, fixturesDir: FIXTURES_DIR });
 const iterations = positiveInt(args.iterations, 5);
 const agentMode = args.agent === 'codex' ? 'codex' : args.agent === 'llm' ? 'llm' : 'fake';
 const scenario = args.scenario === 'annotated' ? 'annotated' : 'plain';
@@ -57,14 +65,17 @@ const interactionMode = acceptVariant
   ? `accept-variant-${acceptVariant}-then-next-go`
   : 'complete-then-discard';
 const simulatedTailMs = positiveInt(args.simulatedTailMs, 0);
-const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;
-const artifactRoot = args.artifacts ? resolve(ROOT, String(args.artifacts)) : null;
 const judgeRendered = args.judgeRendered === true || args.judgeRendered === 'true';
 const judgeModel = String(args.judgeModel || 'claude-sonnet-4-6');
-const fixture = JSON.parse(await readFile(join(FIXTURES_DIR, fixtureName, 'fixture.json'), 'utf-8'));
+const fixtureSource = await readFile(join(fixtureDir, 'fixture.json'), 'utf-8');
+const fixture = JSON.parse(fixtureSource);
+const captureConfig = fixture.evidenceCapture || fixture.renderedQuality || {};
 if (!fixture.runtime) throw new Error(`fixture ${fixtureName} has no runtime configuration`);
 if (fixture.runtime.mode === 'insert') throw new Error('live benchmark currently measures replace-mode fixtures only');
 if (judgeRendered && !artifactRoot) throw new Error('--judge-rendered requires --artifacts=<directory>');
+if (judgeRendered && evidenceRoot) {
+  throw new Error('--evidence-bundle is rubric-free; run rendered quality evaluation in the external eval harness');
+}
 if (judgeRendered && acceptVariant) throw new Error('--judge-rendered requires complete variants; omit --accept-first/--accept-variant');
 if (judgeRendered && fixture.renderedQuality?.remoteSafe !== true) {
   throw new Error(`fixture ${fixtureName} is not explicitly remote-safe for rendered judging`);
@@ -89,6 +100,7 @@ try {
   session = await bootFixtureSession({
     name: fixtureName,
     fixture,
+    fixtureRoot: fixtureDir,
     browser,
     agent: agentInfo.agent,
     startWorker: agentInfo.startWorker,
@@ -101,8 +113,8 @@ try {
     log: args.quiet ? () => {} : (message) => process.stderr.write(`[live-bench] ${message}\n`),
   });
 
-  if (fixture.renderedQuality?.viewport) {
-    await session.page.setViewportSize(fixture.renderedQuality.viewport);
+  if (captureConfig.viewport) {
+    await session.page.setViewportSize(captureConfig.viewport);
   }
 
   recorder.mark('setup.handshake.start');
@@ -289,9 +301,15 @@ try {
     simulation: simulatedTailMs > 0 ? { remainingGenerationMs: simulatedTailMs } : null,
   });
   report.benchmark.interactionMode = interactionMode;
+  report.benchmark.fixtureOrigin = fixtureOrigin;
+  report.benchmark.fixtureConfigSha256 = createHash('sha256').update(fixtureSource).digest('hex');
+  report.benchmark.action = renderedContext?.action || (args.action ? String(args.action) : null);
   if (artifactRoot) report.artifacts = {
-    root: artifactRoot.startsWith(`${ROOT}${sep}`) ? relative(ROOT, artifactRoot) : null,
-    externalRoot: !artifactRoot.startsWith(`${ROOT}${sep}`),
+    kind: 'impeccable-live-evidence',
+    schemaVersion: 1,
+    root: evidenceRoot ? '.' : artifactRoot.startsWith(`${ROOT}${sep}`) ? relative(ROOT, artifactRoot) : null,
+    externalRoot: evidenceRoot ? false : !artifactRoot.startsWith(`${ROOT}${sep}`),
+    report: evidenceRoot ? 'report.json' : null,
     screenshotScope: renderedContext.captureSelector,
   };
   if (judgeRendered) {

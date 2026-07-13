@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { basename, join, resolve } from 'node:path';
 
 const METRIC_KEYS = [
   'browserPreparationMs',
@@ -44,6 +45,45 @@ export function parseLiveBenchmarkArgs(argv) {
     out[key] = index === -1 ? true : body.slice(index + 1);
   }
   return out;
+}
+
+/**
+ * Resolve the benchmark's fixture and output paths without coupling private
+ * evaluation fixtures to this repository. `--evidence-bundle` is deliberately
+ * rubric-free: it packages screenshots and timings for an external evaluator
+ * without embedding a quality judge or secret task corpus in the public repo.
+ */
+export function resolveLiveBenchmarkPaths(args, { root, fixturesDir }) {
+  const evidenceRoot = args.evidenceBundle
+    ? resolve(root, String(args.evidenceBundle))
+    : null;
+  if (evidenceRoot && args.artifacts) {
+    throw new Error('--evidence-bundle replaces --artifacts');
+  }
+  if (evidenceRoot && args.output) {
+    throw new Error('--evidence-bundle writes report.json itself; omit --output');
+  }
+  if (evidenceRoot && args.append) {
+    throw new Error('--evidence-bundle represents one portable run; omit --append');
+  }
+
+  const explicitFixtureDir = args.fixtureDir
+    ? resolve(root, String(args.fixtureDir))
+    : null;
+  const fixtureName = String(args.fixture || (explicitFixtureDir ? basename(explicitFixtureDir) : 'vite8-react-plain'));
+  const fixtureDir = explicitFixtureDir || join(fixturesDir, fixtureName);
+  return {
+    fixtureName,
+    fixtureDir,
+    fixtureOrigin: explicitFixtureDir ? 'external' : 'repository',
+    evidenceRoot,
+    artifactRoot: evidenceRoot || (args.artifacts ? resolve(root, String(args.artifacts)) : null),
+    outputPath: evidenceRoot
+      ? join(evidenceRoot, 'report.json')
+      : args.output
+        ? resolve(root, String(args.output))
+        : null,
+  };
 }
 
 export function createTraceRecorder(now = () => performance.now()) {

@@ -9,6 +9,7 @@ import {
   deriveJournalGenerationMetrics,
   durationBetween,
   parseLiveBenchmarkArgs,
+  resolveLiveBenchmarkPaths,
   summarizeRuns,
 } from '../scripts/lib/live-benchmark.mjs';
 
@@ -25,6 +26,36 @@ describe('live benchmark metrics', () => {
       workerTimeoutMs: '25000',
       acceptVariant: '2',
     });
+  });
+
+  it('resolves an external fixture into a portable rubric-free evidence bundle', () => {
+    const paths = resolveLiveBenchmarkPaths({
+      fixtureDir: '../impeccable-evals/fixtures/live/tidewater',
+      evidenceBundle: '/tmp/live-tidewater',
+    }, {
+      root: '/workspace/impeccable',
+      fixturesDir: '/workspace/impeccable/tests/framework-fixtures',
+    });
+    assert.deepEqual(paths, {
+      fixtureName: 'tidewater',
+      fixtureDir: '/workspace/impeccable-evals/fixtures/live/tidewater',
+      fixtureOrigin: 'external',
+      evidenceRoot: '/tmp/live-tidewater',
+      artifactRoot: '/tmp/live-tidewater',
+      outputPath: '/tmp/live-tidewater/report.json',
+    });
+  });
+
+  it('keeps evidence bundles atomic and unambiguous', () => {
+    const options = { root: '/repo', fixturesDir: '/repo/tests/framework-fixtures' };
+    assert.throws(
+      () => resolveLiveBenchmarkPaths({ evidenceBundle: 'bundle', artifacts: 'shots' }, options),
+      /replaces --artifacts/,
+    );
+    assert.throws(
+      () => resolveLiveBenchmarkPaths({ evidenceBundle: 'bundle', output: 'report.json' }, options),
+      /writes report.json itself/,
+    );
   });
 
   it('derives production worker phases from the durable session journal', () => {
