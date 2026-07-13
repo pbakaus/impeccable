@@ -49,17 +49,17 @@ export const liveExperiments = [
   {
     rank: 2,
     title: 'Accept any arrived variant — shipped',
-    evidence: 'A real Vite/React + Sol run returned the page in 197 ms and dispatched the next Go in 791 ms. Rotating the canceled app-server thread cut Accept → next first variant from 68.1 s to 23.8 s.',
+    evidence: 'A verified Vite/React + Sol run committed variant 2 to source, returned the page in 238 ms, and dispatched the next Go in 831 ms. The next first variant arrived in 16.9 s versus the 43.0 s control, a 60.6% reduction.',
     move: 'Durably fence generation on Accept/Discard, rotate the canceled generation thread, prioritize control events, and keep a separate poll supervisor active.',
     expected: 'Removes the full-set wait and keeps the page interactive while canceled work unwinds.',
     confidence: 'Production browser',
   },
   {
     rank: 3,
-    title: 'Send variant 2 as a fenced delta — shipped',
-    evidence: 'On the proven article.offer-card target, variant 2 arrived 20.0 s after variant 1 instead of 43.9 s with full-source output, a 54.5% reduction. The rendered judge passed variant 2 at 7/8/7/7.',
-    move: 'Keep the full skill, plan, project context, and source evidence, but return only variant 2 markup and scoped CSS. The supervisor validates its variant identity and merges it transactionally without exposing prior output to rewrites.',
-    expected: 'Makes the second credible option reviewable much sooner without weakening design context.',
+    title: 'Send every source variant as a fenced delta — shipped',
+    evidence: 'Across five Sol/medium samples, first review was 28.1 s median versus the 34.2 s full-source control. Variant 2 followed 24.6 s later versus 43.9 s, and the guarded all-delta run completed in 102.2 s with 2/3 rendered variants passing and 7.7/10 average brand fidelity.',
+    move: 'Keep the full skill, plan, project context, and source evidence, but return only each new variant’s markup, scoped CSS, and the final deferred parameter manifest. The supervisor validates and merges each delta without exposing prior output to rewrites.',
+    expected: 'Shrinks every model response while preserving full design context and immutable review checkpoints.',
     confidence: 'Production browser + rendered gate',
   },
   {

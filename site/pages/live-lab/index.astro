@@ -406,7 +406,7 @@ const providerColumns = [
       <div class="live-performance-finding live-finding-card--quiet" role="note">
         <strong>Dedicated Codex worker</strong>
         <p>
-          With the target proven as <code>{liveCodexWorkerResult.productionBrowser.selectedTarget}</code>, variant 1 arrived in {displayMs(liveCodexWorkerResult.productionBrowser.firstVariantMs)} and the fenced variant-2 delta followed {displayMs(liveCodexWorkerResult.productionBrowser.firstToSecondMs)} later, {(liveCodexWorkerResult.sourceDeltaExperiment.improvement * 100).toFixed(1)}% faster than full-source output. Variant 2 passed the independent rendered gate. Accepting it while variant 3 was pending returned the page in {displayMs(liveCodexWorkerResult.productionBrowser.acceptToResetMs)} and dispatched the next Go in {displayMs(liveCodexWorkerResult.productionBrowser.acceptToNextGoDispatchMs)}.
+          With the target proven as <code>{liveCodexWorkerResult.productionBrowser.selectedTarget}</code>, fenced deltas delivered first review in {displayMs(liveCodexWorkerResult.sourceDeltaExperiment.deltaFirstVariantMs)} median and cut the variant-2 gap by {(liveCodexWorkerResult.sourceDeltaExperiment.secondVariantImprovement * 100).toFixed(1)}%. Accepting variant 2 while variant 3 was pending committed it to source, returned the page in {displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToResetMs)}, and produced the next first variant in {displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToNextFirstVariantMs)}.
         </p>
       </div>
       <p class="table-scroll-hint" aria-hidden="true">Scroll horizontally to compare →</p>
@@ -416,12 +416,12 @@ const providerColumns = [
           <thead><tr><th>Candidate</th><th>Variant 1</th><th>Variant 2</th><th>Full set</th><th>Rendered gate</th><th>Decision</th></tr></thead>
           <tbody>
             <tr>
-              <td><strong>Root · delta v2</strong><span>{liveCodexWorkerResult.productionBrowser.runs} Sol/medium run</span></td>
+              <td><strong>Root · all deltas</strong><span>{liveCodexWorkerResult.productionBrowser.runs} guarded Sol/medium run</span></td>
               <td><strong>{displayMs(liveCodexWorkerResult.productionBrowser.firstVariantMs)}</strong><span>p95 {displayMs(liveCodexWorkerResult.productionBrowser.firstVariantP95Ms)}</span></td>
               <td><strong>{displayMs(liveCodexWorkerResult.productionBrowser.secondVariantMs)}</strong><span>independently acceptable</span></td>
               <td><strong>{displayMs(liveCodexWorkerResult.productionBrowser.allVariantsMs)}</strong><span>p95 {displayMs(liveCodexWorkerResult.productionBrowser.allVariantsP95Ms)}</span></td>
-              <td><strong>v2 passed</strong><span>{liveCodexWorkerResult.renderedQuality.passed}/{liveCodexWorkerResult.renderedQuality.variants} full-set variants</span></td>
-              <td><span class="ks-tag" data-tone="ready">Default · 54.5% faster v2</span></td>
+              <td><strong>{liveCodexWorkerResult.renderedQuality.passed}/{liveCodexWorkerResult.renderedQuality.variants} passed</strong><span>{liveCodexWorkerResult.renderedQuality.brandFidelity.toFixed(1)}/10 brand fidelity</span></td>
+              <td><span class="ks-tag" data-tone="ready">Default · immutable deltas</span></td>
             </tr>
             <tr>
               <td><strong>Root · full source</strong><span>{liveCodexWorkerResult.fullSourceControl.runs} Sol/medium control</span></td>
@@ -450,7 +450,7 @@ const providerColumns = [
           </tbody>
         </table>
       </div>
-      <p class="live-performance-caption">Root-task samples prove target identity in the posted Generate payload. Speculative standby warmup was rejected: it slowed the next result to {displayMs(liveCodexWorkerResult.standbyExperiment.prewarmedNextFirstVariantMs)} versus {displayMs(liveCodexWorkerResult.standbyExperiment.controlNextFirstVariantMs)}. Next gates: replicate root-level rendered quality and reduce the cold post-Accept generation wait; server pickup is already {displayMs(liveCodexWorkerResult.productionBrowser.serverPickupMs)}.</p>
+      <p class="live-performance-caption">Root-task samples prove target identity in the posted Generate payload. Speculative standby warmup was rejected: it slowed the next result to {displayMs(liveCodexWorkerResult.standbyExperiment.prewarmedNextFirstVariantMs)} versus {displayMs(liveCodexWorkerResult.standbyExperiment.controlNextFirstVariantMs)}. The next gate is consistent 3/3 rendered quality; server pickup is already {displayMs(liveCodexWorkerResult.productionBrowser.serverPickupMs)} and post-Accept next review is down to {displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToNextFirstVariantMs)}.</p>
     </section>
 
     <section class="live-performance-section live-experiments-section ks-section" aria-labelledby="experiments-title" data-lab-panel="harness">
@@ -516,13 +516,14 @@ const providerColumns = [
                 <div><dt>Second review</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.secondVariantMs)}</dd></div>
                 <div><dt>v1 → v2</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.firstToSecondMs)}</dd></div>
                 <div><dt>All variants</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.allVariantsMs)}</dd></div>
-                <div><dt>Accept → page ready</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.acceptToResetMs)}</dd></div>
-                <div><dt>Accept → next Go</dt><dd>{displayMs(liveCodexWorkerResult.productionBrowser.acceptToNextGoDispatchMs)}</dd></div>
+                <div><dt>Accept → page ready</dt><dd>{displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToResetMs)}</dd></div>
+                <div><dt>Accept → next Go</dt><dd>{displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToNextGoDispatchMs)}</dd></div>
+                <div><dt>Accept → next review</dt><dd>{displayMs(liveCodexWorkerResult.earlyAcceptVerified.acceptToNextFirstVariantMs)}</dd></div>
                 <div><dt>Live returns</dt><dd>{displayMs(liveCodexWorkerResult.prewarmReturnMs)}</dd></div>
                 <div><dt>Worker ready</dt><dd>{displayMs(liveCodexWorkerResult.coldWorkerReadyMs)}</dd></div>
                 <div><dt>Rendered gate</dt><dd>{liveCodexWorkerResult.renderedQuality.passed}/{liveCodexWorkerResult.renderedQuality.variants}</dd></div>
               </dl>
-              <p>Variant 2 is independently reviewable, acceptable, and 54.5% faster with fenced source deltas. Cold post-Accept generation and replicated full-set quality remain the next gates.</p>
+              <p>Every source variant now arrives through an immutable fenced delta. Early Accept is source-verified and the next review is 60.6% faster; consistent 3/3 rendered quality remains the next gate.</p>
             </section>
           </aside>
         </div>
