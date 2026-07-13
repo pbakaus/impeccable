@@ -7,11 +7,11 @@ import { compileProviderBlocks } from '../scripts/lib/utils.js';
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
-  it('keeps setup guidance focused on inferred target paths', () => {
+  it('keeps setup guidance focused on routing live to its reference', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /infer the concrete path and append `--target <path>` to the same command/);
+    assert.match(skillSrc, /If the user invoked a sub-command \(`audit`, `polish`, `live`, \.\.\.\), read \*\*`reference\/<command>\.md`\*\*/);
     assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
     assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
     assert.doesNotMatch(skillSrc, /## Context diagnostics/);
@@ -22,7 +22,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /--target <path>/);
+    assert.match(skillSrc, /If the user invoked a sub-command \(`audit`, `polish`, `live`, \.\.\.\), read \*\*`reference\/<command>\.md`\*\*/);
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
