@@ -45,8 +45,31 @@
   --lvg-fs-14: 0.875rem;
   --lvg-fs-15: 0.9375rem;
 
+  container: live-ui-gallery / inline-size;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: clamp(580px, calc(100dvh - 112px), 820px);
+  min-height: 0;
+  overflow: hidden;
   color: var(--ks-text);
+  background: var(--ks-lacquer-raised);
   font-family: var(--ks-font);
+}
+
+/* Stable contract with the dev-only Live Lab shell. The outer toolbar owns
+ * the view title; this component owns every pixel below it when UI is active. */
+.live-lab-ui-panel:has(> .live-ui-gallery) {
+  padding: 0;
+  overflow: hidden;
+}
+
+.live-lab-workbench[data-active-view='ui'] .live-lab-ui-panel:has(> .live-ui-gallery) {
+  height: calc(100dvh - 112px);
+  min-height: 560px;
+}
+
+.live-lab-workbench[data-active-view='ui'] .live-ui-gallery {
+  height: 100%;
 }
 
 .live-ui-gallery *,
@@ -62,82 +85,58 @@
 }
 
 .live-ui-gallery__header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(17rem, 25rem);
-  gap: var(--ks-space-xl, 48px);
-  align-items: end;
-  padding-bottom: var(--ks-space-lg, 32px);
+  grid-template-areas:
+    'readout controls'
+    'states states';
+  grid-template-rows: 36px 40px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 390px);
+  column-gap: 16px;
+  min-height: 77px;
+  padding: 0 12px;
+  background: var(--ks-lacquer-deep);
   border-bottom: 1px solid var(--ks-rule);
 }
 
-.live-ui-gallery__intro {
-  max-width: 44rem;
-}
-
-.live-ui-gallery__eyebrow {
-  margin: 0 0 10px;
-  color: var(--ks-patina);
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-eyebrow-size);
-  font-weight: 600;
-  letter-spacing: var(--ks-type-eyebrow-track);
-  text-transform: uppercase;
-}
-
-.live-ui-gallery__intro h2 {
-  margin: 0;
-  color: var(--ks-champagne);
-  font-family: var(--ks-font-display);
-  font-size: var(--ks-type-headline-size);
-  font-weight: var(--ks-type-headline-weight);
-  line-height: var(--ks-type-headline-line);
-  text-wrap: balance;
-}
-
-.live-ui-gallery__intro > p:last-child {
-  max-width: 68ch;
-  margin: 16px 0 0;
-  color: var(--ks-text-muted);
-  font-size: var(--ks-type-body-size);
-  line-height: 1.65;
-}
-
 .live-ui-gallery__control-panel {
-  padding: 18px;
-  background: var(--ks-lacquer-raised);
-  border: 1px solid var(--ks-rule);
-  border-radius: 4px;
+  grid-area: controls;
+  min-width: 0;
+  align-self: center;
 }
 
-.live-ui-gallery__control-panel > label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--ks-text-muted);
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-eyebrow-size);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.live-ui-gallery__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .live-ui-gallery__select-row {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 38px;
-  gap: 6px;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  gap: 4px;
 }
 
 .live-ui-gallery__select-row select,
 .live-ui-gallery__step {
-  min-height: 38px;
+  min-height: 32px;
   color: var(--ks-champagne);
-  background: var(--ks-lacquer-deep);
+  background: var(--ks-graphite);
   border: 1px solid var(--ks-rule);
   border-radius: 3px;
 }
 
 .live-ui-gallery__select-row select {
   width: 100%;
-  padding: 0 34px 0 12px;
+  padding: 0 30px 0 10px;
+  font-size: var(--lvg-fs-12);
   cursor: pointer;
 }
 
@@ -156,29 +155,36 @@
   outline-offset: 2px;
 }
 
-.live-ui-gallery__shortcut {
-  margin: 8px 0 0;
-  color: var(--ks-text-faint);
-  font-size: var(--lvg-fs-12);
-  line-height: 1.45;
-}
-
 .live-ui-gallery__quick-nav {
-  display: grid;
-  gap: 10px;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--ks-rule);
+  grid-area: states;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 7px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--ks-graphite-2) transparent;
+  scrollbar-width: thin;
+  border-top: 1px solid var(--ks-rule);
 }
 
 .live-ui-gallery__quick-group {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  padding-right: 12px;
+  border-right: 1px solid var(--ks-rule);
+}
+
+.live-ui-gallery__quick-group:last-child {
+  padding-right: 0;
+  border-right: 0;
 }
 
 .live-ui-gallery__quick-group > span {
-  padding-top: 6px;
+  white-space: nowrap;
   color: var(--ks-text-faint);
   font-family: var(--ks-mono);
   font-size: var(--ks-type-eyebrow-size);
@@ -188,13 +194,13 @@
 
 .live-ui-gallery__quick-group > div {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  flex-wrap: nowrap;
+  gap: 3px;
 }
 
 .live-ui-gallery__quick-nav button {
-  min-height: 28px;
-  padding: 5px 9px;
+  min-height: 24px;
+  padding: 3px 7px;
   color: var(--ks-text-muted);
   background: transparent;
   border: 1px solid var(--ks-rule);
@@ -216,10 +222,11 @@
 }
 
 .live-ui-gallery__state-readout {
+  grid-area: readout;
   display: flex;
-  gap: 10px;
+  min-width: 0;
+  gap: 8px;
   align-items: baseline;
-  padding: 24px 0 14px;
 }
 
 .live-ui-gallery__state-readout span {
@@ -231,19 +238,29 @@
 }
 
 .live-ui-gallery__state-readout strong {
+  overflow: hidden;
   color: var(--ks-champagne);
-  font-size: var(--ks-type-title-size);
-  font-weight: var(--ks-type-title-weight);
+  font-size: var(--lvg-fs-14);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .live-ui-gallery__previews {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
 }
 
 .live-ui-gallery__preview {
+  container: live-ui-preview / inline-size;
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: var(--ks-lacquer-deep);
   border: 1px solid var(--ks-rule);
@@ -254,8 +271,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: 34px;
+  padding: 0 10px;
   color: var(--ks-text-muted);
   border-bottom: 1px solid var(--ks-rule);
 }
@@ -290,8 +307,11 @@
 
 .live-ui-stage {
   position: relative;
-  min-height: 530px;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
   isolation: isolate;
   font-family: var(--lvg-live-font);
 }
@@ -1563,23 +1583,6 @@ button.lvg-dot {
   line-height: 1.45;
 }
 
-.live-ui-gallery__fidelity-note {
-  max-width: 80ch;
-  margin: 18px 0 0;
-  color: var(--ks-text-faint);
-  font-size: var(--lvg-fs-12);
-  line-height: 1.6;
-}
-
-.live-ui-gallery__fidelity-note code {
-  padding: var(--ks-code-pad);
-  color: var(--ks-code-fg);
-  background: var(--ks-code-bg);
-  border-radius: var(--ks-code-radius);
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-mono-size);
-}
-
 @keyframes lvg-spin {
   to { transform: rotate(360deg); }
 }
@@ -1604,31 +1607,7 @@ button.lvg-dot {
   35% { opacity: 1; transform: scale(1); }
 }
 
-@media (max-width: 1120px) {
-  .live-ui-gallery__previews {
-    grid-template-columns: 1fr;
-  }
-
-  .live-ui-stage {
-    min-height: 500px;
-  }
-}
-
-@media (max-width: 760px) {
-  .live-ui-gallery__header {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-
-  .live-ui-gallery__quick-group {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .live-ui-gallery__quick-group > span {
-    padding-top: 0;
-  }
-
+@container live-ui-preview (max-width: 540px) {
   .lvg-global-mode span:not(.lvg-design-mark):not(.lvg-detect-badge) {
     display: none;
   }
@@ -1643,7 +1622,7 @@ button.lvg-dot {
   }
 
   .lvg-steer[data-expanded="true"] {
-    width: min(230px, 42vw);
+    width: min(230px, 42cqi);
   }
 
   .lvg-tune-grid {
@@ -1655,7 +1634,25 @@ button.lvg-dot {
   }
 }
 
-@media (max-width: 520px) {
+@container live-ui-gallery (max-width: 680px) {
+  .live-ui-gallery__header {
+    grid-template-areas:
+      'readout'
+      'controls'
+      'states';
+    grid-template-rows: 30px 36px 40px;
+    grid-template-columns: 1fr;
+    min-height: 107px;
+  }
+
+  .live-ui-gallery__previews {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(2, minmax(340px, 1fr));
+    overflow-y: auto;
+  }
+}
+
+@container live-ui-preview (max-width: 390px) {
   .lvg-host-page {
     padding-inline: 18px;
     background-position: 18px 0;

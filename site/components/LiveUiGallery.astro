@@ -66,22 +66,22 @@ const statesJson = JSON.stringify(statePayload).replace(/</g, '\\u003c');
   and dark host pages (barPaletteForTheme, live-browser.js). The two columns
   below therefore vary the host canvas, not the chrome palette.
 -->
-<section class="live-ui-gallery" data-live-ui-gallery data-dev-only="true" aria-labelledby="live-ui-gallery-title">
-  <header class="live-ui-gallery__header">
-    <div class="live-ui-gallery__intro">
-      <p class="live-ui-gallery__eyebrow">Dev-only · Live chrome</p>
-      <h2 id="live-ui-gallery-title">Live UI state gallery</h2>
-      <p>
-        Inspect the real picker, progressive review, copy-apply, and recovery states without starting Live.
-        Every state renders against both host themes.
-      </p>
+<section class="live-ui-gallery" data-live-ui-gallery data-dev-only="true" aria-label="Live UI state inspector">
+  <header class="live-ui-gallery__header" data-live-ui-gallery-controls>
+    <div class="live-ui-gallery__state-readout" aria-live="polite" aria-atomic="true">
+      <span data-gallery-state-group>Global chrome</span>
+      <strong data-gallery-state-label>Ready</strong>
     </div>
 
-    <div class="live-ui-gallery__control-panel" aria-label="Gallery controls">
-      <label for="live-ui-gallery-state">State</label>
+    <div
+      class="live-ui-gallery__control-panel"
+      aria-label="Gallery controls"
+      aria-keyshortcuts="ArrowLeft ArrowRight Home End"
+    >
+      <label class="live-ui-gallery__sr-only" for="live-ui-gallery-state">State</label>
       <div class="live-ui-gallery__select-row">
         <button type="button" class="live-ui-gallery__step" data-gallery-step="-1" aria-label="Previous state">←</button>
-        <select id="live-ui-gallery-state" data-gallery-state>
+        <select id="live-ui-gallery-state" data-gallery-state aria-controls="live-ui-gallery-light-stage live-ui-gallery-dark-stage">
           {STATE_GROUPS.map((group) => (
             <optgroup label={group.label}>
               {group.states.map(([key, label]) => <option value={key}>{label}</option>)}
@@ -90,36 +90,30 @@ const statesJson = JSON.stringify(statePayload).replace(/</g, '\\u003c');
         </select>
         <button type="button" class="live-ui-gallery__step" data-gallery-step="1" aria-label="Next state">→</button>
       </div>
-      <p class="live-ui-gallery__shortcut">Use ←/→ while this panel is focused to step through states.</p>
     </div>
+
+    <nav class="live-ui-gallery__quick-nav" aria-label="Quick state selection">
+      {STATE_GROUPS.map((group) => (
+        <div class="live-ui-gallery__quick-group">
+          <span>{group.label}</span>
+          <div>
+            {group.states.map(([key, label]) => (
+              <button type="button" data-gallery-state-button={key}>{label}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
   </header>
 
-  <nav class="live-ui-gallery__quick-nav" aria-label="Quick state selection">
-    {STATE_GROUPS.map((group) => (
-      <div class="live-ui-gallery__quick-group">
-        <span>{group.label}</span>
-        <div>
-          {group.states.map(([key, label]) => (
-            <button type="button" data-gallery-state-button={key}>{label}</button>
-          ))}
-        </div>
-      </div>
-    ))}
-  </nav>
-
-  <div class="live-ui-gallery__state-readout" aria-live="polite" aria-atomic="true">
-    <span data-gallery-state-group>Global chrome</span>
-    <strong data-gallery-state-label>Ready</strong>
-  </div>
-
-  <div class="live-ui-gallery__previews">
+  <div class="live-ui-gallery__previews" data-live-ui-gallery-workspace>
     <section class="live-ui-gallery__preview" aria-labelledby="live-ui-gallery-light-title">
       <header>
         <span class="live-ui-gallery__theme-dot" aria-hidden="true"></span>
         <h3 id="live-ui-gallery-light-title">Light host</h3>
         <code>host: light</code>
       </header>
-      <div class="live-ui-stage is-light" data-live-gallery-preview="light"></div>
+      <div id="live-ui-gallery-light-stage" class="live-ui-stage is-light" data-live-gallery-preview="light"></div>
     </section>
 
     <section class="live-ui-gallery__preview" aria-labelledby="live-ui-gallery-dark-title">
@@ -128,15 +122,9 @@ const statesJson = JSON.stringify(statePayload).replace(/</g, '\\u003c');
         <h3 id="live-ui-gallery-dark-title">Dark host</h3>
         <code>host: dark</code>
       </header>
-      <div class="live-ui-stage is-dark" data-live-gallery-preview="dark"></div>
+      <div id="live-ui-gallery-dark-stage" class="live-ui-stage is-dark" data-live-gallery-preview="dark"></div>
     </section>
   </div>
-
-  <p class="live-ui-gallery__fidelity-note">
-    Fidelity anchors: <code>live-browser.js</code> configure row, generation row, cycling row, Tune panel,
-    pending-copy dock, global bar, annotation overlay, and DESIGN.md panel. Command icons and order are imported
-    from <code>live/vocabulary.mjs</code>.
-  </p>
 
   <script is:inline type="application/json" data-live-gallery-states set:html={statesJson}></script>
   <script is:inline type="application/json" data-live-gallery-vocabulary set:html={commandPayload}></script>

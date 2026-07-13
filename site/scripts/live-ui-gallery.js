@@ -352,6 +352,7 @@ function initLiveUiGallery(root) {
   const select = root.querySelector('[data-gallery-state]');
   const groupReadout = root.querySelector('[data-gallery-state-group]');
   const labelReadout = root.querySelector('[data-gallery-state-label]');
+  const quickNav = root.querySelector('.live-ui-gallery__quick-nav');
   const previews = [...root.querySelectorAll('[data-live-gallery-preview]')];
   let selectedAction = 'impeccable';
   let count = 3;
@@ -366,15 +367,26 @@ function initLiveUiGallery(root) {
     if (groupReadout) groupReadout.textContent = state.group;
     if (labelReadout) labelReadout.textContent = state.label;
 
+    let activeStateButton = null;
     root.querySelectorAll('[data-gallery-state-button]').forEach((button) => {
       const active = button.dataset.galleryStateButton === state.key;
       button.setAttribute('aria-current', active ? 'true' : 'false');
+      if (active) activeStateButton = button;
     });
 
     for (const preview of previews) {
       preview.dataset.galleryState = state.key;
       preview.setAttribute('aria-label', `${preview.dataset.liveGalleryPreview} host — ${state.label}`);
       preview.innerHTML = sceneFor(state.key, { commands, selectedAction, count, designTab });
+    }
+
+    if (quickNav && activeStateButton) {
+      requestAnimationFrame(() => {
+        const navRect = quickNav.getBoundingClientRect();
+        const buttonRect = activeStateButton.getBoundingClientRect();
+        if (buttonRect.left < navRect.left) quickNav.scrollLeft -= navRect.left - buttonRect.left + 8;
+        if (buttonRect.right > navRect.right) quickNav.scrollLeft += buttonRect.right - navRect.right + 8;
+      });
     }
     if (focusSelect) select?.focus();
   }
@@ -456,6 +468,21 @@ function initLiveUiGallery(root) {
       render('steer-processing');
       return;
     }
+
+    const stateButton = event.target.closest('[data-gallery-state-button]');
+    if (stateButton && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const current = stateIndex(stateButton.dataset.galleryStateButton);
+      const next = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? states.length - 1
+          : (current + (event.key === 'ArrowLeft' ? -1 : 1) + states.length) % states.length;
+      render(states[next].key);
+      root.querySelector(`[data-gallery-state-button="${states[next].key}"]`)?.focus();
+      return;
+    }
+
     const panel = event.target.closest('.live-ui-gallery__control-panel');
     if (!panel || event.target.matches('input')) return;
     if (event.key === 'ArrowLeft') {
@@ -464,6 +491,12 @@ function initLiveUiGallery(root) {
     } else if (event.key === 'ArrowRight') {
       event.preventDefault();
       step(1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      render(states[0].key, { focusSelect: true });
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      render(states[states.length - 1].key, { focusSelect: true });
     }
   });
 
@@ -481,4 +514,3 @@ if (document.readyState === 'loading') {
 }
 
 document.addEventListener('astro:page-load', initLiveUiGalleries);
-
