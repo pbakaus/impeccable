@@ -2599,6 +2599,59 @@ colors: {}
     assert.equal(acked.type, 'timeout', 'acked event should be removed from the poll queue');
   });
 
+  it('retires the leased Generate when early Accept or Discard takes ownership', async () => {
+    await drainPolls(server);
+    for (const [type, id] of [['accept', 'ea11ac01'], ['discard', 'ea11dc01']]) {
+      const generated = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type: 'generate',
+          id,
+          action: 'bolder',
+          count: 3,
+          element: { outerHTML: '<section>early choice</section>', tagName: 'section' },
+        }),
+      });
+      assert.equal(generated.status, 200);
+      const generation = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(generation.id, id);
+
+      const chosen = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type,
+          id,
+          ...(type === 'accept' ? { variantId: '1' } : {}),
+        }),
+      });
+      assert.equal(chosen.status, 200);
+      const choice = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=${type}&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(choice.type, type);
+      assert.equal(choice.id, id);
+      const reply = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          id,
+          sourceEventType: type,
+          type: type === 'discard' ? 'discarded' : 'complete',
+        }),
+      });
+      assert.equal(reply.status, 200);
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const stale = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=30&leaseMs=20`).then((response) => response.json());
+      assert.equal(stale.type, 'timeout', `${type} must prevent Generate redelivery after its old lease expires`);
+      const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+      assert.equal(status.pendingEvents.some((event) => event.id === id && event.type === 'generate'), false);
+    }
+  });
+
   it('wakes a parked poll as soon as a missed-ack lease expires', async () => {
     await drainPolls(server);
 

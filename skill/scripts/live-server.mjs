@@ -290,6 +290,22 @@ function acknowledgePendingEvent(id, sourceEventType) {
   return acknowledged;
 }
 
+function retirePendingGeneration(id) {
+  if (!id) return 0;
+  let retired = 0;
+  for (let index = state.pendingEvents.length - 1; index >= 0; index -= 1) {
+    const event = state.pendingEvents[index]?.event;
+    if (event?.id !== id || event.type !== 'generate') continue;
+    state.pendingEvents.splice(index, 1);
+    retired += 1;
+  }
+  if (retired > 0) {
+    scheduleLeaseFlush();
+    broadcastAgentPollingIfChanged();
+  }
+  return retired;
+}
+
 function findPendingEventById(id, sourceEventType) {
   if (!id) return null;
   const entry = state.pendingEvents.find((item) => (
@@ -822,6 +838,9 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
             res.end(JSON.stringify({ error: 'session_store_append_failed', message: err.message }));
             return;
           }
+        }
+        if (msg.type === 'accept' || msg.type === 'discard') {
+          retirePendingGeneration(msg.id);
         }
         recordGenerationCheckpoint(msg);
         if (msg.type === 'exit') {
