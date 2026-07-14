@@ -73,7 +73,7 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 ## Two paths
 
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
-- **Seed mode**: the project is pre-implementation. Ensure PRODUCT.md exists, then reuse new-work's visual-world workshop and write its directional DESIGN.md seed. Re-run in scan mode once there's code.
+- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Gather any existing brand assets, interview for five high-level answers, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
 
 Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` requests new-work's world workshop, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
 
@@ -351,17 +351,55 @@ Your own write is the freshest source; subsequent commands in this session don't
 
 For projects with no visual system to extract yet. Produces a user-chosen visual-world scaffold, not a fabricated token spec.
 
-### Step 1: Route through new-work's workshop
+### Step 1: Confirm seed mode and ask for assets
 
-PRODUCT.md is the prerequisite. If it is missing, load [init.md](init.md) and complete its product interview first. Do not create a visual identity without durable product context.
+Before interviewing: *"There's no existing visual system to scan. I'll ask five quick questions to seed a starter DESIGN.md. First: if you have any visual assets (a logo, reference or product images, moodboards), drop them in or point me at the files. They'll ground the questions in what you already have. You can re-run `/impeccable document` once there's code, to capture the real tokens and components. OK?"*
 
-If PRODUCT.md exists, load [new-work.md](new-work.md) and resolve visual authority. Seed mode requires a concrete first surface: use the target the user named, or ask what they want to make first. Run new-work's **Create or replace the visual world** flow, then **Commit the world**, so the visual world and its first expression are chosen together. Stop after the directional DESIGN.md seed and surface brief; do not implement. A structured simulated user counts as the user and must get the same choice.
+Also glance for assets already in the project (`assets/`, `public/`, `brand/`, image files at the root); name anything found so the user can confirm it's relevant. Assets are optional: one ask, then proceed with whatever arrived.
 
-If new-work already completed the workshop in this session, use its chosen direction directly. Do not ask again.
+If the user prefers to skip entirely, stop. No file.
 
-### Step 2: Write seed DESIGN.md
+### Step 2: Read the assets
 
-Use the canonical section order from Scan mode. Populate the selected workshop direction and leave unresolved implementation facts as honest placeholders. The seed commits a world and its invariants; it does not pretend implementation tokens already exist.
+Look at every asset provided (attached in chat or a file path) and record what it tells you, before writing the questions:
+
+- **Logo**: sample the exact colors, note letterform character (geometric / humanist / serif) and temperature.
+- **Reference / product images**: density, palette, type feel; what the user is drawn to.
+- **Moodboards**: recurring hues, textures, era, register cues.
+
+These observations exist to sharpen Step 3. **No assets: skip straight to Step 3** with generic options.
+
+### Step 3: Five questions
+
+Group into one `AskUserQuestion` interaction. Options must be concrete. When Step 2 produced observations, ground the options in them: offer the logo's sampled color as a hue anchor in Q1, a type direction that matches the letterforms in Q2, candidate named references drawn from the moodboard's era in Q4. The user should recognize their own material in the choices.
+
+1. **Color strategy.** Pick one:
+   - Restrained: tinted neutrals + one accent ≤10%
+   - Committed: one saturated color carries 30–60% of the surface
+   - Full palette: 3–4 named color roles, each deliberate
+   - Drenched: the surface IS the color
+   
+   Then: one hue family or anchor reference ("deep teal", "mustard", "Klim #ff4500 orange").
+
+2. **Typography direction.** Pick one (specific fonts come later):
+   - Serif display + sans body
+   - Single sans (warm / technical / geometric / humanist; pick a feel)
+   - Display + mono
+   - Mono-forward
+   - Editorial script + sans
+
+3. **Motion energy.** Pick one:
+   - Restrained: state changes only
+   - Responsive: feedback + transitions, no choreography
+   - Choreographed: orchestrated entrances, scroll-driven sequences
+
+4. **Three named references.** Brands, products, printed objects. Not adjectives.
+
+5. **One anti-reference.** What it should NOT feel like. Also named.
+
+### Step 4: Write seed DESIGN.md
+
+Use the six-section spec from Scan mode. Populate what the interview and the assets answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec.
 
 Lead the file with:
 
@@ -371,18 +409,16 @@ Lead the file with:
 
 Per-section guidance in seed mode:
 
-- **Overview**: the chosen design thesis, layout behavior, material character, imagery stance, motion grammar, and reusable signature. Keep the selected first-surface expression in its surface brief; do not promote its composition into the global world.
-- **Colors**: the selected palette strategy and roles. Include values only when the user, an existing asset, or new-work's exploration established them; otherwise mark them `[to be resolved during implementation]`.
-- **Typography**: the selected type character and role relationship. Include font names only when established; otherwise mark the pairing `[to be resolved during implementation]`.
-- **Layout**: the selected spatial grammar and responsive behavior, without pretending exact measurements are settled.
-- **Elevation & Depth**: the selected material and depth behavior, stated as an invariant rather than inferred from a generic preset.
-- **Shapes**: the selected form and corner language.
+- **Overview**: Creative North Star and philosophy phrased from the answers (color strategy + motion energy + references). Reference the user's anti-reference directly.
+- **Colors**: Color strategy as a Named Rule (e.g. *"The Drenched Rule. The surface IS the color."*). Hue family or anchor reference. Colors sampled from a provided logo are real; include them with exact values and note the source. Everything else stays `[to be resolved during implementation]`; asset-sampled anchors are the only hex a seed may carry.
+- **Typography**: the direction the user picked (e.g. "Serif display + sans body"). No font names yet: `[font pairing to be chosen at implementation]`.
+- **Elevation**: inferred from motion energy. Restrained/Responsive → flat by default; Choreographed → layered. One sentence.
 - **Components**: omit entirely; no components exist yet.
 - **Do's and Don'ts**: record the durable guardrails confirmed during the world choice, not task-local refusals.
 
 Seed mode writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet. Real tokens land on the next Scan-mode run. Skip the `.impeccable/design.json` sidecar in seed mode for the same reason: nothing to render.
 
-### Step 3: Confirm
+### Step 5: Confirm
 
 1. Show the seed DESIGN.md. Call out that it is a seed (the marker is the literal commitment).
 2. Tell the user: "Re-run `/impeccable document` once you have some code. That pass will extract real tokens and generate the sidecar."
