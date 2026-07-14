@@ -1372,25 +1372,29 @@
   color: var(--demo-muted) !important;
 }
 
-/* Amber warning-card text colors hardcoded in the clarify demo (and others)
-   render as brown-on-brown when the underlying #fff8e1 / #fef3c7 panel gets
-   swapped for the dark --demo-warning-panel. Map them to readable amber tones
-   that survive the dark plinth. */
-.home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #92400e"],
-.home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #854d0e"],
-.home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #78350f"] {
+/* In dark mode, hardcoded amber warning text becomes brown-on-brown when its
+   light panel is swapped for --demo-warning-panel. Map those colors to readable
+   amber tones on the dark plinth; light mode keeps the original brown text. */
+html.dark .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #92400e"],
+html.dark .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #854d0e"],
+html.dark .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: #78350f"] {
   color: var(--ks-kinpaku-pale) !important;
 }
 
-/* Primary CTA buttons that use background: var(--color-ink) — on home-kinpaku
-   that token maps to champagne (cream) which paints the button cream-on-dark.
-   The demo wants a dark primary button, so override back to a dark ink and a
-   light label color. */
-.home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison button[style*="background: var(--color-ink)"],
-.home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="background: var(--color-ink)"] {
+/* In dark mode, primary CTAs using background: var(--color-ink) would resolve
+   to champagne on lacquer. Keep the intended dark button and light label on
+   the dark plinth; light mode already resolves the inline ink/paper pairing. */
+html.dark .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison button[style*="background: var(--color-ink)"],
+html.dark .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="background: var(--color-ink)"] {
   background: oklch(13% 0.008 95) !important;
   color: var(--ks-champagne) !important;
   border-color: var(--demo-border) !important;
+}
+
+/* Gold remains a fill and display accent on paper. Small demo labels use the
+   paper-safe patina text token so they retain readable contrast. */
+html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison [style*="color: var(--color-accent)"] {
+  color: var(--ks-link-on-paper) !important;
 }
 
 .home-kinpaku .ptable-tooltip {

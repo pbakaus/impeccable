@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 import { ANTIPATTERNS } from '../cli/engine/registry/antipatterns.mjs';
+import { renderCommandDemo } from '../site/scripts/demo-renderer.js';
 
 const ROOT = process.cwd();
 
@@ -155,5 +156,49 @@ describe('docs integrity', () => {
     }
 
     expect(stale).toEqual([]);
+  });
+
+  test('command demo theme rules stay scoped to their page and theme', () => {
+    const homeCss = fs.readFileSync(path.join(ROOT, 'site/styles/home-kinpaku.css'), 'utf8');
+    const lightCss = fs.readFileSync(path.join(ROOT, 'site/styles/light-mode.css'), 'utf8');
+    const docsCss = fs.readFileSync(path.join(ROOT, 'site/styles/docs-kinpaku.css'), 'utf8');
+    const demoScope = ':is(.spread-demo-area, .terminal-preview, .mobile-demo-area) .demo-split-comparison';
+    const affectedDemos = {
+      clarify: ['Save and Continue →'],
+      quieter: ['View Plans'],
+      bolder: ['Learn More'],
+      polish: ['JD', 'Edit Profile'],
+    };
+
+    for (const [command, labels] of Object.entries(affectedDemos)) {
+      const markup = renderCommandDemo(command);
+      const darkFillCount = markup.split('background: var(--color-ink)').length - 1;
+
+      expect(darkFillCount).toBe(labels.length);
+      for (const label of labels) expect(markup).toContain(label);
+    }
+
+    expect(homeCss).toContain(
+      `html.dark .home-kinpaku ${demoScope} [style*="color: #92400e"]`
+    );
+    expect(homeCss).toContain(
+      `html.dark .home-kinpaku ${demoScope} [style*="background: var(--color-ink)"]`
+    );
+    expect(homeCss).toContain(
+      `html.light .home-kinpaku ${demoScope} [style*="color: var(--color-accent)"]`
+    );
+    expect(homeCss).not.toContain(
+      `\n.home-kinpaku ${demoScope} [style*="color: #92400e"]`
+    );
+    expect(homeCss).not.toContain(
+      `\n.home-kinpaku ${demoScope} [style*="background: var(--color-ink)"]`
+    );
+
+    expect(docsCss).toMatch(
+      /\.docs-kinpaku \.docs-command-demo \.split-after\s*\{[^}]*background:\s*var\(--ks-lacquer\);/
+    );
+    expect(lightCss).toMatch(
+      /html\.light \.docs-kinpaku \.docs-command-demo \.split-after\s*\{[^}]*background:\s*var\(--ks-lacquer-raised\);/
+    );
   });
 });
