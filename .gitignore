@@ -63,6 +63,8 @@ Thumbs.db
 .impeccable/config.local.json
 # API keys for optional image-generation cues (document seed mode).
 .impeccable/.env
+# Generated visual-cue images + cues.json (document seed Step 4).
+.impeccable/visual-cues/
 **/.impeccable/hook.pending.json
 .impeccable/provider-smoke/
 src/__impeccable_provider_smoke_*.html
