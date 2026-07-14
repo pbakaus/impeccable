@@ -61,6 +61,8 @@ Thumbs.db
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/history/
 .impeccable/config.local.json
+# API keys for optional image-generation cues (document seed mode).
+.impeccable/.env
 **/.impeccable/hook.pending.json
 .impeccable/provider-smoke/
 src/__impeccable_provider_smoke_*.html

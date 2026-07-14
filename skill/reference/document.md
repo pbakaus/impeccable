@@ -73,7 +73,7 @@ If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user
 ## Two paths
 
 - **Scan mode** (default): the project has design tokens, components, or rendered output. Extract, then confirm descriptive language. Use when there's code to analyze.
-- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Gather any existing brand assets, interview for five high-level answers, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
+- **Seed mode**: the project is pre-implementation (fresh init, nothing built yet). Gather any existing brand assets, interview for five high-level answers, optionally generate visual cues for the palette pick, write a minimal DESIGN.md marked `<!-- SEED -->`. Re-run in scan mode once there's code.
 
 Decide by scanning first (Scan mode Step 1). If the scan finds no tokens, no component files, and no rendered site, offer seed mode; don't silently switch. `/impeccable document --seed` requests new-work's world workshop, but it does not authorize replacing coherent code: when an incumbent system exists, offer scan mode or route an explicit identity-replacement request through new-work.
 
@@ -373,6 +373,8 @@ These observations exist to sharpen Step 3. **No assets: skip straight to Step 3
 
 Group into one `AskUserQuestion` interaction. Options must be concrete. When Step 2 produced observations, ground the options in them: offer the logo's sampled color as a hue anchor in Q1, a type direction that matches the letterforms in Q2, candidate named references drawn from the moodboard's era in Q4. The user should recognize their own material in the choices.
 
+Keep skill vocabulary (seed, register, anti-reference) out of question text; ask for the thing in words the user would use. Ask like a magazine editor profiling the brand: curious and narrative, drawing out the feel the surface should carry.
+
 1. **Color strategy.** Pick one:
    - Restrained: tinted neutrals + one accent ≤10%
    - Committed: one saturated color carries 30–60% of the surface
@@ -397,9 +399,19 @@ Group into one `AskUserQuestion` interaction. Options must be concrete. When Ste
 
 5. **One anti-reference.** What it should NOT feel like. Also named.
 
-### Step 4: Write seed DESIGN.md
+### Step 4: Visual cues (optional, capability-gated)
 
-Use the six-section spec from Scan mode. Populate what the interview and the assets answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec.
+Interview answers are words; a palette is easier picked by eye. Before writing the seed, branch on capability:
+
+- **The harness has native image generation** (Codex's `image_gen`, an equivalent MCP tool, or similar): generate the cues directly; no setup needed.
+- **No native path**: pause and {{ask_instruction}} whether the user wants generated visual cues to pick a palette by eye. *"I can generate a few small palette-and-mood images so you choose a direction visually instead of from descriptions. That needs an image-generation API key, stored as `IMAGE_GEN_API_KEY` in `.impeccable/.env`. Add one, or skip straight to the seed?"* If a key arrives, write it to `.impeccable/.env`, confirm that file is listed in the project's `.gitignore` (add it if missing; a committed key is a leak), and ask which provider it belongs to so you call the right API.
+- **The user opts out, or no key arrives**: go to Step 5 and seed from the answers alone.
+
+When generation is available, produce **2-4** cue images from the interview answers and Step 2 observations: each carries one palette direction as swatches on the chosen background, one type mood, one texture or motif. These are direction tests, not mocks; vary the hue anchor or color strategy across them, not minor tweaks. Show them, ask which feels closest and what feels off, and carry the pick into the seed as the confirmed color direction. One round; refinement belongs to implementation, not the seed.
+
+### Step 5: Write seed DESIGN.md
+
+Use the six-section spec from Scan mode. Populate what the interview, the assets, and any cue pick answer; leave the rest as honest placeholders. The seed is a scaffold, not a fabricated spec.
 
 Lead the file with:
 
@@ -410,7 +422,7 @@ Lead the file with:
 Per-section guidance in seed mode:
 
 - **Overview**: Creative North Star and philosophy phrased from the answers (color strategy + motion energy + references). Reference the user's anti-reference directly.
-- **Colors**: Color strategy as a Named Rule (e.g. *"The Drenched Rule. The surface IS the color."*). Hue family or anchor reference. Colors sampled from a provided logo are real; include them with exact values and note the source. Everything else stays `[to be resolved during implementation]`; asset-sampled anchors are the only hex a seed may carry.
+- **Colors**: Color strategy as a Named Rule (e.g. *"The Drenched Rule. The surface IS the color."*). Hue family or anchor reference. Colors sampled from a provided logo, or from a cue image the user picked in Step 4, are real; include them with exact values and note the source. Everything else stays `[to be resolved during implementation]`; those sampled anchors are the only hex a seed may carry.
 - **Typography**: the direction the user picked (e.g. "Serif display + sans body"). No font names yet: `[font pairing to be chosen at implementation]`.
 - **Elevation**: inferred from motion energy. Restrained/Responsive → flat by default; Choreographed → layered. One sentence.
 - **Components**: omit entirely; no components exist yet.
@@ -418,7 +430,7 @@ Per-section guidance in seed mode:
 
 Seed mode writes a minimal frontmatter with `name` and `description` only; no colors, typography, rounded, spacing, or components yet. Real tokens land on the next Scan-mode run. Skip the `.impeccable/design.json` sidecar in seed mode for the same reason: nothing to render.
 
-### Step 5: Confirm
+### Step 6: Confirm
 
 1. Show the seed DESIGN.md. Call out that it is a seed (the marker is the literal commitment).
 2. Tell the user: "Re-run `/impeccable document` once you have some code. That pass will extract real tokens and generate the sidecar."
