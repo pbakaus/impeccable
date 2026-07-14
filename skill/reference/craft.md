@@ -8,7 +8,7 @@ Treat any approved visual direction (generated mock or stated reference) as a co
 
 ### Gates: do not compress
 
-Craft has **multiple user gates**, not one. When image generation is available (native or stored key; Step 3 defines the test), the gate sequence before code is:
+Craft has **multiple user gates**, not one. When the harness has native image generation (Codex via `image_gen`), the gate sequence before code is:
 
 1. **Shape brief confirmed** (Step 1)
 2. **Direction questions answered** (codex.md Step A)
@@ -17,7 +17,7 @@ Craft has **multiple user gates**, not one. When image generation is available (
 
 You must stop at every gate. **Shape confirmation alone is NOT a green light to start coding.** It is the green light to begin codex.md Step A. Compressing gates 2 through 4 because the shape brief felt complete is the dominant failure mode of this flow.
 
-When no image generation is available, gates 2-4 collapse into the brief itself, and shape confirmation does advance straight to code.
+When the harness lacks native image generation, gates 2-4 collapse into the brief itself, and shape confirmation does advance straight to code.
 
 ## Step 0: Project Foundation
 
@@ -50,7 +50,7 @@ If the user already supplied a confirmed brief or ran shape separately, use it a
 
 When the original prompt + PRODUCT.md already answer scope, content, and visual direction with no real ambiguity, the shape output can be **compact** (3-5 bullets stating what you're building and the visual lane, ending with one or two specific questions or "confirm or override"). The full 10-section structured brief is reserved for genuinely ambiguous, multi-screen, or stakeholder-heavy tasks. Don't pad a clear brief into a long one to look thorough; equally, don't skip the pause to look efficient.
 
-If image generation is available (Step 3 defines the test), a compact shape's "confirm or override" advances to **Step 3 and the codex.md flow**, not to Step 4. Phrase the closing line accordingly: "Confirm or override; once we lock direction, I'll run a couple of palette and reference questions before generating any mocks." This stops the model from reading shape confirmation as code-green.
+If the harness has native image generation (Codex), a compact shape's "confirm or override" advances to **Step 3 and the codex.md flow**, not to Step 4. Phrase the closing line accordingly: "Confirm or override; once we lock direction, I'll run a couple of palette and reference questions before generating any mocks." This stops the model from reading shape confirmation as code-green.
 
 ## Step 2: Load References
 
@@ -68,17 +68,15 @@ Then add references based on the brief's needs:
 
 ## Step 3: Visual Direction & Assets (Harness-Gated)
 
-Image generation is available when the harness has it **natively** (currently Codex via `image_gen`), or when `.impeccable/.env` carries an `IMAGE_GEN_API_KEY` (collected during `{{command_prefix}}impeccable document` seed mode; generate via that provider's API). The key ask belongs to the document seed flow alone; craft never asks the user to install APIs, tooling, or a key.
+If the harness has **native image generation** (currently Codex via `image_gen`), this step is mandatory. **Stop and load [codex.md](codex.md)**. It covers palette generation, mock exploration, the approval loop, mock-fidelity inventory, and asset slicing via the `impeccable_asset_producer` subagent. Follow Steps A-F in that file, then return here for Step 4.
 
-If image generation is available, this step is mandatory. **Stop and load [codex.md](codex.md)**. It covers palette generation, mock exploration, the approval loop, mock-fidelity inventory, and asset slicing via the `impeccable_asset_producer` subagent. Follow Steps A-F in that file, then return here for Step 4.
-
-If neither path is available, **state in one line that the visual-direction-by-generation step is being skipped because no image generation is available, then proceed**. The one-line announcement is required; it forces a conscious decision instead of letting the step quietly evaporate. The brief is your only visual reference. Implement directly from it, treating any named anchor references and the brief's "Design Direction" as the contract.
+If the harness lacks native image generation, **state in one line that the visual-direction-by-generation step is being skipped because the harness lacks native image generation, then proceed**. The one-line announcement is required; it forces a conscious decision instead of letting the step quietly evaporate. The brief is your only visual reference. Implement directly from it, treating any named anchor references and the brief's "Design Direction" as the contract.
 
 Whether you generated mocks or not: don't replace required imagery with generic cards, bullets, emoji, fake metrics, decorative CSS panels, or filler copy. Image-led briefs (restaurants, hotels, magazines, photography, hobbyist communities, food, travel, fashion, product) need real or sourced imagery in the build, not CSS scenery.
 
 ## Step 4: Build to Production Quality
 
-**Precondition.** If Step 3 routed you to codex.md (image generation available), Steps A through D in that file must be complete before any code: questions answered, palette confirmed, mocks generated, one direction approved or delegated. **Do not mention implementation, file paths, or patch plans until that's done.** A confirmed shape brief is not enough; the model that compressed those gates is the model that already failed this flow.
+**Precondition.** If Step 3 routed you to codex.md (native image generation available), Steps A through D in that file must be complete before any code: questions answered, palette confirmed, mocks generated, one direction approved or delegated. **Do not mention implementation, file paths, or patch plans until that's done.** A confirmed shape brief is not enough; the model that compressed those gates is the model that already failed this flow.
 
 Implement the feature following the design brief. Build in passes so structure, visual system, states, motion/media, and responsive behavior each get deliberate attention. The list below is the definition of done, not inspiration.
 
