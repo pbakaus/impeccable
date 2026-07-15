@@ -2,7 +2,7 @@
 
 Loaded by `{{command_prefix}}impeccable document` seed mode (Step 4) when image generation is available. Input: the five seed interview answers, the asset observations from seed Step 2, and PRODUCT.md. Output: cue images plus `cues.json` under `.impeccable/visual-cues/`, ready for the user to pick from by eye in a later round.
 
-Tell the user once, before starting: *"Generating visual cues; this can take a few minutes."* Then work without narration. Chat carries no per-image commentary, no palette tables, no scorecards, no prompt dumps; the folder is the deliverable.
+Tell the user once, before starting: *"Generating visual cues; this can take a few minutes."* Then work without narration. Chat carries no per-image commentary, no palette tables, no prompt dumps; the folder is the deliverable.
 
 ## The two images
 
@@ -37,13 +37,12 @@ Example, hero = a flower atelier's worktable: sheet quadrants carry the wrapping
 
 Palettes come from **six competing specialists**, not from you. One mind composing six palettes converges on one taste, and six versions of one mood defeat the pick round. Each specialist is a subagent locked to a **persona**: a different method of searching color space (object association, cultural reframing, remote analogy, self-imposed constraint, audience perspective-taking, emotional sequencing). Same brief, same output format, different search method; the separation is what makes the six palettes genuinely different.
 
-The studio runs three waves:
+The studio runs two phases, staffed differently on purpose: personas are hired for brand thinking, image specialists for prompt craft; one agent doing both does neither at full strength.
 
-1. **Compose** (Step 2): each persona designs one palette from the brief and defends every color.
-2. **Score** (Step 3): a similarity script flags overlapping palettes, and each persona critiques the other five. Each persona gets a scorecard.
-3. **Revise and generate** (Step 4): each persona improves its palette against its scorecard, then builds its prompts and generates its two images.
+1. **The palette chain** (Step 2): the six personas compose in sequence, each shown the color territories already claimed and required to take a new one.
+2. **The image wave** (Step 3): six image specialists, one per palette, in parallel; each drafts the concept, builds both prompts, and generates the two images.
 
-Subagents start without your context, so every spawn task is self-contained: it carries the brief packet, the persona, and every rule the subagent needs. Paste the shared blocks below into tasks **verbatim**; a summarized rule is a dropped rule.
+Subagents start without your context, so every spawn task is self-contained: it carries the brief packet, the persona or palette, and every rule the subagent needs. Paste the shared blocks below into tasks **verbatim**; a summarized rule is a dropped rule.
 
 ## Step 1: Assemble the brief packet
 
@@ -53,11 +52,11 @@ Write one self-contained text block that a specialist with zero context can desi
 - **The interview**: Q1 color strategy and hue anchor, Q2 type direction, Q4 the three named references, Q5 the anti-reference. State that the anti-reference is a hard constraint on every palette.
 - **The assets**: the seed Step 2 observations (logo colors, recurring materials, photo moods).
 
-Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn of every wave; a packet that drifts between waves invalidates the comparison. Do **not** add your own palette leanings to it: the personas do the leaning.
+Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn of both phases; a packet that drifts between spawns invalidates the comparison. Do **not** add your own palette leanings to it: the personas do the leaning.
 
 ## The six personas
 
-The number is the persona's **priority** in the similarity check: on a collision, the lower number keeps its territory and the higher number moves.
+The number is the persona's **position in the chain**: it composes after everyone with a lower number, and their territories are off-limits to it.
 
 1. **The Ecological Naturalist**: derive every color from real materials, organisms, weather, or landscapes in the product's world. Name the physical source of each hex. No abstract "brand blue" thinking; the palette must feel materially plausible, textural, grounded.
 2. **The Cross-Cultural Anthropologist**: treat color as cultural meaning. Compare at least two cultural lenses relevant to this audience, find where the meanings align and where they diverge, and turn that tension into the palette. Do not stereotype or flatten into cliché.
@@ -106,7 +105,7 @@ Hard rules:
 ### CONCEPT RULES
 
 ```text
-Attach one one-line cue concept to your palette; the hero image stages it.
+Attach one one-line cue concept to the palette; the hero image stages it.
 
 - The concept lives in the product's own world, named with the brief's
   own nouns. A concept that could belong to any other product is not
@@ -171,11 +170,11 @@ No frames, no cell borders, no dividing lines, no watermark, no typography
 of any kind; the background stays one uninterrupted #FDFCF6 everywhere.
 ```
 
-## Step 2: Compose (wave 1)
+## Step 2: The palette chain (sequential)
 
-If the harness has any subagent/spawn tool, parallel is **required**: emit all six spawns in one tool-call batch, one persona per subagent. **Never run the studio's waves yourself one persona at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. (No subagent tool at all: Step 5.)
+Spawn the personas **one at a time in numbered order**, collecting each reply before spawning the next: every palette that exists when a persona composes goes into its task as claimed territory. The chain is the uniqueness mechanism, each persona diverging from all the work before it, so run it sequentially even though a subagent tool could parallelize it. (No subagent tool at all: Step 4.)
 
-Spawn each subagent with this task, filling the slots:
+Task template:
 
 ```text
 You are a color specialist composing one brand palette. Reply in chat
@@ -187,6 +186,16 @@ PERSONA: [the persona's full numbered entry from The six personas]
 
 [the PALETTE RULES block, verbatim]
 
+Color territories already claimed by the specialists before you:
+
+[one line per earlier persona: "[N]: [mood phrase] / primary #RRGGBB,
+secondary #RRGGBB, tertiary #RRGGBB, neutral #RRGGBB"; for persona 1
+write "none, you compose first"]
+
+Claimed territory is off-limits: your palette must read as a different
+color story, with a primary in a different hue family and a mood no
+earlier specialist used. Do not repeat or lightly shift their work.
+
 Design ONE palette in your persona's method. Reply with exactly this
 format and nothing else:
 
@@ -197,93 +206,42 @@ tertiary=#RRGGBB [one-line reason]
 neutral=#RRGGBB [one-line reason]
 ```
 
-Collect all six replies and keep each persona's palette, mood, and reasons; every later wave needs them. Close each agent after collecting.
+Close each agent after collecting its reply. If a reply lands in an already-claimed hue family anyway, re-spawn that persona once with the colliding palette added to the claimed list and a line naming the collision; keep the second answer regardless.
 
-Done when: six palettes exist, one per persona, each in the reply format.
+Done when: six palettes exist, one per persona, each with a mood and four hexes, and no two primaries share a hue family.
 
-## Step 3: Score (wave 2)
+## Step 3: The image wave (parallel)
 
-Each persona gets a **scorecard** with two parts: the script's similarity verdict and the peers' critiques. Scorecards live in your context, not in chat.
+If the harness has any subagent/spawn tool, parallel is **required** here: emit all six spawns in one tool-call batch, one palette per subagent. **Never generate the images yourself one at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill).
 
-**Similarity (scripted).** Run once with all six palettes, numbered by persona:
-
-```text
-node {{scripts_path}}/visual-cues.mjs similarity \
-  "1:primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB" \
-  "2:..." "3:..." "4:..." "5:..." "6:..."
-```
-
-The script compares every pair in OKLab and prints `verdicts`: per persona, either empty (clear) or the conflicts it must move away from (a primary sharing a hue family with a lower number's, or most roles near-duplicating a lower number's). Priority is the persona number: the lower number keeps its territory, the higher number revises.
-
-**Peer critique (the wave).** Spawn six subagents in one tool-call batch; each persona reviews the other five. Task template:
+The image specialist is **not a persona**: it is hired for prompt craft, staging a finished palette with exact color fidelity. Task template:
 
 ```text
-You are [persona name], one of six color specialists who each designed a
-palette for the same brief. Every specialist is fighting for the palette
-that serves this brand best, and so are you. Critique your five rivals:
-not taste notes, but brand arguments grounded in the brief (wrong for the
-audience, ignores the anti-reference, accent too weak against the neutral,
-mood any brand could claim). Reply in chat only; do not edit repo files.
+You are an image-generation specialist: expert at turning a brand palette
+and mood into art-directed photographic prompts and images with exact
+color fidelity. Use the harness's native image generation tool; do not
+fall back to CLIs or APIs; do not edit repo files.
 
 [the BRIEF PACKET, verbatim]
 
-Your own palette (#[N]): [mood + palette + reasons]
+The palette you are staging: [the persona's mood + palette + reasons]
 
-The rivals:
-[every other persona's number, mood, palette, and reasons]
-
-Reply with exactly five lines, one per rival, and nothing else:
-[rival number]: [your sharpest brand-grounded criticism, one sentence]
-```
-
-Assemble each persona's scorecard: its similarity verdict lines plus the five critiques it received. Close the critique agents after collecting.
-
-Done when: six scorecards exist, each holding the script verdict and five peer critiques.
-
-## Step 4: Revise and generate (wave 3)
-
-Spawn six subagents in one tool-call batch, one per persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). Task template:
-
-```text
-You are [persona name], a color specialist. You designed a palette; the
-studio reviewed it. Improve it, then stage it in two images. Use the
-harness's native image generation tool; do not fall back to CLIs or APIs;
-do not edit repo files.
-
-PERSONA: [the persona's full numbered entry]
-
-[the BRIEF PACKET, verbatim]
-
-[the PALETTE RULES block, verbatim]
-
-Your first-draft palette: [mood + palette + reasons]
-
-Your scorecard:
-[the similarity verdict lines, or "similarity: clear"]
-[the five peer critiques]
-
-1. Revise your palette against the scorecard. The similarity verdict is
-   binding: if it names a conflict, move to a different hue territory;
-   that ground belongs to the lower number. Weigh each peer critique for
-   the brand, not for politeness: fix what it genuinely breaks, keep what
-   it does not. Stay in your persona's method throughout.
-
-2. Draft your concept for the revised palette:
+1. Draft the concept for the palette:
 
 [the CONCEPT RULES block, verbatim]
 
-3. Build the hero prompt from this skeleton and generate the HERO image,
+2. Build the hero prompt from this skeleton and generate the HERO image,
    1500x1500 (or the nearest supported square):
 
 [the HERO PROMPT skeleton, with its fill rules]
 
-4. Build the sheet prompt from this skeleton and generate the ARTIFACT
+3. Build the sheet prompt from this skeleton and generate the ARTIFACT
    SHEET, same size, passing the hero you just generated as the
    reference/input image (the tool's image-edit or reference-image mode):
 
 [the SHEET PROMPT skeleton, with its notes]
 
-5. Look at the sheet you generated. If any object crosses the canvas edge
+4. Look at the sheet you generated. If any object crosses the canvas edge
    or the horizontal or vertical centerline, or any text appears anywhere,
    regenerate the ARTIFACT SHEET once: same reference image, same prompt,
    plus this line appended: "Make every object smaller, at most half of
@@ -291,7 +249,7 @@ Your scorecard:
    empty cream between the objects and around the edges." Never retry more
    than once; keep the second sheet regardless.
 
-6. Reply with exactly these four lines and nothing else:
+5. Reply with exactly these four lines and nothing else:
 
 COMPLETED [slug]
 HERO [absolute path to the hero PNG]
@@ -299,24 +257,20 @@ ARTIFACTS [absolute path to the final sheet PNG]
 PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
 
 If either generation fails, reply instead with one line:
-ERROR [persona number] [short reason]
+ERROR [palette number] [short reason]
 ```
 
-Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so each wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn in this wave ERRORs because subagents lack the image tool, fall back to Step 5's generation loop using the wave-1 palettes and scorecards you already hold. Close every agent after collecting its report. If two reports share a slug, rename one before Step 6 (the crop `--slug` flag controls the filenames).
+Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so the wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn ERRORs because subagents lack the image tool, fall back to Step 4's generation loop using the chain's palettes you already hold. Close every agent after collecting its report. If two reports share a slug, rename one before Step 5 (the crop `--slug` flag controls the filenames).
 
-Done when: every persona has either a four-line COMPLETED report or an ERROR line. An ERROR persona is dropped, not retried more than once; five good cues beat a stalled pipeline.
+Done when: every palette has either a four-line COMPLETED report or an ERROR line. An ERROR palette is dropped, not retried more than once; five good cues beat a stalled pipeline.
 
-## Step 5: Serial path (no subagents)
+## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: run the studio yourself at **4** palettes, playing personas 1-4, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing). Then:
+Only when the harness has no subagent tool at all: run the studio yourself at **4** palettes, playing personas 1-4 in chain order, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), holding each later persona to the earlier territories exactly as the chain task does. Then generate each pair yourself, one palette at a time, following the Step 3 task from its step 1 (concept, hero, sheet, look-and-retry) and recording the same four facts a subagent would report (slug, both paths, final palette).
 
-1. Run the similarity script with numbers 1-4. Where a verdict names a conflict, revise the higher-numbered palette into a different hue territory.
-2. Skip peer critique: one mind reviewing itself produces agreement, not signal.
-3. For each persona in turn, follow the wave-3 task yourself from its step 2 (concept, hero, sheet, look-and-retry) and record the same four facts a subagent would report (slug, both paths, final palette).
+Same done-condition as Step 3, over 4 palettes.
 
-Same done-condition as Step 4, over 4 personas.
-
-## Step 6: Crop and compile
+## Step 5: Crop and compile
 
 For each COMPLETED report, run one command, carrying the report's slug and its `PALETTE` line:
 
@@ -341,8 +295,8 @@ The script copies the hero untouched to `[slug].png`, keeps the sheet under `mas
 }
 ```
 
-Done when: `cues.json` lists one entry per completed persona and every listed slug has its five PNGs on disk (hero plus four artifacts).
+Done when: `cues.json` lists one entry per completed palette and every listed slug has its five PNGs on disk (hero plus four artifacts).
 
-## Step 7: Pause
+## Step 6: Pause
 
 Tell the user in one or two lines that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then end your turn. The pick round is a separate later step: do not show or describe the images, do not ask which the user prefers, and do not write DESIGN.md in this turn.
