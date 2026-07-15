@@ -231,25 +231,37 @@ hue family another territory claims. Stay inside your own.
    not own, is a failure to fix now, not one to ship.
 
 4. Build the hero prompt from this skeleton and generate the HERO image,
-   1500x1500 (or the nearest supported square):
+   1500x1500 (or the nearest supported square). Five sibling specialists
+   share the generation tool's output folder, so a default output name is
+   a race that hands you a sibling's image: if the tool accepts an output
+   filename, pass [slug]-hero.png, and work only with the exact file path
+   the tool reports back for YOUR generation:
 
 [the HERO PROMPT skeleton, with its fill rules]
 
 5. Build the sheet prompt from this skeleton and generate the ARTIFACT
-   SHEET, same size, passing the hero you just generated as the
-   reference/input image (the tool's image-edit or reference-image mode):
+   SHEET, same size, output filename [slug]-artifacts.png, passing the
+   hero file path the tool reported in step 4 as the reference/input
+   image (the tool's image-edit or reference-image mode). Never point the
+   reference at a generic hero.png in a shared folder:
 
 [the SHEET PROMPT skeleton, with its notes]
 
-6. Look at the sheet you generated. If any object crosses the canvas edge
-   or the horizontal or vertical centerline, or any text appears anywhere,
-   regenerate the ARTIFACT SHEET once: same reference image, same prompt,
-   plus this line appended: "Make every object smaller, at most half of
-   its quadrant, pulled in tight to its quadrant's center, with even more
-   empty cream between the objects and around the edges." Never retry more
-   than once; keep the second sheet regardless.
+6. Open both files you are about to ship and confirm they are yours: the
+   hero shows your scene staging your palette, the sheet shows your four
+   artifacts on cream. A wrong subject or palette means you picked up a
+   sibling's file from the race in step 4: regenerate that image once
+   with the [slug] filename. Then check the sheet's geometry: if any
+   object crosses the canvas edge or the horizontal or vertical
+   centerline, or any text appears anywhere, regenerate the ARTIFACT
+   SHEET once: same reference image, same prompt, plus this line
+   appended: "Make every object smaller, at most half of its quadrant,
+   pulled in tight to its quadrant's center, with even more empty cream
+   between the objects and around the edges." Never retry more than once
+   per check; keep the second result regardless.
 
-7. Reply with exactly these four lines and nothing else:
+7. Reply with exactly these four lines and nothing else, the paths being
+   the files you verified in step 6:
 
 COMPLETED [slug]
 HERO [absolute path to the hero PNG]
@@ -271,6 +283,8 @@ Only when the harness has no subagent tool at all: keep the same six territories
 Same done-condition as Step 3, over all six personas.
 
 ## Step 5: Crop and compile
+
+Before cropping, hash every reported hero (`md5 [paths]`): each must be unique. Two identical heroes mean two subagents raced on a shared default output filename; re-spawn one of the pair (same task) and take its fresh files before compiling.
 
 For each COMPLETED report, run one command, carrying the report's slug and its `PALETTE` line:
 
