@@ -14,6 +14,12 @@
 //     <slug>-2..5.png, finds each planned palette hex's closest pixel in
 //     the hero, and updates <out>/cues.json.
 //
+//   node visual-cues.mjs similarity "<n>:primary=#RRGGBB;secondary=...;..." ...
+//     Compares 2+ numbered palettes in OKLab and prints JSON verdicts. A
+//     pair is flagged when the primaries share one hue family or the four
+//     roles read as near-duplicates. Priority-ordered: the lower number
+//     keeps its territory, the higher number gets the conflict.
+//
 // Dependency-free: PNG decode/encode on node:zlib. Rejects interlaced and
 // indexed-color PNGs; convert those with sips/ImageMagick/PIL first.
 
@@ -281,6 +287,117 @@ function snapPalette(img, palette) {
   return out;
 }
 
+// -------------------------------------------------------------- similarity
+
+// Perceptual comparison happens in OKLab: Euclidean distance there tracks
+// how different two colors *look*, which raw RGB distance does not (RGB
+// overweights differences the eye barely sees and vice versa).
+function hexToOklab(hex) {
+  const srgb = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)]
+    .map((h) => parseInt(h, 16) / 255)
+    .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const [r, g, b] = srgb;
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return {
+    L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  };
+}
+
+// Hue angle (degrees) and chroma from OKLab's a/b plane. Chroma below
+// ~0.03 is visually a neutral (gray/beige/near-black); its hue angle is
+// noise and must not count toward "same hue family".
+function oklch(lab) {
+  const chroma = Math.hypot(lab.a, lab.b);
+  const hue = ((Math.atan2(lab.b, lab.a) * 180) / Math.PI + 360) % 360;
+  return { L: lab.L, chroma, hue };
+}
+
+const NEUTRAL_CHROMA = 0.03;
+const HUE_FAMILY_DEG = 30;   // primaries closer than this share a hue family
+const DUPLICATE_DE = 0.09;   // OKLab distance under which two roles look alike
+
+function hueDelta(h1, h2) {
+  const d = Math.abs(h1 - h2) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+// Compares two palettes role by role. Verdict pieces:
+//   sameHueFamily — both primaries are chromatic and within HUE_FAMILY_DEG
+//   duplicateRoles — roles whose OKLab distance is under DUPLICATE_DE
+//   flagged — sameHueFamily, or 3+ of the 4 roles are near-duplicates
+function comparePalettes(pa, pb) {
+  const roles = Object.keys(pa).filter((r) => r in pb);
+  const distances = {};
+  const duplicateRoles = [];
+  for (const role of roles) {
+    const la = hexToOklab(pa[role].hex);
+    const lb = hexToOklab(pb[role].hex);
+    const d = Math.hypot(la.L - lb.L, la.a - lb.a, la.b - lb.b);
+    distances[role] = Math.round(d * 1000) / 1000;
+    if (d < DUPLICATE_DE) duplicateRoles.push(role);
+  }
+  let sameHueFamily = false;
+  if (pa.primary && pb.primary) {
+    const ca = oklch(hexToOklab(pa.primary.hex));
+    const cb = oklch(hexToOklab(pb.primary.hex));
+    sameHueFamily =
+      ca.chroma >= NEUTRAL_CHROMA &&
+      cb.chroma >= NEUTRAL_CHROMA &&
+      hueDelta(ca.hue, cb.hue) < HUE_FAMILY_DEG;
+  }
+  return { distances, duplicateRoles, sameHueFamily, flagged: sameHueFamily || duplicateRoles.length >= 3 };
+}
+
+// "<n>:role=#RRGGBB;role=#RRGGBB;..." — the number is the agent's priority
+// rank (1 = highest). On a conflict the lower number keeps its territory.
+function parseNumberedPalette(str) {
+  const m = str.match(/^(\d+)\s*:\s*(.+)$/s);
+  if (!m) throw new Error(`bad palette argument "${str}" (expected "<n>:primary=#RRGGBB;...")`);
+  return { n: parseInt(m[1], 10), palette: parsePalette(m[2]) };
+}
+
+function cmdSimilarity(args) {
+  if (args._.length < 2) {
+    fail('usage: visual-cues.mjs similarity "<n>:primary=#RRGGBB;secondary=...;tertiary=...;neutral=..." ... (2+ numbered palettes)');
+  }
+  const entries = args._.map(parseNumberedPalette).sort((a, b) => a.n - b.n);
+  const seen = new Set();
+  for (const e of entries) {
+    if (seen.has(e.n)) fail(`duplicate palette number ${e.n}`);
+    seen.add(e.n);
+  }
+
+  const pairs = [];
+  const conflicts = [];
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const a = entries[i];
+      const b = entries[j];
+      const cmp = comparePalettes(a.palette, b.palette);
+      pairs.push({ a: a.n, b: b.n, ...cmp });
+      if (cmp.flagged) {
+        // Priority order: the earlier number owns the territory; the later
+        // number is the one told to move.
+        const reason = cmp.sameHueFamily
+          ? `primary shares a hue family with palette ${a.n}'s primary`
+          : `${cmp.duplicateRoles.length} of 4 roles are near-duplicates of palette ${a.n}'s (${cmp.duplicateRoles.join(', ')})`;
+        conflicts.push({ keep: a.n, revise: b.n, reason });
+      }
+    }
+  }
+
+  // One line per agent: "clear" or the list of things it must move away from.
+  const verdicts = {};
+  for (const e of entries) verdicts[e.n] = [];
+  for (const c of conflicts) verdicts[c.revise].push(c.reason);
+
+  console.log(JSON.stringify({ ok: true, pairs, conflicts, verdicts }, null, 2));
+}
+
 // ---------------------------------------------------------------- cues.json
 
 // Reads the existing cues.json (if any) and merges this cue in, so cropping
@@ -383,7 +500,8 @@ function main() {
   const args = parseArgs(rest);
   try {
     if (cmd === 'crop') cmdCrop(args);
-    else fail('usage: visual-cues.mjs crop <hero.png> <artifacts.png> --slug <slug> [options] (see reference/visual-cues.md)');
+    else if (cmd === 'similarity') cmdSimilarity(args);
+    else fail('usage: visual-cues.mjs <crop|similarity> ... (see reference/visual-cues.md)');
   } catch (err) {
     fail(err.message);
   }
