@@ -169,15 +169,23 @@ of any kind; the background stays one uninterrupted #FDFCF6 everywhere.
 
 ## Step 2: Carve the territories
 
-Split the brief's color space into six **territories**, one per persona: each a one-line claim on a visual, emotional, or strategic ground the palette will own (a hue register, a mood, a positioning angle). Compose them the way the pick round needs them: six genuinely different color stories, each still defensible from the brief. Example set for a florist: "cold dawn blues, the delivery run before the city wakes", "dark lacquer evening register, the atelier after hours", "warm terracotta of the potting bench", "paper-white gallery restraint", "saturated market-stall abundance", "muted dried-botanical earth". The Q1 hue anchor leads one or two territories; the anti-reference (Q5) rules them all.
+Split the brief's color space into six **territories**, one per persona. Each is a one-line claim with two halves: a scene ground (a mood, a moment, a positioning angle) and, always, a **hue ground** it closes on (a named hue register). A hue-silent territory does not constrain color: give six specialists scenic territories and one shared brief, and every one of them will resolve to the brief's hue anchor; the hue ground is what makes the palettes diverge, the scene ground is what makes the stories diverge. Example set for a florist: "the delivery run before the city wakes — cold blue-teal dawn", "the atelier after hours — lacquer near-black with amber", "the potting bench — warm terracotta and unbleached paper", "gallery restraint — paper-white with one ink accent", "market-stall abundance — saturated market greens", "the drying room — muted botanical earth and rose".
+
+Hard rules:
+
+- **No two hue grounds share a hue family.** Six registers, six families.
+- **The Q1 hue anchor belongs to exactly one territory** (two only when the brief argues for it). Name its owner; Step 3 tells everyone else the anchor is off-limits. An anchor left unassigned is an anchor every persona obeys.
+- The anti-reference (Q5) rules all six.
 
 Assign each territory to the persona whose method suits it best (the Naturalist takes the most material ground, the Dramaturge the most emotional, the Empath the one closest to the audience's state).
 
-Done when: six one-line territories exist, no two claiming the same ground, each assigned to a persona.
+Done when: six one-line territories exist, each closing on a hue ground, no two hue grounds in one family, the anchor owned by exactly one, each assigned to a persona.
 
 ## Step 3: The wave (parallel)
 
 If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, both images), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
+
+Every spawn gets the same full template text, slots filled, shared blocks pasted verbatim. Writing spawn 1 in full and compressing spawns 2-6 down to summaries drops the rules exactly where the convergence risk is highest.
 
 Task template:
 
@@ -196,8 +204,13 @@ YOUR TERRITORY: [this persona's one-line territory]
 The territories assigned to the other five specialists, all off-limits:
 [the other five territories, one line each]
 
+The brief's hue anchor ([the Q1 anchor]) belongs to [its owner territory];
+[if this persona owns it: "that is yours to carry" / otherwise: "your
+primary must live in a different hue family"].
+
 Your answer is unsuccessful if it occupies the same visual, emotional, or
-strategic territory as another specialist. Stay inside your own.
+strategic territory as another specialist, or if your primary lands in a
+hue family another territory claims. Stay inside your own.
 
 1. Compose your palette, in your persona's method, inside your territory:
 
@@ -207,18 +220,25 @@ strategic territory as another specialist. Stay inside your own.
 
 [the CONCEPT RULES block, verbatim]
 
-3. Build the hero prompt from this skeleton and generate the HERO image,
+3. Critique your own work before touching any image. Check the palette
+   against every PALETTE RULES line, against your territory's hue ground,
+   and against the off-limits list; check the concept against every
+   CONCEPT RULES line. Name each failure and fix it. A primary that
+   drifted into another territory's hue family, or into an anchor you do
+   not own, is a failure to fix now, not one to ship.
+
+4. Build the hero prompt from this skeleton and generate the HERO image,
    1500x1500 (or the nearest supported square):
 
 [the HERO PROMPT skeleton, with its fill rules]
 
-4. Build the sheet prompt from this skeleton and generate the ARTIFACT
+5. Build the sheet prompt from this skeleton and generate the ARTIFACT
    SHEET, same size, passing the hero you just generated as the
    reference/input image (the tool's image-edit or reference-image mode):
 
 [the SHEET PROMPT skeleton, with its notes]
 
-5. Look at the sheet you generated. If any object crosses the canvas edge
+6. Look at the sheet you generated. If any object crosses the canvas edge
    or the horizontal or vertical centerline, or any text appears anywhere,
    regenerate the ARTIFACT SHEET once: same reference image, same prompt,
    plus this line appended: "Make every object smaller, at most half of
@@ -226,7 +246,7 @@ strategic territory as another specialist. Stay inside your own.
    empty cream between the objects and around the edges." Never retry more
    than once; keep the second sheet regardless.
 
-6. Reply with exactly these four lines and nothing else:
+7. Reply with exactly these four lines and nothing else:
 
 COMPLETED [slug]
 HERO [absolute path to the hero PNG]
