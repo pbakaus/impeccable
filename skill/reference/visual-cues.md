@@ -2,7 +2,7 @@
 
 Loaded by `{{command_prefix}}impeccable document` seed mode (Step 4) when image generation is available. Input: the five seed interview answers, the asset observations from seed Step 2, and PRODUCT.md. Output: cue images plus `cues.json` under `.impeccable/visual-cues/`, ready for the user to pick from by eye in a later round.
 
-Tell the user once, before starting: *"Generating visual cues; this can take a few minutes."* Then work without narration. Chat carries no per-image commentary, no palette tables, no prompt dumps; the folder is the deliverable.
+Tell the user once, before starting: *"Generating visual cues; this can take a minute or two."* Then work without narration. Chat carries no per-image commentary, no palette tables, no prompt dumps; the folder is the deliverable.
 
 ## The two images
 
@@ -37,12 +37,9 @@ Example, hero = a flower atelier's worktable: sheet quadrants carry the wrapping
 
 Palettes come from **six competing specialists**, not from you. One mind composing six palettes converges on one taste, and six versions of one mood defeat the pick round. Each specialist is a subagent locked to a **persona**: a different method of searching color space (object association, cultural reframing, remote analogy, self-imposed constraint, audience perspective-taking, emotional sequencing). Same brief, same output format, different search method; the separation is what makes the six palettes genuinely different.
 
-The studio runs two phases, staffed differently on purpose: personas are hired for brand thinking, image specialists for prompt craft; one agent doing both does neither at full strength.
+The studio runs as **one parallel wave**. You carve six territories from the brief (Step 2), then all six personas spawn at once (Step 3), each composing a palette inside its own territory and staging it in two images. No chained reviews, no revision loops: distinctness is settled upfront by the territory assignments, and speed comes from doing everything in one wave.
 
-1. **The palette chain** (Step 2): the six personas compose in sequence, each shown the color territories already claimed and required to take a new one.
-2. **The image wave** (Step 3): six image specialists, one per palette, in parallel; each drafts the concept, builds both prompts, and generates the two images.
-
-Subagents start without your context, so every spawn task is self-contained: it carries the brief packet, the persona or palette, and every rule the subagent needs. Paste the shared blocks below into tasks **verbatim**; a summarized rule is a dropped rule.
+Subagents start without your context, so every spawn task is self-contained: it carries the brief packet, the persona, the territory map, and every rule the subagent needs. Paste the shared blocks below into tasks **verbatim**; a summarized rule is a dropped rule.
 
 ## Step 1: Assemble the brief packet
 
@@ -56,7 +53,7 @@ Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn of both
 
 ## The six personas
 
-The number is the persona's **position in the chain**: it composes after everyone with a lower number, and their territories are off-limits to it.
+The numbers only name the personas; Step 2 pairs each with a territory.
 
 1. **The Ecological Naturalist**: derive every color from real materials, organisms, weather, or landscapes in the product's world. Name the physical source of each hex. No abstract "brand blue" thinking; the palette must feel materially plausible, textural, grounded.
 2. **The Cross-Cultural Anthropologist**: treat color as cultural meaning. Compare at least two cultural lenses relevant to this audience, find where the meanings align and where they diverge, and turn that tension into the palette. Do not stereotype or flatten into cliché.
@@ -170,78 +167,58 @@ No frames, no cell borders, no dividing lines, no watermark, no typography
 of any kind; the background stays one uninterrupted #FDFCF6 everywhere.
 ```
 
-## Step 2: The palette chain (sequential)
+## Step 2: Carve the territories
 
-Spawn the personas **one at a time in numbered order**, collecting each reply before spawning the next: every palette that exists when a persona composes goes into its task as claimed territory. The chain is the uniqueness mechanism, each persona diverging from all the work before it, so run it sequentially even though a subagent tool could parallelize it. (No subagent tool at all: Step 4.)
+Split the brief's color space into six **territories**, one per persona: each a one-line claim on a visual, emotional, or strategic ground the palette will own (a hue register, a mood, a positioning angle). Compose them the way the pick round needs them: six genuinely different color stories, each still defensible from the brief. Example set for a florist: "cold dawn blues, the delivery run before the city wakes", "dark lacquer evening register, the atelier after hours", "warm terracotta of the potting bench", "paper-white gallery restraint", "saturated market-stall abundance", "muted dried-botanical earth". The Q1 hue anchor leads one or two territories; the anti-reference (Q5) rules them all.
+
+Assign each territory to the persona whose method suits it best (the Naturalist takes the most material ground, the Dramaturge the most emotional, the Empath the one closest to the audience's state).
+
+Done when: six one-line territories exist, no two claiming the same ground, each assigned to a persona.
+
+## Step 3: The wave (parallel)
+
+If the harness has any subagent/spawn tool, parallel is **required**: emit all six spawns in one tool-call batch, one persona per subagent, each doing the full job (palette, concept, both images). **Never run the personas yourself one at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
 
 Task template:
 
 ```text
-You are a color specialist composing one brand palette. Reply in chat
-only; do not edit repo files.
+You are a color specialist. You compose one brand palette inside an
+assigned territory, then stage it in two images. Use the harness's native
+image generation tool; do not fall back to CLIs or APIs; do not edit repo
+files.
 
 PERSONA: [the persona's full numbered entry from The six personas]
 
 [the BRIEF PACKET, verbatim]
 
+YOUR TERRITORY: [this persona's one-line territory]
+
+The territories assigned to the other five specialists, all off-limits:
+[the other five territories, one line each]
+
+Your answer is unsuccessful if it occupies the same visual, emotional, or
+strategic territory as another specialist. Stay inside your own.
+
+1. Compose your palette, in your persona's method, inside your territory:
+
 [the PALETTE RULES block, verbatim]
 
-Color territories already claimed by the specialists before you:
-
-[one line per earlier persona: "[N]: [mood phrase] / primary #RRGGBB,
-secondary #RRGGBB, tertiary #RRGGBB, neutral #RRGGBB"; for persona 1
-write "none, you compose first"]
-
-Claimed territory is off-limits: your palette must read as a different
-color story, with a primary in a different hue family and a mood no
-earlier specialist used. Do not repeat or lightly shift their work.
-
-Design ONE palette in your persona's method. Reply with exactly this
-format and nothing else:
-
-MOOD [your mood phrase]
-primary=#RRGGBB [one-line reason]
-secondary=#RRGGBB [one-line reason]
-tertiary=#RRGGBB [one-line reason]
-neutral=#RRGGBB [one-line reason]
-```
-
-Close each agent after collecting its reply. If a reply lands in an already-claimed hue family anyway, re-spawn that persona once with the colliding palette added to the claimed list and a line naming the collision; keep the second answer regardless.
-
-Done when: six palettes exist, one per persona, each with a mood and four hexes, and no two primaries share a hue family.
-
-## Step 3: The image wave (parallel)
-
-If the harness has any subagent/spawn tool, parallel is **required** here: emit all six spawns in one tool-call batch, one palette per subagent. **Never generate the images yourself one at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill).
-
-The image specialist is **not a persona**: it is hired for prompt craft, staging a finished palette with exact color fidelity. Task template:
-
-```text
-You are an image-generation specialist: expert at turning a brand palette
-and mood into art-directed photographic prompts and images with exact
-color fidelity. Use the harness's native image generation tool; do not
-fall back to CLIs or APIs; do not edit repo files.
-
-[the BRIEF PACKET, verbatim]
-
-The palette you are staging: [the persona's mood + palette + reasons]
-
-1. Draft the concept for the palette:
+2. Draft the concept for the palette:
 
 [the CONCEPT RULES block, verbatim]
 
-2. Build the hero prompt from this skeleton and generate the HERO image,
+3. Build the hero prompt from this skeleton and generate the HERO image,
    1500x1500 (or the nearest supported square):
 
 [the HERO PROMPT skeleton, with its fill rules]
 
-3. Build the sheet prompt from this skeleton and generate the ARTIFACT
+4. Build the sheet prompt from this skeleton and generate the ARTIFACT
    SHEET, same size, passing the hero you just generated as the
    reference/input image (the tool's image-edit or reference-image mode):
 
 [the SHEET PROMPT skeleton, with its notes]
 
-4. Look at the sheet you generated. If any object crosses the canvas edge
+5. Look at the sheet you generated. If any object crosses the canvas edge
    or the horizontal or vertical centerline, or any text appears anywhere,
    regenerate the ARTIFACT SHEET once: same reference image, same prompt,
    plus this line appended: "Make every object smaller, at most half of
@@ -249,7 +226,7 @@ The palette you are staging: [the persona's mood + palette + reasons]
    empty cream between the objects and around the edges." Never retry more
    than once; keep the second sheet regardless.
 
-5. Reply with exactly these four lines and nothing else:
+6. Reply with exactly these four lines and nothing else:
 
 COMPLETED [slug]
 HERO [absolute path to the hero PNG]
@@ -257,18 +234,18 @@ ARTIFACTS [absolute path to the final sheet PNG]
 PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
 
 If either generation fails, reply instead with one line:
-ERROR [palette number] [short reason]
+ERROR [persona number] [short reason]
 ```
 
-Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so the wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn ERRORs because subagents lack the image tool, fall back to Step 4's generation loop using the chain's palettes you already hold. Close every agent after collecting its report. If two reports share a slug, rename one before Step 5 (the crop `--slug` flag controls the filenames).
+Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so the wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn ERRORs because subagents lack the image tool, fall back to Step 4's loop using the territories you already carved. Close every agent after collecting its report. If two reports share a slug, rename one before Step 5 (the crop `--slug` flag controls the filenames).
 
-Done when: every palette has either a four-line COMPLETED report or an ERROR line. An ERROR palette is dropped, not retried more than once; five good cues beat a stalled pipeline.
+Done when: every persona has either a four-line COMPLETED report or an ERROR line. An ERROR persona is dropped, not retried more than once; five good cues beat a stalled pipeline.
 
 ## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: run the studio yourself at **4** palettes, playing personas 1-4 in chain order, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), holding each later persona to the earlier territories exactly as the chain task does. Then generate each pair yourself, one palette at a time, following the Step 3 task from its step 1 (concept, hero, sheet, look-and-retry) and recording the same four facts a subagent would report (slug, both paths, final palette).
+Only when the harness has no subagent tool at all: carve **4** territories in Step 2 and play personas 1-4 yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry) and recording the same four facts a subagent would report (slug, both paths, palette).
 
-Same done-condition as Step 3, over 4 palettes.
+Same done-condition as Step 3, over 4 personas.
 
 ## Step 5: Crop and compile
 
