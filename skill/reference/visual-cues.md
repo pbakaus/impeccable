@@ -171,9 +171,9 @@ No frames, no cell borders, no dividing lines, no watermark, no typography
 of any kind; the background stays one uninterrupted #FDFCF6 everywhere.
 ```
 
-## Step 2: Round 1, compose (wave 1)
+## Step 2: Compose (wave 1)
 
-If the harness has any subagent/spawn tool, parallel is **required**: emit all six spawns in the same tool-call round, one persona per subagent. **Never run the studio's rounds yourself one persona at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. (No subagent tool at all: Step 5.)
+If the harness has any subagent/spawn tool, parallel is **required**: emit all six spawns in one tool-call batch, one persona per subagent. **Never run the studio's waves yourself one persona at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. (No subagent tool at all: Step 5.)
 
 Spawn each subagent with this task, filling the slots:
 
@@ -201,7 +201,7 @@ Collect all six replies and keep each persona's palette, mood, and reasons; ever
 
 Done when: six palettes exist, one per persona, each in the reply format.
 
-## Step 3: Score the round
+## Step 3: Score (wave 2)
 
 Each persona gets a **scorecard** with two parts: the script's similarity verdict and the peers' critiques. Scorecards live in your context, not in chat.
 
@@ -215,7 +215,7 @@ node {{scripts_path}}/visual-cues.mjs similarity \
 
 The script compares every pair in OKLab and prints `verdicts`: per persona, either empty (clear) or the conflicts it must move away from (a primary sharing a hue family with a lower number's, or most roles near-duplicating a lower number's). Priority is the persona number: the lower number keeps its territory, the higher number revises.
 
-**Peer critique (wave 2).** Spawn six subagents in one tool-call round; each persona reviews the other five. Task template:
+**Peer critique (the wave).** Spawn six subagents in one tool-call batch; each persona reviews the other five. Task template:
 
 ```text
 You are [persona name], one of six color specialists who each designed a
@@ -240,9 +240,9 @@ Assemble each persona's scorecard: its similarity verdict lines plus the five cr
 
 Done when: six scorecards exist, each holding the script verdict and five peer critiques.
 
-## Step 4: Round 2, revise and generate (wave 3)
+## Step 4: Revise and generate (wave 3)
 
-Spawn six subagents in one tool-call round, one per persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). Task template:
+Spawn six subagents in one tool-call batch, one per persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). Task template:
 
 ```text
 You are [persona name], a color specialist. You designed a palette; the
@@ -256,7 +256,7 @@ PERSONA: [the persona's full numbered entry]
 
 [the PALETTE RULES block, verbatim]
 
-Your round-1 palette: [mood + palette + reasons]
+Your first-draft palette: [mood + palette + reasons]
 
 Your scorecard:
 [the similarity verdict lines, or "similarity: clear"]
@@ -302,7 +302,7 @@ If either generation fails, reply instead with one line:
 ERROR [persona number] [short reason]
 ```
 
-Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so each wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn in this wave ERRORs because subagents lack the image tool, fall back to Step 5's generation loop using the round-1 palettes and scorecards you already hold. Close every agent after collecting its report. If two reports share a slug, rename one before Step 6 (the crop `--slug` flag controls the filenames).
+Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so each wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn in this wave ERRORs because subagents lack the image tool, fall back to Step 5's generation loop using the wave-1 palettes and scorecards you already hold. Close every agent after collecting its report. If two reports share a slug, rename one before Step 6 (the crop `--slug` flag controls the filenames).
 
 Done when: every persona has either a four-line COMPLETED report or an ERROR line. An ERROR persona is dropped, not retried more than once; five good cues beat a stalled pipeline.
 
