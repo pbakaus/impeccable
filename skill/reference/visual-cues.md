@@ -12,12 +12,12 @@ Each cue is **two generations by the same agent**, in sequence:
 HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts.png
 +---------------------------+           +-------------+-------------+ 1500x1500
 |                           |           |   [obj A]   |   [obj B]   |
-|   one full-bleed scene,   |           |  centered,  |  centered,  |
+|   one close-framed scene, |           |  centered,  |  centered,  |
 |   the product's world,    |           |  ~2/3 of    |  clear      |
 |   all four artifact       |           |  its cell   |  margins    |
 |   objects visible in it,  |           +-------------+-------------+ 750
 |   four palette colors     |           |   [obj C]   |   [obj D]   |
-|   with named carriers     |           |             |             |
+|   as large color fields   |           |             |             |
 |                           |           | flat cream #FDFCF6 across |
 +---------------------------+           | the whole canvas, no cell |
      saved as-is, NO crop               | borders, soft shadows OK  |
@@ -26,7 +26,7 @@ HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts
                                           [slug]-2..5.png, NO matting
 ```
 
-- The **hero** is the visual cue: one atmospheric full-bleed composition that stages the concept's palette and mood; this is what the user will pick between. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it.
+- The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it.
 - The **artifact sheet** is the second generation, with the hero attached as the reference image: the same four objects re-photographed individually, one per quadrant, each isolated and centered on one continuous flat warm-cream background, `#FDFCF6`. The objects inherit the hero's materials and colors; only the setting changes. ("Sheet" is our name for the file; the prompt never uses it.)
 - **No transparency, ever.** No alpha channels, no chroma keys, no "transparent background" in any prompt (image models paint a checkerboard instead). Crops keep the cream; soft contact shadows are welcome, they ground the objects.
 - **Isolation is a hard rule on the sheet.** Every object centered on its quadrant's center point, filling about two-thirds of it, with clear cream margin on every side: nothing comes near the canvas edge, another object, or the quadrant midlines. The crop cuts exactly at the midlines, so anything crossing one gets clipped.
@@ -121,23 +121,26 @@ Attach one one-line cue concept to the palette; the hero image stages it.
 
 ### HERO PROMPT skeleton
 
-Written like screenplay direction, not a keyword list: subject doing something, in a place, in a light. Every palette color is named twice, as a plain-language color and as its hex, and tied to a physical carrier in the scene; a hex with no carrier gets ignored. Fill every `[bracketed]` slot; never leave template language in the prompt.
+Written like screenplay direction, not a keyword list: subject doing something, in a place, in a light. Every palette color is named twice, as a plain-language color and as its hex, and tied to a physical carrier in the scene; a hex with no carrier gets ignored, and a carrier too small reads as noise. The cue's job is to show the palette, so the colors get **real estate**: frame tight on the subject rather than wide on the room, and stage each color as a large unbroken field. A wide atmospheric shot renders the palette as slivers the user cannot judge. Fill every `[bracketed]` slot; never leave template language in the prompt.
 
 ```text
-One full-bleed photograph, 1500x1500 pixels: [one atmospheric scene from
-the product's world: subject and what it is doing, setting, time of day].
-The scene contains [artifact A], [artifact B], [artifact C], and
-[artifact D], all plainly visible. Lighting: [direction and quality, e.g.
-"low afternoon window light raking in from the left"]. Camera: [framing
-and lens, e.g. "85mm still life at waist level, shallow depth of field"].
-Mood: [two or three adjectives from the brief's personality]. The scene
-is art-directed to a strict four-color story, every color plainly visible:
-[color name] ([neutral hex]) as the dominant ground and backdrop, about
-60% of the frame; [color name] ([primary hex]) carried by [the main
-subject]; [color name] ([secondary hex]) on [a supporting element];
-[color name] ([tertiary hex]) as one small vivid accent on [a specific
-object]. Rich, saturated, editorial color. Photorealistic, real texture.
-No text, no labels, no numbers, no borders, no watermark.
+One full-bleed photograph, 1500x1500 pixels, framed close: [one scene from
+the product's world: subject and what it is doing, setting, time of day],
+the subject filling most of the frame, not a wide view of the room. The
+scene contains [artifact A], [artifact B], [artifact C], and [artifact D],
+all plainly visible. Lighting: [direction and quality, e.g. "low afternoon
+window light raking in from the left"]. Camera: [close framing and lens,
+e.g. "85mm still life close-up at waist level, shallow depth of field"].
+Mood: [two or three adjectives from the brief's personality]. The scene is
+art-directed as bold color blocking in a strict four-color story, every
+color a large unbroken field, none reduced to a sliver: [color name]
+([neutral hex]) as the ground, about half the frame; [color name]
+([primary hex]) as one continuous mass over roughly a third of the frame,
+carried by [the main subject]; [color name] ([secondary hex]) as a clear
+supporting field on [a supporting element]; [color name] ([tertiary hex])
+as one vivid accent, small but big enough to read at a glance, on
+[a specific object]. Rich, saturated, editorial color. Photorealistic,
+real texture. No text, no labels, no numbers, no borders, no watermark.
 ```
 
 ### SHEET PROMPT skeleton
