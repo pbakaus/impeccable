@@ -18,8 +18,8 @@ HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts
 |   objects visible in it,  |           +-------------+-------------+
 |   four palette colors     |           |   [obj C]   |   [obj D]   |
 |   as large color fields   |           |             |             |
-|                           |           | one flat chroma-key color |
-+---------------------------+           | everywhere, no shadows,   |
+|                           |           | one flat chroma-key fill, |
++---------------------------+           | no texture, no shadows,   |
      saved as-is, NO crop               | crisp edges, no bounce    |
                                         +-------------+-------------+
                                           quadrant-cropped into
@@ -30,7 +30,7 @@ HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts
 - The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it.
 - The **artifact sheet** is the second generation, with the hero attached as the reference image: the same four objects re-photographed individually, one per quadrant, on one continuous flat field of the cue's **chroma key**. The objects inherit the hero's materials and colors; only the setting changes. ("Sheet" is our name for the file; the prompt never uses it.)
 - **The key is chosen per cue, and it ships.** Each specialist picks its key from the candidate set in the task, whichever sits farthest in hue from its palette and its artifact materials, and reports the hex. Crops keep the key; `cues.json` records it; the browser canvas keys it out downstream. No matting, no alpha work, no background removal anywhere in this pipeline.
-- **Edges decide whether keying works.** Shadows, blurred silhouettes, and bounce light each blend key into object and leave an edge fringe no threshold removes cleanly; the SHEET PROMPT skeleton carries the counter-rules and the task's keying-plate check enforces them.
+- **Edges decide whether keying works.** Shadows, blurred silhouettes, bounce light, and a textured or vignetted background each blend key into object and leave an edge fringe no threshold removes cleanly; the SHEET PROMPT skeleton carries the counter-rules and the task's keying-plate check enforces them.
 - **Isolation is a hard rule on the sheet.** Every object centered on its quadrant's center point, filling nearly the whole quadrant, with a thin clear margin on every side: nothing touches the canvas edge, another object, or the quadrant midlines. The crop cuts exactly at the midlines, so anything crossing one gets clipped.
 
 Example, hero = a flower atelier's worktable: sheet quadrants carry the wrapping ribbon, a single stem, a row of loose petals, and the ceramic vase. All four are visible in the hero scene.
@@ -152,36 +152,37 @@ text, no labels, no numbers, no borders, no watermark.
 
 ### SHEET PROMPT skeleton
 
-Runs as the **second** generation with the hero attached as the reference/input image, so the objects match the scene instead of being reinvented. It describes plain product photography; any word that implies an editorial layout ("catalog", "sheet", "spread", "grid") invites the model to design a page with titles and captions.
+Runs as the **second** generation with the hero attached as the reference/input image, so the objects match the scene instead of being reinvented. Two word-choice traps decide whether the result is keyable. Editorial-layout words ("catalog", "sheet", "spread", "grid") invite a designed page with titles and captions. Physical-studio words are worse: "a photograph of objects on a backdrop" gets a real studio scene, meaning paper texture, vignette, cast shadows, and an angled camera, every one of which ruins the key. So the prompt describes a **digital composite**: cut-out objects on a solid color fill, which makes flat, shadowless, and overhead the natural reading instead of a fight.
 
-**Choose the chroma key first.** Candidates: chroma green `#00FF00`, chroma magenta `#FF00FF`, chroma cyan `#00FFFF`, chroma blue `#0000FF`. Pick the one farthest in hue from every palette color and every artifact material (a florist's green stems rule out green; a magenta-flowered concept rules out magenta), and fill it into every `[key color name]` and `[key hex]` slot. The key ships in the crops and gets keyed out later, so the prompt's one job beyond the objects is a keyable backdrop: one pure, flat field of the key, crisp silhouettes, and no shadow, blur, or bounce light at the edges, because each of those blends key into object and leaves a fringe no threshold removes.
+**Choose the chroma key first.** Candidates: chroma green `#00FF00`, chroma magenta `#FF00FF`, chroma cyan `#00FFFF`, chroma blue `#0000FF`. Before picking, inventory the hues your four artifacts actually carry, and count stems, leaves, and foliage as green even when the bloom is the point; a florist's artifacts almost always rule out green. Glossy metal and ceramic mirror whatever sits behind them, so a chrome-adjacent artifact argues for the key farthest from the palette, where its bounce is cheapest to remove. Pick the candidate farthest in hue from every palette color and every inventoried material, and fill it into every `[key color name]` and `[key hex]` slot. The key ships in the crops and gets keyed out later, so the prompt's one job beyond the objects is a keyable background: one pure, flat fill of the key, crisp silhouettes, and no shadow, blur, texture, or bounce at the edges, because each of those blends key into object and leaves a fringe no threshold removes.
 
 ```text
-Using the attached photograph as the exact reference for objects, materials,
-and colors: one square photograph, 1500x1500 pixels, of four objects from
-that scene, each re-photographed individually from directly overhead in
-flat, even, shadowless studio light. This is a plain photograph of objects
-laid on a professional chroma-key backdrop. Absolutely no text anywhere in
+One square image, 1500x1500 pixels: a clean digital composite of four
+cut-out objects placed on a single solid color fill, like isolated
+product shots arranged in image-editing software. Using the attached
+photograph as the exact reference, the four objects reproduce that
+scene's materials and colors faithfully. Absolutely no text anywhere in
 the image: no letters, no words, no numbers, no labels, no captions.
 
-The backdrop is one perfectly flat, uniform [key color name] field, hex
-[key hex], the identical pure color from edge to edge, like a keying
-screen in a studio. The objects cast no shadow onto it and pick up none
-of its color; every silhouette is crisp and in sharp focus against the
-flat [key color name], and the [key color name] appears nowhere on the
-objects themselves.
+The background is one solid digital fill of [key color name], hex
+[key hex], the identical flat color at every pixel from edge to edge:
+no paper, no fabric, no surface texture, no grain, no vignette, no
+gradient, no lighting variation. The objects are cleanly cut out: they
+cast no shadow, reflect none of the background color, and every
+silhouette is crisp and in sharp focus against the flat fill; the
+[key color name] appears nowhere on the objects themselves.
 
 Picture the canvas divided into four equal quadrants: [artifact A]
 top-left, [artifact B] top-right, [artifact C] bottom-left, [artifact D]
-bottom-right. Each object sits exactly centered on its quadrant's center
-point and fills its quadrant almost completely, as large as it can be
-while a thin clear band of backdrop stays visible on every side: nothing
-touches the canvas edges or the horizontal and vertical centerlines of
-the image.
+bottom-right; four different objects, each appearing exactly once, each
+seen from directly overhead. Each object sits exactly centered on its
+quadrant's center point and fills its quadrant almost completely, as
+large as it can be while a thin clear band of background stays visible
+on every side: nothing touches the canvas edges or the horizontal and
+vertical centerlines of the image.
 
-No frames, no cell borders, no dividing lines, no watermark, no shadows,
-no reflections, no gradients; the backdrop stays one uninterrupted
-[key hex] everywhere.
+No frames, no cell borders, no dividing lines, no watermark; the
+background stays one uninterrupted [key hex] everywhere.
 ```
 
 ## Step 2: Carve the territories
@@ -212,6 +213,14 @@ You are a color specialist. You compose one brand palette inside an
 assigned territory, then stage it in images. Use the harness's native
 image generation tool; do not fall back to CLIs or APIs; do not edit repo
 files.
+
+Each image gets a hard budget of three generation calls, all reasons
+combined (failed calls, timeouts, and the retry checks below). A call
+that fails with a network, API, or timeout error may be re-run as-is
+within that budget; when the budget is spent, stop and reply with the
+ERROR line. The failure is the parent's problem, not yours: never debug
+DNS or connectivity, never install packages, and never edit or rewrite
+the generation tooling.
 
 PERSONA: [the persona's full numbered entry from The six personas]
 
@@ -284,21 +293,27 @@ hue family another territory claims. Stay inside your own.
    sheet shows your four artifacts on your chroma key. A wrong subject or
    palette means you picked up a sibling's file from the race in step 4:
    regenerate that image once with the [slug] filename. Then check the
-   sheet as a keying plate: the backdrop one flat field of your key, the
-   silhouettes crisp, the objects free of shadows, blur, and key-colored
-   bounce at their edges, and the key color absent from the objects
-   themselves. If the backdrop fails any of that, regenerate the ARTIFACT
+   sheet as a keying plate: the background one flat, untextured fill of
+   your key (a paper-like texture, vignette, or gradient is a failure,
+   not a style), the silhouettes crisp, the objects shot from directly
+   overhead and free of shadows, blur, and key-colored bounce at their
+   edges, and the key color absent from the objects themselves. If the
+   sheet fails any of that, regenerate the ARTIFACT SHEET once: same
+   reference image, same prompt, plus this line appended: "The
+   background must be one perfectly uniform flat [key hex] digital color
+   fill with zero texture, zero shadows, zero vignette, and zero color
+   bounce; every object edge razor-sharp against it, every object seen
+   from directly overhead." Finally check the layout: four different
+   objects, each appearing exactly once; if any object is duplicated or
+   missing, crosses the canvas edge or the horizontal or vertical
+   centerline, or any text appears anywhere, regenerate the ARTIFACT
    SHEET once: same reference image, same prompt, plus this line
-   appended: "The backdrop must be one perfectly uniform [key hex] with
-   zero shadows and zero color bounce; every object edge razor-sharp
-   against it." Finally check the geometry: if any object crosses the
-   canvas edge or the horizontal or vertical centerline, or any text
-   appears anywhere, regenerate the ARTIFACT SHEET once: same reference
-   image, same prompt, plus this line appended: "Make every object
-   smaller, at most two-thirds of its quadrant, pulled in tight to its
-   quadrant's center, with a wider band of clear backdrop between the
-   objects and around the edges." Never retry more than once per check;
-   keep the second result regardless.
+   appended: "Show exactly these four objects once each: [artifact A],
+   [artifact B], [artifact C], [artifact D]. Make every object smaller,
+   at most two-thirds of its quadrant, pulled in tight to its quadrant's
+   center, with a wider band of clear background between the objects and
+   around the edges." Never retry more than once per check, inside the
+   three-call budget; keep the last result regardless.
 
 7. Reply with exactly these five lines and nothing else, the paths being
    the files you verified in step 6 and the key being the hex you filled
