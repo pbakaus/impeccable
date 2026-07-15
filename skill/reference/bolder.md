@@ -1,120 +1,31 @@
-When asked for "bolder," AI defaults to the same tired tricks: cyan/purple gradients, glassmorphism, neon accents on dark backgrounds, gradient text on metrics. These are the opposite of bold. Reject them first, then increase visual impact by making the existing design language more decisive, specific, and committed.
+> **Additional context needed**: which section is the target, and what must stay untouched.
 
----
+"Bolder" is an amplification request, and almost always it is scoped to something that already exists. The surrounding page, its system, and its conventions are the given. Your job is to raise one part to the conviction the rest already implies, without rebuilding anything the brief did not name. The reflex answer, reaching for more effects, is the opposite of bold; reject it first.
 
-## Register
+## Scope is sovereign
 
-Persuade + Experience: "bolder" means distinctive. Express a stronger point of view through hierarchy, pacing, proportion, copy, evidence, and one committed visual idea.
+"Everything else stays" is a literal instruction. Touch only the named target. Do not restyle its neighbors, do not migrate the page to a new idea, do not add colors, fonts, radii, shadows, or system primitives the surface does not already own. If the existing system genuinely cannot express the direction, stop and {{ask_instruction}} before expanding it, naming the exact addition and the job it would do.
 
-Operate + Read: "bolder" rarely means theatrics; those undermine trust. It means stronger hierarchy, clearer weight contrast, sharper information density, and more decisive prioritization. The amplification is in clarity, not drama.
+## Why it reads flat
 
----
+A section usually reads flat for reasons its neighbors have already solved. Look at what the rest of the page does that this section does not: the display type at full strength, the structural devices that carry meaning, the signature motif, the density and pacing, the specificity of the copy. A flat section is typically one that quietly opts out of the system's own strongest moves. The most reliable bolder pass brings the target up to the expressive level its neighbors already reach, in the system's own vocabulary rather than a new one.
 
-## Assess Current State
+## The amplification
 
-Analyze what makes the design feel too safe or boring:
+- **Amplify what the system already owns.** Reuse its motif and its type scale at full strength, turned up for this section rather than invented for it. The bolder version should look more like the same brand, not less.
+- **Let the content carry the weight.** Flat copy makes a flat design, and no amount of size fixes a generic claim. Make the words specific and load-bearing, and let the section's real evidence do the work that a decorative addition would otherwise fake.
+- **Commit, then clarify.** Half-measures read as noise. Make the one decisive move completely, then quiet everything around it so the move is legible. If every element got louder, the section got flatter.
+- **Give it its own rhythm.** The target should read as a peak in the scroll, a shift in density or pace from what surrounds it, not simply more of the same.
 
-1. **Identify weakness sources**:
-   - **Generic choices**: The page could belong to any product in the category.
-   - **Timid scale**: Everything is medium-sized with no clear lead.
-   - **Low contrast**: Important and supporting elements have similar visual weight.
-   - **Static**: The surface has no meaningful moment of emphasis.
-   - **Predictable**: The composition follows a default pattern without a point of view.
-   - **Flat hierarchy**: Nothing stands out or commands attention.
+## The skeleton test
 
-2. **Understand the context**:
-   - What is the brand personality?
-   - What is the purpose of this surface?
-   - Who is the audience?
-   - What design system, tokens, components, and visual conventions already exist?
+Strip the copy out of your planned section and study the bare structure. Does the skeleton still say what this section is and why it matters, through hierarchy and the system's devices alone? If it only works once the words return, the boldness is in the text size, not the design. A placeholder for an image or artifact names a job, an anchor and a piece of evidence, not a cue to drop in a decorative photo; fill that job with whatever the subject actually has.
 
-If any of these are unclear from the codebase, {{ask_instruction}}
+## Before you finish
 
-**CRITICAL**: "Bolder" does not mean chaotic or garish. It means distinctive, memorable, and confident. Think intentional drama, not random noise.
+- Everything outside the named target is unchanged.
+- No new color, font, or system primitive appeared without being asked for.
+- The conventions the section carried, including anything that drives an action, still work the same way.
+- The section is unmistakably the same brand, only more sure of itself.
 
-**WARNING - AI SLOP TRAP**: Review ALL the DON'T guidelines from the parent impeccable skill (already loaded in this context) before proceeding. Bold means distinctive, not "more effects."
-
-## Design-System Lock
-
-If the project has `DESIGN.md`, tokens, theme variables, or established component styles, treat that system as the boundary. Make the existing language stronger before adding new language.
-
-Do not invent new colors, gradients, radii, shadows, fonts, decorative backgrounds, or effects just because the request says "bolder." A bolder pass should usually change emphasis, proportion, rhythm, density, contrast, copy, artifact specificity, and layout relationships while staying inside the documented system.
-
-If the existing system is genuinely too limited to express the bolder direction, stop and ask the user before expanding it. Name the exact additions, the role each would play, and why the current system cannot do the job. If the user approves expansion, update the design system or tokens alongside the implementation.
-
-## Plan Amplification
-
-Create a strategy to increase impact while maintaining coherence:
-
-- **Focal point**: Pick one thing the viewer should remember, then make the rest support it.
-- **System levers**: Identify which existing tokens, components, layout patterns, and copy structures can carry more weight.
-- **Risk budget**: Decide how far the surface can push while still feeling like the same product or brand.
-- **Hierarchy amplification**: Increase contrast between primary, secondary, and tertiary content instead of making every element louder.
-
-**IMPORTANT**: Bold design must still be usable. Impact without function is just decoration.
-
-## Amplify the Design
-
-Systematically increase impact through intention, not a menu of effects:
-
-### Typography Amplification
-- Strengthen the existing type hierarchy before changing typefaces.
-- Make important text meaningfully more dominant, and make supporting text quieter.
-- Use weight, measure, spacing, and line breaks to sharpen the point of view.
-- Add or replace fonts only after user-approved design-system expansion.
-
-### Color Amplification
-- Use the existing palette more decisively before adding colors.
-- Shift the proportion, placement, and contrast of documented colors to clarify meaning.
-- Treat any new color, gradient, or tint ramp as a design-system expansion that requires user approval.
-- Keep color tied to hierarchy, state, or brand meaning; do not use it as surface decoration.
-
-### Spatial Amplification
-- Change proportion, density, alignment, and sequencing so the composition has a stronger point of view.
-- Create clearer contrast between dense evidence and open breathing room.
-- Let layout express priority and narrative order before adding ornament.
-- Preserve responsive behavior and avoid text overflow at every breakpoint.
-
-### Surface Amplification
-- Use existing surface, border, radius, and shadow rules more deliberately.
-- Remove timid half-measures: either give an element a clear role or simplify it.
-- Add texture, depth, illustration, or decorative treatments only when already established by the system or explicitly approved.
-- Make real product artifacts, imagery, data, or copy carry attention before reaching for effects.
-
-### Motion & Animation
-- Design one meaningful moment of emphasis when motion genuinely supports the point.
-- Make interaction feedback feel more decisive without becoming distracting.
-- Keep transitions smooth and intentional.
-- **Bolder != scroll-fade-rise on every section.** That's the saturated AI default, the opposite of bold.
-
-### Composition Boldness
-- Make the dominant idea unmistakable.
-- Use layout tension, sequencing, contrast, and restraint to create a stronger read.
-- Let the page's structure communicate priority before adding decorative layers.
-- If every element is louder, the composition is not bolder; it is flatter.
-
-**NEVER**:
-- Add undocumented design-system primitives without user approval
-- Add effects randomly without purpose
-- Hide weak hierarchy behind decoration
-- Sacrifice readability for aesthetics
-- Make everything bold; contrast is the point
-- Ignore accessibility
-- Overwhelm with motion
-- Copy trendy aesthetics blindly
-
-## Verify Quality
-
-Ensure amplification maintains usability and coherence:
-
-- **System-faithful**: Did the pass make the existing design language stronger before adding anything new?
-- **No undocumented drift**: Are new colors, gradients, shadows, radii, fonts, and effects either absent or explicitly approved and documented?
-- **NOT AI slop**: Does this look like every other AI-generated "bold" design? If yes, start over.
-- **Still functional**: Can users accomplish tasks without distraction?
-- **Coherent**: Does everything feel intentional and unified?
-- **Memorable**: Will users remember this experience for the intended reason?
-- **Performant and accessible**: Does the result stay fast, readable, responsive, and WCAG-conscious?
-
-**The test**: If you showed this to someone and said "AI made this bolder," would they believe you immediately? If yes, you've failed. Bold means distinctive, not "more AI effects."
-
-When the result feels right, hand off to `{{command_prefix}}impeccable polish` for the final pass.
+When the target holds its own without pulling the page apart, hand off to `{{command_prefix}}impeccable polish` for the final pass.
