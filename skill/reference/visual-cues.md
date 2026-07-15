@@ -6,30 +6,32 @@ Tell the user once, before starting: *"Generating visual cues; this can take a m
 
 ## The images
 
-Each cue is **three generations by the same agent**, in sequence: the hero, then the artifact sheet rendered twice, once on cream and once on black. The parent fuses the two sheet passes into one transparent-background sheet before cropping.
+Each cue is **two generations by the same agent**, in sequence: the hero, then the artifact sheet on a chroma-key background the specialist chooses.
 
 ```text
-HERO  [slug].png (1500x1500)            ARTIFACT SHEET, two passes (1500x1500)
-+---------------------------+           +-------------+-------------+
-|                           |           |   [obj A]   |   [obj B]   |  pass 1:
-|   one close-framed scene, |           |  centered,  |  centered,  |  cream
-|   the product's world,    |           |  ~2/3 of    |  clear      |  #FDFCF6
+HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts.png
++---------------------------+           +-------------+-------------+ 1500x1500
+|                           |           |   [obj A]   |   [obj B]   |
+|   one close-framed scene, |           |  centered,  |  centered,  |
+|   the product's world,    |           |  filling    |  thin       |
 |   all four artifact       |           |  its cell   |  margins    |
 |   objects visible in it,  |           +-------------+-------------+
-|   four palette colors     |           pass 2: the SAME image, edit mode,
-|   as large color fields   |           background swapped to pure black
-|                           |
-+---------------------------+           parent: matte pass1 + pass2 ->
-     saved as-is, NO crop               true-alpha RGBA sheet, quadrant-
-                                        cropped into [slug]-2..5.png
-                                        (transparent-background PNGs)
+|   four palette colors     |           |   [obj C]   |   [obj D]   |
+|   as large color fields   |           |             |             |
+|                           |           | one flat chroma-key color |
++---------------------------+           | everywhere, no shadows,   |
+     saved as-is, NO crop               | crisp edges, no bounce    |
+                                        +-------------+-------------+
+                                          quadrant-cropped into
+                                          [slug]-2..5.png, key kept;
+                                          the browser keys it out
 ```
 
-- The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it. The hero stays fully opaque.
-- The **artifact sheet** is the second generation, with the hero attached as the reference image: the same four objects re-photographed individually, one per quadrant, each isolated and centered on one continuous flat warm-cream background, `#FDFCF6`. The objects inherit the hero's materials and colors; only the setting changes. ("Sheet" is our name for the file; the prompt never uses it.)
-- The **dark pass** is the third generation, with the cream sheet attached as the reference image: the identical sheet with only the background swapped to pure black. The two passes exist so the parent can compute a real alpha channel by difference matting (a pixel that changed with the backing is background; one that didn't is object). Contact shadows come out as soft semi-transparent black, exactly what a drop shadow should be.
-- **Transparency comes only from the matte.** Image models cannot emit alpha channels: a prompt asking for a "transparent background" gets a painted checkerboard, and chroma keys spill their key color onto the objects. So the words "transparent", "alpha", and "checkerboard" never appear in any prompt; the artifact crops get real transparency from the two-pass matte, done by script, after generation.
-- **Isolation is a hard rule on the sheet.** Every object centered on its quadrant's center point, filling about two-thirds of it, with clear background margin on every side: nothing comes near the canvas edge, another object, or the quadrant midlines. The crop cuts exactly at the midlines, so anything crossing one gets clipped; and the matte reads each pass's true backing color off the border ring, so an object touching the edge poisons the whole matte.
+- The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it.
+- The **artifact sheet** is the second generation, with the hero attached as the reference image: the same four objects re-photographed individually, one per quadrant, on one continuous flat field of the cue's **chroma key**. The objects inherit the hero's materials and colors; only the setting changes. ("Sheet" is our name for the file; the prompt never uses it.)
+- **The key is chosen per cue, and it ships.** Each specialist picks its key from the candidate set in the task, whichever sits farthest in hue from its palette and its artifact materials, and reports the hex. Crops keep the key; `cues.json` records it; the browser canvas keys it out downstream. No matting, no alpha work, no background removal anywhere in this pipeline.
+- **Edges decide whether keying works.** Shadows, blurred silhouettes, and bounce light each blend key into object and leave an edge fringe no threshold removes cleanly; the SHEET PROMPT skeleton carries the counter-rules and the task's keying-plate check enforces them.
+- **Isolation is a hard rule on the sheet.** Every object centered on its quadrant's center point, filling nearly the whole quadrant, with a thin clear margin on every side: nothing touches the canvas edge, another object, or the quadrant midlines. The crop cuts exactly at the midlines, so anything crossing one gets clipped.
 
 Example, hero = a flower atelier's worktable: sheet quadrants carry the wrapping ribbon, a single stem, a row of loose petals, and the ceramic vase. All four are visible in the hero scene.
 
@@ -49,7 +51,7 @@ Write one self-contained text block that a specialist with zero context can desi
 - **The interview**: Q1 color strategy and hue anchor, Q2 type direction, Q4 the three named references, Q5 the anti-reference. State that the anti-reference is a hard constraint on every palette.
 - **The assets**: the seed Step 2 observations (logo colors, recurring materials, photo moods).
 
-Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn of both phases; a packet that drifts between spawns invalidates the comparison. Do **not** add your own palette leanings to it: the personas do the leaning.
+Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn; a packet that drifts between spawns invalidates the comparison. Do **not** add your own palette leanings to it: the personas do the leaning.
 
 ## The six personas
 
@@ -150,43 +152,36 @@ text, no labels, no numbers, no borders, no watermark.
 
 ### SHEET PROMPT skeleton
 
-Runs as the **second** generation with the hero attached as the reference/input image, so the objects match the scene instead of being reinvented. It describes plain product photography; any word that implies an editorial layout ("catalog", "sheet", "spread", "grid") invites the model to design a page with titles and captions. The cream is constant across all cues (`#FDFCF6`; the artifacts land on this exact surface downstream); never restyle it per concept.
+Runs as the **second** generation with the hero attached as the reference/input image, so the objects match the scene instead of being reinvented. It describes plain product photography; any word that implies an editorial layout ("catalog", "sheet", "spread", "grid") invites the model to design a page with titles and captions.
+
+**Choose the chroma key first.** Candidates: chroma green `#00FF00`, chroma magenta `#FF00FF`, chroma cyan `#00FFFF`, chroma blue `#0000FF`. Pick the one farthest in hue from every palette color and every artifact material (a florist's green stems rule out green; a magenta-flowered concept rules out magenta), and fill it into every `[key color name]` and `[key hex]` slot. The key ships in the crops and gets keyed out later, so the prompt's one job beyond the objects is a keyable backdrop: one pure, flat field of the key, crisp silhouettes, and no shadow, blur, or bounce light at the edges, because each of those blends key into object and leaves a fringe no threshold removes.
 
 ```text
 Using the attached photograph as the exact reference for objects, materials,
 and colors: one square photograph, 1500x1500 pixels, of four objects from
-that scene, each re-photographed individually from directly overhead in soft
-even studio light. This is a plain photograph of objects resting on a bare
-surface. Absolutely no text anywhere in the image: no letters, no words, no
-numbers, no labels, no captions, no title.
+that scene, each re-photographed individually from directly overhead in
+flat, even, shadowless studio light. This is a plain photograph of objects
+laid on a professional chroma-key backdrop. Absolutely no text anywhere in
+the image: no letters, no words, no numbers, no labels, no captions.
 
-The surface is one perfectly flat warm-cream background, hex #FDFCF6,
-continuous edge to edge. Picture the canvas divided into four equal
-quadrants: [artifact A] top-left, [artifact B] top-right, [artifact C]
-bottom-left, [artifact D] bottom-right.
+The backdrop is one perfectly flat, uniform [key color name] field, hex
+[key hex], the identical pure color from edge to edge, like a keying
+screen in a studio. The objects cast no shadow onto it and pick up none
+of its color; every silhouette is crisp and in sharp focus against the
+flat [key color name], and the [key color name] appears nowhere on the
+objects themselves.
 
-Each object sits exactly centered on its quadrant's center point, filling
-about two-thirds of its quadrant, with clear cream margin on every side:
-nothing comes anywhere near the canvas edges or the horizontal and vertical
-centerlines of the image. A soft gentle contact shadow under each object is
-welcome.
+Picture the canvas divided into four equal quadrants: [artifact A]
+top-left, [artifact B] top-right, [artifact C] bottom-left, [artifact D]
+bottom-right. Each object sits exactly centered on its quadrant's center
+point and fills its quadrant almost completely, as large as it can be
+while a thin clear band of backdrop stays visible on every side: nothing
+touches the canvas edges or the horizontal and vertical centerlines of
+the image.
 
-No frames, no cell borders, no dividing lines, no watermark, no typography
-of any kind; the background stays one uninterrupted #FDFCF6 everywhere.
-```
-
-### DARK PASS prompt
-
-Runs as the **third** generation with the final cream sheet attached as the reference/input image. The matte's math needs the objects pixel-identical between passes and the backing as dark as the model will go, so the prompt is one narrow edit instruction; nothing about it varies per concept. Use it verbatim, no slots to fill:
-
-```text
-Reproduce the attached photograph exactly, with a single change: replace
-the flat warm-cream background with a perfectly flat, pure black
-background, hex #000000, continuous edge to edge. Every object stays
-pixel-identical: same position, same size, same colors, same lighting,
-same details. Do not move, redraw, restyle, or relight anything. No text,
-no borders, no watermark; the background becomes one uninterrupted pure
-black everywhere the cream was.
+No frames, no cell borders, no dividing lines, no watermark, no shadows,
+no reflections, no gradients; the backdrop stays one uninterrupted
+[key hex] everywhere.
 ```
 
 ## Step 2: Carve the territories
@@ -206,7 +201,7 @@ Done when: six one-line territories exist, each closing on a hue ground, no two 
 
 ## Step 3: The wave (parallel)
 
-If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, all three generations), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
+If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, both images), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
 
 Every spawn gets the same full template text, slots filled, shared blocks pasted verbatim. Writing spawn 1 in full and compressing spawns 2-6 down to summaries drops the rules exactly where the convergence risk is highest.
 
@@ -271,11 +266,12 @@ hue family another territory claims. Stay inside your own.
    regardless; the sheet in step 5 must reference whichever hero you
    keep.
 
-5. Build the sheet prompt from this skeleton and generate the ARTIFACT
-   SHEET, square again, output filename [slug]-artifacts.png, passing the
-   hero file path the tool reported in step 4 as the reference/input
-   image (the tool's image-edit or reference-image mode). Never point the
-   reference at a generic hero.png in a shared folder:
+5. Choose your chroma key by the skeleton's rule, then build the sheet
+   prompt and generate the ARTIFACT SHEET, square again, output filename
+   [slug]-artifacts.png, passing the hero file path the tool reported in
+   step 4 as the reference/input image (the tool's image-edit or
+   reference-image mode). Never point the reference at a generic hero.png
+   in a shared folder:
 
 [the SHEET PROMPT skeleton, with its notes]
 
@@ -285,36 +281,33 @@ hue family another territory claims. Stay inside your own.
    generation, and the fix is regenerating with the tool's square (1:1)
    size/aspect parameter actually set, not editing the file. Then confirm
    they are yours: the hero shows your scene staging your palette, the
-   sheet shows your four artifacts on cream. A wrong subject or palette
-   means you picked up a sibling's file from the race in step 4:
+   sheet shows your four artifacts on your chroma key. A wrong subject or
+   palette means you picked up a sibling's file from the race in step 4:
    regenerate that image once with the [slug] filename. Then check the
-   sheet's geometry: if any
-   object crosses the canvas edge or the horizontal or vertical
-   centerline, or any text appears anywhere, regenerate the ARTIFACT
+   sheet as a keying plate: the backdrop one flat field of your key, the
+   silhouettes crisp, the objects free of shadows, blur, and key-colored
+   bounce at their edges, and the key color absent from the objects
+   themselves. If the backdrop fails any of that, regenerate the ARTIFACT
    SHEET once: same reference image, same prompt, plus this line
-   appended: "Make every object smaller, at most half of its quadrant,
-   pulled in tight to its quadrant's center, with even more empty cream
-   between the objects and around the edges." Never retry more than once
-   per check; keep the second result regardless.
+   appended: "The backdrop must be one perfectly uniform [key hex] with
+   zero shadows and zero color bounce; every object edge razor-sharp
+   against it." Finally check the geometry: if any object crosses the
+   canvas edge or the horizontal or vertical centerline, or any text
+   appears anywhere, regenerate the ARTIFACT SHEET once: same reference
+   image, same prompt, plus this line appended: "Make every object
+   smaller, at most two-thirds of its quadrant, pulled in tight to its
+   quadrant's center, with a wider band of clear backdrop between the
+   objects and around the edges." Never retry more than once per check;
+   keep the second result regardless.
 
-7. Generate the DARK PASS with this prompt verbatim, output filename
-   [slug]-dark.png, passing the final cream sheet from step 6 as the
-   reference/input image (the tool's image-edit mode). The matte needs
-   the two passes at identical dimensions, so pass the same size/aspect
-   parameter as step 5. Open the result: if it is not the exact size of
-   the cream sheet, if the background is not black, or if the objects
-   moved or changed against the cream sheet, regenerate it once with the
-   same prompt and keep the second result:
-
-[the DARK PASS prompt]
-
-8. Reply with exactly these five lines and nothing else, the paths being
-   the files you verified in steps 6 and 7:
+7. Reply with exactly these five lines and nothing else, the paths being
+   the files you verified in step 6 and the key being the hex you filled
+   into the sheet prompt:
 
 COMPLETED [slug]
 HERO [absolute path to the hero PNG]
-ARTIFACTS [absolute path to the final cream sheet PNG]
-ARTIFACTS-DARK [absolute path to the dark pass PNG]
+ARTIFACTS [absolute path to the final sheet PNG]
+CHROMA #RRGGBB
 PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
 
 If either generation fails, reply instead with one line:
@@ -327,38 +320,28 @@ Done when: every persona has either a five-line COMPLETED report or an ERROR lin
 
 ## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry, dark pass) and recording the same facts a subagent would report (slug, all three paths, palette). The user still gets six cues; only the clock differs.
+Only when the harness has no subagent tool at all: keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry) and recording the same facts a subagent would report (slug, both paths, chroma key, palette). The user still gets six cues; only the clock differs.
 
 Same done-condition as Step 3, over all six personas.
 
-## Step 5: Matte, crop, and compile
+## Step 5: Crop and compile
 
 Before anything else, two gates on the reported files:
 
 - **Unique**: hash every reported hero (`md5 [paths]`); each must be unique. Two identical heroes mean two subagents raced on a shared default output filename; re-spawn one of the pair (same task) and take its fresh files before compiling.
-- **Square**: check every reported image's dimensions (`sips -g pixelWidth -g pixelHeight [paths]` on macOS); width must equal height. Both scripts below reject non-square inputs, and squaring after the fact is off the table (cropping eats scene, padding invents background), so a non-square hero or cream sheet is a failed generation: re-spawn that persona once, with its same task, and take the fresh files. Still non-square after the re-spawn: drop the cue. (A non-square dark pass alone is handled below without a re-spawn.)
+- **Square**: check every reported image's dimensions (`sips -g pixelWidth -g pixelHeight [paths]` on macOS); width must equal height. The crop script rejects non-square inputs, and squaring after the fact is off the table (cropping eats scene, padding invents background), so a non-square hero or sheet is a failed generation: re-spawn that persona once, with its same task, and take the fresh files. Still non-square after the re-spawn: drop the cue.
 
-For each COMPLETED report, first fuse the two sheet passes into a transparent-background sheet:
-
-```text
-node {{scripts_path}}/visual-cues.mjs matte [artifacts.png] [artifacts-dark.png] \
-  --out [slug]-matted.png
-```
-
-Judge the matte by the stats it prints: healthy is `transparentPct` of at least 30 and `opaquePct` of at least 5. A tiny `transparentPct` means the dark pass never replaced the background; a tiny `opaquePct` means the model redrew the objects between passes; a size-mismatch error means the tool changed canvas between passes. Any of these, or any other command error: crop the **cream sheet** instead of the matted one below; an opaque cue beats a dropped cue. Do not retry the matte with the same inputs, its output is deterministic.
-
-A dark pass alone failing the square gate does not need a re-spawn: matte rejects it as a command error and the cream-sheet fallback above covers the cue.
-
-Then crop, carrying the report's slug and its `PALETTE` line:
+For each COMPLETED report, run one command, carrying the report's slug and its `CHROMA` and `PALETTE` lines:
 
 ```text
-node {{scripts_path}}/visual-cues.mjs crop [hero.png] [slug]-matted.png \
+node {{scripts_path}}/visual-cues.mjs crop [hero.png] [artifacts.png] \
   --slug [slug] \
+  --chroma "#RRGGBB" \
   --palette "primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB" \
   --out .impeccable/visual-cues
 ```
 
-The script copies the hero untouched to `[slug].png`, keeps the sheet it was given under `masters/[slug]-artifacts.png`, and quadrant-crops it into `[slug]-2.png` through `[slug]-5.png`, preserving the matte's alpha so each artifact ships as a transparent-background PNG. For each palette role it searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
+The script copies the hero untouched to `[slug].png`, keeps the sheet under `masters/[slug]-artifacts.png`, and quadrant-crops it into `[slug]-2.png` through `[slug]-5.png`. The crops keep the key background: keying happens later in the browser canvas, which reads each cue's key from `cues.json`, so `--chroma` must carry the report's exact hex. For each palette role the script searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
 
 ```json
 {
@@ -366,13 +349,16 @@ The script copies the hero untouched to `[slug].png`, keeps the sheet it was giv
   "supporting-artifacts": {
     "amber-dusk": ["amber-dusk-2", "amber-dusk-3", "amber-dusk-4", "amber-dusk-5"]
   },
+  "chroma": {
+    "amber-dusk": "#FF00FF"
+  },
   "palette": {
     "amber-dusk": { "primary": { "hex": "#B8422E", "snapped": "#B4402F", "at": [312, 540] } }
   }
 }
 ```
 
-Done when: `cues.json` lists one entry per completed palette and every listed slug has its five PNGs on disk (hero plus four artifacts).
+Done when: `cues.json` lists one entry per completed palette, every listed slug has its five PNGs on disk (hero plus four artifacts), and every slug has its chroma key recorded.
 
 ## Step 6: Pause
 

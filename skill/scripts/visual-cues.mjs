@@ -2,30 +2,23 @@
 // visual-cues.mjs — crop + compile for document seed visual cues.
 // Pipeline doc: skill/reference/visual-cues.md (canonical; this help text is not).
 //
-// Each cue is a full-bleed hero scene plus an artifact sheet (four objects,
-// one per quadrant) rendered twice: on cream and on black. `matte` fuses
-// the two passes into one transparent-background RGBA sheet; `crop` cuts
-// any sheet into per-artifact PNGs, preserving whatever alpha it carries.
+// Each cue is a full-bleed hero scene plus an artifact sheet: four objects,
+// one per quadrant, on a single flat chroma-key background. The key stays
+// in the shipped crops; the browser canvas removes it downstream, using the
+// key hex this script records in cues.json.
 //
 //   node visual-cues.mjs crop <hero.png> <artifacts.png> --slug <two-word-slug>
+//       [--chroma "#00FF00"]
 //       [--palette "primary=#RRGGBB;secondary=...;tertiary=...;neutral=..."]
 //       [--out <dir>]   (default: .impeccable/visual-cues)
-//     Copies the hero untouched to <slug>.png, keeps the sheet it was
-//     given under <out>/masters/<slug>-artifacts.png, quadrant-crops the
-//     sheet into <slug>-2..5.png (alpha preserved), finds each planned
-//     palette hex's closest pixel in the hero, and updates <out>/cues.json.
+//     Copies the hero untouched to <slug>.png, keeps the sheet under
+//     <out>/masters/<slug>-artifacts.png, quadrant-crops the sheet into
+//     <slug>-2..5.png (key background kept), finds each planned palette
+//     hex's closest pixel in the hero, records the cue's chroma key, and
+//     updates <out>/cues.json.
 //     Both inputs must be square: generation happens on a square canvas
 //     (a size/aspect parameter, not just a prompt line), and a non-square
 //     input is a generation to redo, not an image to fix up here.
-//
-//   node visual-cues.mjs matte <light.png> <dark.png> --out <final.png>
-//     Difference matting: the same artifact sheet rendered twice, once on
-//     the cream backing and once on pure black, fuses into one RGBA PNG
-//     with a computed alpha channel. For image models that can't emit
-//     alpha natively (prompting for "transparent" gets a painted
-//     checkerboard; chroma keys spill). Prints coverage stats so the
-//     caller can tell a failed matte (background never changed between
-//     passes / objects moved between passes).
 //
 // Dependency-free: PNG decode/encode on node:zlib. Rejects interlaced and
 // indexed-color PNGs; convert those with sips/ImageMagick/PIL first.
@@ -304,114 +297,12 @@ function snapPalette(img, palette) {
   return out;
 }
 
-// ------------------------------------------------------------------- matte
-
-// Difference matting (triangulation matting with two known backings).
-// An observed pixel is foreground composited over a backing:
-//   observed = alpha * color + (1 - alpha) * backing
-// With the same foreground shot over a light backing L and a dark backing
-// D, subtracting the two observations cancels the foreground term:
-//   observedL - observedD = (1 - alpha) * (L - D)
-// so per channel: alpha = 1 - (observedL - observedD) / (L - D), and the
-// true color unpremultiplies from the dark observation, whose backing
-// contributes nothing: color = darkObs / alpha. No key color means nothing
-// to spill (what broke the chroma approach); contact shadows fall out as
-// semi-transparent black, a natural drop shadow.
-
-// The model never renders the backing at its exact nominal hex, so read
-// the real backing off each image instead: per-channel median of the
-// outer border ring, which the sheet's isolation rules guarantee is pure
-// background.
-function estimateBacking(img, inset = 4) {
-  const { width: w, height: h, rgba } = img;
-  const samples = [[], [], []];
-  const take = (x, y) => {
-    const o = (y * w + x) * 4;
-    for (let c = 0; c < 3; c++) samples[c].push(rgba[o + c]);
-  };
-  for (let x = 0; x < w; x += 3) { take(x, inset); take(x, h - 1 - inset); }
-  for (let y = 0; y < h; y += 3) { take(inset, y); take(w - 1 - inset, y); }
-  return samples.map((arr) => {
-    arr.sort((a, b) => a - b);
-    return arr[arr.length >> 1];
-  });
-}
-
-function cmdMatte(args) {
-  const [lightFile, darkFile] = args._;
-  if (!lightFile || !darkFile || !args.out) {
-    fail('usage: visual-cues.mjs matte <light.png> <dark.png> --out <final.png>');
-  }
-  const light = decodePng(readFileSync(resolve(lightFile)));
-  const dark = decodePng(readFileSync(resolve(darkFile)));
-  requireSquare(light, 'light pass');
-  requireSquare(dark, 'dark pass');
-  if (light.width !== dark.width || light.height !== dark.height) {
-    fail(`size mismatch: light ${light.width}x${light.height} vs dark ${dark.width}x${dark.height}; regenerate the dark pass at the light pass's exact size`);
-  }
-  const backingL = estimateBacking(light);
-  const backingD = estimateBacking(dark);
-  const meanSpan = (backingL[0] - backingD[0] + backingL[1] - backingD[1] + backingL[2] - backingD[2]) / 3;
-  if (meanSpan < 96) {
-    fail(`backings too similar to matte (light ${JSON.stringify(backingL)} vs dark ${JSON.stringify(backingD)}); the dark pass likely kept the light background`);
-  }
-
-  const n = light.width * light.height;
-  const out = Buffer.alloc(n * 4);
-  let transparent = 0;
-  let opaque = 0;
-  for (let i = 0; i < n; i++) {
-    const o = i * 4;
-    // Average the per-channel alpha estimates; channels where the two
-    // backings barely differ carry no signal and are skipped.
-    let sum = 0;
-    let used = 0;
-    for (let c = 0; c < 3; c++) {
-      const span = backingL[c] - backingD[c];
-      if (Math.abs(span) < 48) continue;
-      sum += 1 - (light.rgba[o + c] - dark.rgba[o + c]) / span;
-      used++;
-    }
-    let a = used ? Math.round(255 * Math.max(0, Math.min(1, sum / used))) : 255;
-    // Snap the ends: generation noise leaves alpha a few counts off the
-    // rails, which would otherwise put a faint film over the whole
-    // background and pinholes inside solid objects.
-    if (a <= 16) a = 0;
-    else if (a >= 240) a = 255;
-    if (a === 0) transparent++;
-    else if (a === 255) opaque++;
-    for (let c = 0; c < 3; c++) {
-      // Recover true color from the dark pass, removing its (near-black)
-      // backing contribution before unpremultiplying.
-      if (a === 0) { out[o + c] = 0; continue; }
-      const fg = dark.rgba[o + c] - ((255 - a) / 255) * backingD[c];
-      out[o + c] = Math.max(0, Math.min(255, Math.round((fg * 255) / a)));
-    }
-    out[o + 3] = a;
-  }
-  writeFileSync(resolve(args.out), encodePng(out, light.width, light.height));
-  console.log(JSON.stringify({
-    ok: true,
-    out: resolve(args.out),
-    width: light.width,
-    height: light.height,
-    // Callers judge the matte from these: a healthy four-object sheet cuts
-    // out to a mostly-transparent canvas with solid object cores. Tiny
-    // transparentPct means the dark pass never replaced the background;
-    // tiny opaquePct means the two passes disagree everywhere (the model
-    // moved or redrew the objects between passes).
-    transparentPct: Math.round((100 * transparent) / n),
-    opaquePct: Math.round((100 * opaque) / n),
-    partialPct: Math.round((100 * (n - transparent - opaque)) / n),
-  }, null, 2));
-}
-
 // ---------------------------------------------------------------- cues.json
 
 // Reads the existing cues.json (if any) and merges this cue in, so cropping
 // the six concepts one after another accumulates into one shared manifest
 // instead of each crop overwriting the last.
-function updateCuesJson(outDir, slug, artifactIds, palette) {
+function updateCuesJson(outDir, slug, artifactIds, palette, chroma) {
   const path = join(outDir, 'cues.json');
   let data = {};
   if (existsSync(path)) data = JSON.parse(readFileSync(path, 'utf8'));
@@ -422,6 +313,11 @@ function updateCuesJson(outDir, slug, artifactIds, palette) {
   if (palette) {
     data.palette = data.palette || {};
     data.palette[slug] = palette;
+  }
+  if (chroma) {
+    // The key the browser canvas keys out of this cue's artifact crops.
+    data.chroma = data.chroma || {};
+    data.chroma[slug] = chroma;
   }
   writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
   return data;
@@ -492,7 +388,16 @@ function cmdCrop(args) {
   let palette = null;
   if (args.palette) palette = snapPalette(hero, parsePalette(args.palette));
 
-  updateCuesJson(outDir, slug, artifactIds, palette);
+  // --chroma records the sheet's key color so the browser canvas knows
+  // what to key out of the artifact crops; the crops themselves keep it.
+  let chroma = null;
+  if (args.chroma) {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(args.chroma.trim());
+    if (!m) fail(`bad chroma "${args.chroma}" (expected #RRGGBB)`);
+    chroma = `#${m[1].toUpperCase()}`;
+  }
+
+  updateCuesJson(outDir, slug, artifactIds, palette, chroma);
 
   console.log(JSON.stringify({
     ok: true,
@@ -501,6 +406,7 @@ function cmdCrop(args) {
     artifacts: keptSheet,
     files,
     palette,
+    chroma,
     cuesJson: join(outDir, 'cues.json'),
   }, null, 2));
 }
@@ -510,8 +416,7 @@ function main() {
   const args = parseArgs(rest);
   try {
     if (cmd === 'crop') cmdCrop(args);
-    else if (cmd === 'matte') cmdMatte(args);
-    else fail('usage: visual-cues.mjs <crop|matte> ... (see reference/visual-cues.md)');
+    else fail('usage: visual-cues.mjs crop <hero.png> <artifacts.png> --slug <slug> [options] (see reference/visual-cues.md)');
   } catch (err) {
     fail(err.message);
   }
