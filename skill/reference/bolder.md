@@ -13,7 +13,7 @@ A section usually reads flat for reasons its neighbors have already solved. Look
 ## The amplification
 
 - **Amplify what the system already owns.** Reuse its motif and its type scale at full strength, turned up for this section rather than invented for it. The bolder version should look more like the same brand, not less.
-- **Let the content carry the weight.** Flat copy makes a flat design, and no amount of size fixes a generic claim. Make the words specific and load-bearing, and let the section's real evidence do the work that a decorative addition would otherwise fake.
+- **Let the content carry the weight.** Flat copy makes a flat design, and no amount of size fixes a generic claim. Make every word specific enough to earn its place, and let the section's real evidence do the work that a decorative addition would otherwise fake.
 - **Commit, then clarify.** Half-measures read as noise. Make the one decisive move completely, then quiet everything around it so the move is legible. If every element got louder, the section got flatter.
 - **Give it its own rhythm.** The target should read as a peak in the scroll, a shift in density or pace from what surrounds it, not simply more of the same.
 
