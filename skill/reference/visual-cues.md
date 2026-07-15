@@ -177,7 +177,7 @@ Done when: six one-line territories exist, no two claiming the same ground, each
 
 ## Step 3: The wave (parallel)
 
-If the harness has any subagent/spawn tool, parallel is **required**: emit all six spawns in one tool-call batch, one persona per subagent, each doing the full job (palette, concept, both images). **Never run the personas yourself one at a time when a subagent tool exists**; a serial loop in a subagent-capable harness is a failure, not a fallback. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
+If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, both images), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
 
 Task template:
 
@@ -243,9 +243,9 @@ Done when: every persona has either a four-line COMPLETED report or an ERROR lin
 
 ## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: carve **4** territories in Step 2 and play personas 1-4 yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry) and recording the same four facts a subagent would report (slug, both paths, palette).
+Only when the harness has no subagent tool at all: keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry) and recording the same four facts a subagent would report (slug, both paths, palette). The user still gets six cues; only the clock differs.
 
-Same done-condition as Step 3, over 4 personas.
+Same done-condition as Step 3, over all six personas.
 
 ## Step 5: Crop and compile
 
