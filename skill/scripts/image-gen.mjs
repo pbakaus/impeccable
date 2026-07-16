@@ -279,7 +279,41 @@ async function generateGemini({ apiKey, prompt, ref, out }) {
     const reason = cand?.finishReason || "no image part in the response";
     fail(`Generation returned no image (${reason}); reword the prompt and re-run`);
   }
-  fs.writeFileSync(out, Buffer.from(imgPart.inlineData?.data || imgPart.inline_data.data, "base64"));
+  // Gemini often returns JPEG bytes whatever the caller's filename says,
+  // and the pipelines' compile steps decode PNG only, so convert here
+  // rather than making every caller rediscover the mismatch.
+  writeAsPng(Buffer.from(imgPart.inlineData?.data || imgPart.inline_data.data, "base64"), out);
+}
+
+// Writes image bytes to `out` as a real PNG. PNG input passes through;
+// anything else (JPEG, WebP) is converted with the first available system
+// tool: sips ships with macOS, ImageMagick and ffmpeg cover Linux.
+function writeAsPng(buf, out) {
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    fs.writeFileSync(out, buf);
+    return;
+  }
+  const tmp = path.join(os.tmpdir(), `image-gen-raw-${process.pid}-${Date.now()}.img`);
+  fs.writeFileSync(tmp, buf);
+  const converters = [
+    ["sips", ["-s", "format", "png", tmp, "--out", out]],
+    ["magick", [tmp, `png:${out}`]],
+    ["convert", [tmp, `png:${out}`]],
+    ["ffmpeg", ["-y", "-i", tmp, out]],
+  ];
+  try {
+    for (const [cmd, args] of converters) {
+      try {
+        execFileSync(cmd, args, { stdio: "ignore" });
+        if (fs.existsSync(out) && fs.statSync(out).size > 0) return;
+      } catch {
+        // tool missing or failed; try the next one
+      }
+    }
+    fail("Provider returned non-PNG image bytes and no converter is available (tried sips, magick, convert, ffmpeg); install one and re-run");
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
 }
 
 // ----------------------------------------------------------------- main
@@ -294,13 +328,14 @@ const height = parseInt(getArg("height", "1408"), 10);
 const apiKey = loadEnv("IMAGE_GEN_API_KEY", "IMAGE_API_KEY");
 // Users and earlier runs write provider names loosely ("flux" for bfl,
 // "nano-banana" for gemini); normalize the known spellings instead of
-// failing on them. Google API keys start with "AIza", so a missing
-// provider line is recoverable from the key itself.
+// failing on them. Google API keys start with "AIza" (classic) or "AQ."
+// (newer), so a missing provider line is recoverable from the key itself.
 const PROVIDER_ALIASES = {
   bfl: "bfl", flux: "bfl", "black-forest-labs": "bfl",
   gemini: "gemini", google: "gemini", "nano-banana": "gemini", nanobanana: "gemini",
 };
-const rawProvider = (loadEnv("IMAGE_GEN_PROVIDER") || (apiKey?.startsWith("AIza") ? "gemini" : "bfl")).toLowerCase();
+const looksGoogle = apiKey?.startsWith("AIza") || apiKey?.startsWith("AQ.");
+const rawProvider = (loadEnv("IMAGE_GEN_PROVIDER") || (looksGoogle ? "gemini" : "bfl")).toLowerCase();
 const provider = PROVIDER_ALIASES[rawProvider] || rawProvider;
 
 if (!prompt || !out) fail("Usage: --prompt <p> --out <abs path> [--ref <abs path>] [--width n] [--height n]");

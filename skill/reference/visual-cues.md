@@ -11,21 +11,21 @@ Each cue is **one generation**: the hero.
 ```text
 HERO  [slug].png (1500x1500)
 +---------------------------+
-|                           |
 |   one close-framed scene, |
 |   the product's world,    |
 |   four scene objects      |
 |   carrying the palette,   |
-|   four palette colors     |
-|   as large color fields   |
-|                           |
+|   every surface in frame  |
+|   one of the four colors, |
+|   everything in crisp     |
+|   deep focus, no blur     |
 +---------------------------+
      saved as-is, NO crop
 ```
 
-The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene, with the concept's four objects inside it as the palette's physical carriers.
+The **hero** is the visual cue: one close-framed scene from the product's world, its four objects carrying the palette as large color fields. This is what the user will pick between, so the colors get the real estate, and the frame has exactly two known thieves. **Blur**: an out-of-focus background is frame spent on mush, so everything renders in crisp, deep focus, front to back. **Undressed space**: every surface in frame is set-dressed to carry one of the four colors; the ground and backdrop belong to the neutral's material, and there is no bare wall, empty room, or whole person spending frame on colors nobody chose (hands mid-work belong to the scene; a face and outfit donate skin, hair, and clothing to the palette).
 
-Example, hero = a flower atelier's worktable: the wrapping ribbon, a single stem, a row of loose petals, and the ceramic vase, each carrying one of the palette's colors.
+Example, hero = a flower atelier's worktable, framed close: unbleached linen spread as the ground and backdrop (neutral), a massed bank of wine-plum blooms in a ceramic vessel as the subject (primary), a band of dusty-rose petals beside it (secondary), one persimmon bloom set apart (tertiary), a florist's hands mid-arrangement, everything sharp.
 
 ## The studio
 
@@ -105,39 +105,51 @@ Attach one one-line cue concept to the palette; the hero image stages it.
   glass, stone, food) as the supporting cast around the product's
   subject, never a replacement for it.
 - Name four scene objects, the palette's physical carriers, each passing
-  two tests: it lives inside the scene, so it plausibly sits in the hero
-  composition; and it carries no writing (no tags, labels, packaging,
-  printed cards, or stationery), because text on an object ruins the cue.
+  three tests: it lives inside the scene, so it plausibly sits in the
+  hero composition; it can carry its color as one large unbroken field
+  at close framing (a massed bank of blooms, a draped cloth, a glazed
+  vessel; a single bud or a thin ribbon cannot, and a color whose
+  carrier is one small object ships as an unjudgeable sliver); and it
+  is plain and unprinted (no tags, labels, packaging, printed cards,
+  or stationery), because text on an object ruins the cue.
 - Name the concept with a two-word slug (amber-dusk, coastal-glass).
 ```
 
 ### HERO PROMPT skeleton
 
-Written like screenplay direction, not a keyword list: subject doing something, in a place, in a light. Every palette color is named twice, as a plain-language color and as its hex, and tied to a physical carrier in the scene; a hex with no carrier gets ignored, and a carrier too small reads as noise. The cue's job is to show the palette, so the colors get **real estate**: frame tight on the subject rather than wide on the room, and stage each color as a large unbroken field. A wide atmospheric shot renders the palette as slivers the user cannot judge.
+Written like screenplay direction, not a keyword list: subject doing something, in a place, in a light. The scene stays the product's world; the palette's real estate is won inside it, by set dressing and by focus, never by deleting the scene. **Never ask for shallow depth of field, bokeh, or a soft background**: an out-of-focus stretch of frame is real estate spent on mush, so the prompt demands crisp, deep focus front to back. And every surface in frame is dressed to carry one of the four colors: the ground and backdrop belong to the neutral's material, and no bare wall, empty room, or whole person appears (hands mid-work belong to the scene; a face and outfit donate skin, hair, and clothing to the frame).
 
-Light the scene to reveal color, not to set a mood. In a dim, dusky, or nocturnal rendering every hex sinks into one warm-brown murk the user cannot sample from, so bright, generous light is a hard rule even when the concept's moment is dark: an "after hours" or "dawn" concept keeps its props and story but is lit like a studio still, not like the hour. Dark palettes are welcome; dark renderings are not; a near-black primary should read as a rich, clearly-lit surface, not as underexposure. Fill every `[bracketed]` slot; never leave template language in the prompt.
+Name every color in plain language only, as a rich material description ("deep wine-plum, the color of reduced port"), tied to its carrier. **Never put a hex code, or any number, in an image prompt**: image models that render text well will paint it onto the image as a label or a swatch strip, and even one stray numeral fails the wordless check below. The hexes already travel in the PALETTE report line, and the compile step snaps them to rendered pixels; the prompt's job is the color's look, not its code. For the same reason, say what fills the frame instead of listing what to omit; a bare "no text" line is the weakest form of the instruction and the wordless sentence below is the strong form. Keep both.
+
+Light the scene to reveal color, not to set a mood. In a dim, dusky, or nocturnal rendering every color sinks into one warm-brown murk the user cannot sample from, so bright, generous light is a hard rule even when the concept's moment is dark: an "after hours" or "dawn" concept keeps its props and story but is lit like a studio still, not like the hour. Dark palettes are welcome; dark renderings are not; a near-black primary should read as a rich, clearly-lit surface, not as underexposure. Fill every `[bracketed]` slot; never leave template language in the prompt.
 
 ```text
-One full-bleed photograph, 1500x1500 pixels, framed close: [one scene from
+One full-bleed photograph, square format, framed close: [one scene from
 the product's world: subject and what it is doing, setting], the subject
-filling most of the frame, not a wide view of the room. The scene contains
-[object A], [object B], [object C], and [object D], all plainly
-visible. Lighting: bright, clean, and generous, [direction and quality,
-e.g. "soft daylight flooding in from a large window on the left"]; the
-whole frame clearly lit, no area lost to darkness. Camera: [close framing
-and lens, e.g. "85mm still life close-up at waist level, shallow depth of
-field"]. Mood: [two or three adjectives from the brief's personality]. The
-scene is art-directed as bold color blocking in a strict four-color story,
-every color a large unbroken field, none reduced to a sliver: [color name]
-([neutral hex]) as the ground, about half the frame; [color name]
-([primary hex]) as one continuous mass over roughly a third of the frame,
-carried by [the main subject]; [color name] ([secondary hex]) as a clear
-supporting field on [a supporting element]; [color name] ([tertiary hex])
-as one vivid accent, small but big enough to read at a glance, on
-[a specific object]. Every color reads true and fully saturated in the
-light, none sunk in shadow. Rich, saturated, editorial color; not a dim,
+filling most of the frame, not a wide view of the room. The scene
+contains [object A], [object B], [object C], and [object D], all plainly
+visible. The scene is art-directed as bold color blocking in a strict
+four-color story: every surface in frame carries one of the four colors,
+each color one large unbroken field, none reduced to a sliver, no
+stretch of frame left to a color outside the four: [the neutral's
+carrier], [plain-language color with a material-world comparison], as
+the ground and backdrop, about half the frame; [the primary's carrier],
+[color description], one continuous mass over roughly a third of the
+frame, carried by the main subject; [the secondary's carrier], [color
+description], a clear supporting field beside it; [the tertiary's
+carrier], [color description], one small vivid accent, big enough to
+read at a glance. Focus: deep and even, every object and surface in
+crisp sharp focus from front to back; no blur, no bokeh, no soft
+out-of-focus background anywhere in the frame. Camera: [tight still-life
+framing and angle, e.g. "straight-on still life at table height" or
+"high overhead of the worktable"]. Lighting: bright, even, generous
+studio daylight; every color fully lit, true, and saturated, no area
+lost to shadow. Mood: [two or three adjectives from the brief's
+personality]. The image is completely wordless: every material is plain
+and unprinted, a world with no lettering, numerals, tags, labels, or
+graphics anywhere in it. Rich, saturated, editorial color; not a dim,
 dusky, nocturnal, or candlelit image. Photorealistic, real texture. No
-text, no labels, no numbers, no borders, no watermark.
+text, no watermark.
 ```
 
 ## Step 2: Carve the territories
@@ -222,10 +234,10 @@ generation tooling.
    to ship.
 
 4. Build the hero prompt from the HERO PROMPT skeleton below and
-   generate the HERO image, 1500x1500 (or the nearest supported
-   square). The image must be square: a "1500x1500" line inside the
-   prompt does not pin the canvas, so whenever the tool accepts a size
-   or aspect-ratio parameter, pass square (1:1) explicitly; the compile
+   generate the HERO image at 1500x1500 or the nearest supported
+   square. The image must be square: a size line inside the prompt
+   does not pin the canvas, so whenever the tool accepts a size or
+   aspect-ratio parameter, pass square (1:1) explicitly; the compile
    step rejects non-square images, and the fix is regenerating with
    that parameter actually set, not editing the file. Five sibling
    specialists share the generation tool's output folder, so a default
@@ -237,17 +249,27 @@ generation tooling.
    reported file to [visual-cues dir]/[slug]-hero.png and report the
    copy's path.
 
-   Open the result and inspect it once. Ownership: the scene is yours,
-   staging your palette; a wrong subject or palette means you picked up
-   a sibling's file from the race above, so regenerate once with the
-   [slug] filename. Light: if the image is dim, dusky, or nocturnal,
-   with palette colors sinking into shadow instead of reading bright
-   and true, regenerate the HERO once, same prompt, plus this line
-   appended: "Render the scene in bright, generous daylight-quality
-   studio light; every color fully lit and clearly readable, no
-   darkness anywhere in the frame." Never retry more than once per
-   check, inside the three-call budget; keep the last result
+   Open the result and inspect it once, four checks, each with at most
+   one retry, all inside the three-call budget; keep the last result
    regardless.
+   - Ownership: the scene is yours, staging your palette; a wrong
+     subject or palette means you picked up a sibling's file from the
+     race above, so regenerate once with the [slug] filename.
+   - Wordless: any lettering, numeral, label, or swatch strip anywhere
+     in the frame fails the cue; regenerate once, same prompt, plus
+     "The image contains no lettering, numerals, or graphic marks of
+     any kind; every surface is plain and unprinted."
+   - Real estate: if the palette's fields read as slivers, with frame
+     spent on a blurred background, a bare wall, an empty room, or a
+     whole person instead of the four colors, regenerate once, same
+     prompt, plus "Frame tighter on the scene's four color carriers;
+     every surface in frame carries one of the four colors, and
+     everything is in crisp sharp focus, no blur anywhere."
+   - Light: if the image is dim, dusky, or nocturnal, with palette
+     colors sinking into shadow instead of reading bright and true,
+     regenerate once, same prompt, plus "Render the scene in bright,
+     generous daylight-quality studio light; every color fully lit and
+     clearly readable, no darkness anywhere in the frame."
 
 5. Reply with exactly these three lines and nothing else, the path
    being the file you verified in step 4:
