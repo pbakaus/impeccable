@@ -148,12 +148,6 @@ describe('live-poll --stream integration', () => {
       assert.equal(secondEvent.type, 'steer');
       assert.equal(secondEvent.id, '22222222');
       assert.equal(secondEvent.message, 'stream test two');
-
-      await postReply(`http://localhost:${server.port}`, server.token, {
-        id: '22222222',
-        type: 'steer_done',
-        message: 'done two',
-      });
     } finally {
       streamProc.kill('SIGTERM');
     }
@@ -201,83 +195,6 @@ describe('live-poll --stream integration', () => {
       await postReply(`http://localhost:${server.port}`, server.token, {
         id: 'aa999999',
         type: 'done',
-      });
-    } finally {
-      streamProc.kill('SIGTERM');
-    }
-  });
-
-  it('waits for carbonize cleanup, then resumes on the same stream process', async () => {
-    const streamProc = spawn('node', [
-      POLL_SCRIPT,
-      '--stream',
-      '--types=steer,manual_edit_apply,carbonize_cleanup,exit',
-      '--ack-timeout=15000',
-    ], {
-      cwd: server.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-    });
-
-    try {
-      const streamPid = streamProc.pid;
-      const carbonizeLinePromise = readStdoutLine(streamProc);
-
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      const carbonizeResponse = await fetch(`http://localhost:${server.port}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: server.token,
-          type: 'carbonize_cleanup',
-          id: 'c0ffee01',
-          sessionId: 'abc12345',
-          file: 'src/App.jsx',
-          variantId: '2',
-          acceptResult: { carbonize: true },
-        }),
-      });
-      assert.equal(carbonizeResponse.status, 200);
-
-      const carbonizeEvent = JSON.parse(await carbonizeLinePromise);
-      assert.equal(carbonizeEvent.type, 'carbonize_cleanup');
-      assert.equal(carbonizeEvent.id, 'c0ffee01');
-      assert.equal(streamProc.exitCode, null);
-      process.kill(streamPid, 0);
-
-      // Cleanup is performed by the main task through separate tool calls while
-      // this yielded process waits for its acknowledgement.
-      await postReply(`http://localhost:${server.port}`, server.token, {
-        id: 'c0ffee01',
-        type: 'complete',
-        file: 'src/App.jsx',
-      });
-
-      const steerLinePromise = readStdoutLine(streamProc);
-      const steerResponse = await fetch(`http://localhost:${server.port}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: server.token,
-          type: 'steer',
-          id: '33333333',
-          message: 'still listening after carbonize',
-          pageUrl: 'http://localhost:4321/',
-        }),
-      });
-      assert.equal(steerResponse.status, 200);
-
-      const steerEvent = JSON.parse(await steerLinePromise);
-      assert.equal(steerEvent.type, 'steer');
-      assert.equal(steerEvent.id, '33333333');
-      assert.equal(streamProc.pid, streamPid);
-      assert.equal(streamProc.exitCode, null);
-
-      await postReply(`http://localhost:${server.port}`, server.token, {
-        id: '33333333',
-        type: 'steer_done',
-        message: 'No-op: lifecycle test only.',
       });
     } finally {
       streamProc.kill('SIGTERM');

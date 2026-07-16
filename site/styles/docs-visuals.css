@@ -3181,7 +3181,7 @@
 }
 
 .neon-case-primary {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
 }

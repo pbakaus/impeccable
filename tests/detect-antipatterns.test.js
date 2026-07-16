@@ -1405,21 +1405,6 @@ describe('inset box-shadow stripe', () => {
     expect(scanCssTextForInsetStripe(selectedOnly)).toHaveLength(0);
   });
 
-  test('flags semantically chromatic external tokens without guessing neutral tokens', () => {
-    const css = `
-      .kinpaku { box-shadow: inset 3px 0 0 var(--ks-kinpaku-deep); }
-      .patina { box-shadow: inset 3px 0 0 var(--ks-patina-deep); }
-      .accent { box-shadow: inset 3px 0 0 var(--brand-accent); }
-      .signal { box-shadow: inset 3px 0 0 var(--signal-blue); }
-      .neutral { box-shadow: inset 3px 0 0 var(--shadow-color); }
-      .current { box-shadow: inset 3px 0 0 currentColor; }
-    `;
-    const findings = scanCssTextForInsetStripe(css);
-    expect(findings).toHaveLength(4);
-    expect(findings.map(f => f.snippet).join(' ')).not.toContain('.neutral');
-    expect(findings.map(f => f.snippet).join(' ')).not.toContain('.current');
-  });
-
   test('static tab strip: chromatic border on every tab flags, selected-only underline stays silent', async () => {
     // All-tabs variant: every tab in the group carries the stripe.
     await withStaticFixture({

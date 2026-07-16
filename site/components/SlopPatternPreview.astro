@@ -1,16 +1,24 @@
-<section class="slop-teaser-section slop-pattern-section" id="slop" aria-labelledby="slop-pattern-title">
+<section
+  class="slop-teaser-section slop-pattern-section"
+  id="slop"
+  aria-labelledby="slop-pattern-title"
+  data-slop-scan
+  data-detector="on"
+>
   <header class="slop-pattern-head">
     <div>
-      <h2 id="slop-pattern-title" class="slop-teaser-title">AI has a house style. Impeccable knows the tells.</h2>
+      <h2 id="slop-pattern-title" class="slop-teaser-title">Detects and removes AI slop.</h2>
       <p class="slop-teaser-body">
-        The defaults move. The pattern is the same: the model reaches for whatever currently signals
-        “taste” without asking whether it belongs. Impeccable catches those reflexes before they become your design.
+        59 checks catch the defaults agents keep reaching for before they become your design.
       </p>
     </div>
     <div class="slop-pattern-actions">
-      <span class="slop-pattern-count"><strong>59</strong> detector checks</span>
+      <button class="slop-scan-control" type="button" aria-pressed="true" data-slop-scan-button>
+        <span class="slop-scan-control-dot" aria-hidden="true"></span>
+        <span data-slop-scan-label>Detector on</span>
+      </button>
       <a class="ks-button ks-button-secondary" href="/slop">
-        Open the full gallery
+        Explore all 59
         <span class="ks-button-arrow" aria-hidden="true">
           <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
             <path d="M0 4h14M10 0l4 4-4 4"/>
@@ -20,80 +28,150 @@
     </div>
   </header>
 
-  <div class="slop-pattern-board">
-    <article class="slop-pattern-item slop-pattern-item--wide">
-      <div class="slop-pattern-specimen slop-pattern-specimen--serif" aria-hidden="true">
-        <span class="slop-pattern-kicker">A quieter way to work</span>
-        <span class="slop-pattern-serif-line">Beautifully <em>crafted</em><br />for modern teams.</span>
-      </div>
-      <div class="slop-pattern-meta">
-        <span class="slop-pattern-index">Typography · detected</span>
-        <h3>Italic serif hero</h3>
-        <p>Instrument Serif and its neighbors became the shortcut for tasteful AI output.</p>
-      </div>
-    </article>
+  <div class="slop-pattern-board" aria-label="Interactive gallery of detected AI design patterns">
+    <a
+      class="slop-pattern-item slop-pattern-item--serif"
+      href="/slop#rule-italic-serif-display"
+      aria-label="View rule: Italic serif display headline on an AI beige palette"
+      style="--scan-order: 0"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--serif" aria-hidden="true">
+        <span class="slop-target slop-target--serif" data-label="AI beige + serif">
+          Beautifully <em>crafted</em><br />for modern teams.
+        </span>
+      </span>
+    </a>
 
-    <article class="slop-pattern-item">
-      <div class="slop-pattern-specimen slop-pattern-specimen--beige" aria-hidden="true">
-        <span class="slop-beige-wordmark">Claude &amp; Co.</span>
-        <span class="slop-beige-copy">Soft, tasteful, safely indistinct.</span>
-        <span class="slop-beige-button">Begin</span>
-      </div>
-      <div class="slop-pattern-meta">
-        <span class="slop-pattern-index">Color · detected</span>
-        <h3>Claude beige</h3>
-        <p>Warm tinted paper is now the safe AI surface, chosen before the product has a palette.</p>
-      </div>
-    </article>
+    <a
+      class="slop-pattern-item slop-pattern-item--soft-card"
+      href="/slop#rule-generic-drop-shadows"
+      aria-label="View rule: Rounded rectangles with generic drop shadows"
+      style="--scan-order: 1"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--soft-card" aria-hidden="true">
+        <span class="slop-target slop-target--soft-card" data-label="Soft rounded card">
+          <span class="slop-soft-card-icon">✦</span>
+          <strong>Everything in one place</strong>
+          <span class="slop-soft-card-copy">Plan, create, and collaborate with ease.</span>
+          <span class="slop-soft-card-action">Get started <i>→</i></span>
+        </span>
+      </span>
+    </a>
 
-    <article class="slop-pattern-item">
-      <div class="slop-pattern-specimen slop-pattern-specimen--sidetab" aria-hidden="true">
-        <div class="slop-side-card">
+    <a
+      class="slop-pattern-item slop-pattern-item--sidetab"
+      href="/slop#rule-side-tab"
+      aria-label="View rule: Side-tab accent border"
+      style="--scan-order: 2"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--sidetab" aria-hidden="true">
+        <span class="slop-target slop-target--sidetab" data-label="Side-tab border">
           <strong>Performance insight</strong>
           <span>Your conversion rate is up 12% this week.</span>
-        </div>
-      </div>
-      <div class="slop-pattern-meta">
-        <span class="slop-pattern-index">Visual detail · detected</span>
-        <h3>Side-tab border</h3>
-        <p>A thick colored stripe on a rounded card remains one of the clearest generated-UI tells.</p>
-      </div>
-    </article>
+        </span>
+      </span>
+    </a>
 
-    <article class="slop-pattern-item">
-      <div class="slop-pattern-specimen slop-pattern-specimen--pulse" aria-hidden="true">
-        <div class="slop-pulse-status">
-          <span class="slop-pulse-dot"></span>
-          <span>AI is thinking</span>
-        </div>
-        <div class="slop-pulse-lines"><i></i><i></i><i></i></div>
-      </div>
-      <div class="slop-pattern-meta">
-        <span class="slop-pattern-index">Motion · detected</span>
-        <h3>Pulsing status dot</h3>
-        <p>Decorative pulse implies live state even when nothing is changing.</p>
-      </div>
-    </article>
+    <a
+      class="slop-pattern-item slop-pattern-item--eyebrow"
+      href="/slop#rule-hero-eyebrow-chip"
+      aria-label="View rule: Hero eyebrow pill chip"
+      style="--scan-order: 3"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--eyebrow" aria-hidden="true">
+        <span class="slop-target slop-target--eyebrow" data-label="Eyebrow chip">
+          <span class="slop-eyebrow-chip">Introducing</span>
+          <strong>The operating system<br />for modern teams.</strong>
+          <span>Everything you need to move faster.</span>
+        </span>
+      </span>
+    </a>
 
-    <article class="slop-pattern-item slop-pattern-item--wide">
-      <div class="slop-pattern-specimen slop-pattern-specimen--nested" aria-hidden="true">
-        <div class="slop-nested-shell">
+    <a
+      class="slop-pattern-item slop-pattern-item--pulse"
+      href="/slop#section-motion"
+      aria-label="View rule: Decorative pulsing status dot"
+      style="--scan-order: 4"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--pulse" aria-hidden="true">
+        <span class="slop-target slop-target--pulse" data-label="Pulsing status dot">
+          <span class="slop-pulse-status"><i class="slop-pulse-dot"></i> AI is thinking</span>
+          <span class="slop-pulse-lines"><i></i><i></i><i></i></span>
+        </span>
+      </span>
+    </a>
+
+    <a
+      class="slop-pattern-item slop-pattern-item--nested"
+      href="/slop#rule-nested-cards"
+      aria-label="View rule: Nested cards"
+      style="--scan-order: 5"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--nested" aria-hidden="true">
+        <span class="slop-target slop-target--nested" data-label="Cards in cards">
           <span>Workspace</span>
-          <div class="slop-nested-card">
+          <span class="slop-nested-card">
             <span>Overview</span>
-            <div class="slop-nested-card slop-nested-card--inner">Card inside card inside card.</div>
-          </div>
-        </div>
-      </div>
-      <div class="slop-pattern-meta">
-        <span class="slop-pattern-index">Layout · detected</span>
-        <h3>Nested cards</h3>
-        <p>Containers become the hierarchy because the model never made one with type, space, or rhythm.</p>
-      </div>
-    </article>
-  </div>
+            <span class="slop-nested-card slop-nested-card--inner">Card inside card inside card.</span>
+          </span>
+        </span>
+      </span>
+    </a>
 
-  <footer class="slop-pattern-foot">
-    <p><code>npx impeccable detect src/</code> catches deterministic tells. <a href="/docs/critique">/critique</a> adds the design review.</p>
-  </footer>
+    <a
+      class="slop-pattern-item slop-pattern-item--icons"
+      href="/slop#rule-icon-tile-stack"
+      aria-label="View rule: Icon tile stacked above heading"
+      style="--scan-order: 6"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--icons" aria-hidden="true">
+        <span class="slop-target slop-target--icons" data-label="Identical icon tiles">
+          <span><i>✦</i><b>Automate</b><small>Move faster.</small></span>
+          <span><i>⌁</i><b>Integrate</b><small>Work smarter.</small></span>
+          <span><i>↗</i><b>Scale</b><small>Grow together.</small></span>
+        </span>
+      </span>
+    </a>
+
+    <a
+      class="slop-pattern-item slop-pattern-item--markers"
+      href="/slop#rule-numbered-section-markers"
+      aria-label="View rule: Numbered section markers"
+      style="--scan-order: 7"
+    >
+      <span class="slop-pattern-specimen slop-pattern-specimen--markers" aria-hidden="true">
+        <span class="slop-target slop-target--markers" data-label="Numbered section labels">
+          <span><b>01</b> Discover</span>
+          <span><b>02</b> Design</span>
+          <span><b>03</b> Deliver</span>
+        </span>
+      </span>
+    </a>
+  </div>
 </section>
+
+<script>
+  const setupSlopDetectors = () => {
+    document.querySelectorAll<HTMLElement>('[data-slop-scan]').forEach((root) => {
+      if (root.dataset.scanReady === 'true') return;
+      root.dataset.scanReady = 'true';
+
+      const button = root.querySelector<HTMLButtonElement>('[data-slop-scan-button]');
+      const label = root.querySelector<HTMLElement>('[data-slop-scan-label]');
+      if (!button || !label) return;
+
+      const setDetector = (active: boolean) => {
+        root.dataset.detector = active ? 'on' : 'off';
+        button.setAttribute('aria-pressed', String(active));
+        label.textContent = active ? 'Detector on' : 'Detector off';
+      };
+
+      button.addEventListener('click', () => {
+        setDetector(button.getAttribute('aria-pressed') !== 'true');
+      });
+    });
+  };
+
+  setupSlopDetectors();
+  document.addEventListener('astro:page-load', setupSlopDetectors);
+</script>

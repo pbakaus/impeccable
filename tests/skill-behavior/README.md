@@ -40,18 +40,18 @@ The trace is the source of truth, not the model's free-form reply.
 
 | # | Setup | Assertion |
 |---|---|---|
-| 1 | empty workspace | runs `context.mjs`; loads `reference/init.md` when it treats the run as attended or `reference/new-work.md` when it recognizes the one-shot exception; resolves that gate before implementation |
-| 2 | PRODUCT.md only | runs `context.mjs` 1-3 times; loads `reference/new-work.md` because no committed design system exists |
-| 3 | PRODUCT.md + DESIGN.md | runs `context.mjs` 1-3 times; receives or explores the committed design system |
+| 1 | empty workspace | runs `context.mjs`; loads `reference/init.md` before implementation; automation is not an init bypass |
+| 2 | PRODUCT.md only | runs `context.mjs` 1-3 times; loads `reference/init.md` to establish DESIGN.md with the user before surface work |
+| 3 | PRODUCT.md + DESIGN.md | runs `context.mjs` 1-3 times; receives the committed design system and loads `reference/new-work.md` for the task-scoped concept |
 | 4 | PRODUCT.md + DESIGN.md, context already loaded in turn 1 | turn 2 does **not** re-run `context.mjs` |
-| 5 | PRODUCT.md without the legacy `## Register` field | runs `context.mjs`; greenfield craft still loads `reference/new-work.md` |
+| 5 | PRODUCT.md without the legacy `## Register` field and no DESIGN.md | runs `context.mjs`; greenfield craft still loads `reference/init.md` to establish the missing world |
 | 6 | PRODUCT.md + DESIGN.md + a minimal `index.html`; prompt is `/impeccable polish` | loads `reference/polish.md` |
 | 7 | same fixture; prompt is `/impeccable audit` | loads `reference/audit.md` |
 | 8 | PRODUCT.md + DESIGN.md + a SvelteKit scaffold (`src/app.css`, components, `+page.svelte`); prompt is `/impeccable polish src/routes/+page.svelte` | reads at least one project code file (CSS / component / page) — not just the skill's reference files |
 | 9 | PRODUCT.md + `index.html` + a seeded update cache with a newer version (`skillVersion` copy-mode so `context.mjs` has a `SKILL.md` to version-check against); prompt is `/impeccable polish index.html` | `context.mjs` runs and its output carries the `UPDATE_AVAILABLE` directive (proven via captured bash output); the agent does **not** auto-run `npx impeccable update` (it must ask first) |
 | 10 | no PRODUCT.md + a minimal `index.html`; prompt is `/impeccable polish index.html` | runs `context.mjs`, loads `reference/polish.md`, and does **not** divert into `reference/init.md` |
-| 11 | empty workspace; prompt is `/impeccable shape ...` | runs `context.mjs`; resolves `reference/init.md` (attended) or `reference/new-work.md` (unattended) before implementation |
-| 12 | empty workspace; prompt is natural-language build intent with no command word | runs `context.mjs`; resolves `reference/init.md` (attended) or `reference/new-work.md` (unattended) before implementation |
+| 11 | empty workspace; prompt is `/impeccable shape ...` | runs `context.mjs`; resolves `reference/init.md` before planning the surface |
+| 12 | empty workspace; prompt is natural-language build intent with no command word | runs `context.mjs`; resolves `reference/init.md` before implementation |
 | 13 | empty workspace; prompt is `/impeccable teach` | runs `context.mjs` and diverts into `reference/init.md` because `teach` aliases `init` |
 | 14 | PRODUCT.md with `## Register: product` + `## Platform: ios` (native iOS app); prompt is `/impeccable craft a tide detail screen` | `context.mjs` runs and emits a NEXT STEP pointing at `reference/ios.md` (proven via captured bash output); agent loads `reference/ios.md` (Setup step 5, native conventions on top of the register reference) |
 | 15 | same iOS fixture; prompt is `/impeccable audit` | agent loads `reference/audit.native.md` (the Commands-table native variant, routed instead of `audit.md`) |

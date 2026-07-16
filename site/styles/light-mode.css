@@ -694,7 +694,7 @@ html.light .designing-kinpaku .docs-viz-live-kicker {
 }
 
 html.light .designing-kinpaku .docs-viz-live-btn {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 html.light .designing-kinpaku .docs-viz-live-ctx,
@@ -718,7 +718,7 @@ html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active svg {
 }
 
 html.light .designing-kinpaku .docs-viz-live-ctx-accept {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 html.light .designing-kinpaku .designing-surface-cmd,

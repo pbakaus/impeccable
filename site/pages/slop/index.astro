@@ -1,12 +1,88 @@
 ---
 import Base from '../../layouts/Base.astro';
+import SlopRuleCard from '../../components/SlopRuleCard.astro';
 import '../../styles/sub-pages.css';
 import '../../styles/slop-kinpaku.css';
+import { ANTIPATTERNS } from '../../../cli/engine/registry/antipatterns.mjs';
+
+const CRITIQUE_ONLY_COUNT = 5;
+const DETECTOR_RULE_COUNT = ANTIPATTERNS.length;
+const TOTAL_PATTERN_COUNT = DETECTOR_RULE_COUNT + CRITIQUE_ONLY_COUNT;
+const GATED_RULE_COUNT = ANTIPATTERNS.filter((rule) => rule.gated).length;
+const CATALOG_RULE_IDS = {
+  designSystem: ['design-system-font', 'design-system-color', 'design-system-radius', 'design-system-font-size'],
+  visualDetails: ['codex-grid-background'],
+  colorContrast: ['radial-halo'],
+  layoutSpace: ['numbered-section-labels', 'edge-flush-cards', 'text-occlusion', 'first-viewport-column-overflow', 'heading-rhythm'],
+  motion: ['pulsing-dot', 'blinking-cursor', 'marquee'],
+  copy: ['repeated-container-text'],
+  imagery: ['shape-assembled-illustration'],
+  generalQuality: ['script-error', 'content-hidden-at-rest'],
+};
+
+const CATALOG_RULE_LAYERS = {
+  'blinking-cursor': 'browser',
+  'script-error': 'browser',
+  'content-hidden-at-rest': 'browser',
+  'edge-flush-cards': 'browser',
+  'text-occlusion': 'browser',
+  'first-viewport-column-overflow': 'browser',
+  'heading-rhythm': 'browser',
+};
+
+const CATALOG_RULE_VISUALS = {
+  'pulsing-dot': `<div class="catalog-rule-demo catalog-rule-demo--center"><span style="width:12px;height:12px;border-radius:50%;background:#20a37a;box-shadow:0 0 0 7px rgba(32,163,122,.14),0 0 0 14px rgba(32,163,122,.06)"></span><span style="font:600 12px system-ui;color:#222">Systems operational</span></div>`,
+  'blinking-cursor': `<div class="catalog-rule-demo catalog-rule-demo--terminal"><span>&gt; Building the future</span><b style="display:inline-block;width:8px;height:18px;background:#d4a72c;margin-left:4px"></b></div>`,
+  'shape-assembled-illustration': `<div class="catalog-rule-demo catalog-rule-demo--center"><svg width="150" height="86" viewBox="0 0 150 86" fill="none"><rect x="20" y="38" width="52" height="34" rx="8" fill="#eadfce"/><circle cx="46" cy="32" r="19" fill="#d4a72c"/><path d="M77 71c8-28 23-42 46-42v42H77Z" fill="#5c9b8f"/><circle cx="113" cy="20" r="8" fill="#222"/></svg></div>`,
+  'radial-halo': `<div class="catalog-rule-demo" style="background:radial-gradient(circle at 50% 45%,rgba(130,92,246,.62),rgba(130,92,246,0) 58%),#101014;color:#fff;display:grid;place-items:center;font:600 16px system-ui">Ambient glow</div>`,
+  'marquee': `<div class="catalog-rule-demo catalog-rule-demo--marquee"><span>NORTHWIND&nbsp;&nbsp; HALCYON&nbsp;&nbsp; MERIDIAN&nbsp;&nbsp; FIELDNOTE&nbsp;&nbsp; NORTHWIND</span></div>`,
+  'numbered-section-labels': `<div class="catalog-rule-demo catalog-rule-demo--numbers"><span><i>01</i>Discover</span><span><i>02</i>Design</span><span><i>03</i>Deliver</span></div>`,
+  'script-error': `<div class="catalog-rule-demo catalog-rule-demo--console"><span>Uncaught TypeError</span><small>Cannot read properties of null</small><code>app.js:42:17</code></div>`,
+  'content-hidden-at-rest': `<div class="catalog-rule-demo catalog-rule-demo--hidden"><strong>Visible heading</strong><span>Most of this page never leaves opacity: 0.</span><span>Reveal handler did not run.</span></div>`,
+  'edge-flush-cards': `<div class="catalog-rule-demo catalog-rule-demo--scroller"><span></span><span></span><span></span></div>`,
+  'text-occlusion': `<div class="catalog-rule-demo catalog-rule-demo--occlusion"><strong>Words should stay readable.</strong><span></span></div>`,
+  'first-viewport-column-overflow': `<div class="catalog-rule-demo catalog-rule-demo--columns"><span></span><span></span></div>`,
+  'heading-rhythm': `<div class="catalog-rule-demo catalog-rule-demo--rhythm"><p></p><h4>New section</h4><span></span><span></span></div>`,
+  'repeated-container-text': `<div class="catalog-rule-demo catalog-rule-demo--repeat"><strong>Ready</strong><span>Ready</span><button>Ready</button></div>`,
+  'design-system-font': `<div class="catalog-rule-demo catalog-rule-demo--token"><span>Typography</span><strong style="font-family:Georgia,serif">Aa</strong><code>Comic Sans MS</code><i>outside DESIGN.md</i></div>`,
+  'design-system-color': `<div class="catalog-rule-demo catalog-rule-demo--swatches"><span style="background:#d4a72c"></span><span style="background:#5c9b8f"></span><span class="is-outlier" style="background:#b026ff"></span></div>`,
+  'design-system-radius': `<div class="catalog-rule-demo catalog-rule-demo--radius"><span style="border-radius:4px">4</span><span style="border-radius:8px">8</span><span class="is-outlier" style="border-radius:28px">28</span></div>`,
+  'design-system-font-size': `<div class="catalog-rule-demo catalog-rule-demo--scale"><span>14</span><span>16</span><span>24</span><b>19</b></div>`,
+  'codex-grid-background': `<div class="catalog-rule-demo" style="background-image:linear-gradient(rgba(70,80,90,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(70,80,90,.16) 1px,transparent 1px);background-size:18px 18px;display:grid;place-items:center"><span style="background:#fff;border:1px solid #ddd;padding:9px 14px;font:600 12px system-ui;color:#222">Decorative grid</span></div>`,
+};
+
+const CATALOG_RULE_COPY = {
+  'pulsing-dot': 'A decorative pulse makes static status look live. Animate only when the data is changing.',
+  'blinking-cursor': 'A fake caret makes non-editable hero copy look like a terminal. Let real inputs own the cursor.',
+  'shape-assembled-illustration': 'Hero art assembled from generic SVG shapes reads like placeholder clip art. Use real illustration, photography, or a purposeful graphic.',
+  'radial-halo': 'A saturated radial glow on a dark page is a familiar generated-UI shortcut. Use a deliberate surface instead.',
+  'marquee': 'Continuous auto-scroll demands attention and hides content. Let people read at their own pace.',
+  'numbered-section-labels': 'Tiny numbers repeated beside headings imitate editorial structure without adding it. Let hierarchy and rhythm sequence the page.',
+  'script-error': 'An uncaught load error can break interactions and hide content. Fix it before judging the interface.',
+  'content-hidden-at-rest': 'Reveal code left much of the page invisible. Ship content visible, then enhance its entrance.',
+  'edge-flush-cards': 'Scroller cards lose one edge because the panel has no matching inset. Keep both gutters consistent.',
+  'text-occlusion': 'An opaque layer covers readable text. Move the layer or give the text clear space.',
+  'first-viewport-column-overflow': 'One opening column runs far past its neighbor, leaving dead space. Balance the columns or continue below the row.',
+  'heading-rhythm': 'A heading sits closer to the previous block than its own content. Give it more space above than below.',
+  'repeated-container-text': 'The same label appears in several slots of one card. Keep it once, where it matters.',
+  'design-system-font': 'A font falls outside the documented type system. Use an approved face or update DESIGN.md.',
+  'design-system-color': 'A literal color falls outside the documented palette. Use a token or make the addition intentional.',
+  'design-system-radius': 'A corner radius falls outside the documented shape scale. Use a token or update the system.',
+  'design-system-font-size': 'A font size falls between documented type steps. Use the scale or add a deliberate new step.',
+  'codex-grid-background': 'A decorative grid covers a surface without supporting a canvas, map, or measurement task. Use product structure or a plain field.',
+};
+
+const catalogRules = Object.fromEntries(
+  Object.entries(CATALOG_RULE_IDS).map(([section, ids]) => [
+    section,
+    ids.map((id) => ANTIPATTERNS.find((rule) => rule.id === id)).filter(Boolean),
+  ]),
+);
 ---
 
 <Base
   title="Slop | Impeccable"
-  description="46 patterns that mark an interface as AI-generated, plus the live detection overlay that catches them in place. The rule catalog behind npx impeccable detect, the browser extension, and /impeccable critique."
+  description={`${TOTAL_PATTERN_COUNT} patterns that mark an interface as AI-generated or poorly built, including all ${DETECTOR_RULE_COUNT} deterministic detector rules.`}
   activeNav="slop"
   canonicalPath="/slop"
   bodyClass="sub-page skills-layout-page slop-page slop-kinpaku kinpaku-chrome"
@@ -26,16 +102,17 @@ import '../../styles/slop-kinpaku.css';
         <li><a href="#see-it"><span>See it</span></a></li>
         <li><a href="#try-it-live"><span>Try it live</span><span class="anti-patterns-sidebar-count">11</span></a></li>
         <li>
-          <a href="#catalog"><span>The catalog</span><span class="anti-patterns-sidebar-count">46</span></a>
+          <a href="#catalog"><span>The catalog</span><span class="anti-patterns-sidebar-count">{TOTAL_PATTERN_COUNT}</span></a>
           <ul class="slop-sidebar-sublist">
-            <li><a href="#section-visual-details"><span>Visual Details</span><span class="anti-patterns-sidebar-count">7</span></a></li>
+            <li><a href="#section-design-system"><span>Your design system</span><span class="anti-patterns-sidebar-count">4</span></a></li>
+            <li><a href="#section-visual-details"><span>Visual Details</span><span class="anti-patterns-sidebar-count">8</span></a></li>
             <li><a href="#section-typography"><span>Typography</span><span class="anti-patterns-sidebar-count">10</span></a></li>
-            <li><a href="#section-color-contrast"><span>Color &amp; Contrast</span><span class="anti-patterns-sidebar-count">5</span></a></li>
-            <li><a href="#section-layout-space"><span>Layout &amp; Space</span><span class="anti-patterns-sidebar-count">8</span></a></li>
-            <li><a href="#section-motion"><span>Motion</span><span class="anti-patterns-sidebar-count">3</span></a></li>
-            <li><a href="#section-copy"><span>Copy</span><span class="anti-patterns-sidebar-count">4</span></a></li>
-            <li><a href="#section-imagery"><span>Imagery</span><span class="anti-patterns-sidebar-count">1</span></a></li>
-            <li><a href="#section-general-quality"><span>General quality</span><span class="anti-patterns-sidebar-count">8</span></a></li>
+            <li><a href="#section-color-contrast"><span>Color &amp; Contrast</span><span class="anti-patterns-sidebar-count">6</span></a></li>
+            <li><a href="#section-layout-space"><span>Layout &amp; Space</span><span class="anti-patterns-sidebar-count">13</span></a></li>
+            <li><a href="#section-motion"><span>Motion</span><span class="anti-patterns-sidebar-count">6</span></a></li>
+            <li><a href="#section-copy"><span>Copy</span><span class="anti-patterns-sidebar-count">5</span></a></li>
+            <li><a href="#section-imagery"><span>Imagery</span><span class="anti-patterns-sidebar-count">2</span></a></li>
+            <li><a href="#section-general-quality"><span>General quality</span><span class="anti-patterns-sidebar-count">10</span></a></li>
           </ul>
         </li>
         <li><a href="#run-it"><span>Run it yourself</span></a></li>
@@ -48,7 +125,7 @@ import '../../styles/slop-kinpaku.css';
 <div class="anti-patterns-content slop-content">
   <header class="anti-patterns-header slop-header">
     <h1 class="sub-page-title">Slop</h1>
-    <p class="sub-page-lede">46 patterns that mark an interface as AI-generated, and the detection overlay that catches them in place. Watch it flag them live, try it on 11 synthetic specimens, or browse the full catalog. 41 rules run deterministically (<code>npx impeccable detect</code> or the browser extension), 4 of them opt-in provider tells behind <code>--gpt</code> / <code>--gemini</code>; 5 need <a href="/docs/critique">/impeccable critique</a>'s LLM review pass.</p>
+    <p class="sub-page-lede">{TOTAL_PATTERN_COUNT} patterns that expose AI defaults and production defects. Watch the overlay, try it on 11 synthetic specimens, or browse the catalog. The detector now covers {DETECTOR_RULE_COUNT} rules across source and rendered pages; {GATED_RULE_COUNT} provider-specific tells are opt-in. Five broader judgments remain in <a href="/docs/critique">/impeccable critique</a>.</p>
   </header>
 
   <section class="slop-section slop-then-now" id="see-it" aria-label="Detection overlay demo">
@@ -65,7 +142,7 @@ import '../../styles/slop-kinpaku.css';
         <span class="visual-mode-preview-dot red"></span>
         <span class="visual-mode-preview-dot yellow"></span>
         <span class="visual-mode-preview-dot green"></span>
-        <span class="visual-mode-preview-title" data-title-2022="Purple gradients, glassmorphism, neon glow" data-title-2026="Fraunces, warm cream, editorial restraint">Purple gradients, glassmorphism, neon glow</span>
+        <span class="visual-mode-preview-title" data-title-2022="Purple gradients, glassmorphism, neon glow" data-title-2026="AI beige, editorial scaffolding, decorative motion">Purple gradients, glassmorphism, neon glow</span>
       </div>
       <iframe src="/antipattern-examples/old-slop-2022.html" class="visual-mode-frame slop-era-frame" data-era="2022" loading="lazy" title="Impeccable overlay on 2022-era AI slop"></iframe>
       <iframe src="/antipattern-examples/new-slop-2026.html" class="visual-mode-frame slop-era-frame" data-era="2026" loading="lazy" title="Impeccable overlay on 2026-era AI slop" style="display:none"></iframe>
@@ -216,12 +293,40 @@ import '../../styles/slop-kinpaku.css';
 
     <div class="anti-patterns-sections">
 
+      <section class="anti-patterns-section anti-patterns-section--personalized" id="section-design-system">
+        <header class="anti-patterns-section-header">
+          <div>
+            <h3 class="anti-patterns-section-title">Your design system</h3>
+            <p class="anti-patterns-section-lede">With a DESIGN.md in your project, Impeccable catches visual choices that drift from your own fonts, colors, type scale, and corner radii. <a href="/detector">See how personalized detection works.</a></p>
+          </div>
+          <p class="anti-patterns-section-count">4 rules</p>
+        </header>
+        <div class="rule-card-grid">
+          {catalogRules.designSystem.map((rule) => (
+            <SlopRuleCard
+              rule={rule}
+              visual={CATALOG_RULE_VISUALS[rule.id]}
+              layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'}
+              description={CATALOG_RULE_COPY[rule.id]}
+              category="personalized"
+              categoryLabel="Personalized"
+              skillHref="/detector"
+              linkLabel="Inspect the detector"
+            />
+          ))}
+        </div>
+      </section>
+
       <section class="anti-patterns-section" id="section-visual-details">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Visual Details</h3>
-          <p class="anti-patterns-section-count">7 rules</p>
+          <p class="anti-patterns-section-count">8 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.visualDetails.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-border-accent-on-rounded" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="background: #fff; border: 2px solid oklch(60% 0.22 290); border-radius: 16px; padding: 14px 18px; width: 220px; font-family: system-ui, sans-serif; font-size: 13px; color: #111;"><div style="font-weight: 600;">Rounded card</div><div style="color: #666; font-size: 12px;">Thick colored border clashes with the radius.</div></div></div></div>
@@ -458,9 +563,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-color-contrast">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Color &amp; Contrast</h3>
-          <p class="anti-patterns-section-count">5 rules</p>
+          <p class="anti-patterns-section-count">6 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.colorContrast.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-ai-color-palette" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="display: flex; gap: 6px;"><div style="width: 44px; height: 44px; border-radius: 6px; background: oklch(60% 0.22 265);"></div><div style="width: 44px; height: 44px; border-radius: 6px; background: oklch(62% 0.25 300);"></div><div style="width: 44px; height: 44px; border-radius: 6px; background: oklch(64% 0.25 340);"></div><div style="width: 44px; height: 44px; border-radius: 6px; background: oklch(70% 0.20 200);"></div></div></div></div>
@@ -532,9 +641,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-layout-space">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Layout &amp; Space</h3>
-          <p class="anti-patterns-section-count">8 rules</p>
+          <p class="anti-patterns-section-count">13 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.layoutSpace.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-hero-metric-layout" data-layer="llm">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; text-align: left;"><div style="font-size: 42px; font-weight: 800; background: linear-gradient(135deg, oklch(65% 0.25 265), oklch(65% 0.25 340)); -webkit-background-clip: text; background-clip: text; color: transparent; line-height: 1;">10M+</div><div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px;">Active users</div><div style="display: flex; gap: 14px; margin-top: 10px; font-size: 10px; color: #555;"><span><strong>99.9%</strong> uptime</span><span><strong>200ms</strong> p50</span></div></div></div></div>
@@ -644,9 +757,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-motion">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Motion</h3>
-          <p class="anti-patterns-section-count">3 rules</p>
+          <p class="anti-patterns-section-count">6 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.motion.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-bounce-easing" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 8px;"><div style="background: #fff; border: 1px solid #d8d4cc; border-radius: 8px; padding: 11px 16px; box-shadow: 0 10px 26px rgba(0,0,0,0.14); font-size: 12px; font-weight: 600; color: #111; animation: elasticpop 1.8s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;">Confirm action</div><div style="font-size: 11px; color: #888;">A dialog that springs in with overshoot.</div><style>@keyframes elasticpop { 0% { transform: scale(0.4); opacity: 0; } 45% { transform: scale(1.12); opacity: 1; } 65% { transform: scale(0.96); } 82%,100% { transform: scale(1); opacity: 1; } }</style></div></div></div>
@@ -692,9 +809,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-copy">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Copy</h3>
-          <p class="anti-patterns-section-count">4 rules</p>
+          <p class="anti-patterns-section-count">5 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.copy.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-em-dash-overuse" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: Georgia, serif; font-size: 13px; color: #111; line-height: 1.6; max-width: 230px;">It works <span style="color: oklch(58% 0.15 35);">&mdash;</span> really well <span style="color: oklch(58% 0.15 35);">&mdash;</span> for teams <span style="color: oklch(58% 0.15 35);">&mdash;</span> of any size <span style="color: oklch(58% 0.15 35);">&mdash;</span> anywhere.</div></div></div>
@@ -753,9 +874,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-imagery">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">Imagery</h3>
-          <p class="anti-patterns-section-count">1 rule</p>
+          <p class="anti-patterns-section-count">2 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.imagery.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-broken-image" data-layer="cli">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif;"><div style="width: 120px; height: 80px; border: 1px solid #d8d4cc; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: #f5f3ef; color: #b3ada3;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><path d="M3 21L21 3"/></svg></div><div style="font-size: 10px; color: #888; margin-top: 6px;">Empty or missing src ships broken.</div></div></div></div>
@@ -774,9 +899,13 @@ import '../../styles/slop-kinpaku.css';
       <section class="anti-patterns-section" id="section-general-quality">
         <header class="anti-patterns-section-header">
           <h3 class="anti-patterns-section-title">General quality</h3>
-          <p class="anti-patterns-section-count">8 rules</p>
+          <p class="anti-patterns-section-count">10 rules</p>
         </header>
         <div class="rule-card-grid">
+
+          {catalogRules.generalQuality.map((rule) => (
+            <SlopRuleCard rule={rule} visual={CATALOG_RULE_VISUALS[rule.id]} layer={CATALOG_RULE_LAYERS[rule.id] || 'cli'} description={CATALOG_RULE_COPY[rule.id]} />
+          ))}
 
     <article class="rule-card" id="rule-cramped-padding" data-layer="browser">
       <div class="rule-card-visual" aria-hidden="true"><div class="rule-card-visual-inner"><div style="font-family: system-ui, sans-serif;"><button style="background: #111; color: #fff; border: none; border-radius: 4px; padding: 2px 6px; font-size: 13px; font-weight: 500;">Buy now</button> <span style="color: #555; font-size: 12px; margin-left: 8px;">2px vertical padding.</span></div></div></div>

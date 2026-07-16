@@ -4,7 +4,7 @@ Typography carries most of the information on the page. Replace generic defaults
 
 ## Register
 
-New identity work: run the font selection procedure in [new-work.md](new-work.md). Fluid `clamp()` scale, ≥1.25 ratio between steps.
+New identity work belongs to [init.md](init.md), which establishes typography direction with the rest of DESIGN.md. This command works from that committed world. If the user explicitly wants to replace its typographic identity, route the identity change through init and update DESIGN.md; otherwise improve hierarchy, scale, measure, weights, and pairing inside the existing direction. Fluid `clamp()` scale and a ≥1.25 ratio between display steps are useful starting points for Persuade and Experience, not universal mandates.
 
 Operate + Read: system fonts and familiar sans stacks are legitimate here. One well-tuned family typically carries the whole UI. Fixed `rem` scale, 1.125–1.2 ratio between more closely-spaced steps. Long-form Read content wants a steady reading measure and a quiet, stable scale, not display-scale drama.
 
@@ -185,7 +185,7 @@ Use `ch` units for character-based measure (`max-width: 65ch`). Line-height scal
 
 #### Font Selection & Pairing
 
-The tactical selection procedure and the reflex-reject list live in [new-work.md](new-work.md) (loaded for new identity work). The rest of this section covers the adjacent knowledge: anti-reflex corrections, system font use, and pairing rules.
+When a typeface change is actually authorized by the brief and DESIGN.md, use the anti-reflex corrections and pairing principles below. For a broader identity replacement, return to [init.md](init.md) instead of letting a typography command silently create a parallel world.
 
 ##### Anti-reflexes worth defending against
 

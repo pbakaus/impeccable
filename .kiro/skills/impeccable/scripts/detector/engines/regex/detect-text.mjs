@@ -2,7 +2,7 @@ import { GENERIC_FONTS, OVERUSED_FONTS } from '../../shared/constants.mjs';
 import { isNeutralColor } from '../../shared/color.mjs';
 import { extractGoogleFontFamilies } from '../../shared/fonts.mjs';
 import { checkSourceDesignSystem } from '../../design-system.mjs';
-import { scanCssTextForGlow, scanCssTextForInsetStripe, scanCssTextForMarquee, scanCssTextForRadialHalo } from '../../rules/checks.mjs';
+import { scanCssTextForGlow, scanCssTextForMarquee, scanCssTextForRadialHalo } from '../../rules/checks.mjs';
 import { isFullPage } from '../../shared/page.mjs';
 import { applyInlineIgnores } from '../../shared/inline-ignores.mjs';
 import { finding } from '../../findings.mjs';
@@ -340,12 +340,12 @@ const REGEX_ANALYZERS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Style block extraction (Astro/Vue/Svelte <style> blocks)
+// Style block extraction (Vue/Svelte <style> blocks)
 // ---------------------------------------------------------------------------
 
 function extractStyleBlocks(content, ext) {
   ext = ext.toLowerCase();
-  if (ext !== '.astro' && ext !== '.vue' && ext !== '.svelte') return [];
+  if (ext !== '.vue' && ext !== '.svelte') return [];
   const blocks = [];
   const re = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let m;
@@ -472,16 +472,8 @@ function detectText(content, filePath, options = {}) {
     profile,
     phase: 'source',
   }));
-  if (cssLike.has(ext)) {
-    findings.push(...profileFindings(profile, {
-      engine: 'regex',
-      phase: 'source',
-      ruleId: 'side-tab',
-      target: filePath,
-    }, () => scanCssTextForInsetStripe(content).map(hit => finding(hit.id, filePath, hit.snippet))));
-  }
 
-  // Extract and scan <style> blocks from Astro/Vue/Svelte components.
+  // Extract and scan <style> blocks from Vue/Svelte SFCs
   const styleBlocks = profile
     ? profileStep(profile, {
       engine: 'regex',
@@ -496,13 +488,6 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'style-block',
     }));
-    findings.push(...profileFindings(profile, {
-      engine: 'regex',
-      phase: 'style-block',
-      ruleId: 'side-tab',
-      target: filePath,
-    }, () => scanCssTextForInsetStripe(block.content)
-      .map(hit => finding(hit.id, filePath, hit.snippet, block.startLine))));
   }
 
   // Extract and scan CSS-in-JS template literals
@@ -520,13 +505,6 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'css-in-js',
     }));
-    findings.push(...profileFindings(profile, {
-      engine: 'regex',
-      phase: 'css-in-js',
-      ruleId: 'side-tab',
-      target: filePath,
-    }, () => scanCssTextForInsetStripe(block.content)
-      .map(hit => finding(hit.id, filePath, hit.snippet, block.startLine))));
   }
 
   if (options?.designSystem) {

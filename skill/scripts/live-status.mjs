@@ -36,22 +36,14 @@ export async function statusCli() {
       agentPolling: server.agentPolling,
       pendingEvents: server.pendingEvents,
     } : null,
-    codexWorker: server?.codexWorker || null,
     activeSessions: server?.activeSessions || activeSessions,
-    recoveryHint: recoveryHint({ server, manualApply }),
+    recoveryHint: manualApply
+      ? manualApplyResumeHint(manualApply)
+      : server
+        ? 'Run live-poll.mjs to continue pending work, or live-complete.mjs --id <session> after manual cleanup.'
+        : 'Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.',
   };
   console.log(JSON.stringify(payload, null, 2));
-}
-
-function recoveryHint({ server, manualApply }) {
-  if (manualApply) return manualApplyResumeHint(manualApply);
-  if (server?.codexWorker?.error === 'codex_cli_unavailable') {
-    return `Install Codex CLI (${server.codexWorker.setup?.docsUrl}), run ${server.codexWorker.setup?.afterInstall || 'codex login'}, then restart Live. The current session can continue through live-poll.mjs.`;
-  }
-  if (server) {
-    return 'Run live-poll.mjs to continue pending work, or live-complete.mjs --id <session> after manual cleanup.';
-  }
-  return 'Start live-server.mjs to requeue pending durable events, then run live-poll.mjs.';
 }
 
 function findPendingManualApply(server, activeSessions) {

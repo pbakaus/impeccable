@@ -27,10 +27,6 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { completionTypeForAcceptResult } from '../../skill/scripts/live/completion.mjs';
-import {
-  prepareGenerationArtifact,
-  publishGenerationArtifact,
-} from '../../skill/scripts/live/generation-publisher.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -1329,25 +1325,15 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
     styleMode: wrapInfo.styleMode,
   });
 
-  const endMarkerIdx = lines.findIndex((line, index) =>
-    index > markerIdx && line.includes('impeccable-variants-end ' + sessionId),
-  );
-  if (endMarkerIdx === -1) {
-    throw new Error('end marker not found in ' + wrapInfo.file);
-  }
-  const tailIdx = wrapInfo.commentSyntax.open === '{/*'
-    ? endMarkerIdx
-    : endMarkerIdx - 1;
-
   const next = [
     ...lines.slice(0, markerIdx + 1),
     block,
-    ...lines.slice(tailIdx),
+    ...lines.slice(markerIdx + 1),
   ];
   await fs.writeFile(filePath, next.join('\n'), 'utf-8');
 }
 
-async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
+async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output }) {
   const manifestPath = path.join(tmp, wrapInfo.file);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
   const componentDir = path.join(tmp, manifest.componentDir);
@@ -1387,168 +1373,7 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writ
     paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
   }
 
-  if (writeParams) {
-    await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
-  }
-  manifest.arrivedVariants = output.variants.length;
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-}
-
-async function publishSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
-  const prepared = prepareGenerationArtifact({
-    id: event.id,
-    sourceFile: wrapInfo.file,
-    cwd: tmp,
-  });
-  if (!prepared.ok) throw new Error(`Svelte publication prepare failed: ${prepared.error}`);
-
-  await writeSvelteComponentVariants({
-    tmp,
-    wrapInfo: { ...wrapInfo, file: prepared.artifactFile },
-    event,
-    output,
-    writeParams,
-  });
-
-  const published = publishGenerationArtifact({
-    id: event.id,
-    epoch: prepared.epoch,
-    sourceFile: wrapInfo.file,
-    artifactFile: prepared.artifactFile,
-    expectedSourceHash: prepared.expectedSourceHash,
-    arrivedVariants: output.variants.length,
-    expectedVariants: event.count,
-    cwd: tmp,
-  });
-  if (!published.ok) throw new Error(`Svelte publication failed: ${published.error}`);
-  return published;
-}
-
-async function writeVueComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
-  const manifestPath = path.join(tmp, wrapInfo.file);
-  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
-  const componentDir = path.join(tmp, manifest.componentDir);
-  const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
-  const textValues = extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
-  const paramsByVariant = {};
-
-  for (let i = 0; i < output.variants.length; i++) {
-    const variantId = i + 1;
-    const variant = output.variants[i];
-    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, textValues).trim();
-    for (const entry of contract) {
-      markup = markup.replaceAll(`{${entry.prop}}`, `{{ ${entry.prop} }}`);
-    }
-    const css = svelteCssForVariant(output.scopedCss || '', variantId, firstTagName(markup) || 'div');
-    const propsScript = contract.length > 0
-      ? ['<script setup>', 'defineProps({', ...contract.map((entry) => `  ${entry.prop}: { default: '' },`), '});', '</script>', '']
-      : [];
-    const component = [
-      ...propsScript,
-      '<template>',
-      markup || '<div></div>',
-      '</template>',
-      '',
-      '<style scoped>',
-      css || ':where(*) {}',
-      '</style>',
-      '',
-    ].join('\n');
-    await fs.writeFile(path.join(componentDir, `v${variantId}.vue`), component, 'utf-8');
-    paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
-  }
-
-  if (writeParams) {
-    await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
-  }
-  manifest.arrivedVariants = output.variants.length;
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-}
-
-async function publishVueComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
-  const prepared = prepareGenerationArtifact({ id: event.id, sourceFile: wrapInfo.file, cwd: tmp });
-  if (!prepared.ok) throw new Error(`Vue publication prepare failed: ${prepared.error}`);
-  await writeVueComponentVariants({
-    tmp,
-    wrapInfo: { ...wrapInfo, file: prepared.artifactFile },
-    event,
-    output,
-    writeParams,
-  });
-  const published = publishGenerationArtifact({
-    id: event.id,
-    epoch: prepared.epoch,
-    sourceFile: wrapInfo.file,
-    artifactFile: prepared.artifactFile,
-    expectedSourceHash: prepared.expectedSourceHash,
-    arrivedVariants: output.variants.length,
-    expectedVariants: event.count,
-    cwd: tmp,
-  });
-  if (!published.ok) throw new Error(`Vue publication failed: ${published.error}`);
-  return published;
-}
-
-async function publishSourceVariants({ tmp, wrapInfo, event, output }) {
-  const prepared = prepareGenerationArtifact({
-    id: event.id,
-    sourceFile: wrapInfo.file,
-    cwd: tmp,
-  });
-  if (!prepared.ok) throw new Error(`Source publication prepare failed: ${prepared.error}`);
-
-  await spliceVariantsIntoWrapper({
-    tmp,
-    wrapInfo: { ...wrapInfo, file: prepared.artifactFile },
-    sessionId: event.id,
-    output,
-  });
-
-  const published = publishGenerationArtifact({
-    id: event.id,
-    epoch: prepared.epoch,
-    sourceFile: wrapInfo.file,
-    artifactFile: prepared.artifactFile,
-    expectedSourceHash: prepared.expectedSourceHash,
-    arrivedVariants: output.variants.length,
-    expectedVariants: event.count,
-    cwd: tmp,
-  });
-  if (!published.ok) throw new Error(`Source publication failed: ${published.error}`);
-  return published;
-}
-
-async function publishVariantProgress({
-  base,
-  token,
-  event,
-  wrapInfo,
-  arrivedVariants,
-  signal,
-  revision = 1,
-  publicationKind = 'variants',
-}) {
-  const previewMode = wrapInfo.previewMode || 'source';
-  await fetch(`${base}/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      token,
-      type: 'checkpoint',
-      id: event.id,
-      revision,
-      revisionDomain: 'publication',
-      phase: 'cycling',
-      reason: 'variants_progress',
-      arrivedVariants,
-      expectedVariants: event.count,
-      sourceFile: wrapInfo.sourceFile || wrapInfo.file,
-      previewFile: wrapInfo.file,
-      previewMode,
-      publicationKind,
-    }),
-    signal,
-  });
+  await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
 }
 
 function variantMarkupHasVisibleContent(markup) {
@@ -1682,11 +1507,6 @@ export async function runAgentLoop({
   agent,
   signal,
   log = () => {},
-  trace = () => {},
-  progressive = false,
-  progressiveDelayMs = 0,
-  progressiveInitialCount = 1,
-  atomicDelayMs = 0,
   wrapTarget = { classes: 'hero-title', tag: 'h1' },
   steerSourceFile,
   steerTarget,
@@ -1709,8 +1529,6 @@ export async function runAgentLoop({
     if (event.type === 'exit') return;
     if (event.type === 'prefetch') continue;
     if (event.type === 'connected') continue;
-
-    trace('agent.event.received', { id: event.id, type: event.type, clientSentAt: event.clientSentAt ?? null });
 
     if (event.type === 'steer') {
       log(`steer id=${event.id} message=${JSON.stringify(event.message)}`);
@@ -1760,16 +1578,7 @@ export async function runAgentLoop({
       log(`generate id=${event.id} mode=${isInsert ? 'insert' : 'replace'}${isInsert ? '' : ` action=${event.action}`} count=${event.count}`);
       try {
         let wrapInfo;
-        if (event.scaffold) {
-          wrapInfo = event.scaffold;
-          trace('agent.scaffold.reused', {
-            id: event.id,
-            file: wrapInfo.file,
-            previewMode: wrapInfo.previewMode || 'source',
-            durationMs: event.scaffoldDurationMs ?? null,
-          });
-        } else if (isInsert) {
-          trace('agent.scaffold.start', { id: event.id, mode: 'insert' });
+        if (isInsert) {
           const insertTarget = insertTargetFromEvent(event);
           wrapInfo = await runInsert({
             tmp,
@@ -1778,9 +1587,7 @@ export async function runAgentLoop({
             count: event.count,
             ...insertTarget,
           });
-          trace('agent.scaffold.end', { id: event.id, file: wrapInfo.file, previewMode: wrapInfo.previewMode || 'source' });
         } else {
-          trace('agent.scaffold.start', { id: event.id, mode: 'replace' });
           // 1. Wrap the original element in the variant scaffold (deterministic CLI)
           // wrapTarget can be a static {classes, tag, elementId} (test fixtures
           // know what they pick) or a function (event) => target (real-use
@@ -1799,126 +1606,21 @@ export async function runAgentLoop({
             ...target,
             text,
           });
-          trace('agent.scaffold.end', { id: event.id, file: wrapInfo.file, previewMode: wrapInfo.previewMode || 'source' });
         }
         log(`scaffolded: ${wrapInfo.file} insertLine=${wrapInfo.insertLine}`);
 
-        // 2. Agent generates variant content (LLM-pluggable seam).
-        // Providers may expose a true split path so variant 1 is written before
-        // the request for the remaining variants completes.
-        trace('agent.generate.start', { id: event.id, count: event.count });
-        const splitProgressive = progressive
-          && typeof agent.generateFirstVariant === 'function'
-          && typeof agent.generateRemainingVariants === 'function'
-          && event.count > 1;
-        let output;
-        let firstOutput;
-        if (splitProgressive) {
-          firstOutput = normalizeVariantOutput(
-            await agent.generateFirstVariant(event, { wrapTarget, wrapInfo }),
-            wrapInfo,
-          );
-          firstOutput = {
-            ...firstOutput,
-            variants: firstOutput.variants.slice(0, 1).map((variant) => ({ ...variant, params: [] })),
-          };
-          trace('agent.generate.first_ready', { id: event.id, count: firstOutput.variants.length });
-          trace('agent.first_variant.write.start', { id: event.id, file: wrapInfo.file });
-          if (wrapInfo.previewMode === 'svelte-component') {
-            await publishSvelteComponentVariants({ tmp, wrapInfo, event, output: firstOutput, writeParams: false });
-          } else if (wrapInfo.previewMode === 'vue-component') {
-            await publishVueComponentVariants({ tmp, wrapInfo, event, output: firstOutput, writeParams: false });
-          } else {
-            await publishSourceVariants({ tmp, wrapInfo, event, output: firstOutput });
-          }
-          await publishVariantProgress({
-            base,
-            token,
-            event,
-            wrapInfo,
-            arrivedVariants: firstOutput.variants.length,
-            signal,
-          });
-          trace('agent.first_variant.write.end', { id: event.id, file: wrapInfo.file });
-          output = normalizeVariantOutput(
-            await agent.generateRemainingVariants(event, { wrapTarget, wrapInfo, firstOutput }),
-            wrapInfo,
-          );
-          trace('agent.generate.end', { id: event.id, count: output?.variants?.length || 0 });
-        } else {
-          output = normalizeVariantOutput(
-            await agent.generateVariants(event, { wrapTarget, wrapInfo }),
-            wrapInfo,
-          );
-          if (!progressive && atomicDelayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, atomicDelayMs));
-          }
-          trace('agent.generate.first_ready', { id: event.id, count: output?.variants?.length || 0 });
-          if (!progressive || output.variants.length <= 1) {
-            trace('agent.generate.end', { id: event.id, count: output?.variants?.length || 0 });
-          }
-
-          if (progressive && output.variants.length > 1) {
-            const initialCount = Math.max(1, Math.min(
-              Number(progressiveInitialCount) || 1,
-              output.variants.length - 1,
-            ));
-            firstOutput = {
-              ...output,
-              variants: output.variants
-                .slice(0, initialCount)
-                .map((variant) => ({ ...variant, params: [] })),
-            };
-            trace('agent.first_variant.write.start', { id: event.id, file: wrapInfo.file });
-            if (wrapInfo.previewMode === 'svelte-component') {
-              await publishSvelteComponentVariants({ tmp, wrapInfo, event, output: firstOutput, writeParams: false });
-            } else if (wrapInfo.previewMode === 'vue-component') {
-              await publishVueComponentVariants({ tmp, wrapInfo, event, output: firstOutput, writeParams: false });
-            } else {
-              await publishSourceVariants({ tmp, wrapInfo, event, output: firstOutput });
-            }
-            await publishVariantProgress({
-              base,
-              token,
-              event,
-              wrapInfo,
-              arrivedVariants: firstOutput.variants.length,
-              signal,
-            });
-            trace('agent.first_variant.write.end', { id: event.id, file: wrapInfo.file });
-            if (progressiveDelayMs > 0) {
-              await new Promise((resolve) => setTimeout(resolve, progressiveDelayMs));
-            }
-            trace('agent.generate.end', { id: event.id, count: output?.variants?.length || 0 });
-          }
-        }
+        // 2. Agent generates variant content (LLM-pluggable seam)
+        let output = await agent.generateVariants(event, { wrapTarget, wrapInfo });
+        output = normalizeVariantOutput(output, wrapInfo);
         if (output.variants.length !== event.count) {
           log(`warning: agent returned ${output.variants.length} variants, expected ${event.count}`);
         }
 
-        // 3. Write the complete set into the deterministic preview target.
-        trace('agent.write.start', { id: event.id, file: wrapInfo.file });
+        // 3. Write variants into the deterministic preview target.
         if (wrapInfo.previewMode === 'svelte-component') {
-          await publishSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
-        } else if (wrapInfo.previewMode === 'vue-component') {
-          await publishVueComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
-        } else if (progressive) {
-          await publishSourceVariants({ tmp, wrapInfo, event, output });
+          await writeSvelteComponentVariants({ tmp, wrapInfo, event, output });
         } else {
           await spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId: event.id, output });
-        }
-        trace('agent.write.end', { id: event.id, file: wrapInfo.file });
-        if (progressive) {
-          await publishVariantProgress({
-            base,
-            token,
-            event,
-            wrapInfo,
-            arrivedVariants: output.variants.length,
-            signal,
-            revision: 2,
-            publicationKind: 'params',
-          });
         }
         if (process.env.IMPECCABLE_E2E_DEBUG) {
           const post = await fs.readFile(path.join(tmp, wrapInfo.file), 'utf-8');
@@ -1926,27 +1628,19 @@ export async function runAgentLoop({
         }
 
         // 4. Tell the server we're done (broadcasts SSE done → browser settles to CYCLING)
-        trace('agent.reply.start', { id: event.id });
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, type: 'done', sourceEventType: 'generate', id: event.id, file: wrapInfo.file }),
+          body: JSON.stringify({ token, type: 'done', id: event.id, file: wrapInfo.file }),
           signal,
         });
-        trace('agent.reply.end', { id: event.id });
       } catch (err) {
         if (signal.aborted) return;
-        if (isExpectedGenerationCancellation(err)) {
-          trace('agent.generate.canceled', { id: event.id, reason: 'stale_generation_epoch' });
-          log('generate canceled after Accept/Discard: ' + err.message);
-          continue;
-        }
-        trace('agent.generate.error', { id: event.id, message: err.message });
         log('generate failed: ' + err.message);
         await fetch(`${base}/poll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, type: 'error', sourceEventType: 'generate', id: event.id, message: err.message }),
+          body: JSON.stringify({ token, type: 'error', id: event.id, message: err.message }),
           signal,
         }).catch(() => {});
       }
@@ -2046,7 +1740,6 @@ export async function runAgentLoop({
           body: JSON.stringify({
             token,
             type: completionType,
-            sourceEventType: 'accept',
             id: event.id,
             file: acceptResult.file,
             message: acceptResult.error,
@@ -2076,7 +1769,6 @@ export async function runAgentLoop({
           body: JSON.stringify({
             token,
             type: completionType,
-            sourceEventType: 'discard',
             id: event.id,
             file: discardResult.file,
             message: discardResult.error,
@@ -2093,10 +1785,6 @@ export async function runAgentLoop({
 
     log(`unhandled event: ${event.type}`);
   }
-}
-
-export function isExpectedGenerationCancellation(error) {
-  return /(?:^|\b)stale_generation_epoch(?:\b|$)/.test(String(error?.message || error || ''));
 }
 
 async function runPollReply({ tmp, scriptsDir, id, status, message, data }) {

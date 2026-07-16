@@ -53,7 +53,7 @@ import '../styles/testimonials.css';
     <div class="hero-rebuild-art" aria-hidden="true"></div>
     <div class="hero-rebuild-container">
       <div class="hero-rebuild-left">
-        <h1 class="hero-rebuild-title">The missing design vocabulary for agents and their humans.</h1>
+        <h1 class="hero-rebuild-title">The missing design vocabulary for agents.</h1>
 
         <p class="hero-rebuild-body">
           Impeccable stops AI-generated interfaces from collapsing into the same tells. It teaches
@@ -133,46 +133,98 @@ import '../styles/testimonials.css';
 
         <section class="language-steering" aria-labelledby="language-steering-title">
           <header class="language-steering-head">
-            <h3 id="language-steering-title">One language. Two ways to steer.</h3>
-            <p>Type the command in chat, or point at the exact element on your live page. Both carry the same project context into the same production code.</p>
+            <h3 id="language-steering-title">Give direction in chat. Refine the result on the page.</h3>
+            <p>Every change lands in your source.</p>
           </header>
 
-          <div class="language-steering-grid">
-            <article class="language-steering-chat">
-              <header class="language-method-head">
-                <span class="language-method-number">01</span>
-                <div>
-                  <h4>In chat</h4>
-                  <p>Name the intervention and keep moving.</p>
-                </div>
-              </header>
+          <div class="steering-desktop" data-steering-desktop data-mobile-pane="agent">
+            <div class="steering-desktop-bar">
+              <span class="steering-window-controls" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="steering-desktop-context">main</span>
+              <span class="steering-desktop-brand"><i aria-hidden="true"></i> Claudex Cocursor</span>
+            </div>
 
-              <div class="chat-proof" aria-label="Example Impeccable chat exchange">
-                <div class="chat-proof-user">
-                  <span>You</span>
-                  <p><code>/polish</code> the pricing page. Keep our sharp corners and sober palette. Remove the AI tells.</p>
-                </div>
-                <div class="chat-proof-agent">
-                  <span>Agent</span>
-                  <div class="chat-proof-scan">
-                    <p><strong>DESIGN.md loaded</strong><small>Existing system preserved</small></p>
-                    <p><strong>4 tells found</strong><small>Beige surface · italic serif · side-tab · pulsing dot</small></p>
-                    <p><strong>Written to source</strong><small>0 detector findings</small></p>
+            <div class="steering-mobile-tabs" role="tablist" aria-label="Steering demo view">
+              <button type="button" role="tab" class="is-active" data-steering-mobile-tab="agent" aria-selected="true">Agent thread</button>
+              <button type="button" role="tab" data-steering-mobile-tab="browser" aria-selected="false">In-app browser</button>
+            </div>
+
+            <div class="steering-desktop-panes">
+              <article class="steering-pane steering-agent" tabindex="0" data-steering-pane="agent">
+                <header class="steering-pane-head">
+                  <span class="steering-pane-title"><i aria-hidden="true"></i> Agent thread</span>
+                  <span class="steering-pane-meta">Working tree</span>
+                </header>
+
+                <div class="steering-thread" data-steering-thread aria-label="Example Impeccable agent thread">
+                  <div class="steering-thread-scene" data-steering-thread-scene="polish">
+                    <div class="steering-thread-user">
+                      <span>You</span>
+                      <p><code>/impeccable <span data-steering-active-command>polish</span></code> the pricing page. Keep our sharp corners and sober palette. Remove the AI tells.</p>
+                    </div>
+
+                    <div class="steering-thread-agent" aria-live="polite">
+                      <span>Agent</span>
+                      <p data-steering-agent-copy>I’ll polish the page within its existing design system, then run the detector before I hand it back.</p>
+                      <div class="steering-hook-log">
+                        <p><i aria-hidden="true">↳</i><strong>DESIGN.md loaded</strong><small>Existing system preserved</small></p>
+                        <p><i aria-hidden="true">↳</i><strong>4 tells found</strong><small>AI beige · italic serif · side-tab · pulsing dot</small></p>
+                        <p><i aria-hidden="true">✓</i><strong>Written to source</strong><small>0 detector findings</small></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="steering-thread-scene steering-thread-scene--live" data-steering-thread-scene="live">
+                    <div class="steering-thread-user">
+                      <span>You</span>
+                      <p><code>/impeccable live</code></p>
+                    </div>
+
+                    <div class="steering-thread-agent">
+                      <span>Agent</span>
+                      <p>Starting Live Mode against the running app. I’ll open the page, then wait for element picks and page-level steering.</p>
+                      <div class="steering-hook-log">
+                        <p><i aria-hidden="true">↳</i><strong>Live helper started</strong><small>Picker injected into the app</small></p>
+                        <p><i aria-hidden="true">↳</i><strong>localhost:3000 opened</strong><small>Production source connected</small></p>
+                        <p><i aria-hidden="true">●</i><strong>Waiting for input</strong><small>Pick an element or steer the whole page</small></p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </article>
 
-            <article class="language-steering-live">
-              <header class="language-method-head">
-                <span class="language-method-number">02</span>
-                <div>
-                  <h4>Live on the page</h4>
-                  <p>Pick, annotate, compare variants, and accept one into source.</p>
+                <div class="steering-composer-wrap">
+                  <div class="steering-command-menu" aria-label="Impeccable commands">
+                    <div class="steering-command-query"><span>/impeccable</span><small>Choose a command</small></div>
+                    <button type="button" class="is-active" data-steering-command="polish" data-agent-copy="I’ll polish the page within its existing design system, then run the detector before I hand it back." aria-pressed="true"><strong>polish</strong><span>Final quality pass</span><kbd>↵</kbd></button>
+                    <button type="button" data-steering-command="audit" data-agent-copy="I’ll audit the page for accessibility, responsive behavior, and production quality." aria-pressed="false"><strong>audit</strong><span>Production quality</span><kbd>↵</kbd></button>
+                    <button type="button" data-steering-command="typeset" data-agent-copy="I’ll clarify the type hierarchy while preserving the project’s existing fonts and tokens." aria-pressed="false"><strong>typeset</strong><span>Typography hierarchy</span><kbd>↵</kbd></button>
+                    <button type="button" data-steering-command="distill" data-agent-copy="I’ll remove nonessential UI and make the primary task unmistakable." aria-pressed="false"><strong>distill</strong><span>Strip to the essence</span><kbd>↵</kbd></button>
+                  </div>
+                  <button type="button" class="steering-composer" aria-label="Choose an Impeccable command">
+                    <span class="steering-composer-plus" aria-hidden="true">+</span>
+                    <p><code>/impeccable <span data-steering-active-command data-steering-composer-command>polish</span></code><span class="steering-composer-caret" aria-hidden="true"></span></p>
+                    <span class="steering-composer-send" aria-hidden="true">↑</span>
+                  </button>
                 </div>
-              </header>
-              <LiveSteeringDemo />
-            </article>
+              </article>
+
+              <article class="steering-pane steering-browser" tabindex="0" data-steering-pane="browser">
+                <header class="steering-pane-head">
+                  <span class="steering-pane-title"><i aria-hidden="true"></i> Browser</span>
+                  <span class="steering-pane-meta">Live preview</span>
+                </header>
+                <div class="steering-browser-toolbar" aria-hidden="true">
+                  <span class="steering-browser-nav">
+                    <i><svg viewBox="0 0 16 16"><path d="m9.75 3.5-4.5 4.5 4.5 4.5M5.5 8h6.25" /></svg></i>
+                    <i><svg viewBox="0 0 16 16"><path d="m6.25 3.5 4.5 4.5-4.5 4.5M10.5 8H4.25" /></svg></i>
+                    <i><svg viewBox="0 0 16 16"><path d="M12.5 6A5 5 0 1 0 13 9M12.5 3.5V6H10" /></svg></i>
+                  </span>
+                  <span class="steering-browser-address"><i></i> localhost:3000</span>
+                  <span class="steering-browser-open"><svg viewBox="0 0 16 16"><path d="M9 3h4v4M13 3 7.5 8.5M12 9.5V13H3V4h3.5" /></svg></span>
+                </div>
+                <LiveSteeringDemo />
+              </article>
+            </div>
           </div>
         </section>
       </div>
@@ -237,8 +289,8 @@ import '../styles/testimonials.css';
                       <span class="why-productmd-v">SREs on call, reading fast, often in the dark.</span>
                     </div>
                     <div class="why-productmd-field">
-                      <span class="why-productmd-k">Register</span>
-                      <span class="why-productmd-v">Product. Design serves the task.</span>
+                      <span class="why-productmd-k">Mode</span>
+                      <span class="why-productmd-v">Operate. Design serves the task.</span>
                     </div>
                     <div class="why-productmd-field">
                       <span class="why-productmd-k">Brand voice</span>
@@ -302,26 +354,31 @@ import '../styles/testimonials.css';
             </div>
           </article>
 
-          <!-- T4: wide. Tuned to the agent you use. -->
+          <!-- T4: wide. V4 creative direction, shown through a real case. -->
           <article class="ks-bento-tile ks-bento-tile--span-8 why-panel--vizfirst" id="why-tuned">
             <span class="ks-bento-num" data-color="patina">04</span>
-            <h3 class="why-panel-title">Tuned to the agent you actually use.</h3>
-            <p class="why-panel-body">Plays to each agent's strengths and around its weaknesses. Below: Codex used image generation to draft Neo Mirai before <code>/impeccable craft</code> turned it into shipped code.</p>
+            <h3 class="why-panel-title">Gives capable models a point of view.</h3>
+            <p class="why-panel-body">V4 turns real project material into an ownable surface concept, then holds the build to it. Below: the Neo Mirai case.</p>
               <div class="why-visual why-visual--vizfirst">
+                <div class="why-direction-rail">
+                  <span><i>Mode</i> Persuade</span>
+                  <span><i>Concept</i> A cultural dispatch from the near future</span>
+                  <span class="why-direction-locked"><i>Direction contract</i> Locked</span>
+                </div>
                 <figure class="why-vz-plate why-vz-plate--hifi">
-                  <span class="why-vz-plate-kind">01 &middot; Visualize</span>
+                  <span class="why-vz-plate-kind">01 &middot; Visual probe</span>
                   <a class="why-vz-plate-frame" href="/cases/neo-mirai" aria-label="Read the Neo Mirai case study">
                     <img src="assets/openai_image_2_hifi.jpg" alt="Auto-generated hi-fi landing-page mock in editorial warm-paper style." loading="lazy" width="864" height="1821" />
                   </a>
                 </figure>
                 <figure class="why-vz-plate why-vz-plate--brand">
-                  <span class="why-vz-plate-kind">02 &middot; Shape</span>
+                  <span class="why-vz-plate-kind">02 &middot; Direction</span>
                   <a class="why-vz-plate-frame" href="/cases/neo-mirai" aria-label="Read the Neo Mirai case study">
                     <img src="assets/openai_image_2_brand.jpg" alt="Auto-generated brand toolkit: identity lockups, palette, type, icon system, and application mocks for a fictional AI design conference." loading="lazy" width="1536" height="1024" />
                   </a>
                 </figure>
                 <figure class="why-vz-plate why-vz-plate--live">
-                  <span class="why-vz-plate-kind">03 &middot; Live build</span>
+                  <span class="why-vz-plate-kind">03 &middot; Shipped surface</span>
                   <a class="why-vz-plate-frame" href="/neo-mirai/" aria-label="Open the Neo Mirai live build">
                     <img src="assets/cases/neo-mirai/live-fold.png" alt="Finished Neo Mirai website hero and agenda, implemented from the generated conference mock." loading="lazy" width="1440" height="1100" />
                   </a>
@@ -330,119 +387,77 @@ import '../styles/testimonials.css';
               <p class="why-panel-meta"><a href="/cases/neo-mirai">Read the case &rarr;</a> &nbsp;&middot;&nbsp; <a href="/neo-mirai/">Open the live build &rarr;</a></p>
           </article>
 
-          <!-- T5: medium. Brand vs Product registers. -->
-          <article class="ks-bento-tile ks-bento-tile--span-6" id="why-registers">
+          <!-- T5: medium. Surface modes replace the old brand/product registers. -->
+          <article class="ks-bento-tile ks-bento-tile--span-6" id="why-modes">
             <span class="ks-bento-num" data-color="kinpaku">05</span>
-            <h3 class="why-panel-title">Brand work is not product UI.</h3>
-            <p class="why-panel-body">A landing page and a dashboard play by different rules. Impeccable runs in two registers, <em>brand</em> or <em>product</em>, and every command knows which.</p>
+            <h3 class="why-panel-title">Knows what the surface is for.</h3>
+            <p class="why-panel-body">A landing page should persuade. A dashboard should help someone work. Impeccable names the mode before it designs.</p>
 
-              <div class="why-visual why-visual--registers">
-                <div class="why-register why-register--brand">
-                  <span class="why-register-label">Brand mode</span>
-                  <div class="why-register-mock why-register-mock--brand">
-                    <span class="why-brand-hero-mono">Issue 04</span>
-                    <div class="why-brand-hero-title"><em>Shape</em> the story.</div>
+              <div class="why-visual why-visual--modes">
+                <div class="why-mode-card why-mode-card--persuade">
+                  <div class="why-mode-head"><strong>Persuade</strong><span>Win attention</span></div>
+                  <div class="why-mode-preview" aria-hidden="true">
+                    <span class="why-mode-kicker">A sharp idea</span>
+                    <b>Make it<br />unmissable.</b>
+                    <i>See the story</i>
                   </div>
                 </div>
-                <div class="why-register why-register--product">
-                  <span class="why-register-label">Product mode</span>
-                  <div class="why-register-mock why-register-mock--product">
-                    <div class="why-product-row"><span class="why-product-k">Users</span><span class="why-product-v">12,482</span></div>
-                    <div class="why-product-row"><span class="why-product-k">Active now</span><span class="why-product-v">1,207</span></div>
-                    <div class="why-product-row"><span class="why-product-k">Conversion</span><span class="why-product-v">4.8%</span></div>
+                <div class="why-mode-card why-mode-card--operate">
+                  <div class="why-mode-head"><strong>Operate</strong><span>Complete a task</span></div>
+                  <div class="why-mode-preview" aria-hidden="true">
+                    <span class="why-mode-toolbar"></span>
+                    <span class="why-mode-data"><i></i><i></i><i></i></span>
+                    <span class="why-mode-action">Resolve</span>
+                  </div>
+                </div>
+                <div class="why-mode-card why-mode-card--read">
+                  <div class="why-mode-head"><strong>Read</strong><span>Build understanding</span></div>
+                  <div class="why-mode-preview" aria-hidden="true">
+                    <b>A clear argument.</b>
+                    <span class="why-mode-copy"><i></i><i></i><i></i><i></i></span>
+                  </div>
+                </div>
+                <div class="why-mode-card why-mode-card--experience">
+                  <div class="why-mode-head"><strong>Experience</strong><span>Let the work lead</span></div>
+                  <div class="why-mode-preview" aria-hidden="true">
+                    <span class="why-mode-art"></span>
+                    <b>NEO<br />MIRAI</b>
                   </div>
                 </div>
               </div>
 
           </article>
 
-          <!-- T6: medium. CI/CD-ready. -->
+          <!-- T6: medium. Hooks keep the detector in the agent loop; CI is
+               the final gate rather than the whole story. -->
           <article class="ks-bento-tile ks-bento-tile--span-6" id="why-ci">
             <span class="ks-bento-num" data-color="patina">06</span>
             <h3 class="why-panel-title">Block slop before it ships.</h3>
-            <p class="why-panel-body">A detector you can wire into PR checks. 59 deterministic rules, no LLM, exit codes the build can read.</p>
+            <p class="why-panel-body">Hooks inspect each UI edit and send findings straight back to the agent. The same detector can fail a PR.</p>
               <div class="why-visual why-visual--ci">
                 <div class="why-ci-window">
                   <div class="why-ci-header">
-                    <span class="why-ci-branch">feat/pricing-page</span>
-                    <span class="why-ci-status why-ci-status--fail">&#x2717; failing</span>
+                    <span class="why-ci-branch">Edit &middot; Hero.tsx</span>
+                    <span class="why-ci-status why-ci-status--hook">hook active</span>
                   </div>
-                  <div class="why-ci-body">
-                    <div class="why-ci-line"><span class="why-ci-cmd">$</span> npx impeccable detect src/</div>
-                    <div class="why-ci-issue"><span class="why-ci-x">&#x2717;</span> <code>src/Hero.tsx:42</code> gradient-text</div>
-                    <div class="why-ci-issue"><span class="why-ci-x">&#x2717;</span> <code>src/Card.tsx:8</code> side-stripe-border</div>
-                    <div class="why-ci-issue"><span class="why-ci-x">&#x2717;</span> <code>src/Button.tsx:17</code> ai-color-palette</div>
-                    <div class="why-ci-summary">3 anti-patterns &middot; exit 1</div>
-                  </div>
-                </div>
-              </div>
-          </article>
-
-          <!-- T7: wide. Live Mode showcase. The old standalone "Design in
-               production" section collapsed into this bento beat. -->
-          <article class="ks-bento-tile ks-bento-tile--span-8" id="why-live">
-            <span class="ks-bento-num" data-color="kinpaku">07</span>
-            <h3 class="why-panel-title">Iterate in your live app. <span class="why-panel-badge">BETA</span></h3>
-            <p class="why-panel-body">Pick any element in your running dev server, leave a comment or a stroke, hit Go. Three production-quality variants swap in via your framework's HMR.</p>
-            <div class="why-visual why-visual--live">
-              <div class="why-live-frame">
-                <div class="why-live-chrome">
-                  <span class="why-live-dot"></span><span class="why-live-dot"></span><span class="why-live-dot"></span>
-                  <span class="why-live-url">localhost:3000</span>
-                </div>
-                <div class="why-live-stage">
-                  <div class="why-live-pick">
-                    <span class="why-live-pick-tag">section.hero</span>
-                    <span class="why-live-pick-note">more elegant<span class="why-live-pick-caret"></span></span>
-                  </div>
-                </div>
-                <div class="why-live-ctx live-demo-ctx" data-phase="configuring">
-                  <div class="live-demo-ctx-row live-demo-ctx-row--configure">
-                    <div class="live-demo-ctx-command">
-                      <span class="live-demo-ctx-input"><span class="live-demo-ctx-selection">h1</span><span class="live-demo-ctx-caret"></span></span>
+                  <div class="why-ci-body why-hook-loop">
+                    <div class="why-hook-step">
+                      <span class="why-hook-mark">1</span>
+                      <span><strong>Edit lands</strong><small>Agent updates the hero.</small></span>
                     </div>
-                    <div class="live-demo-ctx-trailing">
-                      <div class="live-demo-ctx-modifiers">
-                        <span class="live-demo-ctx-action">bolder<span class="live-demo-ctx-action-caret" aria-hidden="true">&#x25BE;</span></span>
-                        <span class="live-demo-ctx-count">&times;3</span>
-                      </div>
-                      <div class="live-demo-ctx-actions">
-                      <span class="live-demo-ctx-voice" aria-hidden="true">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-                      </span>
-                      <span class="live-demo-ctx-go" aria-hidden="true">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
-                      </span>
-                      </div>
+                    <div class="why-hook-step why-hook-step--found">
+                      <span class="why-hook-mark">2</span>
+                      <span><strong>Hook returns two findings</strong><small>AI beige &middot; clipped label</small></span>
                     </div>
+                    <div class="why-hook-step why-hook-step--clean">
+                      <span class="why-hook-mark">&#x2713;</span>
+                      <span><strong>Agent corrects the file</strong><small>Second pass: clean</small></span>
+                    </div>
+                    <div class="why-ci-summary"><span>Deep stop audit</span><strong>0 findings &middot; PR ready</strong></div>
                   </div>
                 </div>
               </div>
-            </div>
-            <p class="why-panel-meta"><a href="/live-mode">See how Live Mode works &rarr;</a></p>
-          </article>
-
-          <!-- T8: narrow. Accept writes to source. Pairs with T7 as the
-               "writes back" beat that separates Live Mode from a mock. -->
-          <article class="ks-bento-tile ks-bento-tile--span-4" id="why-writes">
-            <span class="ks-bento-num" data-color="patina">08</span>
-            <h3 class="why-panel-title">Accept writes to source.</h3>
-            <p class="why-panel-body">Variants land in your real file as an ordinary edit, not a throwaway mock. A diff you can review, commit, or undo.</p>
-            <div class="why-visual why-visual--writes">
-              <div class="why-writes-card">
-                <div class="why-writes-head">
-                  <span class="why-writes-check">&check;</span>
-                  <span class="why-writes-label">Wrote</span>
-                  <span class="why-writes-file">src/Hero.astro</span>
-                </div>
-                <div class="why-writes-diff">
-                  <div class="why-writes-line why-writes-line--del">- "Welcome to Our Hotel"</div>
-                  <div class="why-writes-line why-writes-line--add">+ "Where the coast forgets time"</div>
-                  <div class="why-writes-line why-writes-line--del">- "Book Now"</div>
-                  <div class="why-writes-line why-writes-line--add">+ "Reserve your stay"</div>
-                </div>
-              </div>
-            </div>
+              <p class="why-panel-meta"><a href="/detector">Explore the detector lab &rarr;</a></p>
           </article>
 
         </div>

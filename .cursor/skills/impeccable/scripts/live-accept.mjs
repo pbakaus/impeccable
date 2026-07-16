@@ -16,27 +16,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './lib/is-generated.mjs';
-import { getLiveDir } from './lib/impeccable-paths.mjs';
 import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live/manual-edits-buffer.mjs';
-import { withSourceLockSync } from './live/source-lock.mjs';
 import {
   applyDeferredSvelteComponentAccepts,
   findSvelteComponentManifest,
   inlineSvelteComponentAccept,
   removeSvelteComponentSession,
 } from './live/svelte-component.mjs';
-import {
-  findVueComponentManifest,
-  inlineVueComponentAccept,
-  retireVueComponentSession,
-} from './live/vue-component.mjs';
-import {
-  findSourceArtifactManifest,
-  removeSourceArtifactSession,
-} from './live/source-artifact.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
-const ACCEPT_LOCK_WAIT_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -77,32 +65,6 @@ Output (JSON):
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!isDiscard && !variantNum) { console.error('Need --discard or --variant N'); process.exit(1); }
 
-  const requestedOperation = isDiscard ? 'discard' : 'accept';
-  const priorReceipt = readAcceptReceipt(process.cwd(), id);
-  if (priorReceipt) {
-    const sameOperation = priorReceipt.operation === requestedOperation
-      && (isDiscard || String(priorReceipt.variantId) === String(variantNum));
-    console.log(JSON.stringify(sameOperation
-      ? { ...priorReceipt.result, handled: true, alreadyApplied: true }
-      : {
-          handled: false,
-          error: 'accept_receipt_conflict',
-          priorOperation: priorReceipt.operation,
-          priorVariantId: priorReceipt.variantId ?? null,
-        }));
-    return;
-  }
-  const emitResult = (result) => {
-    if (result?.handled !== false) {
-      writeAcceptReceipt(process.cwd(), id, {
-        operation: requestedOperation,
-        variantId: isDiscard ? null : String(variantNum),
-        result,
-      });
-    }
-    console.log(JSON.stringify(result));
-  };
-
   let paramValues = null;
   if (paramValuesRaw) {
     try { paramValues = JSON.parse(paramValuesRaw); }
@@ -110,147 +72,34 @@ Output (JSON):
   }
 
   // Find the file containing this session's markers
-  const sourceArtifactManifest = findSourceArtifactManifest(id, process.cwd());
-  const found = sourceArtifactManifest ? null : findSessionFile(id, process.cwd());
+  const found = findSessionFile(id, process.cwd());
   const svelteComponentManifest = found ? null : findSvelteComponentManifest(id, process.cwd());
-  const vueComponentManifest = found || svelteComponentManifest ? null : findVueComponentManifest(id, process.cwd());
 
-  if (!found && !sourceArtifactManifest && !svelteComponentManifest && !vueComponentManifest) {
+  if (!found && !svelteComponentManifest) {
     console.log(JSON.stringify({ handled: false, error: 'Session markers not found for id: ' + id }));
     process.exit(0);
   }
 
-  if (sourceArtifactManifest) {
-    if (isDiscard) {
-      removeSourceArtifactSession(id, process.cwd());
-      emitResult({
-        handled: true,
-        file: sourceArtifactManifest.sourceFile,
-        sourceFile: sourceArtifactManifest.sourceFile,
-        previewMode: sourceArtifactManifest.previewMode,
-        carbonize: false,
-      });
-      return;
-    }
-
-    let result;
-    try {
-      result = withSourceLockSync(
-        sourceArtifactManifest.sourcePath,
-        'accept:' + id,
-        () => acceptSourceArtifact(sourceArtifactManifest, variantNum, paramValues),
-        { waitMs: ACCEPT_LOCK_WAIT_MS },
-      );
-    } catch (err) {
-      result = { handled: false, error: err.message };
-    }
-    if (result.handled !== false) {
-      removeSourceArtifactSession(id, process.cwd());
-      try {
-        scrubManualEditsAgainstOriginalBlock(result.acceptedOriginalText || '', process.cwd(), pageUrl);
-      } catch {}
-    }
-    delete result.acceptedOriginalText;
-    if (result.carbonize) {
-      result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + sourceArtifactManifest.sourceFile + '. See reference/live.md "Required after accept".';
-    }
-    emitResult({
-      handled: result.handled !== false,
-      file: sourceArtifactManifest.sourceFile,
-      sourceFile: sourceArtifactManifest.sourceFile,
-      previewMode: sourceArtifactManifest.previewMode,
-      ...result,
-    });
-    return;
-  }
-
-  if (vueComponentManifest) {
-    if (isDiscard) {
-      let result;
-      try {
-        result = withSourceLockSync(
-          path.resolve(process.cwd(), vueComponentManifest.sourceFile),
-          'discard:' + id,
-          () => {
-            retireVueComponentSession(id, process.cwd());
-            return { handled: true };
-          },
-          { waitMs: ACCEPT_LOCK_WAIT_MS },
-        );
-      } catch (err) {
-        result = { handled: false, error: err.message };
-      }
-      emitResult({
-        ...result,
-        file: vueComponentManifest.sourceFile,
-        carbonize: false,
-        previewMode: 'vue-component',
-        componentDir: vueComponentManifest.componentDir,
-      });
-      return;
-    }
-
-    let result;
-    try {
-      result = withSourceLockSync(
-        path.resolve(process.cwd(), vueComponentManifest.sourceFile),
-        'accept:' + id,
-        () => inlineVueComponentAccept(vueComponentManifest, variantNum, process.cwd()),
-        { waitMs: ACCEPT_LOCK_WAIT_MS },
-      );
-    } catch (err) {
-      result = {
-        handled: false,
-        error: err.message,
-        file: vueComponentManifest.sourceFile,
-        sourceFile: vueComponentManifest.sourceFile,
-        previewMode: 'vue-component',
-        componentDir: vueComponentManifest.componentDir,
-        carbonize: false,
-      };
-    }
-    emitResult(result);
-    return;
-  }
-
   if (svelteComponentManifest) {
     if (isDiscard) {
-      let result;
-      try {
-        result = withSourceLockSync(
-          path.resolve(process.cwd(), svelteComponentManifest.sourceFile),
-          'discard:' + id,
-          () => {
-            removeSvelteComponentSession(id, process.cwd());
-            return { handled: true };
-          },
-          { waitMs: ACCEPT_LOCK_WAIT_MS },
-        );
-      } catch (err) {
-        result = { handled: false, error: err.message };
-      }
-      emitResult({
-        ...result,
+      removeSvelteComponentSession(id, process.cwd());
+      console.log(JSON.stringify({
+        handled: true,
         file: svelteComponentManifest.sourceFile,
         carbonize: false,
         previewMode: 'svelte-component',
         componentDir: svelteComponentManifest.componentDir,
-      });
+      }));
       return;
     }
 
     let result;
     try {
-      result = withSourceLockSync(
-        path.resolve(process.cwd(), svelteComponentManifest.sourceFile),
-        'accept:' + id,
-        () => inlineSvelteComponentAccept(
-          svelteComponentManifest,
-          variantNum,
-          paramValues,
-          process.cwd(),
-        ),
-        { waitMs: ACCEPT_LOCK_WAIT_MS },
+      result = inlineSvelteComponentAccept(
+        svelteComponentManifest,
+        variantNum,
+        paramValues,
+        process.cwd(),
       );
     } catch (err) {
       result = {
@@ -265,7 +114,7 @@ Output (JSON):
     if (result.carbonize) {
       result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';
     }
-    emitResult({ handled: result.handled !== false, ...result });
+    console.log(JSON.stringify({ handled: result.handled !== false, ...result }));
     return;
   }
 
@@ -297,7 +146,7 @@ Output (JSON):
 
   if (isDiscard) {
     const result = handleDiscard(id, lines, targetFile);
-    emitResult({ handled: true, file: relFile, carbonize: false, ...result });
+    console.log(JSON.stringify({ handled: true, file: relFile, carbonize: false, ...result }));
   } else {
     const result = handleAccept(id, variantNum, lines, targetFile, paramValues);
     const acceptedOriginalText = result.acceptedOriginalText || '';
@@ -318,7 +167,7 @@ Output (JSON):
         // Non-fatal; the buffer stays as-is and the user can discard later.
       }
     }
-    emitResult({ handled: true, file: relFile, ...result });
+    console.log(JSON.stringify({ handled: true, file: relFile, ...result }));
   }
 }
 
@@ -386,14 +235,7 @@ function scrubManualEditsAgainstFile(_targetFile, cwd = process.cwd(), originalB
 // Discard
 // ---------------------------------------------------------------------------
 
-function handleDiscard(id, _lines, targetFile) {
-  return withSourceLockSync(targetFile, 'discard:' + id, () => {
-    const lines = fs.readFileSync(targetFile, 'utf-8').split('\n');
-    return handleDiscardUnlocked(id, lines, targetFile);
-  }, { waitMs: ACCEPT_LOCK_WAIT_MS });
-}
-
-function handleDiscardUnlocked(id, lines, targetFile) {
+function handleDiscard(id, lines, targetFile) {
   const block = findMarkerBlock(id, lines);
   if (!block) return { handled: false, error: 'Markers not found' };
 
@@ -488,24 +330,7 @@ function reindentContent(contentLines, fromIndent, toIndent) {
   });
 }
 
-function handleAccept(id, variantNum, _lines, targetFile, paramValues) {
-  return withSourceLockSync(targetFile, 'accept:' + id, () => {
-    const lines = fs.readFileSync(targetFile, 'utf-8').split('\n');
-    return handleAcceptUnlocked(id, variantNum, lines, targetFile, paramValues);
-  }, { waitMs: ACCEPT_LOCK_WAIT_MS });
-}
-
-function handleAcceptUnlocked(id, variantNum, lines, targetFile, paramValues) {
-  const built = buildAcceptedWrappedSource(id, variantNum, lines, targetFile, paramValues);
-  if (built.handled === false) return built;
-  fs.writeFileSync(targetFile, built.content, 'utf-8');
-  return {
-    carbonize: built.carbonize,
-    acceptedOriginalText: built.acceptedOriginalText,
-  };
-}
-
-function buildAcceptedWrappedSource(id, variantNum, lines, targetFile, paramValues) {
+function handleAccept(id, variantNum, lines, targetFile, paramValues) {
   const block = findMarkerBlock(id, lines);
   if (!block) return { handled: false, error: 'Markers not found' };
 
@@ -550,38 +375,9 @@ function buildAcceptedWrappedSource(id, variantNum, lines, targetFile, paramValu
     ...replacement,
     ...lines.slice(replaceRange.end + 1),
   ];
-  return {
-    content: newLines.join('\n'),
-    carbonize: needsCarbonize,
-    acceptedOriginalText: originalContent.join('\n'),
-  };
-}
+  fs.writeFileSync(targetFile, newLines.join('\n'), 'utf-8');
 
-function acceptSourceArtifact(manifest, variantNum, paramValues) {
-  const source = fs.readFileSync(manifest.sourcePath, 'utf-8');
-  const preview = fs.readFileSync(manifest.previewPath, 'utf-8');
-  const original = String(manifest.originalSource || '');
-  if (!original) return { handled: false, error: 'source_artifact_original_missing' };
-  const first = source.indexOf(original);
-  if (first < 0) return { handled: false, error: 'source_artifact_original_changed' };
-  if (source.indexOf(original, first + original.length) >= 0) {
-    return { handled: false, error: 'source_artifact_original_ambiguous' };
-  }
-  const wrapped = source.slice(0, first) + preview + source.slice(first + original.length);
-  const built = buildAcceptedWrappedSource(
-    manifest.id,
-    variantNum,
-    wrapped.split('\n'),
-    manifest.sourcePath,
-    paramValues,
-  );
-  if (built.handled === false) return built;
-  fs.writeFileSync(manifest.sourcePath, built.content, 'utf-8');
-  return {
-    handled: true,
-    carbonize: built.carbonize,
-    acceptedOriginalText: built.acceptedOriginalText,
-  };
+  return { carbonize: needsCarbonize, acceptedOriginalText: originalContent.join('\n') };
 }
 
 function readSourceShadowPreviewMeta(content, id) {
@@ -1001,28 +797,6 @@ function searchDir(dir, query, seen, depth) {
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
-
-function acceptReceiptPath(cwd, id) {
-  return path.join(getLiveDir(cwd), 'accept-receipts', `${id}.json`);
-}
-
-function readAcceptReceipt(cwd, id) {
-  try { return JSON.parse(fs.readFileSync(acceptReceiptPath(cwd, id), 'utf-8')); } catch { return null; }
-}
-
-function writeAcceptReceipt(cwd, id, receipt) {
-  const file = acceptReceiptPath(cwd, id);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const value = {
-    id,
-    ...receipt,
-    completedAt: new Date().toISOString(),
-  };
-  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + '\n', 'utf-8');
-  fs.renameSync(temporary, file);
-  return value;
-}
 
 function argVal(args, flag) {
   const idx = args.indexOf(flag);

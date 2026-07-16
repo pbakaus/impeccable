@@ -1,0 +1,33 @@
+---
+const {
+  rule,
+  visual,
+  layer = 'cli',
+  description = rule.description,
+  categoryLabel = rule.category === 'slop' ? 'AI slop' : 'Quality',
+  category = rule.category,
+  skillHref = rule.skillSection ? `/docs/impeccable#section-${rule.skillSection.toLowerCase().replace(/\s*&\s*/g, '-').replace(/\s+/g, '-')}` : '/detector',
+  linkLabel = rule.skillSection ? 'See in /impeccable' : 'Inspect the detector',
+} = Astro.props;
+
+const layerLabel = layer === 'browser' ? 'Browser' : 'CLI';
+const layerTitle = layer === 'browser'
+  ? 'Deterministic, but requires rendered browser layout.'
+  : 'Deterministic. Runs from npx impeccable detect on source files.';
+---
+
+<article class="rule-card" id={`rule-${rule.id}`} data-layer={layer}>
+  <div class="rule-card-visual" aria-hidden="true">
+    <div class="rule-card-visual-inner" set:html={visual} />
+  </div>
+  <div class="rule-card-body">
+    <div class="rule-card-head">
+      <span class="rule-card-category" data-category={category}>{categoryLabel}</span>
+      <span class="rule-card-layer" data-layer={layer} title={layerTitle}>{layerLabel}</span>
+      {rule.gated && <span class="rule-card-layer" data-layer="optin" title={`Off by default. Enable with --${rule.gated}.`}>opt-in</span>}
+    </div>
+    <h3 class="rule-card-name">{rule.name}</h3>
+    <p class="rule-card-desc">{description}</p>
+    <a class="rule-card-skill-link" href={skillHref}>{linkLabel}</a>
+  </div>
+</article>

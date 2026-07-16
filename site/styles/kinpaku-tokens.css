@@ -27,6 +27,7 @@
 	--ks-kinpaku-pale:   oklch(86% 0.07 84);     /* hover lift, pale fills */
 	--ks-kinpaku-rich:   oklch(77% 0.13 82);     /* active CTA, severity-medium */
 	--ks-kinpaku-deep:   oklch(61% 0.085 78);    /* borders against the brand */
+	--ks-dark-ink:       oklch(14% 0.018 95);    /* foreground on gold; never theme-remapped */
 
 	/* Verdigris patina. The secondary accent — state, signal, selection. */
 	--ks-patina:         oklch(70% 0.12 188);    /* secondary accent */

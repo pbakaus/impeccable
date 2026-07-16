@@ -48,6 +48,13 @@
   top: 0;
   left: 0;
   right: 0;
+  /* Follow the same capped page rail as .site-content and the hero. The
+     max() only matters beyond the 1500px content cap; at ordinary widths it
+     resolves to the shared responsive gutter. */
+  padding-inline: max(
+    clamp(22px, 4vw, 56px),
+    calc((100vw - 1500px) / 2 + 56px)
+  );
   background: oklch(8% 0.006 95 / calc(0.72 * var(--hp)));
   border-bottom: 1px solid oklch(78% 0.12 82 / calc(0.18 * var(--hp)));
   -webkit-backdrop-filter: saturate(calc(1 + 0.3 * var(--hp))) blur(calc(16px * var(--hp)));
@@ -73,7 +80,7 @@
   z-index: 1;
   max-width: 1500px;
   margin: 0 auto;
-  padding: 0 56px;
+  padding: 0 clamp(22px, 4vw, 56px);
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
@@ -248,7 +255,7 @@
 }
 
 @media (max-width: 1080px) {
-  .hero-rebuild { padding: 108px 36px 80px; }   /* keep top clear of the fixed header */
+  .hero-rebuild { padding: 108px 0 80px; }   /* keep top clear of the fixed header */
   /* minmax(0, 1fr), not 1fr: a plain 1fr track has an `auto` (min-content)
      floor, so the demo's 460px-wide browser frame held the column wider than a
      phone viewport and the hero clipped. minmax(0,…) lets it shrink and the
@@ -259,11 +266,7 @@
 }
 
 @media (max-width: 720px) {
-  .hero-rebuild { padding: 92px 24px 64px; }   /* clear the compact mobile header */
-  /* The hero's 24px gutter is the mobile margin now; the container's desktop
-     56px padding stacked on top of it (160px of chrome) starved the content and
-     forced the grid track wider than the viewport. Drop it on mobile. */
-  .hero-rebuild-container { padding-left: 0; padding-right: 0; }
+  .hero-rebuild { padding: 92px 0 64px; }   /* clear the compact mobile header */
   /* Title keeps its design-system clamp (floors at 3.4rem ≈ 54px here): the
      Alumni Sans display face is narrow, so "interfaces" stays well within a
      320px+ viewport. No mobile shrink — at 54px against 16.8px body it holds a

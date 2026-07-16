@@ -1,3 +1,5 @@
-# Craft (deprecated alias)
+# Craft
 
-`craft` is a deprecated alias for the standard build flow. Builds route through SKILL.md's new-work gate; [new-work.md](new-work.md) carries the direction checkpoint ("Decide, then build"), the identity playbook, and the finishing pass. Invoking `craft` explicitly forces the attended checkpoints: pause at the stated direction for confirmation, and follow [codex.md](codex.md)'s mock flow when the harness generates images. Nothing else differs from a plain build request.
+`craft` is the standard discovery-to-build flow. Resolve SKILL.md's init gate first: PRODUCT.md and DESIGN.md must establish the durable product and visual world. Then follow [new-work.md](new-work.md) to discover the task, develop genuinely different surface concepts inside that world, get the user's direction, write the auditable contract, build, and finish.
+
+Invoking `craft` explicitly makes the task checkpoints attended whenever a human or structured simulated-user tool exists. It does not rerun the identity workshop for every section or feature, and it does not skip creative collaboration merely because DESIGN.md already exists.

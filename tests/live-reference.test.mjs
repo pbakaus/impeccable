@@ -11,7 +11,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /For any other invoked sub-command \(`audit`, `polish`, `live`, \.\.\.\), immediately read \*\*`reference\/<command>\.md`\*\*/);
+    assert.match(skillSrc, /For any other invoked sub-command[\s\S]*?reference\/<command>\.md/);
     assert.doesNotMatch(skillSrc, /Use this same scripts directory for all Impeccable helper commands/);
     assert.doesNotMatch(skillSrc, /walk upward for the nearest project `\.agents`, `\.claude`, or `\.cursor` skill/);
     assert.doesNotMatch(skillSrc, /## Context diagnostics/);
@@ -22,7 +22,7 @@ describe('live reference authoring contract', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
 
-    assert.match(skillSrc, /For any other invoked sub-command \(`audit`, `polish`, `live`, \.\.\.\), immediately read \*\*`reference\/<command>\.md`\*\*/);
+    assert.match(skillSrc, /For any other invoked sub-command[\s\S]*?reference\/<command>\.md/);
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
@@ -36,24 +36,17 @@ describe('live reference authoring contract', () => {
 
   it('keeps the live prompt focused on the foreground poll loop', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    const generationAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-live-generator.md'), 'utf-8');
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');
     const openingContract = liveMd.split('\n').slice(0, 60).join('\n');
 
     assert.match(liveMd, /1\. `live\.mjs`: boot\./);
-    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. Run `live-poll\.mjs` again immediately.*Codex runs this one-shot poll in the foreground\./);
+    assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. After every event or `--reply`, run `live-poll\.mjs` again immediately\. Never pass a short `--timeout=`\./);
     assert.match(openingContract, /## Poll loop/);
     assert.match(openingContract, /No step skipped, no step reordered\./);
     assert.doesNotMatch(liveMd, /live-copy-edits\.md/);
     assert.doesNotMatch(liveMd, /IMPECCABLE_LIVE_COPY_AGENT|mock/);
     assert.match(liveMd, /"manual_edit_apply" → Handle Manual Edit Apply/);
     assert.match(liveMd, /## Handle `manual_edit_apply`/);
-    assert.match(openingContract, /Codex.*one-shot poll in a \*\*yielded foreground exec session\*\*/);
-    assert.doesNotMatch(openingContract, /dedicated app-server generation lane by default/);
-    assert.match(liveMd, /Experimental dedicated Codex worker/);
-    assert.match(liveMd, /IMPECCABLE_LIVE_CODEX_WORKER=1 node/);
-    assert.match(liveMd, /narrow, reasoned per-candidate waivers/);
-    assert.match(liveMd, /experimental dedicated worker, Accept emits a foreground `carbonize_cleanup` control event/i);
     assert.ok(
       liveMd.indexOf('## Handle `manual_edit_apply`') > liveMd.indexOf('## Handle `prefetch`'),
       'manual_edit_apply handler section must sit after prefetch in the dispatch order',
@@ -67,14 +60,6 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
-    assert.match(liveMd, /delegate to the low-effort `impeccable_live_generator` agent/);
-    assert.match(liveMd, /Do not paste this full reference into the handoff/);
-    assert.match(generationAgentMd, /codex-name: impeccable_live_generator/);
-    assert.match(generationAgentMd, /effort: low/);
-    assert.match(generationAgentMd, /providers: codex/);
-    assert.match(generationAgentMd, /Never poll, Accept, Discard/);
-    assert.match(generationAgentMd, /Publish the first reviewable result/);
-    assert.match(generationAgentMd, /preserve every already-published variant byte-for-byte/i);
     assert.match(liveMd, /live-accept\.mjs --page-url PAGE_URL/);
     assert.match(liveMd, /If `repair` is present/);
     assert.match(liveMd, /Fix the current source/);
@@ -143,16 +128,6 @@ describe('live reference authoring contract', () => {
       claudeLiveMd,
       /sandbox_permissions: "require_escalated"/,
       'Codex-only sandbox guidance should not appear in Claude live reference',
-    );
-    assert.match(
-      codexLiveMd,
-      /Codex progressive override/,
-      'Codex live reference should progressively deliver the first reviewable variant',
-    );
-    assert.doesNotMatch(
-      claudeLiveMd,
-      /Codex progressive override|first-reviewable milestone/,
-      'Claude live reference should retain the atomic path without Codex-specific delivery instructions',
     );
   });
 

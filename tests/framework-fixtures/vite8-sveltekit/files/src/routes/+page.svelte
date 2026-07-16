@@ -6,10 +6,3 @@
     <article class="feature-card">Two</article>
   </section>
 </main>
-
-<style>
-  .feature-card {
-    min-height: 64px;
-    padding: 12px;
-  }
-</style>

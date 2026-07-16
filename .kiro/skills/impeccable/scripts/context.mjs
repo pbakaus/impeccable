@@ -42,6 +42,11 @@ const WORKSPACE_DISCOVERY_IGNORED_DIRS = new Set([
   '.cache',
   'coverage',
 ]);
+const VISUAL_SOURCE_DIRS = ['src', 'app', 'pages', 'components', 'site', 'public', 'styles'];
+const STYLE_EXTENSIONS = new Set(['.css', '.scss', '.sass', '.less', '.styl']);
+const UI_EXTENSIONS = new Set(['.html', '.htm', '.jsx', '.tsx', '.vue', '.svelte', '.astro']);
+const VISUAL_SCAN_FILE_LIMIT = 250;
+const VISUAL_SCAN_DEPTH_LIMIT = 4;
 
 // ─── Update check ──────────────────────────────────────────────────────────
 // Piggyback a lightweight skill-version check on the once-per-session boot.
@@ -78,6 +83,7 @@ export function loadContext(cwd = process.cwd(), options = {}) {
     contextDir: resolved.contextDir,
     productContextDir: productPath ? path.dirname(productPath) : null,
     designContextDir: designPath ? path.dirname(designPath) : null,
+    hasVisualImplementation: hasVisualImplementation(resolved.projectRoot),
     projectRoot: resolved.projectRoot,
     repoRoot: resolved.repoRoot,
     isMonorepo: resolved.isMonorepo,
@@ -690,6 +696,85 @@ function safeRead(p) {
   }
 }
 
+/**
+ * Best-effort evidence that the project already has an incumbent visual
+ * implementation. DESIGN.md is documentation, not the only source of design
+ * authority: real tokens, chosen type, and a component system in code must not
+ * be mistaken for a greenfield identity merely because the document is absent.
+ *
+ * The scan is deliberately bounded and conservative. A package.json or one
+ * empty scaffold component is not enough; a tokenized stylesheet, an authored
+ * HTML surface, or several styled UI components is.
+ */
+export function hasVisualImplementation(projectRoot) {
+  if (!projectRoot) return false;
+  const root = path.resolve(projectRoot);
+  const queue = [];
+  for (const rel of VISUAL_SOURCE_DIRS) {
+    const dir = path.join(root, rel);
+    if (fs.existsSync(dir)) queue.push({ dir, depth: 0 });
+  }
+
+  let scannedFiles = 0;
+  let styledComponents = 0;
+
+  const inspectFile = (filePath) => {
+    if (scannedFiles++ >= VISUAL_SCAN_FILE_LIMIT) return false;
+    const ext = path.extname(filePath).toLowerCase();
+    if (!STYLE_EXTENSIONS.has(ext) && !UI_EXTENSIONS.has(ext)) return false;
+    let body;
+    try {
+      body = fs.readFileSync(filePath, 'utf-8').slice(0, 64 * 1024);
+    } catch {
+      return false;
+    }
+
+    const base = path.basename(filePath).toLowerCase();
+    if (STYLE_EXTENSIONS.has(ext)) {
+      const customProperties = body.match(/--[a-z0-9_-]+\s*:/gi)?.length ?? 0;
+      const visualDeclarations = body.match(/\b(?:color|background(?:-color)?|border(?:-color)?|font-family)\s*:/gi)?.length ?? 0;
+      if (/\b(?:tokens?|theme|design-system)\b/.test(base) && body.trim().length > 80) return true;
+      if (customProperties >= 3 || visualDeclarations >= 5) return true;
+    }
+
+    if ((ext === '.html' || ext === '.htm') && body.length > 600 && /<style\b|<link[^>]+stylesheet/i.test(body)) {
+      return true;
+    }
+    if (!['.html', '.htm'].includes(ext) && body.length > 300 && /class(?:Name)?\s*=|style\s*=|styled\(|css`/i.test(body)) {
+      styledComponents += 1;
+      if (styledComponents >= 3) return true;
+    }
+    return false;
+  };
+
+  // Root-level authored surfaces and styles are common in small projects.
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (entry.isFile() && inspectFile(path.join(root, entry.name))) return true;
+    }
+  } catch { /* unreadable root: no evidence */ }
+
+  while (queue.length && scannedFiles < VISUAL_SCAN_FILE_LIMIT) {
+    const { dir, depth } = queue.shift();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (depth >= VISUAL_SCAN_DEPTH_LIMIT || entry.name.startsWith('.') || WORKSPACE_DISCOVERY_IGNORED_DIRS.has(entry.name)) continue;
+        queue.push({ dir: path.join(dir, entry.name), depth: depth + 1 });
+      } else if (entry.isFile() && inspectFile(path.join(dir, entry.name))) {
+        return true;
+      }
+      if (scannedFiles >= VISUAL_SCAN_FILE_LIMIT) break;
+    }
+  }
+  return styledComponents >= 3;
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -897,21 +982,32 @@ async function cli() {
   if (!ctx.hasProduct) {
     // Direct stdout message instead of relying on empty output as a signal
     // — cheap models miss the empty case more often than the explicit one.
-    const parts = [
-      'NO_PRODUCT_MD: This project has no PRODUCT.md yet. ' +
-      'For `init`, `teach`, `craft`, `shape`, ' +
-      'or wording that clearly maps to a from-scratch build/shape flow, load ' +
-      'reference/init.md and write PRODUCT.md first, unless no user can ' +
-      'respond (a one-shot or automated run, or the user said not to ask): ' +
-      'then write a one-paragraph understanding of the product, audience, ' +
-      'and the page\'s job from the brief, and continue. For any other ' +
-      '(scoped) command against existing code, proceed using the code as ' +
-      `context and offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).`,
-      'NEW_WORK: No committed design context was found. If this task produces ' +
-      'new design (a build from scratch, or a redesign that discards the ' +
-      'current look), you MUST read reference/new-work.md before making any ' +
-      'design decision. Scoped fixes to existing code do not need it.',
-    ];
+    const parts = ctx.hasVisualImplementation
+      ? [
+          'NO_PRODUCT_MD: This project has no PRODUCT.md yet, but it does have an incumbent visual implementation. ' +
+          'For `init` or `teach`, load reference/init.md and create PRODUCT.md. For `craft`, `shape`, or other work ' +
+          'against the existing product, read its CSS, tokens, components, and assets first and proceed without blocking; ' +
+          `offer \`${IMPECCABLE_COMMAND} init\` as a follow-up. Only treat the work as greenfield when the user explicitly ` +
+          'asks to discard or replace the current identity.',
+          'EXISTING_VISUAL_SYSTEM: Code and assets are the incumbent design authority. Missing DESIGN.md is a documentation ' +
+          'gap, not permission to invent a replacement identity. Preserve and extend the implementation unless the user ' +
+          'explicitly requests a rebrand, or inspection proves the detected files contain no coherent visual decisions.',
+        ]
+      : [
+          'NO_PRODUCT_MD: This project has no PRODUCT.md yet. ' +
+          'For `init`, `teach`, `craft`, `shape`, ' +
+          'or wording that clearly maps to a from-scratch build/shape flow, load ' +
+          'reference/init.md and write PRODUCT.md first, unless no user can ' +
+          'respond (a one-shot or automated run, or the user said not to ask): ' +
+          'then write a one-paragraph understanding of the product, audience, ' +
+          'and the page\'s job from the brief, and continue. For any other ' +
+          '(scoped) command against existing code, proceed using the code as ' +
+          `context and offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).`,
+          'NEW_WORK: No committed design context was found. If this task produces ' +
+          'new design (a build from scratch, or a redesign that discards the ' +
+          'current look), you MUST read reference/new-work.md before making any ' +
+          'design decision. Scoped fixes to existing code do not need it.',
+        ];
     parts.push(buildResolvedContextDirective(ctx, cliOptions, { targetExists }));
     if (shouldWarnMissingTarget(ctx, targetProvided, targetExists)) {
       parts.push(buildMissingTargetDirective());
@@ -934,13 +1030,13 @@ async function cli() {
   // inline, so no register-file read is mandated here. What IS mandated:
   // the new-work playbook when no committed design system exists yet.
   if (!ctx.hasDesign) {
-    parts.push(
-      'NEW_WORK: PRODUCT.md exists but no DESIGN.md was found. If the code ' +
-      'has no committed design system either (check the project files), and ' +
-      'this task produces new design or a redesign that discards the current ' +
-      'look, you MUST read reference/new-work.md before making any design ' +
-      'decision. Scoped fixes inside an existing design system do not need it.',
-    );
+    parts.push(ctx.hasVisualImplementation
+      ? 'EXISTING_VISUAL_SYSTEM: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. ' +
+        'Treat CSS, tokens, components, and assets as design authority. Do not route to new identity work merely because the ' +
+        'document is absent; preserve and extend the implementation unless the user explicitly asks to discard it.'
+      : 'NEW_WORK: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. If this task produces ' +
+        'new design or a redesign that discards the current look, you MUST read reference/new-work.md before making any ' +
+        'design decision. Scoped fixes to existing code do not need it.');
   }
   if (register) {
     parts.push(`REGISTER: \`${register}\` (family hint: brand = Persuade/Experience surfaces, product = Operate/Read). Derive the visitor's mode per SKILL.md.`);
@@ -991,6 +1087,7 @@ function buildResolvedContextDirective(ctx, options, { targetExists = null } = {
     repoRoot: ctx.repoRoot,
     productPath: ctx.productPath,
     designPath: ctx.designPath,
+    hasVisualImplementation: ctx.hasVisualImplementation,
   }, null, 2)}`;
 }
 

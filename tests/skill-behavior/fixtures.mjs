@@ -7,8 +7,8 @@
  */
 export const PRODUCT_MD_SAMPLE = `# Acme Notes
 
-## Register
-brand
+## Platform
+web
 
 ## Product Purpose
 Acme Notes is a marketing-driven landing page for a research-grade note-taking
@@ -21,7 +21,23 @@ Working researchers (PhD students, postdocs, principal investigators) who
 already maintain disciplined note-taking systems and are choosing between
 ours and rolling their own in a Zettelkasten plugin.
 
-## Brand
+## Positioning
+The research notebook that preserves a scientist's chain of thought instead
+of flattening it into generic documents and folders.
+
+## Audience World
+Lab notebooks, margin annotations, citation trails, preprint PDFs, index cards,
+and the quiet ritual of reconstructing why a conclusion was reached months ago.
+
+## Cultural Context
+Research monographs and working laboratory archives: precise, annotated,
+accumulative, and visibly handled rather than pristine lifestyle publishing.
+
+## Pinned Direction
+Type-led and evidence-first. Never lead with product screenshots or generic
+startup chrome.
+
+## Brand Personality
 Editorial, considered, technical. The product is for people who quote
 Knuth. The voice is closer to a long-read magazine than to a startup
 landing page.
@@ -31,19 +47,24 @@ landing page.
 - Obsidian (too community-cottagecore)
 - Any SaaS landing page with a hero-metric grid
 
-## Strategic Principles
+## Design Principles
 - Type does most of the work. The hero is words, not chrome.
 - One named accent color, used sparingly.
 - Never lead with screenshots. Lead with the idea.
+
+## Accessibility & Inclusion
+WCAG AA, fully keyboard accessible, readable at 200% zoom, and calm under
+reduced motion.
 `;
 
 /**
- * Same project shape as PRODUCT_MD_SAMPLE but with no `## Register` field.
- * Exercises the cascade fallback (task cue then surface in focus) in
- * scenarios where context.mjs cannot detect the register and the agent
- * must follow the SKILL.md priority list to pick brand.md.
+ * Legacy product context with the modern strategic fields but no visual
+ * world. Exercises init completion without a deprecated brand/product field.
  */
 export const PRODUCT_MD_SAMPLE_NO_REGISTER = `# Acme Notes
+
+## Platform
+web
 
 ## Product Purpose
 Acme Notes is a marketing-driven landing page for a research-grade note-taking
@@ -56,7 +77,21 @@ Working researchers (PhD students, postdocs, principal investigators) who
 already maintain disciplined note-taking systems and are choosing between
 ours and rolling their own in a Zettelkasten plugin.
 
-## Brand
+## Positioning
+The research notebook that preserves a scientist's chain of thought instead
+of flattening it into generic documents and folders.
+
+## Audience World
+Lab notebooks, margin annotations, citation trails, preprint PDFs, index cards,
+and the ritual of reconstructing a conclusion months later.
+
+## Cultural Context
+Research monographs and working laboratory archives.
+
+## Pinned Direction
+Type-led and evidence-first; no startup chrome.
+
+## Brand Personality
 Editorial, considered, technical. The product is for people who quote
 Knuth. The voice is closer to a long-read magazine than to a startup
 landing page.
@@ -66,22 +101,21 @@ landing page.
 - Obsidian (too community-cottagecore)
 - Any SaaS landing page with a hero-metric grid
 
-## Strategic Principles
+## Design Principles
 - Type does most of the work. The hero is words, not chrome.
 - One named accent color, used sparingly.
 - Never lead with screenshots. Lead with the idea.
+
+## Accessibility & Inclusion
+WCAG AA, keyboard access, 200% zoom, and reduced motion support.
 `;
 
 /**
- * Native iOS app fixture: product register, `## Platform` set to `ios`.
- * Exercises Setup step 5 — when context.mjs reports the platform is native,
- * the agent must also load `reference/ios.md` (Apple HIG) on top of the
- * register reference. Product register because this is app UI, not marketing.
+ * Native iOS app fixture with `## Platform` set to `ios`. Exercises Setup
+ * step 5 — the agent must also load `reference/ios.md` (Apple HIG) on top of
+ * the task-scoped visitor-mode guidance.
  */
 export const PRODUCT_MD_SAMPLE_IOS = `# Tideline
-
-## Register
-product
 
 ## Platform
 ios
@@ -97,7 +131,18 @@ Saltwater anglers checking conditions dockside on an iPhone, often one-handed
 in bright sun and sometimes offline. They live in Apple Weather, Notes, and
 Maps and expect the same gestures and controls here.
 
-## Brand
+## Positioning
+The fastest trustworthy read on whether the next coastal window is worth the trip.
+
+## Audience World
+Tide tables, chartplotters, dock logs, weather radar, tackle trays, wet gloves,
+and the repeated glance from water to phone in hard daylight.
+
+## Pinned Direction
+Native iOS controls and navigation are non-negotiable; the logbook may carry
+the product's distinctive character.
+
+## Brand Personality
 Calm, legible, marine. Identity shows through color, type accent, and the
 logbook's character — never by reinventing the navigation bar or the back
 gesture.
@@ -107,10 +152,14 @@ gesture.
 - Custom toggles and bespoke tab bars that fight the platform
 - Cluttered, metric-theater home screens
 
-## Strategic Principles
+## Design Principles
 - Platform conformance is the structural bar; brand lives in the expressive layer.
 - Standard navigation, SF Symbols, Dynamic Type, Dark Mode first-class.
 - One accent tint drives interactive elements.
+
+## Accessibility & Inclusion
+Dynamic Type, VoiceOver, reduced motion, high contrast in direct sun, and
+targets usable one-handed with wet hands.
 `;
 
 /**

@@ -126,9 +126,6 @@
   let expectedVariants = 0;
   let arrivedVariants = 0;
   let visibleVariant = 0;
-  let generationPhase = null;
-  let parameterGenerationState = 'idle';
-  let parameterReadyAnnouncedSession = null;
   let svelteComponentSession = null;
   let svelteRuntimePromise = null;
   let pendingSvelteComponentRetryObserver = null;
@@ -137,7 +134,6 @@
   let currentPreviewMode = null;
   let recoveryWaitingForAnchor = false;
   let pickedAnchorSnapshot = null;
-  let pickedAnchorViewportTop = null;
   let pendingVariantAnchorRetryObserver = null;
   let pendingAcceptedSession = null;
   let variantObserver = null;
@@ -155,12 +151,10 @@
   // startScrollLock / stopScrollLock below.
   let scrollLockObserver = null;
   let scrollLockTargetY = null;
-  let scrollLockAnchorTop = null;
   let scrollLockRaf = null;
   let scrollLockAbort = null;
   const SCROLL_ANCHOR_LOCK_ID = 'impeccable-scroll-anchor-lock';
   const VARIANT_STATE_STYLE_ID = 'impeccable-variant-state';
-  const DISCARD_STATE_STYLE_ID = 'impeccable-discard-state';
 
   // Dedicated key for scroll position - SEPARATE from LS_KEY so that
   // saveSession's state updates don't clobber a carefully-captured scrollY.
@@ -258,13 +252,6 @@
       barConnected: !!barEl?.isConnected,
       hasSvelteComponentSession: !!svelteComponentSession,
       mountedSvelteVariant: svelteComponentSession?.mountedVariant || 0,
-      pickActive,
-      pendingApplyInFlight,
-      hoveredElement: hoveredElement ? {
-        tag: hoveredElement.tagName,
-        classes: hoveredElement.className,
-        pickable: pickable(hoveredElement),
-      } : null,
       pendingSvelteComponentRetry: !!pendingSvelteComponentRetryObserver,
       recoveryWaitingForAnchor,
       evtSourceReadyState: evtSource ? evtSource.readyState : null,
@@ -1127,15 +1114,14 @@
     });
   }
 
-  function hideBar(instant) {
+  function hideBar() {
     if (!barEl) return;
     const hideSeq = ++barHideSeq;
     stopVoice({ suppressSubmit: true });
     if (configureKind === 'insert') clearInsertPicking();
     barEl.style.opacity = '0';
-    barEl.style.transform = instant ? 'translateY(0)' : 'translateY(6px)';
-    if (instant) barEl.style.display = 'none';
-    else setTimeout(() => { if (barEl && hideSeq === barHideSeq) barEl.style.display = 'none'; }, 250);
+    barEl.style.transform = 'translateY(6px)';
+    setTimeout(() => { if (barEl && hideSeq === barHideSeq) barEl.style.display = 'none'; }, 250);
     hideActionPicker();
     closeTunePopover();
     hideConfigureBarTooltip();
@@ -1980,7 +1966,6 @@
    */
   function setLiveState(next) {
     state = next;
-    window.__IMPECCABLE_LIVE_STATE__ = next;
     syncPageInteractionCursor();
   }
 
@@ -2531,25 +2516,16 @@
       fontSize: '11px', color: BP.textDim, whiteSpace: 'nowrap',
       marginLeft: 'auto',
     });
+    // Variants currently arrive atomically in a single file edit, so a
+    // per-variant counter would lie. Say what's true.
     status.textContent = recoveryWaitingForAnchor
       ? 'Variants ready. Reveal the selected element to resume.'
-      : generationStatusText();
+      : (arrivedVariants < expectedVariants
+        ? 'Generating ' + expectedVariants + ' variants...'
+        : 'Done');
     row.appendChild(status);
 
     return row;
-  }
-
-  function generationStatusText() {
-    if (arrivedVariants >= expectedVariants && expectedVariants > 0) return 'Done';
-    if (generationPhase === 'picked_up') return 'Agent picked up the request...';
-    if (generationPhase === 'scaffolding') return 'Finding the source...';
-    if (generationPhase === 'source_ready') return 'Source ready. Generating...';
-    if (generationPhase === 'scaffold_fallback') return 'Agent is locating the source...';
-    if (generationPhase === 'first_variant_generating') return 'Designing the first variant...';
-    if (generationPhase === 'first_variant_validating') return 'Checking the first variant...';
-    if (generationPhase === 'remaining_variants_generating') return 'Exploring two more directions...';
-    if (generationPhase === 'remaining_variants_validating') return 'Checking the remaining variants...';
-    return 'Generating ' + expectedVariants + ' variants...';
   }
 
   // Cycling row
@@ -2581,7 +2557,7 @@
       color: BP.textDim, minWidth: '24px', textAlign: 'center',
     });
     counter.id = PREFIX + '-variant-counter';
-    counter.textContent = visibleVariant + '/' + expectedVariants;
+    counter.textContent = visibleVariant + '/' + arrivedVariants;
     row.appendChild(counter);
 
     // Next
@@ -2591,12 +2567,10 @@
     if (visibleVariant >= arrivedVariants) next.style.opacity = '0.3';
     row.appendChild(next);
 
-    // Tune chip stays visible while the deferred parameter phase is running,
-    // then becomes interactive as soon as this variant exposes controls.
+    // Tune chip - only when the visible variant exposes params
     const visParams = parseVariantParams(getVisibleVariantEl());
     const hasParams = visParams.length > 0;
-    const paramsPending = !hasParams && (parameterGenerationState === 'pending' || parameterGenerationState === 'loading');
-    if (hasParams || paramsPending) {
+    if (hasParams) {
       const tune = el('button', {
         display: 'inline-flex', alignItems: 'center', gap: '6px',
         padding: '4px 10px', borderRadius: '5px',
@@ -2604,69 +2578,41 @@
         background: tuneOpen ? BP.accentSoft : 'transparent',
         color: tuneOpen ? BP.accent : BP.text,
         fontFamily: FONT, fontSize: '11px', fontWeight: '500',
-        cursor: paramsPending ? 'wait' : 'pointer',
+        cursor: 'pointer',
         transition: 'color 0.12s ease, background 0.12s ease',
         whiteSpace: 'nowrap',
       });
-      if (paramsPending) {
-        const spinner = el('span', {
-          width: '11px', height: '11px', borderRadius: '50%',
-          border: '1.5px solid ' + BP.hairline,
-          borderTopColor: BP.accent,
-          animation: 'impeccable-spin 0.6s linear infinite',
-          boxSizing: 'border-box', flexShrink: '0',
-        });
-        spinner.setAttribute('aria-hidden', 'true');
-        tune.appendChild(spinner);
-      } else {
-        tune.innerHTML = TUNE_ICON_SVG;
-      }
+      tune.innerHTML = TUNE_ICON_SVG;
       const tuneLabel = document.createElement('span');
       tuneLabel.textContent = 'Tune';
       tune.appendChild(tuneLabel);
-      if (hasParams) {
-        const tuneBadge = document.createElement('span');
-        Object.assign(tuneBadge.style, {
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          minWidth: '16px', height: '16px', padding: '0 4px',
-          borderRadius: '999px',
-          background: tuneOpen ? C.brand : BP.hairline,
-          color: tuneOpen ? 'oklch(98% 0 0)' : 'inherit',
-          fontFamily: MONO, fontSize: '9.5px', fontWeight: '600',
-          lineHeight: '1',
-          boxSizing: 'border-box',
-        });
-        tuneBadge.textContent = String(visParams.length);
-        tune.appendChild(tuneBadge);
-        tune.title = 'Tune this variant (' + visParams.length + ' knob' + (visParams.length === 1 ? '' : 's') + ')';
-        tune.addEventListener('mouseenter', () => {
-          if (!tuneOpen) tune.style.background = BP.accentSoft;
-        });
-        tune.addEventListener('mouseleave', () => {
-          if (!tuneOpen) tune.style.background = 'transparent';
-        });
-        tune.addEventListener('click', (e) => { e.stopPropagation(); toggleTunePopover(); });
-      } else {
-        tune.disabled = true;
-        tune.setAttribute('aria-label', 'Tune controls are still being prepared');
-        tune.title = 'Tune controls are still being prepared';
-        tune.style.opacity = '0.72';
-      }
+      const tuneBadge = document.createElement('span');
+      Object.assign(tuneBadge.style, {
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        minWidth: '16px', height: '16px', padding: '0 4px',
+        borderRadius: '999px',
+        background: tuneOpen ? C.brand : BP.hairline,
+        color: tuneOpen ? 'oklch(98% 0 0)' : 'inherit',
+        fontFamily: MONO, fontSize: '9.5px', fontWeight: '600',
+        lineHeight: '1',
+        boxSizing: 'border-box',
+      });
+      tuneBadge.textContent = String(visParams.length);
+      tune.appendChild(tuneBadge);
+      tune.title = 'Tune this variant (' + visParams.length + ' knob' + (visParams.length === 1 ? '' : 's') + ')';
+      tune.addEventListener('mouseenter', () => {
+        if (!tuneOpen) tune.style.background = BP.accentSoft;
+      });
+      tune.addEventListener('mouseleave', () => {
+        if (!tuneOpen) tune.style.background = 'transparent';
+      });
+      tune.addEventListener('click', (e) => { e.stopPropagation(); toggleTunePopover(); });
       tune.dataset.iceqTune = '1';
       row.appendChild(tune);
     }
 
     // Spacer
     row.appendChild(el('div', { flex: '1' }));
-
-    if (arrivedVariants < expectedVariants) {
-      const remaining = expectedVariants - arrivedVariants;
-      const progress = el('span', {
-        fontSize: '11px', color: BP.textDim, whiteSpace: 'nowrap',
-      });
-      progress.textContent = remaining + ' more arriving...';
-      row.appendChild(progress);
-    }
 
     // Accept - primary action, kinpaku gold + lacquer-deep (matches demo .live-demo-ctx-accept)
     const accept = el('button', {
@@ -2682,11 +2628,7 @@
     accept.addEventListener('mousedown', () => accept.style.transform = 'scale(0.97)');
     accept.addEventListener('mouseup', () => accept.style.transform = 'scale(1)');
     accept.addEventListener('click', (e) => { e.stopPropagation(); handleAccept(); });
-    if (arrivedVariants === 0) {
-      accept.style.opacity = '0.3';
-      accept.style.pointerEvents = 'none';
-      accept.title = 'Accept becomes available when the first variant arrives';
-    }
+    if (arrivedVariants === 0) { accept.style.opacity = '0.3'; accept.style.pointerEvents = 'none'; }
     row.appendChild(accept);
 
     // Discard
@@ -4801,32 +4743,6 @@
     }
   }
 
-  function mountedParameterCount() {
-    if (svelteComponentSession?.sessionId === currentSessionId) {
-      return Object.values(svelteComponentSession.paramsByVariant || {})
-        .reduce((total, params) => total + (Array.isArray(params) ? params.length : 0), 0);
-    }
-    const wrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
-    if (!wrapper) return 0;
-    return [...wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])')]
-      .reduce((total, variant) => total + parseVariantParams(variant).length, 0);
-  }
-
-  function completeParameterPublication() {
-    if (!currentSessionId) return;
-    const ready = mountedParameterCount() > 0;
-    parameterGenerationState = ready ? 'ready' : 'none';
-    if (ready && parameterReadyAnnouncedSession !== currentSessionId) {
-      parameterReadyAnnouncedSession = currentSessionId;
-      showToast('Tune controls are ready.', 3000);
-    }
-    if (state === 'CYCLING') {
-      refreshParamsPanel();
-      showOrUpdateCyclingBar();
-    }
-    saveSession();
-  }
-
   function toggleTunePopover() {
     if (pendingApplyInFlight) { showManualApplyBusyToast(); return; }
     if (tuneOpen) { closeTunePopover(); return; }
@@ -4917,14 +4833,6 @@
 
   function isSvelteComponentManifestPath(filePath) {
     return String(filePath || '').endsWith('manifest.json');
-  }
-
-  function isFrameworkComponentPreviewMode(mode) {
-    return mode === 'svelte-component' || mode === 'vue-component';
-  }
-
-  function isSourceArtifactPreviewMode(mode) {
-    return mode === 'source-artifact';
   }
 
   function parseOriginalMarkupElement(originalMarkup) {
@@ -5121,21 +5029,9 @@
     }
   }
 
-  function resolveComponentModuleUrl(manifest, modulePath) {
-    const pathValue = String(modulePath || '');
-    if (manifest?.previewMode === 'vue-component' && pathValue.startsWith('/@fs/')) {
-      // Nuxt mounts Vite below buildAssetsDir. Sending /@fs directly to the
-      // page origin reaches Nitro's route fallback and returns text/html.
-      const assetsDir = String(window.__NUXT__?.config?.app?.buildAssetsDir || '/_nuxt/');
-      const base = assetsDir.endsWith('/') ? assetsDir : assetsDir + '/';
-      return new URL(base + pathValue.slice('/@fs/'.length), location.origin).href;
-    }
-    return new URL(pathValue, location.origin).href;
-  }
-
-  function loadSvelteRuntime(runtimeModule, manifest) {
+  function loadSvelteRuntime(runtimeModule) {
     const modulePath = runtimeModule || '/src/lib/impeccable/__runtime.js';
-    const url = resolveComponentModuleUrl(manifest, modulePath);
+    const url = new URL(modulePath, location.origin).href;
     if (!svelteRuntimePromise) {
       svelteRuntimePromise = import(/* @vite-ignore */ url);
     }
@@ -5169,8 +5065,7 @@
   async function loadSvelteComponentVariantSource(manifest, variantNum) {
     const dir = String(manifest?.componentDir || '').replace(/^\/+/, '');
     if (!dir || !variantNum) return '';
-    const extension = manifest.componentExtension || (manifest.previewMode === 'vue-component' ? 'vue' : 'svelte');
-    const sourcePath = dir + '/v' + variantNum + '.' + extension;
+    const sourcePath = dir + '/v' + variantNum + '.svelte';
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(sourcePath);
     try {
       const res = await fetch(url);
@@ -5189,7 +5084,6 @@
   async function applySvelteComponentVariantStyle(variantNum) {
     if (!svelteComponentSession || !variantNum) return;
     const { manifest, sessionId } = svelteComponentSession;
-    if (manifest?.previewMode === 'vue-component') return;
     const source = await loadSvelteComponentVariantSource(manifest, variantNum);
     const css = extractSvelteComponentStyle(source);
     removeSvelteComponentVariantStyle(svelteComponentSession);
@@ -5327,7 +5221,7 @@
     if (!sourceOriginal) return values;
     const map = buildSvelteExpressionTextMap(sourceOriginal, liveEl);
     for (const entry of contract) {
-      const token = entry.previewToken || ('{' + entry.expr + '}');
+      const token = '{' + entry.expr + '}';
       values[entry.prop] = map.get(token) || '';
     }
     return values;
@@ -5339,12 +5233,9 @@
     try {
       const previousAnchor = getMountedSvelteComponentAnchor(svelteComponentSession) || selectedElement;
       svelteComponentSession.swapAnchor = makeFrozenAnchor(previousAnchor) || svelteComponentSession.swapAnchor || null;
-      const runtime = await loadSvelteRuntime(manifest.runtimeModule, manifest);
-      const extension = manifest.componentExtension || (manifest.previewMode === 'vue-component' ? 'vue' : 'svelte');
-      const moduleBase = manifest.componentModuleBase
-        || ('/' + String(manifest.componentDir || '').replace(/^\/+/, ''));
-      const modulePath = String(moduleBase).replace(/\/+$/, '') + '/v' + variantNum + '.' + extension;
-      const moduleUrl = resolveComponentModuleUrl(manifest, modulePath) + '?t=' + Date.now();
+      const runtime = await loadSvelteRuntime(manifest.runtimeModule);
+      const modulePath = '/' + String(manifest.componentDir || '').replace(/^\/+/, '') + '/v' + variantNum + '.svelte';
+      const moduleUrl = new URL(modulePath, location.origin).href + '?t=' + Date.now();
       const mod = await import(/* @vite-ignore */ moduleUrl);
       const Component = mod.default;
       if (svelteComponentSession.mountedInstance && runtime.unmount) {
@@ -5384,7 +5275,7 @@
       if (svelteComponentSession?.sessionId === sessionId) {
         svelteComponentSession.swapAnchor = null;
       }
-      console.error('[impeccable] Failed to mount component variant ' + variantNum + ' for ' + sessionId + ':', err);
+      console.error('[impeccable] Failed to mount Svelte variant ' + variantNum + ' for ' + sessionId + ':', err);
       return false;
     }
   }
@@ -5449,46 +5340,40 @@
       if (manifest.id !== sessionId) return;
 
       const paramsByVariant = await loadSvelteComponentParams(manifest);
-      const availableVariants = Number(manifest.arrivedVariants) || Number(manifest.count) || 1;
-      const componentPreviewMode = isFrameworkComponentPreviewMode(manifest.previewMode)
-        ? manifest.previewMode
-        : 'svelte-component';
       currentSessionId = sessionId;
       expectedVariants = Number(manifest.count) || expectedVariants || 1;
       rememberSessionFileMeta({
         sourceFile: manifest.sourceFile,
         previewFile: manifestPath,
-        previewMode: componentPreviewMode,
+        previewMode: 'svelte-component',
       });
       if (state !== 'CYCLING') setLiveState('GENERATING');
 
       const existingWrapper = document.querySelector('[data-impeccable-variants="' + sessionId + '"]');
       if (existingWrapper && svelteComponentSession?.sessionId === sessionId) {
         recoveryWaitingForAnchor = false;
-        svelteComponentSession.manifest = manifest;
         svelteComponentSession.paramsByVariant = paramsByVariant;
-        arrivedVariants = availableVariants;
-        expectedVariants = Number(manifest.count) || expectedVariants || arrivedVariants;
+        arrivedVariants = Number(manifest.count) || expectedVariants || 1;
+        expectedVariants = arrivedVariants;
         visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants ? visibleVariant : 1;
         await mountSvelteComponentVariant(visibleVariant || 1);
         setLiveState('CYCLING');
         showOrUpdateCyclingBar();
         saveSession();
-        if (parameterGenerationState === 'loading') completeParameterPublication();
         return;
       }
 
       const liveEl = findLiveElementForSvelteManifest(manifest);
       if (!liveEl?.parentElement) {
         console.warn('[impeccable] Could not find original element in live DOM.');
-        arrivedVariants = availableVariants;
-        expectedVariants = Number(manifest.count) || expectedVariants || arrivedVariants;
+        arrivedVariants = Number(manifest.count) || expectedVariants || 1;
+        expectedVariants = arrivedVariants;
         const saved = loadSession();
         const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
         visibleVariant = visibleVariant > 0 && visibleVariant <= arrivedVariants
           ? visibleVariant
           : (savedVisibleVariant > 0 && savedVisibleVariant <= arrivedVariants ? savedVisibleVariant : 1);
-        enterRecoveryWaitingForAnchor({ checkpointReason: 'component_preview_anchor_missing', trackScroll: true });
+        enterRecoveryWaitingForAnchor({ checkpointReason: 'svelte_component_anchor_missing', trackScroll: true });
         waitForSvelteComponentTargetAndRetry({ manifestPath, sessionId, manifest });
         return;
       }
@@ -5496,7 +5381,7 @@
       const wrapper = document.createElement('div');
       wrapper.dataset.impeccableVariants = sessionId;
       wrapper.dataset.impeccableVariantCount = String(manifest.count || expectedVariants || 1);
-      wrapper.dataset.impeccablePreview = componentPreviewMode;
+      wrapper.dataset.impeccablePreview = 'svelte-component';
       wrapper.style.display = 'contents';
 
       const mountTarget = document.createElement('div');
@@ -5534,8 +5419,8 @@
       recoveryWaitingForAnchor = false;
 
       const previousVisibleVariant = currentSessionId === sessionId ? visibleVariant : 0;
-      arrivedVariants = availableVariants;
-      expectedVariants = Number(manifest.count) || expectedVariants || arrivedVariants;
+      arrivedVariants = Number(manifest.count) || expectedVariants || 1;
+      expectedVariants = arrivedVariants;
       const saved = loadSession();
       const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
       visibleVariant = previousVisibleVariant > 0 && previousVisibleVariant <= arrivedVariants
@@ -5560,10 +5445,9 @@
       refreshParamsPanel();
       positionBar();
       saveSession();
-      if (parameterGenerationState === 'loading') completeParameterPublication();
-      console.log('[impeccable] Mounted ' + arrivedVariants + ' ' + manifest.framework + ' component variants.');
+      console.log('[impeccable] Mounted ' + arrivedVariants + ' Svelte component variants.');
     } catch (err) {
-      console.error('[impeccable] Failed to mount component-preview variants:', err);
+      console.error('[impeccable] Failed to mount Svelte component variants:', err);
       abortSvelteComponentInjection(sessionId, 'Could not load variants. Fix the error and re-run.');
     }
   }
@@ -5609,8 +5493,6 @@
     clearHandled();
     resetSessionFileMeta();
     currentSessionId = null;
-    parameterGenerationState = 'idle';
-    parameterReadyAnnouncedSession = null;
     expectedVariants = 0;
     arrivedVariants = 0;
     visibleVariant = 0;
@@ -5630,9 +5512,7 @@
       injectSvelteComponentsFromManifest(filePath, sessionId);
       return;
     }
-    rememberSessionFileMeta(isSourceArtifactPreviewMode(currentPreviewMode)
-      ? { previewFile: filePath, previewMode: currentPreviewMode }
-      : { file: filePath });
+    rememberSessionFileMeta({ file: filePath });
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
@@ -5714,7 +5594,6 @@
         refreshParamsPanel();
         positionBar();
         saveSession();
-        if (parameterGenerationState === 'loading') completeParameterPublication();
         console.log('[impeccable] Injected ' + arrivedVariants + ' variants from source file.');
       })
       .catch(err => {
@@ -5986,36 +5865,13 @@
     document.getElementById(VARIANT_STATE_STYLE_ID)?.remove();
   }
 
-  function showOriginalDuringDiscard(sessionId) {
-    if (!sessionId) return;
-    let styleEl = document.getElementById(DISCARD_STATE_STYLE_ID);
-    if (!styleEl) {
-      styleEl = document.createElement('style');
-      styleEl.id = DISCARD_STATE_STYLE_ID;
-      (document.head || document.documentElement).appendChild(styleEl);
-    }
-    const wrapper = '[data-impeccable-variants="' + sessionId + '"]';
-    styleEl.textContent = wrapper + ' > [data-impeccable-variant]:not([data-impeccable-variant="original"]) { display:none !important; }\n'
-      + wrapper + ' > [data-impeccable-variant="original"] { display:block !important; }';
-  }
-
-  function resolveScrollLockAnchorTop() {
-    const anchor = resolveBarAnchor();
-    if (!anchor?.isConnected) return null;
-    const top = anchor.getBoundingClientRect().top;
-    return Number.isFinite(top) ? top : null;
-  }
-
   // Hold window.scrollY at a fixed value across DOM mutations inside the
   // session's wrapper (HMR patches, variant inserts, cycle swaps).
-  function startScrollLock(sessionId, initialTargetY, initialAnchorTop) {
+  function startScrollLock(sessionId, initialTargetY) {
     stopScrollLock();
     scrollLockTargetY = typeof initialTargetY === 'number' && isFinite(initialTargetY)
       ? initialTargetY
       : window.scrollY;
-    scrollLockAnchorTop = typeof initialAnchorTop === 'number' && isFinite(initialAnchorTop)
-      ? initialAnchorTop
-      : resolveScrollLockAnchorTop();
 
     try { history.scrollRestoration = 'manual'; } catch {}
 
@@ -6039,17 +5895,6 @@
     const correct = (why) => {
       scrollLockRaf = null;
       if (scrollLockTargetY == null) return;
-      const anchor = resolveBarAnchor();
-      if (anchor?.isConnected && typeof scrollLockAnchorTop === 'number' && isFinite(scrollLockAnchorTop)) {
-        const anchorTop = anchor.getBoundingClientRect().top;
-        const anchorDelta = anchorTop - scrollLockAnchorTop;
-        if (Math.abs(anchorDelta) >= 0.5) {
-          window.scrollTo({ top: window.scrollY + anchorDelta, left: window.scrollX, behavior: 'instant' });
-          scrollLockTargetY = window.scrollY;
-          writeScrollY(scrollLockTargetY);
-          return;
-        }
-      }
       const before = window.scrollY;
       const delta = before - scrollLockTargetY;
       if (Math.abs(delta) < 0.5) {
@@ -6094,7 +5939,6 @@
       if (scrollLockRaf != null) { cancelAnimationFrame(scrollLockRaf); scrollLockRaf = null; }
       const prevTarget = scrollLockTargetY;
       scrollLockTargetY = window.scrollY;
-      scrollLockAnchorTop = resolveScrollLockAnchorTop();
       writeScrollY(scrollLockTargetY);
     };
     const markGesture = (why) => {
@@ -6132,7 +5976,6 @@
     if (scrollLockRaf != null) { cancelAnimationFrame(scrollLockRaf); scrollLockRaf = null; }
     if (scrollLockAbort) { scrollLockAbort.abort(); scrollLockAbort = null; }
     scrollLockTargetY = null;
-    scrollLockAnchorTop = null;
     // NOTE: do NOT clear the persistent scroll key here. startScrollLock
     // calls us as a reset, and clearing the key would nuke the Go-time
     // scrollY that the next resume needs to read.
@@ -6206,7 +6049,6 @@
 
       updating = true;
       arrivedVariants = count;
-      generationPhase = arrivedVariants >= expectedVariants ? 'variants_ready' : 'variants_progress';
       if (visibleVariant === 0 && arrivedVariants > 0) {
         const saved = loadSession();
         const savedVisibleVariant = saved && saved.id === sessionId ? saved.visible : 0;
@@ -6222,7 +6064,7 @@
       const expected = parseInt(wrapper.dataset.impeccableVariantCount || '0');
       if (expected > 0) expectedVariants = expected;
 
-      if (arrivedVariants > 0) {
+      if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
         setLiveState('CYCLING');
         recoveryWaitingForAnchor = false;
         hideShaderOverlay();
@@ -6230,18 +6072,13 @@
         updateSelectedElement();
         showOrUpdateCyclingBar();
         disableInlineEdit();
-        if (arrivedVariants >= expectedVariants && expectedVariants > 0) refreshParamsPanel();
-        else hideParamsPanel();
+        refreshParamsPanel();
         positionBar();
       } else if (state === 'GENERATING') {
         updateBarContent('generating');
       }
       saveSession();
-      sendCheckpoint(
-        arrivedVariants >= expectedVariants && expectedVariants > 0
-          ? 'variants_ready'
-          : 'variants_progress',
-      );
+      queueCheckpoint(state === 'CYCLING' ? 'variants_ready' : 'variants_progress');
       updating = false;
     });
 
@@ -6311,7 +6148,7 @@
           hasProjectContext = !!msg.hasProjectContext;
           if (!hasProjectContext) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
-          syncAgentPollingUi(!!msg.agentPolling, msg.codexWorker);
+          syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
           if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
@@ -6320,44 +6157,6 @@
           break;
         case 'agent_polling':
           syncAgentPollingUi(!!msg.connected);
-          break;
-        case 'agent_phase':
-          if (msg.id === currentSessionId && (state === 'GENERATING' || state === 'CYCLING')) {
-            generationPhase = msg.phase || generationPhase;
-            if (msg.phase === 'variant_parameters_generating' || msg.phase === 'variant_parameters_validating') {
-              parameterGenerationState = 'loading';
-            }
-            if (msg.phase === 'parameters_ready' && parameterGenerationState !== 'ready') {
-              parameterGenerationState = 'loading';
-            }
-            updateBarContent(state === 'CYCLING' ? 'cycling' : 'generating');
-            saveSession();
-          }
-          break;
-        case 'variant_progress':
-          if (msg.id === currentSessionId) {
-            if (msg.publicationKind === 'params') parameterGenerationState = 'loading';
-            rememberSessionFileMeta(msg);
-            if (isFrameworkComponentPreviewMode(msg.previewMode) && msg.previewFile) {
-              injectSvelteComponentsFromManifest(msg.previewFile, msg.id);
-            } else if (isSourceArtifactPreviewMode(msg.previewMode) && msg.previewFile) {
-              injectVariantsFromSource(msg.previewFile, msg.id);
-            } else if ((msg.previewMode === 'source' || !msg.previewMode) && (msg.previewFile || msg.file)) {
-              // Give normal framework HMR the first chance to reconcile its
-              // own managed tree. Nuxt route-module HMR can skip intermediate
-              // revisions, so fall back to source injection only when the
-              // advertised progress still has not appeared after a short
-              // settle. Immediate injection races React/Vue ownership and can
-              // trigger removeChild errors on the next HMR commit.
-              const targetArrived = Number(msg.arrivedVariants) || 1;
-              setTimeout(() => {
-                if (msg.id !== currentSessionId) return;
-                if (state !== 'GENERATING' && state !== 'CYCLING') return;
-                if (msg.publicationKind !== 'params' && arrivedVariants >= targetArrived) return;
-                injectVariantsFromSource(msg.previewFile || msg.file, msg.id);
-              }, 150);
-            }
-          }
           break;
         case 'steer_done':
           maybeCompleteSteer(msg);
@@ -6376,10 +6175,6 @@
         case 'done':
           if (maybeCompleteSteer(msg)) break;
           rememberSessionFileMeta(msg);
-          if (msg.id === currentSessionId && isFrameworkComponentPreviewMode(currentPreviewMode) && currentPreviewFile) {
-            injectSvelteComponentsFromManifest(currentPreviewFile, msg.id);
-            break;
-          }
           // Variants already arrived via HMR → normal transition.
           if (arrivedVariants >= expectedVariants && expectedVariants > 0) {
             if (state === 'GENERATING') {
@@ -6420,10 +6215,9 @@
           if (maybeCompleteAcceptedSession(msg)) break;
           break;
         case 'agent_done':
-          // The deterministic accept has already committed the reviewed DOM
-          // and fenced generation. Carbonize may continue in the background;
-          // it must not hold the foreground picker hostage.
-          if (msg.data?.carbonize === true && maybeCompleteAcceptedSession(msg)) break;
+          // Carbonize accepts are not terminal until live-complete.mjs sends
+          // the final complete event. Keep the browser in its recoverable
+          // saving state while the source cleanup is still in flight.
           break;
         case 'discarded':
           if (msg.id && msg.id === currentSessionId) {
@@ -6512,7 +6306,6 @@
       type: 'checkpoint',
       id: currentSessionId,
       revision: sessionState.nextCheckpointRevision(),
-      revisionDomain: 'browser',
       owner: browserOwner,
       phase: String(state || '').toLowerCase(),
       reason,
@@ -6538,7 +6331,6 @@
       type: 'checkpoint',
       id,
       revision: sessionState.nextCheckpointRevision(),
-      revisionDomain: 'browser',
       owner: browserOwner,
       phase: 'steer',
       reason,
@@ -6892,9 +6684,6 @@
     expectedVariants = selectedCount;
     arrivedVariants = 0;
     visibleVariant = 0;
-    generationPhase = 'queued';
-    parameterGenerationState = 'pending';
-    parameterReadyAnnouncedSession = null;
     resetSessionFileMeta();
 
     // Flip to GENERATING immediately so the bar morphs without waiting on
@@ -6904,7 +6693,6 @@
     const elForCapture = selectedElement;
     pickedAnchorSnapshot = buildPickedAnchorSnapshot(elForCapture);
     const captureRect = elForCapture.getBoundingClientRect();
-    pickedAnchorViewportTop = captureRect.top;
     const snapshot = {
       comments: annotState.comments.map(c => ({ x: c.x, y: c.y, text: c.text })),
       strokes: annotState.strokes.map(s => ({ points: s.points.map(p => [p[0], p[1]]) })),
@@ -6936,7 +6724,7 @@
     writeScrollY(window.scrollY);
     if (variantObserver) variantObserver.disconnect();
     variantObserver = startVariantObserver(currentSessionId);
-    startScrollLock(currentSessionId, window.scrollY, pickedAnchorViewportTop);
+    startScrollLock(currentSessionId);
 
     captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
   }
@@ -6971,16 +6759,12 @@
     expectedVariants = selectedCount;
     arrivedVariants = 0;
     visibleVariant = 0;
-    generationPhase = 'queued';
-    parameterGenerationState = 'pending';
-    parameterReadyAnnouncedSession = null;
     resetSessionFileMeta();
     selectedElement = placeholderElement;
     insertPlaceholderSnapshot = buildInsertPlaceholderSnapshotFromDom(insertAnchorElement, placeholderElement);
 
     const elForCapture = placeholderElement;
     const captureRect = elForCapture.getBoundingClientRect();
-    pickedAnchorViewportTop = captureRect.top;
     const basePayload = {
       type: 'generate',
       mode: 'insert',
@@ -7011,7 +6795,7 @@
     writeScrollY(window.scrollY);
     if (variantObserver) variantObserver.disconnect();
     variantObserver = startVariantObserver(currentSessionId);
-    startScrollLock(currentSessionId, window.scrollY, pickedAnchorViewportTop);
+    startScrollLock(currentSessionId);
     captureAndEmit(elForCapture, basePayload, snapshot, captureRect);
   }
 
@@ -7191,9 +6975,9 @@
     // preview mounts are covered by the same shader regression checks.
     const adapter = String(window.__IMPECCABLE_LIVE_ADAPTER__ || '').toLowerCase();
     if (adapter === 'svelte' || adapter === 'sveltekit') return true;
-    if (isFrameworkComponentPreviewMode(currentPreviewMode) || svelteComponentSession) return true;
+    if (currentPreviewMode === 'svelte-component' || svelteComponentSession) return true;
     const wrapper = el?.closest?.('[data-impeccable-variants]');
-    return isFrameworkComponentPreviewMode(wrapper?.dataset?.impeccablePreview);
+    return wrapper?.dataset?.impeccablePreview === 'svelte-component';
   }
 
   function paintsShaderProxySurface(node) {
@@ -7321,17 +7105,6 @@
   }
 
   async function captureAndEmit(el, basePayload, snapshot, rect) {
-    const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
-
-    // Plain requests do not send a screenshot to the agent, so capture is
-    // presentation-only. Wait only for the helper to accept the event before
-    // starting CPU-heavy capture; this yields the browser task and prevents
-    // rasterization from delaying the fetch itself.
-    if (!hasAnnotations) {
-      basePayload.clientSentAt = Date.now();
-      await sendEvent(basePayload);
-    }
-
     let screenshotPath;
     let blob;
     let paper;
@@ -7349,6 +7122,7 @@
     // are present. Without annotations the image is pure visual anchoring -
     // it biases the model toward the current rendering and works against the
     // three-distinct-directions brief.
+    const hasAnnotations = snapshot && (snapshot.comments.length > 0 || snapshot.strokes.length > 0);
     if (blob && hasAnnotations) {
       try {
         const uploadRes = await fetch(
@@ -7366,12 +7140,7 @@
         console.warn('[impeccable] annotation upload failed:', err);
       }
     }
-    // Annotated requests must wait for capture + upload because the screenshot
-    // is semantic input. Plain requests were already dispatched above.
-    if (hasAnnotations) {
-      basePayload.clientSentAt = Date.now();
-      sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
-    }
+    sendEvent(screenshotPath ? { ...basePayload, screenshotPath } : basePayload);
   }
 
   //
@@ -7751,6 +7520,7 @@ void main() {
     if (variantSelectionPromise) {
       try { await variantSelectionPromise; } catch { /* failed selection falls back below */ }
     }
+    if (!currentSessionId || arrivedVariants === 0) return;
     const domVisibleVariant = readVisibleVariantFromDOM(currentSessionId);
     if (domVisibleVariant > 0) visibleVariant = domVisibleVariant;
     const acceptPayload = {
@@ -7758,9 +7528,7 @@ void main() {
       id: currentSessionId,
       variantId: String(visibleVariant),
       pageUrl: location.pathname,
-      clientSentAt: Date.now(),
     };
-    if (!currentSessionId || arrivedVariants === 0) return;
     const acceptWrapper = document.querySelector('[data-impeccable-variants="' + currentSessionId + '"]');
     if (Object.keys(paramsCurrentValues).length > 0) {
       acceptPayload.paramValues = { ...paramsCurrentValues };
@@ -7774,7 +7542,7 @@ void main() {
     const acceptedSessionId = currentSessionId;
     const acceptedVariant = visibleVariant;
     const acceptedIsSvelteComponent = svelteComponentSession?.sessionId === acceptedSessionId
-      || isFrameworkComponentPreviewMode(acceptWrapper?.dataset?.impeccablePreview);
+      || acceptWrapper?.dataset?.impeccablePreview === 'svelte-component';
     const acceptedSnapshot = snapshotAcceptedVariantDom(acceptedSessionId, acceptedVariant);
 
     setLiveState('SAVING');
@@ -7789,17 +7557,7 @@ void main() {
     saveSession();
 
     sendEvent(acceptPayload, { throwOnError: true })
-      .then(() => {
-        const pending = pendingAcceptedSession;
-        if (!pending || pending.id !== acceptedSessionId) return;
-        // POST /events returns only after the accept intent is durable and the
-        // generation epoch is fenced. Source promotion/carbonize can finish in
-        // the background; the foreground picker is free immediately.
-        markSessionHandled();
-        setLiveState('CONFIRMED');
-        document.documentElement.dataset.impeccableAcceptToPickingMs = String(Date.now() - acceptPayload.clientSentAt);
-        scheduleAcceptCleanup(pending);
-      })
+      .then(() => {})
       .catch(() => {
         if (pendingAcceptedSession?.id === acceptedSessionId) pendingAcceptedSession = null;
         setLiveState('CYCLING');
@@ -7828,26 +7586,17 @@ void main() {
   }
 
   function scheduleAcceptCleanup(accepted) {
-    queueMicrotask(function() {
-      if (pendingAcceptedSession?.id !== accepted?.id) return;
-      // Svelte previews live in an adapter-owned mount rather than in source
-      // wrapper markup. Promote the mounted variant before releasing the
-      // session so the old adapter instance cannot linger behind the next
-      // Pick → Go loop while carbonize finishes in the background.
-      if (accepted?.isSvelteComponent) {
-        commitAcceptedSvelteComponentToDom(accepted.id);
+    setTimeout(function() {
+      if (!accepted?.isSvelteComponent && !acceptedDomAlreadyClean(accepted)) {
+        setTimeout(function() {
+          if (pendingAcceptedSession?.id !== accepted?.id) return;
+          if (!accepted?.isSvelteComponent) ensureAcceptedDomClean(accepted);
+          cleanupAcceptedSession();
+        }, 1800);
+        return;
       }
       cleanupAcceptedSession();
-    });
-    // Let React/Vue/Svelte own the HMR reconciliation. Mutating their DOM in
-    // the same turn as the source update causes removeChild/NotFoundError
-    // races. Static servers still need a fallback, but it must not keep Live
-    // in SAVING or block the user's next pick.
-    if (!accepted?.isSvelteComponent) {
-      setTimeout(function() {
-        if (!acceptedDomAlreadyClean(accepted)) ensureAcceptedDomClean(accepted);
-      }, 1200);
-    }
+    }, 1200);
   }
 
   function snapshotAcceptedVariantDom(sessionId, variantId) {
@@ -7951,11 +7700,7 @@ void main() {
     clearSession();
     resetSessionFileMeta();
     selectedElement = null;
-    hoveredElement = null;
-    pagePickSkipClick = false;
     currentSessionId = null;
-    parameterGenerationState = 'idle';
-    parameterReadyAnnouncedSession = null;
     selectedAction = 'impeccable';
     pendingAcceptedSession = null;
     renderEditBadge('hidden');
@@ -7990,7 +7735,7 @@ void main() {
     sendEvent({ type: 'discard', id: currentSessionId }, { throwOnError: true })
       .then(() => {
         markSessionHandled();
-        cleanup({ restoreOriginal: true, instantChrome: true });
+        cleanup();
       })
       .catch(() => showToast('Could not confirm discard with the live server. Session kept for recovery.', 5000));
   }
@@ -8012,7 +7757,6 @@ void main() {
     currentPreviewMode = null;
     recoveryWaitingForAnchor = false;
     pickedAnchorSnapshot = null;
-    pickedAnchorViewportTop = null;
   }
 
   function rememberSessionFileMeta(meta = {}) {
@@ -8021,15 +7765,8 @@ void main() {
     const previewFile = normalizeSessionPath(meta.previewFile);
     const previewMode = meta.previewMode || (isSvelteComponentManifestPath(previewFile || file) ? 'svelte-component' : null);
 
-    if (isSourceArtifactPreviewMode(previewMode)) {
-      currentPreviewMode = previewMode;
-      currentPreviewFile = previewFile || file || currentPreviewFile;
-      currentSourceFile = sourceFile || currentSourceFile;
-      return;
-    }
-
-    if (isFrameworkComponentPreviewMode(previewMode) || isSvelteComponentManifestPath(file)) {
-      currentPreviewMode = isFrameworkComponentPreviewMode(previewMode) ? previewMode : 'svelte-component';
+    if (previewMode === 'svelte-component' || isSvelteComponentManifestPath(file)) {
+      currentPreviewMode = 'svelte-component';
       currentPreviewFile = previewFile || (isSvelteComponentManifestPath(file) ? file : currentPreviewFile);
       currentSourceFile = sourceFile || currentSourceFile;
       return;
@@ -8045,16 +7782,12 @@ void main() {
     rememberSessionFileMeta(saved);
     if (saved.insertPlaceholder) insertPlaceholderSnapshot = saved.insertPlaceholder;
     if (saved.pickedAnchor) pickedAnchorSnapshot = saved.pickedAnchor;
-    if (Number.isFinite(saved.pickedAnchorViewportTop)) pickedAnchorViewportTop = saved.pickedAnchorViewportTop;
     if (saved.action) selectedAction = saved.action;
     if (saved.count) selectedCount = saved.count;
     if (saved.previewMode) currentPreviewMode = saved.previewMode;
     if (saved.paramValues && typeof saved.paramValues === 'object') {
       paramsCurrentValues = { ...saved.paramValues };
     }
-    if (saved.parameterState) parameterGenerationState = saved.parameterState;
-    else if (saved.paramsPublished === true && parameterGenerationState !== 'ready') parameterGenerationState = 'loading';
-    if (saved.generationPhase) generationPhase = saved.generationPhase;
   }
 
   function normalizePagePath(value) {
@@ -8126,7 +7859,7 @@ void main() {
     saveSession();
     queueCheckpoint(reason || 'browser_restore_without_wrapper');
 
-    const restoreFile = isFrameworkComponentPreviewMode(currentPreviewMode) || isSourceArtifactPreviewMode(currentPreviewMode)
+    const restoreFile = currentPreviewMode === 'svelte-component'
       ? currentPreviewFile
       : (currentSourceFile || currentPreviewFile);
     if (restoreFile) {
@@ -8139,7 +7872,7 @@ void main() {
 
   function restoreFromActiveSessions(activeSessions, reason) {
     const wrapper = document.querySelector('[data-impeccable-variants]');
-    if (wrapper && !isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) return false;
+    if (wrapper && wrapper.dataset.impeccablePreview !== 'svelte-component') return false;
     if (svelteComponentSession?.sessionId === currentSessionId) return false;
     return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
   }
@@ -8161,12 +7894,8 @@ void main() {
       previewMode: currentPreviewMode || undefined,
       pageUrl: location.pathname,
       paramValues: { ...paramsCurrentValues },
-      parameterState: parameterGenerationState,
       insertPlaceholder: insertPlaceholderSnapshot || undefined,
       pickedAnchor: pickedAnchorSnapshot || undefined,
-      pickedAnchorViewportTop: Number.isFinite(pickedAnchorViewportTop) ? pickedAnchorViewportTop : undefined,
-      pageHash: location.hash || undefined,
-      pageSearch: location.search || undefined,
     });
   }
 
@@ -8194,26 +7923,20 @@ void main() {
     sessionState.clearHandled();
   }
 
-  function cleanup(options) {
-    const restoreOriginal = options?.restoreOriginal === true;
-    const instantChrome = options?.instantChrome === true;
+  function cleanup() {
     const cleanupSessionId = currentSessionId;
     if (svelteComponentSession?.sessionId === cleanupSessionId) {
       teardownSvelteComponentSession(true);
     } else if (cleanupSessionId) {
-      // Switch visibility immediately without structurally mutating the DOM.
-      // HMR from the agent's source rewrite may still be on its way,
+      // Hide the wrapper immediately so variants disappear. DON'T structurally
+      // mutate the DOM yet - HMR from the agent's source rewrite is on its way,
       // and a manual replaceChild under React causes NotFoundError when the
       // reconciler later tries to remove a wrapper we already removed.
       // Schedule a 2s fallback that does the manual swap only if HMR hasn't
       // replaced the wrapper by then (keeps static-server / no-HMR flows alive).
       const wrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
-      if (wrapper) {
-        if (restoreOriginal) showOriginalDuringDiscard(cleanupSessionId);
-        else wrapper.style.display = 'none';
-      }
+      if (wrapper) wrapper.style.display = 'none';
       setTimeout(function() {
-        document.getElementById(DISCARD_STATE_STYLE_ID)?.remove();
         if (!cleanupSessionId) return;
         const lateWrapper = document.querySelector('[data-impeccable-variants="' + cleanupSessionId + '"]');
         if (!lateWrapper) return;
@@ -8228,7 +7951,7 @@ void main() {
         lateWrapper.remove();
       }, 2000);
     }
-    hideBar(instantChrome);
+    hideBar();
     hideHighlight();
     stopScrollTracking();
     if (variantObserver) { variantObserver.disconnect(); variantObserver = null; }
@@ -8240,11 +7963,7 @@ void main() {
     clearSession();
     resetSessionFileMeta();
     selectedElement = null;
-    hoveredElement = null;
-    pagePickSkipClick = false;
     currentSessionId = null;
-    parameterGenerationState = 'idle';
-    parameterReadyAnnouncedSession = null;
     selectedAction = 'impeccable';
     renderEditBadge('hidden');
     setLiveState('PICKING');
@@ -8328,7 +8047,7 @@ void main() {
     // would strand the bar in CYCLING at 0/0. If there's no live in-memory mount
     // for this wrapper, it's an orphan (reload / failed mount): drop it and let
     // the live-server's SSE re-inject the manifest if the session is still live.
-    if (isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)
+    if (wrapper.dataset.impeccablePreview === 'svelte-component'
         && svelteComponentSession?.sessionId !== sessionId) {
       wrapper.remove();
       if (restoreSessionWithoutWrapper('browser_resumed_svelte_orphan_wrapper')) return true;
@@ -8337,7 +8056,7 @@ void main() {
       return false;
     }
 
-    if (isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) {
+    if (wrapper.dataset.impeccablePreview === 'svelte-component') {
       if (!svelteComponentSession?.mountedVariant) {
         return true;
       }
@@ -8385,7 +8104,7 @@ void main() {
       insertPlaceholderSnapshot = saved.insertPlaceholder;
     }
 
-    const resumedState = arrivedVariants > 0 ? 'CYCLING' : 'GENERATING';
+    const resumedState = arrivedVariants >= expectedVariants ? 'CYCLING' : 'GENERATING';
 
     // Find the visible variant's content element for highlight positioning.
     const isInsert = wrapper.dataset.impeccableMode === 'insert';
@@ -8409,11 +8128,7 @@ void main() {
     // hid. Now that state is CYCLING, re-fire.
     if (state === 'CYCLING') refreshParamsPanel();
     saveSession();
-    if (arrivedVariants > 0 && arrivedVariants < expectedVariants) {
-      sendCheckpoint('variants_progress');
-    } else {
-      queueCheckpoint('browser_resumed');
-    }
+    queueCheckpoint('browser_resumed');
 
     // Start observing for more variants AFTER initial setup
     if (variantObserver) variantObserver.disconnect();
@@ -8421,7 +8136,7 @@ void main() {
 
     // Hold the target at its saved viewport top through any subsequent
     // HMR patches, variant inserts, or cycle swaps.
-    startScrollLock(currentSessionId, readScrollY(), pickedAnchorViewportTop);
+    startScrollLock(currentSessionId, readScrollY());
 
     // If we reloaded mid-generation (Bun's HTML HMR destroys the shader
     // canvas), re-capture the original's content and restart the shader so
@@ -8456,9 +8171,6 @@ void main() {
   let globalBarBrandEl = null;
   let agentPollTooltipEl = null;
   let agentPollingConnected = false;
-  let codexWorkerStatus = null;
-  let agentStatusMessage = null;
-  let codexWorkerFallbackToastShown = false;
   let agentStatusPollTimer = null;
   let steerFocusSuspended = false;
   let steerFocusPauseUntil = 0;
@@ -8563,7 +8275,6 @@ void main() {
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(62% 0 0 / 0.78)';
   const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run live-poll.mjs to connect';
-  const CODEX_CLI_FALLBACK_TIP = 'Foreground mode: Codex CLI not found. Install it and run codex login for background variants.';
   const GLOBAL_BAR_SECTION_GAP = 8;
   const GLOBAL_BAR_INNER_GAP = 2;
   const GLOBAL_BAR_INNER_PAD_LEFT = 2;
@@ -9584,41 +9295,24 @@ void main() {
     </svg>`;
   }
 
-  function syncAgentPollingUi(connected, workerStatus) {
-    if (workerStatus !== undefined) codexWorkerStatus = workerStatus;
+  function syncAgentPollingUi(connected) {
     agentPollingConnected = !!connected;
     if (!globalBarBrandEl) return;
     const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
-    const cliUnavailable = codexWorkerStatus?.error === 'codex_cli_unavailable';
-    const workerUnavailable = cliUnavailable
-      || ['error', 'failed', 'unavailable'].includes(codexWorkerStatus?.status);
-    agentStatusMessage = !connected
-      ? AGENT_DISCONNECTED_TIP
-      : cliUnavailable
-        ? CODEX_CLI_FALLBACK_TIP
-        : workerUnavailable
-          ? 'Foreground mode: background generation is unavailable. Check .impeccable/live/codex-worker.log.'
-          : null;
     globalBarBrandEl.dataset.agentConnected = connected ? 'true' : 'false';
     globalBarBrandEl.setAttribute('aria-label', connected
-      ? workerUnavailable
-        ? 'Impeccable live mode - using foreground generation'
-        : 'Impeccable live mode'
+      ? 'Impeccable live mode'
       : 'Impeccable live mode - agent not polling');
     globalBarBrandEl.removeAttribute('title');
-    globalBarBrandEl.style.cursor = agentStatusMessage ? 'help' : 'default';
+    globalBarBrandEl.style.cursor = connected ? 'default' : 'help';
     const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
     if (mark) {
       mark.innerHTML = brandMarkSvg(connected ? P.accent : AGENT_DISCONNECTED_MARK, 18);
       mark.style.opacity = '1';
     }
     const dot = globalBarBrandEl.querySelector('[data-agent-dot]');
-    if (dot) dot.style.display = agentStatusMessage ? 'block' : 'none';
-    if (!agentStatusMessage) hideAgentPollTooltip();
-    if (cliUnavailable && !codexWorkerFallbackToastShown) {
-      codexWorkerFallbackToastShown = true;
-      showToast('Codex CLI is unavailable. Live is using the main agent, so generation may take longer. Install the CLI, run codex login, then restart Live.', 9000);
-    }
+    if (dot) dot.style.display = connected ? 'none' : 'block';
+    if (connected) hideAgentPollTooltip();
   }
 
   function ensureAgentPollTooltip() {
@@ -9645,15 +9339,14 @@ void main() {
       whiteSpace: 'normal',
     });
     agentPollTooltipEl.id = PREFIX + '-agent-poll-tooltip';
-    agentPollTooltipEl.textContent = agentStatusMessage || AGENT_DISCONNECTED_TIP;
+    agentPollTooltipEl.textContent = AGENT_DISCONNECTED_TIP;
     uiAppend(agentPollTooltipEl);
     return agentPollTooltipEl;
   }
 
   function showAgentPollTooltip(anchor) {
-    if (!agentStatusMessage || !anchor) return;
+    if (agentPollingConnected || !anchor) return;
     const tip = ensureAgentPollTooltip();
-    tip.textContent = agentStatusMessage;
     tip.style.transition = 'none';
     tip.style.display = 'block';
     tip.style.opacity = '1';
@@ -9683,9 +9376,7 @@ void main() {
     fetch('http://localhost:' + PORT + '/status?token=' + TOKEN, { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && typeof data.agentPolling === 'boolean') {
-          syncAgentPollingUi(data.agentPolling, data.codexWorker);
-        }
+        if (data && typeof data.agentPolling === 'boolean') syncAgentPollingUi(data.agentPolling);
       })
       .catch(() => { /* server loss handled elsewhere */ });
   }

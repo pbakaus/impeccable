@@ -5,12 +5,11 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { scaffoldSourceArtifactSession } from '../skill/scripts/live/source-artifact.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
@@ -29,55 +28,6 @@ function runAccept(cwd, args) {
     return JSON.parse(body || '{}');
   }
 }
-
-describe('live-accept — isolated source artifacts', () => {
-  let tmp;
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-isolated-')); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
-
-  function scaffold(id) {
-    const original = '<main>\n  <section class="hero"><h1>Original</h1></section>\n</main>\n';
-    writeFileSync(join(tmp, 'page.html'), original);
-    const session = scaffoldSourceArtifactSession({
-      id,
-      count: 2,
-      sourceFile: 'page.html',
-      sourceStartLine: 2,
-      sourceEndLine: 2,
-      originalSource: '<section class="hero"><h1>Original</h1></section>',
-      previewContent: `<main>
-  <!-- impeccable-variants-start ${id} -->
-  <div data-impeccable-variants="${id}" data-impeccable-variant-count="2" style="display: contents">
-    <div data-impeccable-variant="original"><section class="hero"><h1>Original</h1></section></div>
-    <div data-impeccable-variant="1"><section class="hero"><h1>Accepted one</h1></section></div>
-    <div data-impeccable-variant="2"><section class="hero"><h1>Accepted two</h1></section></div>
-  </div>
-  <!-- impeccable-variants-end ${id} -->
-</main>
-`,
-      cwd: tmp,
-    });
-    return { original, session };
-  }
-
-  it('accepts one preview into true source exactly once', () => {
-    const { session } = scaffold('isolatedaccept');
-    const result = runAccept(tmp, ['--id', 'isolatedaccept', '--variant', '2']);
-    assert.equal(result.handled, true, JSON.stringify(result));
-    const source = readFileSync(join(tmp, 'page.html'), 'utf-8');
-    assert.match(source, /Accepted two/);
-    assert.doesNotMatch(source, /Accepted one|data-impeccable-variant/);
-    assert.equal(existsSync(join(tmp, session.sessionDir)), false);
-  });
-
-  it('discards the preview instantly without touching true source', () => {
-    const { original, session } = scaffold('isolateddiscard');
-    const result = runAccept(tmp, ['--id', 'isolateddiscard', '--discard']);
-    assert.equal(result.handled, true, JSON.stringify(result));
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
-    assert.equal(existsSync(join(tmp, session.sessionDir)), false);
-  });
-});
 
 describe('live-accept — style-element edge cases', () => {
   let tmp;
@@ -122,33 +72,6 @@ describe('live-accept — style-element edge cases', () => {
     assert.ok(!after.includes('variant three'), 'other variant content dropped');
     assert.ok(!after.includes('variant one'), 'other variant content dropped');
     assert.ok(!after.includes('original text'), 'original content dropped');
-  });
-
-  it('replays a durable receipt when Accept is retried after source was already written', () => {
-    const html = `<body>
-  <!-- impeccable-variants-start RECEIPT1 -->
-  <div data-impeccable-variants="RECEIPT1" data-impeccable-variant-count="2" style="display: contents">
-    <div data-impeccable-variant="original"><p>original</p></div>
-    <style data-impeccable-css="RECEIPT1" />
-    <div data-impeccable-variant="1"><p>accepted once</p></div>
-    <div data-impeccable-variant="2" style="display: none"><p>other</p></div>
-  </div>
-  <!-- impeccable-variants-end RECEIPT1 -->
-</body>`;
-    writeFileSync(join(tmp, 'page.html'), html);
-
-    const first = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '1']);
-    const afterFirst = readFileSync(join(tmp, 'page.html'), 'utf-8');
-    const replay = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '1']);
-
-    assert.equal(first.handled, true);
-    assert.equal(replay.handled, true);
-    assert.equal(replay.alreadyApplied, true);
-    assert.equal(replay.file, 'page.html');
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), afterFirst);
-    const conflict = runAccept(tmp, ['--id', 'RECEIPT1', '--variant', '2']);
-    assert.equal(conflict.handled, false);
-    assert.equal(conflict.error, 'accept_receipt_conflict');
   });
 
   // Variant: same-line <style>…</style> block should also be treated as a

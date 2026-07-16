@@ -1,47 +1,12 @@
 ---
 const proofs = [
-  {
-    id: 'polish',
-    command: '/polish',
-    label: 'Remove the tells',
-    summary: 'Three AI defaults removed',
-    callouts: [
-      { label: 'Pulsing status', y: '25%' },
-      { label: 'Italic serif', y: '48%' },
-      { label: 'Claude beige', y: '76%' },
-    ],
-  },
-  {
-    id: 'distill',
-    command: '/distill',
-    label: 'Find the hierarchy',
-    summary: 'Seven containers flattened',
-    callouts: [
-      { label: 'Cards in cards', y: '28%' },
-      { label: 'Everything equal', y: '52%' },
-      { label: 'Status-chip soup', y: '77%' },
-    ],
-  },
-  {
-    id: 'clarify',
-    command: '/clarify',
-    label: 'Make the task obvious',
-    summary: 'One clear decision remains',
-    callouts: [
-      { label: 'Vague headline', y: '28%' },
-      { label: 'Every field at once', y: '54%' },
-      { label: 'Generic CTA', y: '78%' },
-    ],
-  },
+  { id: 'polish', command: '/polish', label: 'Remove the tells' },
+  { id: 'distill', command: '/distill', label: 'Find the hierarchy' },
+  { id: 'clarify', command: '/clarify', label: 'Make the task obvious' },
 ];
 ---
 
 <section class="hero-proof" data-hero-proof aria-label="Impeccable command before and after examples">
-  <div class="hero-proof-topline">
-    <span class="hero-proof-result" data-hero-proof-result aria-live="polite">{proofs[0].summary}</span>
-    <span class="hero-proof-instruction">Drag to compare</span>
-  </div>
-
   <div class="hero-proof-stage">
     {proofs.map((proof, index) => (
       <div
@@ -50,62 +15,82 @@ const proofs = [
         role="tabpanel"
         aria-labelledby={`hero-proof-tab-${proof.id}`}
         data-proof-panel={proof.id}
-        data-summary={proof.summary}
         hidden={index !== 0}
       >
         <div class="hero-proof-layer hero-proof-layer--before">
-          <span class="hero-proof-state hero-proof-state--before">AI default</span>
+          <span class="hero-proof-side-label hero-proof-side-label--before">Before</span>
 
           <div class={`hero-proof-canvas hero-proof-canvas--${proof.id}`} aria-hidden="true">
             {proof.id === 'polish' && (
               <article class="proof-polish proof-polish--before">
                 <header class="proof-polish-head">
-                  <span class="proof-polish-pulse"><i></i> AI-powered</span>
-                  <span class="proof-polish-menu">•••</span>
+                  <span class="proof-polish-sprint">Launch / 14</span>
+                  <span class="proof-polish-pulse">
+                    <i></i> On track
+                  </span>
                 </header>
                 <div class="proof-polish-body">
-                  <span class="proof-polish-kicker">Built for modern teams</span>
-                  <h3>Beautifully <em>crafted</em> for the future of work.</h3>
-                  <p>Manage projects, share updates, and keep everyone aligned in one place.</p>
-                  <span class="proof-polish-cta">Get started</span>
+                  <span class="proof-polish-kicker">
+                    Release planning
+                    <span class="proof-annotation">AI kicker</span>
+                  </span>
+                  <div class="proof-polish-heading">
+                    <h3>Ship the <em>launch plan</em> by Friday.</h3>
+                    <span class="proof-annotation">Italic serif</span>
+                  </div>
+                  <p>Owners, dependencies, and decisions in one view.</p>
+                  <div class="proof-polish-progress"><i></i></div>
+                  <footer><span>8 of 11 decisions closed</span><b>Review plan →</b></footer>
+                  <span class="proof-annotation proof-annotation--surface">AI beige</span>
                 </div>
               </article>
             )}
 
             {proof.id === 'distill' && (
               <article class="proof-distill proof-distill--before">
-                <header><strong>Analytics overview</strong><span>Live</span></header>
+                <header>
+                  <strong>Analytics overview</strong>
+                  <span class="proof-distill-live">
+                    Live
+                    <span class="proof-annotation">Status-chip soup</span>
+                  </span>
+                </header>
                 <div class="proof-distill-grid">
                   <div><small>Revenue</small><b>$84.2k</b><i>+12%</i></div>
                   <div><small>Orders</small><b>1,248</b><i>+8%</i></div>
                   <div><small>Visitors</small><b>18.4k</b><i>+21%</i></div>
                   <div><small>Conversion</small><b>3.8%</b><i>+4%</i></div>
+                  <span class="proof-annotation">Everything equal</span>
                 </div>
-                <div class="proof-distill-nested"><span>Weekly performance</span><div><i></i><i></i><i></i></div></div>
+                <div class="proof-distill-nested">
+                  <span>Weekly performance</span><div><i></i><i></i><i></i></div>
+                  <span class="proof-annotation">Cards in cards</span>
+                </div>
               </article>
             )}
 
             {proof.id === 'clarify' && (
               <article class="proof-clarify proof-clarify--before">
                 <header><span>Get started</span><small>All fields required</small></header>
-                <h3>Unlock your potential today</h3>
-                <div class="proof-clarify-fields"><i></i><i></i><i></i><i></i></div>
-                <span class="proof-clarify-cta">Continue</span>
+                <div class="proof-clarify-heading">
+                  <h3>Unlock your potential today</h3>
+                  <span class="proof-annotation">Vague headline</span>
+                </div>
+                <div class="proof-clarify-fields">
+                  <i>Acme Labs</i><i>Product lead</i><i>Activation</i><i>This quarter</i>
+                  <span class="proof-annotation">Too many fields</span>
+                </div>
+                <span class="proof-clarify-cta">
+                  Continue
+                  <span class="proof-annotation">Generic CTA</span>
+                </span>
               </article>
             )}
-          </div>
-
-          <div class="hero-proof-callouts" aria-hidden="true">
-            {proof.callouts.map((callout) => (
-              <span class="hero-proof-callout" style={`--callout-y: ${callout.y};`}>
-                {callout.label}
-              </span>
-            ))}
           </div>
         </div>
 
         <div class="hero-proof-layer hero-proof-layer--after">
-          <span class="hero-proof-state hero-proof-state--after">With Impeccable</span>
+          <span class="hero-proof-side-label hero-proof-side-label--after">After</span>
 
           <div class={`hero-proof-canvas hero-proof-canvas--${proof.id}`} aria-hidden="true">
             {proof.id === 'polish' && (
@@ -115,7 +100,6 @@ const proofs = [
                   <span class="proof-polish-track">On track</span>
                 </header>
                 <div class="proof-polish-body">
-                  <span class="proof-polish-kicker">Release planning</span>
                   <h3>Ship the launch plan by Friday.</h3>
                   <p>Owners, dependencies, and decisions in one view.</p>
                   <div class="proof-polish-progress"><i></i></div>
@@ -149,8 +133,8 @@ const proofs = [
         <input
           class="hero-proof-range"
           type="range"
-          min="18"
-          max="82"
+          min="0"
+          max="100"
           value="54"
           aria-label={`Reveal the improved ${proof.command} example`}
           data-proof-range
@@ -167,12 +151,12 @@ const proofs = [
         class:list={['hero-proof-tab', { 'is-active': index === 0 }]}
         id={`hero-proof-tab-${proof.id}`}
         aria-controls={`hero-proof-panel-${proof.id}`}
+        aria-label={`${proof.command} ${proof.label}`}
         aria-selected={index === 0 ? 'true' : 'false'}
         tabindex={index === 0 ? 0 : -1}
         data-proof-tab={proof.id}
       >
-        <span class="hero-proof-command">{proof.command}</span>
-        <span class="hero-proof-tab-label">{proof.label}</span>
+        {proof.command}
       </button>
     ))}
   </div>

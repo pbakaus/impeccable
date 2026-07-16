@@ -54,6 +54,7 @@ import {
   splitFindingsByTier,
   perEditTieringActive,
   extractDirectionContract,
+  missingDirectionContractFields,
   renderContractAudit,
   CONTRACT_MAX_CHARS,
   CONTRACT_HEAD_CHARS,
@@ -2802,6 +2803,22 @@ describe('extractDirectionContract()', () => {
     assert.match(extractDirectionContract(html) || '', /boarding pass/);
   });
 
+  it('extracts a JSX direction-contract block', () => {
+    const jsx = `{/*\nDIRECTION CONTRACT\nUNIQUE: the timeline folds around the evidence.\n*/}\nexport default function Page() { return <main />; }`;
+    assert.match(extractDirectionContract(jsx) || '', /timeline folds/);
+  });
+
+  it('reports missing contract fields deterministically', () => {
+    assert.deepEqual(
+      missingDirectionContractFields('DIRECTION CONTRACT\nUNIQUE: own idea\nFORM: evidence timeline'),
+      ['NOT-TEMPLATE', 'OWN-WORLD', 'STORY', 'FIRST VIEWPORT'],
+    );
+    assert.deepEqual(missingDirectionContractFields([
+      'UNIQUE: x', 'NOT-TEMPLATE: x', 'OWN-WORLD: x',
+      'STORY: x', 'FIRST VIEWPORT: x', 'FORM: x',
+    ].join('\n')), []);
+  });
+
   it('returns null when there is no comment at all', () => {
     assert.equal(extractDirectionContract('<!doctype html><html></html>'), null);
     assert.equal(extractDirectionContract(''), null);
@@ -2847,6 +2864,12 @@ describe('extractDirectionContract()', () => {
     assert.match(text, new RegExp(`DIRECTION CONTRACT ${CONTRACT_AUDIT_MAX_FILES - 1}`));
     assert.doesNotMatch(text, new RegExp(`DIRECTION CONTRACT ${CONTRACT_AUDIT_MAX_FILES}\\b`));
     assert.equal(renderContractAudit([], {}), '');
+  });
+
+  it('renderContractAudit flags an incomplete promise contract', () => {
+    const text = renderContractAudit([{ filePath: '/tmp/page.html', contract: 'DIRECTION CONTRACT\nUNIQUE: one idea' }], { cwd: '/tmp' });
+    assert.match(text, /Contract integrity defect/);
+    assert.match(text, /NOT-TEMPLATE/);
   });
 });
 
@@ -2934,6 +2957,27 @@ describe('runStopHook() — direction-contract audit', () => {
     assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /findings requiring review/);
   });
 
+  it('audits contracts in Astro, Svelte, Vue, JSX, and TSX artifacts', async () => {
+    const htmlFamily = ['astro', 'svelte', 'vue'];
+    const jsxFamily = ['jsx', 'tsx'];
+
+    for (const ext of htmlFamily) {
+      const sid = `contract-${ext}`;
+      const file = write(`src/Page.${ext}`, `<!--\nDIRECTION CONTRACT\nUNIQUE: ${ext} evidence ribbon.\n-->\n<main />`);
+      await touch(file, sid, fakeDetector([]));
+      const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: fakeDetector([]) });
+      assert.match(stop.stdout, new RegExp(`${ext} evidence ribbon`));
+    }
+
+    for (const ext of jsxFamily) {
+      const sid = `contract-${ext}`;
+      const file = write(`src/Page.${ext}`, `{/*\nDIRECTION CONTRACT\nUNIQUE: ${ext} evidence ribbon.\n*/}\nexport default function Page() { return <main />; }`);
+      await touch(file, sid, fakeDetector([]));
+      const stop = await runStopHook({ stdinJson: JSON.stringify(stopEvent(sid)), env: {}, cwd, detector: fakeDetector([]) });
+      assert.match(stop.stdout, new RegExp(`${ext} evidence ribbon`));
+    }
+  });
+
   it('adds no audit section when the HTML has no contract comment', async () => {
     const sid = 'no-contract';
     const file = write('index.html', '<!doctype html><html><body>plain</body></html>');
@@ -2968,7 +3012,7 @@ describe('runStopHook() — direction-contract audit', () => {
     assert.doesNotMatch(text, /Direction-contract audit/);
   });
 
-  it('ignores contract-looking comments in non-HTML touched files', async () => {
+  it('ignores marker text outside a supported contract comment block', async () => {
     const sid = 'contract-non-html';
     const file = write('src/Card.tsx', '{/* stub */}\n// <!-- DIRECTION CONTRACT: not an artifact -->\nexport default 1;\n');
     const det = fakeDetector([finding('em-dash-overuse', 3)]);

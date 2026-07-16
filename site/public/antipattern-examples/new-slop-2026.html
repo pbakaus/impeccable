@@ -51,6 +51,7 @@
     display: inline-block; width: 8px; height: 8px;
     background: var(--accent); border-radius: 50%;
     margin-right: 8px; vertical-align: middle;
+    animation: pulse-status 1.8s ease-in-out infinite;
   }
   .nav-links { display: flex; gap: 28px; font-size: 14px; }
   .nav-links a { color: var(--soft); text-decoration: none; }
@@ -64,7 +65,12 @@
 
   /* Hero */
   .hero {
-    background: linear-gradient(180deg, var(--cream) 0%, var(--peach) 100%);
+    background-image:
+      radial-gradient(circle at 50% 42%, rgba(200, 85, 43, 0.2), rgba(200, 85, 43, 0) 55%),
+      linear-gradient(rgba(91, 79, 68, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91, 79, 68, 0.08) 1px, transparent 1px),
+      linear-gradient(180deg, var(--cream) 0%, var(--peach) 100%);
+    background-size: auto, 32px 32px, 32px 32px, auto;
     padding: 120px 32px 140px;
     text-align: center;
     position: relative;
@@ -88,6 +94,22 @@
     margin: 0 auto 28px;
   }
   .h1 em { font-style: italic; color: var(--accent-deep); }
+  .fake-cursor {
+    display: inline-block;
+    width: 9px;
+    height: 0.82em;
+    margin-left: 10px;
+    background: var(--accent-deep);
+    animation: blink-cursor 0.9s steps(2, end) infinite;
+  }
+  .section-number {
+    display: block;
+    margin-bottom: 12px;
+    color: var(--accent-deep);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+  }
   .lede {
     font-size: 20px;
     color: var(--soft);
@@ -123,6 +145,10 @@
     flex-wrap: wrap; gap: 32px;
     font-family: 'Fraunces', Georgia, serif;
     font-style: italic; font-size: 22px; color: var(--soft);
+    width: max-content;
+    max-width: none;
+    flex-wrap: nowrap;
+    animation: logo-marquee 12s linear infinite;
   }
 
   /* Features */
@@ -216,6 +242,20 @@
     border-top: 1px solid var(--line);
     background: var(--cream);
   }
+
+  @keyframes pulse-status {
+    50% { opacity: 0.5; transform: scale(1.22); }
+  }
+  @keyframes blink-cursor {
+    50% { opacity: 0; }
+  }
+  @keyframes logo-marquee {
+    to { transform: translateX(-35%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .logo-dot, .fake-cursor, .logos-inner { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -242,8 +282,9 @@
 
 
 <section class="hero">
+  <span class="section-number">01</span>
   <div class="eyebrow">AI-native workflows</div>
-  <h1 class="h1">Build faster with <em>intelligent</em> workflows for modern teams</h1>
+  <h1 class="h1">Build faster with <em>intelligent</em> workflows for modern teams<span class="fake-cursor" aria-hidden="true"></span></h1>
   <p class="lede">The all-in-one platform that helps product teams ship better software in record time. Powered by AI, designed for humans.</p>
   <div class="ctas">
     <a href="#" class="btn btn-primary">Start free trial →</a>
@@ -269,6 +310,7 @@
 
 <section class="features">
   <div class="features-head">
+    <span class="section-number">02</span>
     <h2>Everything you need to ship great products</h2>
     <p>One platform. Endless possibilities. Built for teams who care about craft.</p>
   </div>
@@ -295,6 +337,7 @@
 
 
 <section class="cta-section">
+  <span class="section-number">03</span>
   <h2>Ready to transform how your team builds?</h2>
   <p>Join thousands of teams already shipping faster with Lumina.</p>
   <a href="#" class="btn btn-primary">Start your free trial →</a>

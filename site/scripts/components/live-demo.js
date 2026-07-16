@@ -182,12 +182,13 @@ export function initLiveDemo() {
 		if (text && captionLabel) captionLabel.textContent = text;
 	};
 
-	const typeInto = (el, text, duration) => new Promise((resolve) => {
+	const typeInto = (el, text, duration, token) => new Promise((resolve) => {
 		if (!el) return resolve();
 		el.textContent = '';
 		const per = Math.max(30, Math.floor(duration / text.length));
 		let i = 0;
 		const tick = () => {
+			if (token !== cancelToken) return resolve();
 			if (i >= text.length) return resolve();
 			el.textContent += text[i++];
 			setTimeout(tick, per);
@@ -195,7 +196,7 @@ export function initLiveDemo() {
 		tick();
 	});
 
-	const step = async (s) => {
+	const step = async (s, token) => {
 		switch (s.action) {
 			case 'cursor-show':
 				moveCursor(target, -120, 40);
@@ -255,7 +256,7 @@ export function initLiveDemo() {
 				break;
 			case 'type-note':
 				annotations.classList.add('is-note-visible');
-				await typeInto(noteText, s.text, 800);
+				await typeInto(noteText, s.text, 800, token);
 				break;
 			case 'hold':
 				break;
@@ -290,19 +291,27 @@ export function initLiveDemo() {
 
 	let running = false;
 	let cancelToken = 0;
+	let timelineIndex = 0;
+	let hasStarted = false;
+	let inView = false;
+	let quiet = root.closest('[data-steering-desktop]')?.dataset.steeringBrowserUi === 'quiet';
 	const sleep = (ms, token) => new Promise((resolve) => setTimeout(() => resolve(token === cancelToken), ms));
 
 	const run = async () => {
-		if (running) return;
+		if (running || quiet || !inView) return;
 		running = true;
 		const myToken = ++cancelToken;
-		while (running && myToken === cancelToken) {
+		if (!hasStarted) {
 			reset();
-			for (const s of timeline) {
-				const stillMe = await sleep(s.dt, myToken);
-				if (!stillMe || !running) return;
-				await step(s);
-			}
+			hasStarted = true;
+		}
+		while (running && myToken === cancelToken) {
+			const s = timeline[timelineIndex];
+			const stillMe = await sleep(s.dt, myToken);
+			if (!stillMe || !running) return;
+			await step(s, myToken);
+			if (myToken !== cancelToken || !running) return;
+			timelineIndex = (timelineIndex + 1) % timeline.length;
 		}
 	};
 
@@ -322,9 +331,16 @@ export function initLiveDemo() {
 		return;
 	}
 
+	root.addEventListener('steering-demo-quiet', (event) => {
+		quiet = event.detail?.quiet === true;
+		if (quiet) stop();
+		else if (inView) run();
+	});
+
 	const io = new IntersectionObserver((entries) => {
 		entries.forEach((e) => {
-			if (e.isIntersecting) run();
+			inView = e.isIntersecting;
+			if (inView && !quiet) run();
 			else stop();
 		});
 	}, { threshold: 0.35 });

@@ -1,17 +1,16 @@
-// Theme switcher — three-way: auto / light / dark with localStorage persistence.
-// "auto" (the default) inherits from the OS via prefers-color-scheme and is only
-// overridden once the user clicks the toggle. Clicking cycles auto → light → dark → auto.
+// Theme switcher — three-way: dark / light / auto with localStorage persistence.
+// Dark is the first-visit default. Auto remains an explicit choice and follows
+// the OS via prefers-color-scheme. Clicking cycles dark → light → auto → dark.
 
 const STORAGE_KEY = 'impeccable-theme';
 
 export function getStoredPref() {
   const v = localStorage.getItem(STORAGE_KEY);
-  return v === 'light' || v === 'dark' ? v : 'auto';
+  return v === 'light' || v === 'dark' || v === 'auto' ? v : 'dark';
 }
 
 export function setStoredPref(pref) {
-  if (pref === 'auto') localStorage.removeItem(STORAGE_KEY);
-  else localStorage.setItem(STORAGE_KEY, pref);
+  localStorage.setItem(STORAGE_KEY, pref);
 }
 
 function systemTheme() {
@@ -25,9 +24,9 @@ export function resolveTheme(pref) {
 }
 
 const LABELS = {
-  auto: 'Theme: auto, matching your system. Click to switch to light mode.',
-  light: 'Theme: light. Click to switch to dark mode.',
-  dark: 'Theme: dark. Click to switch back to auto.',
+  dark: 'Theme: dark. Click to switch to light mode.',
+  light: 'Theme: light. Click to switch to auto mode.',
+  auto: 'Theme: auto, matching your system. Click to switch to dark mode.',
 };
 
 const TITLES = {
@@ -55,8 +54,8 @@ export function applyTheme(pref) {
   });
 }
 
-function nextPref(pref) {
-  return pref === 'auto' ? 'light' : pref === 'light' ? 'dark' : 'auto';
+export function nextPref(pref) {
+  return pref === 'dark' ? 'light' : pref === 'light' ? 'auto' : 'dark';
 }
 
 export function initThemeToggle() {

@@ -5,57 +5,8 @@ import { join } from 'node:path';
 
 const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js'), 'utf-8');
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
-const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
-  it('surfaces missing Codex CLI fallback without treating the agent as disconnected', () => {
-    assert.match(
-      SOURCE,
-      /syncAgentPollingUi\(!!msg\.agentPolling, msg\.codexWorker\)/,
-      'the initial SSE state should include the dedicated worker status',
-    );
-    assert.match(
-      SOURCE,
-      /cliUnavailable = codexWorkerStatus\?\.error === 'codex_cli_unavailable'[\s\S]*?using foreground generation/,
-      'a missing CLI should keep Live usable while exposing foreground mode accessibly',
-    );
-    assert.match(
-      SOURCE,
-      /Codex CLI is unavailable\. Live is using the main agent, so generation may take longer\.[\s\S]*?codex login/,
-      'the one-time fallback notice should explain the performance impact and recovery action',
-    );
-  });
-
-  it('routes Nuxt Vue preview modules through the Vite build-assets base', () => {
-    assert.match(
-      SOURCE,
-      /function resolveComponentModuleUrl\(manifest, modulePath\)[\s\S]*?manifest\?\.previewMode === 'vue-component'[\s\S]*?window\.__NUXT__\?\.config\?\.app\?\.buildAssetsDir[\s\S]*?pathValue\.slice\('\/@fs\/'.length\)/,
-      'Nuxt must not send app-local preview modules through the page-route fallback',
-    );
-    assert.match(
-      SOURCE,
-      /const moduleBase = manifest\.componentModuleBase[\s\S]*?resolveComponentModuleUrl\(manifest, modulePath\)/,
-      'Vue SFC variants should use the manifest Vite module base rather than componentDir as a route URL',
-    );
-  });
-
-  it('dispatches plain generation before screenshot capture without bypassing annotated evidence', () => {
-    const dispatchIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await sendEvent(basePayload);');
-    const captureIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await captureElementToBlob');
-    assert.ok(dispatchIndex >= 0, 'plain generation should dispatch immediately');
-    assert.ok(captureIndex > dispatchIndex, 'plain generation dispatch must happen before capture begins');
-    assert.match(
-      CAPTURE_AND_EMIT_SOURCE,
-      /if \(blob && hasAnnotations\)[\s\S]*?\/annotation\?token=/,
-      'annotation screenshots should still upload before annotated generation dispatch',
-    );
-    assert.match(
-      CAPTURE_AND_EMIT_SOURCE,
-      /if \(hasAnnotations\) \{[\s\S]*?basePayload\.clientSentAt = Date\.now\(\);\s*sendEvent\(screenshotPath \? \{ \.\.\.basePayload, screenshotPath \} : basePayload\);\s*\}/,
-      'annotated generation should dispatch exactly after capture and upload resolve',
-    );
-  });
-
   it('saves copy edits to the staged buffer with rich AI context', () => {
     assert.doesNotMatch(
       SOURCE,
@@ -334,7 +285,7 @@ describe('live-browser source contracts', () => {
     assert.match(SOURCE, /sendEvent\(\{ type: 'discard', id: currentSessionId \}, \{ throwOnError: true \}\)/);
   });
 
-  it('releases the foreground picker after deterministic accept while carbonize finishes', () => {
+  it('waits for post-carbonize completion before final accepted DOM cleanup', () => {
     assert.match(
       SOURCE,
       /let pendingAcceptedSession = null;/,
@@ -358,8 +309,8 @@ describe('live-browser source contracts', () => {
     const agentDoneStart = SOURCE.indexOf("case 'agent_done':");
     const errorCaseStart = SOURCE.indexOf("case 'error':", agentDoneStart);
     const agentDoneSource = SOURCE.slice(agentDoneStart, errorCaseStart);
-    assert.match(agentDoneSource, /must not hold the foreground picker hostage/);
-    assert.match(agentDoneSource, /maybeCompleteAcceptedSession\(msg\)/);
+    assert.match(agentDoneSource, /Carbonize accepts are not terminal/);
+    assert.match(agentDoneSource, /break;/);
     assert.match(
       SOURCE,
       /function handleGo\(\)[\s\S]{0,900}?pendingAcceptedSession = null;[\s\S]{0,80}?currentSessionId = id8\(\);/,
@@ -368,15 +319,15 @@ describe('live-browser source contracts', () => {
     const handleAcceptStart = SOURCE.indexOf('function handleAccept()');
     const maybeCompleteStart = SOURCE.indexOf('function maybeCompleteAcceptedSession', handleAcceptStart);
     const handleAcceptSource = SOURCE.slice(handleAcceptStart, maybeCompleteStart);
-    assert.match(
+    assert.doesNotMatch(
       handleAcceptSource,
-      /sendEvent\(acceptPayload, \{ throwOnError: true \}\)[\s\S]*?markSessionHandled\(\);[\s\S]*?setLiveState\('CONFIRMED'\);[\s\S]*?scheduleAcceptCleanup\(pending\);/,
-      'durable accept intent should release the foreground picker before background source cleanup completes',
+      /state = 'CONFIRMED'|cleanupAcceptedSession\(|hideBar\(\)/,
+      'accept enqueue should not clear or confirm the browser session before source cleanup completes',
     );
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?\}, 1200\);/,
-      'foreground cleanup should be immediate while the no-HMR DOM fallback stays deferred',
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?acceptedDomAlreadyClean\(accepted\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?\}, 1800\);/,
+      'post-cleanup fallback should give HMR a second chance before mutating React-owned DOM',
     );
     assert.match(
       SOURCE,
@@ -440,14 +391,6 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function jsxStyleObjectToCss\(body\)/,
       'source fallback should translate simple JSX style objects such as display:none',
-    );
-  });
-
-  it('loads progressive source checkpoints through the no-HMR fallback', () => {
-    assert.match(
-      SOURCE,
-      /case 'variant_progress':[\s\S]{0,1400}?msg\.previewMode === 'source'[\s\S]{0,1000}?arrivedVariants >= targetArrived[\s\S]{0,260}?injectVariantsFromSource\(msg\.previewFile \|\| msg\.file, msg\.id\)/,
-      'source-mode progress should let framework HMR settle before using the no-HMR fallback',
     );
   });
 });

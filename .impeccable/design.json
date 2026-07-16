@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-06-15T23:30:35.569Z",
+  "generatedAt": "2026-07-16T06:06:28.000Z",
   "title": "Design System: Impeccable",
   "extensions": {
     "colorMeta": {
@@ -37,6 +37,22 @@
           "oklch(71% 0.082 184)",
           "oklch(76% 0.088 190)",
           "oklch(82% 0.07 188)"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink on Gold",
+        "canonical": "oklch(14% 0.018 95)",
+        "description": "Permanent foreground for kinpaku-filled controls. Never remapped between themes.",
+        "tonalRamp": [
+          "oklch(7% 0.006 95)",
+          "oklch(11% 0.006 95)",
+          "oklch(14% 0.018 95)",
+          "oklch(18% 0.02 95)",
+          "oklch(25% 0.018 95)",
+          "oklch(35% 0.015 95)",
+          "oklch(45% 0.012 95)",
+          "oklch(55% 0.01 95)"
         ]
       },
       "lacquer-black": {
@@ -282,7 +298,7 @@
       "refersTo": "button-primary",
       "description": "Filled kinpaku CTA on lacquer. Both .ks-button and .ks-button-primary required.",
       "html": "<button type=\"button\" class=\"ds-btn-primary\">Get started</button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.96rem; font-weight: 500; line-height: 1; color: oklch(4% 0.004 95); background: oklch(84% 0.19 80.46); border: 1px solid oklch(84% 0.19 80.46); border-radius: 2px; cursor: pointer; transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-btn-primary:hover { background: oklch(86% 0.07 84); border-color: oklch(86% 0.07 84); transform: translateY(-1px); } .ds-btn-primary:active { transform: translateY(0); background: oklch(77% 0.13 82); border-color: oklch(77% 0.13 82); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 3px; }"
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; font-family: \"Albert Sans\", \"Avenir Next\", \"Helvetica Neue\", Arial, system-ui, sans-serif; font-size: 0.96rem; font-weight: 500; line-height: 1; color: oklch(14% 0.018 95); background: oklch(84% 0.19 80.46); border: 1px solid oklch(84% 0.19 80.46); border-radius: 2px; cursor: pointer; transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 180ms cubic-bezier(0.2, 0.8, 0.2, 1); } .ds-btn-primary:hover { background: oklch(86% 0.07 84); border-color: oklch(86% 0.07 84); transform: translateY(-1px); } .ds-btn-primary:active { transform: translateY(0); background: oklch(77% 0.13 82); border-color: oklch(77% 0.13 82); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 3px; }"
     },
     {
       "name": "Secondary Button",

@@ -1264,11 +1264,6 @@ function findShadowColor(layer) {
   if (fn) return { color: parseAnyColor(fn[0]), start: fn.index, end: fn.index + fn[0].length };
   const hex = layer.match(/#[0-9a-fA-F]{3,8}\b/);
   if (hex) return { color: parseAnyColor(hex[0]), start: hex.index, end: hex.index + hex[0].length };
-  // Keep unresolved custom properties intact as one color token. Otherwise
-  // names such as `--signal-blue` are accidentally parsed as the named color
-  // `blue`, and digits in names such as `--accent-500` become shadow lengths.
-  const variable = layer.match(/var\([^)]*\)/i);
-  if (variable) return { color: null, start: variable.index, end: variable.index + variable[0].length };
   const wordRe = /[a-zA-Z][a-zA-Z]*/g;
   let m;
   while ((m = wordRe.exec(layer)) !== null) {
@@ -1276,13 +1271,6 @@ function findShadowColor(layer) {
     if (named) return { color: { ...named, a: 1 }, start: m.index, end: m.index + m[0].length };
   }
   return null;
-}
-
-const CHROMATIC_CUSTOM_PROPERTY_HINT_RE = /(?:^|-)(?:accent|kinpaku|patina|gold|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|magenta|pink|rose|coral|aqua|mint|burgundy|crimson|scarlet)(?:-|$)/i;
-
-function unresolvedShadowTokenLooksChromatic(layer) {
-  const variable = layer.match(/var\(\s*(--[\w-]+)/i);
-  return variable ? CHROMATIC_CUSTOM_PROPERTY_HINT_RE.test(variable[1]) : false;
 }
 
 // Extract the length values of a shadow layer in declaration order, with the
@@ -1686,22 +1674,16 @@ function scanCssTextForInsetStripe(content) {
     // menu items — are wider or leave width to layout.
     const declaredWidth = cssLengthToPx(resolveVarRefs(decls.get('width') || decls.get('inline-size') || '', customProps));
     if (declaredWidth != null && declaredWidth <= 40) continue;
-    for (const authoredLayer of shadow.split(/,(?![^(]*\))/)) {
-      const layer = resolveVarRefs(authoredLayer, customProps);
+    const value = resolveVarRefs(shadow, customProps);
+    for (const layer of value.split(/,(?![^(]*\))/)) {
       if (!/\binset\b/i.test(layer)) continue;
       const colorInfo = findShadowColor(layer);
-      if (!colorInfo) continue;
-      if (colorInfo.color) {
-        const c = colorInfo.color;
-        if ((c.a ?? 1) < 0.1) continue;
-        const chroma = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
-        if (chroma < 30) continue;
-      } else if (!unresolvedShadowTokenLooksChromatic(authoredLayer)) {
-        // External custom properties are unknowable in an isolated artifact.
-        // Only explicit accent or hue semantics justify treating one as
-        // chromatic; neutral shadow/divider tokens and currentColor stay legal.
-        continue;
-      }
+      // Unresolvable colors (currentColor, external vars): don't guess.
+      if (!colorInfo || !colorInfo.color) continue;
+      const c = colorInfo.color;
+      if ((c.a ?? 1) < 0.1) continue;
+      const chroma = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+      if (chroma < 30) continue;
       const vals = extractShadowLengths(layer, colorInfo.start, colorInfo.end);
       const x = vals[0] || 0, y = vals[1] || 0, blur = vals[2] || 0, sp = vals[3] || 0;
       if (blur !== 0 || sp !== 0) continue;

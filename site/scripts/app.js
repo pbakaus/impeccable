@@ -246,14 +246,26 @@ function initHeroProof() {
 	const tabs = Array.from(root.querySelectorAll("[data-proof-tab]"));
 	const panels = Array.from(root.querySelectorAll("[data-proof-panel]"));
 	const result = root.querySelector("[data-hero-proof-result]");
+	const positionUpdates = new Map();
 	if (!tabs.length || !panels.length) return;
 
 	panels.forEach((panel) => {
 		const range = panel.querySelector("[data-proof-range]");
 		if (!range) return;
 		const updatePosition = () => {
-			panel.style.setProperty("--proof-position", `${range.value}%`);
+			const position = Number(range.value);
+			panel.style.setProperty("--proof-position", `${position}%`);
+			if (panel.hidden) return;
+
+			const panelRect = panel.getBoundingClientRect();
+			const seamX = panelRect.left + panelRect.width * position / 100;
+			panel.querySelectorAll(".hero-proof-layer--before .proof-annotation").forEach((annotation) => {
+				const target = annotation.parentElement;
+				const targetX = target?.getBoundingClientRect().left ?? panelRect.left;
+				annotation.classList.toggle("is-concealed", position <= 0 || targetX >= seamX);
+			});
 		};
+		positionUpdates.set(panel, updatePosition);
 		range.addEventListener("input", updatePosition);
 		updatePosition();
 	});
@@ -274,9 +286,15 @@ function initHeroProof() {
 			panel.classList.toggle("is-active", active);
 			panel.hidden = !active;
 		});
+		positionUpdates.get(nextPanel)?.();
 		if (result) result.textContent = nextPanel.dataset.summary || "Example updated";
 		if (moveFocus) nextTab.focus();
 	};
+
+	window.addEventListener("resize", () => {
+		const activePanel = panels.find((panel) => !panel.hidden);
+		if (activePanel) positionUpdates.get(activePanel)?.();
+	}, { passive: true });
 
 	tabs.forEach((tab, index) => {
 		tab.addEventListener("click", () => activate(index));
@@ -306,11 +324,112 @@ function init() {
 	initSectionNav();
 	initWhyTabs();
 	initLanguageTabs();
+	initSteeringDesktop();
 	initLiveDemo();
 	initGbarPageChat();
 	loadContent();
 
 	document.body.classList.add("loaded");
+}
+
+function initSteeringDesktop() {
+	const desktop = document.querySelector('[data-steering-desktop]');
+	if (!desktop) return;
+
+	const mobileTabs = Array.from(desktop.querySelectorAll('[data-steering-mobile-tab]'));
+	const commandButtons = Array.from(desktop.querySelectorAll('[data-steering-command]'));
+	const activeCommands = Array.from(desktop.querySelectorAll('[data-steering-active-command]'));
+	const agentCopy = desktop.querySelector('[data-steering-agent-copy]');
+	const agentThread = desktop.querySelector('[data-steering-thread]');
+	const agentPane = desktop.querySelector('[data-steering-pane="agent"]');
+	const browserPane = desktop.querySelector('[data-steering-pane="browser"]');
+	const liveDemo = desktop.querySelector('.language-live-demo');
+	const polishScene = desktop.querySelector('[data-steering-thread-scene="polish"]');
+	const liveScene = desktop.querySelector('[data-steering-thread-scene="live"]');
+	const composerCommand = desktop.querySelector('[data-steering-composer-command]');
+	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+	const mobileLayout = window.matchMedia('(max-width: 760px)');
+
+	const selectedCommand = () => commandButtons.find((button) => button.classList.contains('is-active'))?.dataset.steeringCommand || 'polish';
+	const setBrowserUiQuiet = (quiet) => {
+		desktop.dataset.steeringBrowserUi = quiet ? 'quiet' : 'live';
+		if (!liveDemo) return;
+		liveDemo.toggleAttribute('inert', quiet);
+		if (quiet) liveDemo.setAttribute('aria-hidden', 'true');
+		else liveDemo.removeAttribute('aria-hidden');
+		liveDemo.dispatchEvent(new CustomEvent('steering-demo-quiet', { detail: { quiet } }));
+	};
+	const showThreadScene = (scene) => {
+		if (!agentThread || !polishScene || !liveScene) return;
+		const target = scene === 'live' ? liveScene : polishScene;
+		agentThread.scrollTo({
+			top: Math.max(0, target.offsetTop - polishScene.offsetTop),
+			behavior: reducedMotion.matches ? 'auto' : 'smooth',
+		});
+		if (composerCommand) composerCommand.textContent = scene === 'live' ? 'live' : selectedCommand();
+	};
+
+	mobileTabs.forEach((tab) => {
+			tab.addEventListener('click', () => {
+			const pane = tab.dataset.steeringMobileTab;
+			desktop.dataset.mobilePane = pane;
+			showThreadScene(pane === 'browser' ? 'live' : 'polish');
+			setBrowserUiQuiet(pane === 'agent');
+			mobileTabs.forEach((item) => {
+				const selected = item === tab;
+				item.classList.toggle('is-active', selected);
+				item.setAttribute('aria-selected', selected ? 'true' : 'false');
+			});
+		});
+	});
+
+	if (agentPane) {
+		agentPane.addEventListener('pointerenter', () => {
+			if (!mobileLayout.matches) setBrowserUiQuiet(true);
+		});
+		agentPane.addEventListener('pointerleave', () => {
+			if (!mobileLayout.matches) setBrowserUiQuiet(false);
+		});
+		agentPane.addEventListener('focusin', () => setBrowserUiQuiet(true));
+		agentPane.addEventListener('focusout', (event) => {
+			if (!agentPane.contains(event.relatedTarget)) setBrowserUiQuiet(false);
+		});
+	}
+
+	if (browserPane) {
+		browserPane.addEventListener('pointerenter', () => {
+			if (mobileLayout.matches) return;
+			setBrowserUiQuiet(false);
+			showThreadScene('live');
+		});
+		browserPane.addEventListener('pointerleave', () => {
+			if (!mobileLayout.matches) showThreadScene('polish');
+		});
+		browserPane.addEventListener('focusin', () => {
+			setBrowserUiQuiet(false);
+			showThreadScene('live');
+		});
+		browserPane.addEventListener('focusout', (event) => {
+			if (!browserPane.contains(event.relatedTarget)) showThreadScene('polish');
+		});
+	}
+
+	if (mobileLayout.matches && desktop.dataset.mobilePane === 'agent') {
+		setBrowserUiQuiet(true);
+	}
+
+	commandButtons.forEach((button) => {
+		button.addEventListener('click', () => {
+			const command = button.dataset.steeringCommand;
+			commandButtons.forEach((item) => {
+				const selected = item === button;
+				item.classList.toggle('is-active', selected);
+				item.setAttribute('aria-pressed', selected ? 'true' : 'false');
+			});
+			activeCommands.forEach((item) => { item.textContent = command; });
+			if (agentCopy && button.dataset.agentCopy) agentCopy.textContent = button.dataset.agentCopy;
+		});
+	});
 }
 
 function initLanguageTabs() {

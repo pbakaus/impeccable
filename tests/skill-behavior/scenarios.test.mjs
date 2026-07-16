@@ -39,7 +39,7 @@ const SHAPE_PROMPT = '/impeccable shape a landing page for the project in this w
 const NATURAL_BUILD_PROMPT = 'Build a landing page for the project in this workspace.';
 const TEACH_PROMPT = '/impeccable teach';
 const PRIMER_PROMPT =
-  'Take a quick look at the project. What register is this? Run the impeccable context loader once if you need to.';
+  'Take a quick look at the project. What context should guide later design work? Run the impeccable context loader once if you need to.';
 
 const VERBOSE = process.env.IMPECCABLE_SKILL_BEHAVIOR_VERBOSE === '1';
 
@@ -109,19 +109,14 @@ for (const modelId of resolveModelList()) {
           `expected agent to run context.mjs at least once; got ${loadCalls.length}.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
-        const resolvedBuildGate =
-          fileLoaded(trace, 'init.md') || fileLoaded(trace, 'new-work.md');
         assert.ok(
-          resolvedBuildGate,
-          `craft should load init.md for an attended run or new-work.md when it treats the harness as unattended.\n` +
+          fileLoaded(trace, 'init.md'),
+          `craft should load init.md when no product or visual world exists; an automated harness is not a bypass.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
-        const gatePrecededImplementation =
-          loadedBeforeImplementationWrite(trace, 'init.md') ||
-          loadedBeforeImplementationWrite(trace, 'new-work.md');
         assert.ok(
-          gatePrecededImplementation,
-          `agent should resolve the init/new-work gate before writing implementation files.\n` +
+          loadedBeforeImplementationWrite(trace, 'init.md'),
+          `agent should resolve init before writing implementation files.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -148,8 +143,8 @@ for (const modelId of resolveModelList()) {
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
-          fileLoaded(trace, 'new-work.md'),
-          `greenfield craft should load new-work.md when PRODUCT.md exists without a committed design system.\n` +
+          fileLoaded(trace, 'init.md'),
+          `greenfield craft should load init.md Step 5 when PRODUCT.md exists without a committed design system.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -174,6 +169,11 @@ for (const modelId of resolveModelList()) {
           loadCalls.length >= 1 && loadCalls.length <= 3,
           `expected 1-3 context.mjs invocations; got ${loadCalls.length}.\n` +
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
+        );
+        assert.ok(
+          fileLoaded(trace, 'new-work.md'),
+          `craft inside a committed PRODUCT.md + DESIGN.md world should load new-work.md for the task-specific concept.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
         // The skill tells the agent to also familiarize with the existing
         // design system. DESIGN.md is bundled in context.mjs output, but
@@ -236,7 +236,7 @@ for (const modelId of resolveModelList()) {
       }
     });
 
-    it('scenario 5: PRODUCT.md without legacy register metadata still follows new-work', async () => {
+    it('scenario 5: legacy PRODUCT.md still completes init when DESIGN.md is missing', async () => {
       const workspace = prepareWorkspace({
         files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER },
       });
@@ -247,7 +247,7 @@ for (const modelId of resolveModelList()) {
           userPrompt: CRAFT_PROMPT,
           maxSteps: setupMaxSteps,
         });
-        logTrace('S5', 'no-register-field', modelId, trace, { textSample: text.slice(0, 400) });
+        logTrace('S5', 'legacy-product', modelId, trace, { textSample: text.slice(0, 400) });
         const loadCalls = bashCommandsMatching(trace, 'context.mjs');
         assert.ok(
           loadCalls.length >= 1,
@@ -255,8 +255,8 @@ for (const modelId of resolveModelList()) {
             `bashCommands: ${JSON.stringify(trace.bashCommands, null, 2)}`,
         );
         assert.ok(
-          fileLoaded(trace, 'new-work.md'),
-          `greenfield craft should load new-work.md regardless of legacy register metadata.\n` +
+          fileLoaded(trace, 'init.md'),
+          `greenfield craft should load init.md for legacy product context when DESIGN.md is missing.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -462,12 +462,9 @@ for (const modelId of resolveModelList()) {
           `expected agent to run context.mjs at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
-        const gatePrecededImplementation =
-          loadedBeforeImplementationWrite(trace, 'init.md') ||
-          loadedBeforeImplementationWrite(trace, 'new-work.md');
         assert.ok(
-          gatePrecededImplementation,
-          `shape should resolve init.md (attended) or new-work.md (unattended) before implementation.\n` +
+          loadedBeforeImplementationWrite(trace, 'init.md'),
+          `shape should resolve init.md before implementation when no world exists.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -490,12 +487,9 @@ for (const modelId of resolveModelList()) {
           `expected agent to run context.mjs at least once.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
-        const gatePrecededImplementation =
-          loadedBeforeImplementationWrite(trace, 'init.md') ||
-          loadedBeforeImplementationWrite(trace, 'new-work.md');
         assert.ok(
-          gatePrecededImplementation,
-          `build intent should resolve init.md (attended) or new-work.md (unattended) before implementation.\n` +
+          loadedBeforeImplementationWrite(trace, 'init.md'),
+          `build intent should resolve init.md before implementation when no world exists.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -533,10 +527,10 @@ for (const modelId of resolveModelList()) {
       }
     });
 
-    it('scenario 14: native iOS project (agent loads ios.md on top of register)', async () => {
+    it('scenario 14: native iOS project (agent loads ios.md)', async () => {
       // PRODUCT.md sets `## Platform` to `ios`. context.mjs emits a NEXT STEP
       // directive to read reference/ios.md for native conventions. Setup step 5
-      // requires it on top of the register reference. The detector / live mode
+      // requires it on top of the visitor-mode guidance. The detector / live mode
       // are web-only, so the only platform-specific obligation is loading the
       // native reference — that's what this asserts.
       const workspace = prepareWorkspace({

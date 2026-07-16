@@ -1868,22 +1868,42 @@ export const CONTRACT_MAX_CHARS = 1800;
 // Cap contract sections per Stop emission so many touched artifacts cannot
 // stack an unbounded message.
 export const CONTRACT_AUDIT_MAX_FILES = 3;
+export const CONTRACT_EXTS = new Set(['.html', '.htm', '.astro', '.svelte', '.vue', '.jsx', '.tsx']);
+export const CONTRACT_REQUIRED_FIELDS = ['UNIQUE', 'NOT-TEMPLATE', 'OWN-WORLD', 'STORY', 'FIRST VIEWPORT', 'FORM'];
 
 /**
- * Extract the artifact's own direction-contract comment: the first HTML
- * comment in the head of the file, when its opening chars identify it as a
- * contract/concept block. Returns the trimmed, length-capped body, or null
- * when the file carries none (no comment, unclosed comment, marker missing,
- * or the comment starts past the head window).
+ * Extract the artifact's own direction-contract comment from the head of an
+ * HTML or component file. Supports HTML-family comments and JSX block
+ * comments so the contract works in the Astro/Svelte/Vue/React scaffolds the
+ * skill actually builds. Returns the trimmed, length-capped body, or null
+ * when the file carries no valid contract block.
  */
 export function extractDirectionContract(content) {
   if (typeof content !== 'string' || !content) return null;
   const head = content.slice(0, CONTRACT_HEAD_CHARS);
-  const m = /<!--([\s\S]*?)-->/.exec(head);
-  if (!m) return null;
-  const body = m[1].trim();
-  if (!body || !/contract|concept/i.test(body.slice(0, CONTRACT_MARKER_CHARS))) return null;
-  return body.slice(0, CONTRACT_MAX_CHARS);
+  const candidates = [];
+  for (const pattern of [/<!--([\s\S]*?)-->/g, /\{\/\*([\s\S]*?)\*\/\}/g]) {
+    for (const match of head.matchAll(pattern)) {
+      const index = match.index ?? 0;
+      const linePrefix = head.slice(head.lastIndexOf('\n', index - 1) + 1, index).trim();
+      if (linePrefix.startsWith('//')) continue;
+      candidates.push({ index, body: match[1].trim() });
+    }
+  }
+  candidates.sort((a, b) => a.index - b.index);
+  for (const candidate of candidates) {
+    if (!candidate.body || !/direction\s+contract|concept\s+contract/i.test(candidate.body.slice(0, CONTRACT_MARKER_CHARS))) continue;
+    return candidate.body.slice(0, CONTRACT_MAX_CHARS);
+  }
+  return null;
+}
+
+export function missingDirectionContractFields(contract) {
+  const body = typeof contract === 'string' ? contract : '';
+  return CONTRACT_REQUIRED_FIELDS.filter((field) => {
+    const label = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return !new RegExp(`\\b${label}\\s*:`, 'i').test(body);
+  });
 }
 
 /**
@@ -1899,7 +1919,11 @@ export function renderContractAudit(entries, opts = {}) {
   const shown = entries.slice(0, CONTRACT_AUDIT_MAX_FILES);
   const blocks = shown.map(({ filePath, contract }) => {
     const display = relativize(filePath, cwd);
-    return `${display} opens with this direction contract, written when the direction was decided:\n\n${contract}`;
+    const missing = missingDirectionContractFields(contract);
+    const integrity = missing.length > 0
+      ? `\n\nContract integrity defect: missing ${missing.join(', ')}. Repair the contract and the implementation together.`
+      : '';
+    return `${display} opens with this direction contract, written when the direction was decided:\n\n${contract}${integrity}`;
   });
   return [
     `${ENVELOPE_PREFIX} Direction-contract audit. Before finishing, audit the rendered page against the contract it opens with, promise by promise.`,
@@ -2013,10 +2037,11 @@ export async function runStopHook({ stdinJson, env = {}, cwd = process.cwd(), no
         ? configuredExt.engine === 'html'
         : (ext === '.html' || ext === '.htm');
 
-      // Direction-contract audit: HTML artifacts only, at most once per file
+      // Direction-contract audit: HTML and component artifacts, at most once per file
       // per session. The flag lives on the same session cache entry the
       // finding dedupe uses, so a second Stop fire stays quiet about it.
-      if (useHtmlEngine) {
+      const contractCapable = useHtmlEngine || CONTRACT_EXTS.has(ext);
+      if (contractCapable) {
         const fileEntry = ensureFile(cache, sessionId, filePath);
         if (!fileEntry.contractAudited) {
           const contract = extractDirectionContract(content);

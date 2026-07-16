@@ -9,6 +9,7 @@ colors:
   # Brand anchors
   kinpaku-gold: "oklch(84% 0.19 80.46)"       # primary accent
   verdigris-patina: "oklch(70% 0.12 188)"     # secondary accent / state
+  dark-ink: "oklch(14% 0.018 95)"             # foreground on gold; never theme-remapped
 
   # Surfaces
   lacquer-black: "oklch(7% 0.006 95)"         # page ground
@@ -172,13 +173,13 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.kinpaku-gold}"
-    textColor: "{colors.lacquer-deep}"
+    textColor: "{colors.dark-ink}"
     typography: "{typography.title}"
     rounded: "{rounded.xs}"
     padding: "0 38px"
   button-primary-hover:
     backgroundColor: "{colors.kinpaku-pale}"
-    textColor: "{colors.lacquer-deep}"
+    textColor: "{colors.dark-ink}"
   button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.kinpaku-gold}"

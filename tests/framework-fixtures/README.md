@@ -112,7 +112,6 @@ When `preActions` is omitted, steer smoke inherits `runtime.preActions` to revea
 | `nextjs-app/` | `app/layout.tsx` as JSX inject target (commentSyntax `jsx`). |
 | `astro/` | `src/layouts/Layout.astro` as inject target. HTML comments. |
 | `sveltekit/` | `src/app.html` shell + `src/routes/+page.svelte`. |
-| `nuxt-vite7/` | Nuxt 4 `app/` structure + Vue 3 SFC. Live loads through a generated dev-only client plugin. |
 | `multipage-with-generator/` | `src/` tracked, `dist/` gitignored. Exercises the is-generated guard and `element_not_in_source` fallback. |
 | `nextjs-turborepo/` | Monorepo with shared CSP helper (`createBaseNextConfig`). CSP shape `append-arrays`. |
 | `nextjs-inline-csp/` | App-level `next.config.js` with a literal CSP string. CSP shape `append-string`. |
@@ -120,44 +119,3 @@ When `preActions` is omitted, steer smoke inherits `runtime.preActions` to revea
 | `nuxt-csp/` | Nuxt `routeRules` with literal CSP header in `nuxt.config.ts`. CSP shape `append-string`. |
 
 Add new fixtures by cloning a directory, swapping files, and updating `fixture.json`.
-
-## External quality-eval fixtures
-
-The public Live benchmark can execute a fixture owned by another repository
-without copying its task corpus or rubric into Impeccable:
-
-```sh
-bun run bench:live -- \
-  --fixture-dir=/absolute/path/to/private-fixture \
-  --agent=codex \
-  --action=bolder \
-  --iterations=1 \
-  --evidence-bundle=/absolute/path/to/output-bundle
-```
-
-An external fixture has the same shape as a directory in this folder:
-`fixture.json`, `gitignore.txt`, and `files/`. Use the optional
-`evidenceCapture` block in `fixture.json` for rubric-free capture metadata:
-
-```json
-{
-  "evidenceCapture": {
-    "captureSelector": "section.case-study",
-    "mode": "target",
-    "viewport": { "width": 1440, "height": 1080 },
-    "action": "bolder"
-  }
-}
-```
-
-Use `"mode": "target"` when `captureSelector` is the picked element itself;
-the original resolves through that selector and each variant resolves through
-its exact Live wrapper. Omit it when the selector is a stable ancestor used as
-shared page context for every capture.
-
-The bundle contains `report.json`, the original capture, each progressively
-delivered variant capture, geometry/overflow facts, hashes, and timing data.
-It deliberately cannot run `--judge-rendered`; comparative rubrics, private
-fixtures, human calibration, and quality decisions belong in the consuming
-evaluation harness. The normal public E2E suite remains responsible for Live
-protocol, framework, source-commit, cleanup, and recovery correctness.

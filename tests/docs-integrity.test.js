@@ -89,6 +89,40 @@ function routeFromUrl(url) {
 }
 
 describe('docs integrity', () => {
+  test('separates durable world creation from collaborative surface concepts', () => {
+    const init = fs.readFileSync(path.join(ROOT, 'skill/reference/init.md'), 'utf8');
+    const newWork = fs.readFileSync(path.join(ROOT, 'skill/reference/new-work.md'), 'utf8');
+    const shape = fs.readFileSync(path.join(ROOT, 'skill/reference/shape.md'), 'utf8');
+    const document = fs.readFileSync(path.join(ROOT, 'skill/reference/document.md'), 'utf8');
+    const codex = fs.readFileSync(path.join(ROOT, 'skill/reference/codex.md'), 'utf8');
+    const typeset = fs.readFileSync(path.join(ROOT, 'skill/reference/typeset.md'), 'utf8');
+
+    expect(init).toContain('## Audience World');
+    expect(init).toContain('## Cultural Context');
+    expect(init).toContain('## Pinned Direction');
+    expect(init).toContain('Ask the user to choose');
+    expect(init).toContain('user-approved visual world');
+
+    expect(newWork).toContain('A committed world does not decide the new surface');
+    expect(newWork).toContain('concept-seed.mjs');
+    expect(newWork).toContain('Present two or three materially different surface concepts');
+    expect(newWork).toContain('DIRECTION CONTRACT');
+    expect(newWork).toContain('[codex.md](codex.md)');
+    expect(newWork).toContain('Commit before correcting');
+    expect(newWork).toContain('Judge the skeleton skin-blind');
+    expect(newWork).not.toContain('palette.mjs');
+
+    expect(shape).toContain('follow [new-work.md](new-work.md)');
+    expect(shape).toContain('shape never writes code or a direction contract');
+    expect(init).toContain('“Redesign this page/site” is enough authorization');
+    expect(init).toContain('Do not offer “the old look, polished”');
+    expect(document).toContain('load **Step 5: Establish the visual world**');
+    expect(codex).toContain('this file must not reopen it');
+    expect(codex).toContain('Do not generate a palette artifact');
+    expect(typeset).toContain('New identity work belongs to [init.md](init.md)');
+    expect(typeset).not.toContain('[new-work.md](new-work.md)');
+  });
+
   test('internal docs links point at canonical local routes', () => {
     const routes = knownRoutes();
     const broken = [];

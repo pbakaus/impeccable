@@ -385,7 +385,7 @@
 
 .live-mode-kinpaku .live-demo-card--v2 button {
   background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 .live-mode-kinpaku .live-demo-card--v3 {
@@ -558,7 +558,7 @@
 
 .live-mode-kinpaku .live-mode-stage-viz .docs-viz-picker-pin {
   background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   box-shadow: none;
 }
 

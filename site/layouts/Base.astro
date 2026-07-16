@@ -69,7 +69,7 @@ const resolvedOgDescription = ogDescription || description;
       try {
         var t = localStorage.getItem('impeccable-theme');
         var root = document.documentElement;
-        var pref = (t === 'light' || t === 'dark') ? t : 'auto';
+        var pref = (t === 'light' || t === 'dark' || t === 'auto') ? t : 'dark';
         var resolved = pref === 'auto'
           ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
           : pref;

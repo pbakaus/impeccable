@@ -147,7 +147,7 @@
    anchor resets like `.kinpaku-system-page a { color: inherit }` (0,1,1).
    Use class="ks-button ks-button-primary" — both classes required. */
 .ks-button.ks-button-primary {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
 }
@@ -155,7 +155,7 @@
 .ks-button.ks-button-primary:hover {
   background: var(--ks-kinpaku-pale);
   border-color: var(--ks-kinpaku-pale);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   transform: translateY(-1px);
 }
 
@@ -325,7 +325,7 @@
   top: 2px;
   width: 5px;
   height: 9px;
-  border: solid var(--ks-lacquer-deep);
+  border: solid var(--ks-dark-ink);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
@@ -1487,7 +1487,7 @@
 .home-kinpaku .live-demo-ctx-accept,
 .live-mode-kinpaku .live-demo-ctx-accept {
   background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   border: 0;
 }
 
@@ -1629,7 +1629,7 @@
 .home-kinpaku .live-demo-comment,
 .live-mode-kinpaku .live-demo-comment {
   background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 .home-kinpaku .live-demo-stroke,

@@ -10,7 +10,7 @@
  *   4. Inlines SKILL.md as the system prompt (placeholders stripped to
  *      neutral values so the same body works for all providers).
  *   5. Runs Vercel AI SDK generateText with workspace-scoped tools
- *      (bash, read, write, list).
+ *      (bash, read, write, list, ask_user_question).
  *   6. Captures every tool call and returns a trace + the raw response
  *      messages (so multi-turn scenarios can append to them).
  *
@@ -49,7 +49,7 @@ function loadSkillBody() {
   md = md
     .replaceAll('{{model}}', 'the assistant')
     .replaceAll('{{command_prefix}}', '/')
-    .replaceAll('{{ask_instruction}}', 'Ask the user')
+    .replaceAll('{{ask_instruction}}', 'Use the ask_user_question tool.')
     .replaceAll('{{config_file}}', 'AGENTS.md')
     .replaceAll('{{scripts_path}}', '.claude/skills/impeccable/scripts')
     .replaceAll('{{command_hint}}', 'command');
@@ -159,7 +159,26 @@ function execBash(workspace, command, timeoutMs = 20_000, extraEnv = {}) {
  * Build the workspace-scoped tool set + the trace it writes into.
  * Returns `{ tools, trace }`. The trace mutates in place as the agent runs.
  */
-export function makeTools(workspace, extraEnv = {}) {
+function defaultSimulatedAnswer(question) {
+  const text = String(question?.question ?? '').toLowerCase();
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const firstOption = options.find((option) => typeof option?.label === 'string')?.label;
+
+  // Option labels are model-authored and therefore the most faithful answer
+  // when the agent is asking the user to choose a proposed world or concept.
+  if (firstOption) return firstOption;
+  if (/platform|web|ios|android|adaptive/.test(text)) return 'Web.';
+  if (/who|audience|user|people/.test(text)) return 'Night-shift ferry dispatchers working from noisy control rooms.';
+  if (/purpose|job|problem|outcome|success/.test(text)) return 'Help dispatchers resolve berth conflicts before they delay the overnight crossing.';
+  if (/position|different|claim|only/.test(text)) return 'It turns fragmented radio calls into one trustworthy handoff record.';
+  if (/world|tool|place|object|ritual|context/.test(text)) return 'Harbor logs, tide tables, grease-pencil berth boards, radio call signs, and sodium-lit terminals.';
+  if (/direction|feel|personality|reference|look/.test(text)) return 'Decisive, maritime, and operational; avoid generic SaaS dashboards and nautical decoration.';
+  if (/accessib|motion|contrast/.test(text)) return 'WCAG AA, keyboard access, reduced motion, and high contrast for dim control rooms.';
+  if (/scope|fidelity|breadth|interactiv|polish/.test(text)) return 'One production-ready responsive surface with working interactions.';
+  return 'Use the brief, preserve real operational content, and make the primary decision obvious.';
+}
+
+export function makeTools(workspace, extraEnv = {}, simulatedUser = {}) {
   const trace = {
     toolCalls: [],
     bashCommands: [],
@@ -167,6 +186,8 @@ export function makeTools(workspace, extraEnv = {}) {
     readPaths: [],
     writePaths: [],
     listPaths: [],
+    questionCalls: [],
+    questionAnswers: [],
   };
   function record(name, input) {
     trace.toolCalls.push({ name, input });
@@ -174,6 +195,7 @@ export function makeTools(workspace, extraEnv = {}) {
     if (name === 'read' && typeof input?.path === 'string') trace.readPaths.push(input.path);
     if (name === 'write' && typeof input?.path === 'string') trace.writePaths.push(input.path);
     if (name === 'list' && typeof input?.path === 'string') trace.listPaths.push(input.path);
+    if (name === 'ask_user_question') trace.questionCalls.push(input);
   }
   const tools = {
     bash: tool({
@@ -241,6 +263,34 @@ export function makeTools(workspace, extraEnv = {}) {
         return entries.length ? entries.join('\n') : '(empty)';
       },
     }),
+    ask_user_question: tool({
+      description:
+        'Ask the user 1-4 structured questions and wait for answers. Use this for required Impeccable init, visual-world selection, and task-concept checkpoints instead of asking in prose.',
+      inputSchema: z.object({
+        questions: z.array(z.object({
+          header: z.string().optional(),
+          question: z.string(),
+          options: z.array(z.object({
+            label: z.string(),
+            description: z.string().optional(),
+          })).optional(),
+          multiSelect: z.boolean().optional(),
+        })).min(1).max(4),
+      }),
+      execute: async ({ questions }) => {
+        record('ask_user_question', { questions });
+        const answers = {};
+        for (let index = 0; index < questions.length; index++) {
+          const question = questions[index];
+          const custom = typeof simulatedUser.answer === 'function'
+            ? await simulatedUser.answer(question, index, { workspace, trace })
+            : undefined;
+          answers[question.question] = custom ?? defaultSimulatedAnswer(question);
+        }
+        trace.questionAnswers.push(answers);
+        return JSON.stringify({ answers });
+      },
+    }),
   };
   return { tools, trace };
 }
@@ -251,8 +301,8 @@ export function makeTools(workspace, extraEnv = {}) {
  * `priorMessages` lets multi-turn scenarios chain context from a previous
  * call (append the SDK's response messages between turns).
  */
-export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {} }) {
-  const { tools, trace } = makeTools(workspace, env);
+export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {} }) {
+  const { tools, trace } = makeTools(workspace, env, simulatedUser);
   const messages = [
     ...priorMessages,
     { role: 'user', content: userPrompt },
@@ -306,5 +356,7 @@ export function summarizeTrace(trace) {
     bashCommands: trace.bashCommands,
     readPaths: trace.readPaths,
     writePaths: trace.writePaths,
+    questionCalls: trace.questionCalls,
+    questionAnswers: trace.questionAnswers,
   };
 }

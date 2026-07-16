@@ -41,28 +41,28 @@ describe('gatherSignals', () => {
     const s = await gatherSignals(scratch);
     assert.equal(s.setup.hasProduct, false);
     assert.equal(s.setup.hasDesign, false);
-    assert.equal(s.setup.register, null);
+    assert.equal(Object.hasOwn(s.setup, 'register'), false);
     assert.equal(s.setup.hasCode, false);
     assert.equal(s.critique.latest, null);
   });
 
-  it('detects PRODUCT.md, register, and code presence', async () => {
-    write('PRODUCT.md', '# Product\n\n## Register\n\nbrand\n');
+  it('detects PRODUCT.md, platform, and code presence', async () => {
+    write('PRODUCT.md', '# Product\n\n## Platform\n\nweb\n');
     write('package.json', '{"name":"x"}');
     const s = await gatherSignals(scratch);
     assert.equal(s.setup.hasProduct, true);
-    assert.equal(s.setup.register, 'brand');
+    assert.equal(s.setup.platform, 'web');
     assert.equal(s.setup.hasCode, true);
   });
 
   it('flags missing DESIGN.md when code exists', async () => {
-    write('PRODUCT.md', '# Product\n\n## Register\n\nproduct\n');
+    write('PRODUCT.md', '# Product\n\n## Platform\n\nweb\n');
     write('src/App.tsx', 'export default 1;');
     const s = await gatherSignals(scratch);
     assert.equal(s.setup.hasProduct, true);
     assert.equal(s.setup.hasDesign, false);
     assert.equal(s.setup.hasCode, true);
-    assert.equal(s.setup.register, 'product');
+    assert.equal(s.setup.platform, 'web');
   });
 
   it('reads the newest critique snapshot score', async () => {

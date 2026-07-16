@@ -177,7 +177,7 @@
 .detector-fixture-button[aria-pressed="true"] {
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 .detector-fixture-button span:first-child {
@@ -280,7 +280,7 @@
 .detector-preview-actions button[data-rerun-browser] {
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
 }
 
 .detector-preview-actions button[data-rerun-browser]:hover {

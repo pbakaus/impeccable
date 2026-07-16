@@ -10,7 +10,7 @@
  *
  * After this, the agent's only remaining steps are:
  *   - Open the project's live dev/preview URL in the browser (optional, if browser automation exists)—not `serverPort`; that port is the Impeccable helper for /live.js and /poll
- *   - Enter the harness-native poll loop: `node live-poll.mjs`
+ *   - Enter the poll loop: `node live-poll.mjs`
  *
  * Usage:
  *   node live.mjs                   # Prepare everything, print JSON, exit
@@ -25,7 +25,6 @@ import { loadContext, resolveTargetSelection } from './context.mjs';
 import { resolveFiles } from './live-inject.mjs';
 import { readLiveServerInfo } from './lib/impeccable-paths.mjs';
 import { resolveLiveTarget } from './live-target.mjs';
-import { resolveCodexWorkerConfig } from './live/codex-worker.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,7 +40,6 @@ Prepare everything for live variant mode in a single command:
   - Starts (or reuses) the live server in the background
   - Injects the browser script tag
   - Reads PRODUCT.md / DESIGN.md for project context
-  - Keeps the experimental Codex app-server worker off unless explicitly enabled
   - In monorepos, choose a child app first; --target <path> is the fallback/manual path
 
 On success, prints a JSON blob with:
@@ -131,10 +129,6 @@ The agent should then:
   const resolvedFiles = resolveFiles(activeCwd, checkResult.config);
   const drift = scanForDrift(activeCwd, resolvedFiles, checkResult.config);
 
-  // Codex-only and explicitly opt-in. The foreground portable path is the
-  // default, and a failed app-server startup never takes ownership of its queue.
-  const codexWorker = ensureCodexWorker(activeCwd, checkResult.config);
-
   // 5. Emit everything the agent needs
   console.log(JSON.stringify({
     ok: true,
@@ -143,7 +137,6 @@ The agent should then:
     pageFiles: resolvedFiles,
     liveConfigPath: checkResult.path,
     configDrift: drift,
-    codexWorker,
     targetPath: outputTargetPath,
     projectRoot: ctx.projectRoot,
     repoRoot: ctx.repoRoot,
@@ -292,50 +285,6 @@ function ensureServerRunning(cwd = process.cwd()) {
   // Start a new server
   const out = runScript('live-server.mjs', ['--background'], { cwd });
   return safeParse(out);
-}
-
-function ensureCodexWorker(cwd, liveConfig) {
-  const config = resolveCodexWorkerConfig({ env: process.env, liveConfig });
-  if (!config.enabled) {
-    return { enabled: false, mode: 'foreground', codexOnly: true };
-  }
-  const out = runScript('live-codex-worker.mjs', ['--background', '--no-wait'], { cwd });
-  const result = safeParse(out);
-  if (!result?.ok) {
-    const safeFallback = result?.fallback === 'foreground' && result?.terminated !== false;
-    return {
-      enabled: !safeFallback,
-      mode: safeFallback ? 'foreground' : 'startup-failed-stop-required',
-      codexOnly: true,
-      fallback: safeFallback,
-      error: result?.error || 'codex_worker_start_failed',
-      message: result?.message || (safeFallback
-        ? 'Dedicated Codex generation is unavailable. Live is using the main agent.'
-        : 'The dedicated Codex worker did not stop cleanly.'),
-      command: result?.command || config.codexPath,
-      setup: result?.setup || null,
-      childPid: result?.childPid || null,
-      logPath: result?.logPath || null,
-      foregroundTypes: safeFallback
-        ? ['generate', 'accept', 'discard', 'prefetch', 'steer', 'manual_edit_apply', 'carbonize_cleanup', 'exit']
-        : [],
-      foregroundPoll: safeFallback ? 'live-poll.mjs' : null,
-    };
-  }
-  return {
-    enabled: true,
-    mode: result.starting ? 'prewarming-app-server' : 'dedicated-app-server',
-    codexOnly: true,
-    pid: result.pid,
-    threadId: result.threadId,
-    model: result.model,
-    effort: result.effort,
-    profile: result.profile,
-    delivery: result.delivery,
-    foregroundTypes: ['steer', 'manual_edit_apply', 'carbonize_cleanup', 'exit'],
-    foregroundPoll: 'live-poll.mjs --stream --types=steer,manual_edit_apply,carbonize_cleanup,exit --codex-worker-fallback',
-    logPath: result.logPath || null,
-  };
 }
 
 // ---------------------------------------------------------------------------

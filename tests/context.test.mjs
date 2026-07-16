@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadContext, resolveContextDir, resolveProjectRoot, extractRegister, extractPlatform } from '../skill/scripts/context.mjs';
+import { loadContext, resolveContextDir, resolveProjectRoot, extractPlatform, hasVisualImplementation } from '../skill/scripts/context.mjs';
 
 import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'scripts', 'context.mjs');
@@ -447,7 +447,7 @@ describe('loadContext (monorepo project context)', () => {
 
   it('supports --target in the CLI', async () => {
     writeMonorepo();
-    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n\n## Register\n\nproduct\n');
+    write('apps/dashboard/PRODUCT.md', '# Dashboard product\n\n## Platform\n\nweb\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH, '--target', 'apps/dashboard/src/App.jsx'], {
       cwd: scratch,
@@ -461,7 +461,7 @@ describe('loadContext (monorepo project context)', () => {
     assert.match(res.stdout, /"targetPath": "apps\/dashboard\/src\/App\.jsx"/);
     assert.match(res.stdout, /"productPath": "apps\/dashboard\/PRODUCT\.md"/);
     assert.match(res.stdout, /"designPath": "DESIGN\.md"/);
-    assert.match(res.stdout, /REGISTER: `product`/);
+    assert.doesNotMatch(res.stdout, /REGISTER:/);
   });
 
   it('asks for an app when the CLI runs from a monorepo root without selection', () => {
@@ -765,9 +765,6 @@ describe('extractPlatform', () => {
     // `## Platform notes` must not be mistaken for the `## Platform` field.
     const product = '## Platform notes\n\nsome prose here\n\n## Platform\n\nios\n';
     assert.equal(extractPlatform(product), 'ios');
-    // Same precision for the register heading.
-    const reg = '## Register guidelines\n\nblah\n\n## Register\n\nbrand\n';
-    assert.equal(extractRegister(reg), 'brand');
   });
 
   it('reads the first non-empty line after the heading', () => {
@@ -779,13 +776,6 @@ describe('extractPlatform', () => {
     // (which would surface a nonsense "value `## Product Purpose` is not
     // recognized" warning from the CLI).
     assert.equal(extractPlatform('## Platform\n\n## Product Purpose\n\nAn app.\n'), null);
-    assert.equal(extractRegister('## Register\n\n## Users\n\nAnglers.\n'), null);
-  });
-
-  it('is independent of the register field', () => {
-    const product = '# P\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n';
-    assert.equal(extractRegister(product), 'product');
-    assert.equal(extractPlatform(product), 'android');
   });
 });
 
@@ -796,6 +786,8 @@ describe('context.mjs CLI', () => {
     assert.equal(res.status, 0);
     assert.match(res.stdout, /^NO_PRODUCT_MD:/);
     assert.match(res.stdout, /reference\/init\.md/);
+    assert.match(res.stdout, /structured simulated-user interview/);
+    assert.match(res.stdout, /IDENTITY_INIT_REQUIRED:/);
   });
 
   it('prints a PRODUCT.md markdown block when only PRODUCT.md exists', async () => {
@@ -807,9 +799,53 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /# Acme/);
     assert.equal(res.stdout.includes('# DESIGN.md'), false);
     // Directives are appended after `---`; with no DESIGN.md the
-    // new-work gate directive fires.
+    // init identity gate directive fires before the task concept flow.
     assert.match(res.stdout, /\n---\n\n/);
-    assert.match(res.stdout, /NEW_WORK: PRODUCT\.md exists but no DESIGN\.md/);
+    assert.match(res.stdout, /IDENTITY_INIT_REQUIRED: PRODUCT\.md exists but no DESIGN\.md/);
+  });
+
+  it('treats tokenized code as incumbent design authority when DESIGN.md is missing', () => {
+    write('PRODUCT.md', '# Acme\n');
+    write('src/app.css', ':root { --color-brand: red; --color-surface: white; --color-text: black; }\nbody { font-family: system-ui; background: var(--color-surface); color: var(--color-text); }\n');
+    assert.equal(hasVisualImplementation(scratch), true);
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /BUILD_DESIGN_DOCUMENT_REQUIRED:/);
+    assert.match(res.stdout, /Before `craft` or `shape`, load reference\/init\.md Step 5/);
+    assert.doesNotMatch(res.stdout, /IDENTITY_INIT_REQUIRED:/);
+    assert.match(res.stdout, /"hasVisualImplementation": true/);
+  });
+
+  it('does not mistake the empty Astro eval scaffold for an incumbent identity', () => {
+    write('src/styles/global.css', '@import "tailwindcss";\n');
+    write('src/pages/index.astro', `---\nimport "../styles/global.css";\n---\n<!doctype html><html><head><title>Eval Workspace</title></head><body></body></html>\n`);
+    assert.equal(hasVisualImplementation(scratch), false);
+  });
+
+  it('recognizes one substantive authored Astro surface', () => {
+    write('src/pages/index.astro', `<main class="shell"><h1>Field notes for the night shift</h1><p>Specific authored content.</p></main>\n<style>\n:root { --ink: #111; --paper: #fff; --accent: #c40; }\n.shell { color: var(--ink); background-color: var(--paper); border-color: var(--accent); font-family: serif; padding: 4rem; min-height: 100vh; }\n</style>\n`);
+    assert.equal(hasVisualImplementation(scratch), true);
+  });
+
+  it('does not let irrelevant or vendored files exhaust or satisfy the visual scan', () => {
+    for (let i = 0; i < 300; i++) write(`src/data/item-${String(i).padStart(3, '0')}.txt`, 'not visual\n');
+    write('public/vendor/framework.min.css', ':root { --a: 1; --b: 2; --c: 3; } body { color: red; background: blue; border-color: green; font-family: sans-serif; }\n');
+    write('styles/z-theme.css', ':root { --brand: #124; --surface: #fff; --text: #111; } main { color: var(--text); background-color: var(--surface); border-color: var(--brand); }\n');
+    assert.equal(hasVisualImplementation(scratch), true);
+  });
+
+  it('routes craft through init but keeps narrow refinements non-blocking when visual code exists without PRODUCT.md', () => {
+    write('styles/theme.css', ':root { --brand: #124; --surface: #fff; --text: #111; }\nmain { color: var(--text); background-color: var(--surface); border-color: var(--brand); }\n');
+    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^NO_PRODUCT_MD:/);
+    assert.match(res.stdout, /EXISTING_VISUAL_SYSTEM:/);
+    assert.match(res.stdout, /BUILD_INIT_REQUIRED:/);
+    assert.match(res.stdout, /SCOPED_EXISTING_ALLOWED:/);
+    assert.match(res.stdout, /proceed without blocking/);
+    assert.match(res.stdout, /For `init`, `teach`, `craft`, or `shape`/);
+    assert.match(res.stdout, /For a redesign\/rebrand.*old look only as evidence and anti-reference/s);
+    assert.doesNotMatch(res.stdout, /IDENTITY_INIT_REQUIRED:/);
   });
 
   it('concatenates PRODUCT.md and DESIGN.md with a --- separator', async () => {
@@ -821,7 +857,7 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /^# PRODUCT\.md/);
     assert.match(res.stdout, /\n---\n/);
     assert.match(res.stdout, /# DESIGN\.md\n\n# Acme design/);
-    assert.equal(res.stdout.includes('NEW_WORK:'), false);
+    assert.equal(res.stdout.includes('IDENTITY_INIT_REQUIRED:'), false);
   });
 
   it('reads from a fallback dir when cwd is clean', async () => {
@@ -833,26 +869,17 @@ describe('context.mjs CLI', () => {
     assert.match(res.stdout, /# fallback product/);
   });
 
-  it('names the register-specific reference when PRODUCT.md declares one', async () => {
+  it('ignores a legacy Register field because visitor mode is task-scoped', async () => {
     write('PRODUCT.md', '# Acme\n\n## Register\n\nbrand\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /REGISTER: `brand`/);
-    assert.match(res.stdout, /Derive the visitor's mode per SKILL\.md/);
-  });
-
-  it('falls back to a generic register directive when no register field is present', async () => {
-    write('PRODUCT.md', '# Acme\n\n(no register field)\n');
-    const { spawnSync } = await import('node:child_process');
-    const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
-    assert.equal(res.status, 0);
-    assert.match(res.stdout, /NEW_WORK: PRODUCT\.md exists but no DESIGN\.md/);
-    assert.equal(res.stdout.includes('REGISTER:'), false);
+    assert.doesNotMatch(res.stdout, /REGISTER:/);
+    assert.match(res.stdout, /IDENTITY_INIT_REQUIRED: PRODUCT\.md exists but no DESIGN\.md/);
   });
 
   it('appends a native platform directive for an ios project', async () => {
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nios\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\nios\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
@@ -861,7 +888,7 @@ describe('context.mjs CLI', () => {
   });
 
   it('appends both native directives for an adaptive project', async () => {
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nadaptive\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\nadaptive\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
@@ -870,7 +897,7 @@ describe('context.mjs CLI', () => {
   });
 
   it('appends no native platform directive for a web project', async () => {
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nweb\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\nweb\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
@@ -879,7 +906,7 @@ describe('context.mjs CLI', () => {
   });
 
   it('appends a native platform directive for an android project', async () => {
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nandroid\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\nandroid\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
@@ -891,7 +918,7 @@ describe('context.mjs CLI', () => {
     // The likeliest misconfiguration is a toolchain name where the target
     // belongs. Silent fallback to web would give web guidance to the exact
     // projects that tried to declare themselves native.
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\nflutter\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\nflutter\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);
@@ -901,7 +928,7 @@ describe('context.mjs CLI', () => {
   });
 
   it('emits no warning for an empty Platform section', async () => {
-    write('PRODUCT.md', '# Acme\n\n## Register\n\nproduct\n\n## Platform\n\n## Users\n\nAnglers.\n');
+    write('PRODUCT.md', '# Acme\n\n## Platform\n\n## Users\n\nAnglers.\n');
     const { spawnSync } = await import('node:child_process');
     const res = spawnSync(process.execPath, [SCRIPT_PATH], { cwd: scratch, encoding: 'utf8', env: { ...process.env, IMPECCABLE_NO_UPDATE_CHECK: '1' } });
     assert.equal(res.status, 0);

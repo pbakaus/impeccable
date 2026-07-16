@@ -1400,7 +1400,7 @@ html.light .docs-kinpaku .prose .code-block code {
 .docs-kinpaku .code-block-copy.is-copied {
   opacity: 1;
   border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-dark-ink);
   background: var(--ks-kinpaku);
 }
 
