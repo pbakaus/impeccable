@@ -1,29 +1,22 @@
 #!/usr/bin/env node
-// visual-cues.mjs — crop + compile for document seed visual cues.
+// visual-cues.mjs — compile step for document seed visual cues.
 // Pipeline doc: skill/reference/visual-cues.md (canonical; this help text is not).
 //
-// Each cue is a full-bleed hero scene plus an artifact sheet: four objects,
-// one per quadrant, on a single flat chroma-key background. The key stays
-// in the shipped crops; the browser canvas removes it downstream, using the
-// key hex this script records in cues.json.
+// Each cue is one full-bleed hero scene staging a planned four-color palette.
 //
-//   node visual-cues.mjs crop <hero.png> <artifacts.png> --slug <two-word-slug>
-//       [--chroma "#00FF00"]
+//   node visual-cues.mjs compile <hero.png> --slug <two-word-slug>
 //       [--palette "primary=#RRGGBB;secondary=...;tertiary=...;neutral=..."]
 //       [--out <dir>]   (default: .impeccable/visual-cues)
-//     Copies the hero untouched to <slug>.png, keeps the sheet under
-//     <out>/masters/<slug>-artifacts.png, quadrant-crops the sheet into
-//     <slug>-2..5.png (key background kept), finds each planned palette
-//     hex's closest pixel in the hero, records the cue's chroma key, and
-//     updates <out>/cues.json.
-//     Both inputs must be square: generation happens on a square canvas
+//     Copies the hero untouched to <slug>.png, finds each planned palette
+//     hex's closest pixel in the hero, and updates <out>/cues.json.
+//     The hero must be square: generation happens on a square canvas
 //     (a size/aspect parameter, not just a prompt line), and a non-square
 //     input is a generation to redo, not an image to fix up here.
 //
-// Dependency-free: PNG decode/encode on node:zlib. Rejects interlaced and
+// Dependency-free: PNG decode on node:zlib. Rejects interlaced and
 // indexed-color PNGs; convert those with sips/ImageMagick/PIL first.
 
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
@@ -32,29 +25,9 @@ import zlib from 'node:zlib';
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-// Every PNG chunk carries a CRC-32 trailer (the spec's fixed polynomial,
-// 0xedb88320); precompute the 256-entry lookup table once instead of doing
-// the bit-by-bit division per byte.
-const CRC_TABLE = (() => {
-  const t = new Int32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c;
-  }
-  return t;
-})();
-
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
 // PNG filter type 4 (Paeth): predicts a byte from its left (a), above (b),
 // and above-left (c) neighbors, picking whichever of a, b, or a+b-c lands
-// closest to the actual gradient. Used only by decodePng's unfilter step;
-// encodePng always writes filter 0, so it never needs the inverse.
+// closest to the actual gradient. Used by decodePng's unfilter step.
 function paeth(a, b, c) {
   const p = a + b - c;
   const pa = Math.abs(p - a);
@@ -147,9 +120,9 @@ export function decodePng(buf) {
 
   // Normalize every supported color type (grayscale, RGB, grayscale+alpha,
   // RGBA) down to one consistent RGBA8 buffer, so everything past this
-  // point (crop, palette search, re-encode) only ever deals with one shape.
-  // 16-bit samples keep only the high byte; visual cues never need more
-  // than 8 bits of precision per channel.
+  // point (palette search) only ever deals with one shape. 16-bit samples
+  // keep only the high byte; visual cues never need more than 8 bits of
+  // precision per channel.
   const rgba = Buffer.alloc(width * height * 4);
   const at = (base, ch) => px[base + ch * sampleBytes];
   for (let i = 0; i < width * height; i++) {
@@ -171,65 +144,6 @@ export function decodePng(buf) {
     rgba[o] = r; rgba[o + 1] = g; rgba[o + 2] = b; rgba[o + 3] = a;
   }
   return { width, height, rgba, hasAlpha: colorType === 4 || colorType === 6 };
-}
-
-// Wraps one chunk's payload with its length header, type tag, and CRC
-// trailer, matching the layout decodePng's chunk walk expects.
-function pngChunk(type, data) {
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  out.write(type, 4, 'ascii');
-  data.copy(out, 8);
-  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
-  return out;
-}
-
-// Always writes 8-bit RGBA with filter type 0 (None) on every scanline: the
-// crops here are small and this script has no bandwidth concerns, so the
-// simplicity of never predicting/unpredicting bytes outweighs the larger
-// file size a real filter choice would save.
-export function encodePng(rgba, width, height) {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 6;  // color type 6 = RGBA
-  const stride = width * 4;
-  // One extra byte per row for the filter-type prefix (always 0 here).
-  const raw = Buffer.alloc((stride + 1) * height);
-  for (let y = 0; y < height; y++) {
-    raw[y * (stride + 1)] = 0; // filter: None
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
-  }
-  const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([PNG_SIG, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', Buffer.alloc(0))]);
-}
-
-// ------------------------------------------------------------ quadrant math
-
-// The artifact sheet is one 2x2 grid on a flat cream canvas, one object per
-// quadrant, in reading order: q2 top-left, q3 top-right, q4 bottom-left,
-// q5 bottom-right. Proportional, so any square-ish sheet cuts the same way.
-export function quadrants(width, height) {
-  const mx = Math.round(width / 2);
-  const my = Math.round(height / 2);
-  return {
-    q2: { x: 0, y: 0, w: mx, h: my },
-    q3: { x: mx, y: 0, w: width - mx, h: my },
-    q4: { x: 0, y: my, w: mx, h: height - my },
-    q5: { x: mx, y: my, w: width - mx, h: height - my },
-  };
-}
-
-// Copies one rectangle r = {x, y, w, h} out of img.rgba, row by row (rows
-// aren't contiguous across the crop boundary in the source buffer).
-function cropRegion(img, r) {
-  const out = Buffer.alloc(r.w * r.h * 4);
-  for (let y = 0; y < r.h; y++) {
-    const src = ((r.y + y) * img.width + r.x) * 4;
-    img.rgba.copy(out, y * r.w * 4, src, src + r.w * 4);
-  }
-  return out;
 }
 
 // The pipeline ships squares, and squaring after the fact always loses
@@ -299,25 +213,18 @@ function snapPalette(img, palette) {
 
 // ---------------------------------------------------------------- cues.json
 
-// Reads the existing cues.json (if any) and merges this cue in, so cropping
+// Reads the existing cues.json (if any) and merges this cue in, so compiling
 // the six concepts one after another accumulates into one shared manifest
-// instead of each crop overwriting the last.
-function updateCuesJson(outDir, slug, artifactIds, palette, chroma) {
+// instead of each compile overwriting the last.
+function updateCuesJson(outDir, slug, palette) {
   const path = join(outDir, 'cues.json');
   let data = {};
   if (existsSync(path)) data = JSON.parse(readFileSync(path, 'utf8'));
   data.cues = data.cues || [];
-  data['supporting-artifacts'] = data['supporting-artifacts'] || {};
   if (!data.cues.includes(slug)) data.cues.push(slug);
-  data['supporting-artifacts'][slug] = artifactIds;
   if (palette) {
     data.palette = data.palette || {};
     data.palette[slug] = palette;
-  }
-  if (chroma) {
-    // The key the browser canvas keys out of this cue's artifact crops.
-    data.chroma = data.chroma || {};
-    data.chroma[slug] = chroma;
   }
   writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
   return data;
@@ -348,65 +255,33 @@ function fail(msg) {
   process.exit(1);
 }
 
-function cmdCrop(args) {
-  const [heroFile, sheetFile] = args._;
+function cmdCompile(args) {
+  const [heroFile] = args._;
   const slug = args.slug;
-  if (!heroFile || !sheetFile || !slug) {
-    fail('usage: visual-cues.mjs crop <hero.png> <artifacts.png> --slug <slug> [--palette "..."] [--out <dir>]');
+  if (!heroFile || !slug) {
+    fail('usage: visual-cues.mjs compile <hero.png> --slug <slug> [--palette "..."] [--out <dir>]');
   }
   if (!/^[a-z0-9]+(-[a-z0-9]+)+$/.test(slug)) fail(`slug "${slug}" must be lowercase words joined by hyphens (e.g. amber-dusk)`);
   const outDir = resolve(args.out || '.impeccable/visual-cues');
   const hero = decodePng(readFileSync(resolve(heroFile)));
-  const sheet = decodePng(readFileSync(resolve(sheetFile)));
   requireSquare(hero, 'hero');
-  requireSquare(sheet, 'artifact sheet');
 
-  mkdirSync(join(outDir, 'masters'), { recursive: true });
+  mkdirSync(outDir, { recursive: true });
   const heroPath = join(outDir, `${slug}.png`);
   copyFileSync(resolve(heroFile), heroPath); // the hero ships untouched, no crop
-  const keptSheet = join(outDir, 'masters', `${slug}-artifacts.png`);
-  copyFileSync(resolve(sheetFile), keptSheet); // uncropped sheet, kept for reference
 
-  // q2..q5 in reading order (top-left, top-right, bottom-left, bottom-right)
-  // become <slug>-2.png..<slug>-5.png, matching the numbering documented in
-  // reference/visual-cues.md and expected by cues.json readers.
-  const qs = quadrants(sheet.width, sheet.height);
-  const files = [heroPath];
-  const artifactIds = [];
-  const order = ['q2', 'q3', 'q4', 'q5'];
-  for (let i = 0; i < order.length; i++) {
-    const r = qs[order[i]];
-    const id = `${slug}-${i + 2}`;
-    artifactIds.push(id);
-    const outPath = join(outDir, `${id}.png`);
-    writeFileSync(outPath, encodePng(cropRegion(sheet, r), r.w, r.h));
-    files.push(outPath);
-  }
-
-  // --palette is optional: the agent may crop before it has finished
-  // designing the palette, and can re-run crop later once it has hexes.
+  // --palette is optional: the agent may compile before it has finished
+  // designing the palette, and can re-run compile later once it has hexes.
   let palette = null;
   if (args.palette) palette = snapPalette(hero, parsePalette(args.palette));
 
-  // --chroma records the sheet's key color so the browser canvas knows
-  // what to key out of the artifact crops; the crops themselves keep it.
-  let chroma = null;
-  if (args.chroma) {
-    const m = /^#?([0-9a-fA-F]{6})$/.exec(args.chroma.trim());
-    if (!m) fail(`bad chroma "${args.chroma}" (expected #RRGGBB)`);
-    chroma = `#${m[1].toUpperCase()}`;
-  }
-
-  updateCuesJson(outDir, slug, artifactIds, palette, chroma);
+  updateCuesJson(outDir, slug, palette);
 
   console.log(JSON.stringify({
     ok: true,
     slug,
     hero: heroPath,
-    artifacts: keptSheet,
-    files,
     palette,
-    chroma,
     cuesJson: join(outDir, 'cues.json'),
   }, null, 2));
 }
@@ -415,16 +290,20 @@ function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   try {
-    if (cmd === 'crop') cmdCrop(args);
-    else fail('usage: visual-cues.mjs crop <hero.png> <artifacts.png> --slug <slug> [options] (see reference/visual-cues.md)');
+    if (cmd === 'compile') cmdCompile(args);
+    else fail('usage: visual-cues.mjs compile <hero.png> --slug <slug> [options] (see reference/visual-cues.md)');
   } catch (err) {
     fail(err.message);
   }
 }
 
 // Only auto-run when invoked directly (`node visual-cues.mjs ...`), not
-// when another module imports its exports (decodePng, encodePng, etc.),
-// e.g. from a test file.
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// when another module imports its exports (decodePng, etc.), e.g. from a
+// test file. import.meta.url is Node's realpath of the entry file, so
+// argv[1] must be realpath'd too, not just path.resolve'd: a skill
+// installed via symlink (the standard `skills link`/install path) makes
+// argv[1] the symlink path, which never equality-matches the resolved
+// realpath, so main() silently never ran.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   main();
 }

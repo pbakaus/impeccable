@@ -4,44 +4,36 @@ Loaded by `{{command_prefix}}impeccable document` seed mode (Step 4) when image 
 
 Tell the user once, before starting: *"Generating visual cues; this can take a minute or two."* Then work without narration. Chat carries no per-image commentary, no palette tables, no prompt dumps; the folder is the deliverable.
 
-## The images
+## The image
 
-Each cue is **two generations by the same agent**, in sequence: the hero, then the artifact sheet on a chroma-key background the specialist chooses.
+Each cue is **one generation**: the hero.
 
 ```text
-HERO  [slug].png (1500x1500)            ARTIFACT SHEET  masters/[slug]-artifacts.png
-+---------------------------+           +-------------+-------------+ 1500x1500
-|                           |           |   [obj A]   |   [obj B]   |
-|   one close-framed scene, |           |  centered,  |  centered,  |
-|   the product's world,    |           |  filling    |  thin       |
-|   all four artifact       |           |  its cell   |  margins    |
-|   objects visible in it,  |           +-------------+-------------+
-|   four palette colors     |           |   [obj C]   |   [obj D]   |
-|   as large color fields   |           |             |             |
-|                           |           | one flat chroma-key fill, |
-+---------------------------+           | no texture, no shadows,   |
-     saved as-is, NO crop               | crisp edges, no bounce    |
-                                        +-------------+-------------+
-                                          quadrant-cropped into
-                                          [slug]-2..5.png, key kept;
-                                          the browser keys it out
+HERO  [slug].png (1500x1500)
++---------------------------+
+|                           |
+|   one close-framed scene, |
+|   the product's world,    |
+|   four scene objects      |
+|   carrying the palette,   |
+|   four palette colors     |
+|   as large color fields   |
+|                           |
++---------------------------+
+     saved as-is, NO crop
 ```
 
-- The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene. The four artifact objects all appear inside it.
-- The **artifact sheet** is the second generation, with the hero attached as the reference image: the same four objects re-photographed individually, one per quadrant, on one continuous flat field of the cue's **chroma key**. The objects inherit the hero's materials and colors; only the setting changes. ("Sheet" is our name for the file; the prompt never uses it.)
-- **The key is chosen per cue, and it ships.** Each specialist picks its key from the candidate set in the task, whichever sits farthest in hue from its palette and its artifact materials, and reports the hex. Crops keep the key; `cues.json` records it; the browser canvas keys it out downstream. No matting, no alpha work, no background removal anywhere in this pipeline.
-- **Edges decide whether keying works.** Shadows, blurred silhouettes, bounce light, and a textured or vignetted background each blend key into object and leave an edge fringe no threshold removes cleanly; the SHEET PROMPT skeleton carries the counter-rules and the task's keying-plate check enforces them.
-- **Isolation is a hard rule on the sheet.** Every object centered on its quadrant's center point, filling nearly the whole quadrant, with a thin clear margin on every side: nothing touches the canvas edge, another object, or the quadrant midlines. The crop cuts exactly at the midlines, so anything crossing one gets clipped.
+The **hero** is the visual cue: one tightly framed full-bleed composition that stages the concept's palette in large color fields; this is what the user will pick between, so every palette color gets real estate. No grid, no regions: the whole frame is the scene, with the concept's four objects inside it as the palette's physical carriers.
 
-Example, hero = a flower atelier's worktable: sheet quadrants carry the wrapping ribbon, a single stem, a row of loose petals, and the ceramic vase. All four are visible in the hero scene.
+Example, hero = a flower atelier's worktable: the wrapping ribbon, a single stem, a row of loose petals, and the ceramic vase, each carrying one of the palette's colors.
 
 ## The studio
 
 Palettes come from **six competing specialists**, not from you. One mind composing six palettes converges on one taste, and six versions of one mood defeat the pick round. Each specialist is a subagent locked to a **persona**: a different method of searching color space (object association, cultural reframing, remote analogy, self-imposed constraint, audience perspective-taking, emotional sequencing). Same brief, same output format, different search method; the separation is what makes the six palettes genuinely different.
 
-The studio runs as **one parallel wave**. You carve six territories from the brief (Step 2), then all six personas spawn at once (Step 3), each composing a palette inside its own territory and staging it in two images. No chained reviews, no revision loops: distinctness is settled upfront by the territory assignments, and speed comes from doing everything in one wave.
+The studio runs as **one parallel wave**. You carve six territories from the brief (Step 2), then all six personas spawn at once (Step 3), each composing a palette inside its own territory and staging it in its hero. No chained reviews, no revision loops: distinctness is settled upfront by the territory assignments, and speed comes from doing everything in one wave.
 
-Subagents start without your context, so every spawn task is self-contained: it carries the brief packet, the persona, the territory map, and every rule the subagent needs. Paste the shared blocks below into tasks **verbatim**; a summarized rule is a dropped rule.
+Subagents start without your context, so everything a specialist needs must reach it whole. The invariant material (brief packet, craft rules, prompt skeleton, work steps) travels as one **brief file** every spawn reads; only the per-persona slots (persona, territory, off-limits list) ride in the spawn task itself. Copy shared blocks into the brief file **verbatim**; a summarized rule is a dropped rule, and retyping the full set into six long tasks costs minutes of pure prompt-typing per wave.
 
 ## Step 1: Assemble the brief packet
 
@@ -51,7 +43,7 @@ Write one self-contained text block that a specialist with zero context can desi
 - **The interview**: Q1 color strategy and hue anchor, Q2 type direction, Q4 the three named references, Q5 the anti-reference. State that the anti-reference is a hard constraint on every palette.
 - **The assets**: the seed Step 2 observations (logo colors, recurring materials, photo moods).
 
-Label it `BRIEF PACKET` and reuse the same block verbatim in every spawn; a packet that drifts between spawns invalidates the comparison. Do **not** add your own palette leanings to it: the personas do the leaning.
+Label it `BRIEF PACKET`; it goes into the brief file once (Step 3), so every specialist designs from the identical packet. Do **not** add your own palette leanings to it: the personas do the leaning.
 
 ## The six personas
 
@@ -68,7 +60,7 @@ Accessibility and implementation stay **out** of the personas: the PALETTE RULES
 
 ## Shared blocks
 
-Paste these into spawn tasks where the templates call for them. They are the single source of the craft rules; never restate them loosely.
+These go into the brief file (Step 3) in the order its assembly list names. They are the single source of the craft rules; never restate them loosely.
 
 ### PALETTE RULES
 
@@ -112,12 +104,10 @@ Attach one one-line cue concept to the palette; the hero image stages it.
 - Give it a material world (botanical, ceramic, paper, textile, metal,
   glass, stone, food) as the supporting cast around the product's
   subject, never a replacement for it.
-- Name four artifact objects, each passing three tests: chosen from
-  inside the scene, so it plausibly sits in the hero composition;
-  compact, so it sits centered in a square-ish quadrant (no edge-to-edge
-  ladles or full-width garlands); carrying no writing (no tags, labels,
-  packaging, printed cards, or stationery), because text on an artifact
-  ruins it.
+- Name four scene objects, the palette's physical carriers, each passing
+  two tests: it lives inside the scene, so it plausibly sits in the hero
+  composition; and it carries no writing (no tags, labels, packaging,
+  printed cards, or stationery), because text on an object ruins the cue.
 - Name the concept with a two-word slug (amber-dusk, coastal-glass).
 ```
 
@@ -131,7 +121,7 @@ Light the scene to reveal color, not to set a mood. In a dim, dusky, or nocturna
 One full-bleed photograph, 1500x1500 pixels, framed close: [one scene from
 the product's world: subject and what it is doing, setting], the subject
 filling most of the frame, not a wide view of the room. The scene contains
-[artifact A], [artifact B], [artifact C], and [artifact D], all plainly
+[object A], [object B], [object C], and [object D], all plainly
 visible. Lighting: bright, clean, and generous, [direction and quality,
 e.g. "soft daylight flooding in from a large window on the left"]; the
 whole frame clearly lit, no area lost to darkness. Camera: [close framing
@@ -148,41 +138,6 @@ as one vivid accent, small but big enough to read at a glance, on
 light, none sunk in shadow. Rich, saturated, editorial color; not a dim,
 dusky, nocturnal, or candlelit image. Photorealistic, real texture. No
 text, no labels, no numbers, no borders, no watermark.
-```
-
-### SHEET PROMPT skeleton
-
-Runs as the **second** generation with the hero attached as the reference/input image, so the objects match the scene instead of being reinvented. Two word-choice traps decide whether the result is keyable. Editorial-layout words ("catalog", "sheet", "spread", "grid") invite a designed page with titles and captions. Physical-studio words are worse: "a photograph of objects on a backdrop" gets a real studio scene, meaning paper texture, vignette, cast shadows, and an angled camera, every one of which ruins the key. So the prompt describes a **digital composite**: cut-out objects on a solid color fill, which makes flat, shadowless, and overhead the natural reading instead of a fight.
-
-**Choose the chroma key first.** Candidates: chroma green `#00FF00`, chroma magenta `#FF00FF`, chroma cyan `#00FFFF`, chroma blue `#0000FF`. Before picking, inventory the hues your four artifacts actually carry, and count stems, leaves, and foliage as green even when the bloom is the point; a florist's artifacts almost always rule out green. Glossy metal and ceramic mirror whatever sits behind them, so a chrome-adjacent artifact argues for the key farthest from the palette, where its bounce is cheapest to remove. Pick the candidate farthest in hue from every palette color and every inventoried material, and fill it into every `[key color name]` and `[key hex]` slot. The key ships in the crops and gets keyed out later, so the prompt's one job beyond the objects is a keyable background: one pure, flat fill of the key, crisp silhouettes, and no shadow, blur, texture, or bounce at the edges, because each of those blends key into object and leaves a fringe no threshold removes.
-
-```text
-One square image, 1500x1500 pixels: a clean digital composite of four
-cut-out objects placed on a single solid color fill, like isolated
-product shots arranged in image-editing software. Using the attached
-photograph as the exact reference, the four objects reproduce that
-scene's materials and colors faithfully. Absolutely no text anywhere in
-the image: no letters, no words, no numbers, no labels, no captions.
-
-The background is one solid digital fill of [key color name], hex
-[key hex], the identical flat color at every pixel from edge to edge:
-no paper, no fabric, no surface texture, no grain, no vignette, no
-gradient, no lighting variation. The objects are cleanly cut out: they
-cast no shadow, reflect none of the background color, and every
-silhouette is crisp and in sharp focus against the flat fill; the
-[key color name] appears nowhere on the objects themselves.
-
-Picture the canvas divided into four equal quadrants: [artifact A]
-top-left, [artifact B] top-right, [artifact C] bottom-left, [artifact D]
-bottom-right; four different objects, each appearing exactly once, each
-seen from directly overhead. Each object sits exactly centered on its
-quadrant's center point and fills its quadrant almost completely, as
-large as it can be while a thin clear band of background stays visible
-on every side: nothing touches the canvas edges or the horizontal and
-vertical centerlines of the image.
-
-No frames, no cell borders, no dividing lines, no watermark; the
-background stays one uninterrupted [key hex] everywhere.
 ```
 
 ## Step 2: Carve the territories
@@ -202,178 +157,158 @@ Done when: six one-line territories exist, each closing on a hue ground, no two 
 
 ## Step 3: The wave (parallel)
 
-If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, both images), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
+**Pick the generation path first.** The harness's native image-generation tool is the path whenever one exists; the `IMAGE_GEN_API_KEY` wrapper exists only for harnesses that have none. A key in `.impeccable/.env` or a wrapper script left by an earlier run in another harness does not outrank a native tool: check for the native tool first, and touch the wrapper only after confirming there is none.
 
-Every spawn gets the same full template text, slots filled, shared blocks pasted verbatim. Writing spawn 1 in full and compressing spawns 2-6 down to summaries drops the rules exactly where the convergence risk is highest.
+**Then preflight that path before carving any task.** Run one smoke generation yourself with the exact tool or wrapper command the spawns will use: a trivial prompt ("one solid red square, flat color"), the smallest supported square size, a throwaway output path. A broken tool found now costs one fix and a re-run; found by the wave, it costs six spent budgets, a mid-run patch, and six re-spawns. Fix the tooling until the preflight passes, then write the passing command into the brief file's tool slot.
 
-Task template:
+If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, hero), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
+
+### The brief file
+
+Write `.impeccable/visual-cues/brief.md` once, before spawning: the SPECIALIST BRIEF body below with its tool slot filled, then, appended verbatim from this document in this order, the BRIEF PACKET, PALETTE RULES, CONCEPT RULES, and the HERO PROMPT skeleton with its framing paragraphs. One byte-exact file read by all six replaces six retyped copies of the same several-thousand-word block: the spawn tasks stay a screen long, the wave starts in seconds instead of minutes, and retries reread the identical rules. **If the harness's subagents cannot read files**, paste the brief file's full contents into each task instead; the file stays the single source either way.
+
+SPECIALIST BRIEF body:
 
 ```text
 You are a color specialist. You compose one brand palette inside an
-assigned territory, then stage it in images. Use the harness's native
-image generation tool; do not fall back to CLIs or APIs; do not edit repo
-files.
+assigned territory, then stage it in one hero image. Your spawn task
+names your persona, your territory, and what is off-limits; this file
+carries everything else: the brief packet, the craft rules, the prompt
+skeleton, and the steps below.
 
-Each image gets a hard budget of three generation calls, all reasons
+Generate the image with [the exact tool or command the preflight
+passed: the harness's native image tool, or the wrapper invocation].
+Use only that; do not edit repo files.
+
+The hero gets a hard budget of three generation calls, all reasons
 combined (failed calls, timeouts, and the retry checks below). A call
 that fails with a network, API, or timeout error may be re-run as-is
-within that budget; when the budget is spent, stop and reply with the
-ERROR line. The failure is the parent's problem, not yours: never debug
-DNS or connectivity, never install packages, and never edit or rewrite
-the generation tooling.
+within that budget; when the budget is spent, stop and report per step
+5. The failure is the parent's problem, not yours: never debug DNS or
+connectivity, never install packages, and never edit or rewrite the
+generation tooling.
+
+1. Compose your palette, in your persona's method, inside your
+   territory, following the PALETTE RULES section below.
+
+2. Draft the concept for the palette, following the CONCEPT RULES
+   section below.
+
+3. Critique your own work before touching the image. Check the palette
+   against every PALETTE RULES line, against your territory's hue
+   ground, and against the off-limits list; check the concept against
+   every CONCEPT RULES line. Name each failure and fix it. A primary
+   that drifted into another territory's hue family, or into an anchor
+   you do not own, is a failure to fix now, not one to ship.
+
+4. Build the hero prompt from the HERO PROMPT skeleton below and
+   generate the HERO image, 1500x1500 (or the nearest supported
+   square). The image must be square: a "1500x1500" line inside the
+   prompt does not pin the canvas, so whenever the tool accepts a size
+   or aspect-ratio parameter, pass square (1:1) explicitly; the compile
+   step rejects non-square images, and the fix is regenerating with
+   that parameter actually set, not editing the file. Five sibling
+   specialists share the generation tool's output folder, so a default
+   output name is a race that hands you a sibling's image: if the tool
+   accepts an output filename, pass [slug]-hero.png, and work only with
+   the exact file path the tool reports back for YOUR generation.
+
+   Open the result and inspect it once. Ownership: the scene is yours,
+   staging your palette; a wrong subject or palette means you picked up
+   a sibling's file from the race above, so regenerate once with the
+   [slug] filename. Light: if the image is dim, dusky, or nocturnal,
+   with palette colors sinking into shadow instead of reading bright
+   and true, regenerate the HERO once, same prompt, plus this line
+   appended: "Render the scene in bright, generous daylight-quality
+   studio light; every color fully lit and clearly readable, no
+   darkness anywhere in the frame." Never retry more than once per
+   check, inside the three-call budget; keep the last result
+   regardless.
+
+5. Reply with exactly these three lines and nothing else, the path
+   being the file you verified in step 4:
+
+COMPLETED [slug]
+HERO [absolute path to the hero PNG]
+PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
+
+If the budget runs out first, reply instead with the ERROR line plus
+one line for each thing you finished before the failure, so a retry
+can start where you stopped:
+
+ERROR [persona number] [short reason]
+PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
+HERO-PROMPT [the finished hero prompt, on one line]
+```
+
+### The spawn task
+
+Each spawn task is short; the brief file carries the weight:
+
+```text
+You are a color specialist. Read [absolute path to
+.impeccable/visual-cues/brief.md] now, before anything else, and follow
+it exactly: it carries your brief, craft rules, prompt skeleton, work
+steps, generation budget, and report format.
 
 PERSONA: [the persona's full numbered entry from The six personas]
-
-[the BRIEF PACKET, verbatim]
 
 YOUR TERRITORY: [this persona's one-line territory]
 
 The territories assigned to the other five specialists, all off-limits:
 [the other five territories, one line each]
 
-The brief's hue anchor ([the Q1 anchor]) belongs to [its owner territory];
-[if this persona owns it: "that is yours to carry" / otherwise: "your
-primary must live in a different hue family"].
+The brief's hue anchor ([the Q1 anchor]) belongs to [its owner
+territory]; [if this persona owns it: "that is yours to carry" /
+otherwise: "your primary must live in a different hue family"].
 
-Your answer is unsuccessful if it occupies the same visual, emotional, or
-strategic territory as another specialist, or if your primary lands in a
-hue family another territory claims. Stay inside your own.
-
-1. Compose your palette, in your persona's method, inside your territory:
-
-[the PALETTE RULES block, verbatim]
-
-2. Draft the concept for the palette:
-
-[the CONCEPT RULES block, verbatim]
-
-3. Critique your own work before touching any image. Check the palette
-   against every PALETTE RULES line, against your territory's hue ground,
-   and against the off-limits list; check the concept against every
-   CONCEPT RULES line. Name each failure and fix it. A primary that
-   drifted into another territory's hue family, or into an anchor you do
-   not own, is a failure to fix now, not one to ship.
-
-4. Build the hero prompt from this skeleton and generate the HERO image,
-   1500x1500 (or the nearest supported square). Every image you generate
-   must be square: a "1500x1500" line inside the prompt does not pin the
-   canvas, so whenever the tool accepts a size or aspect-ratio parameter,
-   pass square (1:1) explicitly, on this and every later generation. Five
-   sibling specialists share the generation tool's output folder, so a
-   default output name is a race that hands you a sibling's image: if the
-   tool accepts an output filename, pass [slug]-hero.png, and work only
-   with the exact file path the tool reports back for YOUR generation:
-
-[the HERO PROMPT skeleton, with its fill rules]
-
-   Open the result before moving on and check its light: if the image is
-   dim, dusky, or nocturnal, with palette colors sinking into shadow
-   instead of reading bright and true, regenerate the HERO once, same
-   prompt, plus this line appended: "Render the scene in bright, generous
-   daylight-quality studio light; every color fully lit and clearly
-   readable, no darkness anywhere in the frame." Keep the second result
-   regardless; the sheet in step 5 must reference whichever hero you
-   keep.
-
-5. Choose your chroma key by the skeleton's rule, then build the sheet
-   prompt and generate the ARTIFACT SHEET, square again, output filename
-   [slug]-artifacts.png, passing the hero file path the tool reported in
-   step 4 as the reference/input image (the tool's image-edit or
-   reference-image mode). Never point the reference at a generic hero.png
-   in a shared folder:
-
-[the SHEET PROMPT skeleton, with its notes]
-
-6. Open both files you are about to ship and check them. First the
-   canvas: each must be exactly square; the compile step rejects
-   non-square images, so a landscape or portrait result is a failed
-   generation, and the fix is regenerating with the tool's square (1:1)
-   size/aspect parameter actually set, not editing the file. Then confirm
-   they are yours: the hero shows your scene staging your palette, the
-   sheet shows your four artifacts on your chroma key. A wrong subject or
-   palette means you picked up a sibling's file from the race in step 4:
-   regenerate that image once with the [slug] filename. Then check the
-   sheet as a keying plate: the background one flat, untextured fill of
-   your key (a paper-like texture, vignette, or gradient is a failure,
-   not a style), the silhouettes crisp, the objects shot from directly
-   overhead and free of shadows, blur, and key-colored bounce at their
-   edges, and the key color absent from the objects themselves. If the
-   sheet fails any of that, regenerate the ARTIFACT SHEET once: same
-   reference image, same prompt, plus this line appended: "The
-   background must be one perfectly uniform flat [key hex] digital color
-   fill with zero texture, zero shadows, zero vignette, and zero color
-   bounce; every object edge razor-sharp against it, every object seen
-   from directly overhead." Finally check the layout: four different
-   objects, each appearing exactly once; if any object is duplicated or
-   missing, crosses the canvas edge or the horizontal or vertical
-   centerline, or any text appears anywhere, regenerate the ARTIFACT
-   SHEET once: same reference image, same prompt, plus this line
-   appended: "Show exactly these four objects once each: [artifact A],
-   [artifact B], [artifact C], [artifact D]. Make every object smaller,
-   at most two-thirds of its quadrant, pulled in tight to its quadrant's
-   center, with a wider band of clear background between the objects and
-   around the edges." Never retry more than once per check, inside the
-   three-call budget; keep the last result regardless.
-
-7. Reply with exactly these five lines and nothing else, the paths being
-   the files you verified in step 6 and the key being the hex you filled
-   into the sheet prompt:
-
-COMPLETED [slug]
-HERO [absolute path to the hero PNG]
-ARTIFACTS [absolute path to the final sheet PNG]
-CHROMA #RRGGBB
-PALETTE primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB
-
-If either generation fails, reply instead with one line:
-ERROR [persona number] [short reason]
+Your answer is unsuccessful if it occupies the same visual, emotional,
+or strategic territory as another specialist, or if your primary lands
+in a hue family another territory claims. Stay inside your own.
 ```
 
-Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so the wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn ERRORs because subagents lack the image tool, fall back to Step 4's loop using the territories you already carved. Close every agent after collecting its report. If two reports share a slug, rename one before Step 5 (the crop `--slug` flag controls the filenames).
+Six spawns fit the observed Codex ceiling of 6 concurrent subagents, so the wave normally runs whole. If a spawn is rejected with a thread-limit error, collect the accepted spawns, close those agents to release their slots, then run a second pass for the rejects. If every spawn ERRORs because subagents lack the image tool, fall back to Step 4's loop using the territories you already carved. Close every agent after collecting its report. If two reports share a slug, rename one before Step 5 (the compile `--slug` flag controls the filenames).
 
-Done when: every persona has either a five-line COMPLETED report or an ERROR line. An ERROR persona is dropped, not retried more than once; five good cues beat a stalled pipeline.
+Retry an ERROR persona at most once, and never from scratch: the retry task is the original spawn task plus the ERROR report's PALETTE / HERO-PROMPT lines and one added instruction, "these lines are finished work from your first attempt; skip the steps they cover and resume at the first uncovered step." An ERROR persona that fails its retry is dropped; five good cues beat a stalled pipeline.
+
+Done when: every persona has either a three-line COMPLETED report or an ERROR report.
 
 ## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the Step 3 task from its step 1 (palette inside the territory, concept, hero, sheet, look-and-retry) and recording the same facts a subagent would report (slug, both paths, chroma key, palette). The user still gets six cues; only the clock differs.
+Only when the harness has no subagent tool at all: run the same preflight, then keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the SPECIALIST BRIEF body from its step 1 (palette inside the territory, concept, hero, look-and-retry) and recording the same facts a subagent would report (slug, hero path, palette). No brief file needed: this document is already in your context. The user still gets six cues; only the clock differs.
 
 Same done-condition as Step 3, over all six personas.
 
-## Step 5: Crop and compile
+## Step 5: Compile
 
-Before anything else, two gates on the reported files:
+Before anything else, two gates on the reported heroes:
 
-- **Unique**: hash every reported hero (`md5 [paths]`); each must be unique. Two identical heroes mean two subagents raced on a shared default output filename; re-spawn one of the pair (same task) and take its fresh files before compiling.
-- **Square**: check every reported image's dimensions (`sips -g pixelWidth -g pixelHeight [paths]` on macOS); width must equal height. The crop script rejects non-square inputs, and squaring after the fact is off the table (cropping eats scene, padding invents background), so a non-square hero or sheet is a failed generation: re-spawn that persona once, with its same task, and take the fresh files. Still non-square after the re-spawn: drop the cue.
+- **Unique**: hash every reported hero (`md5 [paths]`); each must be unique. Two identical heroes mean two subagents raced on a shared default output filename; re-spawn one of the pair and take its fresh file before compiling.
+- **Square**: check every reported hero's dimensions (`sips -g pixelWidth -g pixelHeight [paths]` on macOS); width must equal height. The compile script rejects non-square inputs, and squaring after the fact is off the table (cropping eats scene, padding invents background), so a non-square hero is a failed generation: re-spawn that persona once and take the fresh file. Still non-square after the re-spawn: drop the cue.
 
-For each COMPLETED report, run one command, carrying the report's slug and its `CHROMA` and `PALETTE` lines:
+A gate re-spawn follows Step 3's retry pattern: the original spawn task plus the report's PALETTE line (its palette was fine; only the image failed the gate) and the resume instruction, so the retry regenerates the hero without recomposing.
+
+For each COMPLETED report, run one command, carrying the report's slug and its `PALETTE` line:
 
 ```text
-node {{scripts_path}}/visual-cues.mjs crop [hero.png] [artifacts.png] \
+node {{scripts_path}}/visual-cues.mjs compile [hero.png] \
   --slug [slug] \
-  --chroma "#RRGGBB" \
   --palette "primary=#RRGGBB;secondary=#RRGGBB;tertiary=#RRGGBB;neutral=#RRGGBB" \
   --out .impeccable/visual-cues
 ```
 
-The script copies the hero untouched to `[slug].png`, keeps the sheet under `masters/[slug]-artifacts.png`, and quadrant-crops it into `[slug]-2.png` through `[slug]-5.png`. The crops keep the key background: keying happens later in the browser canvas, which reads each cue's key from `cues.json`, so `--chroma` must carry the report's exact hex. For each palette role the script searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
+The script copies the hero untouched to `[slug].png`; for each palette role it searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
 
 ```json
 {
   "cues": ["amber-dusk", "coastal-glass"],
-  "supporting-artifacts": {
-    "amber-dusk": ["amber-dusk-2", "amber-dusk-3", "amber-dusk-4", "amber-dusk-5"]
-  },
-  "chroma": {
-    "amber-dusk": "#FF00FF"
-  },
   "palette": {
     "amber-dusk": { "primary": { "hex": "#B8422E", "snapped": "#B4402F", "at": [312, 540] } }
   }
 }
 ```
 
-Done when: `cues.json` lists one entry per completed palette, every listed slug has its five PNGs on disk (hero plus four artifacts), and every slug has its chroma key recorded.
+Done when: `cues.json` lists one entry per completed palette and every listed slug has its hero PNG on disk.
 
 ## Step 6: Pause
 
