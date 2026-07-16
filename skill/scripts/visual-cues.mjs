@@ -7,8 +7,10 @@
 //   node visual-cues.mjs compile <hero.png> --slug <two-word-slug>
 //       [--palette "primary=#RRGGBB;secondary=...;tertiary=...;neutral=..."]
 //       [--out <dir>]   (default: .impeccable/visual-cues)
-//     Copies the hero untouched to <slug>.png, finds each planned palette
-//     hex's closest pixel in the hero, and updates <out>/cues.json.
+//     Copies the hero untouched to <slug>.png (removing the source when it
+//     is an intermediate inside <out>, so the folder holds one file per
+//     cue, not a byte-identical pair), finds each planned palette hex's
+//     closest pixel in the hero, and updates <out>/cues.json.
 //     The hero must be square: generation happens on a square canvas
 //     (a size/aspect parameter, not just a prompt line), and a non-square
 //     input is a generation to redo, not an image to fix up here.
@@ -16,8 +18,8 @@
 // Dependency-free: PNG decode on node:zlib. Rejects interlaced and
 // indexed-color PNGs; convert those with sips/ImageMagick/PIL first.
 
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, realpathSync, unlinkSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
@@ -268,7 +270,13 @@ function cmdCompile(args) {
 
   mkdirSync(outDir, { recursive: true });
   const heroPath = join(outDir, `${slug}.png`);
-  copyFileSync(resolve(heroFile), heroPath); // the hero ships untouched, no crop
+  const srcPath = resolve(heroFile);
+  copyFileSync(srcPath, heroPath); // the hero ships untouched, no crop
+  // Subagents drop `<slug>-hero.png` intermediates into the out dir; once
+  // the canonical `<slug>.png` exists, that intermediate is a byte-identical
+  // duplicate that doubles the folder, so remove it. A source outside the
+  // out dir (a native tool's own output folder) is not ours to delete.
+  if (srcPath !== heroPath && dirname(srcPath) === outDir) unlinkSync(srcPath);
 
   // --palette is optional: the agent may compile before it has finished
   // designing the palette, and can re-run compile later once it has hexes.
