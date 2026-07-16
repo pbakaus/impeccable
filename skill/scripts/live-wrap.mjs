@@ -21,7 +21,7 @@ import {
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
 
-const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
+const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.ex', '.heex', '.exs', '.eex'];
 
 export async function wrapCli() {
   const args = process.argv.slice(2);
@@ -652,7 +652,7 @@ function buildCssAuthoring(styleMode, count) {
  * Returns the first matching file path, or null.
  */
 function findFileWithQuery(query, cwd, genOpts = {}) {
-  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', '.'];
+  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'lib', '.'];
   const seen = new Set();
 
   for (const dir of searchDirs) {

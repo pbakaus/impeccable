@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -514,5 +514,42 @@ describe('live-accept — insert sessions', () => {
     assert.ok(!after.includes('impeccable-variants-start'));
     assert.ok(after.includes('Hero block'));
     assert.ok(after.includes('Footer'));
+  });
+});
+
+describe('live-accept — Elixir templates under lib/', () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-elixir-'));
+    mkdirSync(join(tmp, 'lib', 'my_app_web', 'components'), { recursive: true });
+  });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it('accepts a variant when markers live in a .ex file inside lib/', () => {
+    const id = 'elixir01';
+    const source = `defmodule MyAppWeb.Layouts do
+  def nav(assigns) do
+    ~H"""
+    <!-- impeccable-variants-start ${id} -->
+    <div data-impeccable-variants="${id}" data-impeccable-variant-count="2" style="display: contents">
+      <div data-impeccable-variant="original">
+        <nav class="nav">before</nav>
+      </div>
+      <div data-impeccable-variant="1">
+        <nav class="nav">after</nav>
+      </div>
+    </div>
+    <!-- impeccable-variants-end ${id} -->
+    """
+  end
+end
+`;
+    writeFileSync(join(tmp, 'lib', 'my_app_web', 'components', 'layouts.ex'), source);
+    const result = runAccept(tmp, ['--id', id, '--variant', '1']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    const after = readFileSync(join(tmp, 'lib', 'my_app_web', 'components', 'layouts.ex'), 'utf-8');
+    assert.ok(after.includes('>after</nav>'));
+    assert.ok(!after.includes('impeccable-variants-start'));
+    assert.ok(!after.includes('data-impeccable-variant="original"'));
   });
 });

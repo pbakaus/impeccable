@@ -24,7 +24,7 @@ import {
   removeSvelteComponentSession,
 } from './live/svelte-component.mjs';
 
-const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
+const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro', '.ex', '.heex', '.exs', '.eex'];
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -748,7 +748,7 @@ function detectCommentSyntax(filePath) {
 
 function findSessionFile(id, cwd) {
   const marker = 'impeccable-variants-start ' + id;
-  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', '.'];
+  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', 'lib', '.'];
   const seen = new Set();
 
   for (const dir of searchDirs) {
