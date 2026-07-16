@@ -33,7 +33,7 @@ Palettes come from **six competing specialists**, not from you. One mind composi
 
 The studio runs as **one parallel wave**. You carve six territories from the brief (Step 2), then all six personas spawn at once (Step 3), each composing a palette inside its own territory and staging it in its hero. No chained reviews, no revision loops: distinctness is settled upfront by the territory assignments, and speed comes from doing everything in one wave.
 
-Subagents start without your context, so everything a specialist needs must reach it whole. The invariant material (brief packet, craft rules, prompt skeleton, work steps) travels as one **brief file** every spawn reads; only the per-persona slots (persona, territory, off-limits list) ride in the spawn task itself. Copy shared blocks into the brief file **verbatim**; a summarized rule is a dropped rule, and retyping the full set into six long tasks costs minutes of pure prompt-typing per wave.
+Subagents start without your context, so everything a specialist needs must reach it whole. The invariant material (brief packet, persona methods, territory map, craft rules, prompt skeleton, work steps) travels as one **brief file** every spawn reads; only the per-persona slots (persona number and name, territory line) ride in the spawn task itself. Copy shared blocks into the brief file **verbatim**; a summarized rule is a dropped rule, and retyping the full set into six long tasks costs minutes of pure prompt-typing per wave.
 
 ## Step 1: Assemble the brief packet
 
@@ -159,26 +159,45 @@ Done when: six one-line territories exist, each closing on a hue ground, no two 
 
 **Pick the generation path first.** The harness's native image-generation tool is the path whenever one exists; the `IMAGE_GEN_API_KEY` wrapper exists only for harnesses that have none. A key in `.impeccable/.env` or a wrapper script left by an earlier run in another harness does not outrank a native tool: check for the native tool first, and touch the wrapper only after confirming there is none.
 
-**Then preflight that path before carving any task.** Run one smoke generation yourself with the exact tool or wrapper command the spawns will use: a trivial prompt ("one solid red square, flat color"), the smallest supported square size, a throwaway output path. A broken tool found now costs one fix and a re-run; found by the wave, it costs six spent budgets, a mid-run patch, and six re-spawns. Fix the tooling until the preflight passes, then write the passing command into the brief file's tool slot.
+**Do not smoke-test the path.** Presence is the whole check: a tool the harness lists works, and the wrapper spec in [document.md](document.md) already retries transient failures internally, so a preflight generation buys nothing the first persona's report would not carry, and it costs a generation call and half a minute on every clean run. Instead, fill the brief file's tool slot with the exact call the spawns will make: the tool or wrapper command, the square-size parameter to pass, and where it writes output files (some native tools ignore directory paths and save to a fixed folder of their own; say so in the slot, so no specialist rediscovers it alone).
 
 If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, hero), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
 
 ### The brief file
 
-Write `.impeccable/visual-cues/brief.md` once, before spawning: the SPECIALIST BRIEF body below with its tool slot filled, then, appended verbatim from this document in this order, the BRIEF PACKET, PALETTE RULES, CONCEPT RULES, and the HERO PROMPT skeleton with its framing paragraphs. One byte-exact file read by all six replaces six retyped copies of the same several-thousand-word block: the spawn tasks stay a screen long, the wave starts in seconds instead of minutes, and retries reread the identical rules. **If the harness's subagents cannot read files**, paste the brief file's full contents into each task instead; the file stays the single source either way.
+Write `.impeccable/visual-cues/brief.md` once, before spawning: the SPECIALIST BRIEF body below with its tool slot filled, then, appended in this order, the BRIEF PACKET, **The six personas** list verbatim from this document, the TERRITORIES block from Step 2's carve, then PALETTE RULES, CONCEPT RULES, and the HERO PROMPT skeleton with its framing paragraphs, verbatim from this document. One byte-exact file read by all six replaces six retyped copies of the same several-thousand-word block: the spawn tasks stay a few lines long, the wave starts in seconds instead of minutes, and retries reread the identical rules. **If the harness's subagents cannot read files**, paste the brief file's full contents into each task instead; the file stays the single source either way.
+
+The TERRITORIES block is the wave's off-limits map, written once here instead of five off-limits lines retyped into every spawn:
+
+```text
+TERRITORIES (your task names your row; every other row is off-limits)
+1. [persona name]: [territory line]
+2. [persona name]: [territory line]
+3. [persona name]: [territory line]
+4. [persona name]: [territory line]
+5. [persona name]: [territory line]
+6. [persona name]: [territory line]
+The hue anchor ([the Q1 anchor]) belongs to row [N] alone. If that row
+is yours, carry it; otherwise your primary must live in a different
+hue family.
+```
 
 SPECIALIST BRIEF body:
 
 ```text
 You are a color specialist. You compose one brand palette inside an
 assigned territory, then stage it in one hero image. Your spawn task
-names your persona, your territory, and what is off-limits; this file
-carries everything else: the brief packet, the craft rules, the prompt
-skeleton, and the steps below.
+names your persona and your territory; this file carries everything
+else: the brief packet, your persona's method, the territory map, the
+craft rules, the prompt skeleton, and the steps below.
 
-Generate the image with [the exact tool or command the preflight
-passed: the harness's native image tool, or the wrapper invocation].
-Use only that; do not edit repo files.
+This file is your only read. Do not open PRODUCT.md, DESIGN.md, or any
+other repo file: the BRIEF PACKET already carries everything they would
+tell you, and every extra read costs the wave time.
+
+Generate the image with [the exact tool or command for the chosen
+generation path, the square-size parameter to pass, and where it
+writes output files]. Use only that; do not edit repo files.
 
 The hero gets a hard budget of three generation calls, all reasons
 combined (failed calls, timeouts, and the retry checks below). A call
@@ -196,10 +215,11 @@ generation tooling.
 
 3. Critique your own work before touching the image. Check the palette
    against every PALETTE RULES line, against your territory's hue
-   ground, and against the off-limits list; check the concept against
-   every CONCEPT RULES line. Name each failure and fix it. A primary
-   that drifted into another territory's hue family, or into an anchor
-   you do not own, is a failure to fix now, not one to ship.
+   ground, and against every other row of the TERRITORIES block; check
+   the concept against every CONCEPT RULES line. Name each failure and
+   fix it. A primary that drifted into another territory's hue family,
+   or into an anchor you do not own, is a failure to fix now, not one
+   to ship.
 
 4. Build the hero prompt from the HERO PROMPT skeleton below and
    generate the HERO image, 1500x1500 (or the nearest supported
@@ -211,7 +231,11 @@ generation tooling.
    specialists share the generation tool's output folder, so a default
    output name is a race that hands you a sibling's image: if the tool
    accepts an output filename, pass [slug]-hero.png, and work only with
-   the exact file path the tool reports back for YOUR generation.
+   the exact file path the tool reports back for YOUR generation. A
+   tool that ignores directory paths and saves to its own fixed folder
+   is normal, not an error: after the inspection below, copy the
+   reported file to [visual-cues dir]/[slug]-hero.png and report the
+   copy's path.
 
    Open the result and inspect it once. Ownership: the scene is yours,
    staging your palette; a wrong subject or palette means you picked up
@@ -243,24 +267,17 @@ HERO-PROMPT [the finished hero prompt, on one line]
 
 ### The spawn task
 
-Each spawn task is short; the brief file carries the weight:
+Each spawn task is a few lines; the brief file carries the weight. The persona's method, the off-limits map, and the anchor rule all live in the brief; do **not** paste them back into the tasks, that is the retyping the brief file exists to kill:
 
 ```text
 You are a color specialist. Read [absolute path to
 .impeccable/visual-cues/brief.md] now, before anything else, and follow
-it exactly: it carries your brief, craft rules, prompt skeleton, work
-steps, generation budget, and report format.
+it exactly: it carries your brief, your persona's method, the territory
+map, craft rules, prompt skeleton, work steps, generation budget, and
+report format.
 
-PERSONA: [the persona's full numbered entry from The six personas]
-
+You are persona [N], [persona name].
 YOUR TERRITORY: [this persona's one-line territory]
-
-The territories assigned to the other five specialists, all off-limits:
-[the other five territories, one line each]
-
-The brief's hue anchor ([the Q1 anchor]) belongs to [its owner
-territory]; [if this persona owns it: "that is yours to carry" /
-otherwise: "your primary must live in a different hue family"].
 
 Your answer is unsuccessful if it occupies the same visual, emotional,
 or strategic territory as another specialist, or if your primary lands
@@ -275,7 +292,7 @@ Done when: every persona has either a three-line COMPLETED report or an ERROR re
 
 ## Step 4: Serial path (no subagents)
 
-Only when the harness has no subagent tool at all: run the same preflight, then keep the same six territories and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the SPECIALIST BRIEF body from its step 1 (palette inside the territory, concept, hero, look-and-retry) and recording the same facts a subagent would report (slug, hero path, palette). No brief file needed: this document is already in your context. The user still gets six cues; only the clock differs.
+Only when the harness has no subagent tool at all: pick the generation path by the same precedence rule, keep the same six territories, and play all **six** personas yourself, one at a time and honestly in-method (the Naturalist names physical sources; the Constraint Poet writes its constraints before composing), following the SPECIALIST BRIEF body from its step 1 (palette inside the territory, concept, hero, look-and-retry) and recording the same facts a subagent would report (slug, hero path, palette). No brief file needed: this document is already in your context. The user still gets six cues; only the clock differs.
 
 Same done-condition as Step 3, over all six personas.
 
