@@ -33,7 +33,7 @@ Run it from the project root (that is where it finds `.impeccable/.env`). It pri
 
 **gemini** (Nano Banana):
 
-- **Model**: `gemini-3-pro-image` (Nano Banana Pro, the strongest tier) by default; a `IMAGE_GEN_MODEL` line in `.impeccable/.env` overrides it (e.g. `gemini-3.1-flash-image` for the cheaper high-volume tier), and the wrapper retries the `-preview` sibling once when Google's model naming drifts.
+- **Model**: `gemini-3.1-flash-image` by default; a `IMAGE_GEN_MODEL` line in `.impeccable/.env` overrides it, and the wrapper retries the `-preview` sibling once when Google's model naming drifts.
 - **Size**: the wrapper pins aspect ratio 1:1, so output is always square; Gemini picks the pixel size for its tier (1024 by default) and ignores `--width`/`--height`. A 1024 square passes the pipelines' square gate as a "nearest supported square"; do not upscale it.
 - **Format**: Gemini frequently returns JPEG bytes regardless of the `--out` filename; the wrapper converts them, so the written file is always a real PNG. Do not re-check or re-convert it.
 - **Protocol**: synchronous; one call returns the image inline, no polling. Moderation arrives as an imageless response, which the wrapper turns into a clear error, not as an HTTP failure.

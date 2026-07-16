@@ -237,9 +237,9 @@ async function generateBfl({ apiKey, prompt, ref, width, height, out }) {
 // only requires square). Moderation shows up as a response with no image
 // part plus a block reason, not as an HTTP error.
 async function generateGemini({ apiKey, prompt, ref, out }) {
-  // IMAGE_GEN_MODEL overrides for users on a cheaper tier; the default is
-  // Nano Banana Pro, Google's strongest image model.
-  let model = loadEnv("IMAGE_GEN_MODEL") || "gemini-3-pro-image";
+  // IMAGE_GEN_MODEL overrides for users on a different tier; the default
+  // is the high-volume Nano Banana model.
+  let model = loadEnv("IMAGE_GEN_MODEL") || "gemini-3.1-flash-image";
   const parts = [{ text: prompt }];
   if (ref) parts.push({ inlineData: { mimeType: "image/png", data: fs.readFileSync(ref).toString("base64") } });
   const body = JSON.stringify({
