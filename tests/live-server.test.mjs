@@ -111,6 +111,31 @@ it('gitignores local Impeccable runtime artifacts', () => {
   assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
 });
 
+it('Stop Live removes Nuxt Vue preview modules and their generated root', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'impeccable-live-nuxt-stop-'));
+  const generatedRoot = join(cwd, 'app/.impeccable-live');
+  mkdirSync(join(generatedRoot, 'session123'), { recursive: true });
+  writeFileSync(join(cwd, 'nuxt.config.ts'), 'export default defineNuxtConfig({});\n');
+  writeFileSync(join(generatedRoot, '__runtime.js'), 'export const runtime = true;\n');
+  writeFileSync(join(generatedRoot, 'session123', 'v1.vue'), '<template><h1>Preview</h1></template>\n');
+
+  let live;
+  try {
+    live = await startServer(8498, { cwd });
+    const exited = new Promise((resolve) => live.proc.once('exit', resolve));
+    await stopServer(live.port, live.token);
+    await Promise.race([
+      exited,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('live server did not stop')), 2_000)),
+    ]);
+    assert.equal(existsSync(join(generatedRoot, '__runtime.js')), false);
+    assert.equal(existsSync(generatedRoot), false);
+  } finally {
+    live?.proc?.kill();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
   let text = '';
   for (let i = 0; i < maxReads; i++) {
@@ -222,6 +247,40 @@ describe('live-server integration', () => {
     res = await fetch(`http://localhost:${server.port}/status?token=${server.token}`);
     data = await res.json();
     assert.equal(data.agentPolling, false);
+  });
+
+  it('/status stops reporting agentPolling as soon as a poll returns an event', async () => {
+    await drainPolls(server);
+    const pollPromise = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=5000&leaseMs=30000`,
+    ).then((response) => response.json());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const eventRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id: 'aabbcc77',
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Truthful poll</button>', tagName: 'BUTTON' },
+      }),
+    });
+    assert.equal(eventRes.status, 200);
+    const event = await pollPromise;
+    assert.equal(event.id, 'aabbcc77');
+
+    const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+    assert.equal(status.agentPolling, false);
+
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id: event.id, type: 'done', sourceEventType: 'generate' }),
+    });
   });
 
   it('/live.js serves script with token injected', async () => {
@@ -2023,6 +2082,59 @@ colors: {}
     assert.equal(data.type, 'timeout');
   });
 
+  it('/poll type filters keep parallel poll consumers disjoint', async () => {
+    await drainPolls(server);
+    const controlPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=steer,manual_edit_apply,carbonize_cleanup,exit`,
+    ).then((response) => response.json());
+    const workerPoll = fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=2000&types=generate,accept,discard,prefetch`,
+    ).then((response) => response.json());
+
+    const steer = {
+      token: server.token,
+      type: 'steer',
+      id: 'aabbcc01',
+      pageUrl: '/',
+      message: 'Keep this on the foreground lane',
+    };
+    const generate = {
+      token: server.token,
+      type: 'generate',
+      id: 'aabbcc02',
+      action: 'impeccable',
+      count: 1,
+      pageUrl: '/',
+      element: { outerHTML: '<button id="lane-test">Book</button>', id: 'lane-test', tagName: 'BUTTON' },
+    };
+    for (const event of [steer, generate]) {
+      const response = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const [controlEvent, workerEvent] = await Promise.all([controlPoll, workerPoll]);
+    assert.equal(controlEvent.type, 'steer');
+    assert.equal(controlEvent.id, steer.id);
+    assert.equal(workerEvent.type, 'generate');
+    assert.equal(workerEvent.id, generate.id);
+
+    for (const reply of [
+      { id: steer.id, type: 'steer_done', message: 'Control lane handled it', sourceEventType: 'steer' },
+      { id: generate.id, type: 'done', sourceEventType: 'generate' },
+    ]) {
+      const response = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: server.token, ...reply }),
+      });
+      assert.equal(response.status, 200);
+    }
+  });
+
   it('/poll rejects invalid token', async () => {
     const res = await fetch(`http://localhost:${server.port}/poll?token=wrong&timeout=100`);
     assert.equal(res.status, 401);
@@ -2142,6 +2254,9 @@ colors: {}
     assert.equal(event.id, 'a1b2c3d4');
     assert.equal(event.action, 'bolder');
     assert.equal(event.count, 2);
+    assert.equal(event.scaffoldAttempted, true);
+    assert.equal(event.scaffoldError, 'insufficient_locator');
+    assert.equal(Number.isFinite(event.generationReadyAt), true);
 
     await fetch(`http://localhost:${server.port}/poll`, {
       method: 'POST',
@@ -2187,6 +2302,42 @@ colors: {}
 
   it('accepts checkpoint events without exposing them as agent poll work', async () => {
     await drainPolls(server);
+    const partialRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3d7',
+        phase: 'cycling',
+        reason: 'browser_resumed',
+        revision: 1,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(partialRes.status, 200);
+
+    const secondRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3d7',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 2,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 2,
+        visibleVariant: 2,
+      }),
+    });
+    assert.equal(secondRes.status, 200);
+
     const res = await fetch(`http://localhost:${server.port}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2195,8 +2346,10 @@ colors: {}
         type: 'checkpoint',
         id: 'a1b2c3d7',
         phase: 'cycling',
-        revision: 2,
+        reason: 'variants_ready',
+        revision: 3,
         owner: 'browser-a',
+        expectedVariants: 3,
         arrivedVariants: 3,
         visibleVariant: 2,
         paramValues: { density: 'packed' },
@@ -2214,6 +2367,148 @@ colors: {}
     const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3d7.snapshot.json'), 'utf-8'));
     assert.equal(snapshot.visibleVariant, 2);
     assert.deepEqual(snapshot.paramValues, { density: 'packed' });
+    assert.ok(snapshot.generationTimings.first_reviewable?.at);
+    assert.ok(snapshot.generationTimings.second_reviewable?.at);
+    assert.ok(snapshot.generationTimings.all_variants_ready?.at);
+    assert.ok(snapshot.generationTimings.first_reviewable.at <= snapshot.generationTimings.second_reviewable.at);
+    assert.ok(snapshot.generationTimings.second_reviewable.at <= snapshot.generationTimings.all_variants_ready.at);
+
+    const atomicRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3da',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 1,
+        owner: 'browser-a',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(atomicRes.status, 200);
+    const atomicSnapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3da.snapshot.json'), 'utf-8'));
+    assert.ok(atomicSnapshot.generationTimings.first_reviewable?.at);
+    assert.equal(
+      atomicSnapshot.generationTimings.first_reviewable.at,
+      atomicSnapshot.generationTimings.all_variants_ready?.at,
+      'atomic delivery makes the first variant and full set reviewable together',
+    );
+  });
+
+  it('journals and streams agent progress without leasing it as work', async () => {
+    await drainPolls(server);
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    await reader.read();
+    const progress = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'agent_phase',
+        id: 'a1b2c3e1',
+        phase: 'first_variant_generating',
+        owner: 'impeccable-live-generator',
+      }),
+    });
+    assert.equal(progress.status, 200);
+    const message = new TextDecoder().decode((await reader.read()).value);
+    controller.abort();
+    assert.match(message, /"type":"agent_phase"/);
+    assert.match(message, /"phase":"first_variant_generating"/);
+    const polled = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50`).then(r => r.json());
+    assert.equal(polled.type, 'timeout');
+    const snapshot = JSON.parse(readFileSync(join(getLiveSessionsDir(server.cwd), 'a1b2c3e1.snapshot.json'), 'utf-8'));
+    assert.ok(snapshot.generationTimings.first_variant_generating?.at);
+  });
+
+  it('streams Svelte component checkpoints as progressive preview updates', async () => {
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3de',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 1,
+        owner: 'svelte-worker',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+        previewMode: 'svelte-component',
+        previewFile: 'node_modules/.impeccable-live/a1b2c3de/manifest.json',
+        sourceFile: 'src/routes/+page.svelte',
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const { value } = await reader.read();
+    const message = decoder.decode(value);
+    assert.match(message, /"type":"variant_progress"/);
+    assert.match(message, /"arrivedVariants":1/);
+    assert.match(message, /"previewMode":"svelte-component"/);
+    controller.abort();
+  });
+
+  it('streams source checkpoints so no-HMR frameworks can review variant 1', async () => {
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3df',
+        phase: 'cycling',
+        reason: 'variants_progress',
+        revision: 1,
+        owner: 'source-worker',
+        expectedVariants: 3,
+        arrivedVariants: 1,
+        visibleVariant: 1,
+        previewMode: 'source',
+        previewFile: 'app/pages/index.vue',
+        sourceFile: 'app/pages/index.vue',
+        publicationKind: 'params',
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const { value } = await reader.read();
+    const message = decoder.decode(value);
+    assert.match(message, /"type":"variant_progress"/);
+    assert.match(message, /"arrivedVariants":1/);
+    assert.match(message, /"previewMode":"source"/);
+    assert.match(message, /"previewFile":"app\/pages\/index.vue"/);
+    assert.match(message, /"publicationKind":"params"/);
+    controller.abort();
   });
 
   it('redelivers an unacknowledged browser event after helper server restart', async () => {
@@ -2358,6 +2653,105 @@ colors: {}
     });
     const acked = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=50&leaseMs=50`).then(r => r.json());
     assert.equal(acked.type, 'timeout', 'acked event should be removed from the poll queue');
+  });
+
+  it('retires the leased Generate when early Accept or Discard takes ownership', async () => {
+    await drainPolls(server);
+    for (const [type, id] of [['accept', 'ea11ac01'], ['discard', 'ea11dc01']]) {
+      const generated = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type: 'generate',
+          id,
+          action: 'bolder',
+          count: 3,
+          element: { outerHTML: '<section>early choice</section>', tagName: 'section' },
+        }),
+      });
+      assert.equal(generated.status, 200);
+      const generation = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(generation.id, id);
+
+      const chosen = await fetch(`http://localhost:${server.port}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          type,
+          id,
+          ...(type === 'accept' ? { variantId: '1' } : {}),
+        }),
+      });
+      assert.equal(chosen.status, 200);
+      const choice = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=${type}&timeout=100&leaseMs=40`).then((response) => response.json());
+      assert.equal(choice.type, type);
+      assert.equal(choice.id, id);
+      const reply = await fetch(`http://localhost:${server.port}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: server.token,
+          id,
+          sourceEventType: type,
+          type: type === 'discard' ? 'discarded' : 'complete',
+        }),
+      });
+      assert.equal(reply.status, 200);
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const stale = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=30&leaseMs=20`).then((response) => response.json());
+      assert.equal(stale.type, 'timeout', `${type} must prevent Generate redelivery after its old lease expires`);
+      const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+      assert.equal(status.pendingEvents.some((event) => event.id === id && event.type === 'generate'), false);
+    }
+  });
+
+  it('releases a failed worker Generate lease without consuming or broadcasting it', async () => {
+    await drainPolls(server);
+    const id = 'fa11bac1';
+    const generated = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'bolder',
+        count: 3,
+        element: { outerHTML: '<article>fallback</article>', tagName: 'article' },
+      }),
+    });
+    assert.equal(generated.status, 200);
+    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=5000`).then((response) => response.json());
+    assert.equal(leased.id, id);
+
+    const retried = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        id,
+        type: 'retry',
+        sourceEventType: 'generate',
+      }),
+    });
+    assert.equal(retried.status, 200);
+    assert.equal((await retried.json()).released, true);
+
+    const fallback = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&types=generate&timeout=100&leaseMs=100`).then((response) => response.json());
+    assert.equal(fallback.id, id);
+    assert.equal(fallback.type, 'generate');
+    const status = await fetch(`http://localhost:${server.port}/status?token=${server.token}`).then((response) => response.json());
+    assert.equal(status.pendingEvents.some((event) => event.id === id && event.type === 'generate'), true);
+
+    const done = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'done', sourceEventType: 'generate' }),
+    });
+    assert.equal(done.status, 200);
   });
 
   it('wakes a parked poll as soon as a missed-ack lease expires', async () => {

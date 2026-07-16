@@ -119,6 +119,9 @@ for (const name of listFixtures()) {
           '.impeccable/live/server.json',
           '.impeccable/live/sessions/example.jsonl',
           '.impeccable/live/previews/example/v1.html',
+          '.impeccable/live/artifacts/example-r1.jsx',
+          '.impeccable/live/accept-receipts/example.json',
+          '.impeccable/live/locks/example.lock',
           '.impeccable/live/deferred-svelte-component-accepts.json',
           'src/lib/impeccable/ImpeccableLiveRoot.svelte',
           'src/lib/impeccable/__runtime.js',
@@ -127,6 +130,9 @@ for (const name of listFixtures()) {
         assert.match(ignored, /\.impeccable\/live\/server\.json/);
         assert.match(ignored, /\.impeccable\/live\/sessions\/example\.jsonl/);
         assert.match(ignored, /\.impeccable\/live\/previews\/example\/v1\.html/);
+        assert.match(ignored, /\.impeccable\/live\/artifacts\/example-r1\.jsx/);
+        assert.match(ignored, /\.impeccable\/live\/accept-receipts\/example\.json/);
+        assert.match(ignored, /\.impeccable\/live\/locks\/example\.lock/);
         assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
         assert.match(ignored, /src\/lib\/impeccable\/ImpeccableLiveRoot\.svelte/);
         assert.match(ignored, /src\/lib\/impeccable\/__runtime\.js/);
@@ -140,6 +146,15 @@ for (const name of listFixtures()) {
           assert.doesNotMatch(appHtml, /impeccable-live-start/, 'SvelteKit app.html must remain untouched');
           assert.doesNotMatch(appHtml, /localhost:9999\/live\.js/, 'SvelteKit app.html must not own live.js');
           assert.match(root, /localhost:9999\/live\.js/, 'SvelteKit root component loads live.js');
+          return;
+        }
+        if (result.adapter === 'nuxt') {
+          const plugin = result.results[0];
+          const body = readFileSync(join(tmp, plugin.file), 'utf-8');
+          assert.equal(plugin.inserted, true, 'Nuxt client plugin was created');
+          assert.match(body, /impeccable-live-nuxt-plugin/);
+          assert.match(body, /if \(!import\.meta\.dev/);
+          assert.match(body, /localhost:9999\/live\.js/);
           return;
         }
         for (const r of result.results) {
@@ -167,6 +182,11 @@ for (const name of listFixtures()) {
           assert.doesNotMatch(layout, /impeccable-live-svelte-start/);
           assert.doesNotMatch(appHtml, /impeccable-live-start/);
           assert.equal(existsSync(join(tmp, 'src/lib/impeccable/ImpeccableLiveRoot.svelte')), false);
+          return;
+        }
+        if (result.adapter === 'nuxt') {
+          assert.equal(result.results[0].removed, true);
+          assert.equal(existsSync(join(tmp, result.results[0].file)), false, 'Nuxt client plugin was removed');
           return;
         }
         for (const r of result.results) {

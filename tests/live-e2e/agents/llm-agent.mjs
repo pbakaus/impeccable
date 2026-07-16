@@ -192,6 +192,7 @@ const STEER_SYSTEM_INSTRUCTIONS = [
  * @property {string=} model   Override the selected provider's default model.
  * @property {string=} baseURL Override the provider API base URL.
  * @property {object=} config  Pre-resolved provider config from resolveLlmAgentConfig().
+ * @property {boolean=} includeLiveSpec Attach the full live.md reference. Defaults to true; latency benchmarks disable it to export only the synthetic element contract.
  * @property {(msg: string) => void=} log  Optional logger for debug output.
  */
 
@@ -240,14 +241,22 @@ export async function createLlmAgent(opts = {}) {
   const { apiKey, baseURL, model, provider } = config;
   const log = opts.log || (() => {});
 
-  const liveMd = await fs.readFile(LIVE_MD_PATH, 'utf-8');
+  const liveMd = opts.includeLiveSpec === false ? null : await fs.readFile(LIVE_MD_PATH, 'utf-8');
   const client = new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  const systemBlocks = (instructions) => [
+    {
+      type: 'text',
+      text: liveMd ? instructions : instructions.replace(/\n\nCONTEXT —[^\n]+$/, ''),
+    },
+    ...(liveMd ? [{ type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } }] : []),
+  ];
 
   return {
     async generateVariants(event, context = {}) {
       const isInsert = event.mode === 'insert';
       const baseUserMessage = [
         `Produce variants for the following ${isInsert ? 'insert request' : 'pick'}. Reply with the JSON object only — no prose.`,
+        progressiveVariantGuidance(event),
         '',
         '```json',
         JSON.stringify(buildVariantRequestPayload(event, context), null, 2),
@@ -256,6 +265,7 @@ export async function createLlmAgent(opts = {}) {
 
       let userMessage = baseUserMessage;
       for (let attempt = 0; attempt < MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS; attempt += 1) {
+        const lastAttempt = attempt + 1 >= MANUAL_EDIT_RESPONSE_MAX_ATTEMPTS;
         let response;
         try {
           response = await client.messages.create(
@@ -263,15 +273,10 @@ export async function createLlmAgent(opts = {}) {
               model,
               temperature: 0,
               max_tokens: 16000,
-              system: [
-                { type: 'text', text: VARIANT_SYSTEM_INSTRUCTIONS },
-                // Cacheable: the entire stable prefix (instructions + spec) is
-                // cached up to this breakpoint. The user message holds all the
-                // per-call volatile content. DeepSeek compatibility support is
-                // provider-reported and best-effort; the usage log below tells us
-                // whether cache reads/writes actually happened.
-                { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
-              ],
+              // When present, live.md is the final cacheable stable prefix.
+              // Benchmarks omit it so external payloads contain only the
+              // synthetic element contract and per-run event.
+              system: systemBlocks(VARIANT_SYSTEM_INSTRUCTIONS),
               messages: [{ role: 'user', content: userMessage }],
             },
             {
@@ -280,7 +285,7 @@ export async function createLlmAgent(opts = {}) {
             },
           );
         } catch (err) {
-          if (attempt === 1) throw err;
+          if (lastAttempt) throw err;
           log(`variant request failed; retrying: ${err.message}`);
           userMessage = [
             baseUserMessage,
@@ -300,7 +305,7 @@ export async function createLlmAgent(opts = {}) {
           `provider=${provider} model=${model} attempt=${attempt + 1} input=${inputTokens} output=${outputTokens} cache_read=${cacheRead} cache_write=${cacheWrite}`,
         );
         if (!response || !Array.isArray(response.content)) {
-          if (attempt === 1) throw new Error('LLM agent: provider returned an empty variant response');
+          if (lastAttempt) throw new Error('LLM agent: provider returned an empty variant response');
           log('variant response validation failed; retrying: provider returned an empty response');
           userMessage = [
             baseUserMessage,
@@ -320,7 +325,7 @@ export async function createLlmAgent(opts = {}) {
         try {
           parsed = parseVariantResponse(text);
         } catch (err) {
-          if (attempt === 1) throw err;
+          if (lastAttempt) throw err;
           log(`variant response validation failed; retrying: ${err.message.split('\n')[0]}`);
           userMessage = [
             baseUserMessage,
@@ -332,11 +337,13 @@ export async function createLlmAgent(opts = {}) {
           continue;
         }
 
-        const validationError = isInsert
-          ? validateInsertVariantOutput(parsed, event)
-          : (validateVariantVisibleCopy(parsed, event.element) || validateVariantMaterialChange(parsed, event.element));
+        const validationError = validateVariantCount(parsed, event)
+          || validateProgressiveVariantOutput(parsed, event)
+          || (isInsert
+            ? validateInsertVariantOutput(parsed, event)
+            : (validateVariantVisibleCopy(parsed, event.element) || validateVariantMaterialChange(parsed, event.element)));
         if (!validationError) return parsed;
-        if (attempt === 1) throw new Error(`LLM agent: ${validationError}`);
+        if (lastAttempt) throw new Error(`LLM agent: ${validationError}`);
 
         log(`variant validation failed; retrying: ${validationError}`);
         if (isInsert) {
@@ -411,10 +418,7 @@ export async function createLlmAgent(opts = {}) {
               model,
               temperature: 0,
               max_tokens: 16000,
-              system: [
-                { type: 'text', text: MANUAL_EDIT_SYSTEM_INSTRUCTIONS },
-                { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
-              ],
+              system: systemBlocks(MANUAL_EDIT_SYSTEM_INSTRUCTIONS),
               messages: [{ role: 'user', content: userMessage }],
             },
             {
@@ -542,10 +546,7 @@ export async function createLlmAgent(opts = {}) {
       const response = await client.messages.create({
         model,
         max_tokens: 4096,
-        system: [
-          { type: 'text', text: STEER_SYSTEM_INSTRUCTIONS },
-          { type: 'text', text: liveMd, cache_control: { type: 'ephemeral' } },
-        ],
+        system: systemBlocks(STEER_SYSTEM_INSTRUCTIONS),
         messages: [{ role: 'user', content: userMessage }],
       });
 
@@ -672,6 +673,7 @@ export function buildVariantRequestPayload(event, context = {}) {
     action: event?.action,
     freeformPrompt: event?.freeformPrompt,
     count: event?.count,
+    progressive: event?.progressive,
     element: isInsert ? null : {
       outerHTML: event?.element?.outerHTML,
       tagName: event?.element?.tagName,
@@ -689,6 +691,31 @@ export function buildVariantRequestPayload(event, context = {}) {
       cssAuthoring: context.wrapInfo?.cssAuthoring,
     },
   };
+}
+
+export function progressiveVariantGuidance(event = {}) {
+  if (event.progressive?.phase === 'first') {
+    return [
+      'PROGRESSIVE FIRST DELIVERY:',
+      `- Return exactly ${event.count} variant now.`,
+      '- Return params: [] for this variant; tunable parameters are generated in the final phase.',
+      '- The innerHtml must be materially different from the picked source, not merely paired with different CSS.',
+      '- For a bare-text element, preserve the full exact copy in one child span inside the unchanged root tag/class.',
+    ].join('\n');
+  }
+  if (event.progressive?.phase === 'remaining') {
+    return [
+      'PROGRESSIVE FINAL DELIVERY:',
+      `- Return the complete final set of exactly ${event.count} variants, including variant 1.`,
+      '- progressive.firstVariant is the already-visible variant 1. Keep its innerHtml exactly unchanged and add its deferred params now.',
+      ...(event.progressive.omitFirstVariantCss ? [
+        '- Variant 1 CSS is already published and immutable. Do not repeat or modify any scopedCss rule for data-impeccable-variant="1"; return scopedCss rules for variants 2+ only.',
+      ] : []),
+      '- Generate the remaining distinct variants and their params in the other array positions.',
+      '- Every remaining variant innerHtml must be materially changed too; for bare text, wrap the full exact copy in one child span with a distinct class instead of relying on CSS alone.',
+    ].join('\n');
+  }
+  return '';
 }
 
 /**
@@ -847,6 +874,30 @@ export function validateInsertVariantOutput(parsed, event = {}) {
     }
   }
   if (event.freeformPrompt && parsed.variants.length > 0) return null;
+  return null;
+}
+
+export function validateVariantCount(parsed, event = {}) {
+  const expected = Number(event.count);
+  if (!Number.isInteger(expected) || expected < 1) return 'event count must be a positive integer';
+  const actual = Array.isArray(parsed?.variants) ? parsed.variants.length : 0;
+  return actual === expected ? null : `expected exactly ${expected} variants, received ${actual}`;
+}
+
+export function validateProgressiveVariantOutput(parsed, event = {}) {
+  if (event.progressive?.phase === 'first') {
+    const hasEarlyParams = (parsed.variants || []).some((variant) => Array.isArray(variant.params) && variant.params.length > 0);
+    return hasEarlyParams ? 'progressive first delivery must defer params with an empty params array' : null;
+  }
+  if (event.progressive?.phase === 'remaining' && event.progressive.firstVariant?.innerHtml) {
+    const expected = String(event.progressive.firstVariant.innerHtml).trim();
+    const actual = String(parsed.variants?.[0]?.innerHtml || '').trim();
+    if (actual !== expected) return 'progressive final delivery must preserve variant 1 innerHtml exactly';
+    if (event.progressive.omitFirstVariantCss && /\[data-impeccable-variant\s*=\s*["']1["'][^\]]*\]/.test(parsed.scopedCss || '')) {
+      return 'progressive final delivery must omit already-published variant 1 CSS';
+    }
+    return null;
+  }
   return null;
 }
 

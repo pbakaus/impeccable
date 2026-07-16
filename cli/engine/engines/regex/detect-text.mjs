@@ -345,12 +345,66 @@ const REGEX_ANALYZERS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Style block extraction (Vue/Svelte <style> blocks)
+// Structural CSS checks used by source files whose styles are not parsed by
+// the static HTML engine.
+// ---------------------------------------------------------------------------
+
+const CHROMATIC_SHADOW_TOKEN_RE = /(?:^|-)(?:accent|kinpaku|patina|gold|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|magenta|pink|rose|coral|aqua|mint|burgundy|crimson|scarlet)(?:-|$)/i;
+
+function insetStripeColorIsChromatic(rawColor) {
+  const color = String(rawColor || '').trim().replace(/\s*!important\s*$/i, '');
+  if (/^(?:currentcolor|transparent|inherit|unset)$/i.test(color)) return false;
+  const variable = color.match(/^var\(\s*(--[\w-]+)/i);
+  if (variable) return CHROMATIC_SHADOW_TOKEN_RE.test(variable[1]);
+  if (!/^(?:#|rgba?\(|hsla?\(|hwb\(|oklch\(|oklab\(|lch\(|lab\(|color\(|[a-z]+$)/i.test(color)) return false;
+  return !isNeutralColor(color);
+}
+
+function scanInsetStripeCss(content, filePath, lineOffset = 0) {
+  const findings = [];
+  const ruleRe = /([^{};]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = ruleRe.exec(content)) !== null) {
+    const selector = match[1].trim();
+    if (/:(?:hover|focus|focus-visible|focus-within|active|checked|target)\b/i.test(selector)) continue;
+    if (/\[aria-selected\s*[*^$|~]?=\s*["']?true/i.test(selector)) continue;
+    if (/\[aria-current(?!\s*[*^$|~]?=\s*["']?false)/i.test(selector)) continue;
+    if (/(?:^|[\s._[-])(?:active|current|selected)(?![\w])/i.test(selector)) continue;
+    if (/(?:^|[\s>+~,(])(?:button|hr|tr|td|th|table|blockquote|pre|code)(?![\w-])/i.test(selector)) continue;
+
+    const width = match[2].match(/(?:^|;)\s*(?:width|inline-size)\s*:\s*(\d+(?:\.\d+)?)px/i);
+    if (width && Number(width[1]) <= 40) continue;
+    const declaration = match[2].match(/(?:^|;)\s*box-shadow\s*:\s*([^;]+)/i);
+    if (!declaration || !/\binset\b/i.test(declaration[1])) continue;
+
+    for (const layer of declaration[1].split(/,(?![^(]*\))/)) {
+      const shadow = layer.trim().match(/\binset\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
+      if (!shadow) continue;
+      const x = Number(shadow[1]);
+      const y = Number(shadow[3]);
+      const blur = Number(shadow[5]);
+      const spread = shadow[7] == null ? 0 : Number(shadow[7]);
+      if ((x !== 0 && !shadow[2]) || (y !== 0 && !shadow[4]) || blur !== 0 || spread !== 0) continue;
+      const ax = Math.abs(x);
+      const ay = Math.abs(y);
+      if (!((ax >= 3 && ax <= 12 && ay === 0) || (ay >= 3 && ay <= 12 && ax === 0))) continue;
+      if (!insetStripeColorIsChromatic(shadow[9])) continue;
+      const edge = ay === 0 ? (x > 0 ? 'left' : 'right') : (y > 0 ? 'top' : 'bottom');
+      const line = lineOffset + content.slice(0, match.index).split('\n').length;
+      findings.push(finding('side-tab', filePath, `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`, line));
+      break;
+    }
+  }
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Style block extraction (Astro/Vue/Svelte <style> blocks)
 // ---------------------------------------------------------------------------
 
 function extractStyleBlocks(content, ext) {
   ext = ext.toLowerCase();
-  if (ext !== '.vue' && ext !== '.svelte') return [];
+  if (ext !== '.astro' && ext !== '.vue' && ext !== '.svelte') return [];
   const blocks = [];
   const re = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let m;
@@ -477,8 +531,9 @@ function detectText(content, filePath, options = {}) {
     profile,
     phase: 'source',
   }));
+  if (cssLike.has(ext)) findings.push(...scanInsetStripeCss(content, filePath));
 
-  // Extract and scan <style> blocks from Vue/Svelte SFCs
+  // Extract and scan <style> blocks from Astro/Vue/Svelte components.
   const styleBlocks = profile
     ? profileStep(profile, {
       engine: 'regex',
@@ -493,6 +548,7 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'style-block',
     }));
+    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
   }
 
   // Extract and scan CSS-in-JS template literals
@@ -510,6 +566,7 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'css-in-js',
     }));
+    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
   }
 
   if (options?.designSystem) {

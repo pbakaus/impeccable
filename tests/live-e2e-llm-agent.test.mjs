@@ -9,10 +9,13 @@ import {
   createLlmAgent,
   parseManualEditResponse,
   parseVariantResponse,
+  progressiveVariantGuidance,
   resolveLlmAgentConfig,
   validateManualEditCoverage,
   validateManualEditPlanningCoverage,
   validateVariantMaterialChange,
+  validateVariantCount,
+  validateProgressiveVariantOutput,
   validateVariantVisibleCopy,
 } from './live-e2e/agents/llm-agent.mjs';
 
@@ -1459,6 +1462,19 @@ describe('live-e2e LLM agent manual edit coverage validation', () => {
 });
 
 describe('live-e2e LLM agent variant prompt', () => {
+  it('makes progressive phase boundaries and lazy parameters explicit', () => {
+    const first = progressiveVariantGuidance({ count: 1, progressive: { phase: 'first' } });
+    const remaining = progressiveVariantGuidance({
+      count: 3,
+      progressive: { phase: 'remaining', omitFirstVariantCss: true },
+    });
+    assert.match(first, /params: \[\]/);
+    assert.match(first, /materially different/);
+    assert.match(remaining, /complete final set of exactly 3 variants/);
+    assert.match(remaining, /Keep its innerHtml exactly unchanged/);
+    assert.match(remaining, /Do not repeat or modify any scopedCss rule/);
+  });
+
   it('tells the model not to nest duplicate picked containers', () => {
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /replacement root itself/);
     assert.match(VARIANT_SYSTEM_INSTRUCTIONS, /do not wrap a duplicate/);
@@ -1484,6 +1500,53 @@ describe('live-e2e LLM agent variant prompt', () => {
 });
 
 describe('live-e2e LLM agent variant copy validation', () => {
+  it('enforces the exact requested variant count', () => {
+    const parsed = { scopedCss: '', variants: [{ innerHtml: '<h1>One</h1>', params: [] }] };
+    assert.match(validateVariantCount(parsed, { count: 2 }), /expected exactly 2 variants, received 1/);
+    assert.equal(validateVariantCount(parsed, { count: 1 }), null);
+  });
+
+  it('defers progressive params and preserves the visible first variant', () => {
+    const firstHtml = '<h1 class="hero-title"><span>One</span></h1>';
+    assert.match(
+      validateProgressiveVariantOutput(
+        { variants: [{ innerHtml: firstHtml, params: [{ id: 'weight' }] }] },
+        { progressive: { phase: 'first' } },
+      ),
+      /defer params/,
+    );
+    assert.equal(
+      validateProgressiveVariantOutput(
+        { variants: [{ innerHtml: firstHtml, params: [] }] },
+        { progressive: { phase: 'remaining', firstVariant: { innerHtml: firstHtml } } },
+      ),
+      null,
+    );
+    assert.match(
+      validateProgressiveVariantOutput(
+        { variants: [{ innerHtml: '<h1>Changed</h1>', params: [] }] },
+        { progressive: { phase: 'remaining', firstVariant: { innerHtml: firstHtml } } },
+      ),
+      /preserve variant 1/,
+    );
+    assert.match(
+      validateProgressiveVariantOutput(
+        {
+          scopedCss: '@scope ([data-impeccable-variant="1"]) { .hero-title { color: red; } }',
+          variants: [{ innerHtml: firstHtml, params: [] }],
+        },
+        {
+          progressive: {
+            phase: 'remaining',
+            firstVariant: { innerHtml: firstHtml },
+            omitFirstVariantCss: true,
+          },
+        },
+      ),
+      /omit already-published variant 1 CSS/,
+    );
+  });
+
   it('allows variants that preserve the picked element text', () => {
     const result = validateVariantVisibleCopy(
       {

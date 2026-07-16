@@ -6,9 +6,9 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 import {
   buildSearchQueries,
@@ -251,6 +251,26 @@ describe('wrapCli integration', () => {
     assert.ok(modified.includes('impeccable-variants-end test123'));
     // Original should NOT be hidden (stays visible until variants arrive)
     assert.ok(!modified.includes('data-impeccable-variant="original" style="display: none"'));
+  });
+
+  it('creates an isolated source preview without mutating the project file', () => {
+    const html = '<main>\n  <section class="hero"><h1>Original</h1></section>\n</main>\n';
+    writeFileSync(join(tmp, 'index.html'), html);
+    const output = execFileSync(process.execPath, [
+      resolve('skill/scripts/live-wrap.mjs'),
+      '--id', 'isolated123', '--count', '3', '--classes', 'hero',
+      '--file', 'index.html', '--isolated',
+    ], { cwd: tmp, encoding: 'utf-8' });
+    const result = JSON.parse(output);
+
+    assert.equal(readFileSync(join(tmp, 'index.html'), 'utf-8'), html);
+    assert.equal(result.sourceFile, 'index.html');
+    assert.equal(result.previewMode, 'source-artifact');
+    assert.match(result.file, /^\.impeccable\/live\/previews\/isolated123\/preview\.html$/);
+    assert.match(readFileSync(join(tmp, result.file), 'utf-8'), /data-impeccable-variants="isolated123"/);
+    const manifest = JSON.parse(readFileSync(join(tmp, result.previewManifest), 'utf-8'));
+    assert.equal(manifest.originalSource, '  <section class="hero"><h1>Original</h1></section>');
+    assert.equal(manifest.sourceFile, 'index.html');
   });
 
   it('wraps a JSX element and uses JSX comment syntax', () => {
@@ -778,6 +798,34 @@ export default function App() {
 
     const modified = readFileSync(join(tmp, 'Cards.tsx'), 'utf-8');
     assert.ok(modified.includes('data-impeccable-variants="dyn1"'), 'wrapped (first-match fallback)');
+  });
+
+  it('refuses multiple dynamic source branches when rendered text cannot identify one', () => {
+    const astro = `---
+const results = [{ title: 'Result 01' }, { title: 'Result 02' }];
+---
+<main>
+  <article class="result-card"><h2>{results[0].title}</h2></article>
+  <article class="result-card"><h2>{results[1].title}</h2></article>
+</main>`;
+    const file = join(tmp, 'Results.astro');
+    writeFileSync(file, astro);
+
+    let errPayload;
+    try {
+      execSync(
+        `node skill/scripts/live-wrap.mjs --id dyn2 --count 3 --classes "result-card" --tag "article" --text "Result 02 rendered body" --file "${file}"`,
+        { cwd: process.cwd(), encoding: 'utf-8', stdio: 'pipe' },
+      );
+      assert.fail('Should have refused an unsafe first-match fallback');
+    } catch (err) {
+      errPayload = JSON.parse(err.stderr.toString().trim());
+    }
+
+    assert.equal(errPayload.error, 'element_ambiguous');
+    assert.equal(errPayload.reason, 'rendered_text_not_in_source');
+    assert.equal(errPayload.candidates.length, 2);
+    assert.doesNotMatch(readFileSync(file, 'utf-8'), /impeccable-variants-start/);
   });
 
   it('errors with element_ambiguous when --text matches multiple identical branches', () => {

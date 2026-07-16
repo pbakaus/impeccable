@@ -22,7 +22,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +38,7 @@ import {
   clickAccept,
   clickApplyEdits,
   clickEditCopy,
+  clickDiscard,
   clickSaveEdit,
   clickGo,
   clickNext,
@@ -45,6 +46,7 @@ import {
   editTextLeaf,
   drawAnnotationPinAndStroke,
   getVisibleVariant,
+  installLiveQueryHelpers,
   pickElement,
   runLiveChromeBottomBarSmoke,
   waitForApplyDockHidden,
@@ -220,7 +222,7 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? insertDomSelector
         : pickSelector;
-      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture);
+      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture) || name === 'nuxt-vite7';
       const variantContentSelector = isInsert
         ? (usesSvelteComponentPreview ? '.inserted-copy' : '[data-impeccable-variant="2"] .inserted-copy')
         : usesSvelteComponentPreview
@@ -314,10 +316,11 @@ for (const { name, fixture } of fixtures) {
         const after = readFileSync(sourceFile, 'utf-8');
         const svelteComponentSession = svelteComponentTargetFor(sourceFile);
         if (svelteComponentSession) {
-          const variantFile = join(tmp, svelteComponentSession.manifest.componentDir, 'v2.svelte');
+          const componentExtension = svelteComponentSession.manifest.componentExtension || 'svelte';
+          const variantFile = join(tmp, svelteComponentSession.manifest.componentDir, `v2.${componentExtension}`);
           const variantBody = readFileSync(variantFile, 'utf-8');
           const routeBody = readFileSync(join(tmp, svelteComponentSession.manifest.sourceFile), 'utf-8');
-          assert.match(after, /"previewMode": "svelte-component"/, 'Svelte component manifest inserted');
+          assert.match(after, /"previewMode": "(?:svelte|vue)-component"/, 'framework component manifest inserted');
           if (isInsert) {
             assert.equal(svelteComponentSession.manifest.mode, 'insert', 'Svelte insert manifest marks insert mode');
             if (agentMode === 'fake') {
@@ -328,9 +331,9 @@ for (const { name, fixture } of fixtures) {
               assert.match(variantBody, /<([a-z][\w:-]*)\b[\s\S]*<\/\1>|<[a-z][\w:-]*\b[^>]*\/>/i, 'Svelte insert variant component contains a root element');
             }
           } else {
-            assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'Svelte variant component contains target element');
+            assert.match(variantBody, new RegExp(`<${svelteComponentSession.expectedTag}\\b`), 'component variant contains target element');
           }
-          assert.doesNotMatch(routeBody, /data-impeccable-variants="/, 'Svelte route source is not edited during generation');
+          assert.doesNotMatch(routeBody, /data-impeccable-variants="/, 'route source is not edited during component preview');
         } else {
           assert.match(after, /data-impeccable-variants="/, 'wrapper inserted');
         }
@@ -349,7 +352,8 @@ for (const { name, fixture } of fixtures) {
           }
         }
         if (svelteComponentSession) {
-          assert.match(readFileSync(join(tmp, svelteComponentSession.manifest.componentDir, 'v2.svelte'), 'utf-8'), /<style>/, 'Svelte component variant has scoped style block');
+          const componentExtension = svelteComponentSession.manifest.componentExtension || 'svelte';
+          assert.match(readFileSync(join(tmp, svelteComponentSession.manifest.componentDir, `v2.${componentExtension}`), 'utf-8'), /<style\b/, 'component variant has a style block');
         } else if (sourceFile.endsWith('.astro')) {
           assert.match(after, /<style is:inline data-impeccable-css="/, 'Astro live CSS uses an inline compiler-bypassing style block');
           assert.match(
@@ -376,6 +380,13 @@ for (const { name, fixture } of fixtures) {
           for (const kind of ['range', 'steps', 'toggle']) {
             assert.match(paramsSource, new RegExp(`"kind"\\s*:\\s*"${kind}"`), `param kind ${kind} present`);
           }
+          await page.waitForFunction(() => {
+            const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+              || window.__IMPECCABLE_LIVE_UI_ROOT__
+              || document;
+            const tune = root.querySelector('[data-iceq-tune="1"]');
+            return tune && tune.disabled === false && /Tune/.test(tune.textContent || '');
+          }, { timeout: 5_000 });
         }
 
         // 6. Cycle variants. Most fixtures stop at variant 2; Svelte Insert
@@ -649,6 +660,271 @@ for (const { name, fixture } of fixtures) {
       }
     });
 
+    if (['vite8-react-plain', 'astro-vite7', 'nextjs-app-router', 'vite8-sveltekit', 'nuxt-vite7'].includes(name) && shouldRunScenario('progressive')) {
+      it('reveals variant 1 safely while the remaining variants and params are pending', liveE2eTestOptions, async (t) => {
+        if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
+          t.skip('manual scenario filter is active');
+          return;
+        }
+
+        const traceEvents = [];
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent: createFakeAgent(),
+          wrapTarget: wrapTargetFromPickedElement,
+          progressive: true,
+          progressiveDelayMs: 2500,
+          trace: (eventName, data = {}) => traceEvents.push({ name: eventName, at: Date.now(), ...data }),
+          log: (m) => t.diagnostic(m),
+        });
+        const { page, tmp, consoleErrors, teardown } = session;
+        let sourceFile = null;
+
+        try {
+          await waitForHandshake(page);
+          const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+          const originalCopy = await page.locator(pickSelector).innerText();
+          await pickElement(page, pickSelector);
+          await clickGo(page);
+
+          const partial = await waitForProgressiveReviewState(page, 3);
+          assert.equal(partial.arrived, 1, 'exactly variant 1 is present during the progressive interval');
+          assert.equal(partial.visible, 1, 'variant 1 is the visible review target');
+          assert.equal(partial.copy, originalCopy, 'variant 1 preserves the picked copy');
+          assert.notEqual(partial.acceptPointerEvents, 'none', 'Accept is available for the first reviewable variant');
+          assert.notEqual(partial.discardPointerEvents, 'none', 'Discard can cancel unfinished generation');
+          assert.equal(partial.hasParams, false, 'variant 1 has no eager parameter manifest');
+          assert.equal(partial.tuneVisible, true, 'Tune stays visible while parameter generation is outstanding');
+          assert.equal(partial.tuneDisabled, true, 'pending Tune is non-interactive until controls arrive');
+          assert.match(partial.tuneTitle || '', /still being prepared/, 'pending Tune explains its loading state');
+          assert.equal(partial.paramsPanelVisible, false, 'the Tune popover stays closed until parameter delivery');
+
+          sourceFile = await locateSessionFile(tmp);
+          const isComponentPreview = sourceFile.endsWith('manifest.json');
+          if (isComponentPreview) {
+            const manifest = JSON.parse(readFileSync(sourceFile, 'utf-8'));
+            sourceFile = join(tmp, manifest.sourceFile);
+            const extension = manifest.componentExtension || 'svelte';
+            assert.equal(existsSync(join(tmp, manifest.componentDir, `v1.${extension}`)), true, 'partial component preview contains variant 1');
+            assert.equal(existsSync(join(tmp, manifest.componentDir, 'params.json')), false, 'partial component preview defers parameter manifests');
+          } else {
+            const partialSource = readFileSync(sourceFile, 'utf-8');
+            assert.equal(countSourceVariants(partialSource), 1, 'partial source contains one reviewable variant');
+            assert.doesNotMatch(partialSource, /data-impeccable-params=/, 'partial source defers parameter manifests');
+          }
+
+          // Keyboard Accept must durably fence the worker before its delayed
+          // second publication, then return the browser to picking without
+          // waiting for variants the user no longer wants.
+          const acceptClickedAt = Date.now();
+          await clickAccept(page, { expectedVariant: 1 });
+          await waitForBarHidden(page);
+          await page.waitForFunction(
+            () => window.__IMPECCABLE_LIVE_STATE__ === 'PICKING',
+            { timeout: 2_000 },
+          );
+          const automationAcceptToPickingMs = Date.now() - acceptClickedAt;
+          const browserAcceptToPickingMs = Number(await page.evaluate(() => document.documentElement.dataset.impeccableAcceptToPickingMs));
+          const acceptToPickingMs = Number.isFinite(browserAcceptToPickingMs) && browserAcceptToPickingMs > 0
+            ? browserAcceptToPickingMs
+            : automationAcceptToPickingMs;
+          t.diagnostic(`Accept dispatch → picker ready: ${acceptToPickingMs}ms (${automationAcceptToPickingMs}ms including Playwright actionability)`);
+          assert.ok(acceptToPickingMs < 500, `Accept should release the picker within 500ms of dispatch; got ${acceptToPickingMs}ms`);
+          const finalSource = await waitForSourceClean(sourceFile, 20_000);
+          assert.match(finalSource, new RegExp(escapeRegExp(originalCopy)), 'early accepted source preserves the original copy');
+          assert.doesNotMatch(finalSource, /data-impeccable-variant=/, 'early accepted source is free of preview scaffolding');
+          assert.equal(countSourceVariants(finalSource), 0, 'the delayed worker cannot reinsert later variants');
+
+          const firstGenerateId = traceEvents.find((event) => event.name === 'agent.event.received' && event.type === 'generate')?.id;
+          // Give framework HMR one paint to settle the newly committed tree;
+          // this stays inside the 1.5s next-pick budget and avoids selecting a
+          // node instance React is replacing in the same frame.
+          if (name === 'nextjs-app-router' || name === 'vite8-sveltekit' || name === 'nuxt-vite7') await waitForHandshake(page);
+          await page.waitForTimeout(250);
+          await page.mouse.move(1, 1);
+          const nextPickSelector = name === 'nextjs-app-router'
+            ? 'main.page'
+            : name === 'vite8-sveltekit'
+              ? 'article.feature-card'
+              : name === 'nuxt-vite7'
+                ? 'main.page'
+                : '.hero-hook';
+          await pickElement(page, nextPickSelector, {
+            resetPickMode: name === 'nextjs-app-router' || name === 'nuxt-vite7',
+            position: name === 'nuxt-vite7' ? { x: 12, y: 12 } : undefined,
+          });
+          const nextGoAt = Date.now();
+          await clickGo(page);
+          let nextGenerateTrace = null;
+          const pickupDeadline = Date.now() + 1_500;
+          while (Date.now() < pickupDeadline) {
+            nextGenerateTrace = traceEvents.find((event) => (
+              event.name === 'agent.event.received'
+              && event.type === 'generate'
+              && event.id !== firstGenerateId
+            ));
+            if (nextGenerateTrace) break;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          assert.ok(nextGenerateTrace, 'the poll supervisor picks up the next generation while the canceled worker unwinds');
+          const nextDispatchToPickupMs = nextGenerateTrace.at - nextGenerateTrace.clientSentAt;
+          assert.ok(
+            nextDispatchToPickupMs < 1_500,
+            `next generation pickup should stay below 1.5s from dispatch; got ${nextDispatchToPickupMs}ms`,
+          );
+          t.diagnostic(`Next Go dispatch → generation pickup: ${nextDispatchToPickupMs}ms (${nextGenerateTrace.at - nextGoAt}ms including Playwright actionability)`);
+          if (process.env.IMPECCABLE_E2E_METRICS_FILE) {
+            appendFileSync(process.env.IMPECCABLE_E2E_METRICS_FILE, JSON.stringify({
+              acceptToPickingMs,
+              nextGoToPickupMs: nextDispatchToPickupMs,
+              automationAcceptToPickingMs,
+              automationNextGoToPickupMs: nextGenerateTrace.at - nextGoAt,
+              fixture: name,
+              at: new Date().toISOString(),
+            }) + '\n');
+          }
+          assert.ok(
+            traceEvents.some((event) => event.name === 'agent.scaffold.reused'),
+            'agent reuses the server preflight scaffold',
+          );
+          assert.equal(
+            traceEvents.some((event) => event.name === 'agent.scaffold.start'),
+            false,
+            'agent does not repeat deterministic source discovery after preflight',
+          );
+          const generateTrace = traceEvents.find((event) => event.name === 'agent.event.received' && event.type === 'generate');
+          assert.ok(generateTrace?.id, 'generate trace exposes the durable session id');
+          const generationTimings = await waitForGenerationTimings(tmp, generateTrace.id, { requireAllVariants: false });
+          assert.ok(generationTimings.generation_ready?.at, 'durable timing records when generation work can start');
+          assert.ok(generationTimings.first_reviewable?.at, 'durable timing records the first reviewable variant');
+          assert.equal(generationTimings.all_variants_ready, undefined, 'canceled work never records all variants ready');
+
+          const realErrors = consoleErrors.filter((error) =>
+            !/(Download the React DevTools|StrictMode|Failed to load resource: the server responded with a status of 404)/i.test(error),
+          );
+          if (fixture.runtime.probe?.expectConsoleClean) {
+            assert.deepEqual(realErrors, [], 'progressive HMR and early-action guards produce no browser errors');
+          } else if (realErrors.length > 0) {
+            t.diagnostic(`Known framework HMR console noise during progressive source rewrites: ${realErrors.length} error(s)`);
+            for (const error of realErrors) t.diagnostic(error.split('\n')[0]);
+          }
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+    }
+
+    if (name === 'vite8-react-plain' && shouldRunScenario('progressive')) {
+      it('accepts variant 2 while variant 3 is still pending', liveE2eTestOptions, async (t) => {
+        const traceEvents = [];
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent: createFakeAgent(),
+          wrapTarget: wrapTargetFromPickedElement,
+          progressive: true,
+          progressiveInitialCount: 2,
+          progressiveDelayMs: 2500,
+          trace: (eventName, data = {}) => traceEvents.push({ name: eventName, at: Date.now(), ...data }),
+          log: (m) => t.diagnostic(m),
+        });
+        const { page, tmp, consoleErrors, teardown } = session;
+        try {
+          await waitForHandshake(page);
+          const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+          const originalCopy = await page.locator(pickSelector).innerText();
+          await pickElement(page, pickSelector);
+          await clickGo(page);
+
+          const partial = await waitForProgressiveReviewState(page, 3, { arrived: 2, visible: 1 });
+          assert.equal(partial.arrived, 2, 'variants 1 and 2 arrive before variant 3');
+          assert.equal(partial.visible, 1, 'variant 1 remains visible until the user advances');
+          assert.notEqual(partial.acceptPointerEvents, 'none', 'arrived variants remain actionable while the tail is pending');
+          assert.equal(partial.hasParams, false, 'the partial two-variant revision still defers parameter manifests');
+
+          await clickNext(page);
+          const second = await readProgressiveReviewState(page);
+          assert.equal(second.visible, 2, 'variant 2 is reviewable before variant 3 exists');
+          assert.equal(second.copy, originalCopy, 'variant 2 preserves the picked copy');
+
+          const wrappedSource = await locateSessionFile(tmp);
+          const acceptStartedAt = Date.now();
+          await clickAccept(page, { expectedVariant: 2 });
+          await waitForBarHidden(page);
+          await page.waitForFunction(
+            () => window.__IMPECCABLE_LIVE_STATE__ === 'PICKING',
+            { timeout: 2_000 },
+          );
+          const browserAcceptMs = Number(await page.evaluate(() => document.documentElement.dataset.impeccableAcceptToPickingMs));
+          const acceptToPickingMs = Number.isFinite(browserAcceptMs) && browserAcceptMs > 0
+            ? browserAcceptMs
+            : Date.now() - acceptStartedAt;
+          assert.ok(acceptToPickingMs < 500, `variant 2 Accept should release the picker within 500ms; got ${acceptToPickingMs}ms`);
+
+          const cleanSource = await waitForSourceClean(wrappedSource, 20_000);
+          assert.match(cleanSource, new RegExp(escapeRegExp(originalCopy)), 'accepted variant 2 preserves source copy');
+          assert.doesNotMatch(cleanSource, /data-impeccable-variant=/, 'accepted variant 2 leaves no preview scaffolding');
+          await page.waitForTimeout(2750);
+          assert.doesNotMatch(readFileSync(wrappedSource, 'utf-8'), /data-impeccable-variant=/, 'the delayed variant 3 write stays fenced');
+
+          const generateId = traceEvents.find((event) => event.name === 'agent.event.received' && event.type === 'generate')?.id;
+          const timings = await waitForGenerationTimings(tmp, generateId, { requireAllVariants: false });
+          assert.equal(timings.all_variants_ready, undefined, 'accepting variant 2 cancels the unfinished third variant');
+          const realErrors = consoleErrors.filter((error) =>
+            !/(Download the React DevTools|StrictMode|Failed to load resource: the server responded with a status of 404)/i.test(error),
+          );
+          assert.deepEqual(realErrors, [], 'variant 2 early Accept stays console-clean');
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+
+      it('promotes pending Tune controls when the params-only revision arrives', liveE2eTestOptions, async (t) => {
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent: createFakeAgent(),
+          wrapTarget: wrapTargetFromPickedElement,
+          progressive: true,
+          progressiveDelayMs: 1500,
+          log: (message) => t.diagnostic(message),
+        });
+        const { page, teardown } = session;
+        try {
+          await waitForHandshake(page);
+          await pickElement(page, fixture.runtime.pickSelector || 'h1.hero-title');
+          await clickGo(page);
+
+          const pending = await waitForProgressiveReviewState(page, 3);
+          assert.equal(pending.tuneVisible, true);
+          assert.equal(pending.tuneDisabled, true);
+
+          await page.waitForFunction(() => {
+            const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+              || window.__IMPECCABLE_LIVE_UI_ROOT__
+              || document;
+            const tune = root.querySelector('[data-iceq-tune="1"]');
+            const wrapper = document.querySelector('[data-impeccable-variants]');
+            return tune?.disabled === false
+              && !!wrapper?.querySelector('[data-impeccable-params]');
+          }, { timeout: 10_000 });
+          const ready = await readProgressiveReviewState(page);
+          assert.equal(ready.arrived, 3, 'all variants remain mounted after params publication');
+          assert.equal(ready.tuneVisible, true);
+          assert.equal(ready.tuneDisabled, false, 'Tune becomes actionable without another variant arrival');
+
+          await clickDiscard(page);
+          await page.waitForFunction(() => window.__IMPECCABLE_LIVE_STATE__ === 'PICKING', { timeout: 2_000 });
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+    }
+
     if (shouldRunScenario('manual') && Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
       const manualScenarioFilter = process.env.IMPECCABLE_E2E_MANUAL_SCENARIO || '';
       for (const scenario of fixture.runtime.manualEditScenarios) {
@@ -796,6 +1072,94 @@ function recordGenerateEvents(agent, events) {
       return agent.generateVariants(event, context);
     },
   };
+}
+
+async function waitForProgressiveReviewState(page, expected, { arrived: targetArrived = 1, visible: targetVisible = 1 } = {}) {
+  await installLiveQueryHelpers(page);
+  await page.waitForFunction(({ variantCount, targetArrived, targetVisible }) => {
+    const query = window.__impeccableLiveQuery || ((selector) => document.querySelector(selector));
+    const wrapper = query('[data-impeccable-variants]');
+    const variants = wrapper?.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+    const debugState = window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.();
+    const arrived = /^(?:svelte|vue)-component$/.test(wrapper?.dataset.impeccablePreview || '')
+      ? Number(debugState?.arrivedVariants || 0)
+      : variants?.length;
+    const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+      || window.__IMPECCABLE_LIVE_UI_ROOT__
+      || document;
+    const bar = root.querySelector('#impeccable-live-bar');
+    return arrived === targetArrived
+      && new RegExp(`${targetVisible}\\s*\\/\\s*${variantCount}`).test(bar?.textContent || '')
+      && /more arriving/.test(bar?.textContent || '');
+  }, { variantCount: expected, targetArrived, targetVisible }, { timeout: 15_000 });
+  return readProgressiveReviewState(page);
+}
+
+async function readProgressiveReviewState(page) {
+  await installLiveQueryHelpers(page);
+  return page.evaluate(() => {
+    const query = window.__impeccableLiveQuery || ((selector) => document.querySelector(selector));
+    const wrapper = query('[data-impeccable-variants]');
+    const variants = [...(wrapper?.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])') || [])];
+    const debugState = window.__IMPECCABLE_LIVE_CHROME_CORE__?.debugState?.();
+    const isSveltePreview = /^(?:svelte|vue)-component$/.test(wrapper?.dataset.impeccablePreview || '');
+    const visibleVariant = variants.find((variant) => getComputedStyle(variant).display !== 'none');
+    const root = window.__IMPECCABLE_LIVE_CHROME_CORE__?.root?.()
+      || window.__IMPECCABLE_LIVE_UI_ROOT__
+      || document;
+    const buttons = [...root.querySelectorAll('#impeccable-live-bar button')];
+    const accept = buttons.find((button) => /Accept/.test(button.textContent || ''));
+    const discard = buttons.find((button) => (button.textContent || '').includes('✕'));
+    const paramsPanel = root.querySelector('#impeccable-live-params-panel');
+    const tune = root.querySelector('[data-iceq-tune="1"]');
+    return {
+      arrived: isSveltePreview ? Number(debugState?.arrivedVariants || 0) : variants.length,
+      visible: isSveltePreview ? Number(debugState?.visibleVariant || 0) : Number(visibleVariant?.dataset.impeccableVariant || 0),
+      copy: isSveltePreview ? (wrapper?.innerText || '') : (visibleVariant?.innerText || ''),
+      acceptPointerEvents: accept ? getComputedStyle(accept).pointerEvents : null,
+      discardPointerEvents: discard ? getComputedStyle(discard).pointerEvents : null,
+      hasParams: variants.some((variant) => variant.hasAttribute('data-impeccable-params')),
+      tuneVisible: !!tune,
+      tuneDisabled: tune?.disabled ?? null,
+      tuneTitle: tune?.title || '',
+      paramsPanelVisible: !!paramsPanel
+        && getComputedStyle(paramsPanel).pointerEvents !== 'none'
+        && getComputedStyle(paramsPanel).clipPath === 'inset(0px)',
+    };
+  });
+}
+
+function countSourceVariants(source) {
+  return (String(source).match(/<div\s+data-impeccable-variant="(?!original")/g) || []).length;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function waitForGenerationTimings(tmp, id, { timeoutMs = 5_000, requireAllVariants = true } = {}) {
+  const snapshotPath = join(tmp, '.impeccable', 'live', 'sessions', `${id}.snapshot.json`);
+  const journalPath = join(tmp, '.impeccable', 'live', 'sessions', `${id}.jsonl`);
+  const deadline = Date.now() + timeoutMs;
+  let lastTimings = null;
+  while (Date.now() < deadline) {
+    if (existsSync(snapshotPath)) {
+      const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf-8'));
+      const timings = snapshot.generationTimings || {};
+      lastTimings = timings;
+      if (timings.generation_ready && timings.first_reviewable && (!requireAllVariants || timings.all_variants_ready)) return timings;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const checkpointReasons = existsSync(journalPath)
+    ? readFileSync(journalPath, 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)?.event)
+      .filter((event) => event?.type === 'checkpoint')
+      .map((event) => ({ reason: event.reason, arrivedVariants: event.arrivedVariants, expectedVariants: event.expectedVariants }))
+    : [];
+  throw new Error(`generation timings did not complete for ${id}: timings=${JSON.stringify(lastTimings)} checkpoints=${JSON.stringify(checkpointReasons)}`);
 }
 
 async function captureLiveE2eFailure({ name, fixture, session, sourceFile, error, log = () => {} }) {
@@ -1453,11 +1817,12 @@ function svelteComponentTargetFor(filePath) {
   if (!filePath.endsWith('/manifest.json') && !filePath.endsWith('\\manifest.json')) return null;
   let manifest;
   try { manifest = JSON.parse(readFileSync(filePath, 'utf-8')); } catch { return null; }
-  if (manifest.previewMode !== 'svelte-component' || !manifest.sourceFile || !manifest.componentDir) return null;
+  if (!['svelte-component', 'vue-component'].includes(manifest.previewMode) || !manifest.sourceFile || !manifest.componentDir) return null;
   const sep = pathSepFor(filePath);
   const markers = [
     `${sep}node_modules${sep}.impeccable-live${sep}`,
     `${sep}src${sep}lib${sep}impeccable${sep}`,
+    `${sep}app${sep}.impeccable-live${sep}`,
   ];
   const marker = markers.find((candidate) => filePath.includes(candidate));
   const idx = marker ? filePath.indexOf(marker) : -1;
@@ -1547,18 +1912,19 @@ async function locateSessionFile(tmp) {
       return f;
     }
   }
-  for (const f of walkSvelteComponentManifests(tmp)) {
+  for (const f of walkComponentManifests(tmp)) {
     const body = readFileSync(f, 'utf-8');
-    if (body.includes('"previewMode": "svelte-component"')) return f;
+    if (/"previewMode": "(?:svelte|vue)-component"/.test(body)) return f;
   }
   throw new Error('Could not locate session source file under ' + tmp);
 }
 
-function walkSvelteComponentManifests(root) {
+function walkComponentManifests(root) {
   const results = [];
   const stack = [
     join(root, 'node_modules/.impeccable-live'),
     join(root, 'src/lib/impeccable'),
+    join(root, 'app/.impeccable-live'),
   ];
   while (stack.length) {
     const dir = stack.pop();

@@ -1,0 +1,111 @@
+:root {
+  --color-paper: #f3efe4;
+  --color-paper-deep: #e7dfcf;
+  --color-ink: #20251f;
+  --color-moss: #526248;
+  --color-brass: #9b6b2f;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: Inter, Arial, sans-serif;
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2.5rem;
+  --radius-control: 0.25rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+.page-shell {
+  width: min(70rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 5rem 0;
+}
+
+.masthead {
+  max-width: 50rem;
+  margin-bottom: 4rem;
+}
+
+.masthead__kicker,
+.edition__number,
+.offer-card__eyebrow {
+  color: var(--color-moss);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-wrap: balance;
+}
+
+h1 {
+  margin: var(--space-2) 0 0;
+  font-size: clamp(3rem, 7vw, 5.5rem);
+  line-height: 0.98;
+}
+
+.edition {
+  border-top: 1px solid var(--color-brass);
+  padding-top: var(--space-2);
+}
+
+.offer-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: end;
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-paper-deep);
+  border-left: 0.25rem solid var(--color-moss);
+}
+
+.offer-card__eyebrow,
+.offer-card__body {
+  margin: 0;
+}
+
+.offer-card__title {
+  margin: var(--space-1) 0;
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.offer-card__body {
+  max-width: 58ch;
+  line-height: 1.65;
+}
+
+.action-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-control);
+  color: var(--color-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.action-link:focus-visible {
+  outline: 0.2rem solid var(--color-brass);
+  outline-offset: 0.2rem;
+}
+
+@media (max-width: 42rem) {
+  .offer-card { grid-template-columns: 1fr; }
+  .action-link { justify-content: center; }
+}

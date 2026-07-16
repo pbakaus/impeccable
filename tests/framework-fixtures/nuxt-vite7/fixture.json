@@ -1,18 +1,38 @@
 {
-  "name": "Nuxt 4 + Vue 3 (static fixture only — runtime inject unsupported)",
+  "name": "Nuxt 4 + Vue 3",
   "config": {
-    "files": ["app.vue"],
-    "insertBefore": "</body>",
+    "files": ["app/app.vue"],
+    "insertBefore": "</template>",
     "commentSyntax": "html"
   },
-  "sourceFiles": ["app.vue", "pages/index.vue", "nuxt.config.ts"],
+  "sourceFiles": ["app/app.vue", "app/pages/index.vue", "nuxt.config.ts"],
   "generatedFiles": [],
   "wrapCases": [
     {
       "name": "wraps hero in pages/index.vue",
       "args": { "classes": "hero-title", "tag": "h1" },
-      "expectedFile": "pages/index.vue"
+      "expectedFile": "app/.impeccable-live/wraptest0/manifest.json",
+      "expectedSourceFile": "app/pages/index.vue",
+      "expectedPreviewMode": "vue-component"
     }
   ],
-  "_runtimeOmitted": "Nuxt's app.vue is a Vue template that compiles to a render function — a <script> tag inserted there renders as a DOM node but does not execute. Nuxt needs a config-based inject (nuxt.config.ts -> app.head.script), which live-inject.mjs does not currently support. Static checks (is-generated, inject syntax, wrap routing) still validate."
+  "runtime": {
+    "styling": "vue-scoped-css",
+    "install": ["npm", "install", "--no-audit", "--no-fund"],
+    "devCommand": ["npm", "run", "dev"],
+    "scheme": "http",
+    "ignoreHTTPSErrors": false,
+    "readyPattern": "Local:\\s+http://[^:]+:(\\d+)",
+    "readyTimeoutMs": 120000,
+    "pickSelector": "h1.hero-title",
+    "steer": {
+      "message": "steer-e2e mark hero",
+      "sourceFile": "app/pages/index.vue",
+      "expectSelector": "h1.hero-title[data-impeccable-steer=\"e2e\"]"
+    },
+    "probe": {
+      "expectLiveInit": true,
+      "expectConsoleClean": true
+    }
+  }
 }
