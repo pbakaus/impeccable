@@ -23,7 +23,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_BASE = 'https://impeccable.style';
 
 // Provider folder names in project roots
-const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev'];
+const PROVIDER_DIRS = ['.claude', '.cursor', '.gemini', '.agents', '.github', '.kiro', '.opencode', '.pi', '.qoder', '.trae', '.trae-cn', '.rovodev', '.vibe'];
 const PROVIDER_ALIASES = {
   agents: '.agents',
   claude: '.claude',
@@ -41,6 +41,7 @@ const PROVIDER_ALIASES = {
   rovodev: '.rovodev',
   trae: '.trae',
   'trae-cn': '.trae-cn',
+  vibe: '.vibe',
 };
 
 const PROVIDER_DISPLAY = {
@@ -56,8 +57,9 @@ const PROVIDER_DISPLAY = {
   '.rovodev': { name: 'Rovo Dev', input: 'rovo-dev' },
   '.trae': { name: 'Trae', input: 'trae' },
   '.trae-cn': { name: 'Trae CN', input: 'trae-cn' },
+  '.vibe': { name: 'Mistral Vibe', input: 'vibe' },
 };
-const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev'];
+const PROVIDER_INPUT_ORDER = ['claude', 'codex', 'cursor', 'gemini', 'github', 'kiro', 'opencode', 'pi', 'qoder', 'trae', 'trae-cn', 'rovo-dev', 'vibe'];
 
 // Providers whose GLOBAL (home) skills dir is not `<provider>/skills`.
 // Pi discovers global skills from ~/.pi/agent/skills/; project scope
@@ -79,6 +81,7 @@ const GLOBAL_HARNESS_HINTS = [
   { home: '.pi', provider: '.pi' },
   { home: '.qoder', provider: '.qoder' },
   { home: '.rovodev', provider: '.rovodev' },
+  { home: '.vibe', provider: '.vibe' },
 ];
 
 // Last-resort default when nothing is detected: Claude Code + the universal
@@ -568,7 +571,7 @@ async function copyOrExtractLocalBundle(sourceValue) {
  */
 function normalizeForHash(content) {
   return content
-    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev)\/skills\//g, '.PROVIDER/skills/');
+    .replace(/\.(claude|cursor|agents|github|gemini|codex|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)\/skills\//g, '.PROVIDER/skills/');
 }
 
 function hashSkillFile(filePath) {

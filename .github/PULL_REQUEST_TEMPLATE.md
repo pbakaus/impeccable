@@ -26,7 +26,7 @@ This repo is issue-first for outside contributions. If you are not `pbakaus` or 
 - [ ] Source files updated in `source/`
 - [ ] `bun run build` ran successfully
 - [ ] `bun test` passes
-- [ ] Tested with at least one provider (Cursor / Claude Code / Gemini CLI / Codex / Copilot / Kiro / OpenCode / Qoder)
+- [ ] Tested with at least one provider (Cursor / Claude Code / Gemini CLI / Codex / Copilot / Kiro / OpenCode / Qoder / Mistral Vibe)
 - [ ] README / DEVELOP.md updated if needed
 - [ ] I reviewed the full diff myself before requesting human review
 - [ ] I disclosed any AI assistance in this PR and related commits/comments, or no AI assistance was used

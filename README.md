@@ -124,7 +124,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, or `rovo-dev`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, or `vibe`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -248,6 +248,15 @@ cp -r dist/qoder/.qoder your-project/
 
 # Or global (applies to all projects)
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
+```
+
+**Mistral Vibe:**
+```bash
+# Project-specific
+cp -r dist/vibe/.vibe your-project/
+
+# Or global (applies to all projects)
+cp -r dist/vibe/.vibe/skills/* ~/.vibe/skills/
 ```
 
 ## Usage
@@ -379,6 +388,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Trae](https://trae.ai)
 - [Rovo Dev](https://www.atlassian.com/software/rovo)
 - [Qoder](https://qoder.com)
+- [Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)
 
 ## Community & Ecosystem
 

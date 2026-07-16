@@ -122,4 +122,11 @@ export const PROVIDERS = {
     displayName: 'Rovo Dev',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
   },
+  vibe: {
+    provider: 'vibe',
+    providerTags: ['vibe'],
+    configDir: '.vibe',
+    displayName: 'Mistral Vibe',
+    frontmatterFields: ['user-invocable', 'license', 'compatibility', 'metadata', 'allowed-tools'],
+  },
 };

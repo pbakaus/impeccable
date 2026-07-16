@@ -33,6 +33,7 @@ env:
     .rovodev
     .trae
     .trae-cn
+    .vibe
     plugin
 
 jobs:

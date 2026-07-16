@@ -24,6 +24,7 @@ assignees: ''
 - [ ] Kiro
 - [ ] OpenCode
 - [ ] Qoder
+- [ ] Mistral Vibe
 - [ ] All providers
 
 ## Alternatives considered

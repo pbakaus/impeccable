@@ -3,7 +3,7 @@
 Source of truth for what each AI coding harness supports in terms of agent skills.
 Used to inform provider configs in `scripts/lib/transformers/providers.js`.
 
-Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28)
+Last verified: 2026-07-16 (subagent landscape spot-checked 2026-06-28)
 
 > This file is point-in-time. Capabilities move fast; verify live before relying
 > on any "only X supports Y" claim. Notably, the subagent table below lists
@@ -24,6 +24,7 @@ Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28)
 | Qoder | https://docs.qoder.com/extensions/skills |
 | Trae | TBD (no official skills docs found yet) |
 | Rovo Dev | https://support.atlassian.com/rovo/docs/extend-rovo-dev-cli-with-agent-skills |
+| Mistral Vibe | https://docs.mistral.ai/vibe/code/overview |
 
 ## Spec Compliance
 
@@ -35,22 +36,22 @@ Provider-specific extensions beyond the spec: `user-invocable`, `argument-hint`,
 
 Fields marked with * are spec-standard. Others are provider extensions.
 
-| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Kiro | OpenCode | Pi | Qoder | Rovo Dev |
-|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:--------:|:--:|:-----:|:--------:|
-| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | No | Yes | Yes | Yes | Yes |
-| `user-invocable` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes |
-| `argument-hint` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD | TBD |
-| `model` | Yes | No | No | No | No | No | Yes | No | No | No |
-| `effort` | Yes | No | No | No | No | No | No | No | No | No |
-| `context` | Yes | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | Yes | No | No | No |
-| `hooks` | Yes | No | No | Yes | No | No | No | No | No | No |
+| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe |
+|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|
+| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `allowed-tools`* | Yes | No | Ignored | No | No | No | Yes | Yes | Yes | Yes | Yes |
+| `user-invocable` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes | Yes |
+| `argument-hint` | Yes | No | No | No | Yes | No | Yes | No | Yes | Yes | No |
+| `disable-model-invocation` | Yes | Yes | No | No | Yes | No | Yes | Yes | TBD | TBD | TBD |
+| `model` | Yes | No | No | No | No | No | Yes | No | No | No | No |
+| `effort` | Yes | No | No | No | No | No | No | No | No | No | No |
+| `context` | Yes | No | No | No | No | No | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | Yes | No | No | No | No |
+| `hooks` | Yes | No | No | Yes | No | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
@@ -84,6 +85,7 @@ Notes:
 | Trae China | `.trae-cn/skills/` | TBD |
 | Trae International | `.trae/skills/` | TBD |
 | Rovo Dev | `.rovodev/skills/` | `~/.rovodev/skills/` (user-level) |
+| Mistral Vibe | `.vibe/skills/` | `~/.vibe/skills/`, `.agents/skills/` |
 
 All harnesses support the `{skill-name}/SKILL.md` directory structure with optional `reference/`, `scripts/`, and `assets/` subdirectories.
 

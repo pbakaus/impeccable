@@ -627,6 +627,12 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
+  },
+  'vibe': {
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
   }
 };
 
@@ -645,6 +651,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'rovo-dev',
   'trae',
   'trae-cn',
+  'vibe',
 ]);
 
 /**
