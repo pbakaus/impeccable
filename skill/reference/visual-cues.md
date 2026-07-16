@@ -157,9 +157,9 @@ Done when: six one-line territories exist, each closing on a hue ground, no two 
 
 ## Step 3: The wave (parallel)
 
-**Pick the generation path first.** The harness's native image-generation tool is the path whenever one exists; the `IMAGE_GEN_API_KEY` wrapper exists only for harnesses that have none. A key in `.impeccable/.env` or a wrapper script left by an earlier run in another harness does not outrank a native tool: check for the native tool first, and touch the wrapper only after confirming there is none.
+**Pick the generation path first.** The harness's native image-generation tool is the path whenever one exists and works; a native tool that **cannot generate** (zero credits, failed auth) counts as absent: fall through without asking the user, and mention the swap in the final report. The keyless path is [image-api.md](image-api.md): its shipped wrapper and pre-answered setup are canonical, so a key in `.impeccable/.env` or a leftover project-local wrapper never outranks a working native tool, and never needs re-deriving when it is the path.
 
-**Do not smoke-test the path.** Presence is the whole check: a tool the harness lists works, and the wrapper spec in [document.md](document.md) already retries transient failures internally, so a preflight generation buys nothing the first persona's report would not carry, and it costs a generation call and half a minute on every clean run. Instead, fill the brief file's tool slot with the exact call the spawns will make: the tool or wrapper command, the square-size parameter to pass, and where it writes output files (some native tools ignore directory paths and save to a fixed folder of their own; say so in the slot, so no specialist rediscovers it alone).
+**Do not smoke-test the path.** Presence is the whole check: a tool the harness lists works, and the image-api.md wrapper already retries transient failures internally, so a preflight generation buys nothing the first persona's report would not carry, and it costs a generation call and half a minute on every clean run. Instead, fill the brief file's tool slot with the exact call the spawns will make: the tool or wrapper command, the square-size parameter to pass, where it writes output files (some native tools ignore directory paths and save to a fixed folder of their own; say so in the slot, so no specialist rediscovers it alone), and whether the output is already guaranteed square (the shipped wrapper's is), so no specialist burns a tool call measuring it.
 
 If the harness exposes any subagent/spawn tool (Task, spawn_agent, agents, or similar), parallel is **required**, not preferred: emit all six spawns as **one tool-call batch, a single message carrying six spawn calls**, one persona per subagent, each doing the full job (palette, concept, hero), and only then wait for the reports. Spawning one, waiting for its report, then spawning the next is a serial loop and a failure even though every spawn "used a subagent"; so is generating any image yourself while a subagent tool exists. The whole run must take only as long as the slowest single persona. Attach the harness's image-generation skill to each spawn when the harness expects that (Codex: the `imagegen` skill). (No subagent tool at all: Step 4.)
 
@@ -314,7 +314,7 @@ node {{scripts_path}}/visual-cues.mjs compile [hero.png] \
   --out .impeccable/visual-cues
 ```
 
-The script copies the hero untouched to `[slug].png`; for each palette role it searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
+The script copies the hero untouched to `[slug].png` (removing a `[slug]-hero.png` intermediate inside the out dir, so the folder holds one file per cue, not a byte-identical pair); for each palette role it searches the hero for the closest rendered pixel (`snapped`, with its hero position), then updates `cues.json`:
 
 ```json
 {
