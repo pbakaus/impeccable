@@ -40,10 +40,12 @@
     "LICENSE"
   ],
   "scripts": {
+    "build:picker": "node scripts/build-picker.mjs",
     "build:skills": "bun run scripts/build.js --skip-root-sync",
     "build:skills:release": "bun run scripts/build.js",
-    "build": "bun run build:skills && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
-    "build:release": "bun run build:skills:release && mkdir -p build/_data && rm -rf build/_data/dist && cp -R dist build/_data/dist",
+    "build:site": "npx astro build",
+    "build": "bun run build:picker && bun run build:skills && bun run build:site && cp -R dist build/_data/dist",
+    "build:release": "bun run build:picker && bun run build:skills:release && bun run build:site && cp -R dist build/_data/dist",
     "build:browser": "node scripts/build-browser-detector.js",
     "build:extension": "node scripts/build-extension.js",
     "clean": "rm -rf dist build",

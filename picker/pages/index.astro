@@ -1,0 +1,171 @@
+---
+import Picker from '../layouts/Picker.astro';
+---
+
+<Picker>
+  <main class="picker-shell">
+    <div class="picker-hero-art" style="background-image: url('assets/hero-light.jpg')" aria-hidden="true"></div>
+
+    <form id="picker-form">
+      <section class="picker-screen" data-screen="01" data-active aria-labelledby="picker-start-title">
+        <div class="picker-container">
+          <div class="picker-start">
+            <h1 id="picker-start-title" class="picker-title">Let's build your<br />design system.</h1>
+
+            <div class="picker-actions">
+              <button class="ks-button ks-button-primary" type="button" data-advance="next">
+                Start
+                <span class="ks-button-arrow" aria-hidden="true">
+                  <svg viewBox="0 0 16 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square">
+                    <path d="M0 4h14M10 0l4 4-4 4"></path>
+                  </svg>
+                </span>
+              </button>
+            </div>
+
+            <div class="picker-key-hint">
+              <div class="picker-key-cluster" aria-hidden="true">
+                <div class="picker-key-row picker-key-row-top">
+                  <kbd class="picker-keycap">↑</kbd>
+                </div>
+                <div class="picker-key-row">
+                  <kbd class="picker-keycap">←</kbd>
+                  <kbd class="picker-keycap">↓</kbd>
+                  <kbd class="picker-keycap">→</kbd>
+                </div>
+              </div>
+              <p class="picker-key-caption">Arrow keys to move</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Phase 6 replaces this placeholder with the first question screen. -->
+      <section class="picker-screen" data-screen="02" aria-hidden="true" aria-labelledby="picker-placeholder-copy">
+        <div class="picker-container">
+          <div class="picker-placeholder">
+            <p id="picker-placeholder-copy">Next screen arrives with its spec</p>
+            <button class="ks-button ks-button-primary" type="submit">Finish</button>
+          </div>
+        </div>
+      </section>
+    </form>
+  </main>
+
+  <aside class="picker-width-gate" aria-labelledby="picker-width-title">
+    <div>
+      <h2 id="picker-width-title">This window is too narrow.</h2>
+      <p>Open this link in your browser at least 1200px wide.</p>
+      <div class="picker-copy-link">
+        <code data-copy-url-value aria-label="Picker URL"></code>
+        <button class="picker-copy-link-button" type="button" aria-label="Copy link" data-copy-url>
+          <svg class="picker-copy-link-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <svg class="picker-copy-link-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5"></path>
+          </svg>
+          <span>Copy link</span>
+        </button>
+      </div>
+      <p class="picker-copy-status" data-copy-status aria-live="polite">Paste it into your browser to continue.</p>
+    </div>
+  </aside>
+
+  <script>
+    const form = document.querySelector('#picker-form');
+    const copyUrlButton = document.querySelector('[data-copy-url]');
+    const copyUrlValue = document.querySelector('[data-copy-url-value]');
+    const copyStatus = document.querySelector('[data-copy-status]');
+    const screens = [...form.querySelectorAll('.picker-screen')];
+    let current = screens.findIndex((screen) => screen.hasAttribute('data-active'));
+
+    const browserUrl = new URL(window.location.href);
+    browserUrl.hostname = 'localhost';
+    const shareUrl = browserUrl.href.replace(/\/$/, '');
+    if (copyUrlValue) copyUrlValue.textContent = shareUrl;
+
+    const activeControls = () => [...screens[current].querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]',
+    )];
+
+    const goTo = (index) => {
+      if (!screens[index]) return;
+      screens.forEach((screen, screenIndex) => {
+        const active = screenIndex === index;
+        screen.toggleAttribute('data-active', active);
+        if (active) screen.removeAttribute('aria-hidden');
+        else screen.setAttribute('aria-hidden', 'true');
+      });
+      current = index;
+      activeControls()[0]?.focus();
+    };
+
+    const next = () => goTo(current + 1);
+    const prev = () => goTo(current - 1);
+
+    form.addEventListener('click', (event) => {
+      const control = event.target.closest('[data-advance]');
+      if (!control) return;
+      control.dataset.advance === 'prev' ? prev() : next();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [role="slider"]')) return;
+
+      const directions = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 };
+      if (current === 0 && event.key === 'Enter') {
+        if (window.matchMedia('(max-width: 1199px)').matches) return;
+        event.preventDefault();
+        screens[0].querySelector('[data-advance="next"]')?.click();
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const control = document.activeElement;
+        if (activeControls().includes(control)) {
+          event.preventDefault();
+          control.click();
+        }
+        return;
+      }
+      if (!(event.key in directions)) return;
+      event.preventDefault();
+      const controls = activeControls();
+      const focused = controls.indexOf(document.activeElement);
+      const index = focused < 0 ? 0 : (focused + directions[event.key] + controls.length) % controls.length;
+      controls[index]?.focus();
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const answers = {};
+      for (const [name, value] of new FormData(form)) {
+        if (!(name in answers)) answers[name] = value;
+        else answers[name] = Array.isArray(answers[name]) ? [...answers[name], value] : [answers[name], value];
+      }
+      await fetch('/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(answers),
+      });
+    });
+
+    copyUrlButton?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        copyUrlButton.classList.add('is-copied');
+        copyUrlButton.setAttribute('aria-label', 'Link copied');
+        copyStatus.textContent = 'Copied. Paste it into your browser to continue.';
+        window.setTimeout(() => {
+          copyUrlButton.classList.remove('is-copied');
+          copyUrlButton.setAttribute('aria-label', 'Copy link');
+        }, 1200);
+      } catch {
+        copyStatus.textContent = 'Copy failed. Select the link above and copy it instead.';
+      }
+    });
+  </script>
+</Picker>

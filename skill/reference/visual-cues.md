@@ -349,6 +349,14 @@ The script copies the hero untouched to `[slug].png` (removing a `[slug]-hero.pn
 
 Done when: `cues.json` lists one entry per completed palette and every listed slug has its hero PNG on disk.
 
-## Step 6: Pause
+## Step 6: Launch the picker
 
-Tell the user in one or two lines that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then end your turn. The pick round is a separate later step: do not show or describe the images, do not ask which the user prefers, and do not write DESIGN.md in this turn.
+Tell the user in one line that the visual cues are ready at `.impeccable/visual-cues/` (name the count), then run `node {{scripts_path}}/picker-server.mjs` from the project root as a foreground command and parse its `PICKER_URL` line.
+
+- **The harness has a browser tool**: open the URL with it and let the user drive. The tool is a viewport only; never drive the questionnaire yourself, because the answers are the user's.
+- **No browser tool**: tell the user *"The design picker is running at [URL]; open it in your browser and finish there."* Then wait on the foreground process.
+
+The server process exiting is the completion signal; never poll or watch the answers file while it runs.
+
+- **Exit 0**: read the `ANSWERS` path, tell the user the answers were received in one line, then stop. Do not show or describe the cues, ask for a pick in chat, or write DESIGN.md in this turn.
+- **Exit 2**: tell the user the picker closed unanswered and that they can relaunch it with the same command. Never restart it unprompted.

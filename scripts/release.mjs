@@ -8,7 +8,8 @@
 // For the skill component, also reruns `bun run build:release` and refuses if the
 // regenerated harness directories drift from what is committed.
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,6 +89,24 @@ function runMutating(cmd) {
   execSync(cmd, { cwd: repoRoot, stdio: 'inherit' });
 }
 
+function directoryHash(directory) {
+  if (!existsSync(directory)) return null;
+  const hash = createHash('sha256');
+
+  function addDirectory(current) {
+    for (const entry of readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const entryPath = path.join(current, entry.name);
+      const relative = path.relative(directory, entryPath).split(path.sep).join('/');
+      hash.update(relative);
+      if (entry.isDirectory()) addDirectory(entryPath);
+      else if (entry.isFile()) hash.update(readFileSync(entryPath));
+    }
+  }
+
+  addDirectory(directory);
+  return hash.digest('hex');
+}
+
 step(`Reading version from ${cfg.manifest}`);
 const manifest = JSON.parse(readFileSync(path.join(repoRoot, cfg.manifest), 'utf8'));
 const version = manifest.version;
@@ -112,16 +131,19 @@ ok('clean');
 
 if (cfg.buildCmd) {
   step(`Rebuilding outputs (${cfg.buildCmd})`);
-  if (dryRun) {
-    console.log(`  [dry-run] ${cfg.buildCmd}`);
-  } else {
-    execSync(cfg.buildCmd, { cwd: repoRoot, stdio: 'inherit' });
-    const postBuild = run('git status --porcelain');
-    if (postBuild) {
-      fail(`Build produced uncommitted changes. Run \`${cfg.buildCmd}\`, commit the result, then re-run.\n${postBuild}`);
-    }
-    ok('build outputs match source');
+  const pickerOutput = component === 'skill'
+    ? path.join(repoRoot, 'skill/scripts/picker')
+    : null;
+  const pickerHashBefore = pickerOutput ? directoryHash(pickerOutput) : null;
+  execSync(cfg.buildCmd, { cwd: repoRoot, stdio: 'inherit' });
+  if (pickerHashBefore && directoryHash(pickerOutput) !== pickerHashBefore) {
+    fail(`Picker build output was stale. Run \`bun run build:picker\`, then re-run the release check.`);
   }
+  const postBuild = run('git status --porcelain');
+  if (postBuild) {
+    fail(`Build produced uncommitted changes. Run \`${cfg.buildCmd}\`, commit the result, then re-run.\n${postBuild}`);
+  }
+  ok('build outputs match source');
 }
 
 step('Checking HEAD is pushed to origin');

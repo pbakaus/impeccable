@@ -133,3 +133,12 @@ tmp/
 # PNGs, the old card backup). The canonical generator is `bun run og-image`
 # (scripts/generate-og-image.js); this dir is throwaway and safe to delete.
 .og-build/
+
+# Working plans for agent-executed features (browser questionnaire etc.).
+# Local planning scratch between the planning agent and executing agents.
+plan/
+
+# Intermediate and generated output for the picker build. Release builds sync
+# the generated picker into the tracked provider harness directories.
+build-picker/
+skill/scripts/picker/

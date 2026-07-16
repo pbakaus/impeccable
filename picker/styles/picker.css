@@ -1,0 +1,327 @@
+@import "../../site/styles/kinpaku-tokens.css";
+@import "../../site/styles/kinpaku-kit.css";
+
+/* Scoped subset of the reset imported by site/styles/main.css through
+   site/styles/tokens.css (lines 12-27). */
+.picker-page,
+.picker-page *,
+.picker-page *::before,
+.picker-page *::after {
+  box-sizing: border-box;
+}
+
+.picker-page * {
+  margin: 0;
+}
+
+.picker-page :is(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+body.picker-page {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ks-lacquer);
+  color: var(--ks-text);
+  font-family: var(--ks-font);
+  font-size: var(--ks-type-body-size);
+  line-height: var(--ks-type-body-line);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Copied from site/styles/light-mode.css lines 189-194. Light mode remaps
+   --ks-lacquer-deep to paper, so the primary button needs its dark ink value. */
+html.light .ks-button.ks-button-primary,
+html.light .ks-button.ks-button-primary:hover,
+html.light .ks-button.ks-button-primary:active {
+  color: oklch(14% 0.018 95);
+}
+
+.picker-shell {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.picker-hero-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: left center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: saturate(1.12) contrast(1.04);
+  pointer-events: none;
+}
+
+#picker-form {
+  position: relative;
+  z-index: 1;
+}
+
+.picker-screen {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+}
+
+.picker-screen:not([data-active]) {
+  display: none;
+}
+
+/* Mirrors site/styles/home-rebuild.css's .hero-rebuild-container width math. */
+.picker-container {
+  position: relative;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding-inline: 56px;
+}
+
+.picker-start {
+  max-width: 620px;
+  display: grid;
+  justify-items: start;
+  gap: 28px;
+}
+
+.picker-title {
+  color: var(--ks-champagne);
+  font-family: var(--ks-font-display);
+  font-size: var(--ks-type-display-size);
+  font-weight: var(--ks-type-display-weight);
+  line-height: var(--ks-type-display-line);
+  letter-spacing: var(--ks-type-display-track);
+  text-wrap: balance;
+}
+
+.picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.picker-key-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--ks-text-muted);
+}
+
+.picker-key-cluster {
+  display: grid;
+  gap: 4px;
+}
+
+.picker-key-row {
+  display: flex;
+  gap: 4px;
+}
+
+.picker-key-row-top {
+  justify-content: center;
+}
+
+.picker-keycap {
+  min-width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 6px;
+  background: var(--ks-lacquer-raised);
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--ks-champagne);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-mono-size);
+  line-height: 1;
+}
+
+.picker-key-caption {
+  color: var(--ks-text-muted);
+  font-size: var(--ks-type-mono-size);
+  line-height: 1.5;
+}
+
+.picker-placeholder {
+  display: grid;
+  justify-items: start;
+  gap: 28px;
+  color: var(--ks-text-muted);
+}
+
+.picker-width-gate {
+  display: none;
+}
+
+@media (max-width: 1199px) {
+  .picker-width-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    padding: 40px;
+    background: var(--ks-lacquer);
+    color: var(--ks-text);
+    text-align: center;
+  }
+
+  .picker-width-gate > div {
+    max-width: 560px;
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+  }
+
+  .picker-width-gate h2 {
+    color: var(--ks-champagne);
+    font-family: var(--ks-font-display);
+    font-size: var(--ks-type-headline-size);
+    font-weight: var(--ks-type-headline-weight);
+    line-height: var(--ks-type-headline-line);
+  }
+
+  .picker-width-gate p {
+    color: var(--ks-text-muted);
+  }
+
+  .picker-copy-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: min(100%, 480px);
+    min-width: 0;
+    margin-top: 14px;
+    padding: 13px 12px 13px 18px;
+    background: var(--ks-lacquer-raised);
+    border: 1px solid var(--ks-rule);
+    border-radius: 2px;
+    text-align: left;
+  }
+
+  .picker-copy-link code {
+    flex: 1 1 auto;
+    min-width: 18ch;
+    overflow-x: auto;
+    color: var(--ks-link-on-paper, var(--ks-champagne));
+    font-family: var(--ks-mono);
+    font-size: var(--ks-type-body-size);
+    letter-spacing: 0;
+    white-space: nowrap;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    user-select: all;
+  }
+
+  .picker-copy-link-button {
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--ks-rule);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--ks-link-on-paper, var(--ks-champagne));
+    cursor: pointer;
+    transition:
+      background 180ms var(--ks-ease),
+      border-color 180ms var(--ks-ease),
+      color 180ms var(--ks-ease),
+      transform 120ms var(--ks-ease);
+  }
+
+  .picker-copy-link-button:hover,
+  .picker-copy-link-button.is-copied {
+    border-color: currentColor;
+    background: var(--ks-lacquer);
+  }
+
+  .picker-copy-link-button:active {
+    transform: scale(0.96);
+  }
+
+  .picker-copy-link-button:focus-visible {
+    outline: 2px solid var(--ks-patina);
+    outline-offset: 3px;
+  }
+
+  .picker-copy-link-icon,
+  .picker-copy-link-check {
+    grid-area: 1 / 1;
+    transition:
+      opacity 140ms var(--ks-ease),
+      transform 180ms var(--ks-ease);
+  }
+
+  .picker-copy-link-icon {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .picker-copy-link-check {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+
+  .picker-copy-link-button.is-copied .picker-copy-link-icon {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  .picker-copy-link-button.is-copied .picker-copy-link-check {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .picker-copy-link-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .picker-copy-status {
+    min-height: 1.5em;
+    font-size: var(--ks-type-mono-size);
+  }
+
+  @media (max-width: 520px) {
+    .picker-width-gate {
+      padding-inline: 24px;
+    }
+
+    .picker-copy-link {
+      gap: 10px;
+      padding-left: 14px;
+    }
+
+    .picker-copy-link code {
+      overflow-x: visible;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .picker-copy-link-button,
+    .picker-copy-link-icon,
+    .picker-copy-link-check {
+      transition: none;
+    }
+  }
+}
