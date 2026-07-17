@@ -8561,6 +8561,13 @@ void main() {
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(62% 0 0 / 0.78)';
   const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run live-poll.mjs to connect';
+  // The indicator tracks whether a poll is parked, which is what decides if
+  // steering can reach the agent right now. That goes quiet two ways, and they
+  // need different copy: nobody is polling at all, or the agent took the work
+  // and is busy with it. Under one-shot foreground polling the second case is
+  // every normal generation, and telling the user to start a poll loop then is
+  // wrong advice about a healthy session.
+  const AGENT_BUSY_TIP = 'Agent is working - steering resumes when it finishes';
   const GLOBAL_BAR_SECTION_GAP = 8;
   const GLOBAL_BAR_INNER_GAP = 2;
   const GLOBAL_BAR_INNER_PAD_LEFT = 2;
@@ -9581,15 +9588,36 @@ void main() {
     </svg>`;
   }
 
+  /**
+   * True while the browser is waiting on work it already handed to the agent.
+   * In these states a quiet poll indicator means "busy", not "absent".
+   */
+  function agentHasWorkInFlight() {
+    return state === 'GENERATING' || state === 'SAVING';
+  }
+
+  /**
+   * Derived at read time, not cached: which of the two reasons applies depends on
+   * the live state, which moves between the 5s status polls. The truthiness is
+   * the same either way, so the indicator's visuals can stay driven by the
+   * cached value while the wording stays current.
+   */
+  function agentStatusText() {
+    if (agentPollingConnected) return null;
+    return agentHasWorkInFlight() ? AGENT_BUSY_TIP : AGENT_DISCONNECTED_TIP;
+  }
+
   function syncAgentPollingUi(connected) {
     agentPollingConnected = !!connected;
     if (!globalBarBrandEl) return;
     const P = barPaletteForTheme(globalBarEl?.dataset.theme || detectPageTheme());
-    agentStatusMessage = connected ? null : AGENT_DISCONNECTED_TIP;
+    agentStatusMessage = agentStatusText();
     globalBarBrandEl.dataset.agentConnected = connected ? 'true' : 'false';
-    globalBarBrandEl.setAttribute('aria-label', connected
-      ? 'Impeccable live mode'
-      : 'Impeccable live mode - agent not polling');
+    // The tooltip is mouse-only, so carry the same distinction in the label or
+    // screen-reader users are left with the vaguer of the two readings.
+    globalBarBrandEl.setAttribute('aria-label', agentStatusMessage
+      ? 'Impeccable live mode - ' + (agentHasWorkInFlight() ? 'agent is working' : 'agent not polling')
+      : 'Impeccable live mode');
     globalBarBrandEl.removeAttribute('title');
     globalBarBrandEl.style.cursor = agentStatusMessage ? 'help' : 'default';
     const mark = globalBarBrandEl.querySelector('[data-brand-mark]');
@@ -9626,7 +9654,7 @@ void main() {
       whiteSpace: 'normal',
     });
     agentPollTooltipEl.id = PREFIX + '-agent-poll-tooltip';
-    agentPollTooltipEl.textContent = agentStatusMessage || AGENT_DISCONNECTED_TIP;
+    agentPollTooltipEl.textContent = agentStatusText() || AGENT_DISCONNECTED_TIP;
     uiAppend(agentPollTooltipEl);
     return agentPollTooltipEl;
   }
@@ -9634,7 +9662,9 @@ void main() {
   function showAgentPollTooltip(anchor) {
     if (!agentStatusMessage || !anchor) return;
     const tip = ensureAgentPollTooltip();
-    tip.textContent = agentStatusMessage;
+    // Re-derive rather than reuse the cached copy: the live state may have moved
+    // since the last status poll set it.
+    tip.textContent = agentStatusText() || AGENT_DISCONNECTED_TIP;
     tip.style.transition = 'none';
     tip.style.display = 'block';
     tip.style.opacity = '1';

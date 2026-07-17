@@ -469,6 +469,25 @@ describe('live-browser.js regression guards', () => {
       /function syncAgentPollingUi\(/,
       'global bar brand must reflect agent poll connectivity',
     );
+    // The indicator goes quiet both when nobody is polling and when the agent
+    // holds leased work. Under one-shot foreground polling the second case is
+    // every normal generation, so a single "run live-poll.mjs to connect" tip
+    // told users to fix a healthy session.
+    assert.match(
+      SOURCE,
+      /function agentHasWorkInFlight\(\)\s*\{\s*return state === 'GENERATING' \|\| state === 'SAVING';/,
+      'agent poll copy must distinguish a busy agent from an absent one',
+    );
+    assert.match(
+      SOURCE,
+      /agentHasWorkInFlight\(\) \? AGENT_BUSY_TIP : AGENT_DISCONNECTED_TIP/,
+      'a busy agent must not be described as disconnected',
+    );
+    assert.match(
+      SOURCE,
+      /tip\.textContent = agentStatusText\(\)/,
+      'tooltip copy must be derived at display time, not read from a cache the 5s status poll last wrote',
+    );
     assert.match(
       SOURCE,
       /case 'agent_polling':/,
