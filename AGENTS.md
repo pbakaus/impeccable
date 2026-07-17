@@ -67,6 +67,8 @@ Conventions: wrap the identifying heading text in straight double quotes inside 
 
 Recent history favors short, imperative subjects such as `Fix: ...`, `Add ...`, `Improve ...`, or `Bump ...`. Keep commits focused and explain the user-facing impact when it is not obvious. PRs should summarize what changed, list validation performed, and call out whether generated provider output was intentionally omitted or intentionally refreshed. Include screenshots for visible `site/` changes and mention affected providers when transform behavior changes.
 
+**Do not bump manifest versions or add changelog entries in a feature PR.** Bumping is a release step: a version in a feature branch conflicts with every other open branch, and a changelog entry describes a release that has not happened yet. Land the code; the maintainer bumps `package.json` / `.claude-plugin/plugin.json` / `extension/manifest.json` and writes `site/pages/changelog.astro` when cutting the release (see **Releases**). The only PR that touches a manifest version is one whose purpose is the release itself.
+
 ## Contributing, Issue, and PR Guidelines
 
 This repo is issue-first for outside contributions. If you are not `pbakaus` or `abdulwahabone`, do not open a PR unless a maintainer has first discussed the change in an issue and asked for, or clearly approved, a PR. For unapproved work, open an issue or comment on an existing issue and wait for maintainer direction. Unsolicited PRs may be closed without review.
