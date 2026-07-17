@@ -226,12 +226,14 @@ function addValue(cwd, args) {
     if (parsed.reason) existing.reason = parsed.reason;
     if (parsed.files.length) existing.files = parsed.files;
   } else {
+    // rule, value, files, createdAt, reason — the same order the normalizers emit,
+    // so a fresh entry survives the next write untouched.
     const entry = {
       rule: parsed.rule,
       value: parsed.value,
-      createdAt: new Date().toISOString(),
     };
     if (parsed.files.length) entry.files = parsed.files;
+    entry.createdAt = new Date().toISOString();
     if (parsed.reason) entry.reason = parsed.reason;
     config.ignoreValues.push(entry);
   }
