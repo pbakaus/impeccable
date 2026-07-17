@@ -6,11 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const liveScript = path.join(root, 'skill/scripts/live.mjs');
 const serverScript = path.join(root, 'skill/scripts/live-server.mjs');
-const iterations = Math.max(1, Number(arg('--iterations') || 10));
-const fixture = arg('--fixture') || 'vite8-react-plain';
+const args = parseArgs(process.argv.slice(2));
+const iterations = positiveIntFlag(args.iterations, 10);
+const fixture = args.fixture ? String(args.fixture) : 'vite8-react-plain';
 const fixtureDir = path.join(root, 'tests/framework-fixtures', fixture, 'files');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-live-init-'));
 
@@ -94,9 +97,4 @@ function percentile(sorted, value) {
 
 function round(value) {
   return Math.round(value * 100) / 100;
-}
-
-function arg(name) {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
 }
