@@ -17,24 +17,24 @@ Execute in order. No step skipped, no step reordered.
 3. Poll loop with the default long timeout (600000 ms). Run `live-poll.mjs` again immediately after every event or `--reply`; Codex runs this one-shot poll in the foreground. Never pass a short `--timeout=`.
 
 The global bar **Impeccable mark** dims and shows a pulsing amber dot when no agent is long-polling `/poll`. Hover the mark for the hint; restart `live-poll.mjs` to reconnect.
-4. On `generate`: reuse `event.scaffold` when present; read the screenshot if present; load the action's reference; deliver variants using the harness policy below; `--reply done`; poll again. In Codex, delegate the complete event to `impeccable_live_generator` and resume the foreground poll immediately; the generator owns publication and the reply.
+4. On `generate`: reuse `event.scaffold` when present; read the screenshot if present; load the action's reference; deliver variants using the harness policy below; `--reply done`; poll again. In Codex and Claude Code, delegate the complete event to `impeccable_live_generator` / `impeccable-live-generator` and resume polling immediately; the generator owns publication and the reply.
 5. On `steer`: read the message and `pageUrl`; do the work (page edits, navigation help, or a short reply in the `--reply` message); `--reply steer_done`; poll again. No pickup ack. The Steer bar unlocks when `steer_done` arrives over SSE.
 6. On `accept` / `discard`: the poll script runs `live-accept.mjs`, acknowledges the delivered event, and prints `_completionAck`. Plain accepts/discards are terminal immediately. Carbonize accepts remain recoverable until the foreground task runs `live-complete.mjs --id EVENT_ID`; finish that cleanup before polling again.
 7. If interrupted, run `live-status.mjs` or `live-resume.mjs` before guessing. The durable journal replays unacknowledged work after helper restart.
 8. On `exit`: run the cleanup at the bottom.
 
 Harness policy:
-- **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell.
+- **Claude Code**: run the poll as a **background task** (no short timeout). The harness notifies you when it completes, so the main conversation stays free. Do not block the shell. When `generate` arrives and native subagents are available, delegate the complete event to `impeccable-live-generator` with a compact handoff, then start the next poll immediately while that subagent publishes and replies; if unavailable, generate inline with the same contract. Do not paste this full reference into the handoff. The subagent's context is separate from yours, which is the point: a long session's screenshots, references, and variant CSS stay out of the main conversation. Handle Steer, Accept/Discard, manual Apply, carbonize, and Exit in the main conversation.
 - **Cursor**: run **one-shot** poll in a **background terminal** with notify on `"type":"(steer|generate|accept|discard|exit)"`. After each event the poll exits; handle it, `--reply`, then start `live-poll.mjs` again. Do **not** use `--stream` on Cursor: incremental stdout notify is slower in practice than exit-based notify (~5s vs sub-second in testing).
 - **Codex**: run the default one-shot poll in a **yielded foreground exec session**. Do not suffix it with `&`, use `--stream`, or leave Live without an active foreground poll. When `generate` arrives, delegate to the low-effort `impeccable_live_generator` agent with a compact handoff, then immediately start the next foreground poll while that agent publishes and replies. Do not paste this full reference into the handoff. Handle Steer, Accept/Discard, manual Apply, carbonize, and Exit in the main task; after each handler/reply, restart the foreground poll.
 - **Other harnesses**: one-shot foreground unless you know stdout reliably returns to this session when a shell exits.
 
 Generation delivery policy:
-- **Default (Claude Code, Cursor, and other harnesses):** keep the established atomic single-edit delivery unless that harness has independently demonstrated that progressive tool calls are faster and reliable. This avoids trading model latency for extra tool-call latency on harnesses with different streaming behavior.
+- **Default (Cursor and other harnesses):** keep the established atomic single-edit delivery. Do not switch a harness to progressive until its poll loop is known not to block on the extra publish calls. This avoids trading model latency for extra tool-call latency on harnesses with different streaming behavior.
 
-<codex>
-- **Codex progressive override:** deliver progressively through `live-publish.mjs`, never by editing project source directly. Publish variant 1 as soon as it is complete, then publish each additional validated variant (or the largest ready prefix) without waiting for later siblings. Attach parameter CSS/manifests only with the complete set. The browser makes every arrived variant immediately reviewable and acceptable; Accept/Discard durably cancel unfinished revisions.
-</codex>
+<live-progressive>
+- **Progressive delivery (Codex, Claude Code):** deliver progressively through `live-publish.mjs`, never by editing project source directly. Publish variant 1 as soon as it is complete, then publish each additional validated variant (or the largest ready prefix) without waiting for later siblings. Attach parameter CSS/manifests only with the complete set. The browser makes every arrived variant immediately reviewable and acceptable; Accept/Discard durably cancel unfinished revisions. The user reviews the first direction while the rest are still being written, so time-to-first-variant is what matters, not total time.
+</live-progressive>
 
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
@@ -314,14 +314,14 @@ Colocate preview CSS as a `<style>` tag inside the variant wrapper; `<style>` wo
 
 **Atomic default:** write CSS + all variants + parameter manifests in one edit at `insertLine`, preserving the established behavior.
 
-<codex>
-**Codex transactional progressive override:**
+<live-progressive>
+**Transactional progressive delivery (Codex, Claude Code):**
 
 1. Plan all directions and name their parameter axes first so the trio remains coherent.
 2. Prepare revision 1 from the scaffolded source:
 
 ```bash
-node .agents/skills/impeccable/scripts/live-publish.mjs --prepare --id EVENT_ID --file SOURCE_FILE
+node {{scripts_path}}/live-publish.mjs --prepare --id EVENT_ID --file SOURCE_FILE
 ```
 
    The JSON result contains `artifactFile`, `epoch`, and `expectedSourceHash`. For the normal source-wrapper path, the live scaffold is an isolated `source-artifact` preview under `.impeccable/live/previews/`; edit **only `artifactFile`** at `insertLine`: write variant 1 and only the CSS it needs. Do not attach `data-impeccable-params` yet. The true source is only the publisher's hash fence and must remain byte-identical until Accept.
@@ -330,7 +330,7 @@ node .agents/skills/impeccable/scripts/live-publish.mjs --prepare --id EVENT_ID 
 3. Publish revision 1 with the exact fence values returned by `--prepare`:
 
 ```bash
-node .agents/skills/impeccable/scripts/live-publish.mjs --id EVENT_ID --epoch EPOCH \
+node {{scripts_path}}/live-publish.mjs --id EVENT_ID --epoch EPOCH \
   --file SOURCE_FILE --artifact ARTIFACT_FILE --expected-source-hash SOURCE_HASH \
   --arrived 1 --expected EVENT_COUNT
 ```
@@ -339,7 +339,7 @@ node .agents/skills/impeccable/scripts/live-publish.mjs --id EVENT_ID --epoch EP
 4. Continue variants 2 through `EVENT_COUNT` from the stored plan. Whenever another direction validates, run `--prepare` again so the revision starts from the immutable published prefix, add the largest ready prefix without changing any published variant or default appearance, and publish it immediately. Attach parameter CSS/manifests only when the complete set is ready, using `--kind params`. On component-preview paths, preserve every already-published `vN.svelte` / `vN.vue` byte-for-byte; publication rejects a revision that silently changes a variant the user may already be reviewing.
 5. A params-only pass is recovery-only: use it when durable state says every variant arrived but `paramsPublished` is still false after an interrupted publication.
 6. Verify the published preview parses, then `--reply done`. A late reply is diagnostic only after Accept/Discard and cannot move the durable session backward.
-</codex>
+</live-progressive>
 
 Use the `cssAuthoring` object returned by `live-wrap.mjs` to author the temporary preview CSS. The style opening tag shown below is the common case; replace it with `cssAuthoring.styleTag` when the tool returns a different one. The variant markup shape is otherwise stable:
 

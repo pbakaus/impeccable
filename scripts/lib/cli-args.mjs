@@ -69,3 +69,19 @@ export function positiveIntFlag(value, fallback) {
   }
   return parsed;
 }
+
+/**
+ * Resolve a flag that must be one of a fixed set.
+ *
+ * A silent `x === 'known' ? 'known' : fallback` is the trap this replaces: the
+ * private evals Live runner passes `--agent=codex`, which fell through to the
+ * canned fake agent and produced a clean-looking report of a deterministic stub
+ * labelled as a real harness run. An unrecognized value is a mistake, not a
+ * request for the default.
+ */
+export function resolveEnum(value, allowed, fallback, flagName) {
+  if (value === undefined || value === true) return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (allowed.includes(normalized)) return normalized;
+  throw new Error(`${flagName} must be one of ${allowed.join(', ')}; got: ${value}`);
+}

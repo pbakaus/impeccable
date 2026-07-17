@@ -22,7 +22,10 @@ export const PROVIDERS = {
   },
   'claude-code': {
     provider: 'claude-code',
-    providerTags: ['claude-code', 'claude'],
+    // live-progressive: Live delivers variant 1 as soon as it validates instead of
+    // one atomic edit. Claude Code polls in a background task, so the extra
+    // publish calls do not stall its control lane.
+    providerTags: ['claude-code', 'claude', 'live-progressive'],
     configDir: '.claude',
     displayName: 'Claude Code',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata', 'allowed-tools'],
@@ -40,7 +43,7 @@ export const PROVIDERS = {
   },
   codex: {
     provider: 'codex',
-    providerTags: ['codex'],
+    providerTags: ['codex', 'live-progressive'],
     configDir: '.codex',
     displayName: 'Codex',
     frontmatterFields: [],
@@ -54,7 +57,7 @@ export const PROVIDERS = {
   },
   agents: {
     provider: 'agents',
-    providerTags: ['agents', 'codex'],
+    providerTags: ['agents', 'codex', 'live-progressive'],
     configDir: '.agents',
     displayName: 'Codex Repo Skills',
     placeholderProvider: 'codex',

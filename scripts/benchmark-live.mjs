@@ -15,7 +15,7 @@ import {
   waitForCycling,
   waitForHandshake,
 } from '../tests/live-e2e/ui.mjs';
-import { boolFlag, parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
+import { boolFlag, parseArgs, positiveIntFlag, resolveEnum } from './lib/cli-args.mjs';
 import {
   buildInteractionRun,
   assembleSplitProgressiveOutput,
@@ -28,9 +28,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
 const fixtureName = String(args.fixture || 'vite8-react-plain');
 const iterations = positiveIntFlag(args.iterations, 5);
-const agentMode = args.agent === 'llm' ? 'llm' : 'fake';
-const scenario = args.scenario === 'annotated' ? 'annotated' : 'plain';
-const delivery = args.delivery === 'progressive' ? 'progressive' : 'atomic';
+const agentMode = resolveEnum(args.agent, ['fake', 'llm'], 'fake', '--agent');
+const scenario = resolveEnum(args.scenario, ['plain', 'annotated'], 'plain', '--scenario');
+const delivery = resolveEnum(args.delivery, ['atomic', 'progressive'], 'atomic', '--delivery');
 const simulatedTailMs = positiveIntFlag(args.simulatedTailMs, 0);
 const quiet = boolFlag(args.quiet);
 const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;

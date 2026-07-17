@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compileProviderBlocks } from '../scripts/lib/utils.js';
+import { PROVIDERS } from '../scripts/lib/transformers/providers.js';
 
 const ROOT = process.cwd();
 
@@ -68,7 +69,14 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /Do not paste this full reference into the handoff/);
     assert.match(generationAgentMd, /codex-name: impeccable_live_generator/);
     assert.match(generationAgentMd, /effort: low/);
-    assert.match(generationAgentMd, /providers: codex/);
+    // The generator ships to every harness with an agent format, not just Codex:
+    // Codex delegates to unblock its foreground poll, Claude Code delegates to
+    // keep a long session's screenshots and variant CSS out of the main context.
+    assert.doesNotMatch(
+      generationAgentMd,
+      /^providers:/m,
+      'the live generator must not be gated to one harness',
+    );
     assert.match(generationAgentMd, /Never poll, Accept, Discard/);
     assert.match(generationAgentMd, /Publish the first reviewable result/);
     assert.match(generationAgentMd, /preserve every already-published variant byte-for-byte/i);
@@ -118,8 +126,11 @@ describe('live reference authoring contract', () => {
 
   it('keeps Codex sandbox guidance Codex-only', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    const codexLiveMd = compileProviderBlocks(liveMd, ['codex']);
-    const claudeLiveMd = compileProviderBlocks(liveMd, ['claude-code', 'claude']);
+    // Compile with each provider's real tags rather than hand-written ones, so a
+    // providers.js misconfiguration fails here instead of shipping.
+    const compileFor = (provider) => compileProviderBlocks(liveMd, PROVIDERS[provider].providerTags);
+    const codexLiveMd = compileFor('codex');
+    const claudeLiveMd = compileFor('claude-code');
 
     assert.match(
       codexLiveMd,
@@ -133,7 +144,7 @@ describe('live reference authoring contract', () => {
     );
     assert.doesNotMatch(
       codexLiveMd,
-      /<\/?codex>/,
+      /<\/?(codex|live-progressive)>/,
       'provider block tags should not leak into compiled Codex live reference',
     );
     assert.doesNotMatch(
@@ -141,16 +152,57 @@ describe('live reference authoring contract', () => {
       /sandbox_permissions: "require_escalated"/,
       'Codex-only sandbox guidance should not appear in Claude live reference',
     );
-    assert.match(
-      codexLiveMd,
-      /Codex progressive override/,
-      'Codex live reference should progressively deliver the first reviewable variant',
-    );
+  });
+
+  it('gives progressive delivery to the harnesses that opt in, and only those', () => {
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+    const compileFor = (provider) => compileProviderBlocks(liveMd, PROVIDERS[provider].providerTags);
+
+    // Codex delegates to unblock a foreground poll; Claude Code polls in a
+    // background task. Both can publish variant 1 before the trio is finished.
+    for (const provider of ['codex', 'agents', 'claude-code']) {
+      const compiled = compileFor(provider);
+      assert.match(
+        compiled,
+        /Transactional progressive delivery/,
+        `${provider} should get the progressive publish recipe`,
+      );
+      assert.match(
+        compiled,
+        /Progressive delivery \(Codex, Claude Code\)/,
+        `${provider} should get the progressive delivery policy`,
+      );
+    }
+
+    // Everyone else keeps the atomic single-edit path until their poll loop is
+    // known not to stall on the extra publish calls.
+    for (const provider of ['cursor', 'gemini']) {
+      const compiled = compileFor(provider);
+      assert.doesNotMatch(
+        compiled,
+        /Transactional progressive delivery|Progressive delivery \(Codex, Claude Code\)/,
+        `${provider} has not opted into progressive delivery`,
+      );
+      assert.match(compiled, /\*\*Atomic default:\*\*/, `${provider} should keep the atomic path`);
+      assert.doesNotMatch(
+        compiled,
+        /<\/?live-progressive>/,
+        `capability block tags should not leak into the compiled ${provider} reference`,
+      );
+    }
+  });
+
+  it('routes every live-publish command through the per-provider scripts path', () => {
+    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
+    // The progressive recipe used to hardcode `.agents/skills/...`, which is only
+    // correct for the Codex repo-skills bundle. Every other harness would have
+    // been told to run the publisher from a directory its install never creates.
     assert.doesNotMatch(
-      claudeLiveMd,
-      /Codex progressive override|first-reviewable milestone/,
-      'Claude live reference should retain the atomic path without Codex-specific delivery instructions',
+      liveMd,
+      /node\s+\.[a-z-]+\/skills\/impeccable\/scripts\//,
+      'live.md must not hardcode a harness config dir; use {{scripts_path}}',
     );
+    assert.match(liveMd, /node \{\{scripts_path\}\}\/live-publish\.mjs --prepare/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {

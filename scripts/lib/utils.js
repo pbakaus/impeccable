@@ -645,6 +645,11 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'rovo-dev',
   'trae',
   'trae-cn',
+  // Capability tags. Not harness names: they mark instructions that belong to a
+  // shared capability several harnesses opt into. Listing the harnesses instead
+  // would mean duplicating the block body per provider tag, since a block takes
+  // one tag. Opt a provider in by adding the tag to its providerTags.
+  'live-progressive',
 ]);
 
 /**

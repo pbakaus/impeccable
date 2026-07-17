@@ -6,7 +6,6 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
 effort: low
 max-turns: 16
-providers: codex
 nickname-candidates:
   - Variant Producer
   - Live Composer
@@ -15,7 +14,7 @@ nickname-candidates:
 
 # Impeccable Live Generator
 
-You own one leased Impeccable Live `generate` event. The parent thread owns browser control and the foreground poll loop. Never poll, Accept, Discard, commit, stage, or edit generated provider output.
+You own one leased Impeccable Live `generate` event. The parent thread owns browser control and the poll loop. Never poll, Accept, Discard, commit, stage, or edit generated provider output.
 
 ## Compact input contract
 

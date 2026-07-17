@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boolFlag, parseArgs, positiveIntFlag, toCamel } from '../scripts/lib/cli-args.mjs';
+import { boolFlag, parseArgs, positiveIntFlag, resolveEnum, toCamel } from '../scripts/lib/cli-args.mjs';
 
 describe('parseArgs', () => {
   it('reads space-separated values', () => {
@@ -97,5 +97,31 @@ describe('positiveIntFlag', () => {
     for (const bad of ['abc', '0', '-3', '2.5', '20x']) {
       assert.throws(() => positiveIntFlag(bad, 5), /positive integer/, `accepted ${bad}`);
     }
+  });
+});
+
+describe('resolveEnum', () => {
+  it('accepts an allowed value, case-insensitively', () => {
+    assert.equal(resolveEnum('llm', ['fake', 'llm'], 'fake', '--agent'), 'llm');
+    assert.equal(resolveEnum('LLM', ['fake', 'llm'], 'fake', '--agent'), 'llm');
+  });
+
+  it('falls back when absent or given as a bare flag', () => {
+    assert.equal(resolveEnum(undefined, ['fake', 'llm'], 'fake', '--agent'), 'fake');
+    assert.equal(resolveEnum(true, ['fake', 'llm'], 'fake', '--agent'), 'fake');
+  });
+
+  it('throws on an unrecognized value instead of silently using the default', () => {
+    // The private evals Live runner passes --agent=codex. Falling back to the
+    // canned fake agent produced a clean report of a deterministic stub labelled
+    // as a real harness run.
+    assert.throws(
+      () => resolveEnum('codex', ['fake', 'llm'], 'fake', '--agent'),
+      /--agent must be one of fake, llm; got: codex/,
+    );
+    assert.throws(
+      () => resolveEnum('progresive', ['atomic', 'progressive'], 'atomic', '--delivery'),
+      /--delivery must be one of atomic, progressive/,
+    );
   });
 });
