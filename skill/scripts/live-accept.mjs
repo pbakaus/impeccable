@@ -41,6 +41,20 @@ const ACCEPT_LOCK_WAIT_MS = 1_000;
 // value arriving over HTTP.
 const VARIANT_NUM_PATTERN = /^[0-9]{1,3}$/;
 
+/**
+ * A thrown accept/discard is a real failure, not a manual handoff.
+ *
+ * live/completion.mjs only classifies a result as `error` when it carries
+ * `mode: 'error'`; anything else unhandled falls through to `agent_done` with a
+ * successful ack, and reference/live.md then tells the agent to finish the edit
+ * by hand. That is right for the documented fallback paths and wrong here: a
+ * `source_locked` contention needs a retry (hand-editing races the publisher
+ * holding the lock), and a crash needs surfacing, not a hand-applied guess.
+ */
+function operationFailure(err, extra = {}) {
+  return { handled: false, mode: 'error', error: err.message, ...extra };
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -100,7 +114,13 @@ Output (JSON):
     console.log(JSON.stringify(sameOperation
       ? { ...priorReceipt.result, handled: true, alreadyApplied: true }
       : {
+          // mode: 'error' is what marks this a real failure rather than a manual
+          // handoff. Without it, live/completion.mjs classifies the reply as
+          // agent_done and reference/live.md tells the agent to "read file, find
+          // markers, edit" by hand — which would apply a second, conflicting
+          // accept on top of the one the receipt already recorded.
           handled: false,
+          mode: 'error',
           error: 'accept_receipt_conflict',
           priorOperation: priorReceipt.operation,
           priorVariantId: priorReceipt.variantId ?? null,
@@ -154,7 +174,7 @@ Output (JSON):
           { waitMs: ACCEPT_LOCK_WAIT_MS },
         );
       } catch (err) {
-        result = { handled: false, error: err.message };
+        result = operationFailure(err);
       }
       emitResult({
         ...result,
@@ -175,7 +195,7 @@ Output (JSON):
         { waitMs: ACCEPT_LOCK_WAIT_MS },
       );
     } catch (err) {
-      result = { handled: false, error: err.message };
+      result = operationFailure(err);
     }
     if (result.handled !== false) {
       removeSourceArtifactSession(id, process.cwd());
@@ -211,7 +231,7 @@ Output (JSON):
           { waitMs: ACCEPT_LOCK_WAIT_MS },
         );
       } catch (err) {
-        result = { handled: false, error: err.message };
+        result = operationFailure(err);
       }
       emitResult({
         ...result,
@@ -260,7 +280,7 @@ Output (JSON):
           { waitMs: ACCEPT_LOCK_WAIT_MS },
         );
       } catch (err) {
-        result = { handled: false, error: err.message };
+        result = operationFailure(err);
       }
       emitResult({
         ...result,
@@ -336,7 +356,7 @@ Output (JSON):
     try {
       result = handleDiscard(id, lines, targetFile);
     } catch (err) {
-      emitResult({ handled: false, file: relFile, error: err.message });
+      emitResult(operationFailure(err, { file: relFile }));
       return;
     }
     emitResult({ handled: true, file: relFile, carbonize: false, ...result });
@@ -345,7 +365,7 @@ Output (JSON):
     try {
       result = handleAccept(id, variantNum, lines, targetFile, paramValues);
     } catch (err) {
-      emitResult({ handled: false, file: relFile, error: err.message });
+      emitResult(operationFailure(err, { file: relFile }));
       return;
     }
     const acceptedOriginalText = result.acceptedOriginalText || '';

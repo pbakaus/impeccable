@@ -163,17 +163,22 @@ export function resolveProviderSelection(providerNames, modelOverrides = {}) {
   });
 }
 
-export function createProviderLiveAgent({ provider, model, strategy, liveSpec, onRecord = () => {} }) {
+/**
+ * `requestImpl` overrides the per-lane model call. It exists so the lane
+ * orchestration (which lane wins, what happens when one fails) is testable
+ * without a provider key or a network round trip; production passes nothing.
+ */
+export function createProviderLiveAgent({ provider, model, strategy, liveSpec, onRecord = () => {}, requestImpl = null }) {
   const strategyConfig = STRATEGIES[strategy];
   if (!strategyConfig) throw new Error(`unknown strategy ${JSON.stringify(strategy)}`);
-  const languageModel = providerModel(provider, model);
+  const languageModel = requestImpl ? null : providerModel(provider, model);
   const system = strategyConfig.promptMode === 'full-live-context'
     ? `${COMPACT_CONTRACT}\n\nFULL LIVE CONTEXT:\n${liveSpec}`
     : COMPACT_CONTRACT;
   const pendingParallel = new Map();
   const pendingFirst = new Map();
 
-  const request = async ({ event, phase, lane = null, firstVariant = null }) => {
+  const request = requestImpl || (async ({ event, phase, lane = null, firstVariant = null }) => {
     const startedAt = performance.now();
     const expectedCount = Number(event.count);
     const payload = benchmarkPayload(event, { phase, lane, firstVariant });
@@ -235,7 +240,7 @@ export function createProviderLiveAgent({ provider, model, strategy, liveSpec, o
       }
     }
     throw lastError;
-  };
+  });
 
   if (strategy === 'atomic-full') {
     return {
@@ -253,15 +258,38 @@ export function createProviderLiveAgent({ provider, model, strategy, liveSpec, o
           const laneEvent = { ...event, count: 1 };
           return request({ event: laneEvent, phase: 'parallel-lane', lane }).then((output) => ({ lane, output }));
         });
-        const first = await Promise.race(calls);
+        // Promise.any, not race: race settles on the first *settlement*, so one
+        // lane failing fast rejected the whole first-variant step while a slower
+        // lane was still on its way to succeeding. Only a total wipeout is fatal.
+        let first;
+        try {
+          first = await Promise.any(calls);
+        } catch (error) {
+          const reasons = (error?.errors || [error]).map((e) => e?.message || String(e));
+          throw new Error(`every parallel lane failed for ${event.id}: ${reasons.join('; ')}`);
+        }
         pendingParallel.set(event.id, { calls, first });
         return first.output;
       },
       async generateRemainingVariants(event) {
         const pending = pendingParallel.get(event.id);
         if (!pending) throw new Error(`parallel generation state missing for ${event.id}`);
-        const settled = await Promise.all(pending.calls);
+        // allSettled, not all: a lane that rejects after another already won the
+        // race must not throw its raw error from here. Collect every outcome and
+        // report the failures together, so the result does not depend on which
+        // lane happened to settle first.
+        const outcomes = await Promise.allSettled(pending.calls);
         pendingParallel.delete(event.id);
+        const failures = outcomes
+          .filter((outcome) => outcome.status === 'rejected')
+          .map((outcome) => outcome.reason?.message || String(outcome.reason));
+        if (failures.length > 0) {
+          throw new Error(
+            `${failures.length} of ${pending.calls.length} parallel lanes failed for ${event.id}, `
+            + `so the ${event.count}-variant set cannot be assembled: ${failures.join('; ')}`,
+          );
+        }
+        const settled = outcomes.map((outcome) => outcome.value);
         const ordered = [pending.first, ...settled.filter((item) => item !== pending.first)];
         const variants = ordered.map((item) => item.output.variants[0]);
         const scopedCss = ordered.map((item, index) => remapSingleVariantCss(item.output.scopedCss, index + 1)).join('\n');

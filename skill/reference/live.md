@@ -508,6 +508,10 @@ Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already
 - `_acceptResult.handled: true` and `carbonize: false`: nothing to do. Poll again.
 - `_acceptResult.handled: true` and `carbonize: true`: post-accept cleanup is required, but it must not stall Codex's control lane. See "Required after accept (carbonize)" below. The `event._acceptResult.todo` field, `_completionAck.requiresComplete`, and stderr banner all point at this required follow-up; none are decorative.
 - `_acceptResult.handled: false, mode: "fallback"`: the session lived in a generated file and the script refused to persist there. You've already written the accepted variant into true source during Handle fallback Step 3; just clean up the temporary wrapper in the served file if any, and poll again.
+- `_acceptResult.handled: false, mode: "error"`: the operation genuinely failed. **Do not hand-edit the file**; the source was not touched and editing it yourself would either double-apply or race whoever holds it.
+  - `error: "source_locked"`: a generation publish holds the file. Run the same `live-accept.mjs` command again; it is idempotent and will succeed once the publisher releases. Do not poll past it.
+  - `error: "accept_receipt_conflict"`: this session already resolved as `priorOperation` (on `priorVariantId` for an accept), so the request contradicts durable truth. Do not edit. Run `live-status.mjs` and tell the user what the session actually resolved to.
+  - anything else: report the error briefly and run `live-status.mjs` before continuing.
 - `_acceptResult.handled: false` without `mode`: manual cleanup: read file, find markers, edit.
 
 ### Required after accept (carbonize)
