@@ -481,18 +481,19 @@ function isExcludedByWorkspacePattern(relSegments, patterns) {
 // An explicit --target in an ordinary (non-monorepo) repository must still
 // select a nested product's own context (issue #376). Walk from the target up
 // to — but not including — the invocation root and return the nearest
-// directory carrying canonical context files. Context files only, not
-// package.json: without the monorepo root-context fallback, a package.json
-// marker would strand targets inside plain subpackages away from the root
-// PRODUCT.md. The cwd's own fallback context dirs (.agents/context, docs)
-// hold the root project's context, not a nested product, so they never count.
+// directory carrying context files, in the canonical spot or a fallback dir
+// (resolveLocalContextDir covers both). Context files only, not package.json:
+// without the monorepo root-context fallback, a package.json marker would
+// strand targets inside plain subpackages away from the root PRODUCT.md. The
+// cwd's own fallback context dirs (.agents/context, docs) hold the root
+// project's context, not a nested product, so they never count.
 // Returns null when nothing nested is found, keeping the cwd default.
 function nearestTargetContextRoot(absCwd, targetDir) {
   if (!isPathInside(targetDir, absCwd)) return null;
   const rootFallbackDirs = FALLBACK_DIRS.map((rel) => path.resolve(absCwd, rel));
   let dir = path.resolve(targetDir);
   while (dir && dir !== absCwd) {
-    if (!rootFallbackDirs.includes(dir) && firstExisting(dir, [...PRODUCT_NAMES, ...DESIGN_NAMES])) {
+    if (!rootFallbackDirs.includes(dir) && resolveLocalContextDir(dir)) {
       return dir;
     }
     const parent = path.dirname(dir);

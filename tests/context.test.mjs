@@ -312,6 +312,37 @@ describe('loadContext (monorepo project context)', () => {
     assert.equal(ctx.designPath, path.join('nested', 'product', 'DESIGN.md'));
   });
 
+  it('resolves a nested target whose context lives in .agents/context/', () => {
+    write('nested/product/.agents/context/PRODUCT.md', '# Nested product\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.match(ctx.product, /Nested product/);
+    assert.equal(ctx.productPath, path.join('nested', 'product', '.agents', 'context', 'PRODUCT.md'));
+  });
+
+  it('resolves a nested target whose context lives in docs/', () => {
+    write('nested/product/docs/DESIGN.md', '# Nested design\n');
+    write('nested/product/file.ts', 'export const x = 1;\n');
+
+    const ctx = loadContext(scratch, { targetPath: 'nested/product/file.ts' });
+    assert.equal(ctx.isMonorepo, false);
+    assert.equal(ctx.projectRoot, path.join(scratch, 'nested', 'product'));
+    assert.match(ctx.design, /Nested design/);
+    assert.equal(ctx.designPath, path.join('nested', 'product', 'docs', 'DESIGN.md'));
+  });
+
+  it('does not treat the root fallback context dirs as a nested product', () => {
+    write('.agents/context/PRODUCT.md', '# Root product\n');
+    write('.agents/context/notes/file.md', '# Notes\n');
+
+    const ctx = loadContext(scratch, { targetPath: '.agents/context/notes/file.md' });
+    assert.equal(ctx.projectRoot, scratch);
+    assert.match(ctx.product, /Root product/);
+  });
+
   it('inherits missing root context per-file for a nested target in a non-monorepo repo', () => {
     write('DESIGN.md', '# Root design\n');
     write('nested/product/PRODUCT.md', '# Nested product\n');
