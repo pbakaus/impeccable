@@ -416,8 +416,16 @@ function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
     const declaration = match[2].match(/(?:^|;)\s*box-shadow\s*:\s*([^;]+)/i);
     if (!declaration || !/\binset\b/i.test(declaration[1])) continue;
 
-    for (const layer of declaration[1].split(/,(?![^(]*\))/)) {
-      const shadow = layer.trim().match(/\binset\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
+    for (const rawLayer of declaration[1].split(/,(?![^(]*\))/)) {
+      const layer = rawLayer.trim();
+      // `inset` is order-independent inside a box-shadow layer: `inset 4px 0 0 red`
+      // and `4px 0 0 red inset` paint the same stripe, and requiring it first
+      // silently missed the second spelling. Strip it only as a standalone
+      // keyword, so a color token such as var(--inset-accent) survives intact;
+      // an unchanged layer had no inset keyword and is not our shape.
+      const body = layer.replace(/(^|\s)inset(?=\s|$)/i, '$1').trim();
+      if (body === layer) continue;
+      const shadow = body.match(/^(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
       if (!shadow) continue;
       const x = Number(shadow[1]);
       const y = Number(shadow[3]);

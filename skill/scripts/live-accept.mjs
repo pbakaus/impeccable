@@ -137,9 +137,27 @@ Output (JSON):
 
   if (sourceArtifactManifest) {
     if (isDiscard) {
-      removeSourceArtifactSession(id, process.cwd());
+      // Take the source lock like every other discard path. The journalled
+      // discard already fences publication, so this cannot admit a write to a
+      // discarded session; what it prevents is deleting the preview out from
+      // under a publisher mid-critical-section, which turns its clean
+      // stale_generation_epoch into an ENOENT crash.
+      let result;
+      try {
+        result = withSourceLockSync(
+          sourceArtifactManifest.sourcePath,
+          'discard:' + id,
+          () => {
+            removeSourceArtifactSession(id, process.cwd());
+            return { handled: true };
+          },
+          { waitMs: ACCEPT_LOCK_WAIT_MS },
+        );
+      } catch (err) {
+        result = { handled: false, error: err.message };
+      }
       emitResult({
-        handled: true,
+        ...result,
         file: sourceArtifactManifest.sourceFile,
         sourceFile: sourceArtifactManifest.sourceFile,
         previewMode: sourceArtifactManifest.previewMode,

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { bootFixtureSession, FIXTURES_DIR } from '../tests/live-e2e/session.mjs';
 import { createFakeAgent } from '../tests/live-e2e/agent.mjs';
-import { parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
+import { boolFlag, parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
 import {
   clickAccept,
   clickGo,
@@ -72,13 +72,14 @@ if (args.requireAll && available.length !== selection.length) {
 }
 if (available.length === 0) throw new Error('no provider API keys found; use --dry-run to validate without network calls');
 
-const needsBrowser = args.pipeline === 'e2e' || args.skipCleanupControl !== true;
+const skipCleanupControl = boolFlag(args.skipCleanupControl);
+const needsBrowser = args.pipeline === 'e2e' || !skipCleanupControl;
 const { chromium } = needsBrowser ? await import('playwright') : { chromium: null };
-const browser = chromium ? await chromium.launch({ headless: args.headed !== true }) : null;
+const browser = chromium ? await chromium.launch({ headless: !boolFlag(args.headed) }) : null;
 const results = [];
 let cleanupControl = { passed: true, skipped: true };
 try {
-  if (args.skipCleanupControl !== true) {
+  if (!skipCleanupControl) {
     process.stderr.write('[live-provider-bench] running provider-independent Accept/cleanup control\n');
     cleanupControl = await runCleanupControl({ browser, fixture });
   }

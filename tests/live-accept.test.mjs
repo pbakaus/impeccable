@@ -5,12 +5,13 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { scaffoldSourceArtifactSession } from '../skill/scripts/live/source-artifact.mjs';
+import { sourceLockPath } from '../skill/scripts/live/source-lock.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ACCEPT = resolve(__dirname, '..', 'skill/scripts/live-accept.mjs');
@@ -130,6 +131,33 @@ describe('live-accept — isolated source artifacts', () => {
     assert.equal(result.handled, true, JSON.stringify(result));
     assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
     assert.equal(existsSync(join(tmp, session.sessionDir)), false);
+  });
+
+  // Every other discard path (Vue, Svelte, plain wrapper) takes the source lock.
+  // This one deleted the preview bare, so it could pull the artifact out from
+  // under an in-flight publisher instead of serializing behind it.
+  it('serializes the discard behind a publisher holding the source lock', () => {
+    const { original, session } = scaffold('isolatedlocked');
+    // realpath: on macOS mkdtemp hands back /var/... while the child process's
+    // cwd resolves to /private/var/..., and the lock digest hashes the absolute
+    // path. Hash the same string the child will.
+    const realTmp = realpathSync(tmp);
+    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
+    mkdirSync(dirname(lockPath), { recursive: true });
+    // A live holder: process.pid is alive, so the lock is not stale.
+    writeFileSync(lockPath, JSON.stringify({
+      owner: 'generation:isolatedlocked:1', token: 'other', pid: process.pid, at: Date.now(),
+    }) + '\n');
+
+    const result = runAccept(tmp, ['--id', 'isolatedlocked', '--discard']);
+    assert.equal(result.handled, false, JSON.stringify(result));
+    assert.equal(result.error, 'source_locked');
+    assert.equal(
+      existsSync(join(tmp, session.sessionDir)),
+      true,
+      'the preview must survive: deleting it under the publisher is the race',
+    );
+    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
   });
 });
 

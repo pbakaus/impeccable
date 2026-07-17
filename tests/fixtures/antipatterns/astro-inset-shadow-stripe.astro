@@ -14,6 +14,9 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Named Red Edge"><h3>Named Red Edge</h3></article>
     <article data-case="Chromatic Rgb Edge"><h3>Chromatic Rgb Edge</h3></article>
     <article data-case="Chromatic Oklch Edge"><h3>Chromatic Oklch Edge</h3></article>
+    <article data-case="Trailing Inset Edge"><h3>Trailing Inset Edge</h3></article>
+    <article data-case="Trailing Inset Token Edge"><h3>Trailing Inset Token Edge</h3></article>
+    <article data-case="Inset Named Token Edge"><h3>Inset Named Token Edge</h3></article>
   </section>
   <section aria-labelledby="should-pass">
     <h2 id="should-pass">Should pass</h2>
@@ -31,6 +34,7 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Black Rgb Edge"><h3>Black Rgb Edge</h3></article>
     <article data-case="Shorthand Neutral Hex Edge"><h3>Shorthand Neutral Hex Edge</h3></article>
     <article data-case="Commented Out Edge"><h3>Commented Out Edge</h3></article>
+    <article data-case="Trailing Inset Neutral Edge"><h3>Trailing Inset Neutral Edge</h3></article>
   </section>
 </main>
 
@@ -59,6 +63,13 @@ const title = 'Astro inset shadow stripe regression';
   [data-case="Dimgray Named Edge"] { box-shadow: inset 4px 0 0 dimgray; }
   [data-case="Black Rgb Edge"] { box-shadow: inset 4px 0 0 rgb(0, 0, 0); }
   [data-case="Shorthand Neutral Hex Edge"] { box-shadow: inset 4px 0 0 #1118; }
+
+  /* `inset` is order-independent per spec; these paint the same stripe as above. */
+  [data-case="Trailing Inset Edge"] { box-shadow: 4px 0 0 #6366f1 inset; }
+  [data-case="Trailing Inset Token Edge"] { box-shadow: 4px 0 0 var(--brand-accent) inset; }
+  /* The keyword must only be stripped standalone: this token merely contains it. */
+  [data-case="Inset Named Token Edge"] { box-shadow: inset 4px 0 0 var(--inset-accent); }
+  [data-case="Trailing Inset Neutral Edge"] { box-shadow: 4px 0 0 #000 inset; }
 
   /* Commented-out rules are not live CSS.
   [data-case="Commented Out Edge"] { box-shadow: inset 4px 0 0 var(--brand-accent); }

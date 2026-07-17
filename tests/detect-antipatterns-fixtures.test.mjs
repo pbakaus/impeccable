@@ -28,6 +28,11 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Named Red Edge',
     'Chromatic Rgb Edge',
     'Chromatic Oklch Edge',
+    // `inset` may follow the offsets/color. Requiring it first missed the same
+    // stripe written the other legal way.
+    'Trailing Inset Edge',
+    'Trailing Inset Token Edge',
+    'Inset Named Token Edge',
   ];
   const SHOULD_PASS = [
     'Neutral Shadow Token',
@@ -49,6 +54,8 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Shorthand Neutral Hex Edge',
     // Commented-out CSS is not a live rule.
     'Commented Out Edge',
+    // Trailing `inset` still respects the neutral-color exemption.
+    'Trailing Inset Neutral Edge',
   ];
 
   it('Astro style blocks flag unresolved chromatic inset stripes only', () => {
