@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 
 import { FIXTURES_DIR } from '../tests/live-e2e/session.mjs';
+import { parseArgs } from './lib/cli-args.mjs';
 import { loadBenchmarkEnv } from './lib/live-provider-benchmark.mjs';
 import {
   buildRenderedReviewContext,
@@ -83,28 +84,3 @@ function required(values, key) {
   return String(value);
 }
 
-function parseArgs(argv) {
-  const out = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (!arg.startsWith('--')) continue;
-    const equals = arg.indexOf('=');
-    if (equals !== -1) {
-      out[toCamel(arg.slice(2, equals))] = arg.slice(equals + 1);
-      continue;
-    }
-    const key = toCamel(arg.slice(2));
-    const next = argv[index + 1];
-    if (next && !next.startsWith('--')) {
-      out[key] = next;
-      index += 1;
-    } else {
-      out[key] = true;
-    }
-  }
-  return out;
-}
-
-function toCamel(value) {
-  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-}

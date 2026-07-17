@@ -3,6 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { parseArgs } from './lib/cli-args.mjs';
 import { compareModelBackedReports } from './lib/live-benchmark.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -30,18 +31,8 @@ async function readReport(file, delivery) {
   return report;
 }
 
-function parseArgs(argv) {
-  const out = {};
-  for (const arg of argv) {
-    if (!arg.startsWith('--')) continue;
-    const index = arg.indexOf('=');
-    if (index > 2) out[arg.slice(2, index)] = arg.slice(index + 1);
-  }
-  return out;
-}
-
 function ratioArg(value, fallback) {
-  if (value == null) return fallback;
+  if (value == null || value === true) return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed >= 1) throw new Error(`invalid threshold ratio: ${value}`);
   return parsed;

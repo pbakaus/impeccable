@@ -15,6 +15,7 @@ import {
   waitForCycling,
   waitForHandshake,
 } from '../tests/live-e2e/ui.mjs';
+import { boolFlag, parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
 import {
   buildInteractionRun,
   assembleSplitProgressiveOutput,
@@ -26,18 +27,19 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
 const fixtureName = String(args.fixture || 'vite8-react-plain');
-const iterations = positiveInt(args.iterations, 5);
+const iterations = positiveIntFlag(args.iterations, 5);
 const agentMode = args.agent === 'llm' ? 'llm' : 'fake';
 const scenario = args.scenario === 'annotated' ? 'annotated' : 'plain';
 const delivery = args.delivery === 'progressive' ? 'progressive' : 'atomic';
-const simulatedTailMs = positiveInt(args.simulatedTailMs, 0);
+const simulatedTailMs = positiveIntFlag(args.simulatedTailMs, 0);
+const quiet = boolFlag(args.quiet);
 const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;
 const fixture = JSON.parse(await readFile(join(FIXTURES_DIR, fixtureName, 'fixture.json'), 'utf-8'));
 if (!fixture.runtime) throw new Error(`fixture ${fixtureName} has no runtime configuration`);
 if (fixture.runtime.mode === 'insert') throw new Error('live benchmark currently measures replace-mode fixtures only');
 
 const { chromium } = await import('playwright');
-const browser = await chromium.launch({ headless: args.headed !== true });
+const browser = await chromium.launch({ headless: !boolFlag(args.headed) });
 const recorder = createTraceRecorder();
 let session;
 
@@ -56,7 +58,7 @@ try {
     progressive: delivery === 'progressive',
     progressiveDelayMs: delivery === 'progressive' ? simulatedTailMs : 0,
     atomicDelayMs: delivery === 'atomic' ? simulatedTailMs : 0,
-    log: args.quiet ? () => {} : (message) => process.stderr.write(`[live-bench] ${message}\n`),
+    log: quiet ? () => {} : (message) => process.stderr.write(`[live-bench] ${message}\n`),
   });
 
   recorder.mark('setup.handshake.start');
@@ -107,7 +109,7 @@ try {
     assertScenarioEvidence(run, scenario);
     runs.push(run);
 
-    if (!args.quiet) process.stderr.write(formatRun(runs.at(-1)) + '\n');
+    if (!quiet) process.stderr.write(formatRun(runs.at(-1)) + '\n');
     await clickDiscard(session.page);
     await waitForReset(session.page);
   }
@@ -275,23 +277,6 @@ function wrapTargetFromPickedElement(event) {
     tag: element.tagName ? String(element.tagName).toLowerCase() : undefined,
     text: element.textContent ? String(element.textContent).trim() : undefined,
   };
-}
-
-function parseArgs(argv) {
-  const out = {};
-  for (const arg of argv) {
-    if (!arg.startsWith('--')) continue;
-    const body = arg.slice(2);
-    const index = body.indexOf('=');
-    if (index === -1) out[body] = true;
-    else out[body.slice(0, index)] = body.slice(index + 1);
-  }
-  return out;
-}
-
-function positiveInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function formatRun(run) {

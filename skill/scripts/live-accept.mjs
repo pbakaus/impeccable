@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './lib/is-generated.mjs';
-import { getLiveDir } from './lib/impeccable-paths.mjs';
+import { getLiveDir, safeSessionId } from './lib/impeccable-paths.mjs';
 import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live/manual-edits-buffer.mjs';
 import { withSourceLockSync } from './live/source-lock.mjs';
 import {
@@ -37,6 +37,9 @@ import {
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 const ACCEPT_LOCK_WAIT_MS = 1_000;
+// Mirrors VARIANT_ID_PATTERN in live/event-validation.mjs, which gates the same
+// value arriving over HTTP.
+const VARIANT_NUM_PATTERN = /^[0-9]{1,3}$/;
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -75,7 +78,19 @@ Output (JSON):
   const isDiscard = args.includes('--discard');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
+  // `id` becomes a path segment (accept receipts, preview manifests, generated
+  // component dirs). Reject separators and traversal here so one check covers
+  // every downstream sink.
+  try { safeSessionId(id); } catch { console.error('Invalid --id'); process.exit(1); }
   if (!isDiscard && !variantNum) { console.error('Need --discard or --variant N'); process.exit(1); }
+  // `variantNum` is interpolated into a RegExp and into the markup written back
+  // to source. The browser and the /events schema both constrain it to digits;
+  // enforce the same here, or `--variant '.*'` matches the `original` block
+  // first and silently accepts the original while reporting success.
+  if (!isDiscard && !VARIANT_NUM_PATTERN.test(variantNum)) {
+    console.error('Invalid --variant');
+    process.exit(1);
+  }
 
   const requestedOperation = isDiscard ? 'discard' : 'accept';
   const priorReceipt = readAcceptReceipt(process.cwd(), id);
@@ -296,10 +311,25 @@ Output (JSON):
   }
 
   if (isDiscard) {
-    const result = handleDiscard(id, lines, targetFile);
+    let result;
+    // handleDiscard takes the source lock, which throws SOURCE_LOCKED under
+    // contention. Without this catch the CLI exits non-zero with empty stdout
+    // and the agent gets no JSON to act on.
+    try {
+      result = handleDiscard(id, lines, targetFile);
+    } catch (err) {
+      emitResult({ handled: false, file: relFile, error: err.message });
+      return;
+    }
     emitResult({ handled: true, file: relFile, carbonize: false, ...result });
   } else {
-    const result = handleAccept(id, variantNum, lines, targetFile, paramValues);
+    let result;
+    try {
+      result = handleAccept(id, variantNum, lines, targetFile, paramValues);
+    } catch (err) {
+      emitResult({ handled: false, file: relFile, error: err.message });
+      return;
+    }
     const acceptedOriginalText = result.acceptedOriginalText || '';
     delete result.acceptedOriginalText;
     // Single-line attention-grabber when cleanup is required. The full
@@ -1003,7 +1033,7 @@ function searchDir(dir, query, seen, depth) {
 // ---------------------------------------------------------------------------
 
 function acceptReceiptPath(cwd, id) {
-  return path.join(getLiveDir(cwd), 'accept-receipts', `${id}.json`);
+  return path.join(getLiveDir(cwd), 'accept-receipts', `${safeSessionId(id)}.json`);
 }
 
 function readAcceptReceipt(cwd, id) {

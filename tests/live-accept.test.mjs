@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'no
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { scaffoldSourceArtifactSession } from '../skill/scripts/live/source-artifact.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,60 @@ function runAccept(cwd, args) {
     return JSON.parse(body || '{}');
   }
 }
+
+describe('live-accept — session id validation', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-id-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  // --id becomes a path segment for the accept receipt. Traversal here wrote
+  // JSON to arbitrary absolute paths (e.g. `--id ../../../../etc/evil`).
+  for (const id of ['../../../../etc/evil', 'a/b', '..', 'a\\b', '']) {
+    it(`refuses --id ${JSON.stringify(id)} without writing a receipt`, () => {
+      const res = spawnSync('node', [ACCEPT, '--id', id, '--discard'], {
+        cwd: tmp,
+        encoding: 'utf-8',
+      });
+      assert.equal(res.status, 1, 'must exit non-zero');
+      assert.match(res.stderr, /Invalid --id|Missing --id/);
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'accept-receipts')), false);
+    });
+  }
+
+  it('still accepts a well-formed id', () => {
+    const res = spawnSync('node', [ACCEPT, '--id', 'ab12cd34', '--discard'], {
+      cwd: tmp,
+      encoding: 'utf-8',
+    });
+    assert.doesNotMatch(res.stderr || '', /Invalid --id/);
+  });
+
+  // --variant is interpolated into a RegExp and into the markup written back to
+  // source. `.*` matched the `original` block first, so the CLI reported a
+  // successful accept while actually restoring the original.
+  for (const variant of ['.*', '[12]', 'original', '1e2', '']) {
+    it(`refuses --variant ${JSON.stringify(variant)} rather than matching by regex`, () => {
+      writeFileSync(join(tmp, 'page.html'), [
+        '<!-- impeccable-variants-start ab12cd34 -->',
+        '<div data-impeccable-variant="original">ORIGINAL CONTENT</div>',
+        '<div data-impeccable-variant="1">VARIANT ONE</div>',
+        '<!-- impeccable-variants-end ab12cd34 -->',
+        '',
+      ].join('\n'));
+      const res = spawnSync('node', [ACCEPT, '--id', 'ab12cd34', '--variant', variant], {
+        cwd: tmp,
+        encoding: 'utf-8',
+      });
+      assert.equal(res.status, 1);
+      assert.match(res.stderr, /Invalid --variant|Need --discard/);
+      assert.match(
+        readFileSync(join(tmp, 'page.html'), 'utf-8'),
+        /impeccable-variants-start/,
+        'a rejected variant must leave the wrapper untouched',
+      );
+    });
+  }
+});
 
 describe('live-accept — isolated source artifacts', () => {
   let tmp;

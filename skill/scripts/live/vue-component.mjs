@@ -9,6 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { safeSessionId } from '../lib/impeccable-paths.mjs';
+
 const NUXT_CONFIG_RE = /^nuxt\.config\.(?:js|mjs|cjs|ts|mts|cts)$/;
 
 export function detectNuxtVueProject(cwd = process.cwd()) {
@@ -36,7 +38,7 @@ export function shouldUseVueComponentInjection(filePath, cwd = process.cwd()) {
 export function vueComponentSessionDir(id, cwd = process.cwd()) {
   const project = detectNuxtVueProject(cwd);
   if (!project) throw new Error('Nuxt project not found');
-  return path.join(cwd, project.componentRoot, id);
+  return path.join(cwd, project.componentRoot, safeSessionId(id));
 }
 
 export function vueManifestPathForSession(id, cwd = process.cwd()) {
@@ -274,20 +276,49 @@ function matchOpeningTag(markup) {
   } : null;
 }
 
+/**
+ * Tokenize the attributes of a Vue opening tag.
+ *
+ * The name pattern is deliberately permissive so directive shorthands survive
+ * a round trip: `@click.prevent`, `:aria-label`, `:[dynamicKey]`, `#default`,
+ * and `v-cloak` are all one attribute each. A name-anchored pattern such as
+ * `[A-Za-z_:][\w:.-]*` skips the `@`/`#` sigil and re-matches from the bare
+ * name, which turns `@click="submit"` into a literal `click="submit"` DOM
+ * attribute on Accept. Values are optional so valueless attributes
+ * (`disabled`, `v-cloak`) are recorded rather than dropped.
+ */
 function parseStaticAttrs(attrs) {
   const out = new Map();
-  const re = /([A-Za-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/g;
+  const re = /([^\s"'=<>/]+)(?:\s*=\s*(?:(["'])([\s\S]*?)\2|([^\s"'=<>`]+)))?/g;
   let match;
   while ((match = re.exec(attrs))) {
-    out.set(match[1], {
+    const quoted = match[2] !== undefined;
+    const valueless = !quoted && match[4] === undefined;
+    out.set(normalizeVueAttrName(match[1]), {
       raw: match[0],
-      value: match[3],
-      quote: match[2],
+      value: valueless ? '' : (quoted ? match[3] : match[4]),
+      quote: quoted ? match[2] : '"',
+      valueless,
       start: match.index,
       end: match.index + match[0].length,
     });
   }
   return out;
+}
+
+/**
+ * Collapse Vue's directive shorthands to their canonical form for identity
+ * comparison only (the raw text is what gets written back). Without this, an
+ * original `:aria-label` and a variant `v-bind:aria-label` read as two
+ * different attributes and Accept emits both, which is a Vue compile error.
+ */
+function normalizeVueAttrName(name) {
+  const raw = String(name);
+  if (raw.startsWith('@')) return `v-on:${raw.slice(1)}`;
+  if (raw.startsWith(':')) return `v-bind:${raw.slice(1)}`;
+  if (raw.startsWith('#')) return `v-slot:${raw.slice(1)}`;
+  if (raw.startsWith('.')) return `v-bind:${raw.slice(1)}.prop`;
+  return raw;
 }
 
 export function removeVueComponentSession(id, cwd = process.cwd()) {

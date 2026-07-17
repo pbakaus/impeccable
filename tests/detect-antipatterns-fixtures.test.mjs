@@ -19,7 +19,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(__dirname, 'fixtures', 'antipatterns');
 
 describe('detectText - Astro structural CSS fixtures', () => {
-  const SHOULD_FLAG = ['Kinpaku Edge', 'Patina Edge', 'Accent Edge', 'Signal Blue Edge'];
+  const SHOULD_FLAG = [
+    'Kinpaku Edge',
+    'Patina Edge',
+    'Accent Edge',
+    'Signal Blue Edge',
+    'Chromatic Hex Edge',
+    'Named Red Edge',
+    'Chromatic Rgb Edge',
+    'Chromatic Oklch Edge',
+  ];
   const SHOULD_PASS = [
     'Neutral Shadow Token',
     'Current Color Edge',
@@ -28,6 +37,18 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Thick Fill Edge',
     'Blurred Edge',
     'Narrow Artwork',
+    // Authored CSS spells neutrals as hex and keywords. isNeutralColor only
+    // parses the computed function forms and reports everything else as
+    // chromatic, so routing these through it flagged plain black and gray
+    // hairlines as the "colored stripe" AI tell.
+    'Black Hex Edge',
+    'Black Named Edge',
+    'Gray Hex Edge',
+    'Dimgray Named Edge',
+    'Black Rgb Edge',
+    'Shorthand Neutral Hex Edge',
+    // Commented-out CSS is not a live rule.
+    'Commented Out Edge',
   ];
 
   it('Astro style blocks flag unresolved chromatic inset stripes only', () => {

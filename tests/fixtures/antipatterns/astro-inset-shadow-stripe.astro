@@ -10,6 +10,10 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Patina Edge"><h3>Patina Edge</h3></article>
     <article data-case="Accent Edge"><h3>Accent Edge</h3></article>
     <article data-case="Signal Blue Edge"><h3>Signal Blue Edge</h3></article>
+    <article data-case="Chromatic Hex Edge"><h3>Chromatic Hex Edge</h3></article>
+    <article data-case="Named Red Edge"><h3>Named Red Edge</h3></article>
+    <article data-case="Chromatic Rgb Edge"><h3>Chromatic Rgb Edge</h3></article>
+    <article data-case="Chromatic Oklch Edge"><h3>Chromatic Oklch Edge</h3></article>
   </section>
   <section aria-labelledby="should-pass">
     <h2 id="should-pass">Should pass</h2>
@@ -20,6 +24,13 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Thick Fill Edge"><h3>Thick Fill Edge</h3></article>
     <article data-case="Blurred Edge"><h3>Blurred Edge</h3></article>
     <article data-case="Narrow Artwork"><h3>Narrow Artwork</h3></article>
+    <article data-case="Black Hex Edge"><h3>Black Hex Edge</h3></article>
+    <article data-case="Black Named Edge"><h3>Black Named Edge</h3></article>
+    <article data-case="Gray Hex Edge"><h3>Gray Hex Edge</h3></article>
+    <article data-case="Dimgray Named Edge"><h3>Dimgray Named Edge</h3></article>
+    <article data-case="Black Rgb Edge"><h3>Black Rgb Edge</h3></article>
+    <article data-case="Shorthand Neutral Hex Edge"><h3>Shorthand Neutral Hex Edge</h3></article>
+    <article data-case="Commented Out Edge"><h3>Commented Out Edge</h3></article>
   </section>
 </main>
 
@@ -35,4 +46,21 @@ const title = 'Astro inset shadow stripe regression';
   [data-case="Thick Fill Edge"] { box-shadow: inset 14px 0 0 var(--brand-accent); }
   [data-case="Blurred Edge"] { box-shadow: inset 3px 0 5px var(--brand-accent); }
   [data-case="Narrow Artwork"] { width: 24px; box-shadow: inset 3px 0 0 var(--brand-accent); }
+
+  /* Literal colors: authored CSS spells neutrals as hex and keywords, not as
+     the computed rgb()/oklch() forms a browser emits. */
+  [data-case="Chromatic Hex Edge"] { box-shadow: inset 4px 0 0 #6366f1; }
+  [data-case="Named Red Edge"] { box-shadow: inset 4px 0 0 red; }
+  [data-case="Chromatic Rgb Edge"] { box-shadow: inset 4px 0 0 rgb(99, 102, 241); }
+  [data-case="Chromatic Oklch Edge"] { box-shadow: inset 4px 0 0 oklch(65% 0.18 250); }
+  [data-case="Black Hex Edge"] { box-shadow: inset 4px 0 0 #000; }
+  [data-case="Black Named Edge"] { box-shadow: inset 4px 0 0 black; }
+  [data-case="Gray Hex Edge"] { box-shadow: inset 4px 0 0 #e5e7eb; }
+  [data-case="Dimgray Named Edge"] { box-shadow: inset 4px 0 0 dimgray; }
+  [data-case="Black Rgb Edge"] { box-shadow: inset 4px 0 0 rgb(0, 0, 0); }
+  [data-case="Shorthand Neutral Hex Edge"] { box-shadow: inset 4px 0 0 #1118; }
+
+  /* Commented-out rules are not live CSS.
+  [data-case="Commented Out Edge"] { box-shadow: inset 4px 0 0 var(--brand-accent); }
+  */
 </style>

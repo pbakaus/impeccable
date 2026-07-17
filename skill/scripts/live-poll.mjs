@@ -198,7 +198,7 @@ export async function fetchNextEvent(base, token, {
   }
 }
 
-export async function augmentEventWithAcceptHandling(event, base, token, { deferReply = false } = {}) {
+export async function augmentEventWithAcceptHandling(event, base, token) {
   if (event.type !== 'accept' && event.type !== 'discard') return event;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -216,10 +216,6 @@ export async function augmentEventWithAcceptHandling(event, base, token, { defer
     event._acceptResult = { handled: false, mode: 'error', error: err.message };
   }
 
-  if (deferReply) {
-    event._completionAck = { ok: false, deferred: true };
-    return event;
-  }
   await completeAcceptHandling(event, base, token);
   return event;
 }

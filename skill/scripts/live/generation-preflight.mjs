@@ -1,6 +1,8 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
+const execFileAsync = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 15_000;
 
 export function buildGenerationPreflight(event, scriptsDir, { isolated = false } = {}) {
@@ -22,10 +24,20 @@ export function buildGenerationPreflight(event, scriptsDir, { isolated = false }
   return { script, args, mode: isInsert ? 'insert' : 'replace' };
 }
 
-export function runGenerationPreflight(event, {
+/**
+ * Scaffold the source for a generate event before handing it to an agent.
+ *
+ * Async on purpose. This spawns `live-wrap.mjs`, which walks the project's
+ * source tree and can take seconds (measured at ~7.6s on a large repo when the
+ * element is not found, with a 15s ceiling). The live server is single-threaded
+ * and calls this while leasing a poll, so a synchronous spawn froze the whole
+ * server for that entire window: Accept and Discard POSTs, SSE progress
+ * broadcasts, and every other poll stalled behind it.
+ */
+export async function runGenerationPreflight(event, {
   cwd = process.cwd(),
   scriptsDir,
-  execFileSyncImpl = execFileSync,
+  execFileImpl = execFileAsync,
   timeoutMs = PREFLIGHT_TIMEOUT_MS,
   isolated = false,
 } = {}) {
@@ -36,11 +48,10 @@ export function runGenerationPreflight(event, {
 
   const startedAt = performance.now();
   try {
-    const stdout = execFileSyncImpl(process.execPath, command.args, {
+    const { stdout } = await execFileImpl(process.execPath, command.args, {
       cwd,
       encoding: 'utf-8',
       timeout: timeoutMs,
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
     const line = String(stdout).trim().split('\n').filter(Boolean).pop();
     if (!line) throw new Error('preflight returned no scaffold metadata');

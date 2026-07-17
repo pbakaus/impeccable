@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getLegacyLiveSessionsDir, getLiveSessionsDir } from '../lib/impeccable-paths.mjs';
+import { getLegacyLiveSessionsDir, getLiveSessionsDir, safeSessionId } from '../lib/impeccable-paths.mjs';
 
 const COMPLETED_PHASES = new Set(['completed', 'discarded']);
 const GENERATION_FENCED_PHASES = new Set([
@@ -15,17 +15,12 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
   const rootDir = getLiveSessionsDir(cwd);
   const legacyRootDir = getLegacyLiveSessionsDir(cwd);
   fs.mkdirSync(rootDir, { recursive: true });
-  const snapshotCache = new Map();
 
-  function loadCachedOrRebuild(id) {
-    const cached = snapshotCache.get(id);
-    if (cached) return cached;
-    const journalPath = getReadableJournalPath(id);
-    const rebuilt = rebuildSnapshotFromJournal(journalPath, id);
-    snapshotCache.set(id, rebuilt);
-    return rebuilt;
-  }
-
+  // No snapshot cache on purpose: appendEvent and getSnapshot both rebuild from
+  // the journal so sequence numbers and phase fences never come from a stale
+  // in-memory copy when the publisher/complete helpers append from another
+  // process. A cache written but never read would grow per session for the
+  // lifetime of the server without ever saving a rebuild.
   function getReadableJournalPath(id) {
     const primary = getJournalPath(rootDir, id);
     if (fs.existsSync(primary)) return primary;
@@ -59,7 +54,6 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
       };
       fs.appendFileSync(journalPath, JSON.stringify(entry) + '\n');
       const next = applyEvent(prior.snapshot, entry, prior.diagnostics);
-      snapshotCache.set(normalized.id, { snapshot: next, diagnostics: next.diagnostics || [], nextSeq: seq + 1 });
       writeSnapshot(snapshotPath, next);
       return next;
     },
@@ -68,7 +62,6 @@ export function createLiveSessionStore({ cwd = process.cwd(), sessionId } = {}) 
       const journalPath = getReadableJournalPath(id);
       const snapshotPath = getSnapshotPath(rootDir, id);
       const rebuilt = rebuildSnapshotFromJournal(journalPath, id);
-      snapshotCache.set(id, rebuilt);
       writeSnapshot(snapshotPath, rebuilt.snapshot);
       if (!opts.includeCompleted && COMPLETED_PHASES.has(rebuilt.snapshot.phase)) return null;
       return rebuilt.snapshot;
@@ -103,11 +96,6 @@ function getJournalPath(rootDir, id) {
 
 function getSnapshotPath(rootDir, id) {
   return path.join(rootDir, safeSessionId(id) + '.snapshot.json');
-}
-
-function safeSessionId(id) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error('invalid session id: ' + id);
-  return id;
 }
 
 function baseSnapshot(id) {

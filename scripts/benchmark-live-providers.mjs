@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { bootFixtureSession, FIXTURES_DIR } from '../tests/live-e2e/session.mjs';
 import { createFakeAgent } from '../tests/live-e2e/agent.mjs';
+import { parseArgs, positiveIntFlag } from './lib/cli-args.mjs';
 import {
   clickAccept,
   clickGo,
@@ -34,7 +35,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE_NAME = 'vite8-react-brand-fidelity';
 const SOURCE_FILE = 'src/App.jsx';
 const args = parseArgs(process.argv.slice(2));
-const iterations = positiveInt(args.iterations, 1);
+const iterations = positiveIntFlag(args.iterations, 1);
 const providers = csv(args.providers || 'anthropic,openai,google');
 const strategies = csv(args.strategies || Object.keys(STRATEGIES).join(','));
 const outputPath = args.output ? resolve(ROOT, String(args.output)) : null;
@@ -495,39 +496,8 @@ async function persist(report, file) {
   process.stderr.write(`[live-provider-bench] wrote ${file}\n`);
 }
 
-function parseArgs(argv) {
-  const out = {};
-  for (let position = 0; position < argv.length; position += 1) {
-    const arg = argv[position];
-    if (!arg.startsWith('--')) continue;
-    const body = arg.slice(2);
-    const index = body.indexOf('=');
-    if (index !== -1) {
-      out[camel(body.slice(0, index))] = body.slice(index + 1);
-      continue;
-    }
-    const next = argv[position + 1];
-    if (next !== undefined && !next.startsWith('--')) {
-      out[camel(body)] = next;
-      position += 1;
-    } else {
-      out[camel(body)] = true;
-    }
-  }
-  return out;
-}
-
-function camel(value) {
-  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
 function csv(value) {
   return String(value).split(',').map((item) => item.trim()).filter(Boolean);
-}
-
-function positiveInt(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function roundMs(value) {

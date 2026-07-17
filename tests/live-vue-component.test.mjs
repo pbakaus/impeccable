@@ -129,6 +129,72 @@ describe('Nuxt Vue component preview', () => {
     assert.equal(existsSync(join(tmp, result.componentDir, 'v1.vue')), true, 'imported SFC remains until Live shutdown');
   });
 
+  it('preserves original root directives and valueless attrs a variant omits', () => {
+    const originalRoot = '    <button class="cta" @click="submit" :aria-label="label" v-bind:title="tip" disabled v-cloak>Go</button>';
+    writeFileSync(source, [
+      '<template>',
+      '  <main>',
+      originalRoot,
+      '  </main>',
+      '</template>',
+      '',
+    ].join('\n'));
+    const result = scaffoldVueComponentSession({
+      id: 'vue12345',
+      count: 1,
+      sourceFile: 'app/pages/index.vue',
+      sourceStartLine: 3,
+      sourceEndLine: 3,
+      originalLines: [originalRoot],
+      cwd: tmp,
+    });
+    // A restyle variant that keeps only class: every behavior attribute must survive Accept.
+    writeFileSync(join(tmp, result.componentDir, 'v1.vue'), [
+      '<template>',
+      '  <button class="cta cta--bold">Go</button>',
+      '</template>',
+      '<style scoped>',
+      '.cta--bold { font-weight: 700; }',
+      '</style>',
+      '',
+    ].join('\n'));
+
+    assert.equal(inlineVueComponentAccept(result.manifest, 1, tmp).handled, true);
+    const next = readFileSync(source, 'utf-8');
+    assert.match(next, /@click="submit"/, 'v-on shorthand must not degrade to a literal click attribute');
+    assert.doesNotMatch(next, /\sclick="submit"/, 'sigil-stripped event handler leaked into source');
+    assert.match(next, /:aria-label="label"/);
+    assert.match(next, /v-bind:title="tip"/);
+    assert.match(next, /\bdisabled\b/, 'valueless boolean attr dropped');
+    assert.match(next, /\bv-cloak\b/, 'valueless directive dropped');
+    assert.match(next, /class="cta cta--bold"|class="cta--bold cta"/);
+  });
+
+  it('does not duplicate an attribute the variant wrote in the other shorthand form', () => {
+    const originalRoot = '    <button class="cta" :aria-label="label">Go</button>';
+    writeFileSync(source, ['<template>', '  <main>', originalRoot, '  </main>', '</template>', ''].join('\n'));
+    const result = scaffoldVueComponentSession({
+      id: 'vue12345',
+      count: 1,
+      sourceFile: 'app/pages/index.vue',
+      sourceStartLine: 3,
+      sourceEndLine: 3,
+      originalLines: [originalRoot],
+      cwd: tmp,
+    });
+    writeFileSync(join(tmp, result.componentDir, 'v1.vue'), [
+      '<template>',
+      '  <button class="cta" v-bind:aria-label="label">Go</button>',
+      '</template>',
+      '',
+    ].join('\n'));
+
+    assert.equal(inlineVueComponentAccept(result.manifest, 1, tmp).handled, true);
+    const next = readFileSync(source, 'utf-8');
+    assert.doesNotMatch(next, /:aria-label="label"[^>]*v-bind:aria-label|v-bind:aria-label="label"[^>]*:aria-label/,
+      'shorthand and longhand of one attr both emitted, which is a Vue compile error');
+  });
+
   it('removes deferred SFCs, the shared runtime, and the generated root on Live shutdown', () => {
     const result = scaffoldVueComponentSession({
       id: 'vue12345',
@@ -194,6 +260,10 @@ describe('Nuxt Vue component preview', () => {
     assert.equal(JSON.parse(readFileSync(join(tmp, result.manifestFile), 'utf-8')).arrivedVariants, 1);
 
     const late = prepareGenerationArtifact({ id: 'vue12345', sourceFile: result.manifestFile, cwd: tmp });
+    const lateManifest = JSON.parse(readFileSync(join(tmp, late.artifactFile), 'utf-8'));
+    lateManifest.arrivedVariants = 2;
+    writeFileSync(join(tmp, late.artifactFile), JSON.stringify(lateManifest, null, 2) + '\n');
+    writeFileSync(join(tmp, late.componentDir, 'v2.vue'), '<template><h1>Second</h1></template>\n');
     store.appendEvent({ type: 'accept', id: 'vue12345', variantId: '1' });
     const rejected = publishGenerationArtifact({
       id: 'vue12345',
@@ -208,5 +278,13 @@ describe('Nuxt Vue component preview', () => {
     assert.equal(rejected.ok, false);
     assert.equal(rejected.error, 'stale_generation_epoch');
     assert.equal(readFileSync(source, 'utf-8'), routeBefore);
+    assert.equal(JSON.parse(readFileSync(join(tmp, result.manifestFile), 'utf-8')).arrivedVariants, 1,
+      'the manifest must still advertise only the variant published before Accept');
+    // A rejected publish must not have touched the session dir at all: v2 still
+    // holds its untouched scaffold stub rather than the late variant's markup.
+    const v2AfterReject = readFileSync(join(tmp, result.componentDir, 'v2.vue'), 'utf-8');
+    assert.doesNotMatch(v2AfterReject, /Second/,
+      'a rejected late publish must not write variant files into the session dir');
+    assert.match(v2AfterReject, /Variant 2: add scoped CSS here/, 'v2 must still be the scaffold stub');
   });
 });

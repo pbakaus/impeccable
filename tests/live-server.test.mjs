@@ -3084,4 +3084,75 @@ colors: {}
     const data = await postRes.json();
     assert.match(data.error, /freeformPrompt or annotations/i);
   });
+
+  // A stale generate worker's `error` reply used to acknowledge *any* pending
+  // event for its id, because inferSourceEventType returned undefined and
+  // acknowledgePendingEvent treats that as a wildcard. It ate the user's queued
+  // Accept, which was then never handed to an agent: the browser sat in SAVING
+  // forever and a restart could not requeue it.
+  it('a stale generate error reply does not consume a queued accept', async () => {
+    await drainPolls(server);
+    const id = 'ee55ff66';
+
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'impeccable',
+        count: 1,
+        pageUrl: '/',
+        element: { outerHTML: '<button>Book</button>' },
+      }),
+    });
+
+    // Agent leases the generate.
+    const leased = await (await fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=200&leaseMs=60000`,
+    )).json();
+    assert.equal(leased.id, id);
+    assert.equal(leased.type, 'generate');
+
+    // User accepts. This retires the pending generate and queues the accept.
+    await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, type: 'accept', id, variantId: '1' }),
+    });
+
+    // The stale generate worker now fails, using live.md's documented reply.
+    const errRes = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'error', message: 'late failure' }),
+    });
+    assert.equal(errRes.status, 200);
+
+    const status = await (await fetch(
+      `http://localhost:${server.port}/status?token=${server.token}`,
+    )).json();
+    assert.equal(
+      status.pendingEvents.some((e) => e.id === id && e.type === 'accept'),
+      true,
+      'the queued accept must survive a stale generate error',
+    );
+
+    // And it must still be deliverable to the next agent that polls.
+    const next = await (await fetch(
+      `http://localhost:${server.port}/poll?token=${server.token}&timeout=500&leaseMs=30000`,
+    )).json();
+    assert.equal(next.id, id);
+    assert.equal(next.type, 'accept', 'the accept must reach an agent');
+
+    // Acknowledge the accept explicitly. drainPolls replies `done`, which maps
+    // to `generate`, so it can never retire an accept and would re-lease it in
+    // a loop forever.
+    await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'complete', sourceEventType: 'accept' }),
+    });
+  });
 });

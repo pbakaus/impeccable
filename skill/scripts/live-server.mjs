@@ -66,6 +66,10 @@ const DESIGN_MD_PATH = PROJECT_CONTEXT.designPath
   : null;
 const DEFAULT_POLL_TIMEOUT = 600_000;   // 10 min — agent re-polls on timeout anyway
 const SSE_HEARTBEAT_INTERVAL = 30_000;  // keepalive ping every 30s
+// The browser checkpoints for several unrelated reasons (see checkpointPayload
+// in live-browser.js). Only these two report that variant availability changed,
+// and only they may drive variant_progress / the *_reviewable phases.
+const VARIANT_PROGRESS_CHECKPOINT_REASONS = new Set(['variants_progress', 'variants_ready']);
 
 // ---------------------------------------------------------------------------
 // Port detection
@@ -163,13 +167,20 @@ function findAvailablePendingEvent(now = Date.now(), types = null) {
   return selectAvailablePendingEvent(state.pendingEvents, { now, types });
 }
 
-function leaseEvent(entry, leaseMs) {
-  prepareGenerateEventForLease(entry);
+async function leaseEvent(entry, leaseMs) {
+  // Claim the entry before awaiting anything. prepareGenerateEventForLease
+  // yields to the event loop, and selectAvailablePendingEvent only skips
+  // entries whose lease is in the future — an unclaimed entry would be handed
+  // to a second poll in that window and generated twice.
+  entry.leaseUntil = Date.now() + leaseMs;
+  await prepareGenerateEventForLease(entry);
   if (!entry.event?.id) {
     const idx = state.pendingEvents.indexOf(entry);
     if (idx !== -1) state.pendingEvents.splice(idx, 1);
     return entry.event;
   }
+  // Re-stamp so the lease window starts when the agent actually receives the
+  // work, not when scaffolding began.
   entry.leaseUntil = Date.now() + leaseMs;
   recordGenerateDelivery(entry);
   scheduleLeaseFlush();
@@ -186,13 +197,13 @@ function recordGenerateDelivery(entry) {
   recordAgentPhase(event.id, 'generation_ready', { at });
 }
 
-function prepareGenerateEventForLease(entry) {
+async function prepareGenerateEventForLease(entry) {
   const event = entry?.event;
   if (!event || event.type !== 'generate' || event.scaffoldAttempted) return;
 
   recordAgentPhase(event.id, 'picked_up');
   recordAgentPhase(event.id, 'scaffolding');
-  const result = runGenerationPreflight(event, {
+  const result = await runGenerationPreflight(event, {
     cwd: process.cwd(),
     scriptsDir: __dirname,
   });
@@ -225,6 +236,14 @@ function recordAgentPhase(id, phase, details = {}) {
 function recordGenerationCheckpoint(event) {
   if (!event?.id || event.type !== 'checkpoint') return;
   if (generationIsFenced(event.id)) return;
+  // Only checkpoints that report a change in variant availability are
+  // generation progress. The browser also checkpoints for durability on Tune
+  // slider drags, resumes, and anchor recovery; treating those as progress
+  // echoed `variant_progress` straight back to the browser that sent it, which
+  // remounts the component preview mid-drag (reverting the user's live param
+  // edit and detaching the popover's element), and permanently latched the
+  // *_reviewable phases from the wrong trigger, corrupting generation timings.
+  if (!VARIANT_PROGRESS_CHECKPOINT_REASONS.has(event.reason)) return;
   const arrived = Number(event.arrivedVariants) || 0;
   const expected = Number(event.expectedVariants) || 0;
   if (arrived <= 0 || expected <= 0) return;
@@ -335,7 +354,7 @@ function summarizePendingEventForStatus(entry) {
   const summary = {
     id: event.id,
     type: event.type,
-    leased: !!(entry.leaseUntil && entry.leaseUntil > Date.now()),
+    leased: isLeased(entry),
     leaseUntil: entry.leaseUntil || null,
   };
   if (event.type === 'manual_edit_apply') {
@@ -427,11 +446,24 @@ function flushPendingPolls() {
       return;
     }
     const [poll] = state.pendingPolls.splice(pollIndex, 1);
-    poll.resolve(leaseEvent(entry, poll.leaseMs));
+    // leaseEvent is async (it may scaffold source), but it claims the entry
+    // synchronously, so the next loop iteration will not re-select it. Resolve
+    // the poll when the lease settles rather than awaiting here, so one slow
+    // scaffold never delays the other parked polls. On the exceptional failure
+    // path, answer `timeout` so the agent re-polls; the claim stays until the
+    // lease expires, which keeps a deterministic failure from hot-looping.
+    leaseEvent(entry, poll.leaseMs).then(poll.resolve, (error) => {
+      console.error('[live] lease failed for ' + (entry.event?.id || 'unknown') + ': ' + (error?.message || error));
+      poll.resolve({ type: 'timeout' });
+    });
     changed = true;
   }
   scheduleLeaseFlush();
   if (changed) broadcastAgentPollingIfChanged();
+}
+
+function isLeased(entry) {
+  return !!(entry?.leaseUntil && entry.leaseUntil > Date.now());
 }
 
 function agentPollingConnected() {
@@ -922,8 +954,19 @@ function handlePollGet(req, res, url) {
   const types = parsePollTypes(url.searchParams.get('types'));
   const available = findAvailablePendingEvent(Date.now(), types);
   if (available) {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(leaseEvent(available, leaseMs)));
+    // Do not await inline: leaseEvent may scaffold source, and this handler runs
+    // on the server's only thread. The client can disconnect during that window,
+    // so check the socket before replying.
+    leaseEvent(available, leaseMs).then((event) => {
+      if (res.writableEnded || res.destroyed) return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(event));
+    }, (error) => {
+      console.error('[live] lease failed for ' + (available.event?.id || 'unknown') + ': ' + (error?.message || error));
+      if (res.writableEnded || res.destroyed) return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ type: 'timeout' }));
+    });
     return;
   }
   const poll = { resolve, leaseMs, types };
@@ -994,11 +1037,8 @@ function sessionFileMetadataFromPollReply(file) {
 }
 
 function inferSourceEventType(msg = {}, pendingEvents = state.pendingEvents) {
-  const pendingTypes = new Set(
-    pendingEvents
-      .filter((entry) => entry.event?.id === msg.id)
-      .map((entry) => entry.event?.type),
-  );
+  const entriesForId = pendingEvents.filter((entry) => entry.event?.id === msg.id);
+  const pendingTypes = new Set(entriesForId.map((entry) => entry.event?.type));
   if (msg.type === 'discarded' || msg.type === 'discard') return 'discard';
   if (msg.type === 'complete') {
     if (pendingTypes.has('carbonize_cleanup')) return 'carbonize_cleanup';
@@ -1008,7 +1048,20 @@ function inferSourceEventType(msg = {}, pendingEvents = state.pendingEvents) {
   // `agent_done` can be the automatic acknowledgement for a carbonize Accept.
   // New pollers send sourceEventType explicitly; default to generate only for
   // older callers so a late worker cannot acknowledge a queued Accept.
-  return msg.type === 'agent_done' || msg.type === 'done' ? 'generate' : undefined;
+  if (msg.type === 'agent_done' || msg.type === 'done') return 'generate';
+  // `error` is reference/live.md's documented failure reply, and parseReplyArgs
+  // never sets sourceEventType on it (the poller is a fresh process that cannot
+  // know what it leased). Returning undefined here makes acknowledgePendingEvent
+  // match *any* event for this id: a stale generate worker's failure silently
+  // consumed the user's queued Accept, which was then never delivered to any
+  // agent and left the browser in SAVING forever. Attribute the failure to the
+  // event this agent actually holds a lease on, and otherwise to `generate` —
+  // never to a wildcard. If that generate was already retired by an Accept, the
+  // ack simply finds no match, which is the correct outcome for a stale reply.
+  if (msg.type === 'error') {
+    return entriesForId.find(isLeased)?.event?.type || 'generate';
+  }
+  return undefined;
 }
 
 function handlePollPost(req, res) {

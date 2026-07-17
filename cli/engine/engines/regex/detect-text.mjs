@@ -43,23 +43,48 @@ function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
 
+// CSS named colors whose channels are equal (achromatic). Anything outside
+// this set falls through to the format parsers, and an unrecognized spelling
+// stays non-neutral so a real accent is never skipped.
+const NEUTRAL_COLOR_KEYWORDS = new Set([
+  'transparent', 'currentcolor',
+  'black', 'white', 'gray', 'grey', 'silver',
+  'dimgray', 'dimgrey', 'darkgray', 'darkgrey', 'lightgray', 'lightgrey',
+  'gainsboro', 'whitesmoke',
+]);
+
+function hexChannels(color) {
+  const long = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})(?:[0-9a-f]{2})?$/i);
+  if (long) return [parseInt(long[1], 16), parseInt(long[2], 16), parseInt(long[3], 16)];
+  const short = color.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])(?:[0-9a-f])?$/i);
+  if (short) return [1, 2, 3].map((i) => parseInt(short[i] + short[i], 16));
+  return null;
+}
+
+/**
+ * Neutrality test for colors as written in source CSS.
+ *
+ * shared/color.mjs's isNeutralColor only parses the computed function forms a
+ * browser or jsdom emits (rgb/oklch/lab/...) and deliberately reports every
+ * other spelling as chromatic so an unknown format is never silently skipped.
+ * That default is wrong for authored CSS, where `#000` and `black` are the
+ * normal spellings: calling it directly reports a plain black hairline as a
+ * colored stripe. Handle hex and named neutrals here, then defer.
+ */
+function isNeutralAuthoredColor(rawColor) {
+  const c = String(rawColor || '').trim().toLowerCase();
+  if (!c) return false;
+  if (NEUTRAL_COLOR_KEYWORDS.has(c)) return true;
+  if (/^(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
+  const channels = hexChannels(c);
+  if (channels) return (Math.max(...channels) - Math.min(...channels)) < 30;
+  return false;
+}
+
 function isNeutralBorderColor(str) {
   const m = str.match(/solid\s+((?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color)\([^)]*\)|#[0-9a-f]{3,8}\b|[a-z]+)/i);
   if (!m) return false;
-  const c = m[1].toLowerCase();
-  if (['gray', 'grey', 'silver', 'white', 'black', 'transparent', 'currentcolor'].includes(c)) return true;
-  if (/^(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
-  const hex = c.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
-  if (hex) {
-    const [r, g, b] = [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)];
-    return (Math.max(r, g, b) - Math.min(r, g, b)) < 30;
-  }
-  const shex = c.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/);
-  if (shex) {
-    const [r, g, b] = [parseInt(shex[1] + shex[1], 16), parseInt(shex[2] + shex[2], 16), parseInt(shex[3] + shex[3], 16)];
-    return (Math.max(r, g, b) - Math.min(r, g, b)) < 30;
-  }
-  return false;
+  return isNeutralAuthoredColor(m[1]);
 }
 
 const REGEX_MATCHERS = [
@@ -357,15 +382,29 @@ function insetStripeColorIsChromatic(rawColor) {
   const variable = color.match(/^var\(\s*(--[\w-]+)/i);
   if (variable) return CHROMATIC_SHADOW_TOKEN_RE.test(variable[1]);
   if (!/^(?:#|rgba?\(|hsla?\(|hwb\(|oklch\(|oklab\(|lch\(|lab\(|color\(|[a-z]+$)/i.test(color)) return false;
-  return !isNeutralColor(color);
+  return !isNeutralAuthoredColor(color);
 }
 
-function scanInsetStripeCss(content, filePath, lineOffset = 0) {
+/**
+ * Blank out comment bodies while preserving every byte offset (and therefore
+ * every line number) so commented-out CSS is not scanned as live rules.
+ */
+function blankCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
+}
+
+function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
+  const content = blankCssComments(rawContent);
   const findings = [];
   const ruleRe = /([^{};]+)\{([^{}]*)\}/g;
   let match;
   while ((match = ruleRe.exec(content)) !== null) {
-    const selector = match[1].trim();
+    // The selector group is `[^{};]+`, which greedily absorbs the whitespace and
+    // newlines trailing the previous rule. Advance past that run before deriving
+    // the line, or every rule after the first reports the preceding line.
+    const selectorStart = match.index + (match[1].length - match[1].trimStart().length);
+    const selector = match[1].trim().replace(/\s+/g, ' ');
+    if (!selector) continue;
     if (/:(?:hover|focus|focus-visible|focus-within|active|checked|target)\b/i.test(selector)) continue;
     if (/\[aria-selected\s*[*^$|~]?=\s*["']?true/i.test(selector)) continue;
     if (/\[aria-current(?!\s*[*^$|~]?=\s*["']?false)/i.test(selector)) continue;
@@ -390,7 +429,7 @@ function scanInsetStripeCss(content, filePath, lineOffset = 0) {
       if (!((ax >= 3 && ax <= 12 && ay === 0) || (ay >= 3 && ay <= 12 && ax === 0))) continue;
       if (!insetStripeColorIsChromatic(shadow[9])) continue;
       const edge = ay === 0 ? (x > 0 ? 'left' : 'right') : (y > 0 ? 'top' : 'bottom');
-      const line = lineOffset + content.slice(0, match.index).split('\n').length;
+      const line = lineOffset + content.slice(0, selectorStart).split('\n').length;
       findings.push(finding('side-tab', filePath, `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`, line));
       break;
     }

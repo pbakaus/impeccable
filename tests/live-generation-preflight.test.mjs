@@ -64,9 +64,9 @@ test('builds an insert preflight from the anchor locator', () => {
   ]);
 });
 
-test('returns scaffold metadata without exposing child-process details', () => {
+test('returns scaffold metadata without exposing child-process details', async () => {
   const calls = [];
-  const result = runGenerationPreflight({
+  const result = await runGenerationPreflight({
     type: 'generate',
     id: 'session-3',
     count: 1,
@@ -74,9 +74,9 @@ test('returns scaffold metadata without exposing child-process details', () => {
   }, {
     scriptsDir: SCRIPTS_DIR,
     cwd: '/tmp/example',
-    execFileSyncImpl(file, args, options) {
+    async execFileImpl(file, args, options) {
       calls.push({ file, args, options });
-      return '{"file":"src/App.jsx","insertLine":12}\n';
+      return { stdout: '{"file":"src/App.jsx","insertLine":12}\n', stderr: '' };
     },
   });
 
@@ -86,8 +86,8 @@ test('returns scaffold metadata without exposing child-process details', () => {
   assert.equal(calls[0].options.cwd, '/tmp/example');
 });
 
-test('skips preflight when the picker has no source locator', () => {
-  const result = runGenerationPreflight({
+test('skips preflight when the picker has no source locator', async () => {
+  const result = await runGenerationPreflight({
     type: 'generate',
     id: 'session-4',
     count: 3,
@@ -95,4 +95,43 @@ test('skips preflight when the picker has no source locator', () => {
   }, { scriptsDir: SCRIPTS_DIR });
 
   assert.deepEqual(result, { ok: false, skipped: true, reason: 'insufficient_locator' });
+});
+
+test('yields to the event loop instead of blocking on the child process', async () => {
+  // The server is single-threaded and leases polls through this call. A
+  // synchronous spawn froze every other request (Accept, Discard, SSE) for the
+  // scaffold's full duration — measured at ~7.6s on a large repo.
+  let tickedDuringPreflight = false;
+  const pending = runGenerationPreflight({
+    type: 'generate',
+    id: 'session-async',
+    count: 1,
+    element: { classes: ['hero'] },
+  }, {
+    scriptsDir: SCRIPTS_DIR,
+    execFileImpl: () => new Promise((resolve) => {
+      setTimeout(() => resolve({ stdout: '{"file":"src/App.jsx"}\n', stderr: '' }), 25);
+    }),
+  });
+  setTimeout(() => { tickedDuringPreflight = true; }, 5);
+  const result = await pending;
+  assert.equal(result.ok, true);
+  assert.equal(tickedDuringPreflight, true, 'the event loop must stay responsive during preflight');
+});
+
+test('reports a child-process failure without leaking internals or throwing', async () => {
+  const error = new Error('spawn failed');
+  error.stderr = 'live-wrap.mjs: element not found\n';
+  const result = await runGenerationPreflight({
+    type: 'generate',
+    id: 'session-fail',
+    count: 1,
+    element: { classes: ['hero'] },
+  }, {
+    scriptsDir: SCRIPTS_DIR,
+    execFileImpl: () => Promise.reject(error),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'live-wrap.mjs: element not found');
+  assert.ok(typeof result.durationMs === 'number');
 });

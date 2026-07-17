@@ -13,21 +13,6 @@ export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-export function reconcilePublishedSourceVariants({ current, candidate, priorArrived = 0 } = {}) {
-  let reconciled = String(candidate || '');
-  const stable = String(current || '');
-  for (let variant = 1; variant <= Number(priorArrived || 0); variant += 1) {
-    const stableBlock = extractVariantBlock(stable, variant);
-    const candidateBlock = extractVariantBlock(reconciled, variant);
-    if (!stableBlock || !candidateBlock) {
-      return failure('published_variant_missing', { variant });
-    }
-    const offset = reconciled.indexOf(candidateBlock);
-    reconciled = reconciled.slice(0, offset) + stableBlock + reconciled.slice(offset + candidateBlock.length);
-  }
-  return { ok: true, content: reconciled };
-}
-
 export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() } = {}) {
   if (!id) return failure('missing_session_id');
   if (!sourceFile) return failure('missing_file');
@@ -134,12 +119,8 @@ export function publishGenerationArtifact({
       const store = createLiveSessionStore({ cwd, sessionId: id });
       const snapshot = store.getSnapshot(id, { includeCompleted: true });
       if (!snapshot?.updatedAt) return failure('session_missing');
-      if (snapshot.generationCanceled === true) {
-        return failure('stale_generation_epoch', { canceled: true, phase: snapshot.phase });
-      }
-      if (Number(snapshot.generationEpoch || 1) !== epoch) {
-        return failure('stale_generation_epoch', { expectedEpoch: snapshot.generationEpoch || 1 });
-      }
+      const stale = staleGenerationFailure(snapshot, epoch);
+      if (stale) return stale;
 
       const current = fs.readFileSync(sourcePath, 'utf-8');
       const currentHash = sha256(current);
@@ -194,12 +175,8 @@ export function publishGenerationArtifact({
       }
 
       const commitSnapshot = store.getSnapshot(id, { includeCompleted: true });
-      if (commitSnapshot?.generationCanceled === true) {
-        return failure('stale_generation_epoch', { canceled: true, phase: commitSnapshot.phase });
-      }
-      if (Number(commitSnapshot?.generationEpoch || 1) !== epoch) {
-        return failure('stale_generation_epoch', { expectedEpoch: commitSnapshot?.generationEpoch || 1 });
-      }
+      const commitStale = staleGenerationFailure(commitSnapshot, epoch);
+      if (commitStale) return commitStale;
       const artifactHash = sha256(artifact);
       const publishPath = sourceArtifactTarget?.previewPath || sourcePath;
       atomicReplace(publishPath, artifact);
@@ -366,6 +343,14 @@ function publishComponentArtifact({
     }
   }
 
+  // Check the fence before writing anything. The prepare→publish gap is exactly
+  // where an Accept lands, and the source-artifact path above rechecks before
+  // its only write. Without the same check here, a canceled generation still
+  // scattered variant files across the generated component dir and left them
+  // there — the `stale_generation_epoch` returns below have no rollback.
+  const preWriteStale = staleGenerationFailure(store.getSnapshot(id, { includeCompleted: true }), epoch);
+  if (preWriteStale) return preWriteStale;
+
   // Components and optional params become reachable before the manifest
   // advertises them. Committing the manifest last makes publication atomic
   // from the browser's point of view while the source lock excludes Accept.
@@ -376,13 +361,11 @@ function publishComponentArtifact({
   if (paramsContent !== null) {
     atomicReplace(path.join(target.componentPath, 'params.json'), paramsContent);
   }
+  // Re-check immediately before the manifest: the manifest is what makes the
+  // variants visible to the browser, so this is the gate that actually matters.
   const commitSnapshot = store.getSnapshot(id, { includeCompleted: true });
-  if (commitSnapshot?.generationCanceled === true) {
-    return failure('stale_generation_epoch', { canceled: true, phase: commitSnapshot.phase });
-  }
-  if (Number(commitSnapshot?.generationEpoch || 1) !== epoch) {
-    return failure('stale_generation_epoch', { expectedEpoch: commitSnapshot?.generationEpoch || 1 });
-  }
+  const commitStale = staleGenerationFailure(commitSnapshot, epoch);
+  if (commitStale) return commitStale;
   const publishedManifest = {
     ...target.manifest,
     componentDir: relative(cwd, target.componentPath),
@@ -614,4 +597,19 @@ function relative(cwd, value) {
 
 function failure(error, details = {}) {
   return { ok: false, error, ...details };
+}
+
+/**
+ * The generation fence: has this session been canceled (Accept/Discard landed),
+ * or has a newer generation superseded this epoch? Returns a failure result to
+ * propagate, or null when the caller may proceed.
+ */
+function staleGenerationFailure(snapshot, epoch) {
+  if (snapshot?.generationCanceled === true) {
+    return failure('stale_generation_epoch', { canceled: true, phase: snapshot.phase });
+  }
+  if (Number(snapshot?.generationEpoch || 1) !== epoch) {
+    return failure('stale_generation_epoch', { expectedEpoch: snapshot?.generationEpoch || 1 });
+  }
+  return null;
 }

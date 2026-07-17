@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getLiveDir } from '../lib/impeccable-paths.mjs';
+import { getLiveDir, safeSessionId } from '../lib/impeccable-paths.mjs';
 
 export const SOURCE_ARTIFACT_PREVIEW_MODE = 'source-artifact';
 
@@ -15,9 +15,7 @@ export function scaffoldSourceArtifactSession({
   previewContent,
   cwd = process.cwd(),
 } = {}) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) {
-    throw new Error('invalid source artifact session id');
-  }
+  safeSessionId(id);
   const sourcePath = resolveInside(cwd, sourceFile);
   if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error('source artifact target missing');
 
@@ -43,7 +41,7 @@ export function scaffoldSourceArtifactSession({
 }
 
 export function findSourceArtifactManifest(id, cwd = process.cwd()) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) return null;
+  try { safeSessionId(id); } catch { return null; }
   const manifestPath = path.join(getLiveDir(cwd), 'previews', id, 'manifest.json');
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); } catch { return null; }
@@ -55,7 +53,7 @@ export function findSourceArtifactManifest(id, cwd = process.cwd()) {
 }
 
 export function removeSourceArtifactSession(id, cwd = process.cwd()) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) return false;
+  try { safeSessionId(id); } catch { return false; }
   const sessionDir = path.join(getLiveDir(cwd), 'previews', id);
   if (!fs.existsSync(sessionDir)) return false;
   fs.rmSync(sessionDir, { recursive: true, force: true });

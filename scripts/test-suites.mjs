@@ -54,6 +54,7 @@ export const SUITES = {
         runner: 'node',
         files: [
           'tests/ci-test-plan.test.mjs',
+          'tests/cli-args.test.mjs',
           'tests/context.test.mjs',
           'tests/context-signals.test.mjs',
           'tests/critique-storage.test.mjs',
@@ -149,6 +150,7 @@ export const SUITES = {
           'tests/live-rendered-quality.test.mjs',
           'tests/live-server.test.mjs',
           'tests/live-session-store.test.mjs',
+          'tests/live-source-lock.test.mjs',
           'tests/live-target-context.test.mjs',
           'tests/live-vue-component.test.mjs',
           'tests/live-wrap.test.mjs',
