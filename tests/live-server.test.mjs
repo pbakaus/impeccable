@@ -2607,14 +2607,22 @@ colors: {}
     });
     assert.equal(postRes.status, 200);
 
-    const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
+    // Both halves need real-time headroom in the direction they assert. With a
+    // 50ms lease the "still leased" poll had to complete a whole HTTP round trip
+    // inside 50ms or the lease expired first, the event was redelivered, and the
+    // assertion failed for a scheduling hiccup rather than a bookkeeping bug —
+    // which is what it did intermittently on CI while passing locally. Hold the
+    // lease long enough that the round trip cannot cross it, then wait past it
+    // explicitly to test redelivery.
+    const LEASE_MS = 1000;
+    const first = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(first.id, 'a1b2c3da');
 
-    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=25&leaseMs=50`).then(r => r.json());
+    const leased = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=25&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(leased.type, 'timeout', 'leased event should not be redelivered before lease expiry');
 
-    await new Promise(r => setTimeout(r, 75));
-    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=50`).then(r => r.json());
+    await new Promise(r => setTimeout(r, LEASE_MS + 300));
+    const redelivered = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=100&leaseMs=${LEASE_MS}`).then(r => r.json());
     assert.equal(
       redelivered.id,
       'a1b2c3da',
