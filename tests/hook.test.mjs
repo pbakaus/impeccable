@@ -540,6 +540,22 @@ describe('hook-admin.mjs', () => {
     assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'config.json')), false, 'nothing may be written');
   });
 
+  it('matches an on-disk scope whose glob order differs from the sorted argv form', () => {
+    // Storage is canonical now, but configs written before that are not. Every key
+    // that hashes `files` must sort or a re-add duplicates the entry.
+    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, '.impeccable', 'config.json'), JSON.stringify({
+      detector: { ignoreValues: [
+        { rule: 'design-system-font-size', value: '*', files: ['b.css', 'a.css'], createdAt: '2026-01-01T00:00:00.000Z' },
+      ] },
+    }));
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css', '--reason', 're-add']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'an unsorted on-disk scope must match the sorted argv form, not duplicate');
+    assert.equal(entries[0].reason, 're-add', 'the existing entry is the one updated');
+  });
+
   it('stores a multi-file scope in canonical order so argv order cannot duplicate it', () => {
     runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'b.css', '--file', 'a.css']);
     runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css']);

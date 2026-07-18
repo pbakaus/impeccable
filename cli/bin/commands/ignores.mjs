@@ -312,7 +312,10 @@ function clear(cwd, args) {
 }
 
 function ignoreValueKey(entry) {
-  const files = Array.isArray(entry.files) && entry.files.length ? entry.files.join('\x1f') : '';
+  // Sorted: a file scope is a set. Comparing stored order made an on-disk scope
+  // miss the sorted argv form, so a re-add duplicated the entry and a remove
+  // silently failed. Every key that hashes `files` must sort — there are four.
+  const files = Array.isArray(entry.files) && entry.files.length ? [...entry.files].sort().join('\x1f') : '';
   return `${String(entry.rule || '').trim().toLowerCase()}\0${normalizeIgnoreValue(entry.value)}\0${files}`;
 }
 
