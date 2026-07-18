@@ -62,6 +62,35 @@ function hexChannels(color) {
 }
 
 /**
+ * Split one box-shadow layer into top-level tokens.
+ *
+ * Whitespace inside parens does not separate tokens: `rgb(0 0 0)` and
+ * `var(--x, 4px)` are each a single value, and splitting them on spaces would
+ * read their innards as separate lengths.
+ */
+function tokenizeShadowLayer(layer) {
+  const tokens = [];
+  let depth = 0;
+  let current = '';
+  for (const char of String(layer || '')) {
+    if (char === '(') depth++;
+    else if (char === ')') depth--;
+    else if (depth === 0 && /\s/.test(char)) {
+      if (current) tokens.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function isShadowLength(token) {
+  return /^-?\d*\.?\d+(?:px)?$/i.test(String(token || ''));
+}
+
+/**
  * Neutrality test for colors as written in source CSS.
  *
  * shared/color.mjs's isNeutralColor only parses the computed function forms a
@@ -75,7 +104,19 @@ function isNeutralAuthoredColor(rawColor) {
   const c = String(rawColor || '').trim().toLowerCase();
   if (!c) return false;
   if (NEUTRAL_COLOR_KEYWORDS.has(c)) return true;
-  if (/^(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
+  // Modern rgb() takes space-separated channels (`rgb(0 0 0)`). shared/color.mjs
+  // parses only the comma form a browser's getComputedStyle emits, so authored
+  // space-separated neutrals fell through it and reported as chromatic — the
+  // exemption this function exists for, missed. Normalize before delegating.
+  if (/^rgba?\(/i.test(c)) {
+    const channels = c.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+    if (channels) {
+      const values = [1, 2, 3].map((i) => Number(channels[i]));
+      return (Math.max(...values) - Math.min(...values)) < 30;
+    }
+    return isNeutralColor(c);
+  }
+  if (/^(?:hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
   const channels = hexChannels(c);
   if (channels) return (Math.max(...channels) - Math.min(...channels)) < 30;
   return false;
@@ -398,6 +439,18 @@ function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
   const findings = [];
   const ruleRe = /([^{};]+)\{([^{}]*)\}/g;
   let match;
+  // Deriving each line with content.slice(0, offset).split('\n') re-scans the
+  // whole prefix per rule, which is O(n^2) on a large stylesheet. Rule matches
+  // arrive in source order, so carry a monotonic cursor instead: one pass total.
+  let scanOffset = 0;
+  let scanLine = 1;
+  const lineAtOffset = (offset) => {
+    while (scanOffset < offset) {
+      if (content[scanOffset] === '\n') scanLine++;
+      scanOffset++;
+    }
+    return scanLine;
+  };
   while ((match = ruleRe.exec(content)) !== null) {
     // The selector group is `[^{};]+`, which greedily absorbs the whitespace and
     // newlines trailing the previous rule. Advance past that run before deriving
@@ -418,30 +471,37 @@ function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
 
     for (const rawLayer of declaration[1].split(/,(?![^(]*\))/)) {
       const layer = rawLayer.trim();
-      // `inset` is order-independent inside a box-shadow layer: `inset 4px 0 0 red`
-      // and `4px 0 0 red inset` paint the same stripe, and requiring it first
-      // silently missed the second spelling. Strip it only as a standalone
-      // keyword, so a color token such as var(--inset-accent) survives intact;
-      // an unchanged layer had no inset keyword and is not our shape.
-      const body = layer.replace(/(^|\s)inset(?=\s|$)/i, '$1').trim();
-      if (body === layer) continue;
-      // box-shadow takes <length>{2,4}: only the two offsets are required, so
-      // `inset 4px 0 red` is valid and paints the same stripe as
-      // `inset 4px 0 0 red`. Demanding a third length missed the short form.
-      const shadow = body.match(/^(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
-      if (!shadow) continue;
-      const x = Number(shadow[1]);
-      const y = Number(shadow[3]);
-      // Omitted blur and spread default to 0, which is exactly the stripe shape.
-      const blur = shadow[5] == null ? 0 : Number(shadow[5]);
-      const spread = shadow[7] == null ? 0 : Number(shadow[7]);
-      if ((x !== 0 && !shadow[2]) || (y !== 0 && !shadow[4]) || blur !== 0 || spread !== 0) continue;
-      const ax = Math.abs(x);
-      const ay = Math.abs(y);
+      // Parse the layer by its grammar rather than by one spelling of it.
+      // A box-shadow layer is `inset? && <length>{2,4} && <color>?` in any
+      // order, so `inset 4px 0 red`, `4px 0 0 red inset`, and `red 4px 0 inset`
+      // all paint the same stripe. Matching a fixed token order missed three
+      // valid spellings in a row; enumerate the tokens instead. Tokenizing must
+      // respect parens: `rgb(0 0 0)` is one color token, and splitting it on
+      // whitespace would read its channels as lengths.
+      const tokens = tokenizeShadowLayer(layer);
+      if (!tokens.some((token) => /^inset$/i.test(token))) continue;
+      const rest = tokens.filter((token) => !/^inset$/i.test(token));
+      const lengths = rest.filter(isShadowLength);
+      const colors = rest.filter((token) => !isShadowLength(token));
+      // Only the two offsets are required; omitted blur/spread default to 0,
+      // which is exactly the stripe shape. More than one non-length token is a
+      // layer shape we do not claim to understand, so leave it alone.
+      if (lengths.length < 2 || lengths.length > 4 || colors.length !== 1) continue;
+      const values = lengths.map((token) => ({
+        n: Number(token.replace(/px$/i, '')),
+        hasPx: /px$/i.test(token),
+      }));
+      const x = values[0];
+      const y = values[1];
+      const blur = values[2] ? values[2].n : 0;
+      const spread = values[3] ? values[3].n : 0;
+      if ((x.n !== 0 && !x.hasPx) || (y.n !== 0 && !y.hasPx) || blur !== 0 || spread !== 0) continue;
+      const ax = Math.abs(x.n);
+      const ay = Math.abs(y.n);
       if (!((ax >= 3 && ax <= 12 && ay === 0) || (ay >= 3 && ay <= 12 && ax === 0))) continue;
-      if (!insetStripeColorIsChromatic(shadow[9])) continue;
-      const edge = ay === 0 ? (x > 0 ? 'left' : 'right') : (y > 0 ? 'top' : 'bottom');
-      const line = lineOffset + content.slice(0, selectorStart).split('\n').length;
+      if (!insetStripeColorIsChromatic(colors[0])) continue;
+      const edge = ay === 0 ? (x.n > 0 ? 'left' : 'right') : (y.n > 0 ? 'top' : 'bottom');
+      const line = lineOffset + lineAtOffset(selectorStart);
       findings.push(finding('side-tab', filePath, `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`, line));
       break;
     }
