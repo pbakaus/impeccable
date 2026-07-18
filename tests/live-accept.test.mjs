@@ -133,6 +133,33 @@ describe('live-accept — isolated source artifacts', () => {
     assert.equal(existsSync(join(tmp, session.sessionDir)), false);
   });
 
+  // reference/live.md routes on `mode`: without it the agent is told "manual
+  // cleanup: read file, find markers, edit". There are no markers in source for
+  // an isolated preview, so every failure here must self-describe as mode:error.
+  it('marks a failed artifact accept as mode:error, not a manual handoff', () => {
+    scaffold('isolatedmissing');
+    const result = runAccept(tmp, ['--id', 'isolatedmissing', '--variant', '9']);
+    assert.equal(result.handled, false, JSON.stringify(result));
+    assert.equal(result.mode, 'error', 'the agent must not be told to hand-edit a source file with no markers');
+    assert.equal(result.previewMode, 'source-artifact');
+  });
+
+  it('marks an artifact accept blocked by the source lock as mode:error', () => {
+    const { original } = scaffold('isolatedlockacc');
+    const realTmp = realpathSync(tmp);
+    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
+    mkdirSync(dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, JSON.stringify({
+      owner: 'generation:isolatedlockacc:1', token: 'other', pid: process.pid, at: Date.now(),
+    }) + '\n');
+
+    const result = runAccept(tmp, ['--id', 'isolatedlockacc', '--variant', '1']);
+    assert.equal(result.handled, false, JSON.stringify(result));
+    assert.equal(result.mode, 'error');
+    assert.equal(result.error, 'source_locked');
+    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original, 'source must be untouched');
+  });
+
   // Every other discard path (Vue, Svelte, plain wrapper) takes the source lock.
   // This one deleted the preview bare, so it could pull the artifact out from
   // under an in-flight publisher instead of serializing behind it.

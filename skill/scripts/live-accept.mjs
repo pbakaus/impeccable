@@ -55,6 +55,28 @@ function operationFailure(err, extra = {}) {
   return { handled: false, mode: 'error', error: err.message, ...extra };
 }
 
+/**
+ * Mark an unhandled preview-path result as a real failure.
+ *
+ * operationFailure only covers results built from a *thrown* error. The accept
+ * implementations also return `{handled: false, error}` for their own checks
+ * (variant missing, template empty, original text ambiguous), and those arrived
+ * without `mode`, so completion.mjs classified them as agent_done and
+ * reference/live.md routed the agent to "read file, find markers, edit".
+ *
+ * That handoff only makes sense for a plain wrapper session, which is the one
+ * shape with markers in the user's source to edit. Component and isolated
+ * artifact previews keep the source clean until Accept, so there is nothing to
+ * hand-edit and an unhandled result is always a failure. `previewMode` is
+ * exactly that discriminator: only the preview branches set it.
+ */
+function markPreviewFailure(result) {
+  if (result?.handled === false && !result.mode && result.previewMode) {
+    return { ...result, mode: 'error' };
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -127,7 +149,8 @@ Output (JSON):
         }));
     return;
   }
-  const emitResult = (result) => {
+  const emitResult = (rawResult) => {
+    const result = markPreviewFailure(rawResult);
     if (result?.handled !== false) {
       writeAcceptReceipt(process.cwd(), id, {
         operation: requestedOperation,
@@ -252,15 +275,13 @@ Output (JSON):
         { waitMs: ACCEPT_LOCK_WAIT_MS },
       );
     } catch (err) {
-      result = {
-        handled: false,
-        error: err.message,
+      result = operationFailure(err, {
         file: vueComponentManifest.sourceFile,
         sourceFile: vueComponentManifest.sourceFile,
         previewMode: 'vue-component',
         componentDir: vueComponentManifest.componentDir,
         carbonize: false,
-      };
+      });
     }
     emitResult(result);
     return;
@@ -306,14 +327,12 @@ Output (JSON):
         { waitMs: ACCEPT_LOCK_WAIT_MS },
       );
     } catch (err) {
-      result = {
-        handled: false,
-        error: err.message,
+      result = operationFailure(err, {
         file: svelteComponentManifest.sourceFile,
         sourceFile: svelteComponentManifest.sourceFile,
         previewMode: 'svelte-component',
         componentDir: svelteComponentManifest.componentDir,
-      };
+      });
     }
     if (result.carbonize) {
       result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + result.file + '. See reference/live.md "Required after accept".';

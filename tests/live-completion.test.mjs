@@ -53,6 +53,29 @@ describe('live completion type classification', () => {
     );
   });
 
+  // Previews whose variants live outside the user's source leave nothing in the
+  // file to hand-edit, so a failed accept there is a failure, not live.md's
+  // "read file, find markers, edit" handoff. Only svelte-component was special
+  // cased, so the identical failure on a Vue or isolated-artifact preview was
+  // acknowledged as a success and Live continued past it.
+  for (const previewMode of ['svelte-component', 'vue-component', 'source-artifact']) {
+    it(`treats a failed ${previewMode} accept as an error, not a manual handoff`, () => {
+      assert.equal(
+        completionTypeForAcceptResult('accept', { handled: false, error: 'source_locked', previewMode }),
+        'error',
+      );
+    });
+  }
+
+  it('still treats a failed plain-wrapper accept as a manual handoff', () => {
+    // The one shape with editable markers in source. This must not regress into
+    // an error, or every hand-editable session starts failing the poll loop.
+    assert.equal(
+      completionTypeForAcceptResult('accept', { handled: false, error: 'Markers not found' }),
+      'agent_done',
+    );
+  });
+
   it('classifies handled accept/discard and real failures explicitly', () => {
     assert.equal(completionTypeForAcceptResult('accept', { handled: true }), 'complete');
     assert.equal(completionTypeForAcceptResult('discard', { handled: true }), 'discarded');
