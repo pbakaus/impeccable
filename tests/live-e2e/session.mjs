@@ -339,7 +339,15 @@ export async function bootFixtureSession({
     });
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(`console.error: ${msg.text()}`);
+      else if (process.env.IMPECCABLE_E2E_CONSOLE && /\[impeccable\]|\[vite\]/.test(msg.text())) {
+        log(`[console.${msg.type()}] ${msg.text()}`);
+      }
     });
+    if (process.env.IMPECCABLE_E2E_CONSOLE) {
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) log(`[nav] main frame → ${frame.url()}`);
+      });
+    }
 
     const pageStartedAt = Date.now();
     trace('setup.page_load.start', { fixture: name });

@@ -28,7 +28,7 @@ import {
   readLiveBrowserScriptParts,
   resolveLiveBrowserScriptParts,
 } from './live/browser-script-parts.mjs';
-import { createLiveSessionStore } from './live/session-store.mjs';
+import { createLiveSessionStore, GENERATION_FENCED_PHASES } from './live/session-store.mjs';
 import { runGenerationPreflight } from './live/generation-preflight.mjs';
 import { validateEvent } from './live/event-validation.mjs';
 import { selectAvailablePendingEvent } from './live/poll-lanes.mjs';
@@ -232,6 +232,64 @@ function recordAgentPhase(id, phase, details = {}) {
   broadcast(event);
 }
 
+/**
+ * Detect a browser that missed the generation `done` broadcast.
+ *
+ * The preflight scaffold write triggers a framework full-reload (Astro reloads
+ * the page for any .astro edit). If the agent's variant write + `done` land
+ * while the browser is mid-reload, the new page misses both the second HMR
+ * reload and the SSE `done` — it resumes from the scaffold-only source and
+ * sits in GENERATING at 0/N forever. That resumed page always checkpoints
+ * (`browser_resumed`), so a checkpoint claiming "still generating, variants
+ * missing" for a session whose generation already completed is direct
+ * evidence of the miss. Rebuild the `done` payload from the snapshot so the
+ * caller can re-broadcast it; the browser's done handler is idempotent and
+ * falls back to injecting variants from source.
+ *
+ * Keys on the store's monotone `generationCompletedAt`, not `phase` — the
+ * behind checkpoint itself regresses `phase` to `generating`, and a browser
+ * that misses the redelivered `done` too (another reload) must still trigger
+ * redelivery from its next checkpoint.
+ */
+function detectMissedGenerationCompletion(event) {
+  if (!event?.id || event.type !== 'checkpoint') return null;
+  if (event.phase !== 'generating') return null;
+  if (!variantCountLooksBehind(event.arrivedVariants, event.expectedVariants)) return null;
+  if (!state.sessionStore) return null;
+  let snapshot = null;
+  try {
+    snapshot = state.sessionStore.getSnapshot(event.id);
+  } catch {
+    return null;
+  }
+  return missedCompletionFromSnapshot(snapshot);
+}
+
+function variantCountLooksBehind(arrivedValue, expectedValue) {
+  const arrived = Number(arrivedValue) || 0;
+  const expected = Number(expectedValue) || 0;
+  return arrived <= 0 || (expected > 0 && arrived < expected);
+}
+
+function missedCompletionFromSnapshot(snapshot) {
+  if (!snapshot?.id || !snapshot.generationCompletedAt) return null;
+  if (snapshot.generationCanceled) return null;
+  // Accept/discard already underway: the browser is no longer waiting on
+  // generation, and a late `done` there would collide with teardown.
+  if (GENERATION_FENCED_PHASES.has(snapshot.phase)) return null;
+  const file = snapshot.sourceFile || snapshot.previewFile;
+  if (!file) return null;
+  return {
+    type: 'done',
+    id: snapshot.id,
+    file,
+    sourceFile: snapshot.sourceFile || undefined,
+    previewFile: snapshot.previewFile || undefined,
+    previewMode: snapshot.previewMode || undefined,
+    redelivered: true,
+  };
+}
+
 function recordGenerationCheckpoint(event) {
   if (!event?.id || event.type !== 'checkpoint') return;
   if (generationIsFenced(event.id)) return;
@@ -383,6 +441,7 @@ function summarizeActiveSessionForClient(snapshot = {}) {
     publicationCheckpointRevision: snapshot.publicationCheckpointRevision ?? 0,
     paramValues: snapshot.paramValues || {},
     generationPhase: snapshot.generationPhase ?? null,
+    generationCompletedAt: snapshot.generationCompletedAt ?? null,
     generationCanceled: snapshot.generationCanceled === true,
     cancelReason: snapshot.cancelReason ?? null,
   };
@@ -880,6 +939,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
           res.end(JSON.stringify({ ok: true }));
           return;
         }
+        const missedCompletion = detectMissedGenerationCompletion(msg);
         if (state.sessionStore && msg.id) {
           try {
             state.sessionStore.appendEvent(msg);
@@ -893,6 +953,7 @@ function createRequestHandler({ detectScript, liveScriptParts }) {
           retirePendingGeneration(msg.id);
         }
         recordGenerationCheckpoint(msg);
+        if (missedCompletion) broadcast(missedCompletion);
         if (msg.type === 'exit') {
           cleanupSvelteComponentSessionsBeforeExit();
         }

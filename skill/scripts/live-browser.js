@@ -5678,6 +5678,15 @@
         arrivedVariants = variants.length;
         expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
         if (arrivedVariants <= 0) {
+          // Mid-generation the source legitimately holds a scaffold wrapper
+          // with no variants yet (the server-side preflight wraps before the
+          // agent writes). Tearing the session down here would destroy an
+          // in-flight generation; stay in GENERATING — the variant observer
+          // is armed and the server re-delivers a missed `done`.
+          if (state === 'GENERATING') {
+            console.log('[impeccable] Source has scaffold but no variants yet; still generating.');
+            return;
+          }
           recoverEmptyCycling('source-fallback-empty');
           return;
         }
@@ -6299,6 +6308,7 @@
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
+          recoverMissedGenerationCompletion(msg.activeSessions);
           if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
           syncPageInteractionCursor();
           syncPageChatFocus('sse-connected');
@@ -8117,6 +8127,36 @@ void main() {
     if (wrapper && !isFrameworkComponentPreviewMode(wrapper.dataset.impeccablePreview)) return false;
     if (svelteComponentSession?.sessionId === currentSessionId) return false;
     return restoreSessionWithoutWrapper(reason || 'sse_connected', activeSessions);
+  }
+
+  // Self-heal on SSE (re)connect. The preflight scaffold write triggers a
+  // framework full-reload (Astro reloads pages for any .astro edit); if the
+  // agent's variant write + `done` broadcast land while this page is
+  // mid-reload, both the done SSE and the second HMR reload are missed and
+  // the resumed page would wait in GENERATING at 0/N forever. The server's
+  // session summary carries the durable generationCompletedAt marker, so on
+  // every connect compare it against our own progress and pull the finished
+  // variants from source when behind. Mirrors the `done` handler's source
+  // fallback, including its give-HMR-the-first-chance settle delay.
+  function recoverMissedGenerationCompletion(activeSessions) {
+    if (!currentSessionId || state !== 'GENERATING') return;
+    if (!Array.isArray(activeSessions)) return;
+    const summary = activeSessions.find((session) => session?.id === currentSessionId);
+    if (!summary?.generationCompletedAt || summary.generationCanceled) return;
+    if (isTerminalSessionSummary(summary)) return;
+    if (arrivedVariants > 0 && arrivedVariants >= expectedVariants) return;
+    rememberSessionFileMeta(summary);
+    const sessionId = currentSessionId;
+    const file = isFrameworkComponentPreviewMode(currentPreviewMode)
+      ? currentPreviewFile
+      : (summary.sourceFile || summary.previewFile || currentSourceFile || currentPreviewFile);
+    if (!file) return;
+    console.log('[impeccable] Reconnected after generation completed; recovering variants from source.');
+    setTimeout(() => {
+      if (sessionId !== currentSessionId || state !== 'GENERATING') return;
+      if (arrivedVariants > 0 && arrivedVariants >= expectedVariants) return;
+      injectVariantsFromSource(file, sessionId);
+    }, 750);
   }
 
   function saveSession() {

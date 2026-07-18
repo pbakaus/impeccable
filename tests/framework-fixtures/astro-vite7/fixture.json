@@ -26,6 +26,9 @@
     },
     "steer": {
       "sourceFile": "src/pages/index.astro"
+    },
+    "missedDoneReloadScenario": {
+      "sourceFile": "src/pages/index.astro"
     }
   }
 }

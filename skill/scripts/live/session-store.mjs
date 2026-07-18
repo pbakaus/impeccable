@@ -3,7 +3,7 @@ import path from 'node:path';
 import { getLegacyLiveSessionsDir, getLiveSessionsDir, safeSessionId } from '../lib/impeccable-paths.mjs';
 
 const COMPLETED_PHASES = new Set(['completed', 'discarded']);
-const GENERATION_FENCED_PHASES = new Set([
+export const GENERATION_FENCED_PHASES = new Set([
   'accept_requested',
   'discard_requested',
   'carbonize_required',
@@ -120,6 +120,7 @@ function baseSnapshot(id) {
     sourceMarkers: {},
     fallbackMode: null,
     generationPhase: null,
+    generationCompletedAt: null,
     generationTimings: {},
     variantPlan: null,
     generationCanceled: false,
@@ -219,6 +220,11 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
         break;
       }
       next.phase = event.carbonize === true ? 'carbonize_required' : 'variants_ready';
+      // Durable completion marker: later browser checkpoints (a resumed page
+      // reporting phase "generating") regress `phase`, but generation staying
+      // finished is monotone — the live server keys missed-`done` redelivery
+      // on this field.
+      next.generationCompletedAt = event.at ?? (Date.parse(entry.ts || '') || Date.now());
       next.sourceFile = event.sourceFile ?? event.file ?? next.sourceFile;
       next.previewFile = event.previewFile ?? next.previewFile;
       next.previewMode = event.previewMode ?? next.previewMode;

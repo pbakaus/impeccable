@@ -2486,6 +2486,233 @@ colors: {}
     controller.abort();
   });
 
+  // A framework full-reload (Astro reloads the page for any .astro edit, and
+  // the preflight scaffold write triggers one) can put the browser mid-reload
+  // exactly when the agent's `done` broadcasts. The resumed page then sits in
+  // GENERATING at 0/N with the variants already in source. Its resumed
+  // checkpoint is the evidence of the miss; the server must re-broadcast the
+  // completion.
+  async function runGenerateToDone(id, file) {
+    await drainPolls(server);
+    // A behind session left by a previous run would itself trigger connect-time
+    // redelivery and contaminate this test's SSE stream — start from scratch.
+    rmSync(join(getLiveSessionsDir(server.cwd), id + '.jsonl'), { force: true });
+    rmSync(join(getLiveSessionsDir(server.cwd), id + '.snapshot.json'), { force: true });
+    const postRes = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'generate',
+        id,
+        action: 'bolder',
+        count: 3,
+        pageUrl: 'http://localhost:4321/',
+        element: { outerHTML: '<h1>miss</h1>', tagName: 'h1' },
+      }),
+    });
+    assert.equal(postRes.status, 200);
+    const event = await fetch(`http://localhost:${server.port}/poll?token=${server.token}&timeout=2000`).then(r => r.json());
+    assert.equal(event.id, id);
+    const doneRes = await fetch(`http://localhost:${server.port}/poll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: server.token, id, type: 'done', file }),
+    });
+    assert.equal(doneRes.status, 200);
+  }
+
+  it('redelivers done when a resumed browser checkpoint shows it missed generation completion', async () => {
+    await runGenerateToDone('a1b2c3f5', 'src/pages/index.astro');
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f5',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-resumed-tab',
+        expectedVariants: 3,
+        arrivedVariants: 0,
+        visibleVariant: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const text = await readSseUntil(reader, decoder, '"redelivered":true');
+    controller.abort();
+    assert.match(
+      text,
+      /"type":"done"/,
+      'event=live_server.missed_done_redelivery actor=browser operation=resumed_checkpoint_behind risk=session_stuck_generating expected=done rebroadcast actual=' + JSON.stringify(text.slice(0, 200)) + ' suggestion=rebroadcast stored completion when checkpoint reports generating with variants behind',
+    );
+    assert.match(text, /"file":"src\/pages\/index\.astro"/);
+    assert.match(text, /"redelivered":true/);
+
+    // Report the recovery so the session stops looking behind — later SSE
+    // connects (in this suite and in production) shouldn't keep redelivering.
+    const recovered = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f5',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-resumed-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(recovered.status, 200);
+  });
+
+  it('does not redeliver done to a browser whose checkpoint is current', async () => {
+    await runGenerateToDone('a1b2c3f6', 'src/pages/index.astro');
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    await reader.read(); // connected
+
+    const current = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f6',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-current-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(current.status, 200);
+
+    const ready = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f6',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-current-tab',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+        previewMode: 'source',
+        previewFile: 'src/pages/index.astro',
+        sourceFile: 'src/pages/index.astro',
+      }),
+    });
+    assert.equal(ready.status, 200);
+
+    const text = await readSseUntil(reader, decoder, '"variant_progress"', 4);
+    controller.abort();
+    assert.match(text, /"type":"variant_progress"/);
+    const redeliveredForSession = text
+      .split('\n')
+      .some((line) => line.includes('"id":"a1b2c3f6"') && line.includes('"redelivered":true'));
+    assert.equal(
+      redeliveredForSession,
+      false,
+      'a checkpoint that already reports the full variant set must not trigger a done rebroadcast',
+    );
+  });
+
+  it('marks completed generations durably in connected-payload summaries', async () => {
+    await runGenerateToDone('a1b2c3f7', 'src/pages/about.astro');
+
+    // Checkpoint lands while no SSE client is connected (the reloading page
+    // POSTs checkpoints without waiting for its EventSource). It regresses
+    // phase/arrivedVariants, but generationCompletedAt must survive — the
+    // browser's connect-time self-heal keys on it.
+    const res = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f7',
+        phase: 'generating',
+        reason: 'browser_resumed',
+        revision: 2,
+        owner: 'browser-early-checkpoint',
+        expectedVariants: 3,
+        arrivedVariants: 0,
+        visibleVariant: 0,
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    const controller = new AbortController();
+    const sseRes = await fetch(
+      `http://localhost:${server.port}/events?token=${server.token}`,
+      { signal: controller.signal },
+    );
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    const text = await readSseUntil(reader, decoder, '"type":"connected"', 2);
+    controller.abort();
+    const connectedLine = text.split('\n').find((line) => line.includes('"type":"connected"'));
+    assert.ok(connectedLine, 'connected payload present');
+    const connected = JSON.parse(connectedLine.replace(/^data: /, ''));
+    const summary = connected.activeSessions.find((session) => session.id === 'a1b2c3f7');
+    assert.ok(summary, 'behind session appears in activeSessions');
+    assert.equal(summary.phase, 'generating', 'behind checkpoint regressed the phase');
+    assert.equal(summary.arrivedVariants, 0, 'behind checkpoint regressed the arrived count');
+    assert.ok(
+      Number.isFinite(summary.generationCompletedAt) && summary.generationCompletedAt > 0,
+      'event=live_server.completed_marker_durable actor=browser operation=sse_connect_after_behind_checkpoint risk=session_stuck_generating expected=generationCompletedAt survives checkpoint regression actual=' + JSON.stringify(summary.generationCompletedAt) + ' suggestion=set monotone generationCompletedAt on agent_done in session-store',
+    );
+    assert.equal(summary.sourceFile, 'src/pages/about.astro');
+
+    const recovered = await fetch(`http://localhost:${server.port}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: server.token,
+        type: 'checkpoint',
+        id: 'a1b2c3f7',
+        phase: 'cycling',
+        reason: 'variants_ready',
+        revision: 3,
+        owner: 'browser-early-checkpoint',
+        expectedVariants: 3,
+        arrivedVariants: 3,
+        visibleVariant: 1,
+      }),
+    });
+    assert.equal(recovered.status, 200);
+  });
+
   it('redelivers an unacknowledged browser event after helper server restart', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'impeccable-server-restart-'));
     let firstServer;

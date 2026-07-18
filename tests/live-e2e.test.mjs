@@ -96,6 +96,10 @@ const reloadVariants = process.env.IMPECCABLE_E2E_RELOAD_VARIANTS === '1'
 const scenarioNames = parseFixtureFilter(process.env.IMPECCABLE_E2E_SCENARIOS);
 const liveE2eTestTimeoutMs = readPositiveIntEnv('IMPECCABLE_E2E_TEST_TIMEOUT_MS');
 const liveE2eTestOptions = liveE2eTestTimeoutMs ? { timeout: liveE2eTestTimeoutMs } : {};
+// Widens the window between the server-side preflight scaffold (which triggers
+// a framework HMR reload) and the agent's variant write. Used to reproduce
+// races where the browser observes a wrapper with zero variants mid-generation.
+const atomicDelayMs = readPositiveIntEnv('IMPECCABLE_E2E_ATOMIC_DELAY_MS') || 0;
 
 if (fixtures.length === 0) {
   describe('live-e2e (no runtime fixtures registered)', () => {
@@ -208,6 +212,7 @@ for (const { name, fixture } of fixtures) {
         browser,
         agent,
         wrapTarget: wrapTargetFromPickedElement,
+        atomicDelayMs,
         log: (m) => t.diagnostic(m),
       });
 
@@ -661,6 +666,88 @@ for (const { name, fixture } of fixtures) {
     });
 
 
+
+    if (shouldRunScenario('missed-done') && fixture.runtime.missedDoneReloadScenario) {
+      it('recovers when the preflight reload makes the browser miss the done broadcast', liveE2eTestOptions, async (t) => {
+        if (manualOnly || process.env.IMPECCABLE_E2E_MANUAL_SCENARIO) {
+          t.skip('manual scenario filter is active');
+          return;
+        }
+        // Deterministic reproduction of the race the CI astro-vite7 timeout
+        // exposed: the server-side preflight scaffold write triggers a
+        // framework full-reload, and the agent's variant write + `done` SSE
+        // land while the browser is mid-reload. The resumed page misses both
+        // signals and used to sit in GENERATING at 0/N forever. Here the
+        // reloaded page's HMR websocket connects to a dead mock and its SSE
+        // stream is refused until after the agent finishes, forcing the miss
+        // every time; recovery must come from the live server redelivering
+        // the completion once the browser's SSE reconnects.
+        const agent = createFakeAgent();
+        const session = await bootFixtureSession({
+          name,
+          fixture,
+          browser,
+          agent,
+          wrapTarget: wrapTargetFromPickedElement,
+          atomicDelayMs: 2500,
+          log: (m) => t.diagnostic(m),
+        });
+        const { page, tmp, teardown } = session;
+        const pickSelector = fixture.runtime.pickSelector || 'h1.hero-title';
+        try {
+          await waitForHandshake(page);
+
+          // Arm the blocks before Go. They only affect connections opened
+          // after this point — the current page keeps its live SSE and HMR
+          // socket, so the scaffold-triggered reload still goes through; it is
+          // the page that boots FROM that reload which comes up deaf.
+          let liveConnectionsBlocked = true;
+          await page.context().route('**/events?token=*', (route) => {
+            if (liveConnectionsBlocked && route.request().method() === 'GET') {
+              return route.abort();
+            }
+            return route.continue();
+          });
+          await page.context().routeWebSocket('**', () => {
+            // Never connectToServer(): the reloaded page's HMR client talks to
+            // a dead mock, so the variant-write full-reload push is lost.
+          });
+
+          await pickElement(page, pickSelector);
+          t.diagnostic('Clicking Go (agent write delayed 2.5s; reloaded page will miss HMR + SSE)');
+          await clickGo(page);
+
+          // The scaffold write reloads the page into wrapped-but-empty source.
+          await page.waitForFunction(() => {
+            const wrapper = document.querySelector('[data-impeccable-variants]');
+            if (!wrapper) return false;
+            const variants = wrapper.querySelectorAll('[data-impeccable-variant]:not([data-impeccable-variant="original"])');
+            return variants.length === 0;
+          }, { timeout: 15_000 });
+          t.diagnostic('Browser reloaded into the scaffold-only wrapper (0 variants)');
+
+          // Wait for the delayed agent write to land in source while the page
+          // is deaf to both delivery channels.
+          const scaffoldSource = join(tmp, fixture.runtime.missedDoneReloadScenario.sourceFile);
+          const writeDeadline = Date.now() + 20_000;
+          for (;;) {
+            if (/data-impeccable-variant="3"/.test(readFileSync(scaffoldSource, 'utf-8'))) break;
+            if (Date.now() > writeDeadline) throw new Error('agent variant write never landed in source');
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+          t.diagnostic('Variants in source; the browser missed the broadcast. Unblocking SSE.');
+          liveConnectionsBlocked = false;
+
+          // EventSource auto-retries. On reconnect the live server must
+          // redeliver the missed completion; the browser then injects the
+          // variants from source and reaches CYCLING despite the dead HMR.
+          await waitForCycling(page, 3, { timeout: 30_000 });
+          t.diagnostic('Session recovered to CYCLING after SSE redelivery');
+        } finally {
+          await teardownAndResetBrowser(teardown);
+        }
+      });
+    }
 
     if (shouldRunScenario('manual') && Array.isArray(fixture.runtime.manualEditScenarios) && fixture.runtime.manualEditScenarios.length > 0) {
       const manualScenarioFilter = process.env.IMPECCABLE_E2E_MANUAL_SCENARIO || '';
