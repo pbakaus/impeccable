@@ -68,7 +68,9 @@ Editorial brief is at `docs/STYLE.md`. Read it before editing the homepage, sub-
 
 The build's `validateProse` step (in `scripts/build.js`) enforces a denylist: em dashes (`—` and HTML entities), the `--` em-dash substitute, `load-bearing`, `highest-leverage`, `biggest unlock`, `seamless`, `robust`, `delve`, `elevate`, `empower`, `underscore`, `pivotal`, `tapestry`, `data-driven`, `reflex defaults`, `collapses into monoculture`, `in today's`, `gone are the days`, `whether you're`, `let's dive in`, `in summary`, `in conclusion`, `moreover`, `furthermore`. Each rule prints a rationale and a suggested replacement when it fires. **Do not silently work around the regex.** If a banned word has earned a real meaning here, raise it as a `docs/STYLE.md` amendment.
 
-The validator scans `site/pages/`, `site/content/`, `site/components/`, `site/layouts/`, `README.md`, `README.npm.md`. It deliberately skips `skill/` because LLM-facing reference instructions sometimes need technical phrasings the marketing copy can't.
+`validateProse` scans `site/components/`, `site/content/`, `site/layouts/`, `site/pages/`, `README.md`, `README.npm.md` (extensions `.html`, `.md`, `.js`, `.mjs`, `.css`, `.astro`). It exempts `site/pages/slop/`, because the slop catalog documents every anti-pattern by example and has to contain the specimens.
+
+**`skill/` is checked too, by a second gate.** `validateProse` skips it because the full ruleset does not fit LLM-facing reference instructions. `validateSkillProse` then scans `skill/**/*.md` (markdown only, not `skill/scripts/**` code or comments) and fails the build on em dashes plus the subset of phrases with no technical reading: `load-bearing`, `highest-leverage`, `biggest unlock`, `reflex defaults`, `collapses into monoculture`, `data-driven`, `delve`, `tapestry`, `in today's`, `gone are the days`, `let's dive in`, `in summary`, `in conclusion`. The words it does *not* enforce in `skill/` (`seamless`, `robust`, `elevate`, and friends) are the ones with legitimate technical uses. Net effect: an em dash in `skill/reference/*.md` fails `bun run build`; an em dash in a `skill/scripts/*.mjs` code comment does not.
 
 The deeper structural issues (negation pivot, triadic auto-pilot, uniform paragraph rhythm, hollow confidence) require human judgment. `docs/STYLE.md` lists them. Use them on every editorial pass.
 
@@ -247,6 +249,8 @@ bun run build:browser
 **IMPORTANT**: Always use `node` (not `bun`) to run the detect CLI. Bun's jsdom implementation is extremely slow and will cause scans with HTML files to hang for minutes.
 
 ## Versioning
+
+**Feature PRs do not bump versions and do not add changelog entries.** Bumping is a release step, not part of the change that earns the release: a version in a feature branch conflicts with every other open branch, and a changelog entry describes a release that has not happened. Land the code first; the maintainer bumps and writes the changelog when cutting the release. This holds even though the "Bump when: ..." notes below name the source dirs — those say *which* component a change belongs to, not *when* to edit the manifest. The only PR that touches a manifest version is one whose purpose is the release itself.
 
 There are three independently versioned components. Only bump the one(s) that actually changed:
 
