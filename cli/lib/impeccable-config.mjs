@@ -346,15 +346,11 @@ export function normalizeIgnoreValueEntries(entries) {
       ...(Array.isArray(entry.files) ? entry.files.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim()) : []),
     ]);
     if (files.length > 0) normalized.files = files;
-    // Key order is rule, value, files, createdAt, reason and must stay that way:
-    // normalizing runs on every write, so emitting a different order than the one
-    // already on disk rewrites every untouched entry and churns the diff. Keep in
-    // step with normalizeIgnoreValueEntries in skill/scripts/hook-lib.mjs.
-    if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
-      normalized.createdAt = entry.createdAt.trim();
-    }
     if (typeof entry.reason === 'string' && entry.reason.trim()) {
       normalized.reason = entry.reason.trim();
+    }
+    if (typeof entry.createdAt === 'string' && entry.createdAt.trim()) {
+      normalized.createdAt = entry.createdAt.trim();
     }
     out.push(normalized);
   }

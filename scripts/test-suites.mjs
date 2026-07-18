@@ -137,7 +137,6 @@ export const SUITES = {
           'tests/live-e2e/agent-insert.test.mjs',
           'tests/live-event-validation.test.mjs',
           'tests/live-generation-preflight.test.mjs',
-          'tests/live-generation-publisher.test.mjs',
           'tests/live-inject.test.mjs',
           'tests/live-insert.test.mjs',
           'tests/live-insert-ui.test.mjs',

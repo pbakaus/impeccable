@@ -121,11 +121,7 @@ function baseSnapshot(id) {
     fallbackMode: null,
     generationPhase: null,
     generationTimings: {},
-    generationEpoch: 1,
-    publishedRevision: 0,
-    deliveredVariants: {},
     variantPlan: null,
-    paramsPublished: false,
     generationCanceled: false,
     generationCanceledAt: null,
     cancelReason: null,
@@ -169,7 +165,6 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
     paramValues: { ...(snapshot.paramValues || {}) },
     sourceMarkers: { ...(snapshot.sourceMarkers || {}) },
     generationTimings: { ...(snapshot.generationTimings || {}) },
-    deliveredVariants: { ...(snapshot.deliveredVariants || {}) },
     variantPlan: snapshot.variantPlan || null,
     annotationArtifacts: [...(snapshot.annotationArtifacts || [])],
     diagnostics: [...(snapshot.diagnostics || [])],
@@ -183,7 +178,6 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
   switch (event.type) {
     case 'generate':
       next.phase = 'generate_requested';
-      next.generationEpoch = Number(event.generationEpoch || next.generationEpoch || 1);
       next.pageUrl = event.pageUrl ?? next.pageUrl;
       next.expectedVariants = event.count ?? next.expectedVariants;
       next.pendingEventSeq = entry.seq ?? next.pendingEventSeq;
@@ -202,40 +196,6 @@ function applyEvent(snapshot, entry, inheritedDiagnostics = []) {
           ...(next.detectorWaivers || []),
           ...(Array.isArray(event.waivers) ? event.waivers : []),
         ];
-      }
-      break;
-    case 'variant_published':
-      if (next.generationCanceled || GENERATION_FENCED_PHASES.has(next.phase)) {
-        next.diagnostics.push({
-          error: 'late_generation_event_ignored',
-          type: event.type,
-          phase: next.phase,
-          revision: event.revision ?? null,
-        });
-        break;
-      }
-      if (Number(event.generationEpoch || 0) !== Number(next.generationEpoch || 1)) {
-        next.diagnostics.push({
-          error: 'stale_generation_epoch_ignored',
-          epoch: event.generationEpoch ?? null,
-          expectedEpoch: next.generationEpoch || 1,
-        });
-        break;
-      }
-      next.phase = 'variants_progress';
-      next.publishedRevision = Math.max(next.publishedRevision || 0, Number(event.revision || 0));
-      next.arrivedVariants = Math.max(next.arrivedVariants || 0, Number(event.arrivedVariants || 0));
-      next.expectedVariants = Number(event.expectedVariants || next.expectedVariants || 0);
-      if (event.publicationKind === 'params') next.paramsPublished = true;
-      next.sourceFile = event.sourceFile ?? next.sourceFile;
-      next.previewFile = event.previewFile ?? next.previewFile;
-      next.previewMode = event.previewMode ?? next.previewMode;
-      if (event.revision) {
-        next.deliveredVariants[String(event.revision)] = {
-          digest: event.digest || null,
-          arrivedVariants: Number(event.arrivedVariants || 0),
-          publishedAt: event.at || null,
-        };
       }
       break;
     case 'agent_phase':

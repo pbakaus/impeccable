@@ -80,21 +80,6 @@ describe('live-session-store', () => {
     assert.deepEqual(restarted.getSnapshot('planned-session').variantPlan, plan);
   });
 
-  it('tracks parameter publication separately from variant arrival', () => {
-    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'parameter-phase' });
-    store.appendEvent({ type: 'generate', id: 'parameter-phase', count: 3, generationEpoch: 1 });
-    store.appendEvent({
-      type: 'variant_published', id: 'parameter-phase', revision: 1,
-      generationEpoch: 1, arrivedVariants: 3, publicationKind: 'variants',
-    });
-    assert.equal(store.getSnapshot('parameter-phase').paramsPublished, false);
-    store.appendEvent({
-      type: 'variant_published', id: 'parameter-phase', revision: 2,
-      generationEpoch: 1, arrivedVariants: 3, publicationKind: 'params',
-    });
-    assert.equal(store.getSnapshot('parameter-phase').paramsPublished, true);
-  });
-
   it('tombstones generation on early accept and ignores late generation writes', () => {
     const store = createLiveSessionStore({ cwd: tmp, sessionId: 'early-accept' });
     store.appendEvent({

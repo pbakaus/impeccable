@@ -8038,7 +8038,6 @@ void main() {
       paramsCurrentValues = { ...saved.paramValues };
     }
     if (saved.parameterState) parameterGenerationState = saved.parameterState;
-    else if (saved.paramsPublished === true && parameterGenerationState !== 'ready') parameterGenerationState = 'loading';
     if (saved.generationPhase) generationPhase = saved.generationPhase;
   }
 

@@ -74,16 +74,6 @@ describe('live-accept — marker search must ignore Impeccable state', () => {
     assert.doesNotMatch(source, /impeccable-variants-start/, 'the wrapper must be gone from real source');
   });
 
-  it('retires the session’s staged artifacts and leaves other sessions alone', () => {
-    seed();
-    const dir = join(tmp, '.impeccable', 'live', 'artifacts');
-    writeFileSync(join(dir, 'ffff0000-r1.astro'), SOURCE);
-    runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
-    assert.equal(existsSync(join(dir, 'ab12cd34-r1.astro')), false, 'own artifacts must not outlive the session');
-    assert.equal(existsSync(join(dir, 'ab12cd34-r3.astro')), false);
-    assert.equal(existsSync(join(dir, 'ffff0000-r1.astro')), true, 'another session’s artifacts must survive');
-  });
-
   it('discards into real source with an artifact decoy present', () => {
     seed({ revisions: 1 });
     const result = runAccept(tmp, ['--id', 'ab12cd34', '--discard']);

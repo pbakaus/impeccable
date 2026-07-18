@@ -383,7 +383,6 @@ function summarizeActiveSessionForClient(snapshot = {}) {
     browserCheckpointRevision: snapshot.browserCheckpointRevision ?? snapshot.checkpointRevision ?? 0,
     publicationCheckpointRevision: snapshot.publicationCheckpointRevision ?? 0,
     paramValues: snapshot.paramValues || {},
-    paramsPublished: snapshot.paramsPublished === true,
     generationPhase: snapshot.generationPhase ?? null,
     generationCanceled: snapshot.generationCanceled === true,
     cancelReason: snapshot.cancelReason ?? null,

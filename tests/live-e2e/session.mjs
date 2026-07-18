@@ -236,9 +236,6 @@ export async function bootFixtureSession({
   prepareTmp,
   log = () => {},
   trace = () => {},
-  progressive = false,
-  progressiveDelayMs = 0,
-  progressiveInitialCount = 1,
   atomicDelayMs = 0,
   keepTmp = false,
 }) {
@@ -324,18 +321,11 @@ export async function bootFixtureSession({
         wrapTarget,
         signal: agentAbort.signal,
         trace,
-        progressive,
-        progressiveDelayMs,
-        progressiveInitialCount,
         atomicDelayMs,
         steerSourceFile: runtime.steer?.sourceFile,
         steerTarget: runtime.steer?.target,
       };
-      const loops = [runAgentLoop({ ...loopOptions, log: (m) => log('[worker] ' + m) })];
-      if (progressive) {
-        loops.push(runAgentLoop({ ...loopOptions, log: (m) => log('[supervisor] ' + m) }));
-      }
-      agentDone = Promise.all(loops);
+      agentDone = Promise.all([runAgentLoop({ ...loopOptions, log: (m) => log('[worker] ' + m) })]);
     }
 
     const scheme = runtime.scheme || 'http';
