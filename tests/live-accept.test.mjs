@@ -31,6 +31,69 @@ function runAccept(cwd, args) {
   }
 }
 
+// The failure that broke the first real Claude Code Live run. Progressive
+// publication stages `.impeccable/live/artifacts/<id>-r<n>.<source-ext>`, which
+// carries the session marker. findSessionFile walks `src`, `app`, `pages`, ... and
+// then `.`; a project whose source is not under one of those (this repo's own site
+// lives in `site/pages/`) falls through to the `.` walk, where dot-directories sort
+// before letters — so the artifact was found before the real file.
+describe('live-accept — marker search must ignore Impeccable state', () => {
+  let tmp;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-decoy-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  const SOURCE = [
+    '<main>',
+    '<!-- impeccable-variants-start ab12cd34 -->',
+    '<div data-impeccable-variant="original">ORIGINAL</div>',
+    '<div data-impeccable-variant="1">VARIANT ONE</div>',
+    '<!-- impeccable-variants-end ab12cd34 -->',
+    '</main>',
+    '',
+  ].join('\n');
+
+  function seed({ revisions = 3 } = {}) {
+    mkdirSync(join(tmp, 'site', 'pages'), { recursive: true });
+    mkdirSync(join(tmp, '.impeccable', 'live', 'artifacts'), { recursive: true });
+    writeFileSync(join(tmp, 'site', 'pages', 'index.astro'), SOURCE);
+    for (let r = 1; r <= revisions; r += 1) {
+      writeFileSync(join(tmp, '.impeccable', 'live', 'artifacts', `ab12cd34-r${r}.astro`), SOURCE);
+    }
+  }
+
+  it('accepts into real source when a staged artifact carries the same marker', () => {
+    seed();
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    assert.equal(
+      result.file,
+      'site/pages/index.astro',
+      'accept must resolve the project file, not the .impeccable artifact decoy',
+    );
+    const source = readFileSync(join(tmp, 'site', 'pages', 'index.astro'), 'utf-8');
+    assert.match(source, /VARIANT ONE/);
+    assert.doesNotMatch(source, /impeccable-variants-start/, 'the wrapper must be gone from real source');
+  });
+
+  it('retires the session’s staged artifacts and leaves other sessions alone', () => {
+    seed();
+    const dir = join(tmp, '.impeccable', 'live', 'artifacts');
+    writeFileSync(join(dir, 'ffff0000-r1.astro'), SOURCE);
+    runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
+    assert.equal(existsSync(join(dir, 'ab12cd34-r1.astro')), false, 'own artifacts must not outlive the session');
+    assert.equal(existsSync(join(dir, 'ab12cd34-r3.astro')), false);
+    assert.equal(existsSync(join(dir, 'ffff0000-r1.astro')), true, 'another session’s artifacts must survive');
+  });
+
+  it('discards into real source with an artifact decoy present', () => {
+    seed({ revisions: 1 });
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--discard']);
+    assert.equal(result.handled, true, JSON.stringify(result));
+    assert.equal(result.file, 'site/pages/index.astro');
+    assert.match(readFileSync(join(tmp, 'site', 'pages', 'index.astro'), 'utf-8'), /ORIGINAL/);
+  });
+});
+
 describe('live-accept — session id validation', () => {
   let tmp;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-id-')); });

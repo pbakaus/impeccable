@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createLiveSessionStore } from './session-store.mjs';
 import { withSourceLockSync } from './source-lock.mjs';
-import { getLiveDir } from '../lib/impeccable-paths.mjs';
+import { getLiveDir, safeSessionId } from '../lib/impeccable-paths.mjs';
 import {
   SOURCE_ARTIFACT_PREVIEW_MODE,
   findSourceArtifactManifest,
@@ -11,6 +11,28 @@ import {
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+/**
+ * Delete a session's staged revision artifacts.
+ *
+ * Nothing used to remove these, and they are the reason a Live accept could
+ * resolve to the wrong file: `<id>-r<n>.<source-ext>` carries the session marker,
+ * so it is a decoy for any marker search that walks the project. live-accept no
+ * longer searches `.impeccable`, but the artifacts should not outlive the session
+ * they belong to either. Called on accept and discard.
+ */
+export function removeGenerationArtifacts(id, cwd = process.cwd()) {
+  let removed = 0;
+  try { safeSessionId(id); } catch { return removed; }
+  const artifactDir = path.join(getLiveDir(cwd), 'artifacts');
+  let entries;
+  try { entries = fs.readdirSync(artifactDir); } catch { return removed; }
+  for (const name of entries) {
+    if (!name.startsWith(id + '-r')) continue;
+    try { fs.rmSync(path.join(artifactDir, name), { force: true }); removed += 1; } catch { /* best effort */ }
+  }
+  return removed;
 }
 
 export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() } = {}) {

@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './lib/is-generated.mjs';
-import { getLiveDir, safeSessionId } from './lib/impeccable-paths.mjs';
+import { IMPECCABLE_DIR, getLiveDir, safeSessionId } from './lib/impeccable-paths.mjs';
 import { readBuffer as readManualEditsBuffer, writeBuffer as writeManualEditsBuffer } from './live/manual-edits-buffer.mjs';
 import { withSourceLockSync } from './live/source-lock.mjs';
 import {
@@ -34,6 +34,7 @@ import {
   findSourceArtifactManifest,
   removeSourceArtifactSession,
 } from './live/source-artifact.mjs';
+import { removeGenerationArtifacts } from './live/generation-publisher.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 const ACCEPT_LOCK_WAIT_MS = 1_000;
@@ -157,6 +158,10 @@ Output (JSON):
         variantId: isDiscard ? null : String(variantNum),
         result,
       });
+      // The session is over: drop its staged revision artifacts. Leaving them
+      // behind is what let a later marker search find a decoy instead of real
+      // source. Only on success, so a failed accept can still be retried.
+      removeGenerationArtifacts(id, process.cwd());
     }
     console.log(JSON.stringify(result));
   };
@@ -1037,6 +1042,21 @@ function detectCommentSyntax(filePath) {
 // File search (find the file containing session markers)
 // ---------------------------------------------------------------------------
 
+/**
+ * `.impeccable` is the critical entry, and it is not cosmetic.
+ *
+ * Progressive publication stages each revision as `.impeccable/live/artifacts/
+ * <id>-r<n>.<source-ext>`, and those artifacts carry the very marker this search
+ * looks for. The walk reaches `.` for any project whose source is not under one
+ * of the privileged dirs above (this repo's own site lives in `site/pages/`), and
+ * dot-directories sort before letters, so the artifact was found *before* the
+ * real file. isGeneratedFile then declined the accept, and the agent fell back to
+ * carbonizing several hundred lines of stylesheet by hand.
+ *
+ * Impeccable's own state directory is never project source. Never search it.
+ */
+const SEARCH_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', IMPECCABLE_DIR]);
+
 function findSessionFile(id, cwd) {
   const marker = 'impeccable-variants-start ' + id;
   const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', '.'];
@@ -1077,7 +1097,7 @@ function searchDir(dir, query, seen, depth) {
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    if (['node_modules', '.git', 'dist', 'build'].includes(entry.name)) continue;
+    if (SEARCH_SKIP_DIRS.has(entry.name)) continue;
     const result = searchDir(path.join(dir, entry.name), query, seen, depth + 1);
     if (result) return result;
   }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compileProviderBlocks } from '../scripts/lib/utils.js';
 import { PROVIDERS } from '../scripts/lib/transformers/providers.js';
@@ -37,7 +37,6 @@ describe('live reference authoring contract', () => {
 
   it('keeps the live prompt focused on the foreground poll loop', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    const generationAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-live-generator.md'), 'utf-8');
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');
     const openingContract = liveMd.split('\n').slice(0, 60).join('\n');
 
@@ -65,21 +64,25 @@ describe('live reference authoring contract', () => {
     assert.match(liveMd, /delegate source edits to `impeccable_manual_edit_applier`/);
     assert.match(liveMd, /The subagent must not poll or reply/);
     assert.match(liveMd, /parent live thread keeps the foreground poll loop/);
-    assert.match(liveMd, /delegate to the low-effort `impeccable_live_generator` agent/);
-    assert.match(liveMd, /Do not paste this full reference into the handoff/);
-    assert.match(generationAgentMd, /codex-name: impeccable_live_generator/);
-    assert.match(generationAgentMd, /effort: low/);
-    // The generator ships to every harness with an agent format, not just Codex:
-    // Codex delegates to unblock its foreground poll, Claude Code delegates to
-    // keep a long session's screenshots and variant CSS out of the main context.
+    // Generation stays in the main thread on every harness. The generator subagent
+    // was removed after the first real Claude Code run: the parent has to
+    // hand-compress the design system into the handoff, and compression is lossy.
+    // It shipped 0 `var(--token)` uses and 22 raw oklch literals, violating its own
+    // "never invent raw colors" rule, then needed hundreds of lines of hand
+    // carbonize to repair. The parent's context is the job, not overhead.
     assert.doesNotMatch(
-      generationAgentMd,
-      /^providers:/m,
-      'the live generator must not be gated to one harness',
+      liveMd,
+      /impeccable[-_]live[-_]generator/,
+      'live generation must not be delegated to a subagent',
     );
-    assert.match(generationAgentMd, /Never poll, Accept, Discard/);
-    assert.match(generationAgentMd, /Publish the first reviewable result/);
-    assert.match(generationAgentMd, /preserve every already-published variant byte-for-byte/i);
+    assert.equal(
+      existsSync(join(ROOT, 'skill/agents/impeccable-live-generator.md')),
+      false,
+      'the live generator agent must not come back without the context problem being solved',
+    );
+    // Copy edits keep their subagent: applying a known set of ops to a named file
+    // is self-contained work, so an isolated context costs nothing.
+    assert.match(manualAgentMd, /codex-name: impeccable_manual_edit_applier/);
     assert.match(liveMd, /live-accept\.mjs --page-url PAGE_URL/);
     assert.match(liveMd, /If `repair` is present/);
     assert.match(liveMd, /Fix the current source/);
