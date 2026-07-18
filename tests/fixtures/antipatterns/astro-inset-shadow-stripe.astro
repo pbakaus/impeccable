@@ -17,6 +17,8 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Trailing Inset Edge"><h3>Trailing Inset Edge</h3></article>
     <article data-case="Trailing Inset Token Edge"><h3>Trailing Inset Token Edge</h3></article>
     <article data-case="Inset Named Token Edge"><h3>Inset Named Token Edge</h3></article>
+    <article data-case="Two Length Edge"><h3>Two Length Edge</h3></article>
+    <article data-case="Two Length Trailing Inset Edge"><h3>Two Length Trailing Inset Edge</h3></article>
   </section>
   <section aria-labelledby="should-pass">
     <h2 id="should-pass">Should pass</h2>
@@ -35,6 +37,8 @@ const title = 'Astro inset shadow stripe regression';
     <article data-case="Shorthand Neutral Hex Edge"><h3>Shorthand Neutral Hex Edge</h3></article>
     <article data-case="Commented Out Edge"><h3>Commented Out Edge</h3></article>
     <article data-case="Trailing Inset Neutral Edge"><h3>Trailing Inset Neutral Edge</h3></article>
+    <article data-case="Two Length Neutral Edge"><h3>Two Length Neutral Edge</h3></article>
+    <article data-case="Two Length Blurred Edge"><h3>Two Length Blurred Edge</h3></article>
   </section>
 </main>
 
@@ -70,6 +74,13 @@ const title = 'Astro inset shadow stripe regression';
   /* The keyword must only be stripped standalone: this token merely contains it. */
   [data-case="Inset Named Token Edge"] { box-shadow: inset 4px 0 0 var(--inset-accent); }
   [data-case="Trailing Inset Neutral Edge"] { box-shadow: 4px 0 0 #000 inset; }
+
+  /* box-shadow takes <length>{2,4}: blur and spread are optional and default to
+     0, so these paint the same stripe as the four-length forms above. */
+  [data-case="Two Length Edge"] { box-shadow: inset 4px 0 var(--brand-accent); }
+  [data-case="Two Length Trailing Inset Edge"] { box-shadow: 0 5px #6366f1 inset; }
+  [data-case="Two Length Neutral Edge"] { box-shadow: inset 4px 0 #000; }
+  [data-case="Two Length Blurred Edge"] { box-shadow: inset 4px 0 5px var(--brand-accent); }
 
   /* Commented-out rules are not live CSS.
   [data-case="Commented Out Edge"] { box-shadow: inset 4px 0 0 var(--brand-accent); }

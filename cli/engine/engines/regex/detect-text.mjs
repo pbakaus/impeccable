@@ -425,11 +425,15 @@ function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
       // an unchanged layer had no inset keyword and is not our shape.
       const body = layer.replace(/(^|\s)inset(?=\s|$)/i, '$1').trim();
       if (body === layer) continue;
-      const shadow = body.match(/^(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
+      // box-shadow takes <length>{2,4}: only the two offsets are required, so
+      // `inset 4px 0 red` is valid and paints the same stripe as
+      // `inset 4px 0 0 red`. Demanding a third length missed the short form.
+      const shadow = body.match(/^(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
       if (!shadow) continue;
       const x = Number(shadow[1]);
       const y = Number(shadow[3]);
-      const blur = Number(shadow[5]);
+      // Omitted blur and spread default to 0, which is exactly the stripe shape.
+      const blur = shadow[5] == null ? 0 : Number(shadow[5]);
       const spread = shadow[7] == null ? 0 : Number(shadow[7]);
       if ((x !== 0 && !shadow[2]) || (y !== 0 && !shadow[4]) || blur !== 0 || spread !== 0) continue;
       const ax = Math.abs(x);

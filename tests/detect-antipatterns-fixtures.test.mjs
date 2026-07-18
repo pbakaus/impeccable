@@ -33,6 +33,9 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Trailing Inset Edge',
     'Trailing Inset Token Edge',
     'Inset Named Token Edge',
+    // Only the two offsets are required; blur/spread default to 0.
+    'Two Length Edge',
+    'Two Length Trailing Inset Edge',
   ];
   const SHOULD_PASS = [
     'Neutral Shadow Token',
@@ -56,6 +59,9 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Commented Out Edge',
     // Trailing `inset` still respects the neutral-color exemption.
     'Trailing Inset Neutral Edge',
+    // The short form still respects the neutral and blur exclusions.
+    'Two Length Neutral Edge',
+    'Two Length Blurred Edge',
   ];
 
   it('Astro style blocks flag unresolved chromatic inset stripes only', () => {
