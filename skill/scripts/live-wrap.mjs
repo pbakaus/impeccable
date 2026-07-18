@@ -230,7 +230,6 @@ The agent should insert variant HTML at insertLine.`);
   // Strip only the COMMON minimum leading whitespace across the picked lines;
   // `deindentContent` on the accept side already mirrors this convention.
   let originalLines = lines.slice(startLine, endLine + 1);
-  const sourceOriginalLines = [...originalLines];
 
   // Buffer-aware "original" content: if the user has pending manual edits for
   // this page whose originalText appears in the picked source range, apply
