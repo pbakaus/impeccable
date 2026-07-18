@@ -34,17 +34,6 @@ test('builds a replace preflight from the picker locator', () => {
   ]);
 });
 
-test('can request an isolated source preview for dedicated generation', () => {
-  const command = buildGenerationPreflight({
-    type: 'generate',
-    id: 'session-isolated',
-    count: 3,
-    element: { classes: ['hero'], tagName: 'SECTION' },
-  }, SCRIPTS_DIR, { isolated: true });
-  assert.equal(command.mode, 'replace');
-  assert.equal(command.args.includes('--isolated'), true);
-});
-
 test('builds an insert preflight from the anchor locator', () => {
   const command = buildGenerationPreflight({
     type: 'generate',

@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 15_000;
 
-export function buildGenerationPreflight(event, scriptsDir, { isolated = false } = {}) {
+export function buildGenerationPreflight(event, scriptsDir) {
   if (!event || event.type !== 'generate' || !event.id) return null;
 
   const isInsert = event.mode === 'insert';
@@ -14,7 +14,6 @@ export function buildGenerationPreflight(event, scriptsDir, { isolated = false }
 
   const script = path.join(scriptsDir, isInsert ? 'live-insert.mjs' : 'live-wrap.mjs');
   const args = [script, '--id', event.id, '--count', String(event.count || 3)];
-  if (!isInsert && isolated) args.push('--isolated');
   if (isInsert) args.push('--position', target.position);
   if (target.elementId) args.push('--element-id', target.elementId);
   if (target.classes) args.push('--classes', target.classes);
@@ -39,9 +38,8 @@ export async function runGenerationPreflight(event, {
   scriptsDir,
   execFileImpl = execFileAsync,
   timeoutMs = PREFLIGHT_TIMEOUT_MS,
-  isolated = false,
 } = {}) {
-  const command = buildGenerationPreflight(event, scriptsDir, { isolated });
+  const command = buildGenerationPreflight(event, scriptsDir);
   if (!command) {
     return { ok: false, skipped: true, reason: 'insufficient_locator' };
   }

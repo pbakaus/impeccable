@@ -1,13 +1,11 @@
-// A preview whose variants live outside the user's source: component modules or
-// an isolated artifact. These keep the real file untouched until Accept, so a
-// failed accept leaves nothing in source for the agent to hand-edit and must be
-// reported as a failure rather than reference/live.md's manual-cleanup handoff.
-// Previously only `svelte-component` was special-cased here, so the same failure
-// on a Vue or isolated-artifact preview was acknowledged as a success.
+// A preview whose variants live in component modules rather than in the user's
+// source. These leave no markers in the real file, so a failed accept gives the
+// agent nothing to hand-edit and must be reported as a failure rather than
+// reference/live.md's manual-cleanup handoff. Previously only `svelte-component`
+// was special-cased, so the same failure on a Vue preview read as success.
 const PREVIEW_MODES_WITHOUT_SOURCE_MARKERS = new Set([
   'svelte-component',
   'vue-component',
-  'source-artifact',
 ]);
 
 export function completionTypeForAcceptResult(eventType, acceptResult) {

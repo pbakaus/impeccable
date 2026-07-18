@@ -998,16 +998,11 @@ function sessionFileMetadataFromPollReply(file) {
   if (!file || typeof file !== 'string') return { file };
   const normalized = file.split(path.sep).join('/');
   const base = { file: normalized };
-  const sourceArtifactPreview = normalized.includes('.impeccable/live/previews/')
-    && !normalized.endsWith('/manifest.json');
-  const metadataFile = sourceArtifactPreview
-    ? normalized.slice(0, normalized.lastIndexOf('/') + 1) + 'manifest.json'
-    : normalized;
+  const metadataFile = normalized;
   if (!metadataFile.endsWith('/manifest.json') && metadataFile !== 'manifest.json') return base;
   if (!metadataFile.includes('node_modules/.impeccable-live/')
       && !metadataFile.includes('src/lib/impeccable/')
-      && !metadataFile.includes('/.impeccable-live/')
-      && !metadataFile.includes('.impeccable/live/previews/')) return base;
+      && !metadataFile.includes('/.impeccable-live/')) return base;
 
   let full;
   try {
@@ -1020,15 +1015,12 @@ function sessionFileMetadataFromPollReply(file) {
 
   try {
     const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
-    if (!['svelte-component', 'vue-component', 'source-artifact'].includes(manifest?.previewMode)
+    if (!['svelte-component', 'vue-component'].includes(manifest?.previewMode)
         || !manifest.sourceFile) return base;
-    const previewFile = manifest.previewMode === 'source-artifact'
-      ? String(manifest.previewFile || normalized).split(path.sep).join('/')
-      : normalized;
     return {
       file: String(manifest.sourceFile).split(path.sep).join('/'),
       sourceFile: String(manifest.sourceFile).split(path.sep).join('/'),
-      previewFile,
+      previewFile: normalized,
       previewMode: manifest.previewMode,
     };
   } catch {

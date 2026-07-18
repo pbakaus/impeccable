@@ -253,25 +253,6 @@ describe('wrapCli integration', () => {
     assert.ok(!modified.includes('data-impeccable-variant="original" style="display: none"'));
   });
 
-  it('creates an isolated source preview without mutating the project file', () => {
-    const html = '<main>\n  <section class="hero"><h1>Original</h1></section>\n</main>\n';
-    writeFileSync(join(tmp, 'index.html'), html);
-    const output = execFileSync(process.execPath, [
-      resolve('skill/scripts/live-wrap.mjs'),
-      '--id', 'isolated123', '--count', '3', '--classes', 'hero',
-      '--file', 'index.html', '--isolated',
-    ], { cwd: tmp, encoding: 'utf-8' });
-    const result = JSON.parse(output);
-
-    assert.equal(readFileSync(join(tmp, 'index.html'), 'utf-8'), html);
-    assert.equal(result.sourceFile, 'index.html');
-    assert.equal(result.previewMode, 'source-artifact');
-    assert.match(result.file, /^\.impeccable\/live\/previews\/isolated123\/preview\.html$/);
-    assert.match(readFileSync(join(tmp, result.file), 'utf-8'), /data-impeccable-variants="isolated123"/);
-    const manifest = JSON.parse(readFileSync(join(tmp, result.previewManifest), 'utf-8'));
-    assert.equal(manifest.originalSource, '  <section class="hero"><h1>Original</h1></section>');
-    assert.equal(manifest.sourceFile, 'index.html');
-  });
 
   it('wraps a JSX element and uses JSX comment syntax', () => {
     const jsx = `export default function App() {

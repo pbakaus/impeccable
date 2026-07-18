@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createLiveSessionStore } from '../skill/scripts/live/session-store.mjs';
-import { scaffoldSourceArtifactSession } from '../skill/scripts/live/source-artifact.mjs';
 import {
   prepareGenerationArtifact,
   publishGenerationArtifact,
@@ -188,60 +187,6 @@ describe('transactional generation publisher', () => {
     assert.equal(result.ok, false);
     assert.equal(result.error, 'published_variant_css_changed', JSON.stringify(result));
     assert.equal(readFileSync(source, 'utf-8'), firstSource);
-  });
-});
-
-describe('transactional isolated source preview publisher', () => {
-  let tmp;
-  const id = 'isolatedpub';
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'impeccable-isolated-publisher-'));
-    writeFileSync(join(tmp, 'page.html'), '<main><section class="hero">Original</section></main>');
-    createLiveSessionStore({ cwd: tmp, sessionId: id }).appendEvent({
-      type: 'generate', id, generationEpoch: 1, count: 3,
-    });
-  });
-
-  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
-
-  it('publishes to the preview artifact while fencing the byte-identical source', () => {
-    const original = readFileSync(join(tmp, 'page.html'), 'utf-8');
-    const session = scaffoldSourceArtifactSession({
-      id,
-      count: 3,
-      sourceFile: 'page.html',
-      sourceStartLine: 1,
-      sourceEndLine: 1,
-      originalSource: '<section class="hero">Original</section>',
-      previewContent: '<main><div data-impeccable-variants="isolatedpub"><div data-impeccable-variant="original"><section class="hero">Original</section></div></div></main>',
-      cwd: tmp,
-    });
-    const prepared = prepareGenerationArtifact({ id, sourceFile: session.previewFile, cwd: tmp });
-    assert.equal(prepared.ok, true);
-    assert.equal(prepared.sourceFile, 'page.html');
-    assert.equal(prepared.previewFile, session.previewFile);
-    assert.equal(prepared.previewMode, 'source-artifact');
-
-    const candidate = readFileSync(join(tmp, prepared.artifactFile), 'utf-8')
-      .replace('</div></main>', '<div data-impeccable-variant="1"><section>Variant one</section></div></div></main>');
-    writeFileSync(join(tmp, prepared.artifactFile), candidate);
-    const published = publishGenerationArtifact({
-      id,
-      epoch: prepared.epoch,
-      sourceFile: session.previewFile,
-      artifactFile: prepared.artifactFile,
-      expectedSourceHash: prepared.expectedSourceHash,
-      arrivedVariants: 1,
-      expectedVariants: 3,
-      cwd: tmp,
-    });
-
-    assert.equal(published.ok, true, JSON.stringify(published));
-    assert.equal(published.sourceFile, 'page.html');
-    assert.equal(published.previewMode, 'source-artifact');
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
-    assert.match(readFileSync(join(tmp, session.previewFile), 'utf-8'), /Variant one/);
   });
 });
 

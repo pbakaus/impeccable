@@ -2416,7 +2416,7 @@ colors: {}
         type: 'agent_phase',
         id: 'a1b2c3e1',
         phase: 'first_variant_generating',
-        owner: 'impeccable-live-generator',
+        owner: 'live-agent',
       }),
     });
     assert.equal(progress.status, 200);

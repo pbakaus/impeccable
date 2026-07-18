@@ -4923,10 +4923,6 @@
     return mode === 'svelte-component' || mode === 'vue-component';
   }
 
-  function isSourceArtifactPreviewMode(mode) {
-    return mode === 'source-artifact';
-  }
-
   function parseOriginalMarkupElement(originalMarkup) {
     const parser = new DOMParser();
     const doc = parser.parseFromString('<div id="impeccable-anchor">' + originalMarkup + '</div>', 'text/html');
@@ -5630,9 +5626,7 @@
       injectSvelteComponentsFromManifest(filePath, sessionId);
       return;
     }
-    rememberSessionFileMeta(isSourceArtifactPreviewMode(currentPreviewMode)
-      ? { previewFile: filePath, previewMode: currentPreviewMode }
-      : { file: filePath });
+    rememberSessionFileMeta({ file: filePath });
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(filePath);
     fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
@@ -6340,8 +6334,6 @@
             rememberSessionFileMeta(msg);
             if (isFrameworkComponentPreviewMode(msg.previewMode) && msg.previewFile) {
               injectSvelteComponentsFromManifest(msg.previewFile, msg.id);
-            } else if (isSourceArtifactPreviewMode(msg.previewMode) && msg.previewFile) {
-              injectVariantsFromSource(msg.previewFile, msg.id);
             } else if ((msg.previewMode === 'source' || !msg.previewMode) && (msg.previewFile || msg.file)) {
               // Give normal framework HMR the first chance to reconcile its
               // own managed tree. Nuxt route-module HMR can skip intermediate
@@ -8021,13 +8013,6 @@ void main() {
     const previewFile = normalizeSessionPath(meta.previewFile);
     const previewMode = meta.previewMode || (isSvelteComponentManifestPath(previewFile || file) ? 'svelte-component' : null);
 
-    if (isSourceArtifactPreviewMode(previewMode)) {
-      currentPreviewMode = previewMode;
-      currentPreviewFile = previewFile || file || currentPreviewFile;
-      currentSourceFile = sourceFile || currentSourceFile;
-      return;
-    }
-
     if (isFrameworkComponentPreviewMode(previewMode) || isSvelteComponentManifestPath(file)) {
       currentPreviewMode = isFrameworkComponentPreviewMode(previewMode) ? previewMode : 'svelte-component';
       currentPreviewFile = previewFile || (isSvelteComponentManifestPath(file) ? file : currentPreviewFile);
@@ -8126,7 +8111,7 @@ void main() {
     saveSession();
     queueCheckpoint(reason || 'browser_restore_without_wrapper');
 
-    const restoreFile = isFrameworkComponentPreviewMode(currentPreviewMode) || isSourceArtifactPreviewMode(currentPreviewMode)
+    const restoreFile = isFrameworkComponentPreviewMode(currentPreviewMode)
       ? currentPreviewFile
       : (currentSourceFile || currentPreviewFile);
     if (restoreFile) {

@@ -53,12 +53,11 @@ describe('live completion type classification', () => {
     );
   });
 
-  // Previews whose variants live outside the user's source leave nothing in the
-  // file to hand-edit, so a failed accept there is a failure, not live.md's
-  // "read file, find markers, edit" handoff. Only svelte-component was special
-  // cased, so the identical failure on a Vue or isolated-artifact preview was
-  // acknowledged as a success and Live continued past it.
-  for (const previewMode of ['svelte-component', 'vue-component', 'source-artifact']) {
+  // Component previews keep their variants in module files, not in the user's
+  // source, so a failed accept leaves nothing to hand-edit: that is a failure, not
+  // live.md's "read file, find markers, edit" handoff. Only svelte-component was
+  // special cased, so the identical failure on a Vue preview read as success.
+  for (const previewMode of ['svelte-component', 'vue-component']) {
     it(`treats a failed ${previewMode} accept as an error, not a manual handoff`, () => {
       assert.equal(
         completionTypeForAcceptResult('accept', { handled: false, error: 'source_locked', previewMode }),

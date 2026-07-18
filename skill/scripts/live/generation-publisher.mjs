@@ -4,10 +4,6 @@ import { createHash } from 'node:crypto';
 import { createLiveSessionStore } from './session-store.mjs';
 import { withSourceLockSync } from './source-lock.mjs';
 import { getLiveDir, safeSessionId } from '../lib/impeccable-paths.mjs';
-import {
-  SOURCE_ARTIFACT_PREVIEW_MODE,
-  findSourceArtifactManifest,
-} from './source-artifact.mjs';
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -43,9 +39,7 @@ export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() 
 
   const componentTarget = readComponentPublicationTarget(requestedPath, cwd, id);
   if (componentTarget?.error) return componentTarget;
-  const sourceArtifactTarget = componentTarget ? null : readSourceArtifactPublicationTarget(requestedPath, cwd, id);
-  if (sourceArtifactTarget?.error) return sourceArtifactTarget;
-  const sourcePath = componentTarget?.sourcePath || sourceArtifactTarget?.sourcePath || requestedPath;
+  const sourcePath = componentTarget?.sourcePath || requestedPath;
 
   try {
     return withSourceLockSync(sourcePath, 'generation-prepare:' + id, () => {
@@ -56,9 +50,7 @@ export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() 
         return failure('stale_generation_epoch', { canceled: true, phase: snapshot.phase });
       }
       const source = fs.readFileSync(sourcePath, 'utf-8');
-      const artifactBase = sourceArtifactTarget
-        ? fs.readFileSync(sourceArtifactTarget.previewPath, 'utf-8')
-        : source;
+      const artifactBase = source;
       const revision = Number(snapshot.publishedRevision || 0) + 1;
       const artifactDir = path.join(getLiveDir(cwd), 'artifacts');
       if (componentTarget) {
@@ -84,10 +76,6 @@ export function prepareGenerationArtifact({ id, sourceFile, cwd = process.cwd() 
         epoch: Number(snapshot.generationEpoch || 1),
         revision,
         sourceFile: relative(cwd, sourcePath),
-        ...(sourceArtifactTarget ? {
-          previewFile: relative(cwd, sourceArtifactTarget.previewPath),
-          previewMode: SOURCE_ARTIFACT_PREVIEW_MODE,
-        } : {}),
         artifactFile: relative(cwd, artifactPath),
         expectedSourceHash: sha256(source),
       };
@@ -124,8 +112,6 @@ export function publishGenerationArtifact({
 
   const componentTarget = readComponentPublicationTarget(requestedPath, cwd, id);
   if (componentTarget?.error) return componentTarget;
-  const sourceArtifactTarget = componentTarget ? null : readSourceArtifactPublicationTarget(requestedPath, cwd, id);
-  if (sourceArtifactTarget?.error) return sourceArtifactTarget;
   const artifactManifest = readJson(artifactPath);
   const isComponentArtifact = isComponentPreviewMode(artifactManifest?.previewMode);
   if (Boolean(componentTarget) !== isComponentArtifact) {
@@ -134,7 +120,7 @@ export function publishGenerationArtifact({
   if (componentTarget && componentTarget.manifest.previewMode !== artifactManifest?.previewMode) {
     return failure('artifact_preview_mode_mismatch');
   }
-  const sourcePath = componentTarget?.sourcePath || sourceArtifactTarget?.sourcePath || requestedPath;
+  const sourcePath = componentTarget?.sourcePath || requestedPath;
 
   try {
     return withSourceLockSync(sourcePath, 'generation:' + id + ':' + epoch, () => {
@@ -167,9 +153,7 @@ export function publishGenerationArtifact({
         });
       }
 
-      const stablePreview = sourceArtifactTarget
-        ? fs.readFileSync(sourceArtifactTarget.previewPath, 'utf-8')
-        : current;
+      const stablePreview = current;
       const artifact = fs.readFileSync(artifactPath, 'utf-8');
       if (!artifact.includes('data-impeccable-variants="' + id + '"')) {
         return failure('artifact_missing_session_wrapper');
@@ -200,7 +184,7 @@ export function publishGenerationArtifact({
       const commitStale = staleGenerationFailure(commitSnapshot, epoch);
       if (commitStale) return commitStale;
       const artifactHash = sha256(artifact);
-      const publishPath = sourceArtifactTarget?.previewPath || sourcePath;
+      const publishPath = sourcePath;
       atomicReplace(publishPath, artifact);
       const revision = Number(commitSnapshot.publishedRevision || 0) + 1;
       store.appendEvent({
@@ -210,10 +194,6 @@ export function publishGenerationArtifact({
         revision,
         digest: artifactHash,
         sourceFile: relative(cwd, sourcePath),
-        ...(sourceArtifactTarget ? {
-          previewFile: relative(cwd, publishPath),
-          previewMode: SOURCE_ARTIFACT_PREVIEW_MODE,
-        } : {}),
         arrivedVariants: delivered,
         expectedVariants: Number(expectedVariants || snapshot.expectedVariants || delivered),
         publicationKind: publicationKind || 'variants',
@@ -226,10 +206,6 @@ export function publishGenerationArtifact({
         revision,
         digest: artifactHash,
         sourceFile: relative(cwd, sourcePath),
-        ...(sourceArtifactTarget ? {
-          previewFile: relative(cwd, publishPath),
-          previewMode: SOURCE_ARTIFACT_PREVIEW_MODE,
-        } : {}),
         arrivedVariants: delivered,
         expectedVariants: Number(expectedVariants || snapshot.expectedVariants || delivered),
         publicationKind: publicationKind || 'variants',
@@ -366,7 +342,7 @@ function publishComponentArtifact({
   }
 
   // Check the fence before writing anything. The prepare→publish gap is exactly
-  // where an Accept lands, and the source-artifact path above rechecks before
+  // where an Accept lands, and the non-component path above rechecks before
   // its only write. Without the same check here, a canceled generation still
   // scattered variant files across the generated component dir and left them
   // there — the `stale_generation_epoch` returns below have no rollback.
@@ -465,15 +441,6 @@ function readComponentPublicationTarget(manifestPath, cwd, id) {
     return failure('manifest_component_dir_mismatch');
   }
   return { manifest, manifestPath, sourcePath, componentPath };
-}
-
-function readSourceArtifactPublicationTarget(requestedPath, cwd, id) {
-  const manifest = findSourceArtifactManifest(id, cwd);
-  if (!manifest) return null;
-  if (path.resolve(requestedPath) !== path.resolve(manifest.previewPath)) {
-    return failure('source_artifact_preview_mismatch');
-  }
-  return manifest;
 }
 
 function componentManifestMismatch(target, artifact) {

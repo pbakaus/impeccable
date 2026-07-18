@@ -165,13 +165,6 @@ describe('live-browser.js regression guards', () => {
     assert.match(SOURCE, /const anchorDelta = anchorTop - scrollLockAnchorTop/);
   });
 
-  it('injects source-artifact previews immediately instead of waiting for HMR', () => {
-    assert.match(
-      SOURCE,
-      /else if \(isSourceArtifactPreviewMode\(msg\.previewMode\) && msg\.previewFile\) \{\s*injectVariantsFromSource\(msg\.previewFile/,
-    );
-  });
-
   it('does not autofocus the steering chat while inline editing', () => {
     assert.match(
       SOURCE,

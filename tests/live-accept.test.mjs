@@ -10,7 +10,6 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { scaffoldSourceArtifactSession } from '../skill/scripts/live/source-artifact.mjs';
 import { sourceLockPath } from '../skill/scripts/live/source-lock.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -148,106 +147,55 @@ describe('live-accept — session id validation', () => {
   }
 });
 
-describe('live-accept — isolated source artifacts', () => {
+// The plain wrapper is the only non-component preview path now that the isolated
+// source-artifact mode is gone, so its lock-contention behaviour is what carries
+// these guarantees.
+describe('live-accept — plain wrapper under source-lock contention', () => {
   let tmp;
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-isolated-')); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'impeccable-accept-lock-')); });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-  function scaffold(id) {
-    const original = '<main>\n  <section class="hero"><h1>Original</h1></section>\n</main>\n';
-    writeFileSync(join(tmp, 'page.html'), original);
-    const session = scaffoldSourceArtifactSession({
-      id,
-      count: 2,
-      sourceFile: 'page.html',
-      sourceStartLine: 2,
-      sourceEndLine: 2,
-      originalSource: '<section class="hero"><h1>Original</h1></section>',
-      previewContent: `<main>
-  <!-- impeccable-variants-start ${id} -->
-  <div data-impeccable-variants="${id}" data-impeccable-variant-count="2" style="display: contents">
-    <div data-impeccable-variant="original"><section class="hero"><h1>Original</h1></section></div>
-    <div data-impeccable-variant="1"><section class="hero"><h1>Accepted one</h1></section></div>
-    <div data-impeccable-variant="2"><section class="hero"><h1>Accepted two</h1></section></div>
-  </div>
-  <!-- impeccable-variants-end ${id} -->
-</main>
-`,
-      cwd: tmp,
-    });
-    return { original, session };
+  const PAGE = [
+    '<!-- impeccable-variants-start ab12cd34 -->',
+    '<div data-impeccable-variant="original">ORIGINAL</div>',
+    '<div data-impeccable-variant="1">VARIANT ONE</div>',
+    '<!-- impeccable-variants-end ab12cd34 -->',
+    '',
+  ].join('\n');
+
+  function holdLock() {
+    // realpath: mkdtemp hands back /var/... on macOS while the child's cwd
+    // resolves to /private/var/..., and the lock digest hashes the absolute path.
+    const realTmp = realpathSync(tmp);
+    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
+    mkdirSync(dirname(lockPath), { recursive: true });
+    // process.pid is alive, so the lock is a live holder rather than stale.
+    writeFileSync(lockPath, JSON.stringify({
+      owner: 'generation:ab12cd34:1', token: 'other', pid: process.pid, at: Date.now(),
+    }) + '\n');
   }
 
-  it('accepts one preview into true source exactly once', () => {
-    const { session } = scaffold('isolatedaccept');
-    const result = runAccept(tmp, ['--id', 'isolatedaccept', '--variant', '2']);
+  for (const [label, args] of [['accept', ['--variant', '1']], ['discard', ['--discard']]]) {
+    it(`reports a blocked ${label} as mode:error rather than a manual handoff`, () => {
+      writeFileSync(join(tmp, 'page.html'), PAGE);
+      holdLock();
+      const result = runAccept(tmp, ['--id', 'ab12cd34', ...args]);
+      assert.equal(result.handled, false, JSON.stringify(result));
+      assert.equal(result.error, 'source_locked');
+      // Without mode:error, completion.mjs classifies this as agent_done with an ok
+      // ack and live.md tells the agent to hand-edit the file — racing the publisher
+      // that holds the lock.
+      assert.equal(result.mode, 'error');
+      assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), PAGE, 'source must be untouched');
+      assert.equal(existsSync(join(tmp, '.impeccable', 'live', 'accept-receipts')), false, 'no receipt for a failed op');
+    });
+  }
+
+  it('succeeds once the lock is gone', () => {
+    writeFileSync(join(tmp, 'page.html'), PAGE);
+    const result = runAccept(tmp, ['--id', 'ab12cd34', '--variant', '1']);
     assert.equal(result.handled, true, JSON.stringify(result));
-    const source = readFileSync(join(tmp, 'page.html'), 'utf-8');
-    assert.match(source, /Accepted two/);
-    assert.doesNotMatch(source, /Accepted one|data-impeccable-variant/);
-    assert.equal(existsSync(join(tmp, session.sessionDir)), false);
-  });
-
-  it('discards the preview instantly without touching true source', () => {
-    const { original, session } = scaffold('isolateddiscard');
-    const result = runAccept(tmp, ['--id', 'isolateddiscard', '--discard']);
-    assert.equal(result.handled, true, JSON.stringify(result));
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
-    assert.equal(existsSync(join(tmp, session.sessionDir)), false);
-  });
-
-  // reference/live.md routes on `mode`: without it the agent is told "manual
-  // cleanup: read file, find markers, edit". There are no markers in source for
-  // an isolated preview, so every failure here must self-describe as mode:error.
-  it('marks a failed artifact accept as mode:error, not a manual handoff', () => {
-    scaffold('isolatedmissing');
-    const result = runAccept(tmp, ['--id', 'isolatedmissing', '--variant', '9']);
-    assert.equal(result.handled, false, JSON.stringify(result));
-    assert.equal(result.mode, 'error', 'the agent must not be told to hand-edit a source file with no markers');
-    assert.equal(result.previewMode, 'source-artifact');
-  });
-
-  it('marks an artifact accept blocked by the source lock as mode:error', () => {
-    const { original } = scaffold('isolatedlockacc');
-    const realTmp = realpathSync(tmp);
-    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
-    mkdirSync(dirname(lockPath), { recursive: true });
-    writeFileSync(lockPath, JSON.stringify({
-      owner: 'generation:isolatedlockacc:1', token: 'other', pid: process.pid, at: Date.now(),
-    }) + '\n');
-
-    const result = runAccept(tmp, ['--id', 'isolatedlockacc', '--variant', '1']);
-    assert.equal(result.handled, false, JSON.stringify(result));
-    assert.equal(result.mode, 'error');
-    assert.equal(result.error, 'source_locked');
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original, 'source must be untouched');
-  });
-
-  // Every other discard path (Vue, Svelte, plain wrapper) takes the source lock.
-  // This one deleted the preview bare, so it could pull the artifact out from
-  // under an in-flight publisher instead of serializing behind it.
-  it('serializes the discard behind a publisher holding the source lock', () => {
-    const { original, session } = scaffold('isolatedlocked');
-    // realpath: on macOS mkdtemp hands back /var/... while the child process's
-    // cwd resolves to /private/var/..., and the lock digest hashes the absolute
-    // path. Hash the same string the child will.
-    const realTmp = realpathSync(tmp);
-    const lockPath = sourceLockPath(join(realTmp, 'page.html'), realTmp);
-    mkdirSync(dirname(lockPath), { recursive: true });
-    // A live holder: process.pid is alive, so the lock is not stale.
-    writeFileSync(lockPath, JSON.stringify({
-      owner: 'generation:isolatedlocked:1', token: 'other', pid: process.pid, at: Date.now(),
-    }) + '\n');
-
-    const result = runAccept(tmp, ['--id', 'isolatedlocked', '--discard']);
-    assert.equal(result.handled, false, JSON.stringify(result));
-    assert.equal(result.error, 'source_locked');
-    assert.equal(
-      existsSync(join(tmp, session.sessionDir)),
-      true,
-      'the preview must survive: deleting it under the publisher is the race',
-    );
-    assert.equal(readFileSync(join(tmp, 'page.html'), 'utf-8'), original);
+    assert.match(readFileSync(join(tmp, 'page.html'), 'utf-8'), /VARIANT ONE/);
   });
 });
 

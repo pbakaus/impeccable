@@ -69,7 +69,6 @@
     "bench:detector": "node scripts/benchmark-detector.mjs",
     "bench:detector:browser": "node scripts/benchmark-detector.mjs --browser",
     "bench:live": "node scripts/benchmark-live.mjs",
-    "bench:live:providers": "node scripts/benchmark-live-providers.mjs",
     "audit": "bun audit --audit-level=moderate",
     "prepack": "cp README.md README.repo.md && cp README.npm.md README.md",
     "postpack": "cp README.repo.md README.md && rm README.repo.md",

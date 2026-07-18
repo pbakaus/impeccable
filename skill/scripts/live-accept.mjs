@@ -30,10 +30,6 @@ import {
   inlineVueComponentAccept,
   retireVueComponentSession,
 } from './live/vue-component.mjs';
-import {
-  findSourceArtifactManifest,
-  removeSourceArtifactSession,
-} from './live/source-artifact.mjs';
 import { removeGenerationArtifacts } from './live/generation-publisher.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
@@ -173,76 +169,13 @@ Output (JSON):
   }
 
   // Find the file containing this session's markers
-  const sourceArtifactManifest = findSourceArtifactManifest(id, process.cwd());
-  const found = sourceArtifactManifest ? null : findSessionFile(id, process.cwd());
+  const found = findSessionFile(id, process.cwd());
   const svelteComponentManifest = found ? null : findSvelteComponentManifest(id, process.cwd());
   const vueComponentManifest = found || svelteComponentManifest ? null : findVueComponentManifest(id, process.cwd());
 
-  if (!found && !sourceArtifactManifest && !svelteComponentManifest && !vueComponentManifest) {
+  if (!found && !svelteComponentManifest && !vueComponentManifest) {
     console.log(JSON.stringify({ handled: false, error: 'Session markers not found for id: ' + id }));
     process.exit(0);
-  }
-
-  if (sourceArtifactManifest) {
-    if (isDiscard) {
-      // Take the source lock like every other discard path. The journalled
-      // discard already fences publication, so this cannot admit a write to a
-      // discarded session; what it prevents is deleting the preview out from
-      // under a publisher mid-critical-section, which turns its clean
-      // stale_generation_epoch into an ENOENT crash.
-      let result;
-      try {
-        result = withSourceLockSync(
-          sourceArtifactManifest.sourcePath,
-          'discard:' + id,
-          () => {
-            removeSourceArtifactSession(id, process.cwd());
-            return { handled: true };
-          },
-          { waitMs: ACCEPT_LOCK_WAIT_MS },
-        );
-      } catch (err) {
-        result = operationFailure(err);
-      }
-      emitResult({
-        ...result,
-        file: sourceArtifactManifest.sourceFile,
-        sourceFile: sourceArtifactManifest.sourceFile,
-        previewMode: sourceArtifactManifest.previewMode,
-        carbonize: false,
-      });
-      return;
-    }
-
-    let result;
-    try {
-      result = withSourceLockSync(
-        sourceArtifactManifest.sourcePath,
-        'accept:' + id,
-        () => acceptSourceArtifact(sourceArtifactManifest, variantNum, paramValues),
-        { waitMs: ACCEPT_LOCK_WAIT_MS },
-      );
-    } catch (err) {
-      result = operationFailure(err);
-    }
-    if (result.handled !== false) {
-      removeSourceArtifactSession(id, process.cwd());
-      try {
-        scrubManualEditsAgainstOriginalBlock(result.acceptedOriginalText || '', process.cwd(), pageUrl);
-      } catch {}
-    }
-    delete result.acceptedOriginalText;
-    if (result.carbonize) {
-      result.todo = 'REQUIRED before next poll: carbonize cleanup in ' + sourceArtifactManifest.sourceFile + '. See reference/live.md "Required after accept".';
-    }
-    emitResult({
-      handled: result.handled !== false,
-      file: sourceArtifactManifest.sourceFile,
-      sourceFile: sourceArtifactManifest.sourceFile,
-      previewMode: sourceArtifactManifest.previewMode,
-      ...result,
-    });
-    return;
   }
 
   if (vueComponentManifest) {
@@ -649,32 +582,6 @@ function buildAcceptedWrappedSource(id, variantNum, lines, targetFile, paramValu
   };
 }
 
-function acceptSourceArtifact(manifest, variantNum, paramValues) {
-  const source = fs.readFileSync(manifest.sourcePath, 'utf-8');
-  const preview = fs.readFileSync(manifest.previewPath, 'utf-8');
-  const original = String(manifest.originalSource || '');
-  if (!original) return { handled: false, error: 'source_artifact_original_missing' };
-  const first = source.indexOf(original);
-  if (first < 0) return { handled: false, error: 'source_artifact_original_changed' };
-  if (source.indexOf(original, first + original.length) >= 0) {
-    return { handled: false, error: 'source_artifact_original_ambiguous' };
-  }
-  const wrapped = source.slice(0, first) + preview + source.slice(first + original.length);
-  const built = buildAcceptedWrappedSource(
-    manifest.id,
-    variantNum,
-    wrapped.split('\n'),
-    manifest.sourcePath,
-    paramValues,
-  );
-  if (built.handled === false) return built;
-  fs.writeFileSync(manifest.sourcePath, built.content, 'utf-8');
-  return {
-    handled: true,
-    carbonize: built.carbonize,
-    acceptedOriginalText: built.acceptedOriginalText,
-  };
-}
 
 function readSourceShadowPreviewMeta(content, id) {
   const escaped = escapeRegExp(id);
