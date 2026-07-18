@@ -5687,6 +5687,13 @@
         arrivedVariants = variants.length;
         expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
         if (arrivedVariants <= 0) {
+          // Scaffold wrapper exists but variants haven't been written yet.
+          // This happens when server-side preflight triggers a full page reload
+          // (e.g. Astro's HMR) before the agent finishes writing variants. In
+          // GENERATING state the agent will write the variants shortly — don't
+          // destroy the session. The next HMR or done SSE will call this again
+          // with the full variant set.
+          if (state === 'GENERATING') return;
           recoverEmptyCycling('source-fallback-empty');
           return;
         }
