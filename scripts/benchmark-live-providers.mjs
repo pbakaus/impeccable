@@ -175,7 +175,13 @@ async function runGenerationOne({ liveSpec: loadedLiveSpec, providerConfig, stra
     if (typeof agent.generateFirstVariant === 'function') {
       firstOutput = await agent.generateFirstVariant(event, {});
       firstReviewableMs = roundMs(performance.now() - startedAt);
-      output = await agent.generateRemainingVariants(event, { firstOutput });
+      // Only ask for a tail when one was requested. tests/live-e2e/agent.mjs
+      // already gates its split-progressive path on `event.count > 1`; without the
+      // same guard here a one-variant request still ran the tail, and the
+      // parallel strategy would assemble its three fixed lanes regardless.
+      output = Number(event.count) > 1
+        ? await agent.generateRemainingVariants(event, { firstOutput })
+        : firstOutput;
     } else {
       output = await agent.generateVariants(event, {});
       firstReviewableMs = roundMs(performance.now() - startedAt);

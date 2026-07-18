@@ -178,3 +178,43 @@ describe('parallel-compact lane orchestration', () => {
     assert.equal(output.variants.length, 3);
   });
 });
+
+describe('progressive-full variant count', () => {
+  const output = (n) => ({
+    scopedCss: '@scope ([data-impeccable-variant="1"]) { .a { color: var(--color-ink); } }',
+    variants: Array.from({ length: n }, () => ({ innerHtml: VARIANT, params: [] })),
+  });
+
+  const agentWith = (onRequest) => createProviderLiveAgent({
+    provider: 'anthropic',
+    model: 'test-model',
+    strategy: 'progressive-full',
+    liveSpec: '',
+    requestImpl: onRequest,
+  });
+
+  it('asks for no tail on a one-variant request', async () => {
+    // Math.max(1, count - 1) floored the tail at one, so a count:1 request
+    // fetched a second direction and returned two variants.
+    const phases = [];
+    const agent = agentWith(({ phase, event }) => {
+      phases.push(phase);
+      return Promise.resolve(output(event.count));
+    });
+    await agent.generateFirstVariant({ id: 'one', count: 1 });
+    const result = await agent.generateRemainingVariants({ id: 'one', count: 1 }, {});
+    assert.deepEqual(phases, ['first'], 'no remaining-directions call belongs on a one-variant set');
+    assert.equal(result.variants.length, 1);
+  });
+
+  it('asks for exactly the tail on a three-variant request', async () => {
+    const counts = [];
+    const agent = agentWith(({ phase, event }) => {
+      if (phase === 'remaining-directions') counts.push(event.count);
+      return Promise.resolve(output(event.count));
+    });
+    await agent.generateFirstVariant({ id: 'three', count: 3 });
+    await agent.generateRemainingVariants({ id: 'three', count: 3 }, {});
+    assert.deepEqual(counts, [2], 'the tail is count - 1, not a floored 1');
+  });
+});

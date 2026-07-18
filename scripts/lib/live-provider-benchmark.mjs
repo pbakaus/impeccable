@@ -309,8 +309,16 @@ export function createProviderLiveAgent({ provider, model, strategy, liveSpec, o
     async generateRemainingVariants(event, context) {
       const first = pendingFirst.get(event.id) || context.firstOutput;
       if (!first?.variants?.[0]) throw new Error(`first variant state missing for ${event.id}`);
+      const tailCount = Number(event.count) - 1;
+      // A one-variant request has no tail. Math.max(1, ...) floored the count at
+      // one, so this fetched a second direction and assembled two variants for a
+      // set the caller asked to be one.
+      if (tailCount < 1) {
+        pendingFirst.delete(event.id);
+        return first;
+      }
       const remaining = await request({
-        event: { ...event, count: Math.max(1, event.count - 1) },
+        event: { ...event, count: tailCount },
         phase: 'remaining-directions',
         firstVariant: first.variants[0],
       });
