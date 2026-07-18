@@ -4920,7 +4920,7 @@
   }
 
   function isFrameworkComponentPreviewMode(mode) {
-    return mode === 'svelte-component' || mode === 'vue-component';
+    return mode === 'svelte-component';
   }
 
   function parseOriginalMarkupElement(originalMarkup) {
@@ -5118,15 +5118,7 @@
   }
 
   function resolveComponentModuleUrl(manifest, modulePath) {
-    const pathValue = String(modulePath || '');
-    if (manifest?.previewMode === 'vue-component' && pathValue.startsWith('/@fs/')) {
-      // Nuxt mounts Vite below buildAssetsDir. Sending /@fs directly to the
-      // page origin reaches Nitro's route fallback and returns text/html.
-      const assetsDir = String(window.__NUXT__?.config?.app?.buildAssetsDir || '/_nuxt/');
-      const base = assetsDir.endsWith('/') ? assetsDir : assetsDir + '/';
-      return new URL(base + pathValue.slice('/@fs/'.length), location.origin).href;
-    }
-    return new URL(pathValue, location.origin).href;
+    return new URL(String(modulePath || ''), location.origin).href;
   }
 
   function loadSvelteRuntime(runtimeModule, manifest) {
@@ -5165,7 +5157,7 @@
   async function loadSvelteComponentVariantSource(manifest, variantNum) {
     const dir = String(manifest?.componentDir || '').replace(/^\/+/, '');
     if (!dir || !variantNum) return '';
-    const extension = manifest.componentExtension || (manifest.previewMode === 'vue-component' ? 'vue' : 'svelte');
+    const extension = manifest.componentExtension || 'svelte';
     const sourcePath = dir + '/v' + variantNum + '.' + extension;
     const url = 'http://localhost:' + PORT + '/source?token=' + TOKEN + '&path=' + encodeURIComponent(sourcePath);
     try {
@@ -5185,7 +5177,6 @@
   async function applySvelteComponentVariantStyle(variantNum) {
     if (!svelteComponentSession || !variantNum) return;
     const { manifest, sessionId } = svelteComponentSession;
-    if (manifest?.previewMode === 'vue-component') return;
     const source = await loadSvelteComponentVariantSource(manifest, variantNum);
     const css = extractSvelteComponentStyle(source);
     removeSvelteComponentVariantStyle(svelteComponentSession);
@@ -5336,7 +5327,7 @@
       const previousAnchor = getMountedSvelteComponentAnchor(svelteComponentSession) || selectedElement;
       svelteComponentSession.swapAnchor = makeFrozenAnchor(previousAnchor) || svelteComponentSession.swapAnchor || null;
       const runtime = await loadSvelteRuntime(manifest.runtimeModule, manifest);
-      const extension = manifest.componentExtension || (manifest.previewMode === 'vue-component' ? 'vue' : 'svelte');
+      const extension = manifest.componentExtension || 'svelte';
       const moduleBase = manifest.componentModuleBase
         || ('/' + String(manifest.componentDir || '').replace(/^\/+/, ''));
       const modulePath = String(moduleBase).replace(/\/+$/, '') + '/v' + variantNum + '.' + extension;

@@ -17,19 +17,6 @@ describe('live-browser source contracts', () => {
     assert.doesNotMatch(SOURCE, /codexWorker|codex-worker|codex_cli_unavailable/);
   });
 
-  it('routes Nuxt Vue preview modules through the Vite build-assets base', () => {
-    assert.match(
-      SOURCE,
-      /function resolveComponentModuleUrl\(manifest, modulePath\)[\s\S]*?manifest\?\.previewMode === 'vue-component'[\s\S]*?window\.__NUXT__\?\.config\?\.app\?\.buildAssetsDir[\s\S]*?pathValue\.slice\('\/@fs\/'.length\)/,
-      'Nuxt must not send app-local preview modules through the page-route fallback',
-    );
-    assert.match(
-      SOURCE,
-      /const moduleBase = manifest\.componentModuleBase[\s\S]*?resolveComponentModuleUrl\(manifest, modulePath\)/,
-      'Vue SFC variants should use the manifest Vite module base rather than componentDir as a route URL',
-    );
-  });
-
   it('dispatches plain generation before screenshot capture without bypassing annotated evidence', () => {
     const dispatchIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await sendEvent(basePayload);');
     const captureIndex = CAPTURE_AND_EMIT_SOURCE.indexOf('await captureElementToBlob');

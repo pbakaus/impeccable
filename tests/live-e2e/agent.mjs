@@ -1390,47 +1390,6 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writ
   await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
 }
 
-async function writeVueComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
-  const manifestPath = path.join(tmp, wrapInfo.file);
-  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
-  const componentDir = path.join(tmp, manifest.componentDir);
-  const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
-  const textValues = extractTextPieces(event.element?.outerHTML || event.element?.textContent || '');
-  const paramsByVariant = {};
-
-  for (let i = 0; i < output.variants.length; i++) {
-    const variantId = i + 1;
-    const variant = output.variants[i];
-    let markup = substituteLiveTextWithProps(variant.innerHtml || '', contract, textValues).trim();
-    for (const entry of contract) {
-      markup = markup.replaceAll(`{${entry.prop}}`, `{{ ${entry.prop} }}`);
-    }
-    const css = svelteCssForVariant(output.scopedCss || '', variantId, firstTagName(markup) || 'div');
-    const propsScript = contract.length > 0
-      ? ['<script setup>', 'defineProps({', ...contract.map((entry) => `  ${entry.prop}: { default: '' },`), '});', '</script>', '']
-      : [];
-    const component = [
-      ...propsScript,
-      '<template>',
-      markup || '<div></div>',
-      '</template>',
-      '',
-      '<style scoped>',
-      css || ':where(*) {}',
-      '</style>',
-      '',
-    ].join('\n');
-    await fs.writeFile(path.join(componentDir, `v${variantId}.vue`), component, 'utf-8');
-    paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
-  }
-
-  if (writeParams) {
-    await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
-  }
-  manifest.arrivedVariants = output.variants.length;
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
-}
-
 function variantMarkupHasVisibleContent(markup) {
   const text = String(markup || '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -1702,8 +1661,6 @@ export async function runAgentLoop({
         trace('agent.write.start', { id: event.id, file: wrapInfo.file });
         if (wrapInfo.previewMode === 'svelte-component') {
           await writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
-        } else if (wrapInfo.previewMode === 'vue-component') {
-          await writeVueComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
         } else {
           await spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId: event.id, output });
         }

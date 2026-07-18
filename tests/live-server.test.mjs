@@ -111,31 +111,6 @@ it('gitignores local Impeccable runtime artifacts', () => {
   assert.match(ignored, /\.impeccable\/live\/deferred-svelte-component-accepts\.json/);
 });
 
-it('Stop Live removes Nuxt Vue preview modules and their generated root', async () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'impeccable-live-nuxt-stop-'));
-  const generatedRoot = join(cwd, 'app/.impeccable-live');
-  mkdirSync(join(generatedRoot, 'session123'), { recursive: true });
-  writeFileSync(join(cwd, 'nuxt.config.ts'), 'export default defineNuxtConfig({});\n');
-  writeFileSync(join(generatedRoot, '__runtime.js'), 'export const runtime = true;\n');
-  writeFileSync(join(generatedRoot, 'session123', 'v1.vue'), '<template><h1>Preview</h1></template>\n');
-
-  let live;
-  try {
-    live = await startServer(8498, { cwd });
-    const exited = new Promise((resolve) => live.proc.once('exit', resolve));
-    await stopServer(live.port, live.token);
-    await Promise.race([
-      exited,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('live server did not stop')), 2_000)),
-    ]);
-    assert.equal(existsSync(join(generatedRoot, '__runtime.js')), false);
-    assert.equal(existsSync(generatedRoot), false);
-  } finally {
-    live?.proc?.kill();
-    rmSync(cwd, { recursive: true, force: true });
-  }
-});
-
 async function readSseUntil(reader, decoder, needle, maxReads = 12) {
   let text = '';
   for (let i = 0; i < maxReads; i++) {

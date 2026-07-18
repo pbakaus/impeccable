@@ -1499,7 +1499,7 @@ function svelteComponentTargetFor(filePath) {
   if (!filePath.endsWith('/manifest.json') && !filePath.endsWith('\\manifest.json')) return null;
   let manifest;
   try { manifest = JSON.parse(readFileSync(filePath, 'utf-8')); } catch { return null; }
-  if (!['svelte-component', 'vue-component'].includes(manifest.previewMode) || !manifest.sourceFile || !manifest.componentDir) return null;
+  if (manifest.previewMode !== 'svelte-component' || !manifest.sourceFile || !manifest.componentDir) return null;
   const sep = pathSepFor(filePath);
   const markers = [
     `${sep}node_modules${sep}.impeccable-live${sep}`,

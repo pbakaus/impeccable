@@ -162,7 +162,6 @@ Output on success: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssS
 
 For Svelte/SvelteKit targets, `live-wrap.mjs` returns `previewMode: "svelte-component"` with `file` pointing at a temporary `node_modules/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at the variant component files, and `sourceFile` pointing at the real `.svelte` route. Write each variant as a real Svelte component (`v1.svelte`, `v2.svelte`, …) under `componentDir`; use the `propContract` prop names for dynamic text (`{propName}`), not literal snapshot strings. Put variant CSS in each component's `<style>` block with semantic class selectors (no `@scope`, no `data-impeccable-*`). Reply with `--file` set to the manifest path; the browser dynamically imports and mounts the compiled components so Svelte HMR does not reset page state while the user cycles variants. On Accept, `live-accept.mjs` inlines the accepted component back into `sourceFile` immediately after source promotion succeeds.
 
-For Nuxt/Vue targets, `live-wrap.mjs` returns `previewMode: "vue-component"` with `file` pointing at an app-local generated manifest under `<appDir>/.impeccable-live/<id>/manifest.json`, `componentDir` pointing at real Vue SFC variants, and `sourceFile` pointing at the untouched `.vue` route. Write `v1.vue`, `v2.vue`, … with one root inside `<template>` and variant CSS in `<style scoped>`; keep dynamic text on the `propContract` bindings as `{{ propName }}`. Do **not** rewrite `sourceFile` during generation: Nuxt/Vite compiles and mounts these dev-only modules without invalidating the route. Accept is the only route write and inlines the selected template/CSS under the source lock; Discard deletes the generated session.
 
 **Params on component-preview paths go in a sidecar, never as an attribute.** Svelte parses `{` inside an attribute value as the start of an expression, and both Svelte/Vue previews mount without an HTML variant wrapper. Declare params in `componentDir/params.json`, keyed by variant number, using the exact param schema from section 7:
 
@@ -374,7 +373,7 @@ Each variant can expose **coarse** knobs alongside the full HTML/CSS replacement
 
 **Hard cap per variant**: at most **four** parameters so the panel stays legible; rare fifth only if the reference explicitly allows it.
 
-**How to declare.** Put a JSON manifest on the variant wrapper (HTML/JSX path). **On `svelte-component` and `vue-component` paths, do not use this attribute.** Declare params in `componentDir/params.json` keyed by variant number instead (see the component-preview paragraphs in the wrap section). The param schema below is identical for every path.
+**How to declare.** Put a JSON manifest on the variant wrapper (HTML/JSX path). **On the `svelte-component` path, do not use this attribute.** Declare params in `componentDir/params.json` keyed by variant number instead (see the component-preview paragraphs in the wrap section). The param schema below is identical for every path.
 
 ```html
 <div data-impeccable-variant="1" data-impeccable-params='[

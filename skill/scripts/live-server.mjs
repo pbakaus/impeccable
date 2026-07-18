@@ -53,7 +53,6 @@ import {
   applyDeferredSvelteComponentAccepts,
   removeAllSvelteComponentSessions,
 } from './live/svelte-component.mjs';
-import { removeAllVueComponentSessions } from './live/vue-component.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // PRODUCT.md / DESIGN.md live wherever context.mjs resolves. The generated
@@ -1014,7 +1013,7 @@ function sessionFileMetadataFromPollReply(file) {
 
   try {
     const manifest = JSON.parse(fs.readFileSync(full, 'utf-8'));
-    if (!['svelte-component', 'vue-component'].includes(manifest?.previewMode)
+    if (manifest?.previewMode !== 'svelte-component'
         || !manifest.sourceFile) return base;
     return {
       file: String(manifest.sourceFile).split(path.sep).join('/'),
@@ -1232,11 +1231,6 @@ function cleanupSvelteComponentSessionsBeforeExit() {
     removeAllSvelteComponentSessions(process.cwd());
   } catch (err) {
     console.warn('[impeccable] Svelte component session cleanup failed:', err.message);
-  }
-  try {
-    removeAllVueComponentSessions(process.cwd());
-  } catch (err) {
-    console.warn('[impeccable] Vue component session cleanup failed:', err.message);
   }
 }
 

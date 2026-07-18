@@ -25,11 +25,6 @@ import {
   inlineSvelteComponentAccept,
   removeSvelteComponentSession,
 } from './live/svelte-component.mjs';
-import {
-  findVueComponentManifest,
-  inlineVueComponentAccept,
-  retireVueComponentSession,
-} from './live/vue-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 const ACCEPT_LOCK_WAIT_MS = 1_000;
@@ -166,58 +161,10 @@ Output (JSON):
   // Find the file containing this session's markers
   const found = findSessionFile(id, process.cwd());
   const svelteComponentManifest = found ? null : findSvelteComponentManifest(id, process.cwd());
-  const vueComponentManifest = found || svelteComponentManifest ? null : findVueComponentManifest(id, process.cwd());
 
-  if (!found && !svelteComponentManifest && !vueComponentManifest) {
+  if (!found && !svelteComponentManifest) {
     console.log(JSON.stringify({ handled: false, error: 'Session markers not found for id: ' + id }));
     process.exit(0);
-  }
-
-  if (vueComponentManifest) {
-    if (isDiscard) {
-      let result;
-      try {
-        result = withSourceLockSync(
-          path.resolve(process.cwd(), vueComponentManifest.sourceFile),
-          'discard:' + id,
-          () => {
-            retireVueComponentSession(id, process.cwd());
-            return { handled: true };
-          },
-          { waitMs: ACCEPT_LOCK_WAIT_MS },
-        );
-      } catch (err) {
-        result = operationFailure(err);
-      }
-      emitResult({
-        ...result,
-        file: vueComponentManifest.sourceFile,
-        carbonize: false,
-        previewMode: 'vue-component',
-        componentDir: vueComponentManifest.componentDir,
-      });
-      return;
-    }
-
-    let result;
-    try {
-      result = withSourceLockSync(
-        path.resolve(process.cwd(), vueComponentManifest.sourceFile),
-        'accept:' + id,
-        () => inlineVueComponentAccept(vueComponentManifest, variantNum, process.cwd()),
-        { waitMs: ACCEPT_LOCK_WAIT_MS },
-      );
-    } catch (err) {
-      result = operationFailure(err, {
-        file: vueComponentManifest.sourceFile,
-        sourceFile: vueComponentManifest.sourceFile,
-        previewMode: 'vue-component',
-        componentDir: vueComponentManifest.componentDir,
-        carbonize: false,
-      });
-    }
-    emitResult(result);
-    return;
   }
 
   if (svelteComponentManifest) {

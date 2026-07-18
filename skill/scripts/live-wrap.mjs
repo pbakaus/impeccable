@@ -20,11 +20,6 @@ import {
   scaffoldSvelteComponentSession,
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
-import {
-  buildVueComponentCssAuthoring,
-  scaffoldVueComponentSession,
-  shouldUseVueComponentInjection,
-} from './live/vue-component.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
@@ -292,8 +287,7 @@ The agent should insert variant HTML at insertLine.`);
   const originalIndented = reindentOriginal('    ');
   const relTargetFile = path.relative(process.cwd(), targetFile).split(path.sep).join('/');
   const useSvelteComponent = shouldUseSvelteComponentInjection(targetFile);
-  const useVueComponent = !useSvelteComponent && shouldUseVueComponentInjection(targetFile);
-  const useFrameworkComponent = useSvelteComponent || useVueComponent;
+  const useFrameworkComponent = useSvelteComponent;
 
   // Wrapper attributes differ by syntax. HTML allows plain string attrs;
   // JSX requires object-literal style and parses string attrs as HTML (which
@@ -340,7 +334,6 @@ The agent should insert variant HTML at insertLine.`);
   let outputEndLine = startLine + wrapperLines.length + (originalLines.length - 1);
   let insertLine;
   let svelteSession = null;
-  let vueSession = null;
 
   if (useSvelteComponent) {
     // Svelte/SvelteKit resets component-local state on markup HMR updates.
@@ -357,23 +350,6 @@ The agent should insert variant HTML at insertLine.`);
       cwd: process.cwd(),
     });
     outputFile = path.resolve(process.cwd(), svelteSession.manifestFile);
-    outputStartLine = 1;
-    outputEndLine = 1;
-    insertLine = 1;
-  } else if (useVueComponent) {
-    // Nuxt route-module HMR can invalidate the active page while a generated
-    // wrapper is only partially written. Stage real Vue SFCs in an app-local
-    // dev module tree and leave the route untouched until Accept.
-    vueSession = scaffoldVueComponentSession({
-      id,
-      count,
-      sourceFile: relTargetFile,
-      sourceStartLine: startLine + 1,
-      sourceEndLine: endLine + 1,
-      originalLines,
-      cwd: process.cwd(),
-    });
-    outputFile = path.resolve(process.cwd(), vueSession.manifestFile);
     outputStartLine = 1;
     outputEndLine = 1;
     insertLine = 1;
@@ -399,9 +375,8 @@ The agent should insert variant HTML at insertLine.`);
   const outputRelFile = path.relative(process.cwd(), outputFile).split(path.sep).join('/');
 
   const svelteComponentAuthoring = useSvelteComponent ? buildSvelteComponentCssAuthoring(count) : null;
-  const vueComponentAuthoring = useVueComponent ? buildVueComponentCssAuthoring(count) : null;
-  const componentSession = svelteSession || vueSession;
-  const componentPreviewMode = useSvelteComponent ? 'svelte-component' : useVueComponent ? 'vue-component' : undefined;
+  const componentSession = svelteSession;
+  const componentPreviewMode = useSvelteComponent ? 'svelte-component' : undefined;
   const previewMode = componentPreviewMode;
 
   console.log(JSON.stringify({
@@ -424,7 +399,7 @@ The agent should insert variant HTML at insertLine.`);
     styleMode: componentPreviewMode || styleMode.mode,
     styleTag: useFrameworkComponent ? null : styleMode.styleTag,
     cssSelectorPrefixExamples: useFrameworkComponent ? [] : buildCssSelectorPrefixExamples(styleMode.mode, count),
-    cssAuthoring: svelteComponentAuthoring || vueComponentAuthoring || buildCssAuthoring(styleMode, count),
+    cssAuthoring: svelteComponentAuthoring || buildCssAuthoring(styleMode, count),
     originalLineCount: originalLines.length,
   }));
 }
