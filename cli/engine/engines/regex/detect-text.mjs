@@ -43,23 +43,48 @@ function firstOverusedGoogleFont(text) {
   return extractGoogleFontFamilies(text).find(f => OVERUSED_FONTS.has(f)) || '';
 }
 
+// CSS named colors whose channels are equal (achromatic). Anything outside
+// this set falls through to the format parsers, and an unrecognized spelling
+// stays non-neutral so a real accent is never skipped.
+const NEUTRAL_COLOR_KEYWORDS = new Set([
+  'transparent', 'currentcolor',
+  'black', 'white', 'gray', 'grey', 'silver',
+  'dimgray', 'dimgrey', 'darkgray', 'darkgrey', 'lightgray', 'lightgrey',
+  'gainsboro', 'whitesmoke',
+]);
+
+function hexChannels(color) {
+  const long = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})(?:[0-9a-f]{2})?$/i);
+  if (long) return [parseInt(long[1], 16), parseInt(long[2], 16), parseInt(long[3], 16)];
+  const short = color.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])(?:[0-9a-f])?$/i);
+  if (short) return [1, 2, 3].map((i) => parseInt(short[i] + short[i], 16));
+  return null;
+}
+
+/**
+ * Neutrality test for colors as written in source CSS.
+ *
+ * shared/color.mjs's isNeutralColor only parses the computed function forms a
+ * browser or jsdom emits (rgb/oklch/lab/...) and deliberately reports every
+ * other spelling as chromatic so an unknown format is never silently skipped.
+ * That default is wrong for authored CSS, where `#000` and `black` are the
+ * normal spellings: calling it directly reports a plain black hairline as a
+ * colored stripe. Handle hex and named neutrals here, then defer.
+ */
+function isNeutralAuthoredColor(rawColor) {
+  const c = String(rawColor || '').trim().toLowerCase();
+  if (!c) return false;
+  if (NEUTRAL_COLOR_KEYWORDS.has(c)) return true;
+  if (/^(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
+  const channels = hexChannels(c);
+  if (channels) return (Math.max(...channels) - Math.min(...channels)) < 30;
+  return false;
+}
+
 function isNeutralBorderColor(str) {
   const m = str.match(/solid\s+((?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color)\([^)]*\)|#[0-9a-f]{3,8}\b|[a-z]+)/i);
   if (!m) return false;
-  const c = m[1].toLowerCase();
-  if (['gray', 'grey', 'silver', 'white', 'black', 'transparent', 'currentcolor'].includes(c)) return true;
-  if (/^(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/i.test(c)) return isNeutralColor(c);
-  const hex = c.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
-  if (hex) {
-    const [r, g, b] = [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)];
-    return (Math.max(r, g, b) - Math.min(r, g, b)) < 30;
-  }
-  const shex = c.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/);
-  if (shex) {
-    const [r, g, b] = [parseInt(shex[1] + shex[1], 16), parseInt(shex[2] + shex[2], 16), parseInt(shex[3] + shex[3], 16)];
-    return (Math.max(r, g, b) - Math.min(r, g, b)) < 30;
-  }
-  return false;
+  return isNeutralAuthoredColor(m[1]);
 }
 
 const REGEX_MATCHERS = [
@@ -345,12 +370,92 @@ const REGEX_ANALYZERS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Style block extraction (Vue/Svelte <style> blocks)
+// Structural CSS checks used by source files whose styles are not parsed by
+// the static HTML engine.
+// ---------------------------------------------------------------------------
+
+const CHROMATIC_SHADOW_TOKEN_RE = /(?:^|-)(?:accent|kinpaku|patina|gold|red|orange|amber|yellow|lime|green|emerald|teal|cyan|blue|indigo|violet|purple|magenta|pink|rose|coral|aqua|mint|burgundy|crimson|scarlet)(?:-|$)/i;
+
+function insetStripeColorIsChromatic(rawColor) {
+  const color = String(rawColor || '').trim().replace(/\s*!important\s*$/i, '');
+  if (/^(?:currentcolor|transparent|inherit|unset)$/i.test(color)) return false;
+  const variable = color.match(/^var\(\s*(--[\w-]+)/i);
+  if (variable) return CHROMATIC_SHADOW_TOKEN_RE.test(variable[1]);
+  if (!/^(?:#|rgba?\(|hsla?\(|hwb\(|oklch\(|oklab\(|lch\(|lab\(|color\(|[a-z]+$)/i.test(color)) return false;
+  return !isNeutralAuthoredColor(color);
+}
+
+/**
+ * Blank out comment bodies while preserving every byte offset (and therefore
+ * every line number) so commented-out CSS is not scanned as live rules.
+ */
+function blankCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
+}
+
+function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
+  const content = blankCssComments(rawContent);
+  const findings = [];
+  const ruleRe = /([^{};]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = ruleRe.exec(content)) !== null) {
+    // The selector group is `[^{};]+`, which greedily absorbs the whitespace and
+    // newlines trailing the previous rule. Advance past that run before deriving
+    // the line, or every rule after the first reports the preceding line.
+    const selectorStart = match.index + (match[1].length - match[1].trimStart().length);
+    const selector = match[1].trim().replace(/\s+/g, ' ');
+    if (!selector) continue;
+    if (/:(?:hover|focus|focus-visible|focus-within|active|checked|target)\b/i.test(selector)) continue;
+    if (/\[aria-selected\s*[*^$|~]?=\s*["']?true/i.test(selector)) continue;
+    if (/\[aria-current(?!\s*[*^$|~]?=\s*["']?false)/i.test(selector)) continue;
+    if (/(?:^|[\s._[-])(?:active|current|selected)(?![\w])/i.test(selector)) continue;
+    if (/(?:^|[\s>+~,(])(?:button|hr|tr|td|th|table|blockquote|pre|code)(?![\w-])/i.test(selector)) continue;
+
+    const width = match[2].match(/(?:^|;)\s*(?:width|inline-size)\s*:\s*(\d+(?:\.\d+)?)px/i);
+    if (width && Number(width[1]) <= 40) continue;
+    const declaration = match[2].match(/(?:^|;)\s*box-shadow\s*:\s*([^;]+)/i);
+    if (!declaration || !/\binset\b/i.test(declaration[1])) continue;
+
+    for (const rawLayer of declaration[1].split(/,(?![^(]*\))/)) {
+      const layer = rawLayer.trim();
+      // `inset` is order-independent inside a box-shadow layer: `inset 4px 0 0 red`
+      // and `4px 0 0 red inset` paint the same stripe, and requiring it first
+      // silently missed the second spelling. Strip it only as a standalone
+      // keyword, so a color token such as var(--inset-accent) survives intact;
+      // an unchanged layer had no inset keyword and is not our shape.
+      const body = layer.replace(/(^|\s)inset(?=\s|$)/i, '$1').trim();
+      if (body === layer) continue;
+      // box-shadow takes <length>{2,4}: only the two offsets are required, so
+      // `inset 4px 0 red` is valid and paints the same stripe as
+      // `inset 4px 0 0 red`. Demanding a third length missed the short form.
+      const shadow = body.match(/^(-?\d*\.?\d+)(px)?\s+(-?\d*\.?\d+)(px)?(?:\s+(-?\d*\.?\d+)(px)?)?(?:\s+(-?\d*\.?\d+)(px)?)?\s+(.+)$/i);
+      if (!shadow) continue;
+      const x = Number(shadow[1]);
+      const y = Number(shadow[3]);
+      // Omitted blur and spread default to 0, which is exactly the stripe shape.
+      const blur = shadow[5] == null ? 0 : Number(shadow[5]);
+      const spread = shadow[7] == null ? 0 : Number(shadow[7]);
+      if ((x !== 0 && !shadow[2]) || (y !== 0 && !shadow[4]) || blur !== 0 || spread !== 0) continue;
+      const ax = Math.abs(x);
+      const ay = Math.abs(y);
+      if (!((ax >= 3 && ax <= 12 && ay === 0) || (ay >= 3 && ay <= 12 && ax === 0))) continue;
+      if (!insetStripeColorIsChromatic(shadow[9])) continue;
+      const edge = ay === 0 ? (x > 0 ? 'left' : 'right') : (y > 0 ? 'top' : 'bottom');
+      const line = lineOffset + content.slice(0, selectorStart).split('\n').length;
+      findings.push(finding('side-tab', filePath, `${selector} — inset box-shadow ${ay === 0 ? ax : ay}px stripe (${edge})`, line));
+      break;
+    }
+  }
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Style block extraction (Astro/Vue/Svelte <style> blocks)
 // ---------------------------------------------------------------------------
 
 function extractStyleBlocks(content, ext) {
   ext = ext.toLowerCase();
-  if (ext !== '.vue' && ext !== '.svelte') return [];
+  if (ext !== '.astro' && ext !== '.vue' && ext !== '.svelte') return [];
   const blocks = [];
   const re = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let m;
@@ -477,8 +582,9 @@ function detectText(content, filePath, options = {}) {
     profile,
     phase: 'source',
   }));
+  if (cssLike.has(ext)) findings.push(...scanInsetStripeCss(content, filePath));
 
-  // Extract and scan <style> blocks from Vue/Svelte SFCs
+  // Extract and scan <style> blocks from Astro/Vue/Svelte components.
   const styleBlocks = profile
     ? profileStep(profile, {
       engine: 'regex',
@@ -493,6 +599,7 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'style-block',
     }));
+    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
   }
 
   // Extract and scan CSS-in-JS template literals
@@ -510,6 +617,7 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'css-in-js',
     }));
+    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
   }
 
   if (options?.designSystem) {
