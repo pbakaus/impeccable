@@ -541,6 +541,15 @@ function addIgnoreFile(cwd, glob) {
   return `Added "${glob}" to detector.ignoreFiles. Current: ${config.ignoreFiles.join(', ')}`;
 }
 
+// An empty glob used to be dropped by filter(Boolean), so `--file=` reported
+// success and wrote an entry with no files: the user asked to scope a rule to one
+// file and silently got the project-wide suppression instead. Refuse it.
+function requireGlob(raw, flag) {
+  const glob = String(raw ?? '').trim();
+  if (!glob) throw new Error(`${flag} requires a non-empty glob`);
+  return glob;
+}
+
 function parseIgnoreValueArgs(args) {
   const positionals = [];
   const files = [];
@@ -564,11 +573,11 @@ function parseIgnoreValueArgs(args) {
       reason = arg.slice('--reason='.length).trim();
     } else if (arg === '--file' || arg === '--files') {
       if (i + 1 >= args.length) throw new Error(`${arg} requires a glob`);
-      files.push(String(args[++i]).trim());
+      files.push(requireGlob(args[++i], arg));
     } else if (arg.startsWith('--file=')) {
-      files.push(arg.slice('--file='.length).trim());
+      files.push(requireGlob(arg.slice('--file='.length), '--file'));
     } else if (arg.startsWith('--files=')) {
-      files.push(arg.slice('--files='.length).trim());
+      files.push(requireGlob(arg.slice('--files='.length), '--files'));
     } else if (arg.startsWith('--')) {
       // Otherwise a typo folds into the value: `ignore-value overused-font Inter
       // --shard` stored the value "inter --shard", which matches no finding, and
@@ -583,7 +592,9 @@ function parseIgnoreValueArgs(args) {
   return {
     rule: String(rule || '').trim().toLowerCase(),
     value: normalizeIgnoreValue(valueParts.join(' ')),
-    files: Array.from(new Set(files.filter(Boolean))),
+    // Sorted: the dedup key compares the files array, so an unsorted scope made
+    // `--file b.css --file a.css` a different entry from `--file a.css --file b.css`.
+    files: Array.from(new Set(files.filter(Boolean))).sort(),
     shared,
     local,
     reason,

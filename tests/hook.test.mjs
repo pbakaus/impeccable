@@ -527,6 +527,28 @@ describe('hook-admin.mjs', () => {
     });
   }
 
+  it('refuses an empty --file glob instead of silently writing a project-wide ignore', () => {
+    // `--file=` was dropped by filter(Boolean), so this reported success and
+    // stored an entry with no files: a broader suppression than was asked for.
+    for (const args of [['--file='], ['--file', ''], ['--files=']]) {
+      assert.throws(
+        () => runAdmin(['ignore-value', 'overused-font', 'Inter', ...args]),
+        /requires a non-empty glob/,
+        `empty glob via ${args.join(' ')} must error`,
+      );
+    }
+    assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'config.json')), false, 'nothing may be written');
+  });
+
+  it('stores a multi-file scope in canonical order so argv order cannot duplicate it', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'b.css', '--file', 'a.css']);
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'a.css', '--file', 'b.css']);
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.impeccable', 'config.json'), 'utf-8'));
+    const entries = cfg.detector.ignoreValues.filter((e) => e.rule === 'design-system-font-size');
+    assert.equal(entries.length, 1, 'the same scope in a different order is one entry, not two');
+    assert.deepEqual(entries[0].files, ['a.css', 'b.css']);
+  });
+
   it('status shows the file scope of a scoped wildcard ignore', () => {
     runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'src/widget.js']);
     const out = runAdmin(['status']);
