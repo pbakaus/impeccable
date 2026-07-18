@@ -550,6 +550,11 @@ function addIgnoreFile(cwd, glob) {
 function requireGlob(raw, flag) {
   const glob = String(raw ?? '').trim();
   if (!glob) throw new Error(`${flag} requires a non-empty glob`);
+  // A following flag is not a glob. `--file --reason "why"` consumed `--reason`
+  // as the scope and left the reason text to fold into the value, storing
+  // value="* why" files=["--reason"] and reporting success. Same silent-no-op
+  // class as an unknown flag folding into the value; refuse it the same way.
+  if (glob.startsWith('--')) throw new Error(`${flag} requires a glob, got the flag ${glob}`);
   return glob;
 }
 

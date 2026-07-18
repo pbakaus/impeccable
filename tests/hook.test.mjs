@@ -537,6 +537,13 @@ describe('hook-admin.mjs', () => {
         `empty glob via ${args.join(' ')} must error`,
       );
     }
+    // `--file --reason "why"` consumed --reason as the scope and let the reason
+    // text fold into the value: stored value="* why" files=["--reason"], success.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', '--reason', 'why']),
+      /requires a glob, got the flag --reason/,
+      'a following flag is not a glob',
+    );
     assert.equal(fs.existsSync(path.join(cwd, '.impeccable', 'config.json')), false, 'nothing may be written');
   });
 
