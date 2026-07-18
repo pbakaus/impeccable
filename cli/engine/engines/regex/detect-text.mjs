@@ -86,6 +86,11 @@ function tokenizeShadowLayer(layer) {
   return tokens;
 }
 
+function lastMatch(text, re) {
+  const all = [...String(text || '').matchAll(re)];
+  return all.length ? all[all.length - 1] : null;
+}
+
 function isShadowLength(token) {
   return /^-?\d*\.?\d+(?:px)?$/i.test(String(token || ''));
 }
@@ -464,12 +469,21 @@ function scanInsetStripeCss(rawContent, filePath, lineOffset = 0) {
     if (/(?:^|[\s._[-])(?:active|current|selected)(?![\w])/i.test(selector)) continue;
     if (/(?:^|[\s>+~,(])(?:button|hr|tr|td|th|table|blockquote|pre|code)(?![\w-])/i.test(selector)) continue;
 
-    const width = match[2].match(/(?:^|;)\s*(?:width|inline-size)\s*:\s*(\d+(?:\.\d+)?)px/i);
+    // Read the last of a repeated declaration, not the first: that is what the
+    // cascade paints. Taking the first both flagged stripes that a later
+    // `box-shadow: none` had cancelled and missed stripes that overrode an
+    // earlier value, and mis-skipped rules whose narrow width was overridden.
+    const width = lastMatch(match[2], /(?:^|;)\s*(?:width|inline-size)\s*:\s*(\d+(?:\.\d+)?)px/gi);
     if (width && Number(width[1]) <= 40) continue;
-    const declaration = match[2].match(/(?:^|;)\s*box-shadow\s*:\s*([^;]+)/i);
+    const declaration = lastMatch(match[2], /(?:^|;)\s*box-shadow\s*:\s*([^;]+)/gi);
     if (!declaration || !/\binset\b/i.test(declaration[1])) continue;
+    // `!important` qualifies the declaration, not the shadow value, so strip it
+    // before the layers are read. Tokenizing split it into its own token, which
+    // made the color count wrong and silently stopped flagging stripes declared
+    // with it — a shape the previous regex handled.
+    const shadowValue = declaration[1].replace(/\s*!\s*important\s*$/i, '').trim();
 
-    for (const rawLayer of declaration[1].split(/,(?![^(]*\))/)) {
+    for (const rawLayer of shadowValue.split(/,(?![^(]*\))/)) {
       const layer = rawLayer.trim();
       // Parse the layer by its grammar rather than by one spelling of it.
       // A box-shadow layer is `inset? && <length>{2,4} && <color>?` in any
@@ -659,7 +673,13 @@ function detectText(content, filePath, options = {}) {
       profile,
       phase: 'style-block',
     }));
-    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 1));
+    // block.startLine is the first line *after* the <style> tag, but block.content
+    // begins at the character right after that tag — so its own line 1 sits on the
+    // tag's line, whether or not a newline follows immediately. lineAtOffset is
+    // 1-based, so the offset is startLine - 2; startLine - 1 double-counted and
+    // reported every selector one line low. runRegexMatchers keeps startLine - 1
+    // because it indexes its split lines from zero.
+    findings.push(...scanInsetStripeCss(block.content, filePath, block.startLine - 2));
   }
 
   // Extract and scan CSS-in-JS template literals

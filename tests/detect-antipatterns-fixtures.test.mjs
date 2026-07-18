@@ -35,6 +35,8 @@ describe('detectText - Astro structural CSS fixtures', () => {
     'Inset Named Token Edge',
     // Only the two offsets are required; blur/spread default to 0.
     'Two Length Edge',
+    'Important Edge',
+    'Cascade Override Edge',
     'Color First Edge',
     'Color First Var Edge',
     'Two Length Trailing Inset Edge',
@@ -64,6 +66,7 @@ describe('detectText - Astro structural CSS fixtures', () => {
     // The short form still respects the neutral and blur exclusions.
     'Two Length Neutral Edge',
     'Space Rgb Neutral Edge',
+    'Cascade Cancelled Edge',
     'Two Length Blurred Edge',
   ];
 
