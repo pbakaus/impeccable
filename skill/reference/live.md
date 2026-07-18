@@ -32,10 +32,6 @@ Harness policy:
 Generation delivery policy:
 - **Default (Cursor and other harnesses):** keep the established atomic single-edit delivery. Do not switch a harness to progressive until its poll loop is known not to block on the extra publish calls. This avoids trading model latency for extra tool-call latency on harnesses with different streaming behavior.
 
-<live-progressive>
-- **Progressive delivery (Codex, Claude Code):** deliver progressively through `live-publish.mjs`, never by editing project source directly. Publish variant 1 as soon as it is complete, then publish each additional validated variant (or the largest ready prefix) without waiting for later siblings. Attach parameter CSS/manifests only with the complete set. The browser makes every arrived variant immediately reviewable and acceptable; Accept/Discard durably cancel unfinished revisions. The user reviews the first direction while the rest are still being written, so time-to-first-variant is what matters, not total time.
-</live-progressive>
-
 Chat is overhead. No recap, no tutorial output, no pasting PRODUCT / DESIGN bodies. Spend tokens on tools and edits; on failure, one or two short sentences.
 
 ## Start
@@ -313,33 +309,6 @@ Complete HTML replacement of the original element for each variant, not a CSS-on
 Colocate preview CSS as a `<style>` tag inside the variant wrapper; `<style>` works anywhere in modern browsers and keeps each delivered state internally complete (no FOUC).
 
 **Atomic default:** write CSS + all variants + parameter manifests in one edit at `insertLine`, preserving the established behavior.
-
-<live-progressive>
-**Transactional progressive delivery (Codex, Claude Code):**
-
-1. Plan all directions and name their parameter axes first so the trio remains coherent.
-2. Prepare revision 1 from the scaffolded source:
-
-```bash
-node {{scripts_path}}/live-publish.mjs --prepare --id EVENT_ID --file SOURCE_FILE
-```
-
-   The JSON result contains `artifactFile`, `epoch`, and `expectedSourceHash`. For the normal source-wrapper path, `artifactFile` is a staging copy of the already-wrapped source; edit **only `artifactFile`** at `insertLine`: write variant 1 and only the CSS it needs. Do not attach `data-impeccable-params` yet. Publishing replaces the wrapped source atomically, and `expectedSourceHash` is the fence that makes it safe: if the file moved under you the publish is rejected rather than clobbering it. The wrapper itself is already in your source from the scaffold, so preview markers are visible there until Accept or Discard removes them; do not hand-edit the file while a publish may be in flight.
-
-   For `previewMode: "svelte-component"` or `"vue-component"`, `artifactFile` is an isolated manifest and `componentDir` is its isolated component directory. Write `v1.svelte` or `v1.vue` under the returned `componentDir`, set the artifact manifest's `arrivedVariants` to `1`, and leave `params.json` absent. Keep `--file` pointed at the original live manifest on publish; the publisher fences against `targetSourceFile`, promotes the component, then commits the live manifest last. Never edit the live `componentDir` directly.
-3. Publish revision 1 with the exact fence values returned by `--prepare`:
-
-```bash
-node {{scripts_path}}/live-publish.mjs --id EVENT_ID --epoch EPOCH \
-  --file SOURCE_FILE --artifact ARTIFACT_FILE --expected-source-hash SOURCE_HASH \
-  --arrived 1 --expected EVENT_COUNT
-```
-
-   `{ok:false,error:"stale_generation_epoch"}` means the user already accepted or discarded. Stop immediately, do not touch source, and post the generation reply as canceled/error.
-4. Continue variants 2 through `EVENT_COUNT` from the stored plan. Whenever another direction validates, run `--prepare` again so the revision starts from the immutable published prefix, add the largest ready prefix without changing any published variant or default appearance, and publish it immediately. Attach parameter CSS/manifests only when the complete set is ready, using `--kind params`. On component-preview paths, preserve every already-published `vN.svelte` / `vN.vue` byte-for-byte; publication rejects a revision that silently changes a variant the user may already be reviewing.
-5. A params-only pass is recovery-only: use it when durable state says every variant arrived but `paramsPublished` is still false after an interrupted publication.
-6. Verify the published preview parses, then `--reply done`. A late reply is diagnostic only after Accept/Discard and cannot move the durable session backward.
-</live-progressive>
 
 Use the `cssAuthoring` object returned by `live-wrap.mjs` to author the temporary preview CSS. The style opening tag shown below is the common case; replace it with `cssAuthoring.styleTag` when the tool returns a different one. The variant markup shape is otherwise stable:
 

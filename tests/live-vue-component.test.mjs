@@ -6,10 +6,6 @@ import { tmpdir } from 'node:os';
 
 import { createLiveSessionStore } from '../skill/scripts/live/session-store.mjs';
 import {
-  prepareGenerationArtifact,
-  publishGenerationArtifact,
-} from '../skill/scripts/live/generation-publisher.mjs';
-import {
   inlineVueComponentAccept,
   nuxtViteFsModulePath,
   removeAllVueComponentSessions,
@@ -216,75 +212,4 @@ describe('Nuxt Vue component preview', () => {
     assert.equal(existsSync(root), false);
   });
 
-  it('publishes manifest-last, preserves the route, and rejects late work after Accept', () => {
-    const result = scaffoldVueComponentSession({
-      id: 'vue12345',
-      count: 3,
-      sourceFile: 'app/pages/index.vue',
-      sourceStartLine: 3,
-      sourceEndLine: 3,
-      originalLines: ['    <h1 class="hero-title">Hello {{ user.name }}</h1>'],
-      cwd: tmp,
-    });
-    const store = createLiveSessionStore({ cwd: tmp, sessionId: 'vue12345' });
-    store.appendEvent({
-      type: 'generate',
-      id: 'vue12345',
-      generationEpoch: 1,
-      count: 3,
-      action: 'polish',
-      element: { outerHTML: '<h1>Hello Paul</h1>' },
-    });
-    const routeBefore = readFileSync(source, 'utf-8');
-    const prepared = prepareGenerationArtifact({ id: 'vue12345', sourceFile: result.manifestFile, cwd: tmp });
-    assert.equal(prepared.ok, true);
-    assert.equal(prepared.previewMode, 'vue-component');
-    const artifactManifest = JSON.parse(readFileSync(join(tmp, prepared.artifactFile), 'utf-8'));
-    artifactManifest.arrivedVariants = 1;
-    writeFileSync(join(tmp, prepared.artifactFile), JSON.stringify(artifactManifest, null, 2) + '\n');
-    writeFileSync(join(tmp, prepared.componentDir, 'v1.vue'), '<template><h1>First</h1></template>\n');
-
-    const published = publishGenerationArtifact({
-      id: 'vue12345',
-      epoch: prepared.epoch,
-      sourceFile: result.manifestFile,
-      artifactFile: prepared.artifactFile,
-      expectedSourceHash: prepared.expectedSourceHash,
-      arrivedVariants: 1,
-      expectedVariants: 3,
-      cwd: tmp,
-    });
-    assert.equal(published.ok, true);
-    assert.equal(published.previewMode, 'vue-component');
-    assert.equal(readFileSync(source, 'utf-8'), routeBefore);
-    assert.equal(JSON.parse(readFileSync(join(tmp, result.manifestFile), 'utf-8')).arrivedVariants, 1);
-
-    const late = prepareGenerationArtifact({ id: 'vue12345', sourceFile: result.manifestFile, cwd: tmp });
-    const lateManifest = JSON.parse(readFileSync(join(tmp, late.artifactFile), 'utf-8'));
-    lateManifest.arrivedVariants = 2;
-    writeFileSync(join(tmp, late.artifactFile), JSON.stringify(lateManifest, null, 2) + '\n');
-    writeFileSync(join(tmp, late.componentDir, 'v2.vue'), '<template><h1>Second</h1></template>\n');
-    store.appendEvent({ type: 'accept', id: 'vue12345', variantId: '1' });
-    const rejected = publishGenerationArtifact({
-      id: 'vue12345',
-      epoch: late.epoch,
-      sourceFile: result.manifestFile,
-      artifactFile: late.artifactFile,
-      expectedSourceHash: late.expectedSourceHash,
-      arrivedVariants: 2,
-      expectedVariants: 3,
-      cwd: tmp,
-    });
-    assert.equal(rejected.ok, false);
-    assert.equal(rejected.error, 'stale_generation_epoch');
-    assert.equal(readFileSync(source, 'utf-8'), routeBefore);
-    assert.equal(JSON.parse(readFileSync(join(tmp, result.manifestFile), 'utf-8')).arrivedVariants, 1,
-      'the manifest must still advertise only the variant published before Accept');
-    // A rejected publish must not have touched the session dir at all: v2 still
-    // holds its untouched scaffold stub rather than the late variant's markup.
-    const v2AfterReject = readFileSync(join(tmp, result.componentDir, 'v2.vue'), 'utf-8');
-    assert.doesNotMatch(v2AfterReject, /Second/,
-      'a rejected late publish must not write variant files into the session dir');
-    assert.match(v2AfterReject, /Variant 2: add scoped CSS here/, 'v2 must still be the scaffold stub');
-  });
 });

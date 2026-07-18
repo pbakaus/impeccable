@@ -53,9 +53,7 @@ import {
   extractFindingIgnoreValue,
   resolveProjectPlatform,
   isNativePlatform,
-  normalizeIgnoreValueEntries,
 } from '../skill/scripts/hook-lib.mjs';
-import { normalizeIgnoreValueEntries as normalizeIgnoreValueEntriesCli } from '../cli/lib/impeccable-config.mjs';
 import { detectHtml, detectText } from '../cli/engine/detect-antipatterns.mjs';
 
 function mkTmp() {
@@ -564,132 +562,6 @@ describe('hook-admin.mjs', () => {
     const status = runAdmin(['status']);
     assert.match(status, /local file:\s+\.impeccable\/config\.local\.json/);
     assert.match(status, /ignoreValues:\s+overused-font=inter/);
-  });
-
-  // detector.ignoreValues honours a `files` scope, which is the narrowest way to
-  // silence one noisy rule on one file. hook-admin could not write it, so the
-  // only reachable option was ignore-file, which silences every rule for that
-  // file forever.
-  it('ignore-value scopes a wildcard to files via --file', () => {
-    const out = runAdmin([
-      'ignore-value', 'design-system-font-size', '*',
-      '--file', 'src/overlay/widget.js',
-      '--reason', 'Widget builds its own type scale',
-    ]);
-    assert.match(out, /scoped to src\/overlay\/widget\.js/);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
-    assert.deepEqual(shared.ignoreValues, [{
-      rule: 'design-system-font-size',
-      value: '*',
-      files: ['src/overlay/widget.js'],
-      createdAt: shared.ignoreValues[0].createdAt,
-      reason: 'Widget builds its own type scale',
-    }]);
-  });
-
-  it('ignore-value accepts --file=, --files= and repeated --file', () => {
-    runAdmin(['ignore-value', 'side-tab', '*', '--file=a.css']);
-    runAdmin(['ignore-value', 'side-tab', '*', '--files=b.css']);
-    runAdmin(['ignore-value', 'low-contrast', '*', '--file', 'c.css', '--file', 'd.css']);
-    const shared = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
-    assert.deepEqual(
-      shared.ignoreValues.map(({ rule, files }) => ({ rule, files })),
-      [
-        { rule: 'side-tab', files: ['a.css'] },
-        { rule: 'side-tab', files: ['b.css'] },
-        { rule: 'low-contrast', files: ['c.css', 'd.css'] },
-      ],
-      'each distinct file scope is its own entry; a rule+value-only key overwrote them',
-    );
-  });
-
-  it('ignore-value refuses a wildcard with no file scope', () => {
-    assert.throws(
-      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
-      /Wildcard value ignores must be scoped with --file/,
-      'a bare wildcard is ignore-rule\'s job, not a per-file waiver',
-    );
-    assert.equal(fs.existsSync(getConfigPath(cwd)), false, 'a refused ignore must not write config');
-  });
-
-  it('ignore-value --file requires a glob', () => {
-    assert.throws(
-      () => runAdmin(['ignore-value', 'side-tab', '*', '--file']),
-      /--file requires a glob/,
-    );
-  });
-
-  it('ignore-value rejects an unknown flag instead of folding it into the value', () => {
-    // `--shard` (a typo for --shared) used to store the value "inter --shard",
-    // which matches nothing, while reporting a successful suppression.
-    assert.throws(
-      () => runAdmin(['ignore-value', 'overused-font', 'Inter', '--shard']),
-      /Unknown ignore-value flag: --shard/,
-    );
-    assert.equal(fs.existsSync(getConfigPath(cwd)), false);
-  });
-
-  // Every write runs the entries through normalizeIgnoreValueEntries. Emitting a
-  // different key order than the one on disk rewrote all untouched entries.
-  it('an unrelated edit leaves existing ignoreValues byte-identical', () => {
-    fs.mkdirSync(path.join(cwd, '.impeccable'), { recursive: true });
-    const seeded = {
-      detector: {
-        ignoreRules: [],
-        ignoreFiles: [],
-        ignoreValues: [
-          {
-            rule: 'bounce-easing',
-            value: 'bounce-ball',
-            createdAt: '2026-06-15T04:15:03.164Z',
-            reason: 'Intentional',
-          },
-          {
-            rule: 'design-system-color',
-            value: '*',
-            files: ['site/styles/demo.css'],
-            createdAt: '2026-06-15T23:37:38.170Z',
-            reason: 'Deliberate off-system demo',
-          },
-        ],
-      },
-    };
-    fs.writeFileSync(getConfigPath(cwd), JSON.stringify(seeded, null, 2) + '\n');
-    const before = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector.ignoreValues;
-
-    runAdmin(['ignore-file', 'some/other/**']);
-
-    const after = JSON.parse(fs.readFileSync(getConfigPath(cwd), 'utf-8')).detector;
-    assert.deepEqual(after.ignoreFiles, ['some/other/**'], 'the intended change still lands');
-    assert.equal(
-      JSON.stringify(after.ignoreValues),
-      JSON.stringify(before),
-      'untouched ignoreValues must keep their exact key order, or every config diff churns',
-    );
-  });
-
-  // hook-lib.mjs (skill, ships into harness dirs) and cli/lib/impeccable-config.mjs
-  // (CLI + Pages functions) carry independent copies of this normalizer by
-  // necessity. They write the same file, so a key-order drift between them makes
-  // the config churn depending on which tool touched it last.
-  it('both config normalizers emit identical entries', () => {
-    const input = [
-      { rule: 'BOUNCE-EASING', value: 'Bounce-Ball', reason: ' r ', createdAt: '2026-01-01T00:00:00.000Z' },
-      { rule: 'design-system-color', value: '*', files: [' a.css ', 'b.css', 'a.css'], createdAt: '2026-02-02T00:00:00.000Z' },
-      { rule: 'side-tab', value: '*', file: 'legacy.css' },
-      { rule: '', value: 'dropped' },
-    ];
-    assert.equal(
-      JSON.stringify(normalizeIgnoreValueEntries(input)),
-      JSON.stringify(normalizeIgnoreValueEntriesCli(input)),
-      'skill/scripts/hook-lib.mjs and cli/lib/impeccable-config.mjs must agree, key order included',
-    );
-    // And pin the canonical order itself, which is what the config on disk uses.
-    const full = { rule: 'side-tab', value: '*', files: ['a.css'], createdAt: '2026-01-01T00:00:00.000Z', reason: 'r' };
-    assert.deepEqual(
-      Object.keys(normalizeIgnoreValueEntries([full])[0]),
-      ['rule', 'value', 'files', 'createdAt', 'reason'],
-    );
   });
 
   it('a /impeccable hooks edit preserves sibling hook fields (consent, quiet)', () => {

@@ -30,7 +30,6 @@ import {
   inlineVueComponentAccept,
   retireVueComponentSession,
 } from './live/vue-component.mjs';
-import { removeGenerationArtifacts } from './live/generation-publisher.mjs';
 
 const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 const ACCEPT_LOCK_WAIT_MS = 1_000;
@@ -154,10 +153,6 @@ Output (JSON):
         variantId: isDiscard ? null : String(variantNum),
         result,
       });
-      // The session is over: drop its staged revision artifacts. Leaving them
-      // behind is what let a later marker search find a decoy instead of real
-      // source. Only on success, so a failed accept can still be retried.
-      removeGenerationArtifacts(id, process.cwd());
     }
     console.log(JSON.stringify(result));
   };

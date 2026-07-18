@@ -147,7 +147,7 @@ describe('live reference authoring contract', () => {
     );
     assert.doesNotMatch(
       codexLiveMd,
-      /<\/?(codex|live-progressive)>/,
+      /<\/?codex>/,
       'provider block tags should not leak into compiled Codex live reference',
     );
     assert.doesNotMatch(
@@ -157,55 +157,17 @@ describe('live reference authoring contract', () => {
     );
   });
 
-  it('gives progressive delivery to the harnesses that opt in, and only those', () => {
+
+  it('routes every helper command through the per-provider scripts path', () => {
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    const compileFor = (provider) => compileProviderBlocks(liveMd, PROVIDERS[provider].providerTags);
-
-    // Codex delegates to unblock a foreground poll; Claude Code polls in a
-    // background task. Both can publish variant 1 before the trio is finished.
-    for (const provider of ['codex', 'agents', 'claude-code']) {
-      const compiled = compileFor(provider);
-      assert.match(
-        compiled,
-        /Transactional progressive delivery/,
-        `${provider} should get the progressive publish recipe`,
-      );
-      assert.match(
-        compiled,
-        /Progressive delivery \(Codex, Claude Code\)/,
-        `${provider} should get the progressive delivery policy`,
-      );
-    }
-
-    // Everyone else keeps the atomic single-edit path until their poll loop is
-    // known not to stall on the extra publish calls.
-    for (const provider of ['cursor', 'gemini']) {
-      const compiled = compileFor(provider);
-      assert.doesNotMatch(
-        compiled,
-        /Transactional progressive delivery|Progressive delivery \(Codex, Claude Code\)/,
-        `${provider} has not opted into progressive delivery`,
-      );
-      assert.match(compiled, /\*\*Atomic default:\*\*/, `${provider} should keep the atomic path`);
-      assert.doesNotMatch(
-        compiled,
-        /<\/?live-progressive>/,
-        `capability block tags should not leak into the compiled ${provider} reference`,
-      );
-    }
-  });
-
-  it('routes every live-publish command through the per-provider scripts path', () => {
-    const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
-    // The progressive recipe used to hardcode `.agents/skills/...`, which is only
-    // correct for the Codex repo-skills bundle. Every other harness would have
-    // been told to run the publisher from a directory its install never creates.
+    // A recipe that hardcodes `.agents/skills/...` is only correct for the Codex
+    // repo-skills bundle. Every other harness would be told to run the helper
+    // from a directory its install never creates.
     assert.doesNotMatch(
       liveMd,
       /node\s+\.[a-z-]+\/skills\/impeccable\/scripts\//,
       'live.md must not hardcode a harness config dir; use {{scripts_path}}',
     );
-    assert.match(liveMd, /node \{\{scripts_path\}\}\/live-publish\.mjs --prepare/);
   });
 
   it('keeps live preview CSS guidance capability-mode driven', () => {
