@@ -527,6 +527,27 @@ describe('hook-admin.mjs', () => {
     });
   }
 
+  it('status shows the file scope of a scoped wildcard ignore', () => {
+    runAdmin(['ignore-value', 'design-system-font-size', '*', '--file', 'src/widget.js']);
+    const out = runAdmin(['status']);
+    // Printing `design-system-font-size=*` bare reads as the project-wide
+    // wildcard this command refuses, which is the opposite of what is on disk.
+    assert.match(out, /design-system-font-size=\*\s*\[src\/widget\.js\]/);
+  });
+
+  it('refuses a bare wildcard and names a project-wide command that actually works', () => {
+    assert.throws(
+      () => runAdmin(['ignore-value', 'design-system-font-size', '*']),
+      (err) => /--file/.test(String(err.stderr)) && /ignore-rule design-system-font-size\./.test(String(err.stderr)),
+    );
+    // ignore-rule overused-font refuses on its own without --all-values, so the
+    // suggestion must carry the flag or it hands the user a second error.
+    assert.throws(
+      () => runAdmin(['ignore-value', 'overused-font', '*']),
+      (err) => /ignore-rule overused-font --all-values/.test(String(err.stderr)),
+    );
+  });
+
   it('ignore-value writes shared config by default without creating local config', () => {
     const out = runAdmin(['ignore-value', 'overused-font', 'Inter', '--reason', 'User confirmed Inter']);
     assert.match(out, /overused-font=inter/);

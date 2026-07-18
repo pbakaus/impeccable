@@ -285,7 +285,14 @@ function statusReport(cwd) {
     if (info.exists) return relPath;
     return `${relPath} (${absent})`;
   };
-  const ignoreValues = cfg.ignoreValues.map((entry) => `${entry.rule}=${entry.value}`);
+  // Show the file scope. Dropping it rendered a file-scoped entry as
+  // `design-system-font-size=*`, which reads as the project-wide wildcard this
+  // command refuses — the opposite of what is on disk. Matches the
+  // `rule=value [files]` shape `impeccable ignores list` already prints.
+  const ignoreValues = cfg.ignoreValues.map((entry) => {
+    const scope = Array.isArray(entry.files) && entry.files.length ? ` [${entry.files.join(', ')}]` : '';
+    return `${entry.rule}=${entry.value}${scope}`;
+  });
 
   const lines = [
     `Impeccable design hook`,
@@ -597,7 +604,12 @@ function addIgnoreValue(cwd, args) {
   // not what a finding in one file justifies. detector.ignoreValues honours a
   // `files` scope, so require one — matching `impeccable ignores add-value`.
   if (parsed.value === '*' && parsed.files.length === 0) {
-    throw new Error(`Wildcard value ignores must be scoped with --file <glob>, e.g. ${IMPECCABLE_COMMAND} hooks ignore-value design-system-font-size "*" --file "src/widget.js". To suppress the rule project-wide use ${IMPECCABLE_COMMAND} hooks ignore-rule ${parsed.rule}.`);
+    // `ignore-rule overused-font` refuses on its own without --all-values, so
+    // naming the bare form here would hand the user a second error.
+    const projectWide = parsed.rule === 'overused-font'
+      ? `${IMPECCABLE_COMMAND} hooks ignore-rule ${parsed.rule} --all-values`
+      : `${IMPECCABLE_COMMAND} hooks ignore-rule ${parsed.rule}`;
+    throw new Error(`Wildcard value ignores must be scoped with --file <glob>, e.g. ${IMPECCABLE_COMMAND} hooks ignore-value design-system-font-size "*" --file "src/widget.js". To suppress the rule project-wide use ${projectWide}.`);
   }
 
   const local = parsed.local;
