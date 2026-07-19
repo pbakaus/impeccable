@@ -134,7 +134,7 @@
 
 .detector-nav-group h2 {
   letter-spacing: 0.2em;
-  color: var(--ks-kinpaku-deep);
+  color: var(--ks-accent-ink);
 }
 
 .detector-nav-list {
@@ -177,7 +177,7 @@
 .detector-fixture-button[aria-pressed="true"] {
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
 }
 
 .detector-fixture-button span:first-child {
@@ -256,7 +256,7 @@
   border: 1px solid var(--ks-kinpaku);
   border-radius: 2px;
   background: transparent;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-font);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -280,7 +280,7 @@
 .detector-preview-actions button[data-rerun-browser] {
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
 }
 
 .detector-preview-actions button[data-rerun-browser]:hover {
@@ -404,7 +404,7 @@
 
 .detector-rule-pill span {
   font-family: var(--ks-mono);
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 
 .detector-empty-pill {

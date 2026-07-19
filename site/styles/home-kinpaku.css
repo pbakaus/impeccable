@@ -976,6 +976,23 @@
 .home-kinpaku .magazine-spread[data-category="harden"] { --spread-accent: var(--ks-patina); }
 .home-kinpaku .magazine-spread[data-category="system"] { --spread-accent: var(--ks-muted); }
 
+/* Keep gold and patina for the spread's decorative marks, but use their
+   accessible semantic ink roles for small text inside rendered demos. */
+.home-kinpaku .magazine-spread:is(
+  [data-category="create"],
+  [data-category="refine"],
+  [data-category="simplify"]
+) .demo-viewport {
+  --spread-accent: var(--ks-accent-ink);
+}
+
+.home-kinpaku .magazine-spread:is(
+  [data-category="evaluate"],
+  [data-category="harden"]
+) .demo-viewport {
+  --spread-accent: var(--ks-state-ink);
+}
+
 /* In the command palette the section accent (--spread-accent) carries the whole
    category identity: the kicker, the skill name (big title + active list item),
    and the divider. The slash before /impeccable is demoted to the namespace's
@@ -1629,7 +1646,7 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
 .home-kinpaku .why-terminal-ok,
 .home-kinpaku .why-terminal-path,
 .home-kinpaku .why-dm-badge {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 
 .home-kinpaku .why-visual--ci {
@@ -1715,7 +1732,7 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
 }
 
 .home-kinpaku .why-ci-cmd {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   margin-right: 10px;
 }
 
@@ -1763,7 +1780,7 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
   font-family: var(--ks-mono);
   font-size: 0.62rem;
   letter-spacing: 0.18em;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   vertical-align: middle;
   transform: translateY(-3px);
 }
@@ -2158,7 +2175,7 @@ html.light .home-kinpaku :is(.spread-demo-area, .terminal-preview, .mobile-demo-
 }
 
 .home-kinpaku .why-dm-tile-meta span:first-child {
-  color: var(--ks-kinpaku-pale);
+  color: var(--ks-state-ink);
 }
 
 .home-kinpaku .why-dm-color-hero {

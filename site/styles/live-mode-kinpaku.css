@@ -82,7 +82,7 @@
   padding: 2px 8px;
   border: 1px solid oklch(70% 0.12 188 / 0.4);
   border-radius: 2px;
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   background: oklch(70% 0.12 188 / 0.10);
   text-transform: uppercase;
 }
@@ -111,7 +111,7 @@
   border: 1px solid oklch(70% 0.12 188 / 0.4);
   border-radius: 2px;
   background: oklch(70% 0.12 188 / 0.10);
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-family: var(--ks-mono);
   font-size: 0.64rem;
   font-weight: 500;
@@ -146,52 +146,72 @@
 }
 
 .live-mode-kinpaku .live-mode-page-alpha-note strong {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-weight: 500;
 }
 
-/* Start command pill — terminal-style, kinpaku-tinted. */
+/* Start command — matches the homepage's runnable terminal frame. */
 .live-mode-kinpaku .live-mode-start {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 18px;
-  background: var(--ks-lacquer-deep);
-  border: 1px solid var(--ks-rule);
+  width: 100%;
+  max-width: 600px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 15px 14px 15px 22px;
+  background: var(--ks-code-block-bg);
+  border: 1px solid var(--ks-kinpaku);
   border-radius: 2px;
   font-family: var(--ks-mono);
 }
 
 .live-mode-kinpaku .live-mode-start-prompt {
-  color: var(--ks-kinpaku);
-  font-size: 0.92rem;
+  flex: none;
+  color: var(--ks-accent-ink);
+  font-size: 1.18rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
 }
 
 .live-mode-kinpaku .live-mode-start-cmd {
-  color: var(--ks-champagne);
-  font-size: 0.92rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--ks-code-block-fg);
+  font-size: 1.22rem;
+  letter-spacing: 0;
   background: transparent;
   border: 0;
   padding: 0;
+  user-select: all;
 }
 
 .live-mode-kinpaku .live-mode-start-copy {
   appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--ks-text-muted);
-  cursor: pointer;
-  display: grid;
+  flex: none;
+  position: relative;
+  display: inline-grid;
   place-items: center;
-  padding: 4px;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: 1px solid var(--ks-rule);
+  color: var(--ks-accent-ink);
+  cursor: pointer;
   border-radius: 2px;
   transition:
-    color 160ms var(--ks-ease),
+    background 180ms var(--ks-ease),
+    border-color 180ms var(--ks-ease),
+    color 180ms var(--ks-ease),
     transform 120ms var(--ks-ease);
 }
 
 .live-mode-kinpaku .live-mode-start-copy:hover {
-  color: var(--ks-kinpaku);
+  background: oklch(77% 0.14 82 / 0.08);
+  border-color: currentColor;
 }
 
 .live-mode-kinpaku .live-mode-start-copy:active {
@@ -222,7 +242,9 @@
 }
 
 .live-mode-kinpaku .live-mode-start-copy.copied {
-  color: var(--ks-kinpaku);
+  background: oklch(77% 0.14 82 / 0.08);
+  border-color: currentColor;
+  color: var(--ks-accent-ink);
 }
 
 .live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-copy-icon {
@@ -253,6 +275,30 @@
   .live-mode-kinpaku .live-mode-start-copy.copied .live-mode-start-check-icon path {
     animation: none;
     stroke-dashoffset: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .live-mode-kinpaku .live-mode-start {
+    gap: 10px;
+    padding: 13px 12px 13px 16px;
+  }
+
+  .live-mode-kinpaku .live-mode-start-prompt {
+    font-size: 1.05rem;
+  }
+
+  .live-mode-kinpaku .live-mode-start-cmd {
+    overflow-x: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.96rem;
+    line-height: 1.35;
+  }
+
+  .live-mode-kinpaku .live-mode-start-copy {
+    width: 34px;
+    height: 34px;
   }
 }
 
@@ -493,7 +539,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   margin: 0;
 }
 
@@ -558,7 +604,7 @@
 
 .live-mode-kinpaku .live-mode-stage-viz .docs-viz-picker-pin {
   background: var(--ks-kinpaku);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
   box-shadow: none;
 }
 
@@ -616,6 +662,13 @@
   box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.05);
 }
 
+html.light .live-mode-kinpaku .live-mode-stage-viz .docs-viz-accept-pill {
+  background: color-mix(in oklch, var(--ks-lacquer-raised) 90%, var(--ks-patina) 10%);
+  border-color: color-mix(in oklch, var(--ks-state-ink) 45%, transparent);
+  color: var(--ks-state-ink);
+  box-shadow: none;
+}
+
 
 /* ============================================================================
    5. PATHWAYS — 3-up "Where next"
@@ -661,7 +714,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   margin: 0;
 }
 
@@ -696,7 +749,7 @@
   margin-top: 4px;
   font-family: var(--ks-mono);
   font-size: 0.78rem;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 
@@ -724,7 +777,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   margin: 0 0 14px;
 }
 
@@ -768,10 +821,14 @@
 }
 
 .live-mode-kinpaku .framework-list--matrix small {
-  color: var(--ks-patina-deep);
+  color: var(--ks-patina-pale);
   font-size: 0.62rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+html.light .live-mode-kinpaku .framework-list--matrix small {
+  color: var(--ks-state-ink);
 }
 
 .live-mode-kinpaku .framework-list--matrix strong {

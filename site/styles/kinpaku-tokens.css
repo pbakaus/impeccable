@@ -33,8 +33,14 @@
 	--ks-patina-pale:    oklch(82% 0.07 188);    /* hover lift on patina */
 	--ks-patina-deep:    oklch(49% 0.08 188);    /* deep oxide, dark variants */
 
+	/* Semantic foregrounds. Keep the brand anchors above for fills, rules,
+	   marks, and textures; use these roles whenever color carries text. */
+	--ks-accent-ink:     var(--ks-kinpaku);
+	--ks-state-ink:      var(--ks-patina);
+	--ks-on-accent:      oklch(14% 0.018 95);
+
 	/* Warning — vermilion. Used sparingly, only for failures and warnings. */
-	--ks-vermilion:      oklch(58% 0.15 35);
+	--ks-vermilion:      oklch(62% 0.15 35);
 
 	/* ============================================================
 	   Surfaces. Warm-black lacquer carries everything.
@@ -163,7 +169,7 @@ html.light {
 	--ks-kinpaku-pale:   oklch(86% 0.07 84);
 	--ks-kinpaku-rich:   oklch(77% 0.13 82);
 	--ks-kinpaku-deep:   oklch(61% 0.085 78);
-	--ks-kinpaku-ink:    var(--ks-patina);
+	--ks-kinpaku-ink:    var(--ks-accent-ink);
 
 	/* Text links + active nav on paper — patina, not fill gold. */
 	--ks-link-on-paper:       var(--ks-patina-deep);
@@ -175,6 +181,8 @@ html.light {
 	--ks-patina:         oklch(70% 0.12 188);
 	--ks-patina-pale:    oklch(82% 0.07 188);
 	--ks-patina-deep:    oklch(49% 0.08 188);
+	--ks-accent-ink:     var(--ks-patina-deep);
+	--ks-state-ink:      var(--ks-patina-deep);
 
 	--ks-vermilion:      oklch(52% 0.16 35);
 

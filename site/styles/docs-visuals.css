@@ -127,7 +127,7 @@
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--ks-accent-ink);
 }
 
 .docs-viz-live-title {
@@ -141,7 +141,7 @@
 }
 
 .docs-viz-live-title em {
-  color: var(--color-accent);
+  color: var(--ks-accent-ink);
   font-style: italic;
 }
 
@@ -158,7 +158,7 @@
   margin-top: 4px;
   padding: 7px 14px;
   background: var(--color-accent);
-  color: var(--color-paper);
+  color: var(--ks-on-accent);
   font-family: var(--font-body);
   font-size: 11px;
   font-weight: 600;
@@ -359,7 +359,7 @@
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--ks-state-ink);
 }
 
 .docs-viz-file-body {
@@ -778,7 +778,7 @@
   text-align: center;
   font-family: var(--font-body);
   font-size: 14px;
-  color: var(--color-accent);
+  color: var(--ks-accent-ink);
   line-height: 1;
 }
 
@@ -794,7 +794,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
-  color: var(--color-ash);
+  color: var(--ks-text-muted);
 }
 
 .docs-viz-flow-name {
@@ -818,7 +818,7 @@
 }
 
 .docs-viz-flow-step--accent .docs-viz-flow-name {
-  color: var(--color-accent);
+  color: var(--ks-accent-ink);
 }
 
 /* ============================================
@@ -940,19 +940,30 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--color-paper);
   border-radius: 3px;
 }
 
-.docs-viz-report-sev--p0 { background: var(--ks-vermilion); }
+.docs-viz-report-sev--p0,
+.docs-viz-report-sev--p1 {
+  color: oklch(97% 0.01 95);
+}
+.docs-viz-report-sev--p0 {
+  background: color-mix(in oklch, var(--ks-vermilion) 68%, var(--ks-on-accent));
+}
 .docs-viz-report-sev--p1 { background: oklch(52% 0.16 35); }
-.docs-viz-report-sev--p2 { background: var(--ks-kinpaku-rich); }
-.docs-viz-report-sev--p3 { background: var(--color-ash); }
+.docs-viz-report-sev--p2 {
+  color: var(--ks-on-accent);
+  background: var(--ks-kinpaku-rich);
+}
+.docs-viz-report-sev--p3 {
+  color: oklch(97% 0.01 95);
+  background: color-mix(in oklch, var(--ks-text-muted) 50%, var(--ks-on-accent));
+}
 
 .docs-viz-report-sev-n {
   font-weight: 500;
   margin-left: 4px;
-  opacity: 0.85;
+  opacity: 1;
 }
 
 /* ============================================
@@ -1098,8 +1109,8 @@
   text-align: right;
 }
 
-.docs-viz-critique-heur-score--good { color: oklch(45% 0.18 145); }
-.docs-viz-critique-heur-score--ok { color: var(--ks-kinpaku-rich); }
+.docs-viz-critique-heur-score--good { color: var(--ks-state-ink); }
+.docs-viz-critique-heur-score--ok { color: var(--ks-accent-ink); }
 .docs-viz-critique-heur-score--bad { color: var(--ks-vermilion); }
 
 /* ============================================
@@ -1150,7 +1161,7 @@
   width: 22px;
   height: 22px;
   background: var(--color-accent);
-  color: var(--color-paper);
+  color: var(--ks-on-accent);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
@@ -1223,7 +1234,7 @@
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-ash);
+  color: var(--ks-text-muted);
 }
 
 .docs-viz-variant-title {
@@ -1249,7 +1260,10 @@
 }
 
 .docs-viz-variant--v1 { background: var(--color-cream); }
-.docs-viz-variant--v2 .docs-viz-variant-btn { background: var(--color-accent); }
+.docs-viz-variant--v2 .docs-viz-variant-btn {
+  background: var(--color-accent);
+  color: var(--ks-on-accent);
+}
 .docs-viz-variant--v3 { background: var(--color-cream); }
 
 /* Accept pill */
@@ -1264,7 +1278,7 @@
   box-shadow: 0 4px 14px oklch(0% 0 0 / 0.06);
   font-family: var(--font-body);
   font-size: 12px;
-  color: oklch(45% 0.18 145);
+  color: var(--ks-state-ink);
 }
 
 .docs-viz-accept-pill::before {
@@ -3028,7 +3042,7 @@
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--ks-accent-ink);
 }
 
 .craft-case-copy h2 {
@@ -3101,7 +3115,7 @@
 .neon-case-eyebrow,
 .neon-case-section-label,
 .neon-case-strip figure > span {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   letter-spacing: 0.2em;
 }
@@ -3181,13 +3195,13 @@
 }
 
 .neon-case-primary {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
 }
 
 .neon-case-secondary {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   border-color: var(--ks-kinpaku);
 }
 
@@ -3346,6 +3360,10 @@
 }
 
 .neon-case-command {
+  --neon-command-bg: var(--ks-code-block-bg);
+  --neon-command-fg: var(--ks-code-block-fg);
+  --neon-command-accent: var(--ks-accent-ink);
+
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
   gap: clamp(2rem, 5vw, 4rem);
@@ -3375,38 +3393,55 @@
 
 .neon-case-command .code-block-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin: 0;
   max-width: 100%;
   min-width: 0;
+  padding: 15px 14px 15px 22px;
+  background: var(--neon-command-bg);
+  border: 1px solid var(--ks-kinpaku);
+  border-radius: 2px;
 }
 
 .neon-case-command .code-block-wrap::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  bottom: 31px;
-  width: 142px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--ks-code-block-bg) 74%);
-  z-index: 1;
+  content: none;
 }
 
 .neon-case-command .code-block {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 14px;
   max-width: 100%;
+  min-width: 0;
   margin: 0;
-  padding: var(--spacing-md) 96px var(--spacing-md) var(--spacing-md);
-  background: var(--ks-code-block-bg);
-  color: var(--ks-code-block-fg);
-  border: 1px solid var(--ks-code-block-border);
-  border-radius: var(--ks-code-block-radius);
-  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--neon-command-fg);
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
   font-family: var(--ks-mono);
   font-size: 0.8125rem;
-  line-height: 1.55;
+  line-height: 1.4;
+}
+
+.neon-case-command .neon-case-command-prompt {
+  flex: none;
+  color: var(--neon-command-accent);
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
 }
 
 .neon-case-command .code-block code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
   background: transparent;
   border: 0;
   padding: 0;
@@ -3415,21 +3450,20 @@
 }
 
 .neon-case-command .code-block-copy {
-  top: 0;
-  right: 14px;
-  bottom: 17px;
-  margin: auto 0;
-  z-index: 2;
+  position: relative;
+  inset: auto;
+  flex: none;
+  margin: 0;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   opacity: 1;
-  background: oklch(5% 0.004 95 / 0.94);
-  border: 1px solid var(--ks-code-block-border);
-  border-radius: 3px;
-  color: var(--ks-kinpaku);
+  background: transparent;
+  border: 1px solid var(--ks-rule);
+  border-radius: 2px;
+  color: var(--neon-command-accent);
   transform: none;
   transition:
     background 180ms var(--ks-ease),
@@ -3443,9 +3477,13 @@
 }
 
 .neon-case-command .code-block-copy:hover {
-  background: oklch(8% 0.006 95);
+  background: color-mix(in oklch, var(--neon-command-accent) 10%, transparent);
   border-color: currentColor;
-  color: var(--ks-kinpaku);
+}
+
+.neon-case-command .code-block-copy:focus-visible {
+  outline: 2px solid var(--neon-command-accent);
+  outline-offset: 3px;
 }
 
 .neon-case-command .code-block-copy:active {
@@ -3476,7 +3514,7 @@
 }
 
 .neon-case-command .code-block-copy.copied {
-  background: oklch(8% 0.006 95);
+  background: color-mix(in oklch, var(--neon-command-accent) 10%, transparent);
   border-color: currentColor;
 }
 
@@ -3496,6 +3534,10 @@
 
 @keyframes neon-case-check-draw {
   to { stroke-dashoffset: 0; }
+}
+
+html.light .neon-case-command {
+  --neon-command-bg: var(--ks-graphite);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3543,5 +3585,27 @@
 
   .craft-case-images img {
     width: 74%;
+  }
+
+  .neon-case-command .code-block-wrap {
+    gap: 10px;
+    padding: 13px 12px 13px 16px;
+  }
+
+  .neon-case-command .code-block {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .neon-case-command .code-block code {
+    overflow-x: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+  }
+
+  .neon-case-command .code-block-copy {
+    width: 34px;
+    height: 34px;
   }
 }

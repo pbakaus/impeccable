@@ -69,7 +69,7 @@
 }
 
 .ks-section-eyebrow {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.7rem;
   letter-spacing: 0.28em;
@@ -93,7 +93,7 @@
 
 .ks-subsection-label {
   display: block;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.24em;
@@ -147,7 +147,7 @@
    anchor resets like `.kinpaku-system-page a { color: inherit }` (0,1,1).
    Use class="ks-button ks-button-primary" — both classes required. */
 .ks-button.ks-button-primary {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
   background: var(--ks-kinpaku);
   border-color: var(--ks-kinpaku);
 }
@@ -155,7 +155,7 @@
 .ks-button.ks-button-primary:hover {
   background: var(--ks-kinpaku-pale);
   border-color: var(--ks-kinpaku-pale);
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
   transform: translateY(-1px);
 }
 
@@ -166,14 +166,14 @@
 }
 
 .ks-button.ks-button-secondary {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   background: transparent;
   border-color: var(--ks-kinpaku);
 }
 
 .ks-button.ks-button-secondary:hover {
   background: oklch(77% 0.14 82 / 0.08);
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   transform: translateY(-1px);
 }
 
@@ -190,7 +190,7 @@
 }
 
 .ks-button.ks-button-ghost:hover {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .ks-button[disabled],
@@ -370,7 +370,7 @@
 .ks-tab-list button:hover { color: var(--ks-champagne); }
 
 .ks-tab-list button[aria-selected="true"] {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   border-bottom-color: var(--ks-kinpaku);
 }
 
@@ -413,8 +413,8 @@
 }
 
 .ks-badge.is-detected { color: var(--ks-vermilion); }
-.ks-badge.is-improved { color: var(--ks-patina); }
-.ks-badge.is-ready { color: var(--ks-kinpaku); }
+.ks-badge.is-improved { color: var(--ks-state-ink); }
+.ks-badge.is-ready { color: var(--ks-accent-ink); }
 
 .ks-tag-row {
   display: flex;
@@ -434,9 +434,9 @@
 }
 
 .ks-tag.is-detected { color: var(--ks-vermilion); }
-.ks-tag.is-improved { color: var(--ks-patina); }
+.ks-tag.is-improved { color: var(--ks-state-ink); }
 .ks-tag.is-neutral { color: var(--ks-text-muted); }
-.ks-tag.is-ready { color: var(--ks-kinpaku); }
+.ks-tag.is-ready { color: var(--ks-accent-ink); }
 
 
 /* ============================================================
@@ -465,12 +465,12 @@
 
 .ks-pagination button:hover {
   border-color: var(--ks-kinpaku);
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .ks-pagination button[aria-current="page"] {
   border-color: var(--ks-kinpaku);
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 
@@ -511,7 +511,7 @@
   margin-top: 2px;
 }
 
-.ks-toast.is-success { color: var(--ks-patina); }
+.ks-toast.is-success { color: var(--ks-state-ink); }
 .ks-toast.is-warning { color: var(--ks-vermilion); }
 
 .ks-toast-close {
@@ -540,7 +540,7 @@
   border: 1px solid var(--ks-rule);
   border-radius: 999px;
   background: transparent;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   cursor: pointer;
 }
 
@@ -634,7 +634,7 @@
   height: 36px;
   display: grid;
   place-items: center;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .ks-empty strong {
@@ -687,7 +687,7 @@
   display: inline-block;
   margin-left: 8px;
   padding: 1px 8px;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   border: 1px solid var(--ks-kinpaku);
   font-style: normal;
   font-size: 0.66rem;
@@ -1061,11 +1061,11 @@
   font-size: 0.62rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .ks-bento-num[data-color="patina"] {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 
 

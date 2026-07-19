@@ -190,7 +190,7 @@ html.light .ks-bento {
 html.light .ks-button.ks-button-primary,
 html.light .ks-button.ks-button-primary:hover,
 html.light .ks-button.ks-button-primary:active {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 html.light .ks-button.ks-button-secondary {
@@ -200,7 +200,7 @@ html.light .ks-button.ks-button-secondary {
 
 html.light .ks-button.ks-button-secondary:hover,
 html.light .ks-button.ks-button-secondary:active {
-  color: var(--ks-kinpaku-rich);
+  color: var(--ks-accent-ink);
   border-color: var(--ks-kinpaku);
 }
 
@@ -257,7 +257,7 @@ html.light body.docs-kinpaku :is(
 html.light .home-kinpaku .magazine-container .spread-command-name,
 html.light .home-kinpaku .magazine-container .spread-category-label,
 html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
-  color: var(--spread-accent);
+  color: var(--ks-accent-ink);
 }
 
 /* ============================================================
@@ -454,7 +454,7 @@ html.light .home-kinpaku .why-dm-comp-chip {
 }
 
 html.light .home-kinpaku .why-dm-comp-chip--primary {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
   border-color: var(--ks-kinpaku-deep);
   background:
     linear-gradient(90deg, oklch(77% 0.13 82 / 0.22), oklch(84% 0.19 80 / 0.55)),
@@ -694,7 +694,7 @@ html.light .designing-kinpaku .docs-viz-live-kicker {
 }
 
 html.light .designing-kinpaku .docs-viz-live-btn {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
 }
 
 html.light .designing-kinpaku .docs-viz-live-ctx,
@@ -710,7 +710,7 @@ html.light .designing-kinpaku .docs-viz-live-gbar-mark {
 
 html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active {
   background: var(--ks-kinpaku);
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active svg {
@@ -718,7 +718,7 @@ html.light .designing-kinpaku .docs-viz-live-gbar-btn.is-active svg {
 }
 
 html.light .designing-kinpaku .docs-viz-live-ctx-accept {
-  color: var(--ks-lacquer-deep);
+  color: var(--ks-on-accent);
 }
 
 html.light .designing-kinpaku .designing-surface-cmd,
@@ -728,7 +728,7 @@ html.light .designing-kinpaku .designing-extract-btn {
 }
 
 html.light .designing-kinpaku .designing-extract-after {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 html.light .designing-kinpaku .designing-lane-link {
@@ -896,6 +896,22 @@ html.light .kinpaku-system-page .ks-proof-card {
   border-color: var(--ks-rule);
 }
 
+html.light .kinpaku-system-page .ks-accent-band.is-dust {
+  background: var(--ks-lacquer);
+  filter: none;
+  mix-blend-mode: normal;
+  isolation: isolate;
+}
+
+html.light .kinpaku-system-page .ks-accent-band.is-dust::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/assets/neo-kinpaku/gold-dust-rule.png") center / 100% 100% no-repeat;
+  filter: invert(1) hue-rotate(180deg) saturate(1.35) contrast(1.12);
+  mix-blend-mode: multiply;
+}
+
 html.light .detector-lab-page {
   background: var(--ks-lacquer);
   color: var(--ks-text);
@@ -962,7 +978,7 @@ html.light .home-kinpaku .terminal-header {
 }
 
 html.light .home-kinpaku .language-view-tab.is-active {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 /* Periodic-table view (#framework-viz-container). The dark styles hardcode a
@@ -1088,7 +1104,7 @@ html.light .home-kinpaku .why-writes-line--add {
 }
 
 html.light .home-kinpaku .why-writes-check {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 html.light .home-kinpaku .why-visual--v2 .v2-canvas-mock,
@@ -1332,7 +1348,7 @@ html.light .live-mode-kinpaku .live-demo-gbar-brand {
 html.light .home-kinpaku .live-demo-gbar-btn.is-active,
 html.light .live-mode-kinpaku .live-demo-gbar-btn.is-active {
   background: var(--ks-kinpaku);
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 html.light .home-kinpaku .live-demo-gbar-btn.is-active svg,
@@ -1416,7 +1432,7 @@ html.light .home-kinpaku .live-demo-ctx-go,
 html.light .home-kinpaku .live-demo-ctx-accept,
 html.light .live-mode-kinpaku .live-demo-ctx-go,
 html.light .live-mode-kinpaku .live-demo-ctx-accept {
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
 }
 
 /* Palette switcher — light surface, kinpaku-tinted highlight (the dark graphite
@@ -1508,7 +1524,7 @@ html.light .home-kinpaku .why-live-pick-tag {
 
 html.light .home-kinpaku .why-live-pick-note {
   background: var(--ks-kinpaku);
-  color: oklch(14% 0.018 95);
+  color: var(--ks-on-accent);
   box-shadow: 0 4px 14px oklch(77% 0.13 82 / 0.18);
 }
 
@@ -1716,7 +1732,7 @@ html.light .home-kinpaku .why-ci-line {
 }
 
 html.light .home-kinpaku .why-ci-cmd {
-  color: var(--ks-kinpaku-deep);
+  color: var(--ks-accent-ink);
 }
 
 html.light .home-kinpaku .why-ci-issue code {
@@ -1742,7 +1758,7 @@ html.light .home-kinpaku .why-register-label {
 }
 
 html.light .home-kinpaku .why-brand-hero-title em {
-  color: var(--ks-kinpaku-deep);
+  color: var(--ks-accent-ink);
 }
 
 html.light .home-kinpaku .why-register-mock--brand {
@@ -1840,6 +1856,19 @@ html.light .home-kinpaku .downloads-rebuild-copy:hover {
   border-color: var(--ks-patina);
   background: oklch(70% 0.12 188 / 0.08);
   color: var(--ks-link-on-paper-hover);
+}
+
+html.light .live-mode-kinpaku .live-mode-start {
+  background: var(--ks-graphite);
+}
+
+html.light .live-mode-kinpaku .live-mode-start-cmd {
+  color: var(--ks-text);
+}
+
+html.light .live-mode-kinpaku .live-mode-start-copy:hover,
+html.light .live-mode-kinpaku .live-mode-start-copy.copied {
+  background: oklch(70% 0.12 188 / 0.08);
 }
 
 html.light .downloads-rebuild-alts-summary {

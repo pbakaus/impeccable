@@ -755,7 +755,7 @@ svg.downloads-rebuild-tab-logo {
   opacity: 0.9;
 }
 .downloads-rebuild-tab[aria-selected="true"] {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   border-bottom-color: var(--ks-kinpaku);
 }
 .downloads-rebuild-tab:focus-visible {
@@ -779,7 +779,7 @@ svg.downloads-rebuild-tab-logo {
   color: var(--card-fg-muted);
 }
 .downloads-rebuild-method-note strong {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-weight: 600;
   cursor: help;
 }
@@ -1286,12 +1286,6 @@ svg.downloads-rebuild-tab-logo {
   text-decoration-thickness: 1px;
   width: fit-content;
   transition: color 180ms var(--ks-ease);
-}
-
-/* Push the primary link to the bottom of each cell so all three primary
-   links sit at the same Y. The secondary link follows naturally below. */
-.home-kinpaku .downloads-rebuild-extras a:not(.downloads-rebuild-link-secondary) {
-  margin-top: auto;
 }
 
 .home-kinpaku .downloads-rebuild-extras a.downloads-rebuild-link-secondary {

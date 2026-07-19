@@ -70,7 +70,7 @@
 }
 .cf-filter-btn:hover { color: var(--ks-text); }
 .cf-filter-btn.is-active {
-  color: var(--ks-lacquer);
+  color: var(--ks-on-accent);
   background: var(--ks-kinpaku);
   font-weight: 600;
 }
@@ -205,7 +205,7 @@
   border: 1px solid var(--ks-rule);
 }
 .cf-ba-tag--after {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   background: oklch(78% 0.12 82 / 0.14);
   border: 1px solid oklch(78% 0.12 82 / 0.4);
 }

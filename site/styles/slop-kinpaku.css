@@ -602,7 +602,7 @@
   font-size: 0.72rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .slop-kinpaku .anti-patterns-legend-chevron {
@@ -795,24 +795,24 @@
 
 .slop-kinpaku .rule-card-category[data-category="slop"] {
   color: var(--ks-vermilion);
-  background: oklch(58% 0.15 35 / 0.14);
-  border-color: oklch(58% 0.15 35 / 0.32);
+  background: color-mix(in oklch, var(--ks-vermilion) 14%, transparent);
+  border-color: color-mix(in oklch, var(--ks-vermilion) 32%, transparent);
 }
 
 .slop-kinpaku .rule-card-category[data-category="quality"] {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   background: oklch(70% 0.12 188 / 0.12);
   border-color: oklch(70% 0.12 188 / 0.30);
 }
 
 .slop-kinpaku .rule-card-layer[data-layer="cli"] {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   background: oklch(78% 0.12 82 / 0.10);
   border-color: oklch(78% 0.12 82 / 0.34);
 }
 
 .slop-kinpaku .rule-card-layer[data-layer="browser"] {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   background: oklch(70% 0.12 188 / 0.10);
   border-color: oklch(70% 0.12 188 / 0.30);
 }
@@ -826,8 +826,8 @@
 /* Opt-in provider tells: deterministic but off by default (--gpt / --gemini). */
 .slop-kinpaku .rule-card-layer[data-layer="optin"] {
   color: var(--ks-vermilion);
-  background: oklch(58% 0.15 35 / 0.10);
-  border-color: oklch(58% 0.15 35 / 0.30);
+  background: color-mix(in oklch, var(--ks-vermilion) 10%, transparent);
+  border-color: color-mix(in oklch, var(--ks-vermilion) 30%, transparent);
   text-transform: none;
   letter-spacing: 0.04em;
 }
@@ -858,7 +858,7 @@
   justify-self: start;
   font-family: var(--ks-mono);
   font-size: 0.74rem;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
@@ -909,7 +909,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   margin: 0;
 }
 

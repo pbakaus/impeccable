@@ -185,18 +185,18 @@ export function renderCommandDemo(commandId) {
 
   // Use split-screen comparison
   return `
-    <div class="demo-split-comparison" data-demo="command-${demo.id}">
+    <figure class="demo-split-comparison" data-demo="command-${demo.id}" style="margin: 0;">
       <div class="split-container">
         <div class="split-before">
-          <div class="split-content">${demo.before}</div>
+          <div class="split-content" inert aria-hidden="true">${demo.before}</div>
         </div>
         <div class="split-after">
-          <div class="split-content">${demo.after || demo.before}</div>
+          <div class="split-content" inert aria-hidden="true">${demo.after || demo.before}</div>
         </div>
         <div class="split-divider"></div>
       </div>
-      <div class="demo-caption">${demo.caption}</div>
-    </div>
+      <figcaption class="demo-caption">${demo.caption}</figcaption>
+    </figure>
   `;
 }
 
@@ -260,7 +260,7 @@ function renderSkillTabDemo(skillId, tab) {
           </div>
         ` : ''}
       </div>
-      <div class="demo-viewport" data-state="before" id="${demoId}-viewport">
+      <div class="demo-viewport" data-state="before" id="${demoId}-viewport" inert aria-hidden="true">
         ${tab.before}
       </div>
       <div class="demo-caption">${tab.caption}</div>
@@ -285,5 +285,4 @@ export function setupDemoTabs() {
     });
   });
 }
-
 

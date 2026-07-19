@@ -215,7 +215,7 @@
 }
 
 .designing-kinpaku .designing-page-title em {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .designing-kinpaku .designing-page-lede {
@@ -653,7 +653,7 @@
   font-size: 0.82rem;
 }
 .designing-kinpaku .docs-viz-file-status {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-family: var(--ks-mono);
   font-size: 0.62rem;
   letter-spacing: 0.14em;
@@ -674,7 +674,7 @@
 }
 .designing-kinpaku .docs-viz-file-row:last-child { border-bottom: 0; }
 .designing-kinpaku .docs-viz-file-k {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.72rem;
   letter-spacing: 0.14em;
@@ -733,7 +733,7 @@
   gap: 6px;
 }
 .designing-kinpaku .designing-visualize-plate-kind {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-family: var(--ks-mono);
   font-size: 0.62rem;
   font-weight: 500;
@@ -809,7 +809,7 @@
 }
 
 .designing-kinpaku .designing-iterate-kind {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-family: var(--ks-mono);
   font-size: 0.62rem;
   font-weight: 500;
@@ -817,7 +817,7 @@
   text-transform: uppercase;
 }
 .designing-kinpaku .designing-iterate-col:first-child .designing-iterate-kind {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 /* Subsection h3s use Albert Sans, not the Alumni Sans display face. DESIGN.md
@@ -924,7 +924,7 @@
   gap: 10px;
 }
 .designing-kinpaku .docs-viz-live-kicker {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.18em;
@@ -939,7 +939,7 @@
   margin: 0;
 }
 .designing-kinpaku .docs-viz-live-title em {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 .designing-kinpaku .docs-viz-live-btn {
   align-self: start;
@@ -1036,7 +1036,7 @@
 }
 .designing-kinpaku .docs-viz-live-gbar-mark {
   display: inline-flex;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   padding: 0 5px;
 }
 .designing-kinpaku .docs-viz-live-gbar-btn {
@@ -1057,7 +1057,7 @@
 }
 .designing-kinpaku .docs-viz-live-gbar-btn.is-active {
   background: oklch(27% 0 0);
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 .designing-kinpaku .docs-viz-live-gbar-btn-mono {
   font-family: var(--ks-mono);
@@ -1272,7 +1272,7 @@
   color: var(--ks-champagne);
 }
 .designing-kinpaku .designing-surface-cmd-prompt {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 .designing-kinpaku .designing-surface-cmd--chrome {
   gap: 7px;
@@ -1299,14 +1299,14 @@
   gap: 8px;
 }
 .designing-kinpaku .designing-maintain-label {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   font-family: var(--ks-mono);
   font-size: 0.62rem;
   letter-spacing: 0.24em;
   text-transform: uppercase;
 }
 .designing-kinpaku .designing-maintain-label a {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   text-decoration: underline;
   text-decoration-color: var(--ks-kinpaku);
   text-underline-offset: 3px;
@@ -1385,7 +1385,7 @@
 }
 .designing-kinpaku .designing-designmd-preview-line:last-child { border-bottom: 0; }
 .designing-kinpaku .designing-designmd-preview-num {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.7rem;
   letter-spacing: 0.16em;
@@ -1424,14 +1424,14 @@
 }
 
 .designing-kinpaku .designing-lane-kind {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
 }
 .designing-kinpaku .designing-lane:nth-child(2) .designing-lane-kind {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 
 .designing-kinpaku .designing-lane-rule {
@@ -1625,14 +1625,14 @@
 }
 
 .designing-kinpaku .designing-cta-card-kind {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
 }
 .designing-kinpaku .designing-cta-card:nth-child(2) .designing-cta-card-kind {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 
 .designing-kinpaku .designing-cta-card-title {
@@ -1645,7 +1645,7 @@
   letter-spacing: 0.01em;
 }
 .designing-kinpaku .designing-cta-card-title em {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .designing-kinpaku .designing-cta-card-desc {

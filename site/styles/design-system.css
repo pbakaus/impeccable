@@ -46,7 +46,7 @@
   max-width: 100%;
 }
 
-.kinpaku-system-page a:not(.ks-brand) {
+.kinpaku-system-page a:not(.ks-brand, .ks-button) {
   color: inherit;
   text-decoration: none;
 }
@@ -168,7 +168,7 @@
 }
 
 .ks-hero-eyebrow {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.7rem;
   letter-spacing: 0.32em;
@@ -178,7 +178,7 @@
 
 .ks-hero-wordmark {
   display: block;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-font-display);
   font-weight: 100;
   font-size: clamp(3.2rem, 7.2vw, 5.6rem);
@@ -260,13 +260,13 @@
 }
 
 .ks-category-rail a:last-child { border-right: 0; }
-.ks-category-rail a:hover { color: var(--ks-kinpaku); }
+.ks-category-rail a:hover { color: var(--ks-accent-ink); }
 
 .ks-category-rail svg {
   width: 18px;
   height: 18px;
   flex: none;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 /* ============================================================================
@@ -407,7 +407,7 @@
 }
 
 .ks-candidate.is-kept figcaption {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
   border-color: var(--ks-patina);
 }
 
@@ -506,7 +506,7 @@
 
 .ks-swatch-value {
   display: block;
-  color: var(--ks-mute-deep);
+  color: var(--ks-muted);
   font-family: var(--ks-mono);
   font-size: 0.7rem;
   margin-top: 6px;
@@ -536,7 +536,7 @@
 }
 
 .ks-type-label {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.24em;
@@ -563,7 +563,7 @@
 }
 
 .ks-type-sample[data-scale="wordmark"] {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-font-display);
   font-weight: var(--ks-type-display-weight);
   font-size: var(--ks-type-wordmark-size);
@@ -599,7 +599,7 @@
 }
 
 .ks-type-sample[data-scale="mono"] {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: var(--ks-type-mono-size);
   letter-spacing: var(--ks-type-mono-track);
@@ -670,7 +670,7 @@
 
 .ks-pair-value {
   grid-column: 1 / -1;
-  color: var(--ks-mute-deep);
+  color: var(--ks-muted);
   font-family: var(--ks-mono);
   font-size: 0.7rem;
   margin-top: -2px;
@@ -687,7 +687,7 @@
 .ks-mono-inline {
   font-family: var(--ks-mono);
   font-size: 0.8em;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   padding: 0.05em 0.4em;
   border: 1px solid oklch(78% 0.12 82 / 0.18);
   border-radius: 2px;
@@ -743,14 +743,18 @@
   font-family: var(--ks-mono);
   font-size: 0.72rem;
   letter-spacing: 0.04em;
-  color: var(--ks-mute-deep);
+  color: var(--ks-muted);
   margin: 0;
 }
 
 .ks-canonical-used {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   text-transform: uppercase;
   letter-spacing: 0.18em;
+}
+
+.ks-canonical .ks-bento .ksp-eyebrow {
+  color: var(--ks-accent-ink);
 }
 
 .ks-canonical-meta a {
@@ -813,7 +817,7 @@
   font-size: 0.66rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 .ks-logo-tile-links {
@@ -873,6 +877,7 @@
 }
 
 .ksp-tile-head {
+  --ks-accent-ink: var(--ks-kinpaku);
   display: grid;
   grid-template-columns: auto auto 1fr;
   align-items: baseline;
@@ -891,13 +896,13 @@
 }
 
 .ksp-tile-name {
-  color: var(--ks-champagne);
+  color: oklch(91% 0.03 86);
   font-family: var(--ks-font);
   font-size: 0.95rem;
 }
 
 .ksp-tile-desc {
-  color: var(--ks-muted);
+  color: oklch(72% 0.018 88);
   font-size: 0.78rem;
   text-align: right;
 }
@@ -914,7 +919,16 @@
 }
 
 .ksp-stage--dark {
-  background: var(--ks-ink);
+  background: oklch(7% 0.006 95);
+  color: oklch(91% 0.03 86);
+}
+
+.ksp-stage--dark .ksp-title {
+  color: oklch(91% 0.03 86);
+}
+
+.ksp-stage--dark .ksp-body {
+  color: oklch(86% 0.025 88);
 }
 
 /* Sample content typography — shared across all six prototypes so framing
@@ -969,7 +983,7 @@
   display: inline-block;
   padding: 6px 14px;
   margin-bottom: 16px;
-  color: var(--ks-ink-deep);
+  color: var(--ks-on-accent);
   background: url("/assets/neo-kinpaku/kinpaku-gold-leaf.png") 50% 50% / cover no-repeat;
   filter: saturate(1.15) contrast(1.08);
   font-weight: 600;
@@ -1054,7 +1068,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.24em;
@@ -1209,8 +1223,8 @@
   letter-spacing: -0.01em;
 }
 .ks-audit-stat-value.is-warning { color: var(--ks-vermilion); }
-.ks-audit-stat-value.is-improved { color: var(--ks-patina); }
-.ks-audit-stat-value.is-ready { color: var(--ks-kinpaku); }
+.ks-audit-stat-value.is-improved { color: var(--ks-state-ink); }
+.ks-audit-stat-value.is-ready { color: var(--ks-accent-ink); }
 
 .ks-audit-stat-meta {
   color: var(--ks-muted);
@@ -1447,7 +1461,7 @@
 
 .ks-severity.is-high { color: var(--ks-vermilion); }
 .ks-severity.is-high::before { background: var(--ks-vermilion); }
-.ks-severity.is-medium { color: var(--ks-kinpaku); }
+.ks-severity.is-medium { color: var(--ks-accent-ink); }
 .ks-severity.is-medium::before { background: var(--ks-kinpaku); }
 .ks-severity.is-low { color: var(--ks-muted); }
 .ks-severity.is-low::before { background: var(--ks-muted); }
@@ -1473,8 +1487,8 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
-.ks-audit-status.is-improved { color: var(--ks-patina); }
-.ks-audit-status.is-ready { color: var(--ks-kinpaku); }
+.ks-audit-status.is-improved { color: var(--ks-state-ink); }
+.ks-audit-status.is-ready { color: var(--ks-accent-ink); }
 
 /* ============================================================================
    Component grids
@@ -1501,7 +1515,7 @@
 }
 
 .ks-component-label {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.24em;
@@ -1560,7 +1574,7 @@
 
 .ks-footer-col h4 {
   margin: 0 0 14px;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
   font-family: var(--ks-mono);
   font-size: 0.66rem;
   letter-spacing: 0.24em;
@@ -1600,7 +1614,7 @@
 }
 
 .ks-footer-meta small {
-  color: var(--ks-mute-deep);
+  color: var(--ks-muted);
   font-size: 0.78rem;
 }
 

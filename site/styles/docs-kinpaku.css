@@ -53,7 +53,7 @@ html.light .docs-kinpaku {
   --ks-text-muted: oklch(42% 0 0);
   --ks-text-faint: oklch(55% 0 0);
   --ks-rule: oklch(20% 0 0 / 0.12);
-  --docs-accent: var(--ks-patina);
+  --docs-accent: var(--ks-state-ink);
   --docs-accent-hover: var(--ks-patina-deep);
   --docs-accent-line: oklch(70% 0.12 188 / 0.36);
   --docs-accent-wash: oklch(70% 0.12 188 / 0.08);
@@ -1010,6 +1010,10 @@ html.light .docs-kinpaku {
   text-wrap: balance;
 }
 
+html.light .docs-kinpaku .sub-page-title {
+  color: var(--ks-accent-ink);
+}
+
 .docs-kinpaku .sub-page-lede {
   font-size: 1.08rem;
   line-height: 1.65;
@@ -1072,7 +1076,11 @@ html.light .docs-kinpaku {
 .docs-kinpaku .skills-relationship-name {
   font-family: var(--ks-mono);
   font-size: 0.88rem;
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
+}
+
+.docs-kinpaku .prose h3.docs-viz-live-title {
+  color: var(--ks-champagne);
 }
 
 
@@ -1242,7 +1250,7 @@ html.light .docs-kinpaku {
 }
 
 .docs-kinpaku .prose li::marker {
-  color: var(--ks-kinpaku);
+  color: var(--ks-accent-ink);
 }
 
 /* When a list item wraps multi-block content, hug its internals. */
@@ -1768,6 +1776,11 @@ html.light .docs-kinpaku .prose .code-block code {
 .docs-kinpaku .prose .docs-viz-variant.is-active {
   background: oklch(78% 0.12 82 / 0.16);
   box-shadow: none;
+}
+
+html.light .docs-kinpaku .prose .docs-viz-flow-step--accent,
+html.light .docs-kinpaku .prose .docs-viz-variant.is-active {
+  background: color-mix(in oklch, var(--ks-lacquer-raised) 92%, var(--ks-kinpaku) 8%);
 }
 
 /* Per-variant theming in docs-visuals.css uses paper/cream/light-magenta

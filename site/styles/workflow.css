@@ -240,7 +240,7 @@
 }
 
 .spread-flow-icon {
-  color: var(--spread-accent);
+  color: var(--ks-accent-ink);
   font-weight: 600;
   font-size: 0.8125rem;
 }
@@ -1983,7 +1983,7 @@
 .why-terminal-title {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: oklch(65% 0 0);
+  color: var(--ks-text-muted);
   margin-left: 10px;
 }
 .why-terminal-body {
@@ -2001,9 +2001,9 @@
 .why-terminal-body::-webkit-scrollbar { display: none; }
 .why-terminal-line { white-space: pre; }
 .why-terminal-line--prompt { color: oklch(90% 0 0); }
-.why-terminal-prompt { color: var(--color-accent); margin-right: 4px; }
-.why-terminal-ok { color: var(--ks-patina); }
-.why-terminal-arrow { color: var(--color-accent); }
+.why-terminal-prompt { color: var(--ks-accent-ink); margin-right: 4px; }
+.why-terminal-ok { color: var(--ks-state-ink); }
+.why-terminal-arrow { color: var(--ks-accent-ink); }
 .why-terminal-line--hint {
   margin-top: 6px;
   color: oklch(90% 0 0);
@@ -2440,10 +2440,10 @@
 
 /* ─ Panel 03: path + meta additions ─ */
 .why-terminal-path {
-  color: var(--ks-patina);
+  color: var(--ks-state-ink);
 }
 .why-terminal-meta {
-  color: oklch(58% 0 0);
+  color: var(--ks-text-muted);
   font-size: 0.9em;
 }
 
