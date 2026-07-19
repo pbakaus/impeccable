@@ -17,34 +17,28 @@
 
 /* Keep the full category accent for fills and rules, and give text a separate
    category-aware ink so light mode can darken it without flattening the
-   palette. Fisheye items sit outside each spread, so they need the same map. */
-.magazine-spread[data-category="create"],
-.fisheye-item[data-cat="create"] {
+   palette. */
+.magazine-spread[data-category="create"] {
   --spread-accent: var(--color-accent);
   --spread-ink: var(--cat-create-text);
 }
-.magazine-spread[data-category="evaluate"],
-.fisheye-item[data-cat="evaluate"] {
+.magazine-spread[data-category="evaluate"] {
   --spread-accent: var(--ks-patina);
   --spread-ink: var(--cat-evaluate-text);
 }
-.magazine-spread[data-category="refine"],
-.fisheye-item[data-cat="refine"] {
+.magazine-spread[data-category="refine"] {
   --spread-accent: var(--color-accent);
   --spread-ink: var(--cat-refine-text);
 }
-.magazine-spread[data-category="simplify"],
-.fisheye-item[data-cat="simplify"] {
+.magazine-spread[data-category="simplify"] {
   --spread-accent: var(--ks-kinpaku-rich);
   --spread-ink: var(--cat-simplify-text);
 }
-.magazine-spread[data-category="harden"],
-.fisheye-item[data-cat="harden"] {
+.magazine-spread[data-category="harden"] {
   --spread-accent: var(--ks-patina);
   --spread-ink: var(--cat-harden-text);
 }
-.magazine-spread[data-category="system"],
-.fisheye-item[data-cat="system"] {
+.magazine-spread[data-category="system"] {
   --spread-accent: var(--color-ash);
   --spread-ink: var(--cat-system-text);
 }

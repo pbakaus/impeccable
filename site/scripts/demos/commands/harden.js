@@ -28,7 +28,7 @@ export default {
           <div style="flex: 1;">
             <div style="font-size: 0.875rem; font-weight: 600; color: var(--color-ink); margin-bottom: 4px;">Connection failed</div>
             <div style="font-size: 0.8125rem; color: var(--color-charcoal); line-height: 1.4;">Unable to reach the server. Check your internet connection and try again.</div>
-            <button style="margin-top: 12px; padding: 8px 16px; background: var(--color-accent); color: white; border: none; border-radius: 6px; font-size: 0.8125rem; font-weight: 500; cursor: pointer;">Retry Connection</button>
+            <button style="margin-top: 12px; padding: 8px 16px; background: var(--color-accent); color: var(--ks-on-accent); border: none; border-radius: 6px; font-size: 0.8125rem; font-weight: 500; cursor: pointer;">Retry Connection</button>
           </div>
         </div>
       </div>

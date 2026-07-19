@@ -223,7 +223,6 @@ html.light :is(
   .home-kinpaku .install-alts-label,
   .home-kinpaku .changelog-highlights-label,
   .home-kinpaku .ks-bento-num,
-  .home-kinpaku .fisheye-item.is-active,
   .home-kinpaku .spread-command-name,
   .cf-eyebrow
 ) {
@@ -251,8 +250,7 @@ html.light body.docs-kinpaku :is(
    ochre, evaluate/harden stay verdigris, and system stays neutral while all
    small text remains AA-readable on paper. */
 html.light .home-kinpaku .magazine-container .spread-command-name,
-html.light .home-kinpaku .magazine-container .spread-category-label,
-html.light .home-kinpaku .magazine-container .fisheye-item.is-active {
+html.light .home-kinpaku .magazine-container .spread-category-label {
   color: var(--spread-ink, var(--ks-accent-ink));
 }
 

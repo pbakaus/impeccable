@@ -993,9 +993,9 @@
   --spread-accent: var(--ks-state-ink);
 }
 
-/* Command titles, category labels, and the active list item follow the current
-   category accent. The slash before /impeccable stays muted punctuation. */
-.home-kinpaku .magazine-container :is(.spread-command-name, .spread-category-label, .fisheye-item.is-active) {
+/* Command titles and category labels follow the current category accent. The
+   slash before /impeccable stays muted punctuation. */
+.home-kinpaku .magazine-container :is(.spread-command-name, .spread-category-label) {
   color: var(--spread-accent, var(--ks-kinpaku));
 }
 
@@ -1019,10 +1019,6 @@
   color: var(--ks-text);
   font-family: var(--ks-font);
   font-size: 1.18rem;
-}
-
-.home-kinpaku .fisheye-item.is-active {
-  color: var(--spread-accent, var(--ks-kinpaku));
 }
 
 .home-kinpaku .fisheye-slash,
