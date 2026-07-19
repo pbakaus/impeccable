@@ -1239,19 +1239,19 @@ svg.downloads-rebuild-tab-logo {
   border-top: 1px solid var(--ks-rule);
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(4, auto);
-  column-gap: 36px;
-  row-gap: 10px;
+  gap: 36px;
   max-width: 820px;
 }
 
-/* Share heading, description, primary-link, and secondary-link rows across
-   the three cells so CTAs align without bottom-anchoring individual links. */
+/* Each cell is a flex column so primary links can be bottom-anchored.
+   Text is left-aligned within the cell — wrapping paragraphs read better
+   that way than centered. The grid as a whole stays centered on the page. */
 .downloads-rebuild-extras li {
-  display: grid;
-  grid-row: 1 / -1;
-  grid-template-rows: subgrid;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   text-align: left;
+  align-items: stretch;
 }
 
 .downloads-rebuild-extras strong {
@@ -1301,17 +1301,7 @@ svg.downloads-rebuild-tab-logo {
 
 @media (max-width: 1080px) {
   .downloads-rebuild { padding: 80px 0; }
-  .downloads-rebuild-extras {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    gap: 36px;
-  }
-  .downloads-rebuild-extras li {
-    display: flex;
-    flex-direction: column;
-    grid-row: auto;
-    gap: 10px;
-  }
+  .downloads-rebuild-extras { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {
