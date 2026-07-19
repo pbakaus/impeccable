@@ -5607,12 +5607,24 @@
     if (message) showToast(message, 5000);
   }
 
+  // How many delayed re-reads a completion-driven source fallback gets when
+  // the fetched source still shows only the preflight scaffold, before the
+  // failure is surfaced via recoverEmptyCycling.
+  const COMPLETED_SOURCE_FALLBACK_RETRIES = 3;
+  const COMPLETED_SOURCE_FALLBACK_RETRY_MS = 1200;
+
   /**
    * No-HMR fallback: fetch the raw source file from the live server,
    * parse it, extract the variant wrapper, and inject it into the live DOM.
    * This works even when the dev server caches HTML (Bun, static servers).
+   *
+   * opts.generationCompleted marks callers that KNOW the agent finished (a
+   * `done` arrived or the server reported a completed generation). For them an
+   * empty read is a stale source view and no further event is coming, so the
+   * read retries a few times and then surfaces recovery. Callers without the
+   * flag may be mid-generation and wait indefinitely for the real completion.
    */
-  function injectVariantsFromSource(filePath, sessionId) {
+  function injectVariantsFromSource(filePath, sessionId, opts = {}) {
     if (isSvelteComponentManifestPath(filePath)) {
       injectSvelteComponentsFromManifest(filePath, sessionId);
       return;
@@ -5678,14 +5690,31 @@
         arrivedVariants = variants.length;
         expectedVariants = parseInt(wrapper.dataset.impeccableVariantCount || arrivedVariants);
         if (arrivedVariants <= 0) {
-          // Mid-generation the source legitimately holds a scaffold wrapper
-          // with no variants yet (the server-side preflight wraps before the
-          // agent writes). Tearing the session down here would destroy an
-          // in-flight generation; stay in GENERATING — the variant observer
-          // is armed and the server re-delivers a missed `done`.
           if (state === 'GENERATING') {
-            console.log('[impeccable] Source has scaffold but no variants yet; still generating.');
-            return;
+            // Mid-generation the source legitimately holds a scaffold wrapper
+            // with no variants yet (the server-side preflight wraps before the
+            // agent writes). Tearing the session down here would destroy an
+            // in-flight generation; stay in GENERATING — the variant observer
+            // is armed and the server re-delivers a missed `done`.
+            if (!opts.generationCompleted) {
+              console.log('[impeccable] Source has scaffold but no variants yet; still generating.');
+              return;
+            }
+            // Generation finished, yet the read shows only the scaffold: the
+            // source view is stale and no further event will fire. Re-read a
+            // few times before surfacing recovery — a single silent return
+            // here would strand the tab in GENERATING forever.
+            const attempt = opts.attempt || 0;
+            if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
+              console.log('[impeccable] Generation is done but source shows no variants yet; retrying read ('
+                + (attempt + 1) + '/' + COMPLETED_SOURCE_FALLBACK_RETRIES + ').');
+              setTimeout(() => {
+                if (state !== 'GENERATING' || currentSessionId !== sessionId) return;
+                if (arrivedVariants > 0) return;
+                injectVariantsFromSource(filePath, sessionId, { ...opts, attempt: attempt + 1 });
+              }, COMPLETED_SOURCE_FALLBACK_RETRY_MS);
+              return;
+            }
           }
           recoverEmptyCycling('source-fallback-empty');
           return;
@@ -6388,7 +6417,7 @@
             setTimeout(() => {
               if (arrivedVariants >= expectedVariants && expectedVariants > 0) return;
               if (state !== 'GENERATING' || msg.id !== currentSessionId) return;
-              injectVariantsFromSource(msg.file, msg.id);
+              injectVariantsFromSource(msg.file, msg.id, { generationCompleted: true });
             }, 750);
             break;
           }
@@ -8155,7 +8184,7 @@ void main() {
     setTimeout(() => {
       if (sessionId !== currentSessionId || state !== 'GENERATING') return;
       if (arrivedVariants > 0 && arrivedVariants >= expectedVariants) return;
-      injectVariantsFromSource(file, sessionId);
+      injectVariantsFromSource(file, sessionId, { generationCompleted: true });
     }, 750);
   }
 

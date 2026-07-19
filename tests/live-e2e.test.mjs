@@ -726,12 +726,31 @@ for (const { name, fixture } of fixtures) {
           }, { timeout: 15_000 });
           t.diagnostic('Browser reloaded into the scaffold-only wrapper (0 variants)');
 
+          // Capture the scaffold-only source now (the agent write is still
+          // ~1.5s away). The first post-reconnect /source read will be served
+          // this stale copy, forcing the completion-driven fallback through
+          // its retry path — a single no-retry read here strands the tab in
+          // GENERATING forever.
+          const scaffoldSourceFile = join(tmp, fixture.runtime.missedDoneReloadScenario.sourceFile);
+          const scaffoldOnlySource = readFileSync(scaffoldSourceFile, 'utf-8');
+          let staleSourceServed = false;
+          await page.context().route('**/source?token=*', (route) => {
+            if (!staleSourceServed) {
+              staleSourceServed = true;
+              return route.fulfill({
+                status: 200,
+                contentType: 'text/html; charset=utf-8',
+                body: scaffoldOnlySource,
+              });
+            }
+            return route.continue();
+          });
+
           // Wait for the delayed agent write to land in source while the page
           // is deaf to both delivery channels.
-          const scaffoldSource = join(tmp, fixture.runtime.missedDoneReloadScenario.sourceFile);
           const writeDeadline = Date.now() + 20_000;
           for (;;) {
-            if (/data-impeccable-variant="3"/.test(readFileSync(scaffoldSource, 'utf-8'))) break;
+            if (/data-impeccable-variant="3"/.test(readFileSync(scaffoldSourceFile, 'utf-8'))) break;
             if (Date.now() > writeDeadline) throw new Error('agent variant write never landed in source');
             await new Promise((resolve) => setTimeout(resolve, 200));
           }
@@ -739,10 +758,12 @@ for (const { name, fixture } of fixtures) {
           liveConnectionsBlocked = false;
 
           // EventSource auto-retries. On reconnect the live server must
-          // redeliver the missed completion; the browser then injects the
-          // variants from source and reaches CYCLING despite the dead HMR.
+          // redeliver the missed completion; the browser's recovery read gets
+          // the stale scaffold first, retries, and then injects the real
+          // variants from source — reaching CYCLING despite the dead HMR.
           await waitForCycling(page, 3, { timeout: 30_000 });
-          t.diagnostic('Session recovered to CYCLING after SSE redelivery');
+          assert.equal(staleSourceServed, true, 'the stale /source intercept must have exercised the retry path');
+          t.diagnostic('Session recovered to CYCLING after SSE redelivery + stale-read retry');
         } finally {
           await teardownAndResetBrowser(teardown);
         }
