@@ -43,6 +43,7 @@ export default {
       id: 'feedback',
       label: 'Feedback',
       caption: 'Silent actions vs immediate confirmation',
+      interactiveAfter: true,
       before: `
         <div class="int-demo int-feedback-before">
           <button class="int-fb-btn int-fb-silent">
@@ -74,6 +75,5 @@ export default {
     }
   ]
 };
-
 
 

@@ -86,6 +86,19 @@ function setupInteractiveButtons() {
   });
 }
 
+function updateSkillDemoAccessibility(viewport, tab, isAfter) {
+  const isInteractive = isAfter
+    ? tab.interactiveAfter === true
+    : tab.interactiveBefore === true;
+
+  viewport.toggleAttribute('inert', !isInteractive);
+  if (isInteractive) {
+    viewport.removeAttribute('aria-hidden');
+  } else {
+    viewport.setAttribute('aria-hidden', 'true');
+  }
+}
+
 /**
  * Handle skill demo toggle
  */
@@ -105,6 +118,8 @@ function handleDemoToggle(demoId, isAfter) {
   
   const tab = skill.tabs.find(t => t.id === tabId);
   if (!tab) return;
+
+  updateSkillDemoAccessibility(viewport, tab, isAfter);
   
   // Check for custom toggle handler
   if (tab.onToggle) {

@@ -248,6 +248,7 @@ export function renderSkillDemo(skillId) {
 function renderSkillTabDemo(skillId, tab) {
   const hasToggle = tab.hasToggle !== false;
   const demoId = `${skillId}-${tab.id}`;
+  const viewportAccessibility = tab.interactiveBefore === true ? '' : ' inert aria-hidden="true"';
 
   return `
     <div class="demo-container">
@@ -260,7 +261,7 @@ function renderSkillTabDemo(skillId, tab) {
           </div>
         ` : ''}
       </div>
-      <div class="demo-viewport" data-state="before" id="${demoId}-viewport" inert aria-hidden="true">
+      <div class="demo-viewport" data-state="before" id="${demoId}-viewport"${viewportAccessibility}>
         ${tab.before}
       </div>
       <div class="demo-caption">${tab.caption}</div>
@@ -285,4 +286,3 @@ export function setupDemoTabs() {
     });
   });
 }
-
